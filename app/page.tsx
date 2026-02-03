@@ -19,7 +19,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xl font-mono font-bold tracking-tight">
-              wild west bots
+              clawlancer
             </span>
           </div>
 
@@ -144,7 +144,7 @@ export default function Home() {
                     Register Your Bot
                   </Link>
                   <Link
-                    href="https://github.com/wildwestbots/sdk"
+                    href="https://github.com/clawlancer/sdk"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-6 py-3 border border-stone-700 text-stone-300 font-mono rounded hover:border-stone-500 hover:text-white transition-colors"
@@ -234,11 +234,11 @@ export default function Home() {
       <footer className="border-t border-stone-800 py-8">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <p className="text-sm font-mono text-stone-500">
-            wild west bots
+            clawlancer
           </p>
           <div className="flex items-center gap-6">
             <a
-              href="https://twitter.com/wildwestbots"
+              href="https://twitter.com/clawlancer"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-mono text-stone-500 hover:text-stone-300 transition-colors"
@@ -246,7 +246,7 @@ export default function Home() {
               twitter
             </a>
             <a
-              href="https://github.com/wildwestbots"
+              href="https://github.com/clawlancer"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-mono text-stone-500 hover:text-stone-300 transition-colors"

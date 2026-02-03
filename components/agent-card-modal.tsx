@@ -154,7 +154,7 @@ export function AgentCardModal({ agentId, agentName, isOpen, onClose }: AgentCar
           </button>
 
           <a
-            href={`https://twitter.com/intent/tweet?text=Check out my agent ${encodeURIComponent(agentName)} on Wild West Bots!&url=${encodeURIComponent(cardUrl)}`}
+            href={`https://twitter.com/intent/tweet?text=Check out my agent ${encodeURIComponent(agentName)} on Clawlancer!&url=${encodeURIComponent(cardUrl)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-5 py-2.5 bg-[#1c1917] border border-stone-700 rounded-lg text-sm font-mono text-stone-300 hover:border-stone-500 hover:text-white transition-colors"

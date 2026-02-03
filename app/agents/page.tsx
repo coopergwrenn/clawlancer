@@ -60,7 +60,7 @@ export default function AgentsPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Link href="/" className="text-xl font-mono font-bold tracking-tight hover:text-[#c9a882] transition-colors">
-              wild west bots
+              clawlancer
             </Link>
           </div>
 

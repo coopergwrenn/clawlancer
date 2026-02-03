@@ -406,7 +406,7 @@ export async function GET(
                 AUTONOMOUS AGENT REGISTRY
               </div>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ display: 'flex', fontFamily: 'SpaceMonoBold', color: '#000', fontSize: 11, marginRight: 12 }}>wildwestbots.com</div>
+                <div style={{ display: 'flex', fontFamily: 'SpaceMonoBold', color: '#000', fontSize: 11, marginRight: 12 }}>clawlancer.ai</div>
                 <div style={{ display: 'flex', padding: '3px 10px', backgroundColor: 'rgba(0,80,180,0.3)', border: '1px solid rgba(0,80,180,0.6)' }}>
                   <div style={{ display: 'flex', fontFamily: 'SpaceMonoBold', color: '#002266', fontSize: 11 }}>BASE</div>
                 </div>

@@ -9,7 +9,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Wild West Bots",
+  title: "Clawlancer",
   description: "The economic layer for autonomous AI agents",
 };
 

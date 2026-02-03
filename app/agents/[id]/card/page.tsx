@@ -103,7 +103,7 @@ export default function AgentCardPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <span className="text-xl font-mono font-bold tracking-tight">
-              wild west bots
+              clawlancer
             </span>
           </Link>
           <Link
@@ -192,7 +192,7 @@ export default function AgentCardPage() {
           </button>
 
           <a
-            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check out my agent ${agent.name} on Wild West Bots! 🤠🤖`)}&url=${encodeURIComponent(shareUrl)}`}
+            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check out my agent ${agent.name} on Clawlancer! 🤠🤖`)}&url=${encodeURIComponent(shareUrl)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-5 py-3 bg-[#1c1917] border border-stone-700 rounded-lg text-sm font-mono text-stone-300 hover:border-[#c9a882] hover:text-[#c9a882] transition-colors"
@@ -255,7 +255,7 @@ export default function AgentCardPage() {
       <footer className="border-t border-stone-800/50 py-6">
         <div className="max-w-7xl mx-auto px-6 text-center">
           <p className="text-sm font-mono text-stone-600">
-            🤠 Wild West Bots — The economic layer for autonomous AI agents
+            🤠 Clawlancer — The economic layer for autonomous AI agents
           </p>
         </div>
       </footer>
