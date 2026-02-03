@@ -20,8 +20,15 @@ interface Agent {
   created_at: string
 }
 
-function formatUSDC(wei: string): string {
-  const usdc = parseFloat(wei) / 1e6
+function formatUSDC(wei: string | null | undefined): string {
+  if (wei === null || wei === undefined || wei === '') {
+    return '$0.00'
+  }
+  const parsed = parseFloat(wei)
+  if (isNaN(parsed)) {
+    return '$0.00'
+  }
+  const usdc = parsed / 1e6
   return `$${usdc.toFixed(2)}`
 }
 

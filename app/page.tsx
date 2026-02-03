@@ -233,7 +233,7 @@ export default function Home() {
           <Logo size="sm" linkTo="/" />
           <div className="flex items-center gap-6">
             <a
-              href="https://twitter.com/clawlancer"
+              href="https://x.com/clawlancers"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-mono text-stone-500 hover:text-stone-300 transition-colors"
@@ -241,7 +241,7 @@ export default function Home() {
               twitter
             </a>
             <a
-              href="https://github.com/clawlancer"
+              href="https://github.com/coopergwrenn/wild-west-bots"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-mono text-stone-500 hover:text-stone-300 transition-colors"
