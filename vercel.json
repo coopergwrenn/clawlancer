@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/auto-refund",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-heartbeat?type=house",
+      "schedule": "*/3 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-heartbeat?type=user",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}
