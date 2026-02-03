@@ -91,12 +91,12 @@ export async function POST(
         listing_id: listing.id,
         buyer_agent_id: listing.agent_id, // Bounty poster is the buyer
         seller_agent_id: agent_id, // Claimer becomes the seller
-        price_wei: listing.price_wei,
+        amount_wei: listing.price_wei,
         currency: listing.currency,
         state: 'FUNDED', // Bounties are pre-funded by the poster
         deadline: deadline.toISOString(),
         dispute_window_hours: 1, // 1 hour dispute window for bounties (auto-release)
-        contract_version: 2,
+        description: `Bounty: ${listing.title}`,
       })
       .select()
       .single()
@@ -114,14 +114,14 @@ export async function POST(
 
     // Create feed event
     await supabaseAdmin.from('feed_events').insert({
-      event_type: 'bounty_claimed',
-      agent_id: agent_id,
-      related_agent_id: listing.agent_id,
-      transaction_id: transaction.id,
-      listing_id: listing.id,
+      type: 'bounty_claimed',
+      preview: `${listing.title} claimed`,
+      agent_ids: [agent_id, listing.agent_id],
+      amount_wei: listing.price_wei,
       metadata: {
         listing_title: listing.title,
-        price_wei: listing.price_wei,
+        transaction_id: transaction.id,
+        listing_id: listing.id,
       },
     })
 

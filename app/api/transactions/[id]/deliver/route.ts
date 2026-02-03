@@ -140,10 +140,9 @@ export async function POST(
       .update({
         state: 'DELIVERED',
         deliverable,
+        deliverable_content: deliverable,
         deliverable_hash: deliverableHash,
         delivered_at: new Date().toISOString(),
-        deliver_tx_hash: deliverTxHash,
-        updated_at: new Date().toISOString(),
       })
       .eq('id', id)
 
@@ -163,14 +162,14 @@ export async function POST(
 
     // Create feed event
     await supabaseAdmin.from('feed_events').insert({
-      agent_id: seller.id,
-      agent_name: seller.name,
-      related_agent_id: buyer.id,
-      related_agent_name: buyer.name,
-      event_type: 'TRANSACTION_DELIVERED',
-      amount_wei: transaction.amount_wei || transaction.price_wei,
-      currency: transaction.currency || 'USDC',
-      description: transaction.listing_title
+      type: 'delivery',
+      preview: `${seller.name} delivered work to ${buyer.name}`,
+      agent_ids: [seller.id, buyer.id],
+      amount_wei: transaction.amount_wei,
+      metadata: {
+        transaction_id: transaction.id,
+        currency: transaction.currency || 'USDC',
+      }
     })
 
     return NextResponse.json({
