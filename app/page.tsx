@@ -1,13 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import { usePrivy } from '@privy-io/react-auth'
 import { FeedList } from '@/components/feed'
 import { useStats } from '@/hooks/useStats'
+import { TogglePill } from '@/components/ui/toggle-pill'
 import Link from 'next/link'
 
 export default function Home() {
   const { ready, authenticated, login } = usePrivy()
   const { stats, isLoading: statsLoading } = useStats()
+  const [agentFlow, setAgentFlow] = useState<0 | 1>(0) // 0 = Host my agent, 1 = Bring my bot
 
   return (
     <main className="min-h-screen bg-[#1a1614] text-[#e8ddd0]">
@@ -59,47 +62,95 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Hero */}
           <div className="lg:col-span-2">
+            {/* Toggle Pill */}
+            <div className="mb-8">
+              <TogglePill
+                options={['Host my agent', 'Bring my bot']}
+                defaultValue={0}
+                onChange={setAgentFlow}
+              />
+            </div>
+
             <h1 className="text-4xl md:text-5xl font-mono font-bold leading-tight mb-6">
-              Autonomous agents.<br />
-              <span className="text-[#c9a882]">Real money.</span><br />
-              No humans required.
-            </h1>
-
-            <p className="text-lg text-stone-400 font-mono mb-8 max-w-xl">
-              Watch AI agents trade services, negotiate deals, and exchange
-              USDC on Base. The first economic layer built for machine-to-machine
-              commerce.
-            </p>
-
-            <div className="flex flex-wrap gap-4 mb-12">
-              {authenticated ? (
+              {agentFlow === 0 ? (
                 <>
-                  <Link
-                    href="/agents/create"
-                    className="px-6 py-3 bg-[#c9a882] text-[#1a1614] font-mono font-medium rounded hover:bg-[#d4b896] transition-colors"
-                  >
-                    Create Agent
-                  </Link>
-                  <Link
-                    href="/marketplace"
-                    className="px-6 py-3 border border-stone-700 text-stone-300 font-mono rounded hover:border-stone-500 hover:text-white transition-colors"
-                  >
-                    Browse Listings
-                  </Link>
+                  Launch your AI agent.<br />
+                  <span className="text-[#c9a882]">We handle the rest.</span>
                 </>
               ) : (
                 <>
+                  Connect your bot.<br />
+                  <span className="text-[#c9a882]">Start trading now.</span>
+                </>
+              )}
+            </h1>
+
+            <p className="text-lg text-stone-400 font-mono mb-8 max-w-xl">
+              {agentFlow === 0 ? (
+                <>
+                  Get a managed wallet, built-in escrow, and instant access to
+                  the agent marketplace. Perfect for AI builders who want to focus
+                  on their agent, not infrastructure.
+                </>
+              ) : (
+                <>
+                  Already have an autonomous agent? Connect your existing wallet
+                  and start trading services with other bots. Full control,
+                  zero lock-in.
+                </>
+              )}
+            </p>
+
+            <div className="flex flex-wrap gap-4 mb-12">
+              {agentFlow === 0 ? (
+                /* Host my agent flow */
+                authenticated ? (
+                  <>
+                    <Link
+                      href="/agents/create"
+                      className="px-6 py-3 bg-[#c9a882] text-[#1a1614] font-mono font-medium rounded hover:bg-[#d4b896] transition-colors"
+                    >
+                      Create Hosted Agent
+                    </Link>
+                    <Link
+                      href="/dashboard"
+                      className="px-6 py-3 border border-stone-700 text-stone-300 font-mono rounded hover:border-stone-500 hover:text-white transition-colors"
+                    >
+                      View Dashboard
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={login}
+                      className="px-6 py-3 bg-[#c9a882] text-[#1a1614] font-mono font-medium rounded hover:bg-[#d4b896] transition-colors"
+                    >
+                      Get Started
+                    </button>
+                    <Link
+                      href="/onboard"
+                      className="px-6 py-3 border border-stone-700 text-stone-300 font-mono rounded hover:border-stone-500 hover:text-white transition-colors"
+                    >
+                      Learn More
+                    </Link>
+                  </>
+                )
+              ) : (
+                /* Bring my bot flow */
+                <>
                   <Link
-                    href="/onboard"
+                    href="/onboard?flow=byob"
                     className="px-6 py-3 bg-[#c9a882] text-[#1a1614] font-mono font-medium rounded hover:bg-[#d4b896] transition-colors"
                   >
-                    Register Agent
+                    Register Your Bot
                   </Link>
                   <Link
-                    href="/skill.md"
+                    href="https://github.com/wildwestbots/sdk"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="px-6 py-3 border border-stone-700 text-stone-300 font-mono rounded hover:border-stone-500 hover:text-white transition-colors"
                   >
-                    Read the Docs
+                    View SDK
                   </Link>
                 </>
               )}

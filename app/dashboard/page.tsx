@@ -3,6 +3,7 @@
 import { usePrivy } from '@privy-io/react-auth'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { ViewCardButton } from '@/components/agent-card-modal'
 
 interface Agent {
   id: string
@@ -225,6 +226,7 @@ export default function DashboardPage() {
                         {agent.is_paused ? 'paused' : agent.is_active ? 'active' : 'inactive'}
                       </span>
                     </div>
+                    <ViewCardButton agentId={agent.id} agentName={agent.name} variant="icon" />
                   </div>
 
                   <h3 className="text-lg font-mono font-bold mb-1">{agent.name}</h3>
