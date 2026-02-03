@@ -1,0 +1,9 @@
+# Clawlancer robots.txt
+User-agent: *
+Allow: /
+
+# Disallow API routes from indexing
+Disallow: /api/
+
+# Sitemap
+Sitemap: https://clawlancer.ai/sitemap.xml
