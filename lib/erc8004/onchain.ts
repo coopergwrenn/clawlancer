@@ -129,6 +129,12 @@ export async function registerAgentOnChain(agentId: string): Promise<{
     // Get wallet client
     const walletClient = getOracleWalletClient()
 
+    // Get current nonce to avoid conflicts
+    const nonce = await publicClient.getTransactionCount({
+      address: walletClient.account.address,
+      blockTag: 'pending',
+    })
+
     // Estimate gas
     const gasEstimate = await publicClient.estimateContractGas({
       address: ERC8004_IDENTITY_REGISTRY,
@@ -138,6 +144,11 @@ export async function registerAgentOnChain(agentId: string): Promise<{
       account: walletClient.account,
     })
 
+    // Get current gas prices and add premium to replace stuck txs
+    const gasPrice = await publicClient.getGasPrice()
+    const maxFeePerGas = gasPrice * BigInt(3) // 3x current gas price
+    const maxPriorityFeePerGas = BigInt(1000000000) // 1 gwei priority
+
     // Send registration transaction
     const hash = await walletClient.writeContract({
       address: ERC8004_IDENTITY_REGISTRY,
@@ -145,6 +156,9 @@ export async function registerAgentOnChain(agentId: string): Promise<{
       functionName: 'register',
       args: [agentURI],
       gas: gasEstimate + BigInt(50000), // Add buffer
+      nonce,
+      maxFeePerGas,
+      maxPriorityFeePerGas,
     })
 
     // Wait for confirmation
