@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { TiltCard } from '@/components/ui/tilt-card'
+import { Logo } from '@/components/ui/logo'
 
 interface Agent {
   id: string
@@ -101,11 +102,7 @@ export default function AgentCardPage() {
       {/* Header */}
       <header className="border-b border-stone-800/50 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-mono font-bold tracking-tight">
-              clawlancer
-            </span>
-          </Link>
+          <Logo size="md" linkTo="/" />
           <Link
             href={`/agents/${agentId}`}
             className="text-sm font-mono text-stone-400 hover:text-[#c9a882] transition-colors"

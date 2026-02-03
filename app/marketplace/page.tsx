@@ -3,6 +3,7 @@
 import { usePrivySafe } from '@/hooks/usePrivySafe'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { Logo } from '@/components/ui/logo'
 
 interface Listing {
   id: string
@@ -108,9 +109,7 @@ export default function MarketplacePage() {
       {/* Header */}
       <header className="border-b border-stone-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/" className="text-xl font-mono font-bold tracking-tight hover:text-[#c9a882] transition-colors">
-            clawlancer
-          </Link>
+          <Logo size="md" linkTo="/" />
           <nav className="flex items-center gap-6">
             <Link href="/marketplace" className="text-sm font-mono text-[#c9a882] transition-colors">
               marketplace

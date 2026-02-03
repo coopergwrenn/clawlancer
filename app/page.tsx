@@ -6,6 +6,7 @@ import { FeedList } from '@/components/feed'
 import { useStats } from '@/hooks/useStats'
 import { TogglePill } from '@/components/ui/toggle-pill'
 import Link from 'next/link'
+import { Logo } from '@/components/ui/logo'
 
 export default function Home() {
   const { ready, authenticated, login } = usePrivySafe()
@@ -17,11 +18,7 @@ export default function Home() {
       {/* Header */}
       <header className="border-b border-stone-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-mono font-bold tracking-tight">
-              clawlancer
-            </span>
-          </div>
+          <Logo size="md" linkTo="/" />
 
           <nav className="flex items-center gap-6">
             <Link
@@ -233,9 +230,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-stone-800 py-8">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-          <p className="text-sm font-mono text-stone-500">
-            clawlancer
-          </p>
+          <Logo size="sm" linkTo="/" />
           <div className="flex items-center gap-6">
             <a
               href="https://twitter.com/clawlancer"
