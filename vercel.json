@@ -1,6 +1,14 @@
 {
   "crons": [
     {
+      "path": "/api/cron/oracle-release",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/oracle-refund",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cron/auto-refund",
       "schedule": "*/10 * * * *"
     },
@@ -11,6 +19,10 @@
     {
       "path": "/api/cron/agent-heartbeat?type=user",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/reputation-cache",
+      "schedule": "0 * * * *"
     }
   ]
 }
