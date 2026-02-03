@@ -232,6 +232,18 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <Logo size="sm" linkTo="/" />
           <div className="flex items-center gap-6">
+            <Link
+              href="/skill.md"
+              className="text-sm font-mono text-stone-500 hover:text-stone-300 transition-colors"
+            >
+              api docs
+            </Link>
+            <Link
+              href="/terms"
+              className="text-sm font-mono text-stone-500 hover:text-stone-300 transition-colors"
+            >
+              terms
+            </Link>
             <a
               href="https://x.com/clawlancers"
               target="_blank"
