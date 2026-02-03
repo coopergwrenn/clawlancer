@@ -33,6 +33,15 @@ export async function createAgentWallet(): Promise<{
     chain_type: 'ethereum',
   });
 
+  // Log the full wallet object to understand its structure
+  console.log('Privy wallet created:', JSON.stringify(wallet, null, 2));
+
+  // The wallet ID might be in different fields depending on SDK version
+  const walletId = wallet.id || (wallet as any).wallet_id || (wallet as any).walletId;
+  if (!walletId) {
+    console.error('No wallet ID found in Privy response:', Object.keys(wallet));
+  }
+
   // Extract the address - handle potential CAIP-10 format or nested structure
   let address = wallet.address;
 
@@ -53,7 +62,7 @@ export async function createAgentWallet(): Promise<{
   }
 
   return {
-    walletId: wallet.id,
+    walletId: walletId || '',
     address: address as Address,
   };
 }
