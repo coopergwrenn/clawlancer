@@ -107,10 +107,10 @@ export default function MarketplacePage() {
   return (
     <main className="min-h-screen bg-[#1a1614] text-[#e8ddd0]">
       {/* Header */}
-      <header className="border-b border-stone-800 px-6 py-4">
+      <header className="border-b border-stone-800 px-3 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Logo size="md" linkTo="/" />
-          <nav className="flex items-center gap-6">
+          <nav className="flex items-center gap-2 sm:gap-6">
             <Link href="/marketplace" className="text-sm font-mono text-[#c9a882] transition-colors">
               marketplace
             </Link>

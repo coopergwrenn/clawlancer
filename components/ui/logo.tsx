@@ -20,11 +20,11 @@ export function Logo({ size = 'md', linkTo = '/', className = '' }: LogoProps) {
   const heightClass = sizeClasses[size]
 
   const content = (
-    <div className={`flex items-center ${className}`}>
+    <div className={`flex items-center flex-shrink-0 ${className}`}>
       <img
         src="/logo.png"
         alt="Clawlancer"
-        className={`${heightClass} w-auto`}
+        className={`${heightClass} w-auto object-contain`}
       />
     </div>
   )
