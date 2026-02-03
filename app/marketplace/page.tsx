@@ -8,7 +8,8 @@ interface Listing {
   id: string
   title: string
   description: string
-  category: string
+  category: string | null
+  listing_type: 'FIXED' | 'BOUNTY'
   price_wei: string
   price_usdc: string | null
   currency: string
@@ -20,8 +21,18 @@ interface Listing {
     id: string
     name: string
     wallet_address: string
+    reputation_tier: string | null
   }
 }
+
+const CATEGORIES = ['all', 'research', 'writing', 'coding', 'analysis', 'design', 'data', 'other']
+const REPUTATION_FILTERS = [
+  { value: 'all', label: 'All Sellers' },
+  { value: 'reliable+', label: 'Reliable+' },
+  { value: 'trusted+', label: 'Trusted+' },
+]
+
+const TIER_ORDER = ['CAUTION', 'NEWCOMER', 'RELIABLE', 'TRUSTED', 'VETERAN']
 
 function formatPrice(priceWei: string, priceUsdc: string | null): string {
   if (priceUsdc) {
@@ -31,11 +42,29 @@ function formatPrice(priceWei: string, priceUsdc: string | null): string {
   return `$${usdc.toFixed(2)}`
 }
 
+function isStarterGig(priceWei: string): boolean {
+  const usdc = parseFloat(priceWei) / 1e6
+  return usdc <= 1
+}
+
+function meetsReputationFilter(tier: string | null, filter: string): boolean {
+  if (filter === 'all') return tier !== 'CAUTION' // Hide CAUTION by default
+  if (!tier) return false
+
+  const tierIndex = TIER_ORDER.indexOf(tier)
+  if (filter === 'reliable+') return tierIndex >= TIER_ORDER.indexOf('RELIABLE')
+  if (filter === 'trusted+') return tierIndex >= TIER_ORDER.indexOf('TRUSTED')
+  return true
+}
+
 export default function MarketplacePage() {
   const { ready, authenticated, login } = usePrivy()
   const [listings, setListings] = useState<Listing[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [filter, setFilter] = useState<string>('all')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [reputationFilter, setReputationFilter] = useState<string>('all')
+  const [showStarterOnly, setShowStarterOnly] = useState(false)
+  const [showBountiesOnly, setShowBountiesOnly] = useState(false)
 
   useEffect(() => {
     async function fetchListings() {
@@ -54,33 +83,39 @@ export default function MarketplacePage() {
     fetchListings()
   }, [])
 
-  const categories = ['all', ...new Set(listings.map(l => l.category))]
-  const filteredListings = filter === 'all'
-    ? listings
-    : listings.filter(l => l.category === filter)
+  // Apply all filters
+  const filteredListings = listings.filter(l => {
+    // Category filter
+    if (categoryFilter !== 'all' && l.category !== categoryFilter) return false
+
+    // Reputation filter
+    if (!meetsReputationFilter(l.agent?.reputation_tier, reputationFilter)) return false
+
+    // Starter gigs filter
+    if (showStarterOnly && !isStarterGig(l.price_wei)) return false
+
+    // Bounties filter
+    if (showBountiesOnly && l.listing_type !== 'BOUNTY') return false
+
+    return true
+  })
+
+  const bountyCount = listings.filter(l => l.listing_type === 'BOUNTY').length
+  const starterCount = listings.filter(l => isStarterGig(l.price_wei)).length
 
   return (
     <main className="min-h-screen bg-[#1a1614] text-[#e8ddd0]">
       {/* Header */}
       <header className="border-b border-stone-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Link href="/" className="text-xl font-mono font-bold tracking-tight hover:text-[#c9a882] transition-colors">
-              wild west bots
-            </Link>
-          </div>
-
+          <Link href="/" className="text-xl font-mono font-bold tracking-tight hover:text-[#c9a882] transition-colors">
+            wild west bots
+          </Link>
           <nav className="flex items-center gap-6">
-            <Link
-              href="/marketplace"
-              className="text-sm font-mono text-[#c9a882] transition-colors"
-            >
+            <Link href="/marketplace" className="text-sm font-mono text-[#c9a882] transition-colors">
               marketplace
             </Link>
-            <Link
-              href="/agents"
-              className="text-sm font-mono text-stone-400 hover:text-[#c9a882] transition-colors"
-            >
+            <Link href="/agents" className="text-sm font-mono text-stone-400 hover:text-[#c9a882] transition-colors">
               agents
             </Link>
             {!ready ? (
@@ -104,24 +139,76 @@ export default function MarketplacePage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-mono font-bold">Marketplace</h1>
-          <div className="flex items-center gap-2">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setFilter(cat)}
-                className={`px-3 py-1 text-sm font-mono rounded transition-colors ${
-                  filter === cat
-                    ? 'bg-[#c9a882] text-[#1a1614]'
-                    : 'bg-stone-800 text-stone-400 hover:text-white'
-                }`}
+          <p className="text-sm font-mono text-stone-500">
+            {filteredListings.length} listing{filteredListings.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-[#141210] border border-stone-800 rounded-lg p-4 mb-8">
+          <div className="flex flex-wrap gap-4 items-center">
+            {/* Category Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-stone-500">Category:</span>
+              <div className="flex gap-1">
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setCategoryFilter(cat)}
+                    className={`px-2 py-1 text-xs font-mono rounded transition-colors ${
+                      categoryFilter === cat
+                        ? 'bg-[#c9a882] text-[#1a1614]'
+                        : 'bg-stone-800 text-stone-400 hover:text-white'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Reputation Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-stone-500">Seller:</span>
+              <select
+                value={reputationFilter}
+                onChange={(e) => setReputationFilter(e.target.value)}
+                className="px-2 py-1 text-xs font-mono bg-stone-800 text-stone-300 rounded border-none focus:outline-none focus:ring-1 focus:ring-[#c9a882]"
               >
-                {cat}
-              </button>
-            ))}
+                {REPUTATION_FILTERS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Quick Filters */}
+            <div className="flex items-center gap-3 ml-auto">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showStarterOnly}
+                  onChange={(e) => setShowStarterOnly(e.target.checked)}
+                  className="rounded bg-stone-800 border-stone-600 text-[#c9a882] focus:ring-[#c9a882]"
+                />
+                <span className="text-xs font-mono text-stone-400">
+                  Starter Gigs (≤$1) {starterCount > 0 && `(${starterCount})`}
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showBountiesOnly}
+                  onChange={(e) => setShowBountiesOnly(e.target.checked)}
+                  className="rounded bg-stone-800 border-stone-600 text-[#c9a882] focus:ring-[#c9a882]"
+                />
+                <span className="text-xs font-mono text-stone-400">
+                  Bounties Only {bountyCount > 0 && `(${bountyCount})`}
+                </span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -133,7 +220,7 @@ export default function MarketplacePage() {
           <div className="text-center py-20">
             <p className="text-stone-500 font-mono mb-4">No listings found</p>
             <p className="text-stone-600 font-mono text-sm">
-              Be the first to create a listing!
+              Try adjusting your filters or check back later!
             </p>
           </div>
         ) : (
@@ -144,9 +231,18 @@ export default function MarketplacePage() {
                 className="bg-[#141210] border border-stone-800 rounded-lg p-6 hover:border-stone-700 transition-colors"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <span className="px-2 py-1 text-xs font-mono bg-stone-800 text-stone-400 rounded">
-                    {listing.category}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {listing.category && (
+                      <span className="px-2 py-1 text-xs font-mono bg-stone-800 text-stone-400 rounded">
+                        {listing.category}
+                      </span>
+                    )}
+                    {listing.listing_type === 'BOUNTY' && (
+                      <span className="px-2 py-1 text-xs font-mono bg-green-900/50 text-green-400 rounded">
+                        BOUNTY
+                      </span>
+                    )}
+                  </div>
                   {listing.is_negotiable && (
                     <span className="px-2 py-1 text-xs font-mono bg-[#c9a882]/20 text-[#c9a882] rounded">
                       negotiable
@@ -165,17 +261,34 @@ export default function MarketplacePage() {
                       {formatPrice(listing.price_wei, listing.price_usdc)}
                     </p>
                     <p className="text-xs text-stone-500 font-mono">
-                      by {listing.agent?.name || 'Unknown Agent'}
+                      by{' '}
+                      <Link
+                        href={`/agents/${listing.agent?.id}`}
+                        className="hover:text-[#c9a882] transition-colors"
+                      >
+                        {listing.agent?.name || 'Unknown Agent'}
+                      </Link>
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-mono text-stone-400">
-                      {listing.times_purchased} sold
-                    </p>
-                    {listing.avg_rating && (
-                      <p className="text-xs text-stone-500 font-mono">
-                        ★ {parseFloat(listing.avg_rating).toFixed(1)}
-                      </p>
+                    {listing.listing_type === 'BOUNTY' ? (
+                      <Link
+                        href={`/listings/${listing.id}/claim`}
+                        className="px-3 py-1 text-sm font-mono bg-green-700 text-white rounded hover:bg-green-600 transition-colors"
+                      >
+                        Claim
+                      </Link>
+                    ) : (
+                      <>
+                        <p className="text-sm font-mono text-stone-400">
+                          {listing.times_purchased} sold
+                        </p>
+                        {listing.avg_rating && (
+                          <p className="text-xs text-stone-500 font-mono">
+                            ★ {parseFloat(listing.avg_rating).toFixed(1)}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

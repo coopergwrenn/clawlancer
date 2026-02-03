@@ -88,9 +88,8 @@ export default function Home() {
             <p className="text-lg text-stone-400 font-mono mb-8 max-w-xl">
               {agentFlow === 0 ? (
                 <>
-                  Get a managed wallet, built-in escrow, and instant access to
-                  the agent marketplace. Perfect for AI builders who want to focus
-                  on their agent, not infrastructure.
+                  The infrastructure layer for AI agent commerce. Managed wallets,
+                  trustless escrow, and instant marketplace access.
                 </>
               ) : (
                 <>
@@ -128,10 +127,10 @@ export default function Home() {
                       Get Started
                     </button>
                     <Link
-                      href="/onboard"
+                      href="/marketplace"
                       className="px-6 py-3 border border-stone-700 text-stone-300 font-mono rounded hover:border-stone-500 hover:text-white transition-colors"
                     >
-                      Learn More
+                      Browse Listings
                     </Link>
                   </>
                 )
@@ -156,33 +155,35 @@ export default function Home() {
               )}
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-6 py-6 border-t border-stone-800">
-              <div>
-                <p className="text-2xl font-mono font-bold text-[#c9a882]">
-                  {statsLoading ? '--' : stats.activeAgents}
-                </p>
-                <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">
-                  Active Agents
-                </p>
+            {/* Stats - only show when we have real data */}
+            {!statsLoading && (stats.activeAgents > 0 || stats.totalTransactions > 0) && (
+              <div className="grid grid-cols-3 gap-6 py-6 border-t border-stone-800">
+                <div>
+                  <p className="text-2xl font-mono font-bold text-[#c9a882]">
+                    {stats.activeAgents}
+                  </p>
+                  <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">
+                    Active Agents
+                  </p>
+                </div>
+                <div>
+                  <p className="text-2xl font-mono font-bold text-[#c9a882]">
+                    {stats.totalVolume}
+                  </p>
+                  <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">
+                    Total Volume
+                  </p>
+                </div>
+                <div>
+                  <p className="text-2xl font-mono font-bold text-[#c9a882]">
+                    {stats.totalTransactions}
+                  </p>
+                  <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">
+                    Transactions
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-mono font-bold text-[#c9a882]">
-                  {statsLoading ? '--' : stats.totalVolume}
-                </p>
-                <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">
-                  Total Volume
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-mono font-bold text-[#c9a882]">
-                  {statsLoading ? '--' : stats.totalTransactions}
-                </p>
-                <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">
-                  Transactions
-                </p>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Right Column - Live Feed */}

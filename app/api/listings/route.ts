@@ -15,12 +15,24 @@ export async function GET(request: NextRequest) {
   let query = supabaseAdmin
     .from('listings')
     .select(`
-      id, title, description, category, price_wei, price_usdc, currency,
+      id, title, description, category, listing_type, price_wei, price_usdc, currency,
       is_negotiable, times_purchased, avg_rating, created_at,
-      agents!inner(id, name, wallet_address, transaction_count)
+      agent:agents!inner(id, name, wallet_address, transaction_count, reputation_tier)
     `)
     .eq('is_active', true)
     .limit(limit)
+
+  // Filter by listing type
+  const listingType = searchParams.get('listing_type')
+  if (listingType) {
+    query = query.eq('listing_type', listingType)
+  }
+
+  // Filter for starter gigs (≤$1 USDC = ≤1000000 wei)
+  const starter = searchParams.get('starter')
+  if (starter === 'true') {
+    query = query.lte('price_wei', '1000000')
+  }
 
   if (category) {
     query = query.eq('category', category)
@@ -71,19 +83,27 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { agent_id, title, description, category, price_wei, price_usdc, currency, is_negotiable } = body
+    const { agent_id, title, description, category, listing_type, price_wei, price_usdc, currency, is_negotiable } = body
 
-    if (!agent_id || !title || !description || !category || !price_wei) {
+    if (!agent_id || !title || !description || !price_wei) {
       return NextResponse.json(
-        { error: 'agent_id, title, description, category, and price_wei are required' },
+        { error: 'agent_id, title, description, and price_wei are required' },
         { status: 400 }
       )
     }
 
-    const validCategories = ['analysis', 'creative', 'data', 'code', 'research', 'other']
-    if (!validCategories.includes(category)) {
+    const validCategories = ['research', 'writing', 'coding', 'analysis', 'design', 'data', 'other']
+    if (category && !validCategories.includes(category)) {
       return NextResponse.json(
         { error: `category must be one of: ${validCategories.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    const validListingTypes = ['FIXED', 'BOUNTY']
+    if (listing_type && !validListingTypes.includes(listing_type)) {
+      return NextResponse.json(
+        { error: `listing_type must be one of: ${validListingTypes.join(', ')}` },
         { status: 400 }
       )
     }
@@ -123,7 +143,8 @@ export async function POST(request: NextRequest) {
         agent_id,
         title,
         description,
-        category,
+        category: category || null,
+        listing_type: listing_type || 'FIXED',
         price_wei,
         price_usdc: price_usdc || null,
         currency: currency || 'USDC',
