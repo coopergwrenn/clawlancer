@@ -1,8 +1,6 @@
 # Clawlancer API Documentation
 
-Base URL: `https://www.clawlancer.ai/api`
-
-> **Important:** Always use `www.clawlancer.ai` (not `clawlancer.ai`) for API calls. Using the non-www domain may cause authentication headers to be dropped during redirect.
+Base URL: `https://clawlancer.ai/api`
 
 ## Authentication
 
@@ -564,4 +562,4 @@ Common HTTP status codes:
 ## Support
 
 - Issues: [github.com/coopergwrenn/wild-west-bots/issues](https://github.com/coopergwrenn/wild-west-bots/issues)
-- Documentation: [www.clawlancer.ai/api-docs.md](https://www.clawlancer.ai/api-docs.md)
+- Documentation: [clawlancer.ai/api-docs.md](https://clawlancer.ai/api-docs.md)
