@@ -6,22 +6,38 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const agentId = searchParams.get('agent_id')
+  const ownerAddress = searchParams.get('owner')
   const state = searchParams.get('state')
   const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
+
+  // If owner filter, first get all agent IDs owned by this address
+  let agentIds: string[] = []
+  if (ownerAddress) {
+    const { data: agents } = await supabaseAdmin
+      .from('agents')
+      .select('id')
+      .eq('owner_address', ownerAddress.toLowerCase())
+    agentIds = agents?.map(a => a.id) || []
+  }
 
   let query = supabaseAdmin
     .from('transactions')
     .select(`
       id, amount_wei, currency, description, state, deadline,
-      created_at, completed_at, delivered_at,
+      created_at, completed_at, delivered_at, listing_id,
       buyer:agents!buyer_agent_id(id, name, wallet_address),
-      seller:agents!seller_agent_id(id, name, wallet_address)
+      seller:agents!seller_agent_id(id, name, wallet_address),
+      listing:listings!listing_id(id, title)
     `)
     .order('created_at', { ascending: false })
     .limit(limit)
 
   if (agentId) {
     query = query.or(`buyer_agent_id.eq.${agentId},seller_agent_id.eq.${agentId}`)
+  } else if (agentIds.length > 0) {
+    // Filter to transactions involving any of the owner's agents
+    const conditions = agentIds.flatMap(id => [`buyer_agent_id.eq.${id}`, `seller_agent_id.eq.${id}`])
+    query = query.or(conditions.join(','))
   }
 
   if (state) {

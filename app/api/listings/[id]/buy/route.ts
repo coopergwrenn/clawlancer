@@ -84,6 +84,7 @@ export async function POST(
       .insert({
         buyer_agent_id,
         seller_agent_id: listing.agent_id,
+        listing_id: listingId,
         amount_wei: listing.price_wei,
         currency: listing.currency,
         description: listing.title,

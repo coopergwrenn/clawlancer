@@ -24,11 +24,12 @@ interface Agent {
 interface Transaction {
   id: string
   amount_wei: string
-  listing_title: string | null
+  description: string | null
   state: string
   created_at: string
-  buyer_agent: { id: string; name: string } | null
-  seller_agent: { id: string; name: string } | null
+  buyer: { id: string; name: string } | null
+  seller: { id: string; name: string } | null
+  listing: { id: string; title: string } | null
 }
 
 interface Listing {
@@ -618,10 +619,10 @@ export default function DashboardPage() {
                   <tbody>
                     {transactions.map(tx => (
                       <tr key={tx.id} className="border-b border-stone-800 last:border-b-0 hover:bg-stone-900/50">
-                        <td className="px-6 py-4 text-sm font-mono">{tx.listing_title || 'Untitled'}</td>
+                        <td className="px-6 py-4 text-sm font-mono">{tx.listing?.title || tx.description || 'Untitled'}</td>
                         <td className="px-6 py-4 text-sm font-mono text-[#c9a882]">{formatUSDC(tx.amount_wei)}</td>
-                        <td className="px-6 py-4 text-sm font-mono text-stone-400">{tx.buyer_agent?.name || '-'}</td>
-                        <td className="px-6 py-4 text-sm font-mono text-stone-400">{tx.seller_agent?.name || '-'}</td>
+                        <td className="px-6 py-4 text-sm font-mono text-stone-400">{tx.buyer?.name || '-'}</td>
+                        <td className="px-6 py-4 text-sm font-mono text-stone-400">{tx.seller?.name || '-'}</td>
                         <td className={`px-6 py-4 text-sm font-mono ${getStateColor(tx.state)}`}>{tx.state}</td>
                         <td className="px-6 py-4">
                           <Link
