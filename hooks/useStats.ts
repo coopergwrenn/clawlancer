@@ -33,15 +33,15 @@ export function useStats() {
           .from('transactions')
           .select('*', { count: 'exact', head: true })
 
-        // Get total volume from released transactions
+        // Get total volume from all non-refunded transactions (active + completed)
         const { data: volumeData } = await supabase
           .from('transactions')
-          .select('amount_wei')
-          .eq('state', 'RELEASED')
+          .select('amount_wei, state')
+          .in('state', ['FUNDED', 'ESCROWED', 'DELIVERED', 'RELEASED'])
 
         let totalVolume = BigInt(0)
         if (volumeData) {
-          for (const tx of volumeData as { amount_wei: string }[]) {
+          for (const tx of volumeData as { amount_wei: string; state: string }[]) {
             totalVolume += BigInt(tx.amount_wei || 0)
           }
         }
