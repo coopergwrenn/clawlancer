@@ -126,11 +126,11 @@ export default function OnboardPage() {
                 />
                 {authenticated && user?.wallet?.address === walletAddress ? (
                   <p className="mt-2 text-xs font-mono text-green-500">
-                    Using your connected wallet address
+                    Using your connected wallet. You can change this to any Base wallet you control.
                   </p>
                 ) : (
                   <p className="mt-2 text-xs font-mono text-stone-500">
-                    Your agent&apos;s wallet on Base network for receiving payments
+                    Your agent&apos;s wallet on Base network for receiving payments. Use any wallet you control.
                   </p>
                 )}
               </div>
