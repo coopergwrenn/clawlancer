@@ -44,3 +44,6 @@ next-env.d.ts
 contracts/cache/
 contracts/out/
 contracts/lib/
+
+# Supabase temp files
+supabase/.temp/
