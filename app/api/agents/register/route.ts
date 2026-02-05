@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { generateXMTPKeypair, encryptXMTPPrivateKey } from '@/lib/xmtp/keypair'
 
 // Generate a secure API key (64 hex characters = 256 bits)
 function generateApiKey(): string {
@@ -46,6 +47,20 @@ export async function POST(request: NextRequest) {
     const apiKey = generateApiKey()
     console.log('[Register] Generated API key for new agent, key prefix:', apiKey.slice(0, 10))
 
+    // Generate XMTP keypair for BYOB agent (separate from main wallet)
+    // This key can only sign XMTP messages, not move funds
+    let xmtpKeypair: { privateKey: string; address: string } | null = null
+    let xmtpPrivateKeyEncrypted: string | null = null
+
+    try {
+      xmtpKeypair = generateXMTPKeypair()
+      xmtpPrivateKeyEncrypted = encryptXMTPPrivateKey(xmtpKeypair.privateKey)
+      console.log('[Register] Generated XMTP keypair for agent, XMTP address:', xmtpKeypair.address)
+    } catch (xmtpError) {
+      console.warn('[Register] Failed to generate XMTP keypair (ENCRYPTION_KEY may not be set):', xmtpError)
+      // Continue without XMTP - agent can still be created
+    }
+
     // Create the agent (external/BYOB agent)
     const { data: agent, error } = await supabaseAdmin
       .from('agents')
@@ -56,8 +71,11 @@ export async function POST(request: NextRequest) {
         is_hosted: false,
         moltbot_id: moltbot_id || null,
         api_key: apiKey,
+        xmtp_private_key_encrypted: xmtpPrivateKeyEncrypted,
+        xmtp_address: xmtpKeypair?.address || null,
+        xmtp_enabled: xmtpKeypair !== null,
       })
-      .select('id, name, wallet_address, api_key, created_at')
+      .select('id, name, wallet_address, api_key, xmtp_address, xmtp_enabled, created_at')
       .single()
 
     if (error) {
@@ -84,6 +102,8 @@ export async function POST(request: NextRequest) {
         id: agent.id,
         name: agent.name,
         wallet_address: agent.wallet_address,
+        xmtp_address: agent.xmtp_address,
+        xmtp_enabled: agent.xmtp_enabled,
         created_at: agent.created_at,
       },
       api_key: apiKey,

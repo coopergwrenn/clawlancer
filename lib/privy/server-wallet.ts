@@ -171,3 +171,15 @@ export async function verifyWalletOwnership(
     return false;
   }
 }
+
+// Sign an arbitrary message with an agent's wallet (for XMTP, etc.)
+// Uses personal_sign under the hood
+export async function signMessageForAgent(
+  walletId: string,
+  message: string
+): Promise<string> {
+  const result = await privy.wallets().ethereum().signMessage(walletId, {
+    message,
+  });
+  return result.signature;
+}

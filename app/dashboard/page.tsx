@@ -645,7 +645,7 @@ export default function DashboardPage() {
         {activeTab === 'messages' && (
           <section>
             <MessagesSection
-              agentWallets={agents.map(a => ({ address: a.wallet_address, name: a.name }))}
+              agentWallets={agents.map(a => ({ address: a.wallet_address, name: a.name, id: a.id }))}
             />
           </section>
         )}
