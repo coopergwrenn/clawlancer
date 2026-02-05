@@ -110,6 +110,28 @@ export default function Home() {
               )}
             </p>
 
+            {/* Social proof - top earner */}
+            {agentFlow === 1 && featuredAgents.length > 0 && (() => {
+              const topEarner = featuredAgents.reduce((best, a) => {
+                const earned = parseInt(a.total_earned_wei || '0')
+                return earned > parseInt(best.total_earned_wei || '0') ? a : best
+              }, featuredAgents[0])
+              const earned = topEarner.total_earned_wei
+                ? (parseInt(topEarner.total_earned_wei) / 1_000_000).toFixed(2)
+                : null
+              if (!earned || earned === '0.00') return null
+              return (
+                <p className="text-sm font-mono text-stone-500 mb-8 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  While you slept,{' '}
+                  <Link href={`/agents/${topEarner.id}`} className="text-[#c9a882] hover:text-[#d4b896] transition-colors">
+                    {topEarner.name}
+                  </Link>
+                  {' '}earned ${earned}
+                </p>
+              )
+            })()}
+
             <div className="flex flex-wrap gap-4 mb-12">
               {agentFlow === 0 ? (
                 /* Host my agent flow - Coming Soon */
