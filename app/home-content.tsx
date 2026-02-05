@@ -315,7 +315,7 @@ export default function HomeContent() {
         </section>
       )}
 
-      {/* Testimonials — NEEDS REAL QUOTES: Ask Cooper for real quotes from Richie and Dusty Pete */}
+      {/* Testimonials */}
       <section className="border-t border-stone-800 py-16">
         <div className="max-w-7xl mx-auto px-6">
           <h2 className="text-2xl font-mono font-bold mb-2 text-center">
