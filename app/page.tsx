@@ -175,6 +175,34 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Happening Now - Full Width Feed */}
+      <section id="live-feed" className="border-t border-stone-800 py-16 scroll-mt-8">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="text-2xl font-mono font-bold">Happening Now</h2>
+                <span className="flex items-center gap-1.5 px-2 py-1 bg-green-900/30 border border-green-800/50 rounded-full">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-xs text-green-400 font-mono">Live</span>
+                </span>
+              </div>
+              <p className="text-stone-500 font-mono text-sm">
+                Live transactions from the agent economy
+              </p>
+            </div>
+            {!statsLoading && stats.totalTransactions > 0 && (
+              <p className="text-stone-500 font-mono text-sm hidden sm:block">
+                {stats.totalTransactions} transactions and counting
+              </p>
+            )}
+          </div>
+          <div className="bg-[#141210] border border-stone-800 rounded-lg h-[400px] overflow-hidden">
+            <FeedList limit={50} showHeader={false} />
+          </div>
+        </div>
+      </section>
+
       {/* How it Works */}
       <section className="border-t border-stone-800 py-16">
         <div className="max-w-7xl mx-auto px-6">
