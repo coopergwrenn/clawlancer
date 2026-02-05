@@ -34,6 +34,45 @@ interface Reputation {
   disputeRate: number
 }
 
+interface OnChainVerification {
+  verified: boolean
+  discrepancy: {
+    scoreMatch: boolean
+    tierMatch: boolean
+    transactionCountMatch: boolean
+  } | null
+  message: string
+}
+
+interface OnChainData {
+  reputation: Reputation
+  stats: {
+    released_count: number
+    disputed_count: number
+    refunded_count: number
+    total_count: number
+  }
+  totalVolumeUSDC: string
+  transactions: Array<{
+    escrowId: string
+    amount: string
+    outcome: string
+    txHash: string
+  }>
+  contractAddress: string
+  chain: string
+}
+
+interface VerificationResult {
+  verification: OnChainVerification
+  onChain: OnChainData
+  cached: {
+    score: number
+    tier: string
+    totalTransactions: number
+  }
+}
+
 interface Specialization {
   category: string
   count: number
@@ -157,6 +196,8 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
   const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null)
   const [listings, setListings] = useState<Listing[]>([])
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([])
+  const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null)
+  const [isVerifying, setIsVerifying] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -229,6 +270,21 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
 
     fetchAgentData()
   }, [agentId])
+
+  async function handleVerifyOnChain() {
+    setIsVerifying(true)
+    try {
+      const res = await fetch(`/api/agents/${agentId}/reputation/verify`)
+      if (res.ok) {
+        const data = await res.json()
+        setVerificationResult(data)
+      }
+    } catch (err) {
+      console.error('Verification failed:', err)
+    } finally {
+      setIsVerifying(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -321,9 +377,10 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
                 href={`https://basescan.org/token/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432?a=${agent.erc8004_token_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-2 text-xs font-mono bg-stone-800 text-stone-300 rounded hover:bg-stone-700 transition-colors"
+                className="px-3 py-2 text-xs font-mono bg-emerald-900/30 text-emerald-400 border border-emerald-800/50 rounded hover:bg-emerald-900/50 transition-colors flex items-center gap-1.5"
               >
-                ERC-8004 #{agent.erc8004_token_id}
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                ERC-8004 Registered
               </a>
             )}
           </div>
@@ -444,7 +501,34 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
         {/* Reputation Details */}
         {reputation && (
           <div className="bg-[#141210] border border-stone-800 rounded-lg p-6 mb-8">
-            <h2 className="text-lg font-mono font-bold mb-4">Reputation</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-mono font-bold">Reputation</h2>
+                {verificationResult && (
+                  <span className={`px-2 py-0.5 text-xs font-mono rounded ${
+                    verificationResult.verification.verified
+                      ? 'bg-green-900/50 text-green-400 border border-green-700'
+                      : 'bg-yellow-900/50 text-yellow-400 border border-yellow-700'
+                  }`}>
+                    {verificationResult.verification.verified ? 'On-Chain Verified' : 'Discrepancy Detected'}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={handleVerifyOnChain}
+                disabled={isVerifying}
+                className="px-3 py-1.5 text-xs font-mono bg-stone-800 text-stone-300 rounded hover:bg-stone-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isVerifying ? (
+                  <>
+                    <span className="inline-block w-3 h-3 border border-stone-400 border-t-transparent rounded-full animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  'Verify On-Chain'
+                )}
+              </button>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-xs font-mono text-stone-500 uppercase mb-1">Score</p>
@@ -463,6 +547,101 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
                 <p className="font-mono font-bold">{reputation.totalTransactions}</p>
               </div>
             </div>
+
+            {/* On-Chain Verification Results */}
+            {verificationResult && (
+              <div className="mt-6 pt-4 border-t border-stone-800">
+                <h3 className="text-sm font-mono font-bold text-stone-400 mb-3">On-Chain Verification</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-xs font-mono text-stone-500 uppercase mb-1">Chain Score</p>
+                    <p className="font-mono font-bold text-lg">{verificationResult.onChain.reputation.score}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono text-stone-500 uppercase mb-1">Released</p>
+                    <p className="font-mono font-bold text-green-400">{verificationResult.onChain.stats.released_count}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono text-stone-500 uppercase mb-1">Disputed</p>
+                    <p className="font-mono font-bold text-red-400">{verificationResult.onChain.stats.disputed_count}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono text-stone-500 uppercase mb-1">On-Chain Volume</p>
+                    <p className="font-mono font-bold text-[#c9a882]">${verificationResult.onChain.totalVolumeUSDC}</p>
+                  </div>
+                </div>
+
+                {/* Discrepancy details */}
+                {verificationResult.verification.discrepancy && (
+                  <div className="bg-yellow-900/20 border border-yellow-800/50 rounded p-3 mb-4">
+                    <p className="text-xs font-mono text-yellow-400 mb-2">Discrepancies found:</p>
+                    <div className="flex flex-wrap gap-3">
+                      {!verificationResult.verification.discrepancy.scoreMatch && (
+                        <span className="text-xs font-mono text-yellow-300">
+                          Score: cached {verificationResult.cached.score} vs chain {verificationResult.onChain.reputation.score}
+                        </span>
+                      )}
+                      {!verificationResult.verification.discrepancy.tierMatch && (
+                        <span className="text-xs font-mono text-yellow-300">
+                          Tier: cached {verificationResult.cached.tier} vs chain {verificationResult.onChain.reputation.tier}
+                        </span>
+                      )}
+                      {!verificationResult.verification.discrepancy.transactionCountMatch && (
+                        <span className="text-xs font-mono text-yellow-300">
+                          Txns: cached {verificationResult.cached.totalTransactions} vs chain {verificationResult.onChain.stats.total_count}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* On-chain transaction list */}
+                {verificationResult.onChain.transactions.length > 0 && (
+                  <div>
+                    <p className="text-xs font-mono text-stone-500 uppercase mb-2">On-Chain Escrow Events</p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {verificationResult.onChain.transactions.slice(0, 10).map((tx, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs font-mono py-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-1.5 py-0.5 rounded ${
+                              tx.outcome === 'released' ? 'bg-green-900/50 text-green-400' :
+                              tx.outcome === 'refunded' ? 'bg-orange-900/50 text-orange-400' :
+                              tx.outcome === 'disputed' ? 'bg-red-900/50 text-red-400' :
+                              'bg-stone-800 text-stone-400'
+                            }`}>
+                              {tx.outcome}
+                            </span>
+                            <span className="text-stone-400">${tx.amount} USDC</span>
+                          </div>
+                          <a
+                            href={`https://basescan.org/tx/${tx.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-stone-500 hover:text-[#c9a882] transition-colors"
+                          >
+                            {tx.txHash.slice(0, 10)}...
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 flex items-center gap-2 text-xs font-mono text-stone-600">
+                  <span>Contract:</span>
+                  <a
+                    href={`https://basescan.org/address/${verificationResult.onChain.contractAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-[#c9a882] transition-colors"
+                  >
+                    {verificationResult.onChain.contractAddress.slice(0, 10)}...{verificationResult.onChain.contractAddress.slice(-4)}
+                  </a>
+                  <span className="text-stone-700">|</span>
+                  <span>{verificationResult.onChain.chain}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
