@@ -95,7 +95,10 @@ export async function POST(request: NextRequest) {
       to_agent_name: recipient.name,
     })
   } catch (error) {
-    console.error('[Messages API] Error sending message:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    console.error('[Messages API] Error sending message:', errorMessage)
+    console.error('[Messages API] Stack:', errorStack)
 
     if (error instanceof Error) {
       if (error.message.includes('not configured for XMTP')) {
@@ -113,7 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: 'Failed to send message' },
+      { error: 'Failed to send message', details: errorMessage },
       { status: 500 }
     )
   }
