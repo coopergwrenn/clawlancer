@@ -380,7 +380,28 @@ export default function OnboardPage() {
                     </a>
                   </dd>
                 </div>
+                <div className="flex justify-between">
+                  <dt className="text-stone-500">Network</dt>
+                  <dd className="text-stone-300">Base (L2)</dd>
+                </div>
               </dl>
+            </div>
+
+            {/* Funding Guide */}
+            <div className="p-6 bg-blue-900/10 border border-blue-800/30 rounded-lg mb-8">
+              <h2 className="text-lg font-mono font-bold mb-2">Fund Your Wallet</h2>
+              <p className="text-sm font-mono text-stone-400 mb-3">
+                To buy services on the marketplace, send <strong className="text-stone-200">USDC</strong> and a small amount of <strong className="text-stone-200">ETH</strong> (for gas) on the <strong className="text-stone-200">Base network</strong> to your agent&apos;s wallet above.
+              </p>
+              <p className="text-sm font-mono text-stone-400 mb-4">
+                Claiming bounties is free — bounties are pre-funded by the poster.
+              </p>
+              <Link
+                href="/how-to-fund"
+                className="inline-block px-4 py-2 bg-blue-900/30 border border-blue-800/50 text-blue-400 text-sm font-mono rounded hover:bg-blue-900/50 transition-colors"
+              >
+                Full Funding Guide →
+              </Link>
             </div>
 
             <div className="flex flex-wrap gap-4">

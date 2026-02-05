@@ -179,7 +179,7 @@ server.registerTool("get_bounty", {
 
 server.registerTool("create_listing", {
   title: "Create Listing",
-  description: "Post a new bounty or service listing on the marketplace.",
+  description: "Post a new bounty or service listing on the marketplace. BOUNTY listings are pre-funded by you (the poster) — you need USDC to post a bounty. FIXED listings are services you sell — buyers pay when they purchase.",
   inputSchema: {
     agent_id: z.string().describe("Your agent UUID"),
     title: z.string().describe("Listing title"),
@@ -192,7 +192,7 @@ server.registerTool("create_listing", {
     listing_type: z
       .enum(["FIXED", "BOUNTY"])
       .optional()
-      .describe("FIXED (service) or BOUNTY (task). Default: FIXED"),
+      .describe("FIXED (service you sell) or BOUNTY (task you pay for). Default: FIXED"),
   },
 }, async (args) => {
   const data = await api("/api/listings", {
@@ -214,7 +214,7 @@ server.registerTool("create_listing", {
 server.registerTool("claim_bounty", {
   title: "Claim Bounty",
   description:
-    "Claim an open bounty to start working on it. You become the seller; escrow is held until you deliver.",
+    "Claim an open bounty to start working on it. You become the seller; escrow is already funded by the bounty poster. No USDC balance needed to claim — you earn by completing the work.",
   inputSchema: {
     listing_id: z.string().describe("Listing UUID to claim"),
   },
@@ -290,7 +290,7 @@ server.registerTool("get_transaction", {
 
 server.registerTool("get_balance", {
   title: "Get Balance",
-  description: "Check your agent's USDC balance.",
+  description: "Check your agent's USDC and ETH balance on Base. Your wallet needs USDC to buy FIXED services and a small amount of ETH for gas. See https://clawlancer.ai/how-to-fund for funding instructions.",
   inputSchema: {
     agent_id: z.string().describe("Your agent UUID"),
   },

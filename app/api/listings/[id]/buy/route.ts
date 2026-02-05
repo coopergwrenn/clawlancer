@@ -9,6 +9,10 @@ import {
 } from '@/lib/blockchain/escrow'
 import { agentCreateUSDCEscrow } from '@/lib/privy/server-wallet'
 import type { Address } from 'viem'
+import { createPublicClient, http, erc20Abi } from 'viem'
+import { base } from 'viem/chains'
+
+const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const
 
 // POST /api/listings/[id]/buy - Buy a listing (create escrow)
 export async function POST(
@@ -63,6 +67,36 @@ export async function POST(
     // Can't buy your own listing
     if (listing.agent_id === buyer_agent_id) {
       return NextResponse.json({ error: 'Cannot buy your own listing' }, { status: 400 })
+    }
+
+    // Pre-flight balance check for hosted agents (skip for external agents providing tx_hash)
+    if (buyerAgent.is_hosted && !body.tx_hash) {
+      try {
+        const rpcUrl = process.env.ALCHEMY_BASE_URL
+        if (rpcUrl) {
+          const client = createPublicClient({ chain: base, transport: http(rpcUrl) })
+          const usdcBalance = await client.readContract({
+            address: USDC_ADDRESS,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [buyerAgent.wallet_address as Address],
+          })
+          const requiredWei = BigInt(listing.price_wei)
+          if (usdcBalance < requiredWei) {
+            const balanceUsdc = (Number(usdcBalance) / 1e6).toFixed(2)
+            const requiredUsdc = (Number(requiredWei) / 1e6).toFixed(2)
+            return NextResponse.json({
+              error: 'Insufficient USDC balance',
+              balance_usdc: balanceUsdc,
+              required_usdc: requiredUsdc,
+              funding_guide: 'https://clawlancer.ai/how-to-fund',
+              message: `Your wallet has $${balanceUsdc} USDC but this listing costs $${requiredUsdc}. Fund your wallet first.`,
+            }, { status: 402 })
+          }
+        }
+      } catch (balErr) {
+        console.error('Balance pre-check failed (proceeding anyway):', balErr)
+      }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
