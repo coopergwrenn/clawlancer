@@ -9,12 +9,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { getMessageThread } from '@/lib/messages/server'
 import { PrivyClient } from '@privy-io/node';
-
-// Dynamic import to avoid WASM loading issues at build time
-async function getXMTPModule() {
-  return import('@/lib/xmtp/server')
-}
 
 const privyClient = new PrivyClient({
   appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
@@ -64,7 +60,7 @@ export async function GET(
   // Verify user owns this agent
   const { data: agent } = await supabaseAdmin
     .from('agents')
-    .select('id, name, owner_address, xmtp_enabled, is_hosted')
+    .select('id, name, owner_address')
     .eq('id', agentId)
     .single()
 
@@ -74,14 +70,6 @@ export async function GET(
 
   if (agent.owner_address !== userWallet) {
     return NextResponse.json({ error: 'Not authorized to view this agent\'s messages' }, { status: 403 })
-  }
-
-  // Check if agent can use XMTP
-  if (!agent.xmtp_enabled && !agent.is_hosted) {
-    return NextResponse.json({
-      error: 'Agent not configured for messaging',
-      hint: 'XMTP messaging is not enabled for this agent',
-    }, { status: 400 })
   }
 
   // Verify peer agent exists
@@ -96,9 +84,8 @@ export async function GET(
   }
 
   try {
-    const xmtp = await getXMTPModule()
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
-    const messages = await xmtp.getAgentMessageThread(agentId, peerAgentId, limit)
+    const messages = await getMessageThread(agentId, peerAgentId, limit)
 
     return NextResponse.json({
       agent_id: agentId,
@@ -108,10 +95,8 @@ export async function GET(
       messages: messages.map((msg) => ({
         id: msg.id,
         content: msg.content,
-        sender_address: msg.senderAddress,
-        sender_agent_id: msg.senderAgentId,
-        is_from_me: msg.senderAgentId === agentId,
-        sent_at: msg.sentAt.toISOString(),
+        is_from_me: msg.from_agent_id === agentId,
+        sent_at: msg.created_at,
       })),
     })
   } catch (error) {

@@ -1,7 +1,7 @@
 /**
  * Messages API - Send Message
  *
- * POST /api/messages/send - Send an XMTP message to another agent
+ * POST /api/messages/send - Send a message to another agent
  *
  * Body: { to_agent_id: string, content: string }
  *
@@ -11,11 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAuth } from '@/lib/auth/middleware'
 import { supabaseAdmin } from '@/lib/supabase/server'
-
-// Dynamic import to avoid WASM loading issues at build time
-async function getXMTPModule() {
-  return import('@/lib/xmtp/server')
-}
+import { sendMessage, canMessageAgent } from '@/lib/messages/server'
 
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request)
@@ -52,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Verify recipient agent exists
     const { data: recipient } = await supabaseAdmin
       .from('agents')
-      .select('id, name, xmtp_enabled')
+      .select('id, name')
       .eq('id', to_agent_id)
       .single()
 
@@ -71,49 +67,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if recipient can receive XMTP messages
-    const xmtp = await getXMTPModule()
-    const canMsg = await xmtp.canMessageAgent(auth.agentId, to_agent_id)
-    if (!canMsg) {
-      return NextResponse.json(
-        {
-          error: 'Recipient cannot receive XMTP messages',
-          hint: 'The recipient may not have XMTP enabled yet',
-        },
-        { status: 400 }
-      )
-    }
-
     // Send the message
-    const result = await xmtp.sendAgentMessage(auth.agentId, to_agent_id, content.trim())
+    const result = await sendMessage(auth.agentId, to_agent_id, content.trim())
 
     return NextResponse.json({
       success: true,
-      message_id: result.messageId,
-      sent_at: result.sentAt.toISOString(),
+      message_id: result.id,
+      sent_at: result.created_at,
       to_agent_id,
       to_agent_name: recipient.name,
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    const errorStack = error instanceof Error ? error.stack : undefined
     console.error('[Messages API] Error sending message:', errorMessage)
-    console.error('[Messages API] Stack:', errorStack)
-
-    if (error instanceof Error) {
-      if (error.message.includes('not configured for XMTP')) {
-        return NextResponse.json(
-          { error: 'Your agent is not configured for XMTP messaging' },
-          { status: 400 }
-        )
-      }
-      if (error.message.includes('cannot receive XMTP')) {
-        return NextResponse.json(
-          { error: 'Recipient cannot receive XMTP messages' },
-          { status: 400 }
-        )
-      }
-    }
 
     return NextResponse.json(
       { error: 'Failed to send message', details: errorMessage },

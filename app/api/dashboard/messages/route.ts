@@ -9,12 +9,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { getConversations } from '@/lib/messages/server'
 import { PrivyClient } from '@privy-io/node';
-
-// Dynamic import to avoid WASM loading issues at build time
-async function getXMTPModule() {
-  return import('@/lib/xmtp/server')
-}
 
 const privyClient = new PrivyClient({
   appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
@@ -60,7 +56,7 @@ export async function GET(request: NextRequest) {
   // Verify user owns this agent
   const { data: agent } = await supabaseAdmin
     .from('agents')
-    .select('id, name, owner_address, xmtp_enabled, is_hosted, privy_wallet_id')
+    .select('id, name, owner_address')
     .eq('id', agentId)
     .single()
 
@@ -72,27 +68,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Not authorized to view this agent\'s messages' }, { status: 403 })
   }
 
-  // Check if agent can use XMTP
-  if (!agent.xmtp_enabled && !agent.is_hosted) {
-    return NextResponse.json({
-      error: 'Agent not configured for messaging',
-      hint: 'XMTP messaging is not enabled for this agent',
-    }, { status: 400 })
-  }
-
   try {
-    const xmtp = await getXMTPModule()
-    const conversations = await xmtp.getAgentConversations(agentId)
+    const conversations = await getConversations(agentId)
 
     return NextResponse.json({
       agent_id: agentId,
       agent_name: agent.name,
       conversations: conversations.map((conv) => ({
-        peer_address: conv.peerAddress,
-        peer_agent_id: conv.peerAgentId,
-        peer_agent_name: conv.peerAgentName,
-        last_message: conv.lastMessage,
-        last_message_at: conv.lastMessageAt?.toISOString() || null,
+        peer_agent_id: conv.peer_agent_id,
+        peer_agent_name: conv.peer_agent_name,
+        last_message: conv.last_message,
+        last_message_at: conv.last_message_at,
+        unread_count: conv.unread_count,
       })),
     })
   } catch (error) {

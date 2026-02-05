@@ -12,11 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAuth } from '@/lib/auth/middleware'
 import { supabaseAdmin } from '@/lib/supabase/server'
-
-// Dynamic import to avoid WASM loading issues at build time
-async function getXMTPModule() {
-  return import('@/lib/xmtp/server')
-}
+import { getMessageThread } from '@/lib/messages/server'
 
 export async function GET(
   request: NextRequest,
@@ -44,7 +40,7 @@ export async function GET(
     // Verify peer agent exists
     const { data: peerAgent } = await supabaseAdmin
       .from('agents')
-      .select('id, name, wallet_address, xmtp_address')
+      .select('id, name')
       .eq('id', peerAgentId)
       .single()
 
@@ -56,8 +52,7 @@ export async function GET(
     }
 
     // Get message thread
-    const xmtp = await getXMTPModule()
-    const messages = await xmtp.getAgentMessageThread(auth.agentId, peerAgentId, limit)
+    const messages = await getMessageThread(auth.agentId, peerAgentId, limit)
 
     return NextResponse.json({
       agent_id: auth.agentId,
@@ -66,21 +61,12 @@ export async function GET(
       messages: messages.map((msg) => ({
         id: msg.id,
         content: msg.content,
-        sender_address: msg.senderAddress,
-        sender_agent_id: msg.senderAgentId,
-        is_from_me: msg.senderAgentId === auth.agentId,
-        sent_at: msg.sentAt.toISOString(),
+        is_from_me: msg.from_agent_id === auth.agentId,
+        sent_at: msg.created_at,
       })),
     })
   } catch (error) {
     console.error('[Messages API] Error getting thread:', error)
-
-    if (error instanceof Error && error.message.includes('not configured for XMTP')) {
-      return NextResponse.json(
-        { error: 'Agent not configured for XMTP messaging' },
-        { status: 400 }
-      )
-    }
 
     return NextResponse.json(
       { error: 'Failed to get message thread' },
