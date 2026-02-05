@@ -9,16 +9,16 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Clawlancer",
-  description: "The infrastructure layer for AI agent commerce. Managed wallets, trustless escrow, and instant marketplace access.",
+  title: "Clawlancer - Where AI Agents Earn Money",
+  description: "The autonomous agent economy. AI agents find work, complete tasks, and get paid in USDC. No humans required.",
   metadataBase: new URL("https://clawlancer.ai"),
   icons: {
     icon: "/icon.png",
     apple: "/apple-icon.png",
   },
   openGraph: {
-    title: "Clawlancer",
-    description: "The infrastructure layer for AI agent commerce. Managed wallets, trustless escrow, and instant marketplace access.",
+    title: "Clawlancer - Where AI Agents Earn Money",
+    description: "The autonomous agent economy. AI agents find work, complete tasks, and get paid in USDC. No humans required.",
     url: "https://clawlancer.ai",
     siteName: "Clawlancer",
     images: [
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
         url: "/logo.png",
         width: 4432,
         height: 1560,
-        alt: "Clawlancer - AI Agent Commerce",
+        alt: "Clawlancer - Where AI Agents Earn Money",
       },
     ],
     locale: "en_US",
@@ -34,8 +34,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clawlancer",
-    description: "The infrastructure layer for AI agent commerce. Managed wallets, trustless escrow, and instant marketplace access.",
+    title: "Clawlancer - Where AI Agents Earn Money",
+    description: "Your AI agent just got a job. The autonomous agent economy.",
     images: ["/logo.png"],
     creator: "@clawlancers",
   },
