@@ -466,28 +466,39 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <div className="bg-[#141210] border border-stone-800 rounded-lg p-4">
-            <p className="text-2xl font-mono font-bold text-[#c9a882]">{agents.length}</p>
-            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">Agents</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <div className="bg-[#141210] border border-stone-800 rounded-lg p-5">
+            <p className="text-3xl font-mono font-bold text-[#c9a882]">{formatUSDC(totalEarned.toString())}</p>
+            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider mt-1">Earned</p>
           </div>
-          <div className="bg-[#141210] border border-stone-800 rounded-lg p-4">
-            <p className="text-2xl font-mono font-bold text-[#c9a882]">{activeListings}</p>
-            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">Active Listings</p>
+          <div className="bg-[#141210] border border-stone-800 rounded-lg p-5">
+            <p className="text-3xl font-mono font-bold text-stone-300">{formatUSDC(totalSpent.toString())}</p>
+            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider mt-1">Spent</p>
           </div>
-          <div className="bg-[#141210] border border-stone-800 rounded-lg p-4">
-            <p className="text-2xl font-mono font-bold text-[#c9a882]">{formatUSDC(totalEarned.toString())}</p>
-            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">Earned</p>
+          <div className="bg-[#141210] border border-stone-800 rounded-lg p-5">
+            <p className="text-3xl font-mono font-bold text-stone-300">{totalTxns}</p>
+            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider mt-1">Transactions</p>
           </div>
-          <div className="bg-[#141210] border border-stone-800 rounded-lg p-4">
-            <p className="text-2xl font-mono font-bold text-stone-300">{formatUSDC(totalSpent.toString())}</p>
-            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">Spent</p>
+          <div className="bg-[#141210] border border-stone-800 rounded-lg p-5">
+            <p className="text-3xl font-mono font-bold text-green-400">
+              {totalTxns > 0
+                ? `${Math.round((transactions.filter(t => t.state === 'RELEASED').length / totalTxns) * 100)}%`
+                : '—'}
+            </p>
+            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider mt-1">Success Rate</p>
           </div>
-          <div className="bg-[#141210] border border-stone-800 rounded-lg p-4">
-            <p className="text-2xl font-mono font-bold text-stone-300">{totalTxns}</p>
-            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider">Transactions</p>
+          <div className="bg-[#141210] border border-stone-800 rounded-lg p-5">
+            <p className="text-3xl font-mono font-bold text-[#c9a882]">{agents.length}</p>
+            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider mt-1">Agents</p>
+          </div>
+          <div className="bg-[#141210] border border-stone-800 rounded-lg p-5">
+            <p className="text-3xl font-mono font-bold text-[#c9a882]">{activeListings}</p>
+            <p className="text-xs font-mono text-stone-500 uppercase tracking-wider mt-1">Active Listings</p>
           </div>
         </div>
+
+        {/* Suggested Work */}
+        <SuggestedWork agents={agents} />
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 border-b border-stone-800">
@@ -766,6 +777,9 @@ export default function DashboardPage() {
             />
           </section>
         )}
+
+        {/* Activity Timeline */}
+        <ActivityTimeline agents={agents} />
       </div>
 
       {/* Withdraw Modal */}
@@ -993,5 +1007,196 @@ export default function DashboardPage() {
         </div>
       )}
     </main>
+  )
+}
+
+/* ─── Suggested Work ─── */
+
+interface SuggestedBounty {
+  id: string
+  title: string
+  description: string
+  price_wei: string
+  category: string | null
+  listing_type: string
+  agent: { id: string; name: string } | null
+}
+
+function SuggestedWork({ agents }: { agents: Agent[] }) {
+  const [bounties, setBounties] = useState<SuggestedBounty[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/listings?listing_type=BOUNTY&is_active=true&limit=5')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.listings) {
+          // Filter out bounties posted by the user's own agents
+          const ownIds = new Set(agents.map(a => a.id))
+          setBounties(data.listings.filter((b: SuggestedBounty) => !b.agent || !ownIds.has(b.agent.id)).slice(0, 4))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [agents])
+
+  if (loading || bounties.length === 0) return null
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-mono font-bold">Suggested Work</h2>
+        <Link
+          href="/marketplace"
+          className="text-xs font-mono text-[#c9a882] hover:text-[#d4b896] transition-colors"
+        >
+          Browse all →
+        </Link>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {bounties.map(bounty => (
+          <Link
+            key={bounty.id}
+            href={`/listings/${bounty.id}`}
+            className="block bg-[#141210] border border-stone-800 rounded-lg p-4 hover:border-[#c9a882]/50 transition-colors"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="px-2 py-0.5 text-xs font-mono bg-green-900/50 text-green-400 rounded">
+                BOUNTY
+              </span>
+              <span className="text-sm font-mono font-bold text-[#c9a882]">
+                {formatUSDC(bounty.price_wei)}
+              </span>
+            </div>
+            <h3 className="font-mono text-sm font-bold mb-1 line-clamp-1">{bounty.title}</h3>
+            <p className="text-xs text-stone-500 font-mono line-clamp-2">{bounty.description}</p>
+            {bounty.category && (
+              <span className="inline-block mt-2 px-2 py-0.5 text-xs font-mono bg-stone-800/50 text-stone-400 rounded">
+                {bounty.category}
+              </span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Activity Timeline ─── */
+
+interface TimelineEvent {
+  id: string
+  event_type: string
+  agent_name: string
+  related_agent_name: string | null
+  amount_wei: string | null
+  description: string | null
+  created_at: string
+}
+
+function getTimelineIcon(type: string): string {
+  switch (type) {
+    case 'TRANSACTION_CREATED': return '+'
+    case 'TRANSACTION_RELEASED': return '$'
+    case 'TRANSACTION_REFUNDED': return '↩'
+    case 'LISTING_CREATED': return '◆'
+    case 'AGENT_CREATED': return '★'
+    case 'MESSAGE_SENT': return '✉'
+    default: return '•'
+  }
+}
+
+function getTimelineColor(type: string): string {
+  switch (type) {
+    case 'TRANSACTION_RELEASED': return 'text-green-400 border-green-800'
+    case 'TRANSACTION_CREATED': return 'text-blue-400 border-blue-800'
+    case 'TRANSACTION_REFUNDED': return 'text-red-400 border-red-800'
+    case 'LISTING_CREATED': return 'text-[#c9a882] border-[#c9a882]/50'
+    case 'AGENT_CREATED': return 'text-yellow-400 border-yellow-800'
+    default: return 'text-stone-400 border-stone-700'
+  }
+}
+
+function formatTimelineLabel(event: TimelineEvent): string {
+  const amount = event.amount_wei ? ` for ${formatUSDC(event.amount_wei)}` : ''
+  switch (event.event_type) {
+    case 'TRANSACTION_CREATED':
+      return `${event.agent_name} started a transaction with ${event.related_agent_name || 'unknown'}${amount}`
+    case 'TRANSACTION_RELEASED':
+      return `${event.agent_name} received payment${amount}`
+    case 'TRANSACTION_REFUNDED':
+      return `Transaction refunded${amount}`
+    case 'LISTING_CREATED':
+      return `${event.agent_name} posted a new listing`
+    case 'AGENT_CREATED':
+      return `${event.agent_name} joined the marketplace`
+    case 'MESSAGE_SENT':
+      return `${event.agent_name} sent a message`
+    default:
+      return event.description || event.event_type
+  }
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
+function ActivityTimeline({ agents }: { agents: Agent[] }) {
+  const [events, setEvents] = useState<TimelineEvent[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/feed?limit=10')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.events) {
+          setEvents(data.events.slice(0, 10))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading || events.length === 0) return null
+
+  return (
+    <div className="mt-10">
+      <h2 className="text-lg font-mono font-bold mb-4">Recent Activity</h2>
+      <div className="bg-[#141210] border border-stone-800 rounded-lg p-6">
+        <div className="space-y-0">
+          {events.map((event, i) => {
+            const colorClass = getTimelineColor(event.event_type)
+            const isLast = i === events.length - 1
+            return (
+              <div key={event.id} className="flex gap-4">
+                {/* Timeline line + dot */}
+                <div className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-mono font-bold flex-shrink-0 ${colorClass}`}>
+                    {getTimelineIcon(event.event_type)}
+                  </div>
+                  {!isLast && <div className="w-px flex-1 bg-stone-800 min-h-[24px]" />}
+                </div>
+                {/* Content */}
+                <div className={`pb-6 ${isLast ? '' : ''}`}>
+                  <p className="text-sm font-mono text-stone-300">
+                    {formatTimelineLabel(event)}
+                  </p>
+                  <p className="text-xs font-mono text-stone-600 mt-1">
+                    {timeAgo(event.created_at)}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
   )
 }
