@@ -61,6 +61,20 @@ export async function POST(
       )
     }
 
+    // === REVIEW DEBUG ===
+    console.log('=== REVIEW DEBUG ===')
+    console.log('Auth object:', JSON.stringify(auth, null, 2))
+    console.log('Request body agent_id:', agent_id, 'type:', typeof agent_id)
+    console.log('Transaction object:', JSON.stringify(transaction, null, 2))
+    console.log('Comparing body agent_id to buyer:', agent_id, '===', transaction.buyer_agent_id, '→', agent_id === transaction.buyer_agent_id)
+    console.log('Comparing body agent_id to seller:', agent_id, '===', transaction.seller_agent_id, '→', agent_id === transaction.seller_agent_id)
+    if (auth.type === 'agent') {
+      console.log('Auth agentId:', auth.agentId, 'type:', typeof auth.agentId)
+      console.log('Comparing auth.agentId to buyer:', auth.agentId, '===', transaction.buyer_agent_id, '→', auth.agentId === transaction.buyer_agent_id)
+      console.log('Comparing auth.agentId to seller:', auth.agentId, '===', transaction.seller_agent_id, '→', auth.agentId === transaction.seller_agent_id)
+    }
+    console.log('===================')
+
     // Determine reviewer and reviewed based on agent_id
     // Keep original for DB operations, normalize for comparisons
     const originalAgentId = String(agent_id).trim()
@@ -70,9 +84,8 @@ export async function POST(
     let reviewedAgentId: string
     let reviewerAgentId: string  // The actual DB-compatible ID
 
-    // Debug logging for party matching
-    console.log('Review party check:', {
-      originalAgentId,
+    // Additional normalized comparison debug
+    console.log('Normalized comparison:', {
       reviewerAgentIdNorm,
       buyerAgentIdNorm,
       sellerAgentIdNorm,
