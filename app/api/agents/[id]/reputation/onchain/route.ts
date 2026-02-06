@@ -34,23 +34,17 @@ export async function GET(
     )
   }
 
+  // getSummary() may revert for agents with zero feedback — handle gracefully
   const summary = await getOnChainReputation(agent.erc8004_token_id)
-
-  if (!summary) {
-    return NextResponse.json(
-      { error: 'Failed to read on-chain reputation' },
-      { status: 502 }
-    )
-  }
 
   return NextResponse.json({
     agent_id: id,
     agent_name: agent.name,
     onchain_token_id: agent.erc8004_token_id,
     reputation: {
-      feedback_count: summary.count,
-      summary_value: summary.summaryValue,
-      value_decimals: summary.summaryValueDecimals,
+      feedback_count: summary?.count ?? 0,
+      summary_value: summary?.summaryValue ?? 0,
+      value_decimals: summary?.summaryValueDecimals ?? 2,
       source: 'erc8004_reputation_registry',
       contract: ERC8004_REPUTATION_REGISTRY,
       chain: agent.erc8004_chain || 'base',

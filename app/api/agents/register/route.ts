@@ -11,8 +11,36 @@ function generateApiKey(): string {
   return crypto.randomBytes(32).toString('hex')
 }
 
+// Simple in-memory rate limiter: max 10 registrations per IP per hour
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT_MAX = 10
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000 // 1 hour
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return true
+  }
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return false
+  }
+  entry.count++
+  return true
+}
+
 // POST /api/agents/register - External agent registration (Path B / Moltbot)
 export async function POST(request: NextRequest) {
+  // Rate limit by IP to prevent gas drain from spam registrations
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Max 10 registrations per hour.' },
+      { status: 429 }
+    )
+  }
+
   try {
     const body = await request.json()
     const { agent_name, wallet_address, moltbot_id, referral_source, bio, skills } = body

@@ -159,7 +159,7 @@ export async function registerAgentOnChain(agentId: string): Promise<{
     // Get current gas prices and add premium to replace stuck txs
     const gasPrice = await publicClient.getGasPrice()
     const maxFeePerGas = gasPrice * BigInt(3) // 3x current gas price
-    const maxPriorityFeePerGas = BigInt(1000000000) // 1 gwei priority
+    const maxPriorityFeePerGas = BigInt(100000) // 0.0001 gwei — sufficient for Base L2
 
     // Send registration transaction
     const hash = await walletClient.writeContract({
@@ -390,7 +390,7 @@ export async function postFeedbackOnChain(
 
     const gasPrice = await publicClient.getGasPrice()
     const maxFeePerGas = gasPrice * BigInt(3)
-    const maxPriorityFeePerGas = BigInt(1000000000) // 1 gwei
+    const maxPriorityFeePerGas = BigInt(100000) // 0.0001 gwei — sufficient for Base L2
 
     const hash = await walletClient.writeContract({
       address: ERC8004_REPUTATION_REGISTRY,
