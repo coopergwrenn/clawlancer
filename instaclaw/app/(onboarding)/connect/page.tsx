@@ -12,6 +12,7 @@ export default function ConnectPage() {
     "all_inclusive"
   );
   const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("claude-sonnet-4-5-20250929");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,6 +36,7 @@ export default function ConnectPage() {
         botToken: botToken.trim(),
         apiMode,
         apiKey: apiMode === "byok" ? apiKey.trim() : undefined,
+        model: apiMode === "all_inclusive" ? model : undefined,
       })
     );
 
@@ -179,6 +181,55 @@ export default function ConnectPage() {
           <p className="text-xs" style={{ color: "var(--muted)" }}>
             Your key is encrypted and only used on your dedicated VM.
           </p>
+        </div>
+      )}
+
+      {/* Model Selection (all-inclusive only) */}
+      {apiMode === "all_inclusive" && (
+        <div className="space-y-3">
+          <label className="block text-sm font-medium">Default Model</label>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              {
+                id: "claude-haiku-4-5-20251001",
+                label: "Claude Haiku 4.5",
+                desc: "Fast & affordable",
+              },
+              {
+                id: "claude-sonnet-4-5-20250929",
+                label: "Claude Sonnet 4.5",
+                desc: "Recommended \u2014 best balance",
+              },
+              {
+                id: "claude-opus-4-5-20250820",
+                label: "Claude Opus 4.5",
+                desc: "Premium intelligence",
+              },
+              {
+                id: "claude-opus-4-6",
+                label: "Claude Opus 4.6",
+                desc: "Most advanced",
+              },
+            ].map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setModel(m.id)}
+                className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
+                style={{
+                  border:
+                    model === m.id
+                      ? "1px solid #ffffff"
+                      : "1px solid var(--border)",
+                }}
+              >
+                <p className="text-sm font-semibold">{m.label}</p>
+                <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                  {m.desc}
+                </p>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

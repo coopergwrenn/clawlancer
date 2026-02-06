@@ -8,7 +8,15 @@ import {
   Activity,
   Server,
   Calendar,
+  Cpu,
 } from "lucide-react";
+
+const MODEL_OPTIONS = [
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
+  { id: "claude-opus-4-5-20250820", label: "Claude Opus 4.5" },
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
+];
 
 interface VMStatus {
   status: string;
@@ -19,12 +27,16 @@ interface VMStatus {
     lastHealthCheck: string;
     assignedAt: string;
     telegramBotUsername: string | null;
+    model: string | null;
+    apiMode: string | null;
   };
 }
 
 export default function DashboardPage() {
   const [vmStatus, setVmStatus] = useState<VMStatus | null>(null);
   const [restarting, setRestarting] = useState(false);
+  const [updatingModel, setUpdatingModel] = useState(false);
+  const [modelSuccess, setModelSuccess] = useState(false);
 
   async function fetchStatus() {
     try {
@@ -49,6 +61,25 @@ export default function DashboardPage() {
       setTimeout(fetchStatus, 3000);
     } finally {
       setRestarting(false);
+    }
+  }
+
+  async function handleModelChange(newModel: string) {
+    setUpdatingModel(true);
+    setModelSuccess(false);
+    try {
+      const res = await fetch("/api/vm/update-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: newModel }),
+      });
+      if (res.ok) {
+        setModelSuccess(true);
+        setTimeout(() => setModelSuccess(false), 3000);
+        fetchStatus();
+      }
+    } finally {
+      setUpdatingModel(false);
     }
   }
 
@@ -188,6 +219,55 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
+
+          {/* Model Selector (all-inclusive only) */}
+          {vm.apiMode === "all_inclusive" && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Model</h2>
+              <div
+                className="glass rounded-xl p-5"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <Cpu className="w-4 h-4" style={{ color: "var(--muted)" }} />
+                  <span className="text-sm font-medium">Default Model</span>
+                  {modelSuccess && (
+                    <span
+                      className="text-xs ml-auto"
+                      style={{ color: "var(--success)" }}
+                    >
+                      Updated
+                    </span>
+                  )}
+                </div>
+                <select
+                  value={vm.model ?? "claude-sonnet-4-5-20250929"}
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  disabled={updatingModel}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer disabled:opacity-50"
+                  style={{
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    color: "var(--foreground)",
+                  }}
+                >
+                  {MODEL_OPTIONS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <p
+                  className="text-xs mt-2"
+                  style={{ color: "var(--muted)" }}
+                >
+                  {updatingModel
+                    ? "Updating model..."
+                    : "Select the Claude model your bot uses."}
+                </p>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <div className="glass rounded-xl p-8 text-center">

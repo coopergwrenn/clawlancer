@@ -14,6 +14,7 @@ interface UserConfig {
   apiMode: "all_inclusive" | "byok";
   apiKey?: string;
   tier: string;
+  model?: string;
 }
 
 // Strict input validation to prevent shell injection
@@ -62,6 +63,9 @@ export async function configureOpenClaw(
       config.apiMode === "byok" ? config.apiKey! : "ALL_INCLUSIVE";
     assertSafeShellArg(apiArg, "apiKey");
 
+    const modelArg = config.model || "claude-sonnet-4-5-20250929";
+    assertSafeShellArg(modelArg, "model");
+
     // For all-inclusive mode, pass ANTHROPIC_API_KEY via SSH environment
     const envPrefix =
       config.apiMode === "all_inclusive" && process.env.ANTHROPIC_API_KEY
@@ -72,7 +76,7 @@ export async function configureOpenClaw(
         : "";
 
     const result = await ssh.execCommand(
-      `${envPrefix}bash ~/openclaw/scripts/configure-vm.sh '${config.telegramBotToken}' '${apiArg}' '${gatewayToken}'`
+      `${envPrefix}bash ~/openclaw/scripts/configure-vm.sh '${config.telegramBotToken}' '${apiArg}' '${gatewayToken}' '${modelArg}'`
     );
 
     if (result.code !== 0) {
@@ -98,6 +102,7 @@ export async function configureOpenClaw(
         gateway_url: gatewayUrl,
         gateway_token: gatewayToken,
         control_ui_url: controlUiUrl,
+        default_model: modelArg,
       })
       .eq("id", vm.id);
 
@@ -130,6 +135,19 @@ export async function waitForHealth(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   return false;
+}
+
+export async function updateModel(vm: VMRecord, model: string): Promise<boolean> {
+  assertSafeShellArg(model, "model");
+  const ssh = await connectSSH(vm);
+  try {
+    const result = await ssh.execCommand(
+      `bash ~/openclaw/scripts/update-model.sh '${model}'`
+    );
+    return result.code === 0;
+  } finally {
+    ssh.dispose();
+  }
 }
 
 export async function restartGateway(vm: VMRecord): Promise<boolean> {

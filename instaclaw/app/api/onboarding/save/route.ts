@@ -4,6 +4,12 @@ import { getSupabase } from "@/lib/supabase";
 import { encryptApiKey } from "@/lib/security";
 
 const BOT_TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
+const ALLOWED_MODELS = [
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-5-20250929",
+  "claude-opus-4-5-20250820",
+  "claude-opus-4-6",
+];
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { botToken, apiMode, apiKey, tier } = await req.json();
+    const { botToken, apiMode, apiKey, tier, model } = await req.json();
 
     // Validate bot token
     if (!botToken || !BOT_TOKEN_RE.test(botToken)) {
@@ -45,6 +51,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Validate model (optional, default to sonnet)
+    const resolvedModel =
+      model && ALLOWED_MODELS.includes(model)
+        ? model
+        : "claude-sonnet-4-5-20250929";
 
     // Call Telegram getMe to resolve bot username
     let botUsername: string | null = null;
@@ -80,6 +92,7 @@ export async function POST(req: NextRequest) {
           api_mode: apiMode,
           api_key: encryptedKey,
           tier,
+          default_model: resolvedModel,
         },
         { onConflict: "user_id" }
       )

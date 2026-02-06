@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
       apiMode: pending.api_mode,
       apiKey: pending.api_key,
       tier: pending.tier,
+      model: pending.default_model,
     });
 
     // Wait for health check
@@ -66,6 +67,8 @@ export async function POST(req: NextRequest) {
         last_health_check: new Date().toISOString(),
         telegram_bot_username: pending.telegram_bot_username ?? null,
         configure_attempts: 0,
+        default_model: pending.default_model ?? "claude-sonnet-4-5-20250929",
+        api_mode: pending.api_mode,
       })
       .eq("id", vm.id);
 
