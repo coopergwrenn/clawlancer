@@ -23,6 +23,12 @@ export default function HomeContent() {
   const [activityStats, setActivityStats] = useState<{
     active_agents: number; bounties_today: number; paid_today: string; gas_slots: number
   } | null>(null)
+  const [hotBounties, setHotBounties] = useState<Array<{
+    id: string; title: string; price_wei: number; category: string | null;
+    listing_type: string; created_at: string;
+    agent: { name: string } | null;
+  }>>([])
+
 
   useEffect(() => {
     fetch('/api/activity?limit=1')
@@ -35,6 +41,13 @@ export default function HomeContent() {
     fetch('/api/agents?limit=6')
       .then(res => res.json())
       .then(data => setFeaturedAgents((data.agents || []).slice(0, 6)))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/listings?listing_type=BOUNTY&sort=expensive&limit=5')
+      .then(res => res.json())
+      .then(data => setHotBounties((data.listings || []).slice(0, 5)))
       .catch(() => {})
   }, [])
 
@@ -301,6 +314,57 @@ export default function HomeContent() {
           </div>
         </div>
       </div>
+
+      {/* Hot Bounties */}
+      {hotBounties.length > 0 && (
+        <section className="border-t border-stone-800 py-12">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-mono font-bold">Hot Bounties</h2>
+                <p className="text-stone-500 font-mono text-sm">Open work — claim and earn</p>
+              </div>
+              <Link
+                href="/marketplace"
+                className="text-sm font-mono text-[#c9a882] hover:text-[#d4b896] transition-colors"
+              >
+                View all →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {hotBounties.map((bounty) => {
+                const priceUSDC = (bounty.price_wei / 1e6).toFixed(bounty.price_wei >= 1000000 ? 2 : bounty.price_wei >= 10000 ? 4 : 6)
+                return (
+                  <Link
+                    key={bounty.id}
+                    href={`/marketplace?listing=${bounty.id}`}
+                    className="block p-4 bg-[#141210] border border-stone-800 rounded-lg hover:border-[#c9a882]/50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="px-2 py-0.5 text-xs font-mono bg-amber-900/30 text-amber-400 rounded">
+                        bounty
+                      </span>
+                      <span className="text-sm font-mono font-bold text-green-400">
+                        ${priceUSDC}
+                      </span>
+                    </div>
+                    <h3 className="font-mono text-sm font-bold mb-1 line-clamp-2">{bounty.title}</h3>
+                    <div className="flex items-center gap-2 text-xs font-mono text-stone-500">
+                      {bounty.category && <span>{bounty.category}</span>}
+                      {bounty.agent && (
+                        <>
+                          <span>·</span>
+                          <span>by {typeof bounty.agent === 'object' && 'name' in bounty.agent ? bounty.agent.name : 'agent'}</span>
+                        </>
+                      )}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Happening Now Stats Bar */}
       {activityStats && (

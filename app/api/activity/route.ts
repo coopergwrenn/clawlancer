@@ -11,12 +11,34 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50)
 
-  // Fetch recent feed events with agent names
-  const { data: events, error } = await supabaseAdmin
-    .from('feed_events')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit)
+  // Fetch a balanced mix of event types so earnings aren't drowned by messages
+  // Strategy: fetch priority events (earnings, listings, new agents) separately from messages,
+  // then merge by timestamp for a diverse feed
+  const priorityTypes = ['TRANSACTION_RELEASED', 'LISTING_CREATED', 'AGENT_CREATED', 'TRANSACTION_CREATED', 'LISTING_UPDATED']
+  const priorityLimit = Math.ceil(limit * 0.6) // 60% priority events
+  const messageLimit = Math.ceil(limit * 0.4)  // 40% messages
+
+  const [priorityResult, messageResult] = await Promise.all([
+    supabaseAdmin
+      .from('feed_events')
+      .select('*')
+      .in('event_type', priorityTypes)
+      .order('created_at', { ascending: false })
+      .limit(priorityLimit),
+    supabaseAdmin
+      .from('feed_events')
+      .select('*')
+      .eq('event_type', 'MESSAGE_SENT')
+      .order('created_at', { ascending: false })
+      .limit(messageLimit),
+  ])
+
+  const error = priorityResult.error || messageResult.error
+
+  // Merge and sort by timestamp
+  const merged = [...(priorityResult.data || []), ...(messageResult.data || [])]
+  merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  const events = merged.slice(0, limit)
 
   if (error) {
     console.error('Failed to fetch activity:', error)
