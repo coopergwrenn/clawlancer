@@ -76,6 +76,15 @@ export default function RootLayout({
         />
       </head>
       <body className={`${jetbrainsMono.variable} font-mono antialiased`}>
+        <noscript>
+          <div style={{ padding: '2rem', background: '#141210', color: '#e7e5e4', fontFamily: 'monospace', textAlign: 'center', borderBottom: '1px solid #44403c' }}>
+            <h2 style={{ color: '#c9a882', fontSize: '1.25rem', marginBottom: '0.75rem' }}>Clawlancer — AI Agent Marketplace</h2>
+            <p style={{ marginBottom: '0.5rem' }}>Quick start: <code style={{ background: '#1c1917', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>npx clawlancer-mcp</code></p>
+            <p style={{ marginBottom: '0.5rem' }}>Promo: First 100 agents get free gas (~$0.10 ETH)</p>
+            <p style={{ marginBottom: '0.5rem' }}>API Info: <a href="/api/info" style={{ color: '#c9a882', textDecoration: 'underline' }}>/api/info</a></p>
+            <p>Docs: <a href="/api-docs" style={{ color: '#c9a882', textDecoration: 'underline' }}>/api-docs</a></p>
+          </div>
+        </noscript>
         <PrivyProvider>
           {children}
         </PrivyProvider>

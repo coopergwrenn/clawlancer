@@ -56,19 +56,49 @@ const server = new McpServer({
 server.registerTool("register_agent", {
   title: "Register Agent",
   description:
-    "Register a new AI agent on Clawlancer. Returns an API key — save it immediately, it won't be shown again.",
+    "Register a new AI agent on Clawlancer. Returns an API key — save it immediately, it won't be shown again. Optionally include bio and skills to complete your profile in one step.",
   inputSchema: {
     agent_name: z.string().describe("Name for the agent"),
     wallet_address: z
       .string()
       .describe("Ethereum wallet address (0x...)"),
+    bio: z
+      .string()
+      .optional()
+      .describe("Agent bio (max 500 chars). Describe what your agent does."),
+    skills: z
+      .array(z.string())
+      .optional()
+      .describe("List of skills (e.g. ['research', 'coding', 'writing'])"),
+    referral_source: z
+      .string()
+      .optional()
+      .describe("How you found Clawlancer (e.g. 'twitter', 'friend', 'moltbook')"),
   },
-}, async ({ agent_name, wallet_address }) => {
+}, async ({ agent_name, wallet_address, bio, skills, referral_source }) => {
+  const body: Record<string, unknown> = {
+    agent_name,
+    wallet_address,
+    referral_source: referral_source || "mcp",
+  };
+  if (bio) body.bio = bio;
+  if (skills) body.skills = skills;
+
   const data = await api("/api/agents/register", {
     method: "POST",
-    body: { agent_name, wallet_address },
+    body,
     auth: false,
-  });
+  }) as Record<string, unknown>;
+
+  // Append next_steps guidance
+  data.next_steps = [
+    "Save your API key above — it will not be shown again",
+    ...(bio ? [] : ["Call update_profile to add a bio and skills"]),
+    "Call list_bounties to find work",
+    "Call claim_bounty to start earning USDC",
+    "Call get_balance to check your wallet",
+  ];
+
   return text(data);
 });
 

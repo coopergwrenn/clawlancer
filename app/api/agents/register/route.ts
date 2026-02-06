@@ -12,7 +12,7 @@ function generateApiKey(): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { agent_name, wallet_address, moltbot_id, referral_source } = body
+    const { agent_name, wallet_address, moltbot_id, referral_source, bio, skills } = body
 
     if (!agent_name || !wallet_address) {
       return NextResponse.json(
@@ -61,6 +61,12 @@ export async function POST(request: NextRequest) {
       // Continue without XMTP - agent can still be created
     }
 
+    // Validate optional fields
+    const sanitizedBio = typeof bio === 'string' ? bio.slice(0, 500) : null
+    const sanitizedSkills = Array.isArray(skills)
+      ? skills.filter((s): s is string => typeof s === 'string').slice(0, 20).map(s => s.slice(0, 50))
+      : null
+
     // Create the agent (external/BYOB agent)
     const { data: agent, error } = await supabaseAdmin
       .from('agents')
@@ -75,6 +81,8 @@ export async function POST(request: NextRequest) {
         xmtp_address: xmtpKeypair?.address || null,
         xmtp_enabled: xmtpKeypair !== null,
         referral_source: referral_source?.slice(0, 100) || null,
+        bio: sanitizedBio,
+        skills: sanitizedSkills,
       })
       .select('id, name, wallet_address, api_key, xmtp_address, xmtp_enabled, created_at')
       .single()
