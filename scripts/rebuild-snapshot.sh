@@ -63,7 +63,7 @@ TEMP_VM_NAME="instaclaw-snapshot-builder-$(date +%s)"
 TODAY=$(date +%Y-%m-%d)
 
 hetzner() {
-  curl -sf "$@" -H "Authorization: Bearer ${HETZNER_API_TOKEN}"
+  curl -sf --connect-timeout 10 --max-time 30 "$@" -H "Authorization: Bearer ${HETZNER_API_TOKEN}"
 }
 
 # ---------------------------------------------------------------------------

@@ -130,7 +130,7 @@ log "SSH agent ready."
 log "Looking up Hetzner resource IDs..."
 
 hetzner() {
-  curl -sf "$@" -H "Authorization: Bearer ${HETZNER_API_TOKEN}"
+  curl -sf --connect-timeout 10 --max-time 30 "$@" -H "Authorization: Bearer ${HETZNER_API_TOKEN}"
 }
 
 SSH_KEY_ID=$(hetzner "${HETZNER_BASE}/ssh_keys" | \
@@ -259,10 +259,10 @@ TIMEOUT=120
 ELAPSED=0
 
 while [[ ${ELAPSED} -lt ${TIMEOUT} ]]; do
-  STATUS=$(hetzner "${HETZNER_BASE}/servers/${SERVER_ID}" | jq -r '.server.status')
+  STATUS=$(hetzner "${HETZNER_BASE}/servers/${SERVER_ID}" 2>/dev/null | jq -r '.server.status' 2>/dev/null || echo "unknown")
 
   if [[ "${STATUS}" == "running" ]]; then
-    SERVER_IP=$(hetzner "${HETZNER_BASE}/servers/${SERVER_ID}" | jq -r '.server.public_net.ipv4.ip')
+    SERVER_IP=$(hetzner "${HETZNER_BASE}/servers/${SERVER_ID}" 2>/dev/null | jq -r '.server.public_net.ipv4.ip' 2>/dev/null || echo "${SERVER_IP}")
     log "Server is running. IP: ${SERVER_IP}"
     break
   fi
