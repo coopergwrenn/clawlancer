@@ -1,21 +1,88 @@
 @import "tailwindcss";
 
+@theme inline {
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  --color-muted: #888888;
+  --color-card: #0a0a0a;
+  --color-border: rgba(255, 255, 255, 0.15);
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+}
+
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #000000;
+  --foreground: #ffffff;
   --muted: #888888;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --card: #141414;
-  --border: #262626;
+  --card: #0a0a0a;
+  --border: rgba(255, 255, 255, 0.15);
+  --success: #22c55e;
+  --error: #ef4444;
 }
 
 @layer base {
   * {
-    @apply border-[var(--border)];
+    border-color: var(--border);
   }
   body {
     background: var(--background);
     color: var(--foreground);
   }
+}
+
+/* Orb pulse animation */
+@keyframes orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.7;
+  }
+}
+
+.animate-orb {
+  animation: orb-pulse 6s ease-in-out infinite;
+}
+
+/* Marquee animations */
+@keyframes marquee-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-marquee-left {
+  animation: marquee-left 30s linear infinite;
+}
+
+.animate-marquee-right {
+  animation: marquee-right 30s linear infinite;
+}
+
+.pause-on-hover:hover .animate-marquee-left,
+.pause-on-hover:hover .animate-marquee-right {
+  animation-play-state: paused;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(10, 10, 10, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }

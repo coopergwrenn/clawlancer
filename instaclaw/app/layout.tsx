@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
 const inter = Inter({
@@ -7,9 +8,22 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "InstaClaw — AI Assistant Hosting",
+  title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
   description:
-    "Host your AI assistant 24/7. Messaging integrations, always-on availability, no crypto knowledge needed.",
+    "The easiest way to deploy your own OpenClaw instance. Full shell access, browser automation, skills, memory — your own dedicated VM. No DevOps required.",
+  openGraph: {
+    title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
+    description:
+      "The easiest way to deploy your own OpenClaw instance. Full shell access, browser automation, skills, memory — your own dedicated VM.",
+    siteName: "InstaClaw.io",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
+    description:
+      "The easiest way to deploy your own OpenClaw instance. Full shell access, browser automation, skills, memory — your own dedicated VM.",
+  },
 };
 
 export default function RootLayout({
@@ -19,7 +33,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
