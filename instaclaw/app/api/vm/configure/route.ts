@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
       model: pending.default_model,
     });
 
-    // Wait for health check (via SSH to avoid self-signed TLS cert issues)
-    const healthy = await waitForHealth(vm);
+    // Wait for health check (via SSH + openclaw health CLI)
+    const healthy = await waitForHealth(vm, result.gatewayToken);
 
     // Update VM health status + store bot username for dashboard + reset attempts
     await supabase

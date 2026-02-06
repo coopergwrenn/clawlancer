@@ -137,31 +137,22 @@ export function getSnapshotUserData(): string | undefined {
 set -euo pipefail
 OPENCLAW_USER="openclaw"
 CONFIG_DIR="/home/\${OPENCLAW_USER}/.openclaw"
-CREDS_DIR="\${CONFIG_DIR}/creds"
-ENCRYPTION_KEY_FILE="\${CONFIG_DIR}/.vault_key"
 
 rm -f /etc/ssh/ssh_host_* 2>/dev/null || true
 dpkg-reconfigure openssh-server 2>/dev/null || ssh-keygen -A
 systemd-machine-id-setup
 
-mkdir -p "\${CONFIG_DIR}" "\${CREDS_DIR}"
-chown "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${CONFIG_DIR}" "\${CREDS_DIR}"
-chmod 700 "\${CREDS_DIR}"
-openssl rand -base64 32 > "\${ENCRYPTION_KEY_FILE}"
-chmod 400 "\${ENCRYPTION_KEY_FILE}"
-chown "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${ENCRYPTION_KEY_FILE}"
+mkdir -p "\${CONFIG_DIR}"
+chown "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${CONFIG_DIR}"
 
 cat > "\${CONFIG_DIR}/openclaw.json" <<'EOF'
-{"_note":"Placeholder","telegram":{"bot_token":""},"api":{"mode":"all_inclusive"},"gateway":{"port":8080,"bind":"127.0.0.1"}}
+{"_placeholder":true,"gateway":{"mode":"local","port":18789,"bind":"lan"}}
 EOF
 chown "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${CONFIG_DIR}/openclaw.json"
 chmod 600 "\${CONFIG_DIR}/openclaw.json"
 
 rm -f /var/lib/fail2ban/fail2ban.sqlite3 2>/dev/null || true
 systemctl restart fail2ban 2>/dev/null || true
-systemctl stop caddy 2>/dev/null || true
-sleep 1
-systemctl start caddy 2>/dev/null || true
 if systemctl is-active ssh.service &>/dev/null; then systemctl restart ssh; fi
 
 touch /tmp/.instaclaw-personalized
