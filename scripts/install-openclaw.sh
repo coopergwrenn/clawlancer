@@ -373,6 +373,11 @@ ${TLS_DIRECTIVE}
         reverse_proxy 127.0.0.1:8080
     }
 
+    # --- Telegram webhook (no auth required, called by Telegram servers) ---
+    handle /webhook {
+        reverse_proxy 127.0.0.1:8080
+    }
+
     # --- Control UI (everything else) ---
     handle {
         reverse_proxy 127.0.0.1:3000

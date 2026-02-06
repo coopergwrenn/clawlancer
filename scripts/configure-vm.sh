@@ -248,6 +248,31 @@ chmod 600 "${CONFIG_FILE}"
 log "Config written to ${CONFIG_FILE} (secrets encrypted, not plaintext)."
 
 # ---------------------------------------------------------------------------
+# 3b. Ensure Caddy has a /webhook route for Telegram (no auth required)
+# ---------------------------------------------------------------------------
+
+# Check if /webhook route already exists in Caddy config
+CADDY_ROUTES=$(curl -sf http://localhost:2019/config/apps/http/servers/srv0/routes 2>/dev/null || echo "[]")
+if echo "${CADDY_ROUTES}" | grep -q '"/webhook"'; then
+  log "Caddy /webhook route already exists."
+else
+  log "Adding /webhook route to Caddy for Telegram webhooks..."
+  # Find the index of the catch-all route (last route) to insert before it
+  ROUTE_COUNT=$(echo "${CADDY_ROUTES}" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+  if [[ "${ROUTE_COUNT}" -gt 0 ]]; then
+    INSERT_IDX=$((ROUTE_COUNT - 1))
+    curl -sf -X PUT \
+      "http://localhost:2019/config/apps/http/servers/srv0/routes/${INSERT_IDX}" \
+      -H "Content-Type: application/json" \
+      -d '{"group":"group3","match":[{"path":["/webhook"]}],"handle":[{"handler":"subroute","routes":[{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"127.0.0.1:8080"}]}]}]}]}' \
+      > /dev/null 2>&1
+    log "Caddy /webhook route added at index ${INSERT_IDX}."
+  else
+    warn "Could not determine Caddy route count. Telegram webhooks may not work."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # 4. Start or restart the OpenClaw gateway (localhost only)
 # ---------------------------------------------------------------------------
 
@@ -266,7 +291,7 @@ if [[ -f "${OPENCLAW_DIR}/docker-compose.yml" ]]; then
   export ANTHROPIC_API_KEY="${DECRYPTED_API_KEY}"
   export GATEWAY_TOKEN="${DECRYPTED_GW_TOKEN}"
   export GATEWAY_PORT="${GATEWAY_PORT}"
-  export GATEWAY_BIND="${GATEWAY_BIND}"
+  export GATEWAY_BIND="0.0.0.0"
   export OPENCLAW_CONFIG="${CONFIG_FILE}"
   export CLAUDE_MODEL="${MODEL}"
   if [[ -n "${PROXY_URL}" ]]; then
@@ -295,7 +320,7 @@ TELEGRAM_BOT_TOKEN=${DECRYPTED_TELEGRAM}
 ANTHROPIC_API_KEY=${DECRYPTED_API_KEY}
 GATEWAY_TOKEN=${DECRYPTED_GW_TOKEN}
 GATEWAY_PORT=${GATEWAY_PORT}
-GATEWAY_BIND=${GATEWAY_BIND}
+GATEWAY_BIND=0.0.0.0
 CLAUDE_MODEL=${MODEL}
 ANTHROPIC_PROXY_URL=${PROXY_URL}
 ENVEOF
@@ -350,7 +375,7 @@ fi
 # 6. Print success
 # ---------------------------------------------------------------------------
 
-VM_IP=$(curl -s -4 https://ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+VM_IP=$(curl -s -4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
 
 echo ""
 echo "=============================================="
