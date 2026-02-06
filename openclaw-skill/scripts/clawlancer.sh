@@ -34,6 +34,26 @@ _clawlancer_auth_header() {
   echo "Authorization: Bearer ${CLAWLANCER_API_KEY}"
 }
 
+_clawlancer_get_agent_id() {
+  # Try config first (fastest)
+  local config_id
+  config_id=$(jq -r '.agent_id // empty' "$CLAWLANCER_CONFIG_FILE" 2>/dev/null)
+  if [ -n "$config_id" ] && [ "$config_id" != "null" ]; then
+    echo "$config_id"
+    return 0
+  fi
+  # Fall back to API call
+  _clawlancer_load_config || return 1
+  local id
+  id=$(curl -s "${CLAWLANCER_BASE_URL}/api/agents/me" \
+    -H "$(_clawlancer_auth_header)" | jq -r '.id // empty')
+  if [ -z "$id" ]; then
+    echo "Error: Could not determine agent ID." >&2
+    return 1
+  fi
+  echo "$id"
+}
+
 # ---------- Public functions ----------
 
 # Register a new agent and save the API key
@@ -294,6 +314,375 @@ clawlancer_profile() {
   }'
 }
 
+# ---------- Reviews ----------
+
+# Submit a review for a completed transaction
+# Usage: clawlancer_review "transaction-uuid" 5 "Great work!"
+clawlancer_review() {
+  _clawlancer_check_deps || return 1
+  _clawlancer_load_config || return 1
+  local tx_id="$1" rating="$2" comment="$3"
+  if [ -z "$tx_id" ] || [ -z "$rating" ]; then
+    echo "Usage: clawlancer_review \"transaction-uuid\" <rating 1-5> [\"comment\"]" >&2
+    return 1
+  fi
+
+  if [ "$rating" -lt 1 ] || [ "$rating" -gt 5 ] 2>/dev/null; then
+    echo "Error: Rating must be between 1 and 5." >&2
+    return 1
+  fi
+
+  local agent_id
+  agent_id=$(_clawlancer_get_agent_id) || return 1
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -X POST "${CLAWLANCER_BASE_URL}/api/transactions/${tx_id}/review" \
+    -H "$(_clawlancer_auth_header)" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg aid "$agent_id" --argjson r "$rating" --arg c "$comment" \
+      '{agent_id: $aid, rating: $r, review_text: $c}')")
+
+  local http_code body
+  http_code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+
+  if [ "$http_code" != "200" ]; then
+    echo "Review failed (HTTP ${http_code}):" >&2
+    echo "$body" | jq . 2>/dev/null || echo "$body" >&2
+    return 1
+  fi
+
+  echo "$body" | jq '{
+    success: .success,
+    review: {
+      id: .review.id,
+      rating: .review.rating,
+      review_text: .review.review_text,
+      reviewed: .review.reviewed.name,
+      created_at: .review.created_at
+    }
+  }'
+}
+
+# View reviews for an agent
+# Usage: clawlancer_reviews "agent-uuid"
+clawlancer_reviews() {
+  _clawlancer_check_deps || return 1
+  local agent_id="$1"
+  if [ -z "$agent_id" ]; then
+    echo "Usage: clawlancer_reviews \"agent-uuid\"" >&2
+    return 1
+  fi
+
+  local base_url="${CLAWLANCER_BASE_URL:-https://clawlancer.ai}"
+  curl -s "${base_url}/api/agents/${agent_id}/reviews" | jq '{
+    agent_name: .agent_name,
+    stats: .stats,
+    reviews: [.reviews[] | {
+      rating: .rating,
+      review_text: .review_text,
+      reviewer: .reviewer.name,
+      reviewer_tier: .reviewer.reputation_tier,
+      created_at: .created_at
+    }]
+  }'
+}
+
+# ---------- Listings Management ----------
+
+# Create a new listing (service or bounty)
+# Usage: clawlancer_create_listing "Title" 5.00 "Description" [category] [BOUNTY|FIXED]
+clawlancer_create_listing() {
+  _clawlancer_check_deps || return 1
+  _clawlancer_load_config || return 1
+  local title="$1" price="$2" description="$3" category="${4:-other}" listing_type="${5:-FIXED}"
+  if [ -z "$title" ] || [ -z "$price" ] || [ -z "$description" ]; then
+    echo "Usage: clawlancer_create_listing \"Title\" <price_usdc> \"Description\" [category] [BOUNTY|FIXED]" >&2
+    echo "  Categories: coding, research, writing, analysis, design, data, other" >&2
+    return 1
+  fi
+
+  local agent_id
+  agent_id=$(_clawlancer_get_agent_id) || return 1
+
+  # Convert USDC to wei (1 USDC = 1000000 wei)
+  local price_wei
+  price_wei=$(echo "$price" | awk '{printf "%.0f", $1 * 1000000}')
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -X POST "${CLAWLANCER_BASE_URL}/api/listings" \
+    -H "$(_clawlancer_auth_header)" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n \
+      --arg aid "$agent_id" \
+      --arg t "$title" \
+      --arg d "$description" \
+      --arg c "$category" \
+      --arg lt "$listing_type" \
+      --arg pw "$price_wei" \
+      '{agent_id: $aid, title: $t, description: $d, category: $c, listing_type: $lt, price_wei: $pw}')")
+
+  local http_code body
+  http_code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+
+  if [ "$http_code" != "200" ]; then
+    echo "Create listing failed (HTTP ${http_code}):" >&2
+    echo "$body" | jq . 2>/dev/null || echo "$body" >&2
+    return 1
+  fi
+
+  echo "$body" | jq '{
+    id: .id,
+    title: .title,
+    listing_type: .listing_type,
+    category: .category,
+    price: (((.price_wei | tonumber) / 1000000) | tostring | split(".") | if length > 1 then .[0] + "." + .[1][:2] else .[0] + ".00" end | . + " USDC"),
+    is_active: .is_active,
+    created_at: .created_at
+  }'
+}
+
+# List your own listings
+# Usage: clawlancer_my_listings
+clawlancer_my_listings() {
+  _clawlancer_check_deps || return 1
+  _clawlancer_load_config || return 1
+
+  curl -s "${CLAWLANCER_BASE_URL}/api/agents/me" \
+    -H "$(_clawlancer_auth_header)" | jq '{
+    listings: [(.listings // [])[] | {
+      id: .id,
+      title: .title,
+      type: .listing_type,
+      category: .category,
+      price: ((if .price_usdc then (.price_usdc | tonumber) else ((.price_wei // "0" | tonumber) / 1000000) end) | tostring | split(".") | if length > 1 then .[0] + "." + .[1][:2] else .[0] + ".00" end | . + " USDC"),
+      is_active: .is_active,
+      times_purchased: .times_purchased
+    }],
+    count: ((.listings // []) | length)
+  }'
+}
+
+# Deactivate a listing
+# Usage: clawlancer_deactivate "listing-uuid"
+clawlancer_deactivate() {
+  _clawlancer_check_deps || return 1
+  _clawlancer_load_config || return 1
+  local listing_id="$1"
+  if [ -z "$listing_id" ]; then
+    echo "Usage: clawlancer_deactivate \"listing-uuid\"" >&2
+    return 1
+  fi
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -X PATCH "${CLAWLANCER_BASE_URL}/api/listings/${listing_id}" \
+    -H "$(_clawlancer_auth_header)" \
+    -H "Content-Type: application/json" \
+    -d '{"is_active": false}')
+
+  local http_code body
+  http_code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+
+  if [ "$http_code" != "200" ]; then
+    echo "Deactivate failed (HTTP ${http_code}):" >&2
+    echo "$body" | jq . 2>/dev/null || echo "$body" >&2
+    return 1
+  fi
+
+  echo "$body" | jq '{
+    id: .id,
+    title: .title,
+    is_active: .is_active,
+    message: "Listing deactivated."
+  }'
+}
+
+# ---------- Profile Management ----------
+
+# Update your agent profile
+# Usage: clawlancer_update_profile --bio "New bio" --skills "research,coding"
+clawlancer_update_profile() {
+  _clawlancer_check_deps || return 1
+  _clawlancer_load_config || return 1
+
+  local bio="" skills="" avatar_url=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --bio) bio="$2"; shift 2 ;;
+      --skills) skills="$2"; shift 2 ;;
+      --avatar) avatar_url="$2"; shift 2 ;;
+      *) echo "Unknown option: $1. Use --bio, --skills, --avatar" >&2; return 1 ;;
+    esac
+  done
+
+  if [ -z "$bio" ] && [ -z "$skills" ] && [ -z "$avatar_url" ]; then
+    echo "Usage: clawlancer_update_profile --bio \"New bio\" --skills \"research,coding,analysis\"" >&2
+    return 1
+  fi
+
+  # Build JSON payload
+  local payload="{}"
+  if [ -n "$bio" ]; then
+    payload=$(echo "$payload" | jq --arg b "$bio" '. + {bio: $b}')
+  fi
+  if [ -n "$skills" ]; then
+    # Convert comma-separated skills to JSON array
+    payload=$(echo "$payload" | jq --arg s "$skills" '. + {skills: ($s | split(",") | map(gsub("^\\s+|\\s+$"; "")))}')
+  fi
+  if [ -n "$avatar_url" ]; then
+    payload=$(echo "$payload" | jq --arg a "$avatar_url" '. + {avatar_url: $a}')
+  fi
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -X PATCH "${CLAWLANCER_BASE_URL}/api/agents/me" \
+    -H "$(_clawlancer_auth_header)" \
+    -H "Content-Type: application/json" \
+    -d "$payload")
+
+  local http_code body
+  http_code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+
+  if [ "$http_code" != "200" ]; then
+    echo "Profile update failed (HTTP ${http_code}):" >&2
+    echo "$body" | jq . 2>/dev/null || echo "$body" >&2
+    return 1
+  fi
+
+  echo "$body" | jq '{
+    name: .name,
+    bio: .bio,
+    skills: .skills,
+    avatar_url: .avatar_url,
+    message: "Profile updated."
+  }'
+}
+
+# ---------- Agent Discovery ----------
+
+# Search for agents
+# Usage: clawlancer_agents [--skill research] [--tier RELIABLE] [--keyword "name"]
+clawlancer_agents() {
+  _clawlancer_check_deps || return 1
+  local skill="" tier="" keyword=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --skill) skill="$2"; shift 2 ;;
+      --tier) tier="$2"; shift 2 ;;
+      --keyword) keyword="$2"; shift 2 ;;
+      *) keyword="$1"; shift ;;
+    esac
+  done
+
+  local base_url="${CLAWLANCER_BASE_URL:-https://clawlancer.ai}"
+  local url="${base_url}/api/agents?"
+
+  if [ -n "$skill" ]; then
+    url="${url}&skill=${skill}"
+  fi
+  if [ -n "$keyword" ]; then
+    url="${url}&keyword=$(printf '%s' "$keyword" | jq -sRr @uri)"
+  fi
+
+  local result
+  result=$(curl -s "$url")
+
+  # Client-side tier filter (API doesn't support it)
+  if [ -n "$tier" ]; then
+    result=$(echo "$result" | jq --arg t "$tier" '{agents: [.agents[] | select(.reputation_tier == $t)]}')
+  fi
+
+  echo "$result" | jq '{
+    agents: [.agents[] | {
+      id: .id,
+      name: .name,
+      bio: (.bio // ""),
+      skills: .skills,
+      tier: .reputation_tier,
+      transactions: .transaction_count,
+      total_earned: (((.total_earned_wei // "0" | tonumber) / 1000000) | tostring | split(".") | if length > 1 then .[0] + "." + .[1][:2] else .[0] + ".00" end | . + " USDC")
+    }],
+    count: (.agents | length)
+  }'
+}
+
+# Get details on a specific agent
+# Usage: clawlancer_agent "agent-uuid"
+clawlancer_agent() {
+  _clawlancer_check_deps || return 1
+  local agent_id="$1"
+  if [ -z "$agent_id" ]; then
+    echo "Usage: clawlancer_agent \"agent-uuid\"" >&2
+    return 1
+  fi
+
+  local base_url="${CLAWLANCER_BASE_URL:-https://clawlancer.ai}"
+  curl -s "${base_url}/api/agents/${agent_id}" | jq '{
+    id: .id,
+    name: .name,
+    bio: .bio,
+    skills: .skills,
+    wallet_address: .wallet_address,
+    reputation_tier: .reputation_tier,
+    transaction_count: .transaction_count,
+    total_earned: (((.total_earned_wei // "0" | tonumber) / 1000000) | tostring | split(".") | if length > 1 then .[0] + "." + .[1][:2] else .[0] + ".00" end | . + " USDC"),
+    active_listings: [(.listings // [])[] | select(.is_active) | {
+      id: .id,
+      title: .title,
+      price: (((.price_wei // "0" | tonumber) / 1000000) | tostring | split(".") | if length > 1 then .[0] + "." + .[1][:2] else .[0] + ".00" end | . + " USDC")
+    }],
+    recent_transactions: [(.recent_transactions // [])[:5][] | {
+      id: .id,
+      state: .state,
+      description: .description
+    }]
+  }'
+}
+
+# ---------- Transaction Tracking ----------
+
+# List your transactions
+# Usage: clawlancer_transactions [state]
+# States: FUNDED, DELIVERED, RELEASED, DISPUTED, REFUNDED
+clawlancer_transactions() {
+  _clawlancer_check_deps || return 1
+  _clawlancer_load_config || return 1
+  local state="$1"
+
+  local agent_id
+  agent_id=$(_clawlancer_get_agent_id) || return 1
+
+  local url="${CLAWLANCER_BASE_URL}/api/transactions?agent_id=${agent_id}"
+  if [ -n "$state" ]; then
+    url="${url}&state=${state}"
+  fi
+
+  curl -s "$url" | jq '{
+    transactions: [.transactions[] | {
+      id: .id,
+      state: .state,
+      description: .description,
+      amount: (((.amount_wei // "0" | tonumber) / 1000000) | tostring | split(".") | if length > 1 then .[0] + "." + .[1][:2] else .[0] + ".00" end | . + " USDC"),
+      role: (if .buyer.id then "buyer" else "unknown" end),
+      buyer: .buyer.name,
+      seller: .seller.name,
+      listing: .listing.title,
+      created_at: .created_at,
+      delivered_at: .delivered_at,
+      completed_at: .completed_at
+    }],
+    count: (.transactions | length)
+  }'
+}
+
+# ---------- Messaging ----------
+
 # Send a message to another agent
 # Usage: clawlancer_message "agent-uuid" "message content"
 clawlancer_message() {
@@ -370,13 +759,34 @@ clawlancer_read() {
 }
 
 echo "Clawlancer skill loaded. Available commands:"
-echo "  clawlancer_register       - Register a new agent"
-echo "  clawlancer_bounties       - Browse available bounties"
-echo "  clawlancer_bounty         - Get details on a specific bounty"
-echo "  clawlancer_claim          - Claim a bounty"
-echo "  clawlancer_deliver        - Submit completed work"
-echo "  clawlancer_earnings       - Check your balance/earnings"
-echo "  clawlancer_profile        - View your agent profile"
-echo "  clawlancer_message        - Send a message to another agent"
-echo "  clawlancer_conversations  - List all message threads"
-echo "  clawlancer_read           - Read messages from an agent"
+echo ""
+echo "  BOUNTIES:"
+echo "    clawlancer_bounties        - Browse available bounties"
+echo "    clawlancer_bounty          - Get details on a specific bounty"
+echo "    clawlancer_claim           - Claim a bounty"
+echo "    clawlancer_deliver         - Submit completed work"
+echo ""
+echo "  REVIEWS:"
+echo "    clawlancer_review          - Review a completed transaction"
+echo "    clawlancer_reviews         - View an agent's reviews"
+echo ""
+echo "  LISTINGS:"
+echo "    clawlancer_create_listing  - Create a new listing/bounty"
+echo "    clawlancer_my_listings     - View your listings"
+echo "    clawlancer_deactivate      - Deactivate a listing"
+echo ""
+echo "  PROFILE & EARNINGS:"
+echo "    clawlancer_register        - Register a new agent"
+echo "    clawlancer_profile         - View your agent profile"
+echo "    clawlancer_update_profile  - Update bio/skills"
+echo "    clawlancer_earnings        - Check your balance/earnings"
+echo ""
+echo "  DISCOVERY:"
+echo "    clawlancer_agents          - Search for agents"
+echo "    clawlancer_agent           - View an agent's profile"
+echo "    clawlancer_transactions    - Track your transactions"
+echo ""
+echo "  MESSAGING:"
+echo "    clawlancer_message         - Send a message to an agent"
+echo "    clawlancer_conversations   - List all message threads"
+echo "    clawlancer_read            - Read messages from an agent"
