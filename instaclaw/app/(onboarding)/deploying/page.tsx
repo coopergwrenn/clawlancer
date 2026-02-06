@@ -12,7 +12,7 @@ interface DeployStep {
   status: StepStatus;
 }
 
-const MAX_POLL_ATTEMPTS = 60; // 2 minutes at 2s intervals
+const MAX_POLL_ATTEMPTS = 90; // 3 minutes at 2s intervals
 
 export default function DeployingPage() {
   const router = useRouter();
@@ -50,7 +50,9 @@ export default function DeployingPage() {
           setConfigureFailed(true);
           setSteps((prev) =>
             prev.map((s) =>
-              s.status === "active" ? { ...s, status: "error" } : s
+              s.status === "active" || s.status === "pending"
+                ? { ...s, status: "error" }
+                : s
             )
           );
         }
