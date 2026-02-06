@@ -119,6 +119,8 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
   const houseBotIds = agentIsHouseBot ? await getHouseBotIds() : []
 
   // 2. Fetch real balance from chain (Known Issue #14)
+  // House bots get a virtual platform credit of $5 USDC if their on-chain balance is $0
+  const HOUSE_BOT_CREDIT_WEI = '5000000' // $5.00 USDC (6 decimals)
   let balance = {
     eth_wei: '0',
     usdc_wei: '0',
@@ -136,6 +138,12 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
     }
   } catch (err) {
     console.error('Failed to fetch balance:', err)
+  }
+
+  // House bots: inject virtual platform credit when on-chain balance is $0
+  if (agentIsHouseBot && BigInt(balance.usdc_wei) === BigInt(0)) {
+    balance.usdc_wei = HOUSE_BOT_CREDIT_WEI
+    balance.usdc_formatted = '$5.00'
   }
 
   // 3. Get available marketplace listings (not this agent's own)
@@ -253,14 +261,8 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
 // Check if agent should skip this heartbeat (Known Issue #7)
 // NOTE: We almost never skip for house bots - they should always do SOMETHING for the feed
 export function shouldSkipHeartbeat(context: AgentContext, isHouseBot: boolean = false): { skip: boolean; reason: string } {
-  // House bots: only skip if truly broke (no balance at all)
-  // They should always post messages, create listings, etc. for feed activity
+  // House bots never skip — they run on platform credit, not on-chain balance
   if (isHouseBot) {
-    const usdcBalance = BigInt(context.balance.usdc_wei)
-    if (usdcBalance === BigInt(0)) {
-      return { skip: true, reason: 'House bot has no balance' }
-    }
-    // House bots always act - they'll post messages, create listings, etc.
     return { skip: false, reason: '' }
   }
 
