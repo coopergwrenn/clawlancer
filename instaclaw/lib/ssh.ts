@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase";
+import { generateGatewayToken, encryptApiKey } from "./security";
 
 interface VMRecord {
   id: string;
@@ -22,7 +23,7 @@ async function connectSSH(vm: VMRecord) {
     host: vm.ip_address,
     port: vm.ssh_port,
     username: vm.ssh_user,
-    privateKey: process.env.SSH_PRIVATE_KEY!,
+    privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, 'base64').toString('utf-8'),
   });
   return ssh;
 }
@@ -34,42 +35,46 @@ export async function configureOpenClaw(
   const ssh = await connectSSH(vm);
 
   try {
-    // Generate gateway token
-    const gatewayToken = crypto.randomUUID();
+    const gatewayToken = generateGatewayToken();
 
-    // Build OpenClaw config
-    const openclawConfig = {
-      telegram: {
-        bot_token: config.telegramBotToken,
-      },
-      api: {
-        mode: config.apiMode,
-        key:
-          config.apiMode === "byok"
-            ? config.apiKey
-            : process.env.ANTHROPIC_API_KEY,
-      },
-      gateway: {
-        token: gatewayToken,
-        port: 8080,
-      },
-      tier: config.tier,
-    };
+    // Resolve the API key — for all-inclusive, use the platform key
+    const apiKeyValue =
+      config.apiMode === "byok"
+        ? config.apiKey!
+        : process.env.ANTHROPIC_API_KEY!;
 
-    // Write config file
-    await ssh.execCommand(
-      `mkdir -p ~/.openclaw && cat > ~/.openclaw/openclaw.json << 'EOFCONFIG'
-${JSON.stringify(openclawConfig, null, 2)}
-EOFCONFIG`
+    // Call configure-vm.sh on the VM. It handles encryption, config writing,
+    // and container startup. The API key argument is 'ALL_INCLUSIVE' for
+    // platform-provided keys (configure-vm.sh reads ANTHROPIC_API_KEY from env).
+    const apiArg =
+      config.apiMode === "byok" ? config.apiKey! : "ALL_INCLUSIVE";
+
+    // For all-inclusive mode, set ANTHROPIC_API_KEY in the SSH environment
+    const envPrefix =
+      config.apiMode === "all_inclusive"
+        ? `ANTHROPIC_API_KEY='${process.env.ANTHROPIC_API_KEY}' `
+        : "";
+
+    const result = await ssh.execCommand(
+      `${envPrefix}bash ~/openclaw/scripts/configure-vm.sh '${config.telegramBotToken}' '${apiArg}' '${gatewayToken}'`
     );
 
-    // Restart docker gateway
-    await ssh.execCommand("docker restart openclaw-gateway 2>/dev/null || docker compose -f ~/openclaw/docker-compose.yml up -d");
+    if (result.code !== 0) {
+      console.error("configure-vm.sh failed:", result.stderr);
+      throw new Error(`VM configuration failed: ${result.stderr}`);
+    }
 
-    const gatewayUrl = `http://${vm.ip_address}:8080`;
-    const controlUiUrl = `http://${vm.ip_address}:3000`;
+    // External URLs go through Caddy (HTTPS on 443)
+    const gatewayUrl = `https://${vm.ip_address}`;
+    const controlUiUrl = `https://${vm.ip_address}`;
 
-    // Update VM record
+    // Encrypt the BYOK API key before storing in the database
+    const encryptedApiKey =
+      config.apiMode === "byok" && config.apiKey
+        ? await encryptApiKey(config.apiKey)
+        : null;
+
+    // Update VM record in Supabase
     const supabase = getSupabase();
     await supabase
       .from("instaclaw_vms")
@@ -79,6 +84,14 @@ EOFCONFIG`
         control_ui_url: controlUiUrl,
       })
       .eq("id", vm.id);
+
+    // Store encrypted API key in pending_users if BYOK (for reconfiguration)
+    if (encryptedApiKey) {
+      await supabase
+        .from("instaclaw_pending_users")
+        .update({ api_key: encryptedApiKey })
+        .eq("user_id", vm.ip_address); // Will be a no-op if row was already deleted
+    }
 
     return { gatewayUrl, gatewayToken, controlUiUrl };
   } finally {
@@ -93,6 +106,7 @@ export async function waitForHealth(
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
+      // Health check goes through Caddy at /health (no auth required)
       const res = await fetch(`${gatewayUrl}/health`, {
         signal: AbortSignal.timeout(5000),
       });
