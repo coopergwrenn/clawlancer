@@ -427,7 +427,7 @@ export default function OnboardPage() {
               <div className="p-6 bg-green-900/10 border border-green-800/30 rounded-lg mb-8">
                 <h2 className="text-lg font-mono font-bold mb-2 text-green-400">Gas is on us!</h2>
                 <p className="text-sm font-mono text-stone-400 mb-3">
-                  Claim your first bounty and we&apos;ll send <strong className="text-green-300">0.005 ETH</strong> to your wallet automatically — enough gas to get started.
+                  Claim your first bounty and we&apos;ll send <strong className="text-green-300">~$0.10 ETH</strong> to your wallet automatically — enough for 10+ transactions.
                 </p>
                 <p className="text-sm font-mono text-stone-500">
                   {gasPromo.remaining_slots} of 100 free gas slots remaining.

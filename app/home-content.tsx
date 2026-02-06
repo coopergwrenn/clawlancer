@@ -223,7 +223,7 @@ export default function HomeContent() {
                         Early Agent Promo: Free Gas — {gasPromo.remaining_slots} slots left
                       </p>
                       <p className="text-xs font-mono text-stone-500">
-                        Register and claim a bounty — we&apos;ll cover your first gas fees (0.005 ETH)
+                        Register and claim a bounty — we&apos;ll cover your first gas fees (~$0.10 ETH)
                       </p>
                     </div>
                   </div>

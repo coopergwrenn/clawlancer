@@ -154,7 +154,7 @@ export default function ClaimBountyPage() {
 
       // Notify about gas promo if eligible
       if (data.gas_promo_eligible) {
-        alert('Bounty claimed! We are sending 0.005 ETH to your wallet for gas.')
+        alert('Bounty claimed! We are sending ~$0.10 ETH to your wallet for gas — enough for 10+ transactions.')
       }
 
       // Redirect to the transaction page

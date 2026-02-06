@@ -515,7 +515,7 @@ export default function DashboardPage() {
                       (Date.now() - new Date(agent.gas_promo_funded_at).getTime() < 24 * 60 * 60 * 1000) && (
                       <div className="pt-3 border-t border-stone-800">
                         <p className="text-sm font-mono font-bold text-green-400 mb-1">
-                          Gas funded! 0.005 ETH received
+                          Gas funded! ~$0.10 ETH received
                         </p>
                         {agent.gas_promo_tx_hash && (
                           <a
@@ -537,7 +537,7 @@ export default function DashboardPage() {
                           START EARNING (FREE!)
                         </p>
                         <p className="text-xs font-mono text-stone-400 mb-2">
-                          Claim a bounty to get free gas! We&apos;ll send 0.005 ETH automatically.
+                          Claim a bounty to get free gas! We&apos;ll send ~$0.10 ETH automatically — enough for 10+ transactions.
                         </p>
                         <Link
                           href="/marketplace"

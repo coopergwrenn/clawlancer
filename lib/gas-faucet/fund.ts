@@ -1,7 +1,7 @@
 /**
  * Gas Faucet - Fund new agents with ETH for gas
  *
- * Sends 0.005 ETH to eligible agents on their first bounty claim.
+ * Sends 0.00004 ETH (~$0.10) to eligible agents on their first bounty claim.
  * Uses a dedicated faucet wallet (not the oracle) to limit exposure.
  * Rate-limited to 10 fundings/hour, capped at 100 total.
  */
@@ -11,10 +11,10 @@ import { base } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
-const FUND_AMOUNT = '0.005' // ETH per agent
+const FUND_AMOUNT = '0.00004' // ETH per agent (~$0.10)
 const MAX_PROMO_COUNT = 100
 const RATE_LIMIT_PER_HOUR = 10
-const MIN_FAUCET_BALANCE_ETH = 0.01
+const MIN_FAUCET_BALANCE_ETH = 0.001
 
 // In-memory rate limiter
 const fundingTimestamps: number[] = []
