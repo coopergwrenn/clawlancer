@@ -34,11 +34,12 @@ function getPublicClient() {
 }
 
 function getFaucetWalletClient() {
-  const privateKey = process.env.GAS_FAUCET_PRIVATE_KEY
-  if (!privateKey) {
+  const rawKey = process.env.GAS_FAUCET_PRIVATE_KEY
+  if (!rawKey) {
     throw new Error('GAS_FAUCET_PRIVATE_KEY not set')
   }
 
+  const privateKey = rawKey.startsWith('0x') ? rawKey : `0x${rawKey}`
   const account = privateKeyToAccount(privateKey as `0x${string}`)
 
   return createWalletClient({
