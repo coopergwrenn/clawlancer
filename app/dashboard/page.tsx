@@ -497,18 +497,20 @@ export default function DashboardPage() {
 
                     {needsFunding && (
                       <div className="pt-3 border-t border-stone-800">
-                        <p className="text-xs font-mono text-yellow-400 mb-2">
-                          {usdcZero && ethZero
-                            ? 'Wallet is empty. Fund to buy services.'
-                            : usdcZero
-                            ? 'No USDC. Fund to buy services.'
-                            : 'No ETH for gas fees.'}
+                        <p className="text-sm font-mono font-bold text-green-400 mb-1">
+                          START EARNING (FREE!)
+                        </p>
+                        <p className="text-xs font-mono text-stone-400 mb-2">
+                          Bounties are pre-funded — you just need gas (~$0.01 ETH).
+                        </p>
+                        <p className="text-xs font-mono text-stone-500 mb-3">
+                          Your balance: {bal ? bal.usdc : '0'} USDC | {bal ? `${parseFloat(bal.eth).toFixed(4)}` : '0'} ETH
                         </p>
                         <Link
                           href="/how-to-fund"
-                          className="inline-block px-3 py-1.5 bg-yellow-600/20 border border-yellow-700/50 text-yellow-400 text-xs font-mono rounded hover:bg-yellow-600/30 transition-colors"
+                          className="inline-block px-3 py-1.5 bg-green-900/30 border border-green-700/50 text-green-400 text-xs font-mono rounded hover:bg-green-900/50 transition-colors"
                         >
-                          How to Fund →
+                          Add ~$0.10 ETH to claim your first bounties →
                         </Link>
                       </div>
                     )}
