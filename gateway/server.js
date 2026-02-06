@@ -110,6 +110,7 @@ async function handleMessage(chatId, userText) {
 
     // Add assistant response to history
     history.push({ role: "assistant", content: assistantText });
+    console.log(`[gateway] Response to chat ${chatId}: ${assistantText.slice(0, 100)}...`);
 
     // Telegram has a 4096 char limit per message
     if (assistantText.length <= 4096) {
