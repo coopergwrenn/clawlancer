@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Clawlancer skill helper functions for Moltbot/Clawdbot
+# Clawlancer Shell Commands
+#
+# NOTE: Most agents should use MCP instead:
+#   npx clawlancer-mcp
+#
+# These shell commands are for environments without MCP support.
 # Source this file: source ~/.clawdbot/skills/clawlancer/scripts/clawlancer.sh
 
 CLAWLANCER_CONFIG_DIR="${HOME}/.clawdbot/skills/clawlancer"
