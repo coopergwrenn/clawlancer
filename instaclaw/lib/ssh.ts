@@ -91,7 +91,10 @@ export async function configureOpenClaw(
     assertSafeShellArg(openclawModel, "model");
 
     // Build the configure script — runs OpenClaw CLI commands natively (no Docker)
+    // Written to a temp file before execution so that pkill -f "openclaw gateway"
+    // does not self-match the SSH process (whose cmdline would contain the full script).
     const script = [
+      '#!/bin/bash',
       'set -eo pipefail',
       NVM_PREAMBLE,
       '',
@@ -106,13 +109,20 @@ export async function configureOpenClaw(
       'rm -f ~/.openclaw/openclaw.json',
       '',
       '# Non-interactive onboard: sets up auth profile + base gateway config',
+      '# Exits non-zero when gateway is not yet running — expected, so we allow failure.',
       `openclaw onboard --non-interactive --accept-risk \\`,
       `  --auth-choice apiKey \\`,
       `  --anthropic-api-key '${apiKey}' \\`,
       `  --gateway-bind lan \\`,
       `  --gateway-auth token \\`,
       `  --gateway-token '${gatewayToken}' \\`,
-      `  --skip-channels --skip-skills --no-install-daemon`,
+      `  --skip-channels --skip-skills --no-install-daemon || true`,
+      '',
+      '# Verify onboard produced a config file',
+      'if [ ! -f ~/.openclaw/openclaw.json ]; then',
+      '  echo "FATAL: openclaw onboard did not create config file" >&2',
+      '  exit 1',
+      'fi',
       '',
       '# Configure Telegram channel (open DM policy for SaaS)',
       `openclaw config set channels.telegram.botToken '${config.telegramBotToken}'`,
@@ -133,7 +143,9 @@ export async function configureOpenClaw(
       'echo "OPENCLAW_CONFIGURE_DONE"',
     ].join('\n');
 
-    const result = await ssh.execCommand(script);
+    // Write script to temp file, then execute it — avoids pkill self-match issue
+    await ssh.execCommand(`cat > /tmp/ic-configure.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-configure.sh; EC=$?; rm -f /tmp/ic-configure.sh; exit $EC');
 
     if (result.code !== 0 || !result.stdout.includes("OPENCLAW_CONFIGURE_DONE")) {
       console.error("OpenClaw configure failed:", result.stderr, result.stdout);
@@ -221,6 +233,7 @@ export async function updateModel(vm: VMRecord, model: string): Promise<boolean>
   const ssh = await connectSSH(vm);
   try {
     const script = [
+      '#!/bin/bash',
       NVM_PREAMBLE,
       `openclaw config set agents.defaults.model.primary '${openclawModel}'`,
       '# Restart gateway to pick up new model',
@@ -230,7 +243,8 @@ export async function updateModel(vm: VMRecord, model: string): Promise<boolean>
       'sleep 5',
     ].join('\n');
 
-    const result = await ssh.execCommand(script);
+    await ssh.execCommand(`cat > /tmp/ic-update.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-update.sh; EC=$?; rm -f /tmp/ic-update.sh; exit $EC');
     return result.code === 0;
   } finally {
     ssh.dispose();
@@ -241,6 +255,7 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
   const ssh = await connectSSH(vm);
   try {
     const script = [
+      '#!/bin/bash',
       NVM_PREAMBLE,
       'pkill -f "openclaw gateway" 2>/dev/null || true',
       'sleep 2',
@@ -248,7 +263,8 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
       'sleep 5',
     ].join('\n');
 
-    const result = await ssh.execCommand(script);
+    await ssh.execCommand(`cat > /tmp/ic-restart.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-restart.sh; EC=$?; rm -f /tmp/ic-restart.sh; exit $EC');
     return result.code === 0;
   } finally {
     ssh.dispose();
