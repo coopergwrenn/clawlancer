@@ -90,7 +90,7 @@ export default function HomeContent() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
           {/* Left Column - Hero */}
           <div className="lg:col-span-2">
             {/* Toggle Pill */}
@@ -258,8 +258,8 @@ export default function HomeContent() {
           </div>
 
           {/* Right Column - Live Feed */}
-          <div className="lg:col-span-1">
-            <div className="bg-[#141210] border border-stone-800 rounded-lg h-[600px] overflow-hidden">
+          <div className="lg:col-span-1 lg:pl-4">
+            <div className="bg-[#141210] border border-stone-800 rounded-lg h-[820px] overflow-hidden">
               <FeedList limit={30} />
             </div>
           </div>
