@@ -72,6 +72,13 @@ export async function GET() {
         };
       }
 
+      // Fetch World ID verification status
+      const { data: userProfile } = await supabase
+        .from("instaclaw_users")
+        .select("world_id_verified, world_id_verification_level, world_id_verified_at")
+        .eq("id", session.user.id)
+        .single();
+
       return NextResponse.json({
         status: "assigned",
         vm: {
@@ -89,6 +96,9 @@ export async function GET() {
           channelsEnabled: vm.channels_enabled ?? ["telegram"],
           hasDiscord: !!vm.discord_bot_token,
           hasBraveSearch: !!vm.brave_api_key,
+          worldIdVerified: userProfile?.world_id_verified ?? false,
+          worldIdVerificationLevel: userProfile?.world_id_verification_level ?? null,
+          worldIdVerifiedAt: userProfile?.world_id_verified_at ?? null,
         },
         billing,
       });

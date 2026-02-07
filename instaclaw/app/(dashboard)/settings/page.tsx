@@ -13,6 +13,7 @@ import {
   Hash,
   Phone,
 } from "lucide-react";
+import { WorldIDSection } from "@/components/dashboard/world-id-section";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
@@ -321,6 +322,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* World ID Verification */}
+      <WorldIDSection />
 
       {/* Channel Token Management */}
       {vm.channelsEnabled?.includes("discord") && (

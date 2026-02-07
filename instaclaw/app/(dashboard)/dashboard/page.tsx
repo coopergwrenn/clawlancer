@@ -13,6 +13,7 @@ import {
   CreditCard,
   AlertTriangle,
 } from "lucide-react";
+import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
@@ -189,6 +190,9 @@ export default function DashboardPage() {
           </Link>
         </div>
       )}
+
+      {/* World ID nudge banner */}
+      <WorldIDBanner />
 
       {vmStatus?.status === "assigned" && vm ? (
         <>

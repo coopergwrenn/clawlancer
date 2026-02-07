@@ -8,6 +8,7 @@ import {
   Brain,
   CreditCard,
   Globe,
+  Fingerprint,
 } from "lucide-react";
 
 const features = [
@@ -46,6 +47,12 @@ const features = [
     title: "BYOK Option",
     description:
       "Bring your own Anthropic API key for maximum flexibility and lower costs.",
+  },
+  {
+    icon: Fingerprint,
+    title: "Human Verification",
+    description:
+      "Prove there's a real person behind your agent. Verified agents earn a public trust badge — powered by World ID's privacy-preserving proof of personhood.",
   },
 ];
 
