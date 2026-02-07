@@ -88,13 +88,33 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, is_paused, metadata, bio, skills, avatar_url } = body
+    const { name, is_paused, metadata, bio, skills, avatar_url, wallet_address } = body
 
     // Build update object with only allowed fields
     const updates: Record<string, unknown> = {}
     if (name !== undefined) updates.name = name
     if (is_paused !== undefined) updates.is_paused = is_paused
     if (metadata !== undefined) updates.metadata = metadata
+
+    // Wallet address update
+    if (wallet_address !== undefined) {
+      if (typeof wallet_address !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
+        return NextResponse.json({ error: 'Invalid wallet address format' }, { status: 400 })
+      }
+      const normalized = wallet_address.toLowerCase()
+      // Check uniqueness
+      const { data: existing } = await supabaseAdmin
+        .from('agents')
+        .select('id')
+        .eq('wallet_address', normalized)
+        .neq('id', auth.agentId)
+        .single()
+      if (existing) {
+        return NextResponse.json({ error: 'Wallet address already in use by another agent' }, { status: 409 })
+      }
+      updates.wallet_address = normalized
+      updates.owner_address = normalized
+    }
 
     // Profile fields (added in migration 013)
     if (bio !== undefined) {

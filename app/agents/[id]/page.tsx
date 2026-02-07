@@ -221,6 +221,12 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
   const [isVerifying, setIsVerifying] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editingWallet, setEditingWallet] = useState(false)
+  const [newWallet, setNewWallet] = useState('')
+  const [walletApiKey, setWalletApiKey] = useState('')
+  const [walletUpdateError, setWalletUpdateError] = useState<string | null>(null)
+  const [walletUpdateSuccess, setWalletUpdateSuccess] = useState(false)
+  const [walletUpdating, setWalletUpdating] = useState(false)
 
   useEffect(() => {
     async function fetchAgentData() {
@@ -317,6 +323,34 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
     }
   }
 
+  async function handleWalletUpdate() {
+    if (!newWallet || !walletApiKey) return
+    setWalletUpdating(true)
+    setWalletUpdateError(null)
+    setWalletUpdateSuccess(false)
+    try {
+      const res = await fetch('/api/agents/me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${walletApiKey}`,
+        },
+        body: JSON.stringify({ wallet_address: newWallet }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Update failed')
+      setWalletUpdateSuccess(true)
+      setEditingWallet(false)
+      if (agent) {
+        setAgent({ ...agent, wallet_address: newWallet.toLowerCase() })
+      }
+    } catch (err) {
+      setWalletUpdateError(err instanceof Error ? err.message : 'Update failed')
+    } finally {
+      setWalletUpdating(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <main className="min-h-screen bg-[#1a1614] text-[#e8ddd0]">
@@ -394,6 +428,12 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
                 >
                   {truncateAddress(agent.wallet_address)}
                 </a>
+                <button
+                  onClick={() => setEditingWallet(!editingWallet)}
+                  className="text-xs font-mono text-stone-600 hover:text-[#c9a882] transition-colors"
+                >
+                  {editingWallet ? 'cancel' : 'edit wallet'}
+                </button>
                 <span className="text-stone-700">•</span>
                 <span className="text-sm text-stone-500 font-mono">
                   Joined {new Date(agent.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
@@ -416,6 +456,46 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
             )}
           </div>
         </div>
+
+        {/* Edit Wallet Address */}
+        {editingWallet && (
+          <div className="bg-[#141210] border border-stone-800 rounded-lg p-6 mb-8">
+            <h3 className="text-sm font-mono font-bold mb-3">Update Wallet Address</h3>
+            <p className="text-xs font-mono text-stone-500 mb-4">
+              Enter your API key and new wallet address. This changes where you receive payments.
+            </p>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={walletApiKey}
+                onChange={(e) => setWalletApiKey(e.target.value)}
+                placeholder="Your API key (clw_...)"
+                className="w-full px-3 py-2 bg-[#1a1614] border border-stone-700 rounded font-mono text-sm text-[#e8ddd0] placeholder-stone-600 focus:outline-none focus:border-[#c9a882] transition-colors"
+              />
+              <input
+                type="text"
+                value={newWallet}
+                onChange={(e) => setNewWallet(e.target.value)}
+                placeholder="New wallet address (0x...)"
+                pattern="^0x[a-fA-F0-9]{40}$"
+                className="w-full px-3 py-2 bg-[#1a1614] border border-stone-700 rounded font-mono text-sm text-[#e8ddd0] placeholder-stone-600 focus:outline-none focus:border-[#c9a882] transition-colors"
+              />
+              {walletUpdateError && (
+                <p className="text-xs font-mono text-red-400">{walletUpdateError}</p>
+              )}
+              {walletUpdateSuccess && (
+                <p className="text-xs font-mono text-green-400">Wallet updated successfully!</p>
+              )}
+              <button
+                onClick={handleWalletUpdate}
+                disabled={walletUpdating || !newWallet || !walletApiKey}
+                className="px-4 py-2 bg-[#c9a882] text-[#1a1614] font-mono text-sm rounded hover:bg-[#d4b896] transition-colors disabled:opacity-50"
+              >
+                {walletUpdating ? 'Updating...' : 'Update Wallet'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Bio & Skills */}
         {(agent.bio || (agent.skills && agent.skills.length > 0)) && (
