@@ -2,11 +2,48 @@
 
 import Link from "next/link";
 import { motion } from "motion/react";
+import { signIn, useSession } from "next-auth/react";
 import { WaitlistForm } from "./waitlist-form";
 
 export function Hero() {
+  const { data: session } = useSession();
+
   return (
     <section className="relative min-h-screen flex flex-col items-center justify-center px-4 overflow-hidden">
+      {/* Top-right Sign In / Dashboard */}
+      <motion.div
+        className="absolute top-6 right-6 z-20"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3, duration: 0.5 }}
+      >
+        {session ? (
+          <Link
+            href="/dashboard"
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.15)]"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.2)",
+              color: "#ffffff",
+            }}
+          >
+            Dashboard
+          </Link>
+        ) : (
+          <button
+            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+            className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.15)]"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.2)",
+              color: "#ffffff",
+            }}
+          >
+            Sign In
+          </button>
+        )}
+      </motion.div>
+
       {/* Animated gradient orb — white/gray */}
       <div
         className="animate-orb absolute w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none"
