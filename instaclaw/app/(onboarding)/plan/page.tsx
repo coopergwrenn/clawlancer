@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { LenisProvider } from "@/components/landing/lenis-provider";
 
 const tiers = [
   {
@@ -137,9 +138,53 @@ export default function PlanPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: "#f8f7f4" }}>
-      <div className="max-w-5xl mx-auto px-6 py-16">
-        <div className="text-center mb-12">
+    <LenisProvider>
+      <div className="min-h-screen" style={{ background: "#f8f7f4" }}>
+        {/* Step Indicator */}
+        <div
+          className="sticky top-0 z-10 py-4"
+          style={{ background: "#ffffff", borderBottom: "1px solid rgba(0, 0, 0, 0.1)" }}
+        >
+          <div className="max-w-5xl mx-auto px-6">
+            <div className="flex items-center justify-center gap-2">
+              {[
+                { num: 1, label: "Connect" },
+                { num: 2, label: "Plan" },
+                { num: 3, label: "Deploy" },
+              ].map((step, i) => (
+                <div key={step.num} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all"
+                      style={{
+                        background: step.num === 2 ? "#DC6743" : step.num < 2 ? "#ffffff" : "#ffffff",
+                        color: step.num === 2 ? "#ffffff" : step.num < 2 ? "#22c55e" : "#999999",
+                        border: step.num === 2 ? "none" : step.num < 2 ? "1px solid #22c55e" : "1px solid rgba(0, 0, 0, 0.1)",
+                      }}
+                    >
+                      {step.num < 2 ? "✓" : step.num}
+                    </div>
+                    <span
+                      className="text-xs mt-1.5 font-medium"
+                      style={{ color: step.num === 2 ? "#333334" : "#999999" }}
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                  {i < 2 && (
+                    <div
+                      className="w-16 h-px mx-3 mb-5"
+                      style={{ background: step.num < 2 ? "#22c55e" : "rgba(0, 0, 0, 0.1)" }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-5xl mx-auto px-6 py-8">
+          <div className="text-center mb-8">
           <h1
             className="text-4xl font-normal mb-4"
             style={{
@@ -196,22 +241,8 @@ export default function PlanPage() {
             const price = apiMode === "byok" ? tier.byok : tier.allInclusive;
             const isSelected = selectedTier === tier.id;
 
-            return (
-              <button
-                key={tier.id}
-                type="button"
-                onClick={() => setSelectedTier(tier.id)}
-                className="text-left transition-all cursor-pointer relative rounded-lg p-6"
-                style={{
-                  background: "#ffffff",
-                  border: isSelected
-                    ? "2px solid #DC6743"
-                    : "1px solid rgba(0, 0, 0, 0.1)",
-                  boxShadow: isSelected
-                    ? "0 4px 12px rgba(220, 103, 67, 0.1)"
-                    : "0 1px 3px rgba(0, 0, 0, 0.05)",
-                }}
-              >
+            const cardContent = (
+              <div className="text-left relative rounded-lg p-6" style={{ background: "#ffffff" }}>
                 {tier.popular && (
                   <span
                     className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold"
@@ -283,6 +314,41 @@ export default function PlanPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            );
+
+            return (
+              <button
+                key={tier.id}
+                type="button"
+                onClick={() => setSelectedTier(tier.id)}
+                className="transition-all cursor-pointer"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                }}
+              >
+                {isSelected ? (
+                  <div className="glow-wrap" style={{ borderRadius: "0.5rem" }}>
+                    <div className="glow-border" style={{ borderRadius: "0.5rem" }}>
+                      <div className="glow-spinner" />
+                      <div className="glow-content" style={{ borderRadius: "calc(0.5rem - 1.5px)" }}>
+                        {cardContent}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="rounded-lg transition-all"
+                    style={{
+                      border: "1px solid rgba(0, 0, 0, 0.1)",
+                      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+                    }}
+                  >
+                    {cardContent}
+                  </div>
+                )}
               </button>
             );
           })}
@@ -307,7 +373,8 @@ export default function PlanPage() {
         >
           {loading ? "Redirecting to checkout..." : "Start Free Trial"}
         </button>
+        </div>
       </div>
-    </div>
+    </LenisProvider>
   );
 }
