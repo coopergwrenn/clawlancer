@@ -66,40 +66,40 @@ function Circle({ children, revealed }: { children: string; revealed: boolean })
       <svg
         className="absolute pointer-events-none"
         style={{
-          left: "-12px",
+          left: "calc(-100% - 20px)",
           top: "-10px",
-          width: "calc(100% + 24px)",
+          width: "calc(200% + 32px)",
           height: "calc(100% + 20px)",
         }}
         xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 120 100"
+        viewBox="0 0 200 100"
         preserveAspectRatio="none"
       >
-        {/* Multiple overlapping paths for thick Sharpie effect */}
+        {/* Wide ellipse covering "does things." */}
         <path
-          d="M10,50 Q12,18 40,15 Q70,13 95,22 Q112,35 110,55 Q108,75 85,85 Q55,90 25,82 Q8,72 10,50"
+          d="M8,50 Q10,16 55,13 Q120,10 170,20 Q192,35 190,55 Q188,78 150,86 Q100,92 40,84 Q6,74 8,50"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="1.8"
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
-            strokeDasharray: "400",
-            strokeDashoffset: isShown ? 0 : 400,
+            strokeDasharray: "600",
+            strokeDashoffset: isShown ? 0 : 600,
             transition: "stroke-dashoffset 0.8s ease-out",
             opacity: isShown ? 0.5 : 0,
           }}
         />
         <path
-          d="M11,51 Q13,20 41,17 Q72,14 96,24 Q111,36 109,56 Q107,74 84,84 Q54,89 26,81 Q9,71 11,51"
+          d="M9,51 Q11,18 56,15 Q122,12 171,22 Q191,36 189,56 Q187,77 149,85 Q99,91 41,83 Q7,73 9,51"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2.5"
+          strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
-            strokeDasharray: "400",
-            strokeDashoffset: isShown ? 0 : 400,
+            strokeDasharray: "600",
+            strokeDashoffset: isShown ? 0 : 600,
             transition: "stroke-dashoffset 0.9s ease-out",
             opacity: isShown ? 0.6 : 0,
           }}
