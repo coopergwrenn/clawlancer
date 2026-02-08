@@ -31,13 +31,13 @@ export default function Home() {
         <hr className="section-divider" />
         <ScrollReveal text="We believe everyone deserves a personal AI that actually does things. Not just chat. Not just suggest. Actually take action on your behalf. Literally anything." />
         <hr className="section-divider" />
+        <UseCases />
+        <hr className="section-divider" />
         <HowItWorks />
         <hr className="section-divider" />
         <ScrollReveal text="This sounds impossible, but it's real. An AI that works for you while you sleep. It remembers everything, handles real tasks on its own, and gets smarter the more you use it. Not a chatbot. A full personal system that never stops. All yours for $29 a month. Don't believe us? Try it free for seven days." />
         <hr className="section-divider" />
         <Comparison />
-        <hr className="section-divider" />
-        <UseCases />
         <hr className="section-divider" />
         <Features />
         <hr className="section-divider" />
