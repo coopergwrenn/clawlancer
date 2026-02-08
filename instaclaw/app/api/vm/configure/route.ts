@@ -109,11 +109,14 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", vm.id);
 
-    // Mark user as onboarding complete + clean up pending record.
+    // Mark user as onboarding complete + clean up pending record + clear deployment lock.
     // Do this BEFORE the health check so it's saved even if we time out.
     await supabase
       .from("instaclaw_users")
-      .update({ onboarding_complete: true })
+      .update({
+        onboarding_complete: true,
+        deployment_lock_at: null, // Clear deployment lock
+      })
       .eq("id", userId);
 
     await supabase

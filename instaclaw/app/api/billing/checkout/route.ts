@@ -31,13 +31,36 @@ export async function POST(req: NextRequest) {
     // Get or create Stripe customer
     const { data: user } = await supabase
       .from("instaclaw_users")
-      .select("id, email, stripe_customer_id")
+      .select("id, email, stripe_customer_id, deployment_lock_at")
       .eq("id", session.user.id)
       .single();
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
+
+    // Check for active deployment lock (within last 15 minutes)
+    if (user.deployment_lock_at) {
+      const lockAge = Date.now() - new Date(user.deployment_lock_at).getTime();
+      const fifteenMinutes = 15 * 60 * 1000;
+
+      if (lockAge < fifteenMinutes) {
+        return NextResponse.json(
+          {
+            error: "Deployment already in progress. Please complete or wait for the current deployment to finish.",
+            retryAfter: Math.ceil((fifteenMinutes - lockAge) / 1000),
+          },
+          { status: 409 }
+        );
+      }
+      // Lock expired, will be cleared and renewed below
+    }
+
+    // Set deployment lock
+    await supabase
+      .from("instaclaw_users")
+      .update({ deployment_lock_at: new Date().toISOString() })
+      .eq("id", user.id);
 
     let customerId = user.stripe_customer_id;
     if (!customerId) {
