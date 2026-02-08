@@ -272,6 +272,7 @@ export async function waitForHealth(
   maxAttempts = 15,
   intervalMs = 4000
 ): Promise<boolean> {
+  if (gatewayToken) assertSafeShellArg(gatewayToken, "gatewayToken");
   const ssh = await connectSSH(vm);
   try {
     for (let i = 0; i < maxAttempts; i++) {
@@ -296,6 +297,7 @@ export async function checkHealth(
   vm: VMRecord,
   gatewayToken?: string
 ): Promise<boolean> {
+  if (gatewayToken) assertSafeShellArg(gatewayToken, "gatewayToken");
   try {
     const ssh = await connectSSH(vm);
     try {

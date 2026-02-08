@@ -15,6 +15,20 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
 
+    // Verify user has an active subscription before assigning a VM
+    const { data: subscription } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("status")
+      .eq("user_id", targetUserId)
+      .single();
+
+    if (!subscription || !["active", "trialing"].includes(subscription.status)) {
+      return NextResponse.json(
+        { error: "Active subscription required. Please subscribe to a plan first." },
+        { status: 403 }
+      );
+    }
+
     // Check if user already has a VM
     const { data: existing } = await supabase
       .from("instaclaw_vms")
