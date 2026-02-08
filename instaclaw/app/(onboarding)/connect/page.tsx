@@ -8,19 +8,19 @@ const TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
 const FAQ_ITEMS = [
   {
     q: "What is a Telegram bot?",
-    a: "It\u2019s your personal AI assistant that lives inside Telegram. You message it like a friend and it responds using AI \u2014 but unlike ChatGPT, it can actually run code, search the web, manage files, and take actions on your behalf.",
+    a: "It's your personal AI assistant that lives inside Telegram. You message it like a friend and it responds using AI — but unlike ChatGPT, it can actually run code, search the web, manage files, and take actions on your behalf.",
   },
   {
     q: "Is creating the bot free?",
     a: "Yes. The bot itself is free on Telegram. InstaClaw hosts and powers it with a dedicated server and AI model.",
   },
   {
-    q: "Can I change the bot\u2019s name later?",
-    a: "Yes \u2014 message @BotFather and use /setname or /setusername anytime.",
+    q: "Can I change the bot's name later?",
+    a: "Yes — message @BotFather and use /setname or /setusername anytime.",
   },
   {
     q: "What can my bot do?",
-    a: "Shell commands, file management, web search, code execution, Python scripts, and more. It\u2019s a real AI agent on a dedicated server, not just a chatbot.",
+    a: "Shell commands, file management, web search, code execution, Python scripts, and more. It's a real AI agent on a dedicated server, not just a chatbot.",
   },
   {
     q: "Can I use both Telegram and Discord?",
@@ -132,7 +132,7 @@ export default function ConnectPage() {
         setError("");
       } else {
         setError(
-          "Invalid token \u2014 check that you copied the full token from BotFather."
+          "Invalid token — check that you copied the full token from BotFather."
         );
       }
     } catch {
@@ -151,577 +151,671 @@ export default function ConnectPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold">Connect Your Bot</h1>
-        <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>
-          Choose your channels and configure your AI agent.
-        </p>
-      </div>
-
-      {/* Channel Selection */}
-      <div className="space-y-3">
-        <label className="block text-sm font-medium">Channels</label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <button
-            type="button"
-            onClick={() => toggleChannel("telegram")}
-            className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
+    <div className="min-h-screen" style={{ background: "#f8f7f4" }}>
+      <div className="max-w-2xl mx-auto px-6 py-16">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1
+            className="text-4xl mb-4"
             style={{
-              border: channels.includes("telegram")
-                ? "1px solid #ffffff"
-                : "1px solid var(--border)",
+              fontFamily: "var(--font-serif)",
+              color: "#333334",
+              fontWeight: 400
             }}
           >
-            <p className="text-sm font-semibold">Telegram</p>
-            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-              Bot via @BotFather
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleChannel("discord")}
-            className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
-            style={{
-              border: channels.includes("discord")
-                ? "1px solid #ffffff"
-                : "1px solid var(--border)",
-            }}
-          >
-            <p className="text-sm font-semibold">Discord</p>
-            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-              Discord bot token
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleChannel("slack")}
-            className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
-            style={{
-              border: channels.includes("slack")
-                ? "1px solid #ffffff"
-                : "1px solid var(--border)",
-            }}
-          >
-            <p className="text-sm font-semibold">Slack</p>
-            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-              Slack workspace bot
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleChannel("whatsapp")}
-            className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
-            style={{
-              border: channels.includes("whatsapp")
-                ? "1px solid #ffffff"
-                : "1px solid var(--border)",
-            }}
-          >
-            <p className="text-sm font-semibold">WhatsApp</p>
-            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-              Meta Business API
-            </p>
-          </button>
+            Connect Your Bot
+          </h1>
+          <p className="text-base" style={{ color: "#666" }}>
+            Choose your channels and configure your AI agent.
+          </p>
         </div>
-      </div>
 
-      {/* Telegram Bot Token */}
-      {channels.includes("telegram") && (
-        <div className="space-y-3">
-          <label className="block text-sm font-medium">Telegram Bot Token</label>
-
-          {/* Step-by-step instructions */}
-          <div
-            className="glass rounded-lg p-4 text-xs space-y-1.5"
-            style={{ color: "var(--muted)" }}
+        {/* Channel Selection */}
+        <div className="mb-10">
+          <label
+            className="block text-sm font-medium mb-4"
+            style={{ color: "#333334" }}
           >
-            <p className="font-medium mb-2" style={{ color: "var(--foreground)" }}>
-              How to get your bot token:
-            </p>
-            <p>1. Open Telegram on your phone or desktop</p>
-            <p>
-              2. Search for{" "}
-              <span className="font-medium" style={{ color: "var(--foreground)" }}>
-                @BotFather
-              </span>{" "}
-              (blue checkmark)
-            </p>
-            <p>
-              3. Tap <strong>Start</strong>, then send:{" "}
-              <code
-                className="px-1 py-0.5 rounded text-[11px]"
-                style={{ background: "rgba(255,255,255,0.06)" }}
-              >
-                /newbot
-              </code>
-            </p>
-            <p>4. Pick a display name (anything — e.g. &ldquo;My AI Agent&rdquo;)</p>
-            <p>
-              5. Pick a username ending in &ldquo;bot&rdquo; (e.g.{" "}
-              <span className="font-mono">myagent_bot</span>)
-            </p>
-            <p>
-              6. BotFather sends you a token like:{" "}
-              <span className="font-mono">123456789:ABCdef...</span>
-            </p>
-            <p className="font-medium" style={{ color: "var(--foreground)" }}>
-              7. Copy that ENTIRE line and paste it below
-            </p>
-          </div>
-
-          {/* FAQ accordion */}
-          <div>
+            Channels
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <button
               type="button"
-              onClick={() => {
-                setFaqOpen(!faqOpen);
-                if (faqOpen) setOpenFaqIndex(null);
+              onClick={() => toggleChannel("telegram")}
+              className="bg-white rounded-lg p-4 text-left transition-all"
+              style={{
+                border: channels.includes("telegram")
+                  ? "2px solid #DC6743"
+                  : "1px solid rgba(0, 0, 0, 0.1)",
               }}
-              className="flex items-center gap-1.5 text-xs cursor-pointer transition-colors"
-              style={{ color: "var(--muted)" }}
             >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+                Telegram
+              </p>
+              <p className="text-xs mt-1" style={{ color: "#666" }}>
+                Bot via @BotFather
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleChannel("discord")}
+              className="bg-white rounded-lg p-4 text-left transition-all"
+              style={{
+                border: channels.includes("discord")
+                  ? "2px solid #DC6743"
+                  : "1px solid rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+                Discord
+              </p>
+              <p className="text-xs mt-1" style={{ color: "#666" }}>
+                Discord bot token
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleChannel("slack")}
+              className="bg-white rounded-lg p-4 text-left transition-all"
+              style={{
+                border: channels.includes("slack")
+                  ? "2px solid #DC6743"
+                  : "1px solid rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+                Slack
+              </p>
+              <p className="text-xs mt-1" style={{ color: "#666" }}>
+                Slack workspace bot
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleChannel("whatsapp")}
+              className="bg-white rounded-lg p-4 text-left transition-all"
+              style={{
+                border: channels.includes("whatsapp")
+                  ? "2px solid #DC6743"
+                  : "1px solid rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+                WhatsApp
+              </p>
+              <p className="text-xs mt-1" style={{ color: "#666" }}>
+                Meta Business API
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* Telegram Bot Token */}
+        {channels.includes("telegram") && (
+          <div className="mb-10">
+            <label
+              className="block text-sm font-medium mb-4"
+              style={{ color: "#333334" }}
+            >
+              Telegram Bot Token
+            </label>
+
+            {/* Step-by-step instructions */}
+            <div
+              className="bg-white rounded-lg p-6 mb-4 text-sm"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#666"
+              }}
+            >
+              <p
+                className="font-semibold mb-3"
+                style={{ color: "#333334" }}
+              >
+                How to get your bot token:
+              </p>
+              <div className="space-y-2">
+                <p>1. Open Telegram on your phone or desktop</p>
+                <p>
+                  2. Search for{" "}
+                  <span className="font-semibold" style={{ color: "#333334" }}>
+                    @BotFather
+                  </span>{" "}
+                  (blue checkmark)
+                </p>
+                <p>
+                  3. Tap <strong>Start</strong>, then send:{" "}
+                  <code
+                    className="px-2 py-1 rounded text-xs"
+                    style={{ background: "#f8f7f4", color: "#333334" }}
+                  >
+                    /newbot
+                  </code>
+                </p>
+                <p>4. Pick a display name (anything — e.g. "My AI Agent")</p>
+                <p>
+                  5. Pick a username ending in "bot" (e.g.{" "}
+                  <span className="font-mono">myagent_bot</span>)
+                </p>
+                <p>
+                  6. BotFather sends you a token like:{" "}
+                  <span className="font-mono">123456789:ABCdef...</span>
+                </p>
+                <p className="font-semibold" style={{ color: "#333334" }}>
+                  7. Copy that ENTIRE line and paste it below
+                </p>
+              </div>
+            </div>
+
+            {/* FAQ accordion */}
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setFaqOpen(!faqOpen);
+                  if (faqOpen) setOpenFaqIndex(null);
+                }}
+                className="flex items-center gap-2 text-sm transition-colors"
+                style={{ color: "#666" }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    transform: faqOpen ? "rotate(90deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s ease",
+                  }}
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                What's this? — Common questions
+              </button>
+              {faqOpen && (
+                <div className="mt-3 space-y-2">
+                  {FAQ_ITEMS.map((item, i) => (
+                    <div
+                      key={i}
+                      className="bg-white rounded-lg overflow-hidden"
+                      style={{ border: "1px solid rgba(0, 0, 0, 0.1)" }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenFaqIndex(openFaqIndex === i ? null : i)
+                        }
+                        className="w-full text-left px-4 py-3 text-sm font-medium flex items-center justify-between transition-colors"
+                        style={{ color: "#333334" }}
+                      >
+                        {item.q}
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="shrink-0 ml-2"
+                          style={{
+                            transform:
+                              openFaqIndex === i
+                                ? "rotate(90deg)"
+                                : "rotate(0deg)",
+                            transition: "transform 0.2s ease",
+                          }}
+                        >
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </button>
+                      {openFaqIndex === i && (
+                        <p
+                          className="px-4 pb-3 text-sm leading-relaxed"
+                          style={{ color: "#666" }}
+                        >
+                          {item.a}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Token input + verify button */}
+            {verified && botUsername ? (
+              <div
+                className="rounded-lg p-6 text-center"
                 style={{
-                  transform: faqOpen ? "rotate(90deg)" : "rotate(0deg)",
-                  transition: "transform 0.2s ease",
+                  background: "rgba(34,197,94,0.08)",
+                  border: "1px solid rgba(34,197,94,0.3)",
+                  animation: "token-glow 2s ease-in-out",
                 }}
               >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-              What&apos;s this? — Common questions
-            </button>
-            {faqOpen && (
-              <div className="mt-2 space-y-1">
-                {FAQ_ITEMS.map((item, i) => (
-                  <div
-                    key={i}
-                    className="rounded-lg overflow-hidden"
-                    style={{ background: "rgba(255,255,255,0.02)" }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenFaqIndex(openFaqIndex === i ? null : i)
-                      }
-                      className="w-full text-left px-3 py-2 text-xs font-medium flex items-center justify-between cursor-pointer transition-colors"
-                      style={{ color: "var(--foreground)" }}
-                    >
-                      {item.q}
+                <p
+                  className="text-lg font-semibold"
+                  style={{ color: "#22c55e" }}
+                >
+                  ✓ Your bot @{botUsername} is ready!
+                </p>
+                <p
+                  className="text-sm mt-1"
+                  style={{ color: "rgba(34,197,94,0.7)" }}
+                >
+                  This is where your AI agent will live
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleTokenChange("")}
+                  className="text-xs mt-3 underline underline-offset-2"
+                  style={{ color: "#666" }}
+                >
+                  Use a different bot
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  placeholder="123456789:ABCdefGHIjklMNOpqrs..."
+                  value={botToken}
+                  onChange={(e) => handleTokenChange(e.target.value)}
+                  className="flex-1 px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none transition-all"
+                  style={{
+                    border: error
+                      ? "1px solid #DC6743"
+                      : "1px solid rgba(0, 0, 0, 0.1)",
+                    color: "#333334",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyToken}
+                  disabled={loading || !botToken.trim()}
+                  className="px-6 py-3 bg-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 min-w-[100px]"
+                  style={{
+                    border: "1px solid rgba(0, 0, 0, 0.1)",
+                    color: "#333334",
+                  }}
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2 justify-center">
                       <svg
-                        width="10"
-                        height="10"
+                        className="animate-spin h-3 w-3"
                         viewBox="0 0 24 24"
                         fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="shrink-0 ml-2"
-                        style={{
-                          transform:
-                            openFaqIndex === i
-                              ? "rotate(90deg)"
-                              : "rotate(0deg)",
-                          transition: "transform 0.2s ease",
-                        }}
                       >
-                        <polyline points="9 18 15 12 9 6" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
-                    </button>
-                    {openFaqIndex === i && (
-                      <p
-                        className="px-3 pb-2.5 text-xs leading-relaxed"
-                        style={{ color: "var(--muted)" }}
-                      >
-                        {item.a}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                      Verifying...
+                    </span>
+                  ) : (
+                    "Verify"
+                  )}
+                </button>
               </div>
             )}
           </div>
+        )}
 
-          {/* Token input + verify button */}
-          {verified && botUsername ? (
+        {/* Discord Bot Token */}
+        {channels.includes("discord") && (
+          <div className="mb-10">
+            <label
+              className="block text-sm font-medium mb-4"
+              style={{ color: "#333334" }}
+            >
+              Discord Bot Token
+            </label>
             <div
-              className="rounded-lg p-5 text-center"
+              className="bg-white rounded-lg p-6 mb-4 text-sm"
               style={{
-                background: "rgba(34,197,94,0.06)",
-                border: "1px solid rgba(34,197,94,0.3)",
-                animation: "token-glow 2s ease-in-out",
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#666"
               }}
             >
-              <p className="text-lg font-semibold" style={{ color: "#22c55e" }}>
-                Your bot @{botUsername} is ready!
-              </p>
               <p
-                className="text-xs mt-1"
-                style={{ color: "rgba(34,197,94,0.7)" }}
+                className="font-semibold mb-3"
+                style={{ color: "#333334" }}
               >
-                This is where your AI agent will live
+                How to get your Discord bot token:
               </p>
-              <button
-                type="button"
-                onClick={() => handleTokenChange("")}
-                className="text-[11px] mt-2 cursor-pointer underline underline-offset-2"
-                style={{ color: "var(--muted)" }}
-              >
-                Use a different bot
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="123456789:ABCdefGHIjklMNOpqrs..."
-                value={botToken}
-                onChange={(e) => handleTokenChange(e.target.value)}
-                className="flex-1 px-4 py-3 rounded-lg text-sm font-mono outline-none transition-colors"
-                style={{
-                  background: "var(--card)",
-                  border: error
-                    ? "1px solid var(--error)"
-                    : "1px solid var(--border)",
-                  color: "var(--foreground)",
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleVerifyToken}
-                disabled={loading || !botToken.trim()}
-                className="px-4 py-3 rounded-lg text-xs font-medium transition-all cursor-pointer disabled:opacity-50 min-w-[90px]"
-                style={{
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  color: "var(--foreground)",
-                }}
-              >
-                {loading ? (
-                  <span className="flex items-center gap-1.5 justify-center">
-                    <svg
-                      className="animate-spin h-3 w-3"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Verifying...
-                  </span>
-                ) : (
-                  "Verify"
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Discord Bot Token */}
-      {channels.includes("discord") && (
-        <div className="space-y-3">
-          <label className="block text-sm font-medium">Discord Bot Token</label>
-          <div
-            className="glass rounded-lg p-4 text-xs space-y-1.5"
-            style={{ color: "var(--muted)" }}
-          >
-            <p className="font-medium mb-2" style={{ color: "var(--foreground)" }}>
-              How to get your Discord bot token:
-            </p>
-            <p>1. Go to the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--foreground)" }}>Discord Developer Portal</a></p>
-            <p>2. Click &ldquo;New Application&rdquo; and name it</p>
-            <p>3. Go to the Bot tab and click &ldquo;Reset Token&rdquo;</p>
-            <p>4. Copy the token and paste it below</p>
-            <p>5. Enable &ldquo;Message Content Intent&rdquo; under Privileged Intents</p>
-            <p className="font-medium" style={{ color: "var(--foreground)" }}>
-              6. Invite the bot to your server using OAuth2 URL Generator
-            </p>
-          </div>
-          <input
-            type="password"
-            placeholder="Discord bot token..."
-            value={discordToken}
-            onChange={(e) => setDiscordToken(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg text-sm font-mono outline-none"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-            }}
-          />
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Your token is encrypted and stored securely.
-          </p>
-        </div>
-      )}
-
-      {/* Slack Bot Token */}
-      {channels.includes("slack") && (
-        <div className="space-y-3">
-          <label className="block text-sm font-medium">Slack Bot Token</label>
-          <div
-            className="glass rounded-lg p-4 text-xs space-y-1.5"
-            style={{ color: "var(--muted)" }}
-          >
-            <p className="font-medium mb-2" style={{ color: "var(--foreground)" }}>
-              How to get your Slack bot token:
-            </p>
-            <p>1. Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--foreground)" }}>api.slack.com/apps</a></p>
-            <p>2. Click &ldquo;Create New App&rdquo; and choose &ldquo;From scratch&rdquo;</p>
-            <p>3. Go to the Bot tab under &ldquo;OAuth &amp; Permissions&rdquo;</p>
-            <p>4. Add required bot scopes (chat:write, channels:read, etc.)</p>
-            <p>5. Click &ldquo;Install to Workspace&rdquo; and authorize</p>
-            <p className="font-medium" style={{ color: "var(--foreground)" }}>
-              6. Copy the Bot User OAuth Token and paste it below
-            </p>
-          </div>
-          <input
-            type="password"
-            placeholder="xoxb-..."
-            value={slackToken}
-            onChange={(e) => setSlackToken(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg text-sm font-mono outline-none"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-            }}
-          />
-          <input
-            type="password"
-            placeholder="Slack Signing Secret..."
-            value={slackSigningSecret}
-            onChange={(e) => setSlackSigningSecret(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg text-sm font-mono outline-none"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-            }}
-          />
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Your tokens are encrypted and stored securely.
-          </p>
-        </div>
-      )}
-
-      {/* WhatsApp Access Token */}
-      {channels.includes("whatsapp") && (
-        <div className="space-y-3">
-          <label className="block text-sm font-medium">WhatsApp Access Token</label>
-          <div
-            className="glass rounded-lg p-4 text-xs space-y-1.5"
-            style={{ color: "var(--muted)" }}
-          >
-            <p className="font-medium mb-2" style={{ color: "var(--foreground)" }}>
-              How to get your WhatsApp access token:
-            </p>
-            <p>1. Go to the <a href="https://developers.facebook.com/" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--foreground)" }}>Meta Developer Console</a></p>
-            <p>2. Create a new App and select &ldquo;Business&rdquo; type</p>
-            <p>3. Add the WhatsApp product to your app</p>
-            <p>4. Navigate to WhatsApp &gt; API Setup</p>
-            <p className="font-medium" style={{ color: "var(--foreground)" }}>
-              5. Copy the access token and Phone Number ID below
-            </p>
-            <p
-              className="mt-2 px-2 py-1.5 rounded text-[11px]"
-              style={{ background: "rgba(255,255,255,0.06)", color: "var(--foreground)" }}
-            >
-              Note: Meta Business verification is required for production access. You can use the test number during development.
-            </p>
-          </div>
-          <input
-            type="password"
-            placeholder="WhatsApp access token..."
-            value={whatsappToken}
-            onChange={(e) => setWhatsappToken(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg text-sm font-mono outline-none"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Phone Number ID..."
-            value={whatsappPhoneNumberId}
-            onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg text-sm font-mono outline-none"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-            }}
-          />
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Your tokens are encrypted and stored securely.
-          </p>
-        </div>
-      )}
-
-      {/* API Mode */}
-      <div className="space-y-3">
-        <label className="block text-sm font-medium">API Mode</label>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => setApiMode("all_inclusive")}
-            className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
-            style={{
-              border:
-                apiMode === "all_inclusive"
-                  ? "1px solid #ffffff"
-                  : "1px solid var(--border)",
-            }}
-          >
-            <p className="text-sm font-semibold">All-Inclusive</p>
-            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-              We handle everything. Recommended.
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setApiMode("byok")}
-            className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
-            style={{
-              border:
-                apiMode === "byok"
-                  ? "1px solid #ffffff"
-                  : "1px solid var(--border)",
-            }}
-          >
-            <p className="text-sm font-semibold">BYOK</p>
-            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-              Bring your own Anthropic key. Save more.
-            </p>
-          </button>
-        </div>
-      </div>
-
-      {/* BYOK API Key */}
-      {apiMode === "byok" && (
-        <div className="space-y-3">
-          <label className="block text-sm font-medium">
-            Anthropic API Key
-          </label>
-          <input
-            type="password"
-            placeholder="sk-ant-..."
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg text-sm font-mono outline-none"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-            }}
-          />
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Your key is encrypted and only used on your dedicated VM.
-          </p>
-        </div>
-      )}
-
-      {/* Model Selection (all-inclusive only) */}
-      {apiMode === "all_inclusive" && (
-        <div className="space-y-3">
-          <label className="block text-sm font-medium">Default Model</label>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              {
-                id: "claude-haiku-4-5-20251001",
-                label: "Claude Haiku 4.5",
-                desc: "Fast & affordable",
-              },
-              {
-                id: "claude-sonnet-4-5-20250929",
-                label: "Claude Sonnet 4.5",
-                desc: "Recommended \u2014 best balance",
-              },
-              {
-                id: "claude-opus-4-5-20250820",
-                label: "Claude Opus 4.5",
-                desc: "Premium intelligence",
-              },
-              {
-                id: "claude-opus-4-6",
-                label: "Claude Opus 4.6",
-                desc: "Most advanced",
-              },
-            ].map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setModel(m.id)}
-                className="glass rounded-lg p-4 text-left transition-all cursor-pointer"
-                style={{
-                  border:
-                    model === m.id
-                      ? "1px solid #ffffff"
-                      : "1px solid var(--border)",
-                }}
-              >
-                <p className="text-sm font-semibold">{m.label}</p>
-                <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-                  {m.desc}
+              <div className="space-y-2">
+                <p>1. Go to the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#DC6743" }}>Discord Developer Portal</a></p>
+                <p>2. Click "New Application" and name it</p>
+                <p>3. Go to the Bot tab and click "Reset Token"</p>
+                <p>4. Copy the token and paste it below</p>
+                <p>5. Enable "Message Content Intent" under Privileged Intents</p>
+                <p className="font-semibold" style={{ color: "#333334" }}>
+                  6. Invite the bot to your server using OAuth2 URL Generator
                 </p>
-              </button>
-            ))}
+              </div>
+            </div>
+            <input
+              type="password"
+              placeholder="Discord bot token..."
+              value={discordToken}
+              onChange={(e) => setDiscordToken(e.target.value)}
+              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#333334",
+              }}
+            />
+            <p className="text-xs mt-2" style={{ color: "#666" }}>
+              Your token is encrypted and stored securely.
+            </p>
+          </div>
+        )}
+
+        {/* Slack Bot Token */}
+        {channels.includes("slack") && (
+          <div className="mb-10">
+            <label
+              className="block text-sm font-medium mb-4"
+              style={{ color: "#333334" }}
+            >
+              Slack Bot Token
+            </label>
+            <div
+              className="bg-white rounded-lg p-6 mb-4 text-sm"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#666"
+              }}
+            >
+              <p
+                className="font-semibold mb-3"
+                style={{ color: "#333334" }}
+              >
+                How to get your Slack bot token:
+              </p>
+              <div className="space-y-2">
+                <p>1. Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#DC6743" }}>api.slack.com/apps</a></p>
+                <p>2. Click "Create New App" and choose "From scratch"</p>
+                <p>3. Go to the Bot tab under "OAuth & Permissions"</p>
+                <p>4. Add required bot scopes (chat:write, channels:read, etc.)</p>
+                <p>5. Click "Install to Workspace" and authorize</p>
+                <p className="font-semibold" style={{ color: "#333334" }}>
+                  6. Copy the Bot User OAuth Token and paste it below
+                </p>
+              </div>
+            </div>
+            <input
+              type="password"
+              placeholder="xoxb-..."
+              value={slackToken}
+              onChange={(e) => setSlackToken(e.target.value)}
+              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none mb-3"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#333334",
+              }}
+            />
+            <input
+              type="password"
+              placeholder="Slack Signing Secret..."
+              value={slackSigningSecret}
+              onChange={(e) => setSlackSigningSecret(e.target.value)}
+              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#333334",
+              }}
+            />
+            <p className="text-xs mt-2" style={{ color: "#666" }}>
+              Your tokens are encrypted and stored securely.
+            </p>
+          </div>
+        )}
+
+        {/* WhatsApp Access Token */}
+        {channels.includes("whatsapp") && (
+          <div className="mb-10">
+            <label
+              className="block text-sm font-medium mb-4"
+              style={{ color: "#333334" }}
+            >
+              WhatsApp Access Token
+            </label>
+            <div
+              className="bg-white rounded-lg p-6 mb-4 text-sm"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#666"
+              }}
+            >
+              <p
+                className="font-semibold mb-3"
+                style={{ color: "#333334" }}
+              >
+                How to get your WhatsApp access token:
+              </p>
+              <div className="space-y-2">
+                <p>1. Go to the <a href="https://developers.facebook.com/" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#DC6743" }}>Meta Developer Console</a></p>
+                <p>2. Create a new App and select "Business" type</p>
+                <p>3. Add the WhatsApp product to your app</p>
+                <p>4. Navigate to WhatsApp &gt; API Setup</p>
+                <p className="font-semibold" style={{ color: "#333334" }}>
+                  5. Copy the access token and Phone Number ID below
+                </p>
+                <p
+                  className="mt-3 px-3 py-2 rounded text-xs"
+                  style={{ background: "#f8f7f4", color: "#333334" }}
+                >
+                  Note: Meta Business verification is required for production access. You can use the test number during development.
+                </p>
+              </div>
+            </div>
+            <input
+              type="password"
+              placeholder="WhatsApp access token..."
+              value={whatsappToken}
+              onChange={(e) => setWhatsappToken(e.target.value)}
+              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none mb-3"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#333334",
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Phone Number ID..."
+              value={whatsappPhoneNumberId}
+              onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
+              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#333334",
+              }}
+            />
+            <p className="text-xs mt-2" style={{ color: "#666" }}>
+              Your tokens are encrypted and stored securely.
+            </p>
+          </div>
+        )}
+
+        {/* API Mode */}
+        <div className="mb-10">
+          <label
+            className="block text-sm font-medium mb-4"
+            style={{ color: "#333334" }}
+          >
+            API Mode
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setApiMode("all_inclusive")}
+              className="bg-white rounded-lg p-4 text-left transition-all"
+              style={{
+                border:
+                  apiMode === "all_inclusive"
+                    ? "2px solid #DC6743"
+                    : "1px solid rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+                All-Inclusive
+              </p>
+              <p className="text-xs mt-1" style={{ color: "#666" }}>
+                We handle everything. Recommended.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setApiMode("byok")}
+              className="bg-white rounded-lg p-4 text-left transition-all"
+              style={{
+                border:
+                  apiMode === "byok"
+                    ? "2px solid #DC6743"
+                    : "1px solid rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+                BYOK
+              </p>
+              <p className="text-xs mt-1" style={{ color: "#666" }}>
+                Bring your own Anthropic key. Save more.
+              </p>
+            </button>
           </div>
         </div>
-      )}
 
-      {error && (
-        <p className="text-sm" style={{ color: "var(--error)" }}>
-          {error}
-        </p>
-      )}
+        {/* BYOK API Key */}
+        {apiMode === "byok" && (
+          <div className="mb-10">
+            <label
+              className="block text-sm font-medium mb-4"
+              style={{ color: "#333334" }}
+            >
+              Anthropic API Key
+            </label>
+            <input
+              type="password"
+              placeholder="sk-ant-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
+              style={{
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                color: "#333334",
+              }}
+            />
+            <p className="text-xs mt-2" style={{ color: "#666" }}>
+              Your key is encrypted and only used on your dedicated VM.
+            </p>
+          </div>
+        )}
 
-      <button
-        onClick={handleContinue}
-        disabled={channels.length === 0 || (channels.includes("telegram") && !verified)}
-        className="w-full px-6 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none"
-        style={{ background: "#ffffff", color: "#000000" }}
-      >
-        Continue to Plan Selection
-      </button>
+        {/* Model Selection (all-inclusive only) */}
+        {apiMode === "all_inclusive" && (
+          <div className="mb-10">
+            <label
+              className="block text-sm font-medium mb-4"
+              style={{ color: "#333334" }}
+            >
+              Default Model
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                {
+                  id: "claude-haiku-4-5-20251001",
+                  label: "Claude Haiku 4.5",
+                  desc: "Fast & affordable",
+                },
+                {
+                  id: "claude-sonnet-4-5-20250929",
+                  label: "Claude Sonnet 4.5",
+                  desc: "Recommended — best balance",
+                },
+                {
+                  id: "claude-opus-4-5-20250820",
+                  label: "Claude Opus 4.5",
+                  desc: "Premium intelligence",
+                },
+                {
+                  id: "claude-opus-4-6",
+                  label: "Claude Opus 4.6",
+                  desc: "Most advanced",
+                },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setModel(m.id)}
+                  className="bg-white rounded-lg p-4 text-left transition-all"
+                  style={{
+                    border:
+                      model === m.id
+                        ? "2px solid #DC6743"
+                        : "1px solid rgba(0, 0, 0, 0.1)",
+                  }}
+                >
+                  <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+                    {m.label}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "#666" }}>
+                    {m.desc}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
-      {/* Glow animation for verified state */}
-      <style jsx>{`
-        @keyframes token-glow {
-          0% {
-            box-shadow: 0 0 0 rgba(34, 197, 94, 0);
+        {error && (
+          <p className="text-sm mb-6" style={{ color: "#DC6743" }}>
+            {error}
+          </p>
+        )}
+
+        <button
+          onClick={handleContinue}
+          disabled={channels.length === 0 || (channels.includes("telegram") && !verified)}
+          className="w-full px-6 py-3.5 rounded-lg text-base font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: "#DC6743",
+            color: "#ffffff",
+          }}
+        >
+          Continue to Plan Selection
+        </button>
+
+        {/* Glow animation for verified state */}
+        <style jsx>{`
+          @keyframes token-glow {
+            0% {
+              box-shadow: 0 0 0 rgba(34, 197, 94, 0);
+            }
+            30% {
+              box-shadow: 0 0 20px rgba(34, 197, 94, 0.25);
+            }
+            100% {
+              box-shadow: 0 0 0 rgba(34, 197, 94, 0);
+            }
           }
-          30% {
-            box-shadow: 0 0 20px rgba(34, 197, 94, 0.25);
-          }
-          100% {
-            box-shadow: 0 0 0 rgba(34, 197, 94, 0);
-          }
-        }
-      `}</style>
+        `}</style>
+      </div>
     </div>
   );
 }

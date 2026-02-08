@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import Image from "next/image";
+import Link from "next/link";
 
 export default function SignupPage() {
   const [code, setCode] = useState("");
@@ -41,65 +43,105 @@ export default function SignupPage() {
   }
 
   async function handleGoogleSignIn() {
-    // Store invite code in a cookie so the server-side signIn callback can read it
     document.cookie = `instaclaw_invite_code=${encodeURIComponent(code)}; path=/; max-age=3600; SameSite=Lax`;
     await signIn("google", { callbackUrl: "/connect" });
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-8 text-center">
-        <div>
-          <h1 className="text-3xl font-bold">Join InstaClaw</h1>
-          <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>
+    <div
+      className="min-h-screen flex items-center justify-center px-4"
+      style={{
+        background: "#f8f7f4",
+        color: "#333334",
+      }}
+    >
+      <div className="w-full max-w-md space-y-10">
+        {/* Logo */}
+        <Link href="/" className="flex items-center justify-center gap-2">
+          <Image src="/logo.png" alt="Instaclaw" width={40} height={40} unoptimized style={{ imageRendering: "pixelated" }} />
+          <span
+            className="text-2xl tracking-[-0.5px]"
+            style={{ fontFamily: "var(--font-serif)", color: "#333334" }}
+          >
+            Instaclaw
+          </span>
+        </Link>
+
+        {/* Heading */}
+        <div className="text-center space-y-3">
+          <h1
+            className="text-4xl sm:text-5xl font-normal tracking-[-1px]"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Join Instaclaw
+          </h1>
+          <p className="text-base" style={{ color: "#6b6b6b" }}>
             Enter your invite code to get started.
           </p>
         </div>
 
         {!validated ? (
-          <form onSubmit={handleValidate} className="space-y-4">
-            <input
-              type="text"
-              placeholder="XXXX-XXXX-XXXX"
-              value={code}
-              onChange={(e) => setCode(formatCode(e.target.value))}
-              className="w-full px-4 py-3 rounded-lg text-sm text-center tracking-widest font-mono outline-none"
-              style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
-              }}
-            />
+          <form onSubmit={handleValidate} className="space-y-5">
+            <div>
+              <input
+                type="text"
+                placeholder="XXXX-XXXX-XXXX"
+                value={code}
+                onChange={(e) => setCode(formatCode(e.target.value))}
+                className="w-full px-4 py-4 rounded-lg text-base text-center tracking-widest font-mono outline-none transition-colors"
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid rgba(0, 0, 0, 0.1)",
+                  color: "#333334",
+                }}
+              />
+            </div>
+
             <button
               type="submit"
               disabled={loading || code.length < 14}
-              className="w-full px-6 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-              style={{ background: "#ffffff", color: "#000000" }}
+              className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer disabled:opacity-50"
+              style={{
+                background: "#DC6743",
+                color: "#ffffff",
+              }}
             >
               {loading ? "Checking..." : "Validate Code"}
             </button>
+
             {error && (
-              <p className="text-sm" style={{ color: "var(--error)" }}>
+              <p className="text-sm text-center" style={{ color: "#ef4444" }}>
                 {error}
               </p>
             )}
           </form>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            {/* Success message */}
             <div
-              className="glass rounded-xl px-4 py-3 text-sm"
-              style={{ color: "var(--success)" }}
+              className="px-5 py-4 rounded-lg text-center text-base"
+              style={{
+                background: "#ffffff",
+                border: "2px solid #22c55e",
+                color: "#22c55e",
+              }}
             >
-              Invite code accepted!
+              ✓ Invite code accepted
             </div>
+
+            {/* Google sign-in */}
             <button
               onClick={handleGoogleSignIn}
-              className="w-full px-6 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-3 hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-              style={{ background: "#ffffff", color: "#000000" }}
+              className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-3"
+              style={{
+                background: "#ffffff",
+                color: "#333334",
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+              }}
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.10z"
                   fill="#4285F4"
                 />
                 <path
@@ -120,11 +162,16 @@ export default function SignupPage() {
           </div>
         )}
 
-        <p className="text-xs" style={{ color: "var(--muted)" }}>
+        {/* Back to waitlist */}
+        <p className="text-sm text-center" style={{ color: "#6b6b6b" }}>
           Don&apos;t have a code?{" "}
-          <a href="/" className="underline hover:text-white transition-colors">
+          <Link
+            href="/"
+            className="underline transition-opacity hover:opacity-70"
+            style={{ color: "#333334" }}
+          >
             Join the waitlist
-          </a>
+          </Link>
         </p>
       </div>
     </div>
