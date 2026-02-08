@@ -8,7 +8,7 @@ export default function PrivacyPolicy() {
         "--background": "#f8f7f4",
         "--foreground": "#333334",
         "--muted": "#6b6b6b",
-        "--accent": "#2b5e49",
+        "--accent": "#DC6743",
         background: "#f8f7f4",
         color: "#333334",
       } as React.CSSProperties}

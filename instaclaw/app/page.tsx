@@ -21,7 +21,7 @@ export default function Home() {
           '--muted': '#6b6b6b',
           '--card': '#ffffff',
           '--border': 'rgba(0, 0, 0, 0.1)',
-          '--accent': '#2b5e49',
+          '--accent': '#DC6743',
           background: '#f8f7f4',
           color: '#333334',
         } as React.CSSProperties}
