@@ -74,10 +74,18 @@ export function WaitlistForm() {
                 disabled={state === "loading"}
                 className="px-8 py-3 text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                 style={{
-                  background: "var(--accent)",
+                  background: "linear-gradient(-75deg, var(--accent), color-mix(in srgb, var(--accent) 85%, white), var(--accent))",
                   color: "#ffffff",
                   borderRadius: "calc(0.5rem - 2px)",
                   margin: "2px",
+                  backdropFilter: "blur(2px)",
+                  WebkitBackdropFilter: "blur(2px)",
+                  boxShadow: `
+                    rgba(0, 0, 0, 0.1) 0px 2px 2px 0px inset,
+                    rgba(255, 255, 255, 0.3) 0px -2px 2px 0px inset,
+                    rgba(0, 0, 0, 0.15) 0px 2px 4px 0px,
+                    rgba(255, 255, 255, 0.15) 0px 0px 1.6px 2px inset
+                  `,
                 }}
               >
                 {state === "loading" ? "Joining..." : "Get Early Access"}
