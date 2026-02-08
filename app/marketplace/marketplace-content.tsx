@@ -632,8 +632,6 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
           </div>
         ) : (
           <>
-
-        <>
           <div className="mb-4">
             <label className="block text-xs font-mono text-stone-500 mb-2">Posting as</label>
             <select
