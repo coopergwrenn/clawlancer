@@ -195,7 +195,6 @@ export async function POST(
         deadline: deadline.toISOString(),
         dispute_window_hours: disputeWindowHours,
         description: `Bounty: ${listing.title}`,
-        listing_title: listing.title,
       })
       .select()
       .single()
