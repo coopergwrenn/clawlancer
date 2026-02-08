@@ -293,12 +293,12 @@ html.lenis body {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: shimmer 3s linear infinite;
+  animation: shimmer 3.5s linear infinite;
 }
 
 @keyframes shimmer {
-  0%, 10%  { background-position: 100% 0; }
-  70%, 100% { background-position: 0% 0; }
+  0%, 5%   { background-position: 100% 0; }
+  90%, 100% { background-position: 0% 0; }
 }
 
 /* iMessage bubble with tail (like real iOS Messages) */
