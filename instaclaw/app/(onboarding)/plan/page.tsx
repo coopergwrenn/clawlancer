@@ -57,7 +57,6 @@ export default function PlanPage() {
     const newMode = apiMode === "all_inclusive" ? "byok" : "all_inclusive";
     setApiMode(newMode);
 
-    // Sync back to sessionStorage
     const stored = sessionStorage.getItem("instaclaw_onboarding");
     if (stored) {
       const data = JSON.parse(stored);
@@ -70,7 +69,6 @@ export default function PlanPage() {
     setLoading(true);
     setError("");
 
-    // Store tier selection
     const stored = sessionStorage.getItem("instaclaw_onboarding");
     if (stored) {
       const data = JSON.parse(stored);
@@ -79,7 +77,6 @@ export default function PlanPage() {
       sessionStorage.setItem("instaclaw_onboarding", JSON.stringify(data));
     }
 
-    // Save pending user config to database before checkout
     try {
       const onboarding = JSON.parse(
         sessionStorage.getItem("instaclaw_onboarding") ?? "{}"
@@ -91,9 +88,14 @@ export default function PlanPage() {
         body: JSON.stringify({
           botToken: onboarding.botToken,
           discordToken: onboarding.discordToken,
+          slackToken: onboarding.slackToken,
+          slackSigningSecret: onboarding.slackSigningSecret,
+          whatsappToken: onboarding.whatsappToken,
+          whatsappPhoneNumberId: onboarding.whatsappPhoneNumberId,
           channels: onboarding.channels,
           apiMode,
           apiKey: onboarding.apiKey,
+          model: onboarding.model,
           tier: selectedTier,
         }),
       });
@@ -110,7 +112,6 @@ export default function PlanPage() {
       return;
     }
 
-    // Create Stripe checkout
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
@@ -136,141 +137,177 @@ export default function PlanPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold">Choose Your Plan</h1>
-        <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>
-          All plans include a full OpenClaw instance on a dedicated VM.
-        </p>
-
-        {/* BYOK toggle */}
-        <div className="inline-flex items-center gap-3 text-sm mt-4">
-          <span style={{ color: apiMode === "byok" ? "var(--muted)" : "#ffffff" }}>
-            All-Inclusive
-          </span>
-          <button
-            type="button"
-            onClick={handleToggleApiMode}
-            className="relative w-12 h-6 rounded-full transition-colors cursor-pointer"
+    <div className="min-h-screen" style={{ background: "#f8f7f4" }}>
+      <div className="max-w-5xl mx-auto px-6 py-16">
+        <div className="text-center mb-12">
+          <h1
+            className="text-4xl font-normal mb-4"
             style={{
-              background: apiMode === "byok" ? "#ffffff" : "rgba(255, 255, 255, 0.15)",
+              fontFamily: "var(--font-serif)",
+              color: "#333334",
             }}
           >
-            <span
-              className="absolute top-1 w-4 h-4 rounded-full transition-all duration-200"
-              style={{
-                background: apiMode === "byok" ? "#000000" : "#ffffff",
-                left: apiMode === "byok" ? "28px" : "4px",
-              }}
-            />
-          </button>
-          <span style={{ color: apiMode === "byok" ? "#ffffff" : "var(--muted)" }}>
-            BYOK
-          </span>
-        </div>
-        {apiMode === "byok" && (
-          <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
-            Bring Your Own Anthropic API Key — lower monthly cost, you pay Anthropic directly.
+            Choose Your Plan
+          </h1>
+          <p className="text-base" style={{ color: "#666666" }}>
+            All plans include a full OpenClaw instance on a dedicated VM.
           </p>
-        )}
-      </div>
 
-      <div className="space-y-3">
-        {tiers.map((tier) => {
-          const price =
-            apiMode === "byok" ? tier.byok : tier.allInclusive;
-
-          return (
+          {/* BYOK toggle */}
+          <div className="inline-flex items-center gap-3 text-sm mt-6">
+            <span
+              className="font-medium"
+              style={{ color: apiMode === "byok" ? "#999999" : "#333334" }}
+            >
+              All-Inclusive
+            </span>
             <button
-              key={tier.id}
               type="button"
-              onClick={() => setSelectedTier(tier.id)}
-              className="w-full glass rounded-xl p-5 text-left transition-all cursor-pointer relative"
+              onClick={handleToggleApiMode}
+              className="relative w-12 h-6 rounded-full transition-colors cursor-pointer"
               style={{
-                border:
-                  selectedTier === tier.id
-                    ? "1px solid #ffffff"
-                    : "1px solid var(--border)",
-                boxShadow:
-                  selectedTier === tier.id
-                    ? "0 0 20px rgba(255,255,255,0.08)"
-                    : undefined,
+                background: apiMode === "byok" ? "#DC6743" : "#E5E5E5",
               }}
             >
-              {tier.popular && (
-                <span
-                  className="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-xs font-semibold"
-                  style={{ background: "#ffffff", color: "#000000" }}
-                >
-                  Popular
-                </span>
-              )}
-              {tier.trial && (
-                <span
-                  className="absolute -top-2.5 left-4 px-2 py-0.5 rounded-full text-xs font-semibold"
-                  style={{ background: "#3b82f6", color: "#ffffff" }}
-                >
-                  7-Day Free Trial
-                </span>
-              )}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold">{tier.name}</p>
-                  <p
-                    className="text-xs mt-0.5"
-                    style={{ color: "var(--muted)" }}
+              <span
+                className="absolute top-1 w-4 h-4 rounded-full transition-all duration-200"
+                style={{
+                  background: "#ffffff",
+                  left: apiMode === "byok" ? "28px" : "4px",
+                }}
+              />
+            </button>
+            <span
+              className="font-medium"
+              style={{ color: apiMode === "byok" ? "#333334" : "#999999" }}
+            >
+              BYOK
+            </span>
+          </div>
+          {apiMode === "byok" && (
+            <p className="text-xs mt-3" style={{ color: "#666666" }}>
+              Bring Your Own Anthropic API Key — lower monthly cost, you pay Anthropic directly.
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
+          {tiers.map((tier) => {
+            const price = apiMode === "byok" ? tier.byok : tier.allInclusive;
+            const isSelected = selectedTier === tier.id;
+
+            return (
+              <button
+                key={tier.id}
+                type="button"
+                onClick={() => setSelectedTier(tier.id)}
+                className="text-left transition-all cursor-pointer relative rounded-lg p-6"
+                style={{
+                  background: "#ffffff",
+                  border: isSelected
+                    ? "2px solid #DC6743"
+                    : "1px solid rgba(0, 0, 0, 0.1)",
+                  boxShadow: isSelected
+                    ? "0 4px 12px rgba(220, 103, 67, 0.1)"
+                    : "0 1px 3px rgba(0, 0, 0, 0.05)",
+                }}
+              >
+                {tier.popular && (
+                  <span
+                    className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold"
+                    style={{ background: "#DC6743", color: "#ffffff" }}
                   >
+                    Popular
+                  </span>
+                )}
+                {tier.trial && (
+                  <div
+                    className="text-xs mb-4 pb-4"
+                    style={{
+                      color: "#666666",
+                      borderBottom: "1px solid #F0F0F0",
+                    }}
+                  >
+                    7-Day Free Trial
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <h3
+                    className="text-xl font-normal mb-1"
+                    style={{
+                      fontFamily: "var(--font-serif)",
+                      color: "#333334",
+                    }}
+                  >
+                    {tier.name}
+                  </h3>
+                  <p className="text-xs" style={{ color: "#666666" }}>
                     {tier.description}
                   </p>
                 </div>
-                <div className="text-right">
-                  <span className="text-2xl font-bold">${price}</span>
-                  <span
-                    className="text-sm"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    /mo
-                  </span>
+
+                <div className="mb-6">
+                  <div className="flex items-baseline">
+                    <span
+                      className="text-4xl font-normal"
+                      style={{
+                        fontFamily: "var(--font-serif)",
+                        color: isSelected ? "#DC6743" : "#333334",
+                      }}
+                    >
+                      ${price}
+                    </span>
+                    <span className="text-sm ml-1" style={{ color: "#666666" }}>
+                      /mo
+                    </span>
+                  </div>
                   {tier.trial && (
-                    <p className="text-xs" style={{ color: "#3b82f6" }}>
+                    <p className="text-xs mt-1" style={{ color: "#999999" }}>
                       Free for 7 days
                     </p>
                   )}
                 </div>
-              </div>
-              <div className="flex gap-3 mt-3 flex-wrap">
-                {tier.features.map((f) => (
-                  <span
-                    key={f}
-                    className="text-xs px-2 py-0.5 rounded-full"
-                    style={{
-                      background: "rgba(255,255,255,0.05)",
-                      color: "var(--muted)",
-                    }}
-                  >
-                    {f}
-                  </span>
-                ))}
-              </div>
-            </button>
-          );
-        })}
+
+                <div className="space-y-2">
+                  {tier.features.map((f) => (
+                    <div
+                      key={f}
+                      className="text-xs flex items-start"
+                      style={{ color: "#666666" }}
+                    >
+                      <span className="mr-2" style={{ color: "#DC6743" }}>
+                        ✓
+                      </span>
+                      <span>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {error && (
+          <p className="text-sm text-center mb-6" style={{ color: "#ef4444" }}>
+            {error}
+          </p>
+        )}
+
+        <button
+          onClick={handleCheckout}
+          disabled={loading}
+          className="w-full px-6 py-4 rounded-lg font-semibold transition-all cursor-pointer disabled:opacity-50"
+          style={{
+            background: "#DC6743",
+            color: "#ffffff",
+            fontSize: "15px",
+            letterSpacing: "0.01em",
+          }}
+        >
+          {loading ? "Redirecting to checkout..." : "Start Free Trial"}
+        </button>
       </div>
-
-      {error && (
-        <p className="text-sm text-center" style={{ color: "#ef4444" }}>
-          {error}
-        </p>
-      )}
-
-      <button
-        onClick={handleCheckout}
-        disabled={loading}
-        className="w-full px-6 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-        style={{ background: "#ffffff", color: "#000000" }}
-      >
-        {loading ? "Redirecting to checkout..." : "Start Free Trial"}
-      </button>
     </div>
   );
 }
