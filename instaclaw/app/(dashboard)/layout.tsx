@@ -41,7 +41,7 @@ export default function DashboardLayout({
       >
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-2 text-lg font-bold tracking-tight">
-            <Image src="/logo.png" alt="InstaClaw" width={24} height={24} className="invert" />
+            <Image src="/logo.png" alt="InstaClaw" width={24} height={24} className="invert" unoptimized style={{ imageRendering: "pixelated" }} />
             Insta<span className="text-white">Claw</span>
           </Link>
 
