@@ -134,9 +134,47 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // -----------------------------------------------------------------
+  // Pass 3: Clean up stale pending_users (stuck for more than 10 minutes)
+  // -----------------------------------------------------------------
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data: stalePending } = await supabase
+    .from("instaclaw_pending_users")
+    .select("user_id, created_at")
+    .lt("created_at", tenMinutesAgo)
+    .limit(10);
+
+  let cleaned = 0;
+  if (stalePending?.length) {
+    for (const p of stalePending) {
+      // Check if they have a VM assigned (if so, don't clean up - they're just waiting for configure)
+      const { data: hasVm } = await supabase
+        .from("instaclaw_vms")
+        .select("id")
+        .eq("assigned_to", p.user_id)
+        .single();
+
+      if (hasVm) continue; // VM assigned, let retry logic handle it
+
+      // No VM after 10 minutes - clean up and let them retry
+      await supabase
+        .from("instaclaw_pending_users")
+        .delete()
+        .eq("user_id", p.user_id);
+
+      cleaned++;
+      logger.info("Cleaned up stale pending user", {
+        route: "cron/process-pending",
+        userId: p.user_id,
+        staleDuration: Math.floor((Date.now() - new Date(p.created_at).getTime()) / 1000 / 60),
+      });
+    }
+  }
+
   return NextResponse.json({
     pending: pending?.length ?? 0,
     assigned,
     retried,
+    cleaned,
   });
 }
