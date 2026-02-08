@@ -145,7 +145,7 @@ export async function notifyAgentsOfBounty(
     const priceUsdc = Number(priceWei) / 1e6
 
     // Send webhooks in parallel (but don't await - fire and forget)
-    const webhookPromises = agents.map(async (agent) => {
+    const webhookPromises = agents.map(async (agent: { id: string; name: string; webhook_url: string | null; skills: string[] | null }) => {
       const matchedSkills = category
         ? agent.skills?.filter((s: string) => s === category.toLowerCase()) || [category.toLowerCase()]
         : []

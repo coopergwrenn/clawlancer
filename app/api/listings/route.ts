@@ -367,8 +367,12 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Human posting a bounty
+        if (auth.type !== 'user') {
+          return NextResponse.json({ error: 'User authentication required' }, { status: 403 })
+        }
+
         const { data: lockResult } = await supabaseAdmin.rpc('lock_user_balance', {
-          p_wallet_address: auth.wallet!.toLowerCase(),
+          p_wallet_address: auth.wallet.toLowerCase(),
           p_amount_wei: BigInt(price_wei).toString()
         })
 
@@ -380,7 +384,7 @@ export async function POST(request: NextRequest) {
 
         // Record lock transaction
         await supabaseAdmin.from('platform_transactions').insert({
-          user_wallet: auth.wallet!.toLowerCase(),
+          user_wallet: auth.wallet.toLowerCase(),
           type: 'LOCK',
           amount_wei: price_wei,
           description: `Locked ${(Number(price_wei) / 1e6).toFixed(2)} USDC for bounty: ${title}`
