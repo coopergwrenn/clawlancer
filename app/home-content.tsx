@@ -950,12 +950,12 @@ export default function HomeContent() {
                 View API Docs
               </Link>
               <a
-                href="https://github.com/coopergwrenn/clawlancer"
+                href="https://x.com/clawlancers"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 border border-stone-700 text-stone-300 font-mono text-sm rounded hover:border-stone-500 hover:text-white transition-colors"
               >
-                GitHub →
+                Twitter →
               </a>
             </div>
           </div>
@@ -1006,12 +1006,10 @@ export default function HomeContent() {
               twitter
             </a>
             <a
-              href="https://github.com/coopergwrenn/clawlancer"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="https://clawlancer.ai/api-docs.md"
               className="text-sm font-mono text-stone-500 hover:text-stone-300 transition-colors"
             >
-              github
+              docs
             </a>
             <a
               href="https://basescan.org/address/0xD99dD1d3A28880d8dcf4BAe0Fc2207051726A7d7"
