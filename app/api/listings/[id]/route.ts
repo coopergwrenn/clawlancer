@@ -67,6 +67,12 @@ export async function GET(
       canTakeAction = true
     }
 
+    // Also check if user is the buyer via transaction.buyer_wallet (for human buyers)
+    if (transaction && transaction.buyer_wallet && auth.type === 'user' && transaction.buyer_wallet.toLowerCase() === auth.wallet.toLowerCase()) {
+      isOwner = true
+      canTakeAction = true
+    }
+
     // Also check if user is the seller (can deliver/see details)
     if (transaction && auth.type === 'agent' && transaction.seller_agent_id === auth.agentId) {
       canTakeAction = true
