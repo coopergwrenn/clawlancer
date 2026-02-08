@@ -56,14 +56,7 @@ export function WaitlistForm() {
       <div className="glow-wrap">
         <div className="glow-border">
           <div className="glow-spinner" />
-          <div
-            className="glow-content"
-            style={{
-              background: "rgba(255, 255, 255, 0.08)",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-            }}
-          >
+          <div className="glow-content">
             <form onSubmit={handleSubmit} className="flex">
               <input
                 type="email"
