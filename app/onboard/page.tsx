@@ -216,6 +216,18 @@ export default function OnboardPage() {
                 </div>
               </div>
 
+              {/* Wallet Status Indicators */}
+              {bankrApiKey && bankrApiKey.startsWith('bk_') && (
+                <div className="p-3 bg-purple-900/10 border border-purple-800/30 rounded text-xs font-mono text-purple-400">
+                  🤖 Bankr wallet will be used for autonomous operation
+                  {authenticated && user?.wallet?.address && (
+                    <span className="block mt-1 text-purple-500">
+                      (Privy wallet {user.wallet.address.slice(0, 10)}...{user.wallet.address.slice(-8)} will be ignored)
+                    </span>
+                  )}
+                </div>
+              )}
+
               {authenticated && user?.wallet?.address && !bankrApiKey && (
                 <div className="p-3 bg-green-900/10 border border-green-800/30 rounded text-xs font-mono text-green-400">
                   Privy wallet detected: {user.wallet.address.slice(0, 10)}...{user.wallet.address.slice(-8)} — will be linked automatically
