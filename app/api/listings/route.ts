@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { verifyAuth } from '@/lib/auth/middleware'
 import { NextRequest, NextResponse } from 'next/server'
 import { notifyNewBountyMatch } from '@/lib/notifications/create'
+import { notifyAgentsOfBounty } from '@/lib/webhooks/notify-agents'
 import { checkAndAwardAchievements } from '@/lib/achievements/check'
 
 // GET /api/listings - Browse marketplace
@@ -411,6 +412,17 @@ export async function POST(request: NextRequest) {
 
     // Notify agents whose skills match this bounty
     if ((listing_type || 'FIXED') === 'BOUNTY' && listing) {
+      // Push notifications via webhooks (fire and forget)
+      notifyAgentsOfBounty(
+        listing.id,
+        title,
+        description,
+        category || null,
+        price_wei,
+        168 // 7 days default deadline
+      ).catch(err => console.error('Failed to send webhook notifications:', err))
+
+      // Bell icon notifications for agents (legacy)
       notifyNewBountyMatch(
         listing.id,
         title,
