@@ -46,31 +46,47 @@ function Circle({ children, revealed }: { children: string; revealed: boolean })
       <svg
         className="absolute pointer-events-none"
         style={{
-          left: "-10px",
-          top: "-8px",
-          width: "calc(100% + 20px)",
-          height: "calc(100% + 16px)",
+          left: "-12px",
+          top: "-10px",
+          width: "calc(100% + 24px)",
+          height: "calc(100% + 20px)",
+          zIndex: -1,
         }}
         xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 100 100"
+        viewBox="0 0 120 100"
         preserveAspectRatio="none"
       >
+        {/* Multiple overlapping paths for thick Sharpie effect */}
         <path
-          d="M15,50 Q20,15 50,12 Q80,15 85,50 Q82,82 50,88 Q18,85 15,50 Z"
+          d="M10,50 Q12,18 40,15 Q70,13 95,22 Q112,35 110,55 Q108,75 85,85 Q55,90 25,82 Q8,72 10,50"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            strokeDasharray: "400",
+            strokeDashoffset: revealed ? 0 : 400,
+            transition: "stroke-dashoffset 0.8s ease-out",
+            opacity: revealed ? 0.5 : 0,
+          }}
+        />
+        <path
+          d="M11,51 Q13,20 41,17 Q72,14 96,24 Q111,36 109,56 Q107,74 84,84 Q54,89 26,81 Q9,71 11,51"
           fill="none"
           stroke="currentColor"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
-            strokeDasharray: "300",
-            strokeDashoffset: revealed ? 0 : 300,
-            transition: "stroke-dashoffset 0.8s ease-out",
-            opacity: revealed ? 0.7 : 0,
+            strokeDasharray: "400",
+            strokeDashoffset: revealed ? 0 : 400,
+            transition: "stroke-dashoffset 0.9s ease-out",
+            opacity: revealed ? 0.6 : 0,
           }}
         />
       </svg>
-      <span className="relative">{children}</span>
+      <span className="relative" style={{ zIndex: 1 }}>{children}</span>
     </span>
   );
 }
