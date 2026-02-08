@@ -249,8 +249,8 @@ export default function SettingsPage() {
     return (
       <div className="space-y-10">
         <div>
-          <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
+          <h1 className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]" style={{ fontFamily: "var(--font-serif)" }}>Settings</h1>
+          <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
             Configure your OpenClaw instance.
           </p>
         </div>
@@ -293,7 +293,7 @@ export default function SettingsPage() {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <CreditCard className="w-5 h-5" style={{ color: "var(--muted)" }} />
-                <h2 className="text-lg font-semibold">Current Plan</h2>
+                <h2 className="text-base font-medium">Current Plan</h2>
               </div>
               <p className="text-sm" style={{ color: "var(--muted)" }}>
                 {vmStatus.billing.tierName} • {vmStatus.billing.apiMode === "byok" ? "BYOK" : "All-Inclusive"}
