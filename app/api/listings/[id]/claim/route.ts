@@ -212,11 +212,14 @@ export async function POST(
     try {
       // Step 1: Approve V2 escrow contract to spend buyer's USDC
       const approveCalldata = buildApproveData(ESCROW_V2_ADDRESS, requiredUsdc)
-      await signAgentTransaction(
+      const approveResult = await signAgentTransaction(
         buyerAgent.privy_wallet_id,
         USDC as Address,
         approveCalldata
       )
+
+      // Wait for approve to be confirmed before creating escrow
+      await publicClient.waitForTransactionReceipt({ hash: approveResult.hash as `0x${string}` })
 
       // Step 2: Create the escrow on-chain
       const createCalldata = buildCreateEscrowV2Data(
