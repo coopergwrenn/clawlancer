@@ -277,9 +277,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { agent_id, title, description, category, listing_type, price_wei, price_usdc, currency, is_negotiable } = body
 
-    if (!agent_id || !title || !description || !price_wei) {
+    if (!title || !description || !price_wei) {
       return NextResponse.json(
-        { error: 'agent_id, title, description, and price_wei are required' },
+        { error: 'title, description, and price_wei are required' },
+        { status: 400 }
+      )
+    }
+
+    // Either agent_id (agent posting) OR auth.type === 'user' (human posting) is required
+    if (!agent_id && auth.type !== 'user') {
+      return NextResponse.json(
+        { error: 'agent_id required for non-user auth, or sign in as a user to post as yourself' },
         { status: 400 }
       )
     }
@@ -301,38 +309,48 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify agent ownership (skip for system auth - agent runner)
-    if (auth.type === 'system') {
-      // System auth (agent runner) can create listings for any hosted agent
-      const { data: agent } = await supabaseAdmin
-        .from('agents')
-        .select('is_hosted')
-        .eq('id', agent_id)
-        .single()
+    // OR allow human user to post without agent_id
+    if (agent_id) {
+      // Agent-posted listing — verify ownership
+      if (auth.type === 'system') {
+        // System auth (agent runner) can create listings for any hosted agent
+        const { data: agent } = await supabaseAdmin
+          .from('agents')
+          .select('is_hosted')
+          .eq('id', agent_id)
+          .single()
 
-      if (!agent || !agent.is_hosted) {
-        return NextResponse.json({ error: 'System auth can only act for hosted agents' }, { status: 403 })
-      }
-    } else if (auth.type === 'user') {
-      const { data: agent } = await supabaseAdmin
-        .from('agents')
-        .select('owner_address')
-        .eq('id', agent_id)
-        .single()
+        if (!agent || !agent.is_hosted) {
+          return NextResponse.json({ error: 'System auth can only act for hosted agents' }, { status: 403 })
+        }
+      } else if (auth.type === 'user') {
+        const { data: agent } = await supabaseAdmin
+          .from('agents')
+          .select('owner_address')
+          .eq('id', agent_id)
+          .single()
 
-      if (!agent || agent.owner_address !== auth.wallet.toLowerCase()) {
-        return NextResponse.json({ error: 'Not authorized to create listing for this agent' }, { status: 403 })
+        if (!agent || agent.owner_address !== auth.wallet.toLowerCase()) {
+          return NextResponse.json({ error: 'Not authorized to create listing for this agent' }, { status: 403 })
+        }
+      } else if (auth.type === 'agent') {
+        // Agent API key auth - verify the agent_id matches the authenticated agent
+        if (auth.agentId !== agent_id) {
+          return NextResponse.json({ error: 'API key does not match agent_id' }, { status: 403 })
+        }
       }
-    } else if (auth.type === 'agent') {
-      // Agent API key auth - verify the agent_id matches the authenticated agent
-      if (auth.agentId !== agent_id) {
-        return NextResponse.json({ error: 'API key does not match agent_id' }, { status: 403 })
+    } else {
+      // Human-posted listing (no agent_id) — only allowed for user auth
+      if (auth.type !== 'user') {
+        return NextResponse.json({ error: 'Only authenticated users can post without an agent' }, { status: 403 })
       }
     }
 
     const { data: listing, error } = await supabaseAdmin
       .from('listings')
       .insert({
-        agent_id,
+        agent_id: agent_id || null,
+        poster_wallet: agent_id ? null : (auth.type === 'user' ? auth.wallet.toLowerCase() : null),
         title,
         description,
         category: category || null,

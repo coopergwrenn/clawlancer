@@ -537,7 +537,7 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
   const [description, setDescription] = useState('')
   const [price, setPrice] = useState('')
   const [category, setCategory] = useState('other')
-  const [agentId, setAgentId] = useState('')
+  const [agentId, setAgentId] = useState<string | null>(null)
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [posting, setPosting] = useState(false)
   const [error, setError] = useState('')
@@ -550,14 +550,15 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
       .then(data => {
         const list = data?.agents || []
         setAgents(list)
-        if (list.length > 0) setAgentId(list[0].id)
+        // Default to posting as yourself (null agentId)
+        setAgentId(null)
       })
       .catch(() => {})
   }, [user?.wallet?.address])
 
   async function handlePost() {
-    if (!title || !price || !agentId) {
-      setError('Title, price, and agent are required')
+    if (!title || !price) {
+      setError('Title and price are required')
       return
     }
     setPosting(true)
@@ -571,20 +572,26 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
       }
 
       const priceWei = Math.floor(parseFloat(price) * 1e6).toString()
+      const body: Record<string, unknown> = {
+        title,
+        description,
+        category,
+        listing_type: 'BOUNTY',
+        price_wei: priceWei,
+      }
+
+      // Only include agent_id if posting as an agent (not posting as yourself)
+      if (agentId) {
+        body.agent_id = agentId
+      }
+
       const res = await fetch('/api/listings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          agent_id: agentId,
-          title,
-          description,
-          category,
-          listing_type: 'BOUNTY',
-          price_wei: priceWei,
-        }),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         onPosted()
@@ -607,32 +614,23 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
           Create a task for other agents to claim and complete.
         </p>
 
-        {agents.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-stone-500 font-mono text-sm mb-4">You need an agent to post a bounty.</p>
-            <Link
-              href="/onboard"
-              className="px-4 py-2 bg-[#c9a882] text-[#1a1614] font-mono text-sm rounded hover:bg-[#d4b896] transition-colors"
+        <>
+          <div className="mb-4">
+            <label className="block text-xs font-mono text-stone-500 mb-2">Posting as</label>
+            <select
+              value={agentId || ''}
+              onChange={(e) => setAgentId(e.target.value || null)}
+              className="w-full bg-[#141210] border border-stone-700 rounded p-3 font-mono text-sm text-[#e8ddd0]"
             >
-              Register an Agent
-            </Link>
+              <option value="">Myself (Human)</option>
+              {agents.map(a => (
+                <option key={a.id} value={a.id}>{a.name} (Agent)</option>
+              ))}
+            </select>
+            <p className="text-xs font-mono text-stone-500 mt-1">
+              {agentId ? 'Posting as an agent — agents can claim your bounty' : 'Posting as yourself — agents can claim your bounty'}
+            </p>
           </div>
-        ) : (
-          <>
-            {agents.length > 1 && (
-              <div className="mb-4">
-                <label className="block text-xs font-mono text-stone-500 mb-2">Posting as</label>
-                <select
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
-                  className="w-full bg-[#141210] border border-stone-700 rounded p-3 font-mono text-sm text-[#e8ddd0]"
-                >
-                  {agents.map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <div className="mb-4">
               <label className="block text-xs font-mono text-stone-500 mb-2">Title</label>
@@ -687,23 +685,22 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
               <p className="text-red-400 font-mono text-sm mb-4">{error}</p>
             )}
 
-            <div className="flex gap-4">
-              <button
-                onClick={handlePost}
-                disabled={posting || !title || !price}
-                className="flex-1 px-4 py-3 bg-green-700 text-white font-mono font-medium rounded hover:bg-green-600 transition-colors disabled:opacity-50"
-              >
-                {posting ? 'Posting...' : 'Post Bounty'}
-              </button>
-              <button
-                onClick={onClose}
-                className="flex-1 px-4 py-3 bg-stone-700 text-stone-300 font-mono rounded hover:bg-stone-600 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </>
-        )}
+          <div className="flex gap-4">
+            <button
+              onClick={handlePost}
+              disabled={posting || !title || !price}
+              className="flex-1 px-4 py-3 bg-green-700 text-white font-mono font-medium rounded hover:bg-green-600 transition-colors disabled:opacity-50"
+            >
+              {posting ? 'Posting...' : 'Post Bounty'}
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-3 bg-stone-700 text-stone-300 font-mono rounded hover:bg-stone-600 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
       </div>
     </div>
   )
