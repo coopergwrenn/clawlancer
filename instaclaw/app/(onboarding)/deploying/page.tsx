@@ -12,7 +12,9 @@ interface DeployStep {
   status: StepStatus;
 }
 
-const MAX_POLL_ATTEMPTS = 90; // 3 minutes at 2s intervals
+const MAX_POLL_ATTEMPTS = 45; // 90 seconds at 2s intervals
+const EARLY_CHECK_THRESHOLD = 15; // Check for issues at 30s
+const MID_CHECK_THRESHOLD = 30; // Check for issues at 60s
 
 // Rotating cowboy messages for longer-running steps
 const ROTATING_MESSAGES: Record<string, string[]> = {
@@ -95,11 +97,54 @@ export default function DeployingPage() {
   const [retrying, setRetrying] = useState(false);
   const [pollCount, setPollCount] = useState(0);
   const [polling, setPolling] = useState(true);
+  const [validationError, setValidationError] = useState<string>("");
+  const [errorType, setErrorType] = useState<"checkout" | "no_vms" | "assignment" | "config" | "timeout" | null>(null);
   const autoRetryFired = useRef(false);
+  const validationChecked = useRef(false);
 
   // Track which steps just completed (for the bounce animation)
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set());
   const completedRef = useRef<Set<string>>(new Set(["payment"]));
+
+  // ---- Initial validation: Check for valid checkout/pending user ----
+  useEffect(() => {
+    if (validationChecked.current) return;
+    validationChecked.current = true;
+
+    async function validateCheckout() {
+      try {
+        const res = await fetch("/api/vm/status");
+        const data = await res.json();
+
+        // Check if there's no pending user at all
+        if (data.status === "no_user") {
+          setValidationError("Checkout incomplete. No pending signup found.");
+          setErrorType("checkout");
+          setPolling(false);
+          setSteps((prev) =>
+            prev.map((s) => (s.id === "payment" ? s : { ...s, status: "error" }))
+          );
+          return;
+        }
+
+        // Check if pending user exists but has no stripe session
+        if (data.status === "pending" && !data.stripeSessionId) {
+          setValidationError("Payment session not found. Please restart from plan selection.");
+          setErrorType("checkout");
+          setPolling(false);
+          setSteps((prev) =>
+            prev.map((s) => (s.id === "payment" ? s : { ...s, status: "error" }))
+          );
+          return;
+        }
+      } catch (err) {
+        console.error("Validation check failed:", err);
+        // Don't block on validation errors, let polling handle it
+      }
+    }
+
+    validateCheckout();
+  }, []);
 
   const updateStep = useCallback((id: string, status: StepStatus) => {
     setSteps((prev) =>
@@ -128,9 +173,12 @@ export default function DeployingPage() {
     const interval = setInterval(async () => {
       setPollCount((c) => {
         const next = c + 1;
+
+        // Timeout after MAX_POLL_ATTEMPTS
         if (next >= MAX_POLL_ATTEMPTS) {
           setPolling(false);
           setConfigureFailed(true);
+          setErrorType("timeout");
           setSteps((prev) =>
             prev.map((s) =>
               s.status === "active" || s.status === "pending"
@@ -139,6 +187,7 @@ export default function DeployingPage() {
             )
           );
         }
+
         return next;
       });
 
@@ -146,12 +195,47 @@ export default function DeployingPage() {
         const res = await fetch("/api/vm/status");
         const data = await res.json();
 
+        // Early check (30s): Still on "assign"? Might be no VMs available
+        if (pollCount >= EARLY_CHECK_THRESHOLD && data.status === "pending") {
+          // Check if there are VMs available
+          const poolRes = await fetch("/api/vm/pool-status");
+          const poolData = await poolRes.json();
+
+          if (poolData.availableVMs === 0) {
+            setPolling(false);
+            setConfigureFailed(true);
+            setErrorType("no_vms");
+            setValidationError("No servers available. All instances are currently in use.");
+            setSteps((prev) =>
+              prev.map((s) => (s.id === "assign" ? { ...s, status: "error" } : s))
+            );
+            return;
+          }
+        }
+
+        // Mid check (60s): Still pending? Something's wrong with assignment
+        if (pollCount >= MID_CHECK_THRESHOLD && data.status === "pending") {
+          setPolling(false);
+          setConfigureFailed(true);
+          setErrorType("assignment");
+          setValidationError("Server assignment taking longer than expected. Please contact support.");
+          setSteps((prev) =>
+            prev.map((s) =>
+              s.status === "active" || s.status === "pending"
+                ? { ...s, status: "error" }
+                : s
+            )
+          );
+          return;
+        }
+
         if (data.status === "assigned" && data.vm) {
           updateStep("assign", "done");
 
           if (data.vm.healthStatus === "configure_failed") {
             setConfigureFailed(true);
             setConfigureAttempts(data.vm.configureAttempts ?? 0);
+            setErrorType("config");
             setPolling(false);
             updateStep("configure", "error");
             return;
@@ -409,7 +493,7 @@ export default function DeployingPage() {
         </div>
 
         {/* ---- Error / Retry ---- */}
-        {configureFailed && !retrying && (
+        {(configureFailed || validationError) && !retrying && (
           <div
             className="rounded-lg p-8 max-w-lg w-full space-y-4"
             style={{
@@ -418,34 +502,39 @@ export default function DeployingPage() {
               boxShadow: "0 4px 12px rgba(239, 68, 68, 0.1)",
             }}
           >
-            {maxAttemptsReached ? (
+            {/* Checkout incomplete error */}
+            {errorType === "checkout" && (
               <>
                 <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                  Configuration failed after multiple attempts.
+                  Checkout Incomplete
                 </p>
                 <p className="text-sm" style={{ color: "#666666" }}>
-                  Please contact support at{" "}
-                  <a
-                    href="mailto:cooper@clawlancer.com"
-                    className="underline hover:opacity-80 transition-opacity"
-                    style={{ color: "#DC6743" }}
-                  >
-                    cooper@clawlancer.com
-                  </a>{" "}
-                  and we&apos;ll get your instance running.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                  Configuration hit a snag.
-                </p>
-                <p className="text-sm" style={{ color: "#666666" }}>
-                  This sometimes happens during initial setup. Retrying usually
-                  fixes it.
+                  {validationError || "Payment session not found. Please restart from plan selection."}
                 </p>
                 <button
-                  onClick={handleRetry}
+                  onClick={() => router.push("/plan")}
+                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer"
+                  style={{
+                    background: "#DC6743",
+                    color: "#ffffff",
+                  }}
+                >
+                  Return to Plan Selection
+                </button>
+              </>
+            )}
+
+            {/* No VMs available */}
+            {errorType === "no_vms" && (
+              <>
+                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                  No Servers Available
+                </p>
+                <p className="text-sm" style={{ color: "#666666" }}>
+                  All instances are currently in use. We&apos;re provisioning more servers. Please try again in a few minutes or contact support.
+                </p>
+                <button
+                  onClick={() => window.location.reload()}
                   className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
                   style={{
                     background: "#DC6743",
@@ -453,7 +542,111 @@ export default function DeployingPage() {
                   }}
                 >
                   <RotateCcw className="w-4 h-4" />
-                  Retry Configuration
+                  Check Again
+                </button>
+              </>
+            )}
+
+            {/* Assignment failed */}
+            {errorType === "assignment" && (
+              <>
+                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                  Server Assignment Delayed
+                </p>
+                <p className="text-sm" style={{ color: "#666666" }}>
+                  {validationError || "Server assignment is taking longer than expected. This is unusual."} Please contact support at{" "}
+                  <a
+                    href="mailto:cooper@clawlancer.com"
+                    className="underline hover:opacity-80 transition-opacity"
+                    style={{ color: "#DC6743" }}
+                  >
+                    cooper@clawlancer.com
+                  </a>
+                </p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                  style={{
+                    background: "#DC6743",
+                    color: "#ffffff",
+                  }}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Try Again
+                </button>
+              </>
+            )}
+
+            {/* Configuration failed */}
+            {errorType === "config" && (
+              <>
+                {maxAttemptsReached ? (
+                  <>
+                    <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                      Configuration failed after multiple attempts.
+                    </p>
+                    <p className="text-sm" style={{ color: "#666666" }}>
+                      Please contact support at{" "}
+                      <a
+                        href="mailto:cooper@clawlancer.com"
+                        className="underline hover:opacity-80 transition-opacity"
+                        style={{ color: "#DC6743" }}
+                      >
+                        cooper@clawlancer.com
+                      </a>{" "}
+                      and we&apos;ll get your instance running.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                      Configuration Hit a Snag
+                    </p>
+                    <p className="text-sm" style={{ color: "#666666" }}>
+                      The server setup encountered an issue. Retrying usually fixes it.
+                    </p>
+                    <button
+                      onClick={handleRetry}
+                      className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                      style={{
+                        background: "#DC6743",
+                        color: "#ffffff",
+                      }}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Retry Configuration
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Timeout (generic fallback) */}
+            {errorType === "timeout" && (
+              <>
+                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                  Deployment Timeout
+                </p>
+                <p className="text-sm" style={{ color: "#666666" }}>
+                  Deployment took longer than expected (90 seconds). Please contact support at{" "}
+                  <a
+                    href="mailto:cooper@clawlancer.com"
+                    className="underline hover:opacity-80 transition-opacity"
+                    style={{ color: "#DC6743" }}
+                  >
+                    cooper@clawlancer.com
+                  </a>
+                </p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                  style={{
+                    background: "#DC6743",
+                    color: "#ffffff",
+                  }}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Try Again
                 </button>
               </>
             )}

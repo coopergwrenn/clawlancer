@@ -107,7 +107,7 @@ export async function GET() {
     // Check if user is pending
     const { data: pending } = await supabase
       .from("instaclaw_pending_users")
-      .select("created_at")
+      .select("created_at, stripe_session_id")
       .eq("user_id", session.user.id)
       .single();
 
@@ -115,8 +115,12 @@ export async function GET() {
       return NextResponse.json({
         status: "pending",
         since: pending.created_at,
+        stripeSessionId: pending.stripe_session_id,
       });
     }
+
+    // No VM, no pending user - shouldn't happen but handle it
+    return NextResponse.json({ status: "no_user" });
 
     // Check subscription status
     const { data: sub } = await supabase

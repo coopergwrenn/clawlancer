@@ -123,17 +123,30 @@ export default function PlanPage() {
           trial: true,
         }),
       });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setLoading(false);
+        setError(err.error || `Checkout failed (${res.status}). Please try again or contact support.`);
+        return;
+      }
+
       const data = await res.json();
 
       if (data.url) {
-        window.location.href = data.url;
+        // Small delay to ensure the user sees the loading state
+        // Then redirect to Stripe checkout
+        setTimeout(() => {
+          window.location.href = data.url;
+        }, 500);
       } else {
         setLoading(false);
-        setError(data.error || "Failed to create checkout session. Please try again.");
+        setError("Stripe checkout URL not received. Please try again or contact support.");
       }
-    } catch {
+    } catch (err) {
       setLoading(false);
-      setError("Network error creating checkout. Please try again.");
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      setError(`Network error creating checkout: ${errorMsg}. Please check your connection and try again.`);
     }
   }
 
@@ -371,7 +384,30 @@ export default function PlanPage() {
             letterSpacing: "0.01em",
           }}
         >
-          {loading ? "Redirecting to checkout..." : "Start Free Trial"}
+          {loading ? (
+            <span className="flex items-center gap-2 justify-center">
+              <svg
+                className="animate-spin h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              Creating checkout session...
+            </span>
+          ) : "Start Free Trial"}
         </button>
         </div>
       </div>
