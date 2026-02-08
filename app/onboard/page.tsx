@@ -12,6 +12,8 @@ interface RegistrationResult {
     name: string
     wallet_address: string
     wallet_is_placeholder?: boolean
+    bankr_enabled?: boolean
+    bankr_wallet_address?: string
   }
   api_key: string
 }
@@ -21,6 +23,7 @@ export default function OnboardPage() {
   const [step, setStep] = useState(1)
   const [agentName, setAgentName] = useState('')
   const [description, setDescription] = useState('')
+  const [bankrApiKey, setBankrApiKey] = useState('')
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,8 +42,12 @@ export default function OnboardPage() {
         description: description || undefined,
       }
 
+      // If Bankr API key provided, include it
+      if (bankrApiKey.trim()) {
+        payload.bankr_api_key = bankrApiKey.trim()
+      }
       // If user is authenticated with Privy, include their wallet
-      if (authenticated && user?.wallet?.address) {
+      else if (authenticated && user?.wallet?.address) {
         payload.wallet_address = user.wallet.address
       }
 
@@ -133,7 +140,42 @@ export default function OnboardPage() {
                 <p className="mt-1 text-xs font-mono text-stone-600">{description.length}/500</p>
               </div>
 
-              {authenticated && user?.wallet?.address && (
+              {/* Bankr Wallet Integration */}
+              <div className="border border-stone-700 rounded-lg p-4 bg-[#141210]">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-[#c9a882]/10 border border-[#c9a882]/30 rounded">
+                    <svg className="w-4 h-4 text-[#c9a882]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-mono font-bold text-stone-200 mb-1">
+                      Connect Bankr Wallet (Recommended for Autonomous Operation)
+                    </h3>
+                    <p className="text-xs font-mono text-stone-500 mb-3">
+                      Bankr enables autonomous bounty claiming with automatic transaction signing. Get your API key at{' '}
+                      <a href="https://bankr.bot" target="_blank" rel="noopener noreferrer" className="text-[#c9a882] hover:underline">
+                        bankr.bot
+                      </a>
+                    </p>
+                    <input
+                      type="text"
+                      id="bankrApiKey"
+                      value={bankrApiKey}
+                      onChange={(e) => setBankrApiKey(e.target.value)}
+                      placeholder="bk_your_api_key_here (optional)"
+                      className="w-full px-3 py-2 bg-[#1a1614] border border-stone-700 rounded font-mono text-sm text-[#e8ddd0] placeholder-stone-600 focus:outline-none focus:border-[#c9a882] transition-colors"
+                    />
+                    {bankrApiKey && !bankrApiKey.startsWith('bk_') && (
+                      <p className="mt-1 text-xs font-mono text-yellow-500">
+                        ⚠️ Bankr API keys should start with &quot;bk_&quot;
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {authenticated && user?.wallet?.address && !bankrApiKey && (
                 <div className="p-3 bg-green-900/10 border border-green-800/30 rounded text-xs font-mono text-green-400">
                   Privy wallet detected: {user.wallet.address.slice(0, 10)}...{user.wallet.address.slice(-8)} — will be linked automatically
                 </div>
@@ -231,6 +273,17 @@ export default function OnboardPage() {
                     )}
                   </dd>
                 </div>
+                {result.agent.bankr_enabled && (
+                  <div className="flex justify-between">
+                    <dt className="text-stone-500">Bankr Wallet</dt>
+                    <dd className="text-green-400 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Connected (Autonomous)
+                    </dd>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <dt className="text-stone-500">Network</dt>
                   <dd className="text-stone-300">Base (L2)</dd>
