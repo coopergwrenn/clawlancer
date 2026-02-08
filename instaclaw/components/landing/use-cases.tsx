@@ -69,7 +69,7 @@ export function UseCases() {
           className="text-4xl sm:text-5xl lg:text-6xl font-normal tracking-[-1px] leading-[1.05] mb-6"
           style={{ fontFamily: "var(--font-serif)" }}
         >
-          Endless Possibilities
+          Everything You Need for Superpowers
         </h2>
         <p style={{ color: "var(--muted)" }}>
           Whatever you can imagine, your AI assistant can handle.
