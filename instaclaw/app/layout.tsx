@@ -18,11 +18,11 @@ const instrumentSerif = Instrument_Serif({
 export const metadata: Metadata = {
   title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
   description:
-    "The easiest way to deploy your own OpenClaw instance. Full shell access, browser automation, skills, memory — your own dedicated VM. No DevOps required.",
+    "A personal AI that works for you around the clock. It handles your tasks, remembers everything, and gets smarter every day. Set it up in minutes.",
   openGraph: {
     title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
     description:
-      "The easiest way to deploy your own OpenClaw instance. Full shell access, browser automation, skills, memory — your own dedicated VM.",
+      "A personal AI that works for you around the clock. It handles your tasks, remembers everything, and gets smarter every day. Set it up in minutes.",
     siteName: "InstaClaw.io",
     type: "website",
   },
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
     description:
-      "The easiest way to deploy your own OpenClaw instance. Full shell access, browser automation, skills, memory — your own dedicated VM.",
+      "A personal AI that works for you around the clock. It handles your tasks, remembers everything, and gets smarter every day. Set it up in minutes.",
   },
 };
 

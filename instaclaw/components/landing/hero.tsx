@@ -98,8 +98,9 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7, ease: SNAPPY }}
         >
-          The easiest way to deploy your own OpenClaw instance — shell access,
-          browser automation, skills, memory, everything. No DevOps required.
+          A personal AI that works for you around the clock. It handles your
+          tasks, remembers everything, and gets smarter every day. Set it up in
+          minutes. No technical experience required.
         </motion.p>
 
         {/* Waitlist CTA */}
