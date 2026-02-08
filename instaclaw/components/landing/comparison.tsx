@@ -48,7 +48,7 @@ export function Comparison() {
 
         {/* Column headers */}
         <motion.div
-          className="flex"
+          className="flex gap-6 sm:gap-10"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-80px" }}
@@ -62,9 +62,9 @@ export function Comparison() {
               Self-Hosting
             </span>
           </div>
-          <div className="flex-1 pb-4 pl-6 sm:pl-10">
+          <div className="flex-1 pb-4">
             <span
-              className="text-xs sm:text-sm uppercase tracking-[2px]"
+              className="text-xs sm:text-sm uppercase tracking-[2px] font-medium"
               style={{ color: "var(--accent)" }}
             >
               InstaClaw
@@ -89,22 +89,41 @@ export function Comparison() {
                 style={{ background: "var(--border)" }}
               />
 
-              <div className="flex py-6 sm:py-8">
+              <div className="flex gap-6 sm:gap-10">
                 {/* Old way */}
-                <div className="flex-1 pr-4 sm:pr-6">
-                  <p
-                    className="text-sm sm:text-base leading-relaxed line-through decoration-1"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    {row.old}
-                  </p>
+                <div className="flex-1 py-6 sm:py-8">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="shrink-0 mt-0.5 text-sm"
+                      style={{ color: "rgba(200, 80, 60, 0.5)" }}
+                    >
+                      ✕
+                    </span>
+                    <p
+                      className="text-sm sm:text-base leading-relaxed line-through decoration-1"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {row.old}
+                    </p>
+                  </div>
                 </div>
 
                 {/* New way */}
-                <div className="flex-1 pl-6 sm:pl-10 border-l" style={{ borderColor: "var(--border)" }}>
-                  <p className="text-sm sm:text-base leading-relaxed">
-                    {row.new}
-                  </p>
+                <div
+                  className="flex-1 py-6 sm:py-8 px-5 sm:px-6 rounded-lg"
+                  style={{ background: "rgba(220, 103, 67, 0.04)" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="shrink-0 mt-0.5 text-sm"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      ✓
+                    </span>
+                    <p className="text-sm sm:text-base leading-relaxed font-medium">
+                      {row.new}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -118,6 +137,18 @@ export function Comparison() {
             </motion.div>
           ))}
         </div>
+
+        {/* Bottom punchline */}
+        <motion.p
+          className="text-center mt-10 text-sm sm:text-base font-medium"
+          style={{ color: "var(--accent)" }}
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ delay: 0.4, duration: 0.6, ease: SNAPPY }}
+        >
+          Skip the setup. Be live in minutes.
+        </motion.p>
       </div>
     </section>
   );
