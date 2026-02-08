@@ -26,7 +26,7 @@ function parseDecorations(text: string) {
 
 function Highlight({ children, revealed }: { children: string; revealed: boolean }) {
   return (
-    <span className="relative inline-block">
+    <span className={`scroll-word${revealed ? " revealed" : ""} relative inline-block`}>
       <span
         className="absolute inset-0 -mx-1 -my-0.5 rounded transition-all duration-500"
         style={{
@@ -42,7 +42,7 @@ function Highlight({ children, revealed }: { children: string; revealed: boolean
 
 function Circle({ children, revealed }: { children: string; revealed: boolean }) {
   return (
-    <span className="relative inline-block">
+    <span className={`scroll-word${revealed ? " revealed" : ""} relative inline-block`}>
       <svg
         className="absolute pointer-events-none"
         style={{
@@ -77,7 +77,7 @@ function Circle({ children, revealed }: { children: string; revealed: boolean })
 
 function Underline({ children, revealed }: { children: string; revealed: boolean }) {
   return (
-    <span className="relative inline-block">
+    <span className={`scroll-word${revealed ? " revealed" : ""} relative inline-block`}>
       <svg
         className="absolute pointer-events-none"
         style={{
