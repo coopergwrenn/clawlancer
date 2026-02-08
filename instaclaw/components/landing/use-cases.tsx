@@ -93,7 +93,7 @@ export function UseCases() {
           }}
         />
 
-        <div className="space-y-3">
+        <div className="space-y-1">
           <MarqueeRow items={firstHalf} direction="left" />
           <MarqueeRow items={secondHalf} direction="right" />
         </div>
