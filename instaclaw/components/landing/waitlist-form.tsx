@@ -67,7 +67,7 @@ export function WaitlistForm() {
           `,
         }}
       >
-        <form onSubmit={handleSubmit} className="flex p-1">
+        <form onSubmit={handleSubmit} className="flex p-1 gap-1">
           <input
             type="email"
             placeholder="you@example.com"
@@ -79,24 +79,17 @@ export function WaitlistForm() {
               color: "var(--foreground)",
             }}
           />
-          <div className="glow-wrap shrink-0" style={{ background: "transparent" }}>
-            <div className="glow-border" style={{ background: "transparent" }}>
-              <div className="glow-spinner" />
-              <div className="glow-content" style={{ background: "transparent" }}>
-                <button
-                  type="submit"
-                  disabled={state === "loading"}
-                  className="px-8 py-3 text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap rounded-lg"
-                  style={{
-                    background: "var(--accent)",
-                    color: "#ffffff",
-                  }}
-                >
-                  {state === "loading" ? "Joining..." : "Get Early Access"}
-                </button>
-              </div>
-            </div>
-          </div>
+          <button
+            type="submit"
+            disabled={state === "loading"}
+            className="px-8 py-3 text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0 rounded-lg"
+            style={{
+              background: "var(--accent)",
+              color: "#ffffff",
+            }}
+          >
+            {state === "loading" ? "Joining..." : "Get Early Access"}
+          </button>
         </form>
       </div>
       {state === "error" && (
