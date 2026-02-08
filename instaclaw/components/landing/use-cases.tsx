@@ -27,10 +27,13 @@ function MarqueeRow({
   const animClass =
     direction === "left" ? "animate-marquee-left" : "animate-marquee-right";
 
+  // Duplicate enough to fill wide screens seamlessly
+  const repeated = [...items, ...items, ...items, ...items];
+
   return (
-    <div className="flex overflow-hidden">
-      <div className={`flex gap-3 ${animClass}`}>
-        {[...items, ...items].map((item, i) => (
+    <div className="overflow-hidden w-full">
+      <div className={`flex gap-3 w-max ${animClass}`}>
+        {repeated.map((item, i) => (
           <span
             key={`${item}-${i}`}
             className="glass whitespace-nowrap px-4 py-2 rounded-full text-sm shrink-0"
@@ -49,7 +52,7 @@ export function UseCases() {
   const secondHalf = useCases.slice(8);
 
   return (
-    <section className="py-16 sm:py-[12vh] overflow-hidden">
+    <section className="py-16 sm:py-[12vh] overflow-x-clip">
       <div className="text-center mb-12 px-4">
         <h2
           className="text-4xl sm:text-5xl lg:text-6xl font-normal tracking-[-1px] leading-[1.05] mb-6"
