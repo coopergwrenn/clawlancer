@@ -57,7 +57,9 @@ async function executeBounty() {
   const claimData = await claimRes.json()
 
   if (!claimRes.ok) {
-    console.error('❌ Claim failed:', claimData)
+    console.error('❌ Claim failed:')
+    console.error('   Status:', claimRes.status)
+    console.error('   Error:', JSON.stringify(claimData, null, 2))
     return
   }
 

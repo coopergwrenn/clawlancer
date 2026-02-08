@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 const TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
@@ -64,6 +64,34 @@ export default function ConnectPage() {
         : [...prev, modelId]
     );
   }
+
+  // Auto-verify token when pasted/entered
+  const verifyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastVerifiedToken = useRef<string>("");
+
+  useEffect(() => {
+    // Clear any pending verification
+    if (verifyTimeoutRef.current) {
+      clearTimeout(verifyTimeoutRef.current);
+    }
+
+    // Don't auto-verify if already verified or already loading
+    if (verified || loading) return;
+
+    // Check if token matches valid format
+    if (TOKEN_RE.test(botToken.trim()) && botToken.trim() !== lastVerifiedToken.current) {
+      // Debounce verification by 500ms to avoid too many API calls
+      verifyTimeoutRef.current = setTimeout(() => {
+        handleVerifyToken();
+      }, 500);
+    }
+
+    return () => {
+      if (verifyTimeoutRef.current) {
+        clearTimeout(verifyTimeoutRef.current);
+      }
+    };
+  }, [botToken, verified, loading]);
 
   async function handleContinue() {
     setError("");
@@ -143,6 +171,7 @@ export default function ConnectPage() {
         setVerified(true);
         setBotUsername(data.result.username);
         setError("");
+        lastVerifiedToken.current = botToken.trim();
       } else {
         setError(
           "Invalid token — check that you copied the full token from BotFather."
@@ -328,25 +357,36 @@ export default function ConnectPage() {
             </button>
           </div>
 
-          {/* iMessage Button */}
+          {/* iMessage Button - Blue bubble styling */}
           <button
             type="button"
             onClick={() => selectChannel("imessage")}
-            className="w-full bg-white rounded-full py-4 px-6 text-left transition-all flex items-center gap-3"
+            className="w-full rounded-3xl py-5 px-6 text-left transition-all flex items-center gap-4 shadow-sm"
             style={{
-              border: selectedChannel === "imessage"
-                ? "2px solid #DC6743"
-                : "1px solid rgba(0, 0, 0, 0.1)",
+              background: selectedChannel === "imessage"
+                ? "linear-gradient(135deg, #0B84FE 0%, #0A7AEF 50%, #0B6FE0 100%)"
+                : "linear-gradient(135deg, #0B84FE 0%, #0A7AEF 50%, #0B6FE0 100%)",
+              border: "none",
+              boxShadow: selectedChannel === "imessage"
+                ? "0 4px 12px rgba(11, 132, 254, 0.3), 0 0 0 2px #DC6743"
+                : "0 2px 8px rgba(11, 132, 254, 0.15)",
             }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2C6.48 2 2 6.03 2 11C2 13.39 3.03 15.55 4.71 17.13C4.84 17.25 4.92 17.42 4.93 17.6L5 20C5 20.55 5.45 21 6 21C6.17 21 6.33 20.95 6.47 20.87L9.22 19.24C9.42 19.12 9.66 19.09 9.88 19.15C10.58 19.35 11.29 19.46 12 19.46C17.52 19.46 22 15.43 22 10.46C22 5.49 17.52 1.46 12 1.46M12 3.46C16.41 3.46 20 6.56 20 10.46C20 14.36 16.41 17.46 12 17.46C11.41 17.46 10.82 17.39 10.25 17.26C9.68 17.13 9.09 17.19 8.56 17.44L7.09 18.28L7.05 17.03C7.03 16.46 6.78 15.92 6.36 15.54C4.95 14.26 4 12.7 4 11C4 7.1 7.59 4 12 4Z" fill="#007AFF"/>
-            </svg>
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+              style={{
+                background: "rgba(255, 255, 255, 0.25)",
+              }}
+            >
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C6.48 2 2 6.03 2 11C2 13.39 3.03 15.55 4.71 17.13C4.84 17.25 4.92 17.42 4.93 17.6L5 20C5 20.55 5.45 21 6 21C6.17 21 6.33 20.95 6.47 20.87L9.22 19.24C9.42 19.12 9.66 19.09 9.88 19.15C10.58 19.35 11.29 19.46 12 19.46C17.52 19.46 22 15.43 22 10.46C22 5.49 17.52 1.46 12 1.46M12 3.46C16.41 3.46 20 6.56 20 10.46C20 14.36 16.41 17.46 12 17.46C11.41 17.46 10.82 17.39 10.25 17.26C9.68 17.13 9.09 17.19 8.56 17.44L7.09 18.28L7.05 17.03C7.03 16.46 6.78 15.92 6.36 15.54C4.95 14.26 4 12.7 4 11C4 7.1 7.59 4 12 4Z" fill="#ffffff"/>
+              </svg>
+            </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+              <p className="text-base font-semibold" style={{ color: "#ffffff" }}>
                 iMessage
               </p>
-              <p className="text-xs mt-1" style={{ color: "#666" }}>
+              <p className="text-sm mt-0.5" style={{ color: "rgba(255, 255, 255, 0.85)" }}>
                 Apple Messages integration
               </p>
             </div>
