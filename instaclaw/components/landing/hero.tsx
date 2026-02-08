@@ -136,16 +136,7 @@ export function Hero() {
           </Link>
         </motion.p>
 
-        {/* Trust line */}
-        <motion.p
-          className="text-xs tracking-wide"
-          style={{ color: "var(--muted)" }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2, duration: 0.7, ease: SNAPPY }}
-        >
-          Powered by Anthropic
-        </motion.p>
+
       </motion.div>
     </section>
   );
