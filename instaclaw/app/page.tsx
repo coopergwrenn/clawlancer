@@ -3,6 +3,7 @@ import { HowItWorks } from "@/components/landing/how-it-works";
 import { Comparison } from "@/components/landing/comparison";
 import { UseCases } from "@/components/landing/use-cases";
 import { Features } from "@/components/landing/features";
+import { Testimonials } from "@/components/landing/testimonials";
 import { Pricing } from "@/components/landing/pricing";
 import { FAQ } from "@/components/landing/faq";
 import { Footer } from "@/components/landing/footer";
@@ -40,6 +41,8 @@ export default function Home() {
         <Comparison />
         <hr className="section-divider" />
         <Features />
+        <hr className="section-divider" />
+        <Testimonials />
         <hr className="section-divider" />
         <Pricing />
         <hr className="section-divider" />
