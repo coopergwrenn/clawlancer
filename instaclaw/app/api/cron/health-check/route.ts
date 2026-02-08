@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabase();
 
-  // Get all assigned VMs (include gateway_token for health check)
+  // Get all assigned VMs with a gateway URL (includes "configuring" VMs
+  // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
     .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, assigned_to, name")

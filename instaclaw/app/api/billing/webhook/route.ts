@@ -71,8 +71,11 @@ export async function POST(req: NextRequest) {
         });
 
         if (vm) {
-          // VM assigned — trigger configuration via internal call
-          const configRes = await fetch(
+          // VM assigned — fire-and-forget configuration.
+          // The configure endpoint runs in its own serverless invocation,
+          // so we don't need to await it. This prevents the webhook from
+          // timing out (Stripe expects a response within ~20s).
+          fetch(
             `${process.env.NEXTAUTH_URL}/api/vm/configure`,
             {
               method: "POST",
@@ -82,19 +85,9 @@ export async function POST(req: NextRequest) {
               },
               body: JSON.stringify({ userId }),
             }
-          );
-          if (!configRes.ok) {
-            const configErr = await configRes.text();
-            logger.error("VM configure call failed", { error: configErr, route: "billing/webhook", status: configRes.status, userId });
-            try {
-              await sendAdminAlertEmail(
-                "VM Configure Failed After Checkout",
-                `User: ${userId}\nStatus: ${configRes.status}\nError: ${configErr}`
-              );
-            } catch {
-              // Non-fatal
-            }
-          }
+          ).catch((err) => {
+            logger.error("VM configure fire-and-forget failed", { error: String(err), route: "billing/webhook", userId });
+          });
         }
         // If no VM available, send pending email
         if (!vm) {

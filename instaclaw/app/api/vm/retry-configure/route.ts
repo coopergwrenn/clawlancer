@@ -25,9 +25,11 @@ export async function POST() {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
     }
 
-    if (vm.health_status !== "configure_failed") {
+    // Allow retry from failed, configuring, or unknown states
+    const retryableStates = ["configure_failed", "configuring", "unknown", "unhealthy"];
+    if (!retryableStates.includes(vm.health_status ?? "unknown")) {
       return NextResponse.json(
-        { error: "VM is not in a failed state" },
+        { error: "VM is not in a retryable state" },
         { status: 400 }
       );
     }
@@ -53,8 +55,9 @@ export async function POST() {
       );
     }
 
-    // Call the internal configure endpoint
-    const configRes = await fetch(
+    // Fire-and-forget the configure call.
+    // Returns immediately so the deploying page can resume polling.
+    fetch(
       `${process.env.NEXTAUTH_URL}/api/vm/configure`,
       {
         method: "POST",
@@ -64,15 +67,9 @@ export async function POST() {
         },
         body: JSON.stringify({ userId: session.user.id }),
       }
-    );
-
-    if (!configRes.ok) {
-      const errData = await configRes.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: errData.error || "Configuration failed" },
-        { status: 500 }
-      );
-    }
+    ).catch((err) => {
+      logger.error("Retry configure fire-and-forget failed", { error: String(err), route: "vm/retry-configure" });
+    });
 
     return NextResponse.json({ retried: true });
   } catch (err) {

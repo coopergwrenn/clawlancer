@@ -68,14 +68,13 @@ export async function POST(req: NextRequest) {
       channels,
     });
 
-    // Wait for health check (via SSH + openclaw health CLI)
-    const healthy = await waitForHealth(vm, result.gatewayToken);
-
-    // Update VM health status + store bot username for dashboard + reset attempts
+    // ── Critical DB updates first (before any health check) ──
+    // This ensures gateway info is persisted even if the function times out
+    // during the health check phase.
     await supabase
       .from("instaclaw_vms")
       .update({
-        health_status: healthy ? "healthy" : "unhealthy",
+        health_status: "configuring",
         last_health_check: new Date().toISOString(),
         telegram_bot_username: pending.telegram_bot_username ?? null,
         discord_bot_token: pending.discord_bot_token ?? null,
@@ -87,17 +86,32 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", vm.id);
 
-    // Mark user as onboarding complete BEFORE deleting pending record
+    // Mark user as onboarding complete + clean up pending record.
+    // Do this BEFORE the health check so it's saved even if we time out.
     await supabase
       .from("instaclaw_users")
       .update({ onboarding_complete: true })
       .eq("id", userId);
 
-    // Remove from pending
     await supabase
       .from("instaclaw_pending_users")
       .delete()
       .eq("user_id", userId);
+
+    // ── Quick health check (3 attempts × 3s = 9s max) ──
+    // If the gateway comes up fast, the user sees instant completion.
+    // If not, the health-check cron will upgrade "configuring" → "healthy".
+    const healthy = await waitForHealth(vm, result.gatewayToken, 3, 3000);
+
+    if (healthy) {
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          health_status: "healthy",
+          last_health_check: new Date().toISOString(),
+        })
+        .eq("id", vm.id);
+    }
 
     return NextResponse.json({
       configured: true,

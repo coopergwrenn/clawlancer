@@ -95,6 +95,7 @@ export default function DeployingPage() {
   const [retrying, setRetrying] = useState(false);
   const [pollCount, setPollCount] = useState(0);
   const [polling, setPolling] = useState(true);
+  const autoRetryFired = useRef(false);
 
   // Track which steps just completed (for the bounce animation)
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set());
@@ -157,19 +158,34 @@ export default function DeployingPage() {
           }
 
           if (data.vm.gatewayUrl) {
+            // Gateway URL set → configure script completed
             updateStep("configure", "done");
             updateStep("telegram", "done");
-          } else {
-            updateStep("configure", "active");
-          }
 
-          if (data.vm.healthStatus === "healthy") {
-            updateStep("configure", "done");
-            updateStep("telegram", "done");
-            updateStep("health", "done");
-            setPolling(false);
-            clearInterval(interval);
-            setTimeout(() => router.push("/dashboard"), 1500);
+            if (data.vm.healthStatus === "healthy") {
+              // Fully ready
+              updateStep("health", "done");
+              setPolling(false);
+              clearInterval(interval);
+              setTimeout(() => router.push("/dashboard"), 1500);
+            } else {
+              // "configuring" or "unknown" — health check in progress
+              updateStep("health", "active");
+            }
+          } else {
+            // No gateway URL yet — configure still running
+            updateStep("configure", "active");
+
+            // Auto-trigger retry if VM assigned but configure hasn't
+            // produced a gateway_url after 30 polls (~60s).
+            // This handles the case where the fire-and-forget from
+            // the webhook never reached the configure endpoint.
+            if (pollCount >= 30 && !autoRetryFired.current) {
+              autoRetryFired.current = true;
+              fetch("/api/vm/retry-configure", { method: "POST" }).catch(
+                () => {}
+              );
+            }
           }
         } else if (data.status === "pending") {
           updateStep("assign", "active");
