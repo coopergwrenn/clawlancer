@@ -8,6 +8,7 @@ import { saveAgentERC8004 } from '@/lib/erc8004/storage'
 import { tryFundAgent } from '@/lib/gas-faucet/fund'
 import { notifyNewAgentWelcome } from '@/lib/notifications/create'
 import { isValidBankrApiKey, bankrGetPrimaryWallet } from '@/lib/bankr'
+import { createCdpWallet, isCdpConfigured } from '@/lib/cdp'
 import { CHAIN } from '@/lib/blockchain/escrow-v2'
 
 // Generate a secure API key: clw_ + 32 hex chars
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { agent_name, wallet_address, moltbot_id, referral_source, bio, description, skills, bankr_api_key, webhook_url } = body
+    const { agent_name, wallet_address, moltbot_id, referral_source, bio, description, skills, bankr_api_key, webhook_url, wallet_provider } = body
 
     if (!agent_name) {
       return NextResponse.json(
@@ -142,6 +143,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // CDP wallet creation (if requested)
+    let cdpWalletId: string | null = null
+    let cdpWalletAddress: string | null = null
+
     // wallet_address is optional — auto-generate if not provided
     let finalWallet: string
     let walletIsPlaceholder = false
@@ -177,6 +182,26 @@ export async function POST(request: NextRequest) {
       // Auto-generate placeholder wallet for API-only registrations
       finalWallet = generatePlaceholderWallet()
       walletIsPlaceholder = true
+    }
+
+    // CDP wallet creation (if requested)
+    if (wallet_provider === 'cdp') {
+      if (!isCdpConfigured()) {
+        return NextResponse.json({ error: 'CDP wallet integration is not yet configured on this server' }, { status: 501 })
+      }
+      try {
+        const cdpWallet = await createCdpWallet()
+        cdpWalletId = cdpWallet.walletId
+        cdpWalletAddress = cdpWallet.address
+        // Use CDP wallet address as the agent's wallet if none provided
+        if (!wallet_address) {
+          finalWallet = cdpWalletAddress
+          walletIsPlaceholder = false
+        }
+      } catch (err) {
+        console.error('CDP wallet creation failed:', err)
+        return NextResponse.json({ error: 'Failed to create CDP wallet. Try again or register without CDP.' }, { status: 500 })
+      }
     }
 
     // Generate API key for this agent (clw_ + 32 hex chars, stored as sha256 hash)
@@ -217,6 +242,9 @@ export async function POST(request: NextRequest) {
         api_key: apiKeyHash,
         bankr_api_key: validatedBankrApiKey,
         bankr_wallet_address: bankrWalletAddress,
+        cdp_wallet_id: cdpWalletId,
+        cdp_wallet_address: cdpWalletAddress,
+        wallet_provider: wallet_provider || (validatedBankrApiKey ? 'bankr' : (wallet_address ? 'custom' : 'oracle')),
         webhook_url: validatedWebhookUrl,
         webhook_enabled: validatedWebhookUrl ? true : false,
         xmtp_private_key_encrypted: xmtpPrivateKeyEncrypted,
@@ -294,6 +322,9 @@ export async function POST(request: NextRequest) {
         wallet_is_placeholder: walletIsPlaceholder,
         bankr_enabled: !!validatedBankrApiKey,
         bankr_wallet_address: agent.bankr_wallet_address,
+        cdp_wallet_id: cdpWalletId,
+        cdp_wallet_address: cdpWalletAddress,
+        wallet_provider: wallet_provider || 'oracle',
         xmtp_address: agent.xmtp_address,
         xmtp_enabled: agent.xmtp_enabled,
         created_at: agent.created_at,
