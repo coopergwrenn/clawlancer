@@ -247,7 +247,7 @@ export default function SettingsPage() {
 
   if (!vm) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-10">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
           <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
@@ -278,10 +278,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
+        <h1 className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]" style={{ fontFamily: "var(--font-serif)" }}>Settings</h1>
+        <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
           Configure your OpenClaw instance.
         </p>
       </div>
@@ -325,10 +325,10 @@ export default function SettingsPage() {
 
       {/* Bot Info (read-only) */}
       <div>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
           <Bot className="w-5 h-5" /> Bot Info
         </h2>
-        <div className="glass rounded-xl p-5 space-y-3" style={{ border: "1px solid var(--border)" }}>
+        <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
           <div className="flex justify-between items-center">
             <span className="text-sm" style={{ color: "var(--muted)" }}>
               Bot Username
@@ -373,7 +373,7 @@ export default function SettingsPage() {
       {/* Channel Token Management */}
       {vm.channelsEnabled?.includes("discord") && (
         <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
             <MessageCircle className="w-5 h-5" /> Discord Token
             {discordSuccess && (
               <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
@@ -381,7 +381,7 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-5 space-y-3" style={{ border: "1px solid var(--border)" }}>
+          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
             <div className="flex gap-2">
               <input
                 type="password"
@@ -418,7 +418,7 @@ export default function SettingsPage() {
 
       {vm.channelsEnabled?.includes("slack") && (
         <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
             <Hash className="w-5 h-5" /> Slack Token
             {slackSuccess && (
               <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
@@ -426,7 +426,7 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-5 space-y-3" style={{ border: "1px solid var(--border)" }}>
+          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
             <div className="flex gap-2">
               <input
                 type="password"
@@ -463,7 +463,7 @@ export default function SettingsPage() {
 
       {vm.channelsEnabled?.includes("whatsapp") && (
         <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
             <Phone className="w-5 h-5" /> WhatsApp Token
             {whatsappSuccess && (
               <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
@@ -471,7 +471,7 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-5 space-y-3" style={{ border: "1px solid var(--border)" }}>
+          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
             <div className="flex gap-2">
               <input
                 type="password"
@@ -509,7 +509,7 @@ export default function SettingsPage() {
       {/* Model Selector (all-inclusive only) */}
       {vm.apiMode === "all_inclusive" && (
         <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
             <Cpu className="w-5 h-5" /> Default Model
             {modelSuccess && (
               <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
@@ -517,7 +517,7 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-5" style={{ border: "1px solid var(--border)" }}>
+          <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
             <select
               value={vm.model ?? "claude-sonnet-4-5-20250929"}
               onChange={(e) => handleModelChange(e.target.value)}
@@ -544,7 +544,7 @@ export default function SettingsPage() {
 
       {/* System Prompt / Bot Personality */}
       <div>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
           <MessageSquare className="w-5 h-5" /> Bot Personality
           {promptSuccess && (
             <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
@@ -552,7 +552,7 @@ export default function SettingsPage() {
             </span>
           )}
         </h2>
-        <div className="glass rounded-xl p-5 space-y-3" style={{ border: "1px solid var(--border)" }}>
+        <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
           <textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
@@ -590,7 +590,7 @@ export default function SettingsPage() {
       {/* API Key Rotation (BYOK only) */}
       {vm.apiMode === "byok" && (
         <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
             <Key className="w-5 h-5" /> API Key
             {keySuccess && (
               <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
@@ -598,7 +598,7 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-5 space-y-3" style={{ border: "1px solid var(--border)" }}>
+          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2">
               <span className="text-sm" style={{ color: "var(--muted)" }}>
                 Current key:
@@ -643,12 +643,12 @@ export default function SettingsPage() {
 
       {/* Danger Zone */}
       <div>
-        <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--error)" }}>
+        <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5" style={{ fontFamily: "var(--font-serif)", color: "var(--error)" }}>
           Danger Zone
         </h2>
         <div
-          className="glass rounded-xl p-5"
-          style={{ border: "1px solid rgba(239,68,68,0.3)" }}
+          className="glass rounded-xl p-6"
+          style={{ border: "1px solid rgba(220,38,38,0.2)" }}
         >
           <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
             Cancel your subscription or manage payment methods through Stripe.
