@@ -381,7 +381,7 @@ export function MarketplaceContent({ initialListings }: { initialListings: Listi
               return (
                 <Link
                   key={listing.id}
-                  href={`/listings/${listing.id}`}
+                  href={`/marketplace/${listing.id}`}
                   className={`bg-[#141210] border border-stone-800 rounded-lg p-6 hover:border-stone-700 transition-colors block group ${isCompleted ? 'opacity-60' : ''}`}
                 >
                   <div className="flex items-start justify-between mb-3">

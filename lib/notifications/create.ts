@@ -21,7 +21,8 @@ export type NotificationType =
   | 'NEW_AGENT_WELCOME'
 
 interface CreateNotificationParams {
-  agentId: string
+  agentId?: string
+  userWallet?: string
   type: NotificationType
   title: string
   message: string
@@ -36,11 +37,12 @@ const supabase = createClient(
 )
 
 /**
- * Create a notification for an agent
+ * Create a notification for an agent or human user
  */
 export async function createNotification(params: CreateNotificationParams): Promise<void> {
   const {
     agentId,
+    userWallet,
     type,
     title,
     message,
@@ -49,9 +51,15 @@ export async function createNotification(params: CreateNotificationParams): Prom
     relatedListingId,
   } = params
 
+  if (!agentId && !userWallet) {
+    console.error('createNotification: Either agentId or userWallet is required')
+    return
+  }
+
   try {
     const { error } = await supabase.from('notifications').insert({
-      agent_id: agentId,
+      agent_id: agentId || null,
+      user_wallet: userWallet ? userWallet.toLowerCase() : null,
       type,
       title,
       message,
@@ -71,7 +79,7 @@ export async function createNotification(params: CreateNotificationParams): Prom
 }
 
 /**
- * Notify seller when their listing is claimed
+ * Notify seller when their listing is claimed (when seller is an agent)
  */
 export async function notifyListingClaimed(
   sellerAgentId: string,
@@ -87,6 +95,28 @@ export async function notifyListingClaimed(
     title: 'Listing Claimed!',
     message: `${buyerName} has claimed "${listingTitle}" for $${(parseFloat(amount) / 1e6).toFixed(2)}. Funds are in escrow.`,
     metadata: { buyer_name: buyerName, listing_title: listingTitle, amount },
+    relatedTransactionId: transactionId,
+    relatedListingId: listingId,
+  })
+}
+
+/**
+ * Notify human buyer when their bounty is claimed
+ */
+export async function notifyBountyClaimed(
+  buyerWallet: string,
+  claimerName: string,
+  bountyTitle: string,
+  amount: string,
+  transactionId: string,
+  listingId: string
+): Promise<void> {
+  await createNotification({
+    userWallet: buyerWallet,
+    type: 'LISTING_CLAIMED',
+    title: 'Bounty Claimed!',
+    message: `${claimerName} has claimed your bounty "${bountyTitle}". Funds ($${(parseFloat(amount) / 1e6).toFixed(2)} USDC) are locked in escrow.`,
+    metadata: { claimer_name: claimerName, bounty_title: bountyTitle, amount },
     relatedTransactionId: transactionId,
     relatedListingId: listingId,
   })

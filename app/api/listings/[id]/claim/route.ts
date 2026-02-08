@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { verifyAuth } from '@/lib/auth/middleware'
-import { notifyListingClaimed } from '@/lib/notifications/create'
+import { notifyListingClaimed, notifyBountyClaimed } from '@/lib/notifications/create'
 import { tryFundAgent } from '@/lib/gas-faucet/fund'
 import { signAgentTransaction } from '@/lib/privy/server-wallet'
 import {
@@ -75,7 +75,7 @@ export async function POST(
     const { data: listing, error: listingError } = await supabaseAdmin
       .from('listings')
       .select(`
-        id, agent_id, title, description, category, listing_type,
+        id, agent_id, poster_wallet, title, description, category, listing_type,
         price_wei, currency, is_active
       `)
       .eq('id', listingId)
@@ -113,25 +113,65 @@ export async function POST(
     }
 
     // Get the bounty poster (buyer — they posted the bounty and will pay)
-    const { data: buyerAgent, error: buyerError } = await supabaseAdmin
-      .from('agents')
-      .select('id, name, wallet_address, privy_wallet_id, is_hosted')
-      .eq('id', listing.agent_id)
-      .single()
+    // Can be either an agent OR a human user
+    let buyerWallet: string
+    let buyerName: string
+    let buyerPrivyId: string | null = null
+    let buyerIsAgent = false
 
-    if (buyerError || !buyerAgent) {
-      return NextResponse.json({ error: 'Bounty poster agent not found' }, { status: 404 })
-    }
+    if (listing.agent_id) {
+      // Agent-posted bounty
+      const { data: buyerAgent, error: buyerError } = await supabaseAdmin
+        .from('agents')
+        .select('id, name, wallet_address, privy_wallet_id, is_hosted')
+        .eq('id', listing.agent_id)
+        .single()
 
-    // Hosted buyers: we sign on their behalf via Privy
-    // External buyers: cannot auto-fund — they must pre-fund or use the buy endpoint
-    if (!buyerAgent.is_hosted || !buyerAgent.privy_wallet_id) {
-      return NextResponse.json({
-        error: 'Bounty poster does not have a hosted wallet. They must fund the escrow manually via /api/listings/{id}/buy.',
-        escrow_contract: ESCROW_V2_ADDRESS,
-        seller_address: claimingAgent.wallet_address,
-        amount_wei: listing.price_wei,
-      }, { status: 400 })
+      if (buyerError || !buyerAgent) {
+        return NextResponse.json({ error: 'Bounty poster agent not found' }, { status: 404 })
+      }
+
+      if (!buyerAgent.is_hosted || !buyerAgent.privy_wallet_id) {
+        return NextResponse.json({
+          error: 'Bounty poster does not have a hosted wallet. They must fund the escrow manually via /api/listings/{id}/buy.',
+          escrow_contract: ESCROW_V2_ADDRESS,
+          seller_address: claimingAgent.wallet_address,
+          amount_wei: listing.price_wei,
+        }, { status: 400 })
+      }
+
+      buyerWallet = buyerAgent.wallet_address
+      buyerName = buyerAgent.name || 'Agent'
+      buyerPrivyId = buyerAgent.privy_wallet_id
+      buyerIsAgent = true
+    } else if (listing.poster_wallet) {
+      // Human-posted bounty
+      const { data: buyerUser, error: userError } = await supabaseAdmin
+        .from('users')
+        .select('wallet_address, privy_did, email')
+        .eq('wallet_address', listing.poster_wallet.toLowerCase())
+        .single()
+
+      if (userError || !buyerUser) {
+        return NextResponse.json({
+          error: 'Bounty poster user not found. They need to sign in first to enable auto-funding.',
+          poster_wallet: listing.poster_wallet,
+        }, { status: 404 })
+      }
+
+      if (!buyerUser.privy_did) {
+        return NextResponse.json({
+          error: 'Bounty poster does not have a Privy wallet connected. They must fund the escrow manually.',
+          poster_wallet: listing.poster_wallet,
+        }, { status: 400 })
+      }
+
+      buyerWallet = buyerUser.wallet_address
+      buyerName = buyerUser.email || 'User'
+      buyerPrivyId = buyerUser.privy_did
+      buyerIsAgent = false
+    } else {
+      return NextResponse.json({ error: 'Invalid bounty: no poster identified' }, { status: 500 })
     }
 
     // --- On-chain pre-flight checks ---
@@ -148,7 +188,7 @@ export async function POST(
       address: USDC as Address,
       abi: erc20Abi,
       functionName: 'balanceOf',
-      args: [buyerAgent.wallet_address as Address],
+      args: [buyerWallet as Address],
     })
 
     if (usdcBalance < requiredUsdc) {
@@ -158,21 +198,21 @@ export async function POST(
         error: `Bounty poster doesn't have enough USDC to fund this bounty`,
         balance_usdc: balStr,
         required_usdc: reqStr,
-        buyer_wallet: buyerAgent.wallet_address,
+        buyer_wallet: buyerWallet,
         message: `Buyer wallet has $${balStr} USDC but this bounty costs $${reqStr}.`,
       }, { status: 402 })
     }
 
     // Check buyer ETH balance (gas)
     const ethBalance = await publicClient.getBalance({
-      address: buyerAgent.wallet_address as Address,
+      address: buyerWallet as Address,
     })
 
     if (ethBalance < MIN_GAS_WEI) {
       return NextResponse.json({
         error: 'Bounty poster does not have enough ETH for gas',
         eth_balance: (Number(ethBalance) / 1e18).toFixed(6),
-        buyer_wallet: buyerAgent.wallet_address,
+        buyer_wallet: buyerWallet,
         message: 'The buyer wallet needs a small amount of ETH on Base for transaction gas.',
       }, { status: 402 })
     }
@@ -187,7 +227,8 @@ export async function POST(
       .from('transactions')
       .insert({
         listing_id: listing.id,
-        buyer_agent_id: listing.agent_id,
+        buyer_agent_id: buyerIsAgent ? listing.agent_id : null,
+        buyer_wallet: buyerIsAgent ? null : buyerWallet.toLowerCase(),
         seller_agent_id: agent_id,
         amount_wei: listing.price_wei,
         currency: listing.currency,
@@ -195,6 +236,7 @@ export async function POST(
         deadline: deadline.toISOString(),
         dispute_window_hours: disputeWindowHours,
         description: `Bounty: ${listing.title}`,
+        listing_title: listing.title,
       })
       .select()
       .single()
@@ -213,7 +255,7 @@ export async function POST(
       // Step 1: Approve V2 escrow contract to spend buyer's USDC
       const approveCalldata = buildApproveData(ESCROW_V2_ADDRESS, requiredUsdc)
       const approveResult = await signAgentTransaction(
-        buyerAgent.privy_wallet_id,
+        buyerPrivyId!,
         USDC as Address,
         approveCalldata
       )
@@ -230,7 +272,7 @@ export async function POST(
         disputeWindowHours
       )
       const createResult = await signAgentTransaction(
-        buyerAgent.privy_wallet_id,
+        buyerPrivyId!,
         ESCROW_V2_ADDRESS,
         createCalldata
       )
@@ -284,14 +326,25 @@ export async function POST(
     })
 
     // Notify the bounty poster
-    await notifyListingClaimed(
-      listing.agent_id,
-      claimingAgent.name || 'Agent',
-      listing.title,
-      listing.price_wei,
-      transaction.id,
-      listing.id
-    ).catch(err => console.error('Failed to send notification:', err))
+    if (buyerIsAgent) {
+      await notifyListingClaimed(
+        listing.agent_id!,
+        claimingAgent.name || 'Agent',
+        listing.title,
+        listing.price_wei,
+        transaction.id,
+        listing.id
+      ).catch(err => console.error('Failed to send notification:', err))
+    } else {
+      await notifyBountyClaimed(
+        buyerWallet,
+        claimingAgent.name || 'Agent',
+        listing.title,
+        listing.price_wei,
+        transaction.id,
+        listing.id
+      ).catch(err => console.error('Failed to send notification:', err))
+    }
 
     // Gas for agents who skipped /onboard
     if (!claimingAgent.gas_promo_funded && process.env.GAS_PROMO_ENABLED === 'true') {
