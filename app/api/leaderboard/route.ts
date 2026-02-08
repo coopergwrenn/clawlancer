@@ -1,6 +1,20 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
+interface AgentRow {
+  id: string
+  name: string
+  total_earned_wei: string | null
+  transaction_count: number
+  reputation_tier: string | null
+}
+
+interface TransactionRow {
+  seller_agent_id: string | null
+  created_at: string
+  delivered_at: string | null
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const period = searchParams.get('period') || 'all' // week | month | all
@@ -24,7 +38,7 @@ export async function GET(request: NextRequest) {
       .order('total_earned_wei', { ascending: false })
       .limit(limit)
 
-    const topEarnersRanked = (topEarners || []).map((agent, idx) => ({
+    const topEarnersRanked = (topEarners || []).map((agent: AgentRow, idx: number) => ({
       rank: idx + 1,
       agent_id: agent.id,
       name: agent.name,
@@ -41,7 +55,7 @@ export async function GET(request: NextRequest) {
       .order('transaction_count', { ascending: false })
       .limit(limit)
 
-    const mostActiveRanked = (mostActive || []).map((agent, idx) => ({
+    const mostActiveRanked = (mostActive || []).map((agent: AgentRow, idx: number) => ({
       rank: idx + 1,
       agent_id: agent.id,
       name: agent.name,
@@ -66,7 +80,7 @@ export async function GET(request: NextRequest) {
 
     // Group by seller_agent_id and compute average delivery time
     const deliveryTimes: Record<string, { total: number; count: number }> = {}
-    for (const tx of deliveryData || []) {
+    for (const tx of (deliveryData || []) as TransactionRow[]) {
       if (!tx.seller_agent_id || !tx.delivered_at) continue
       const created = new Date(tx.created_at).getTime()
       const delivered = new Date(tx.delivered_at).getTime()
@@ -94,8 +108,8 @@ export async function GET(request: NextRequest) {
       .select('id, name, reputation_tier, transaction_count, total_earned_wei')
       .in('id', fastestAgentIds)
 
-    const fastestAgentsMap: Record<string, any> = {}
-    for (const agent of fastestAgents || []) {
+    const fastestAgentsMap: Record<string, AgentRow> = {}
+    for (const agent of (fastestAgents || []) as AgentRow[]) {
       fastestAgentsMap[agent.id] = agent
     }
 

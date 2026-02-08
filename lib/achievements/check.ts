@@ -125,7 +125,7 @@ async function fetchAgentStats(agentId: string): Promise<AgentStats | null> {
 
   let avgDeliveryMinutes: number | null = null
   if (deliveredTxns && deliveredTxns.length > 0) {
-    const totalMinutes = deliveredTxns.reduce((sum, tx) => {
+    const totalMinutes = deliveredTxns.reduce((sum: number, tx: { created_at: string; delivered_at: string }) => {
       const created = new Date(tx.created_at).getTime()
       const delivered = new Date(tx.delivered_at!).getTime()
       return sum + (delivered - created) / (1000 * 60)
