@@ -118,8 +118,6 @@ function DeployingPageContent() {
 
         // If there's a session_id, verify it immediately
         if (sessionId) {
-          console.log("Verifying checkout session:", sessionId);
-
           const verifyRes = await fetch("/api/checkout/verify", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -128,12 +126,11 @@ function DeployingPageContent() {
 
           if (verifyRes.ok) {
             const verifyData = await verifyRes.json();
-            console.log("Checkout verification result:", verifyData);
 
             if (verifyData.verified && verifyData.status === "paid") {
               // Payment confirmed, VM assignment triggered
               if (verifyData.vmAssigned) {
-                console.log("VM assigned immediately via verification!");
+                // VM assigned successfully via instant verification
               } else if (verifyData.error === "no_vms") {
                 setValidationError("No servers available. All instances are currently in use.");
                 setErrorType("no_vms");
@@ -192,8 +189,7 @@ function DeployingPageContent() {
           return;
         }
       } catch (err) {
-        console.error("Verification/validation check failed:", err);
-        // Don't block on errors, let polling handle it
+        // Verification failed non-fatally, let polling handle it
       }
     }
 
