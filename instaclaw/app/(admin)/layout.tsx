@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -70,7 +71,8 @@ export default function AdminLayout({
     <div className="min-h-screen">
       <nav className="border-b" style={{ borderColor: "var(--border)" }}>
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/admin" className="text-lg font-bold tracking-tight">
+          <Link href="/admin" className="flex items-center gap-2 text-lg font-bold tracking-tight">
+            <Image src="/logo.png" alt="InstaClaw" width={24} height={24} className="invert" />
             InstaClaw <span style={{ color: "var(--muted)" }}>Admin</span>
           </Link>
           <div className="flex items-center gap-1">

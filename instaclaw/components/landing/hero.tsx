@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { signIn, useSession } from "next-auth/react";
@@ -12,6 +13,21 @@ export function Hero() {
 
   return (
     <section className="relative min-h-screen flex flex-col items-center justify-center px-4 overflow-hidden">
+      {/* Top-left logo */}
+      <motion.div
+        className="absolute top-6 left-6 z-20"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2, duration: 0.5, ease: SNAPPY }}
+      >
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/logo.png" alt="InstaClaw" width={28} height={28} />
+          <span className="text-lg font-bold tracking-tight">
+            Insta<span style={{ color: "var(--accent)" }}>Claw</span>
+          </span>
+        </Link>
+      </motion.div>
+
       {/* Top-right Sign In / Dashboard */}
       <motion.div
         className="absolute top-6 right-6 z-20"
