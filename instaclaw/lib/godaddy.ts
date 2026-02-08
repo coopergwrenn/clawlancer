@@ -1,6 +1,8 @@
 /**
  * GoDaddy DNS API for automatic subdomain creation
  * Used to create DNS A records for each VM to enable TLS
+ *
+ * Production credentials configured: 2026-02-08
  */
 
 import { logger } from "./logger";
