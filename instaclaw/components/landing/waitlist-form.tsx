@@ -79,8 +79,8 @@ export function WaitlistForm() {
               color: "var(--foreground)",
             }}
           />
-          <div className="glow-wrap shrink-0">
-            <div className="glow-border">
+          <div className="glow-wrap shrink-0" style={{ width: "auto" }}>
+            <div className="glow-border" style={{ width: "auto" }}>
               <div className="glow-spinner" />
               <div className="glow-content" style={{ background: "transparent" }}>
                 <button
