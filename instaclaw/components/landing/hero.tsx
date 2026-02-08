@@ -104,13 +104,14 @@ export function Hero() {
             <motion.span
               className="absolute pointer-events-none left-0 bottom-0"
               style={{
-                height: "2px",
-                background: "var(--accent)",
-                borderRadius: "1px",
+                height: "6px",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='6' viewBox='0 0 20 6'%3E%3Cpath d='M0,3 Q5,0.5 10,3 Q15,5.5 20,3' fill='none' stroke='%23DC6743' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "repeat-x",
+                backgroundSize: "20px 6px",
                 transformOrigin: "left center",
               }}
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "100%", opacity: 0.8 }}
+              animate={{ width: "100%", opacity: 0.85 }}
               transition={{ delay: 1.4, duration: 0.6, ease: "easeOut" }}
             />
           </span>
