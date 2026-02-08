@@ -70,7 +70,6 @@ function Circle({ children, revealed }: { children: string; revealed: boolean })
           top: "-10px",
           width: "calc(100% + 24px)",
           height: "calc(100% + 20px)",
-          zIndex: -1,
         }}
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 120 100"
@@ -106,7 +105,7 @@ function Circle({ children, revealed }: { children: string; revealed: boolean })
           }}
         />
       </svg>
-      <span className="relative" style={{ zIndex: 1 }}>{children}</span>
+      <span className="relative">{children}</span>
     </span>
   );
 }
