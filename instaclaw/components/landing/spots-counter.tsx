@@ -50,13 +50,13 @@ export function SpotsCounter() {
               `,
             }}
           >
-            {/* Shimmer sweep */}
+            {/* Shimmer sweep — continuous loop, no snap-back */}
             <span
               className="absolute inset-0 rounded-full"
               style={{
-                background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.5) 48%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0.5) 52%, transparent 70%)",
-                backgroundSize: "200% 100%",
-                animation: "globe-shimmer 3s ease-in-out infinite",
+                background: "linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.4) 45%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.4) 55%, transparent 80%)",
+                backgroundSize: "300% 100%",
+                animation: "globe-shimmer 4s linear infinite",
               }}
             />
             {/* Glass highlight */}
@@ -66,13 +66,14 @@ export function SpotsCounter() {
                 background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
               }}
             />
-            {/* Soft pulsing glow behind the orb */}
+            {/* Soft breathing glow — smooth, same cycle as shimmer */}
             <span
-              className="absolute inset-[-2px] rounded-full animate-pulse"
+              className="absolute inset-[-2px] rounded-full"
               style={{
                 background: spots > 0
                   ? "radial-gradient(circle, rgba(220,103,67,0.25) 0%, transparent 70%)"
                   : "radial-gradient(circle, rgba(140,140,140,0.2) 0%, transparent 70%)",
+                animation: "globe-glow 4s ease-in-out infinite",
               }}
             />
           </span>
