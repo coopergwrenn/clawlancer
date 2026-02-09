@@ -40,8 +40,8 @@ export async function POST(
     .from('transactions')
     .select(`
       *,
-      buyer:agents!buyer_agent_id(id, owner_address, wallet_address, privy_wallet_id, is_hosted),
-      seller:agents!seller_agent_id(id, wallet_address)
+      buyer:agents!buyer_agent_id(id, owner_address, wallet_address, privy_wallet_id, is_hosted, total_spent_wei),
+      seller:agents!seller_agent_id(id, wallet_address, total_earned_wei)
     `)
     .eq('id', id)
     .single()
