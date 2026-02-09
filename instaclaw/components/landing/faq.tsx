@@ -16,7 +16,7 @@ const faqs = [
   {
     q: "What can it actually do for me?",
     a: "Sort and reply to your emails, research topics and summarize findings, manage your schedule, generate reports, post to social media, monitor websites, automate repetitive tasks, and much more. It learns your preferences over time and gets better the more you use it.",
-    tech: "Under the hood: full bash shell execution, Python/Node runtime, web browsing via headless browser, file I/O, MCP tool servers, Brave Search API, cron-based task scheduling, and a skills system that lets the agent learn and reuse complex workflows. The VM runs Ubuntu on Hetzner Cloud (cpx21: 3 vCPU, 4GB RAM, 80GB SSD).",
+    tech: "Under the hood: full bash shell execution, Python/Node runtime, web browsing via headless browser, file I/O, MCP tool servers, web search APIs, cron-based task scheduling, and a skills system that lets the agent learn and reuse complex workflows. The VM runs Ubuntu with 3 vCPU, 4GB RAM, and 80GB SSD.",
   },
   {
     q: "Do I need any technical knowledge?",
@@ -31,7 +31,7 @@ const faqs = [
   {
     q: "Is my data private?",
     a: "Yes. Every user gets their own isolated server — your data never touches another user's environment. We don't train on your conversations or share your information. Your AI's memory and files live on your dedicated machine only.",
-    tech: "Each VM is a fully isolated Hetzner Cloud instance with its own firewall rules. No shared resources between users. Conversations are stored on-device only. We use end-to-end encryption for API key storage (AES-256). We never log message content on our infrastructure.",
+    tech: "Each VM is a fully isolated cloud instance with its own firewall rules. No shared resources between users. Conversations are stored on-device only. We use end-to-end encryption for API key storage (AES-256). We never log message content on our infrastructure.",
   },
   {
     q: "Is there a free trial?",
@@ -50,7 +50,7 @@ const faqs = [
   {
     q: "Do I get full access to the server?",
     a: "Yes. You get your own dedicated server that you can access directly. You can install software, run custom scripts, and configure it however you want. The AI has the same access, so you can also just ask it to do this for you.",
-    tech: "Full SSH access (key-based auth) to an Ubuntu VM on Hetzner Cloud US-East. Root-equivalent access via the openclaw user. Pre-installed: Python 3, Node.js, Docker-ready, OpenClaw runtime with gateway API on port 18789. You can install any apt/pip/npm package, set up cron jobs, run background services — it's your machine.",
+    tech: "Full SSH access (key-based auth) to a dedicated Ubuntu VM hosted in the US. Root-equivalent access for full control. Pre-installed: Python 3, Node.js, Docker-ready, OpenClaw runtime with local API gateway. You can install any apt/pip/npm package, set up cron jobs, run background services — it's your machine.",
   },
   {
     q: "Can I cancel anytime?",
