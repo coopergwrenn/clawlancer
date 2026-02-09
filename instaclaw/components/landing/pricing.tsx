@@ -240,7 +240,7 @@ export function Pricing() {
           viewport={{ once: true }}
           transition={{ delay: 0.5, duration: 0.6, ease: SNAPPY }}
         >
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm max-w-[260px] sm:max-w-none mx-auto" style={{ color: "var(--muted)" }}>
             BYOK = Bring Your Own Key. Use your Anthropic API key and pay less.
           </p>
         </motion.div>
