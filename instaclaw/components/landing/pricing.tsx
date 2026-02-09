@@ -83,11 +83,8 @@ export function Pricing() {
           >
             Simple, Transparent Pricing
           </h2>
-          <p style={{ color: "var(--muted)" }} className="mb-2">
-            Every plan includes a full OpenClaw instance on a dedicated VM.
-          </p>
-          <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
-            Credits determine how much your AI can do each month. You configure everything else.
+          <p className="text-sm sm:text-base max-w-[280px] sm:max-w-lg mx-auto mb-8" style={{ color: "var(--muted)" }}>
+            Every plan includes a dedicated VM and full OpenClaw instance. Credits set your monthly usage — you configure the rest.
           </p>
 
           {/* BYOK toggle */}
@@ -173,10 +170,9 @@ export function Pricing() {
               <ul className="space-y-3 text-sm">
                 {tier.features.map((feature) => (
                   <li key={feature} className="flex items-center gap-2">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: "var(--accent)" }}
-                    />
+                    <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M6 3l5 5-5 5" stroke="var(--foreground)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.45" />
+                    </svg>
                     {feature}
                   </li>
                 ))}
