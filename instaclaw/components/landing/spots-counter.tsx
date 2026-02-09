@@ -36,15 +36,44 @@ export function SpotsCounter() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: SNAPPY }}
         >
-          {/* Pulsing live dot */}
-          <span className="relative flex h-1.5 w-1.5">
+          {/* Glass globe orb */}
+          <span className="relative flex items-center justify-center w-5 h-5 rounded-full overflow-hidden shrink-0"
+            style={{
+              background: spots > 0
+                ? "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.5), rgba(220,103,67,0.25) 50%, rgba(180,70,40,0.6) 100%)"
+                : "radial-gradient(circle at 35% 30%, rgba(140,140,140,0.4), rgba(100,100,100,0.25) 50%, rgba(60,60,60,0.5) 100%)",
+              boxShadow: `
+                inset 0 -2px 4px rgba(0,0,0,0.3),
+                inset 0 2px 4px rgba(255,255,255,0.5),
+                inset 0 0 3px rgba(0,0,0,0.15),
+                0 1px 4px rgba(0,0,0,0.15)
+              `,
+            }}
+          >
+            {/* Shimmer sweep */}
             <span
-              className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
-              style={{ background: spots > 0 ? "var(--accent)" : "var(--muted)" }}
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.5) 48%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0.5) 52%, transparent 70%)",
+                backgroundSize: "200% 100%",
+                animation: "globe-shimmer 3s ease-in-out infinite",
+              }}
             />
+            {/* Glass highlight */}
             <span
-              className="relative inline-flex h-1.5 w-1.5 rounded-full"
-              style={{ background: spots > 0 ? "var(--accent)" : "var(--muted)" }}
+              className="absolute top-[2px] left-[3px] w-[8px] h-[5px] rounded-full pointer-events-none"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
+              }}
+            />
+            {/* Soft pulsing glow behind the orb */}
+            <span
+              className="absolute inset-[-2px] rounded-full animate-pulse"
+              style={{
+                background: spots > 0
+                  ? "radial-gradient(circle, rgba(220,103,67,0.25) 0%, transparent 70%)"
+                  : "radial-gradient(circle, rgba(140,140,140,0.2) 0%, transparent 70%)",
+              }}
             />
           </span>
 
