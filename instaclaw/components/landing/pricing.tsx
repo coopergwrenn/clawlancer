@@ -230,8 +230,23 @@ export function Pricing() {
             className="inline-flex items-center gap-2 px-6 py-2 rounded-full hover:opacity-80 transition-opacity"
             style={glassStyle}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="OpenClaw" className="w-4 h-4" style={{ imageRendering: "pixelated" }} />
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M60 10 C30 10 15 35 15 55 C15 75 30 95 45 100 L45 110 L55 110 L55 100 C55 100 60 102 65 100 L65 110 L75 110 L75 100 C90 95 105 75 105 55 C105 35 90 10 60 10Z" fill="url(#oc-grad)" />
+              <path d="M20 45 C5 40 0 50 5 60 C10 70 20 65 25 55 C28 48 25 45 20 45Z" fill="url(#oc-grad)" />
+              <path d="M100 45 C115 40 120 50 115 60 C110 70 100 65 95 55 C92 48 95 45 100 45Z" fill="url(#oc-grad)" />
+              <path d="M45 15 Q35 5 30 8" stroke="#f87171" strokeWidth="2" strokeLinecap="round" />
+              <path d="M75 15 Q85 5 90 8" stroke="#f87171" strokeWidth="2" strokeLinecap="round" />
+              <circle cx="45" cy="35" r="6" fill="#1a1a2e" />
+              <circle cx="75" cy="35" r="6" fill="#1a1a2e" />
+              <circle cx="46" cy="34" r="2" fill="#67e8f9" />
+              <circle cx="76" cy="34" r="2" fill="#67e8f9" />
+              <defs>
+                <linearGradient id="oc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#f87171" />
+                  <stop offset="100%" stopColor="#dc2626" />
+                </linearGradient>
+              </defs>
+            </svg>
             <span className="text-xs" style={{ color: "var(--foreground)" }}>Powered by</span>
             <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>OpenClaw</span>
           </a>
