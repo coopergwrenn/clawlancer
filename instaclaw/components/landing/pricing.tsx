@@ -192,7 +192,7 @@ export function Pricing() {
                       className="w-8 h-8 rounded-full flex items-center justify-center"
                       style={glassStyle}
                     >
-                      <svg width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <svg width="30" height="30" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path d={ch.path} fill={ch.color} />
                       </svg>
                     </div>
@@ -202,7 +202,7 @@ export function Pricing() {
                     className="w-8 h-8 rounded-full flex items-center justify-center"
                     style={glassStyle}
                   >
-                    <svg width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="30" height="30" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path d="M8.843 13.2a1.029 1.029 0 01-1.029 1.028A1.029 1.029 0 016.786 13.2a1.029 1.029 0 011.028-1.029h1.029v1.029zm.514 0a1.029 1.029 0 011.029-1.029 1.029 1.029 0 011.028 1.029v2.571a1.029 1.029 0 01-1.028 1.029 1.029 1.029 0 01-1.029-1.029V13.2z" fill="#E01E5A" />
                       <path d="M10.386 8.843a1.029 1.029 0 01-1.029-1.029A1.029 1.029 0 0110.386 6.786a1.029 1.029 0 011.028 1.028v1.029h-1.028zm0 .514a1.029 1.029 0 011.028 1.029 1.029 1.029 0 01-1.028 1.028H7.814a1.029 1.029 0 01-1.028-1.028 1.029 1.029 0 011.028-1.029h2.572z" fill="#36C5F0" />
                       <path d="M14.743 9.357a1.029 1.029 0 011.028-1.028 1.029 1.029 0 011.029 1.028 1.029 1.029 0 01-1.029 1.029h-1.028V9.357zm-.515 0a1.029 1.029 0 01-1.028 1.029 1.029 1.029 0 01-1.029-1.029V6.786a1.029 1.029 0 011.029-1.029 1.029 1.029 0 011.028 1.029v2.571z" fill="#2EB67D" />
