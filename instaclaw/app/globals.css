@@ -47,6 +47,38 @@
   animation: orb-pulse 6s ease-in-out infinite;
 }
 
+/* Waitlist form pulse when "Get notified" is clicked */
+@keyframes waitlist-pulse {
+  0% {
+    box-shadow:
+      rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+      rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+      rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+      rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset,
+      0 0 0 0 rgba(220, 103, 67, 0.4);
+  }
+  50% {
+    box-shadow:
+      rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+      rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+      rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+      rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset,
+      0 0 0 8px rgba(220, 103, 67, 0);
+  }
+  100% {
+    box-shadow:
+      rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+      rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+      rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+      rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset,
+      0 0 0 0 rgba(220, 103, 67, 0);
+  }
+}
+
+.waitlist-pulse {
+  animation: waitlist-pulse 0.8s ease-out;
+}
+
 /* Marquee animations */
 @keyframes marquee-left {
   0% {

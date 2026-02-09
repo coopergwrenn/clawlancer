@@ -69,6 +69,7 @@ export function WaitlistForm() {
       >
         <form onSubmit={handleSubmit} className="flex flex-col min-[370px]:flex-row p-1 gap-1">
           <input
+            id="waitlist-email"
             type="email"
             placeholder="you@example.com"
             value={email}

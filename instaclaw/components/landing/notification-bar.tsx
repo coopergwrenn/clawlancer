@@ -14,16 +14,25 @@ export function NotificationBar() {
       <p style={{ color: "var(--foreground)" }}>
         We&apos;re just getting started. Get updates as new features drop.
       </p>
-      <a
-        href="#waitlist"
-        className="shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-snappy hover:opacity-80"
+      <button
+        onClick={() => {
+          const input = document.getElementById("waitlist-email") as HTMLInputElement | null;
+          if (!input) return;
+          input.focus();
+          const form = input.closest(".rounded-xl");
+          if (form) {
+            form.classList.add("waitlist-pulse");
+            setTimeout(() => form.classList.remove("waitlist-pulse"), 800);
+          }
+        }}
+        className="shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-snappy hover:opacity-80 cursor-pointer"
         style={{
           border: "1px solid var(--foreground)",
           color: "var(--foreground)",
         }}
       >
         Get notified
-      </a>
+      </button>
       <button
         onClick={() => setDismissed(true)}
         className="shrink-0 ml-2 p-1 rounded-full hover:opacity-60 transition-snappy cursor-pointer"
