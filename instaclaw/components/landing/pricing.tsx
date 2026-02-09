@@ -6,33 +6,60 @@ import { WaitlistForm } from "./waitlist-form";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
 
+const glassStyle = {
+  background:
+    "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow: `
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
+  `,
+};
+
 const tiers = [
   {
     name: "Starter",
     allInclusive: "$29",
     byok: "$14",
     description: "Perfect for personal use",
-    features: ["Full OpenClaw instance", "Dedicated VM", "Telegram integration", "Basic server resources"],
+    features: [
+      "Your own OpenClaw instance",
+      "Dedicated VM",
+      "All channels included",
+      "1,000 credits/month",
+    ],
     highlighted: false,
-    trial: true,
+    badge: "7-Day Free Trial",
   },
   {
     name: "Pro",
     allInclusive: "$79",
     byok: "$39",
     description: "For power users",
-    features: ["Everything in Starter", "More CPU & RAM", "Priority support", "Faster response times"],
+    features: [
+      "Everything in Starter",
+      "5,000 credits/month",
+      "Priority support",
+    ],
     highlighted: true,
-    trial: true,
+    badge: "Most Popular \u00B7 7-Day Free Trial",
   },
   {
     name: "Power",
     allInclusive: "$199",
     byok: "$99",
     description: "Maximum performance",
-    features: ["Everything in Pro", "Top-tier resources", "Custom configurations", "Dedicated support"],
+    features: [
+      "Everything in Pro",
+      "25,000 credits/month",
+      "Upgraded server resources",
+      "Dedicated support",
+    ],
     highlighted: false,
-    trial: true,
+    badge: "7-Day Free Trial",
   },
 ];
 
@@ -55,24 +82,17 @@ export function Pricing() {
           >
             Simple, Transparent Pricing
           </h2>
-          <p style={{ color: "var(--muted)" }} className="mb-8">
+          <p style={{ color: "var(--muted)" }} className="mb-2">
             Every plan includes a full OpenClaw instance on a dedicated VM.
+          </p>
+          <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
+            Credits determine how much your AI can do each month. You configure everything else.
           </p>
 
           {/* BYOK toggle */}
           <div
             className="inline-flex items-center gap-3 text-sm px-6 py-2.5 rounded-full"
-            style={{
-              background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-              backdropFilter: "blur(2px)",
-              WebkitBackdropFilter: "blur(2px)",
-              boxShadow: `
-                rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-              `,
-            }}
+            style={glassStyle}
           >
             <span style={{ color: isByok ? "var(--muted)" : "var(--foreground)" }}>
               All-Inclusive
@@ -115,35 +135,26 @@ export function Pricing() {
           {tiers.map((tier, i) => (
             <motion.div
               key={tier.name}
-              className="glass rounded-xl p-8 relative"
-              style={
-                tier.highlighted
-                  ? {
-                      border: "2px solid var(--accent)",
-                    }
-                  : undefined
-              }
+              className="rounded-xl p-8 relative"
+              style={{
+                ...glassStyle,
+                ...(tier.highlighted
+                  ? { border: "2px solid var(--accent)" }
+                  : {}),
+              }}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
               transition={{ delay: i * 0.15, duration: 0.6, ease: SNAPPY }}
             >
-              {tier.highlighted && (
-                <span
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-xs font-semibold"
-                  style={{
-                    background: "var(--accent)",
-                    color: "#ffffff",
-                  }}
-                >
-                  Most Popular
-                </span>
-              )}
               <span
-                className="absolute -top-3 right-4 px-3 py-0.5 rounded-full text-xs font-semibold"
-                style={{ background: "var(--accent)", color: "#ffffff" }}
+                className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
+                style={{
+                  background: "var(--accent)",
+                  color: "#ffffff",
+                }}
               >
-                7-Day Free Trial
+                {tier.badge}
               </span>
               <h3 className="text-lg font-semibold mb-1">{tier.name}</h3>
               <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
@@ -159,11 +170,9 @@ export function Pricing() {
                 >
                   /mo
                 </span>
-                {tier.trial && (
-                  <p className="text-xs mt-1" style={{ color: "var(--accent)" }}>
-                    Free for 7 days
-                  </p>
-                )}
+                <p className="text-xs mt-1" style={{ color: "var(--accent)" }}>
+                  Free for 7 days
+                </p>
               </div>
               <ul className="space-y-3 text-sm">
                 {tier.features.map((feature) => (
@@ -214,17 +223,7 @@ export function Pricing() {
         >
           <div
             className="inline-flex items-center gap-2 px-6 py-2 rounded-full"
-            style={{
-              background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-              backdropFilter: "blur(2px)",
-              WebkitBackdropFilter: "blur(2px)",
-              boxShadow: `
-                rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-              `,
-            }}
+            style={glassStyle}
           >
             <span className="text-xs" style={{ color: "var(--foreground)" }}>Powered by</span>
             <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>OpenClaw</span>
