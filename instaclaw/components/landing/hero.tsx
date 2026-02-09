@@ -92,17 +92,17 @@ export function Hero() {
 
         {/* Subtext */}
         <motion.p
-          className="text-lg sm:text-xl max-w-xl mx-auto leading-relaxed"
+          className="text-base sm:text-xl max-w-md sm:max-w-xl mx-auto leading-relaxed sm:text-balance"
           style={{ color: "var(--muted)" }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7, ease: SNAPPY }}
         >
           A personal AI that works for you{" "}
-          <span className="relative inline-block">
+          <span className="relative sm:inline-block">
             around the clock
             <motion.span
-              className="absolute pointer-events-none left-0 bottom-0"
+              className="absolute pointer-events-none left-0 bottom-0 hidden sm:block"
               style={{
                 height: "6px",
                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='6' viewBox='0 0 20 6'%3E%3Cpath d='M0,3 Q5,0.5 10,3 Q15,5.5 20,3' fill='none' stroke='%23DC6743' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E")`,
@@ -116,9 +116,9 @@ export function Hero() {
             />
           </span>
           . It handles your tasks,{" "}
-          <span className="relative inline-block">
+          <span className="relative sm:inline-block">
             <motion.svg
-              className="absolute pointer-events-none"
+              className="absolute pointer-events-none hidden sm:block"
               style={{
                 left: "-12px",
                 top: "-6px",
