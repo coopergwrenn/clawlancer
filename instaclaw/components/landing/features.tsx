@@ -95,12 +95,20 @@ export function Features() {
               />
 
               <div className="flex gap-5 sm:gap-8 py-8 sm:py-10 items-start">
-                {/* Icon */}
-                <feature.icon
-                  className="w-6 h-6 shrink-0 mt-1"
-                  style={{ color: "var(--accent)" }}
-                  strokeWidth={1.5}
-                />
+                {/* Icon in glass orb */}
+                <span
+                  className="shrink-0 mt-1 flex items-center justify-center w-9 h-9 rounded-full"
+                  style={{
+                    background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.18), rgba(220,103,67,0.06) 70%)",
+                    boxShadow: "inset 0 1.5px 3px rgba(255,255,255,0.4), inset 0 -1.5px 3px rgba(0,0,0,0.08), 0 1px 3px rgba(220,103,67,0.08)",
+                  }}
+                >
+                  <feature.icon
+                    className="w-[18px] h-[18px]"
+                    style={{ color: "var(--accent)" }}
+                    strokeWidth={1.5}
+                  />
+                </span>
 
                 {/* Content */}
                 <div>
