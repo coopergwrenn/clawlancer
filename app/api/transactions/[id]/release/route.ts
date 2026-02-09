@@ -221,42 +221,52 @@ export async function POST(
   const sellerAmount = amountWei - feeAmount
 
   // Update seller earnings
-  await supabaseAdmin
-    .from('agents')
-    .update({
-      total_earned_wei: (BigInt(seller.total_earned_wei || '0') + sellerAmount).toString(),
-    })
-    .eq('id', seller.id)
-    .catch((err: Error) => console.error('Failed to update seller earnings:', err))
-
-  // Update buyer spending (only if buyer is an agent)
-  if (buyer?.id) {
+  try {
     await supabaseAdmin
       .from('agents')
       .update({
-        total_spent_wei: (BigInt(buyer.total_spent_wei || '0') + amountWei).toString(),
+        total_earned_wei: (BigInt(seller.total_earned_wei || '0') + sellerAmount).toString(),
       })
-      .eq('id', buyer.id)
-      .catch((err: Error) => console.error('Failed to update buyer spending:', err))
+      .eq('id', seller.id)
+  } catch (err) {
+    console.error('Failed to update seller earnings:', err)
+  }
+
+  // Update buyer spending (only if buyer is an agent)
+  if (buyer?.id) {
+    try {
+      await supabaseAdmin
+        .from('agents')
+        .update({
+          total_spent_wei: (BigInt(buyer.total_spent_wei || '0') + amountWei).toString(),
+        })
+        .eq('id', buyer.id)
+    } catch (err) {
+      console.error('Failed to update buyer spending:', err)
+    }
 
     // Increment buyer transaction count
-    await supabaseAdmin.rpc('increment_transaction_count', { agent_id: buyer.id }).catch(() => {})
+    try { await supabaseAdmin.rpc('increment_transaction_count', { agent_id: buyer.id }) } catch {}
   }
 
   // Increment seller transaction count
-  await supabaseAdmin.rpc('increment_transaction_count', { agent_id: seller.id }).catch(() => {})
+  try { await supabaseAdmin.rpc('increment_transaction_count', { agent_id: seller.id }) } catch {}
 
   // Record platform fee
   if (feeAmount > BigInt(0)) {
-    await supabaseAdmin.from('platform_fees').insert({
-      transaction_id: id,
-      fee_type: 'MARKETPLACE',
-      amount_wei: feeAmount.toString(),
-      currency: transaction.currency || 'USDC',
-      buyer_agent_id: buyer?.id || null,
-      seller_agent_id: seller.id,
-      description: `1% marketplace fee on "${transaction.listing_title || 'transaction'}"`,
-    }).catch((err: Error) => console.error('Failed to record platform fee:', err))
+    try {
+      await supabaseAdmin.from('platform_fees').insert({
+        transaction_id: id,
+        fee_type: 'MARKETPLACE',
+        amount_wei: feeAmount.toString(),
+        currency: transaction.currency || 'USDC',
+        buyer_agent_id: buyer?.id || null,
+        seller_agent_id: seller.id,
+        description: `1% marketplace fee on "${transaction.listing_title || 'transaction'}"`,
+      })
+    } catch (err) {
+      console.error('Failed to record platform fee:', err)
+    }
   }
 
   // Create reputation feedback for V2 transactions
@@ -273,35 +283,47 @@ export async function POST(
       transaction.deliverable_hash
     )
 
-    await supabaseAdmin.from('reputation_feedback').insert({
-      agent_id: seller.id,
-      transaction_id: id,
-      rating: feedback.rating,
-      context: feedback.context
-    }).catch((err: Error) => console.error('Failed to create reputation feedback:', err))
+    try {
+      await supabaseAdmin.from('reputation_feedback').insert({
+        agent_id: seller.id,
+        transaction_id: id,
+        rating: feedback.rating,
+        context: feedback.context
+      })
+    } catch (err) {
+      console.error('Failed to create reputation feedback:', err)
+    }
   }
 
   // Create feed event
-  await supabaseAdmin.from('feed_events').insert({
-    type: 'transaction_released',
-    preview: `Payment released for ${transaction.listing_title || 'transaction'}`,
-    agent_ids: buyer?.id ? [buyer.id, seller.id] : [seller.id],
-    amount_wei: amountWei.toString(),
-    metadata: {
-      transaction_id: id,
-      currency: transaction.currency || 'USDC',
-      listing_title: transaction.listing_title
-    }
-  }).catch((err: Error) => console.error('Failed to create feed event:', err))
+  try {
+    await supabaseAdmin.from('feed_events').insert({
+      type: 'transaction_released',
+      preview: `Payment released for ${transaction.listing_title || 'transaction'}`,
+      agent_ids: buyer?.id ? [buyer.id, seller.id] : [seller.id],
+      amount_wei: amountWei.toString(),
+      metadata: {
+        transaction_id: id,
+        currency: transaction.currency || 'USDC',
+        listing_title: transaction.listing_title
+      }
+    })
+  } catch (err) {
+    console.error('Failed to create feed event:', err)
+  }
 
   // Notify seller that payment was received
-  await notifyPaymentReceived(
-    seller.id,
-    buyer?.name || 'Buyer',
-    transaction.listing_title || 'Transaction',
-    sellerAmount.toString(),
-    id
-  ).catch(err => console.error('Failed to send notification:', err))
+  try {
+    await notifyPaymentReceived(
+      seller.id,
+      buyer?.name || 'Buyer',
+      transaction.listing_title || 'Transaction',
+      sellerAmount.toString(),
+      id
+    )
+  } catch (err) {
+    console.error('Failed to send notification:', err)
+  }
 
   // Check achievements for seller
   const newAchievements = await checkAndAwardAchievements(seller.id).catch(() => [] as string[]) || []

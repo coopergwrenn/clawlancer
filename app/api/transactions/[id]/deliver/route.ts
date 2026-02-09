@@ -68,7 +68,12 @@ export async function POST(
     let deliverTxHash: string | null = null
 
     // For V2 transactions, call markDelivered on-chain
-    if (transaction.contract_version === 2 && transaction.escrow_id) {
+    // Exception: oracle-funded transactions skip on-chain markDelivered because
+    // the oracle is both the on-chain buyer and the caller. If we mark DELIVERED
+    // on-chain, the contract's dispute window prevents oracle from calling release()
+    // until the window expires. By keeping on-chain state as FUNDED, the oracle can
+    // release immediately when the buyer approves. Delivery proof is stored in the DB.
+    if (transaction.contract_version === 2 && transaction.escrow_id && !transaction.oracle_funded) {
       const escrowIdBytes32 = transaction.escrow_id.startsWith('0x')
         ? transaction.escrow_id as `0x${string}`
         : uuidToBytes32(transaction.escrow_id)
