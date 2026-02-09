@@ -230,6 +230,8 @@ export function Pricing() {
             className="inline-flex items-center gap-2 px-6 py-2 rounded-full hover:opacity-80 transition-opacity"
             style={glassStyle}
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="OpenClaw" className="w-4 h-4" style={{ imageRendering: "pixelated" }} />
             <span className="text-xs" style={{ color: "var(--foreground)" }}>Powered by</span>
             <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>OpenClaw</span>
           </a>
