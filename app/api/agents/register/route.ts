@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { agent_name, wallet_address, moltbot_id, referral_source, bio, description, skills, bankr_api_key, webhook_url, wallet_provider } = body
+    const { agent_name, wallet_address, moltbot_id, referral_source, bio, description, skills, bankr_api_key, webhook_url, wallet_provider, launch_coin } = body
 
     if (!agent_name) {
       return NextResponse.json(
@@ -260,6 +260,46 @@ export async function POST(request: NextRequest) {
       ? skills.filter((s): s is string => typeof s === 'string').slice(0, 20).map(s => s.slice(0, 50))
       : null
 
+    // Validate coin launch data (optional)
+    let tokenTicker: string | null = null
+    let tokenName: string | null = null
+    let tokenDescription: string | null = null
+    let tokenLaunchRequested = false
+
+    if (launch_coin && typeof launch_coin === 'object') {
+      const { ticker, name: coinName, description: coinDesc } = launch_coin as Record<string, unknown>
+
+      if (ticker && typeof ticker === 'string') {
+        const cleaned = ticker.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
+        if (cleaned.length < 2) {
+          return NextResponse.json(
+            { error: 'Token ticker must be 2-10 uppercase alphanumeric characters' },
+            { status: 400 }
+          )
+        }
+        tokenTicker = cleaned
+      }
+
+      if (coinName && typeof coinName === 'string') {
+        tokenName = coinName.slice(0, 50)
+      }
+
+      if (coinDesc && typeof coinDesc === 'string') {
+        tokenDescription = coinDesc.slice(0, 500)
+      }
+
+      // Require at least ticker and name
+      if (tokenTicker && tokenName) {
+        tokenLaunchRequested = true
+        console.log(`[Register] Coin launch requested: $${tokenTicker} (${tokenName})`)
+      } else if (tokenTicker || tokenName) {
+        return NextResponse.json(
+          { error: 'Both ticker and name are required to launch a coin' },
+          { status: 400 }
+        )
+      }
+    }
+
     // Resolve wallet provider: explicit value > inferred from credentials
     const resolvedWalletProvider = wallet_provider || (validatedBankrApiKey ? 'bankr' : (wallet_address ? 'custom' : 'oracle'))
 
@@ -286,8 +326,13 @@ export async function POST(request: NextRequest) {
         referral_source: referral_source?.slice(0, 100) || null,
         bio: sanitizedBio,
         skills: sanitizedSkills,
+        token_ticker: tokenTicker,
+        token_name: tokenName,
+        token_description: tokenDescription,
+        token_launch_requested: tokenLaunchRequested,
+        token_launch_status: tokenLaunchRequested ? 'pending' : null,
       })
-      .select('id, name, wallet_address, bankr_wallet_address, api_key, xmtp_address, xmtp_enabled, created_at')
+      .select('id, name, wallet_address, bankr_wallet_address, api_key, xmtp_address, xmtp_enabled, created_at, token_ticker, token_name, token_description, token_launch_requested, token_launch_status')
       .single()
 
     if (error) {
@@ -368,6 +413,15 @@ export async function POST(request: NextRequest) {
         xmtp_address: agent.xmtp_address,
         xmtp_enabled: agent.xmtp_enabled,
         created_at: agent.created_at,
+        ...(tokenLaunchRequested ? {
+          token_launch: {
+            requested: true,
+            status: 'pending',
+            ticker: tokenTicker,
+            name: tokenName,
+            description: tokenDescription,
+          }
+        } : {}),
       },
       api_key: apiKey,
       cdp_wallet_id: cdpWalletId || undefined,

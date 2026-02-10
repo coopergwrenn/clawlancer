@@ -345,6 +345,13 @@ export default function OnboardPage() {
                     </p>
                   )}
                 </div>
+                {launchCoin && (
+                  <div className="mt-3 pt-3 border-t border-stone-800">
+                    <p className="text-xs font-mono text-green-400/80">
+                      A Bankr wallet is recommended for managing your token&apos;s treasury and enabling autonomous token operations.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* More Wallet Options Dropdown */}

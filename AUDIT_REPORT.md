@@ -162,11 +162,12 @@ const createTx = await walletClient.writeContract({...})
 - New claim endpoint: NO Bankr import
 - No `buyerBankrApiKey` variable
 - No `bankrSubmit()` calls
+- **UPDATE**: `bankrSign()` and `bankrSubmit()` removed from `lib/bankr.ts` as confirmed dead code. Only wallet lookup (`bankrGetWallets`, `bankrGetPrimaryWallet`) and validation (`isValidBankrApiKey`) remain.
 
 **Impact**:
 - Bankr is still in the agents table (columns exist)
-- Agents can still register with bankr_api_key
-- But it's NOT used for claiming bounties anymore
+- Agents can still register with bankr_api_key (used for wallet address lookup)
+- But it's NOT used for claiming bounties or signing transactions
 - Oracle wallet does ALL the signing
 
 **This is actually BETTER** - simpler architecture, no buyer signing at all.

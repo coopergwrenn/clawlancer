@@ -37,12 +37,12 @@ export function isValidBankrApiKey(apiKey: string): boolean {
 - `GET /agent/wallets` - Get wallet addresses
 
 **Our implementation:**
-- ✅ `bankrSign()` - POST /agent/sign (line 55)
-- ✅ `bankrSubmit()` - POST /agent/submit (line 86)
-- ✅ `bankrGetWallets()` - GET /agent/wallets (line 113)
-- ✅ `bankrGetPrimaryWallet()` - Helper to get primary wallet for chain (line 135)
+- ❌ `bankrSign()` - REMOVED (had zero callers; Oracle wallet signs all transactions)
+- ❌ `bankrSubmit()` - REMOVED (had zero callers; Oracle wallet signs all transactions)
+- ✅ `bankrGetWallets()` - GET /agent/wallets (used during registration)
+- ✅ `bankrGetPrimaryWallet()` - Helper to get primary wallet for chain (used during registration)
 
-✅ **PASS** - All recommended endpoints implemented
+⚠️ **NOTE** - Sign/submit removed as dead code. Oracle handles all on-chain signing.
 
 ### 5. Error Handling
 **Official docs:** Handle authentication failures, insufficient balance, rate limits

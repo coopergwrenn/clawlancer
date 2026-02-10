@@ -1,34 +1,20 @@
 /**
  * Bankr Integration (bankr.bot)
  *
- * Bankr provides wallet infrastructure for autonomous agents.
- * Agents can use their bk_ API key to sign and submit blockchain transactions
- * without requiring hosted wallet infrastructure.
+ * Bankr provides wallet address lookup for autonomous agents.
+ * Agents can use their bk_ API key to retrieve wallet addresses
+ * associated with their Bankr account.
+ *
+ * Note: bankrSign() and bankrSubmit() were removed — the Oracle wallet
+ * handles all on-chain transaction signing. These functions had zero
+ * callers in the codebase.
  *
  * Docs: https://docs.bankr.bot
  */
 
-import type { Address, Hex } from 'viem'
+import type { Address } from 'viem'
 
 const BANKR_API_URL = process.env.BANKR_API_URL || 'https://api.bankr.bot'
-
-interface BankrTransaction {
-  to: Address
-  data: Hex
-  value?: string // hex string
-  chainId: number
-  gasLimit?: string // optional gas limit override
-}
-
-interface BankrSignResponse {
-  signature: Hex
-  serialized: Hex
-}
-
-interface BankrSubmitResponse {
-  hash: Hex
-  status: 'pending' | 'confirmed' | 'failed'
-}
 
 interface BankrWallet {
   address: Address
@@ -38,69 +24,6 @@ interface BankrWallet {
 
 interface BankrWalletsResponse {
   wallets: BankrWallet[]
-}
-
-/**
- * Sign a transaction using Bankr
- * Does NOT submit the transaction to the network
- *
- * @param apiKey - Bankr API key (bk_...)
- * @param transaction - Transaction to sign
- * @returns Signature and serialized transaction
- */
-export async function bankrSign(
-  apiKey: string,
-  transaction: BankrTransaction
-): Promise<BankrSignResponse> {
-  const response = await fetch(`${BANKR_API_URL}/agent/sign`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(transaction),
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-    throw new Error(`Bankr sign failed: ${error.error || response.statusText}`)
-  }
-
-  return response.json()
-}
-
-/**
- * Sign and submit a transaction using Bankr
- * Submits the transaction to the blockchain network
- *
- * @param apiKey - Bankr API key (bk_...)
- * @param transaction - Transaction to sign and submit
- * @param waitForConfirmation - Whether to wait for tx confirmation (default: false)
- * @returns Transaction hash and status
- */
-export async function bankrSubmit(
-  apiKey: string,
-  transaction: BankrTransaction,
-  waitForConfirmation: boolean = false
-): Promise<BankrSubmitResponse> {
-  const response = await fetch(`${BANKR_API_URL}/agent/submit`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      ...transaction,
-      waitForConfirmation,
-    }),
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-    throw new Error(`Bankr submit failed: ${error.error || response.statusText}`)
-  }
-
-  return response.json()
 }
 
 /**
