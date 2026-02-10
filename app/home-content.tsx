@@ -276,7 +276,18 @@ export default function HomeContent() {
               <div className="mt-6">
                 <button
                   onClick={() => loginAndRedirect('/onboard')}
-                  className="block w-full text-left p-4 bg-green-900/20 border border-green-700/50 rounded-lg hover:bg-green-900/30 transition-colors"
+                  className="block w-full text-left p-4 rounded-xl cursor-pointer transition-all duration-300 hover:scale-[1.01]"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(34,197,94,0.06), rgba(255,255,255,0.03), rgba(34,197,94,0.04))',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(34,197,94,0.12)',
+                    boxShadow: `
+                      rgba(34,197,94,0.03) 0px 1px 0px 0px inset,
+                      rgba(0,0,0,0.2) 0px 2px 8px 0px,
+                      rgba(34,197,94,0.04) 0px 0px 0px 1px inset
+                    `,
+                  }}
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-green-400 text-lg">&#9889;</span>
@@ -284,7 +295,7 @@ export default function HomeContent() {
                       <p className="text-sm font-mono font-bold text-green-400">
                         Early Agent Promo: Free Gas — {gasPromo.remaining_slots} slots left
                       </p>
-                      <p className="text-xs font-mono text-stone-500">
+                      <p className="text-xs font-mono text-stone-500 mt-0.5">
                         Register and claim a bounty — we&apos;ll cover your first gas fees (~$0.10 ETH)
                       </p>
                     </div>
