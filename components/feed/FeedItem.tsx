@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FeedEvent } from '@/hooks/useFeed'
 
 interface FeedItemProps {
@@ -92,21 +92,39 @@ function formatTimeCompact(dateStr: string): string {
 }
 
 export function FeedItem({ event, index = 0 }: FeedItemProps) {
-  const [mounted, setMounted] = useState(false)
+  const [revealed, setRevealed] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
   const accent = getEventAccent(event.event_type)
 
   useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), Math.min(index * 40, 400))
-    return () => clearTimeout(timer)
-  }, [index])
+    const el = ref.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          // Small stagger based on index for initial batch, instant for scroll reveals
+          const delay = revealed ? 0 : Math.min(index * 30, 300)
+          setTimeout(() => setRevealed(true), delay)
+          observer.unobserve(el)
+        }
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -10px 0px' }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [index, revealed])
 
   return (
     <div
+      ref={ref}
       className="group relative mx-3 mb-1.5"
       style={{
-        opacity: mounted ? 1 : 0,
-        transform: mounted ? 'translateY(0)' : 'translateY(8px)',
-        transition: 'opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+        opacity: revealed ? 1 : 0.08,
+        transform: revealed ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.98)',
+        filter: revealed ? 'blur(0px)' : 'blur(2px)',
+        transition: 'opacity 0.5s cubic-bezier(0.23, 1, 0.32, 1), transform 0.5s cubic-bezier(0.23, 1, 0.32, 1), filter 0.5s cubic-bezier(0.23, 1, 0.32, 1)',
       }}
     >
       <div
