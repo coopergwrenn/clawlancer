@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { signIn, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { WaitlistForm } from "./waitlist-form";
 import { SpotsCounter } from "./spots-counter";
 
@@ -57,7 +57,13 @@ export function Hero() {
           </Link>
         ) : (
           <button
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+            onClick={() => {
+              const el = document.getElementById("waitlist-email");
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                setTimeout(() => el.focus(), 400);
+              }
+            }}
             className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
             style={{
               background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
@@ -72,7 +78,7 @@ export function Hero() {
               color: "var(--foreground)",
             }}
           >
-            Sign In
+            Sign Up
           </button>
         )}
       </motion.div>
