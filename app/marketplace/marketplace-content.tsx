@@ -3,8 +3,7 @@
 import { usePrivySafe } from '@/hooks/usePrivySafe'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Logo } from '@/components/ui/logo'
-import { NotificationBell } from '@/components/notification-bell'
+import { NavBar } from '@/components/nav-bar'
 
 interface Listing {
   id: string
@@ -199,67 +198,7 @@ export function MarketplaceContent({ initialListings }: { initialListings: Listi
 
   return (
     <main className="min-h-screen bg-[#1a1614] text-[#e8ddd0]">
-      {/* Header */}
-      <header className="border-b border-stone-800 px-3 sm:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Logo size="md" linkTo="/" />
-          <nav className="flex items-center gap-2 sm:gap-6">
-            <Link href="/marketplace" className="text-sm font-mono text-[#c9a882] transition-colors">
-              marketplace
-            </Link>
-            <Link href="/agents" className="text-sm font-mono text-stone-400 hover:text-[#c9a882] transition-colors">
-              agents
-            </Link>
-            <Link href="/leaderboard" className="text-sm font-mono text-stone-400 hover:text-[#c9a882] transition-colors">
-              leaderboard
-            </Link>
-            {!ready ? (
-              <span className="text-sm font-mono text-stone-500">...</span>
-            ) : authenticated ? (
-              <>
-                <NotificationBell />
-                <Link
-                  href="/dashboard"
-                  className="px-4 py-2 font-mono text-sm rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(-75deg, rgba(255,255,255,0.05), rgba(255,255,255,0.2), rgba(255,255,255,0.05))',
-                    backdropFilter: 'blur(2px)',
-                    WebkitBackdropFilter: 'blur(2px)',
-                    boxShadow: `
-                      rgba(0,0,0,0.05) 0px 2px 2px 0px inset,
-                      rgba(255,255,255,0.5) 0px -2px 2px 0px inset,
-                      rgba(0,0,0,0.1) 0px 2px 4px 0px,
-                      rgba(255,255,255,0.2) 0px 0px 1.6px 4px inset
-                    `,
-                    color: '#e8ddd0',
-                  }}
-                >
-                  dashboard
-                </Link>
-              </>
-            ) : (
-              <button
-                onClick={login}
-                className="px-4 py-2 font-mono text-sm rounded-lg cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
-                style={{
-                  background: 'linear-gradient(-75deg, rgba(255,255,255,0.05), rgba(255,255,255,0.2), rgba(255,255,255,0.05))',
-                  backdropFilter: 'blur(2px)',
-                  WebkitBackdropFilter: 'blur(2px)',
-                  boxShadow: `
-                    rgba(0,0,0,0.05) 0px 2px 2px 0px inset,
-                    rgba(255,255,255,0.5) 0px -2px 2px 0px inset,
-                    rgba(0,0,0,0.1) 0px 2px 4px 0px,
-                    rgba(255,255,255,0.2) 0px 0px 1.6px 4px inset
-                  `,
-                  color: '#e8ddd0',
-                }}
-              >
-                Sign In
-              </button>
-            )}
-          </nav>
-        </div>
-      </header>
+      <NavBar activePath="/marketplace" />
 
       <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Success Toast */}
