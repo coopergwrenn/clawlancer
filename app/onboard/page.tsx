@@ -28,6 +28,11 @@ export default function OnboardPage() {
   const [showMoreWalletOptions, setShowMoreWalletOptions] = useState(false)
   const [selectedWalletOption, setSelectedWalletOption] = useState<'privy' | 'custom' | null>(null)
 
+  const [launchCoin, setLaunchCoin] = useState(false)
+  const [tokenTicker, setTokenTicker] = useState('')
+  const [tokenName, setTokenName] = useState('')
+  const [tokenDescription, setTokenDescription] = useState('')
+
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<RegistrationResult | null>(null)
@@ -43,6 +48,15 @@ export default function OnboardPage() {
       const payload: Record<string, unknown> = {
         agent_name: agentName,
         description: description || undefined,
+      }
+
+      // Include coin launch data if toggled on
+      if (launchCoin && tokenTicker && tokenName) {
+        payload.launch_coin = {
+          ticker: tokenTicker,
+          name: tokenName,
+          description: tokenDescription || undefined,
+        }
       }
 
       // Priority 1: Bankr API key
@@ -149,6 +163,112 @@ export default function OnboardPage() {
                   className="w-full px-4 py-3 bg-[#141210] border border-stone-700 rounded font-mono text-[#e8ddd0] placeholder-stone-600 focus:outline-none focus:border-[#c9a882] transition-colors resize-none"
                 />
                 <p className="mt-1 text-xs font-mono text-stone-600">{description.length}/500</p>
+              </div>
+
+              {/* Launch a Coin */}
+              <div
+                className="rounded-lg p-5 transition-all duration-300"
+                style={{
+                  background: launchCoin
+                    ? 'linear-gradient(135deg, rgba(34,197,94,0.06), rgba(255,255,255,0.03), rgba(34,197,94,0.04))'
+                    : 'linear-gradient(-75deg, rgba(255,255,255,0.03), rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  border: launchCoin
+                    ? '1px solid rgba(34,197,94,0.2)'
+                    : '1px solid rgba(255,255,255,0.08)',
+                  boxShadow: launchCoin
+                    ? 'rgba(34,197,94,0.06) 0px 0px 20px 0px, rgba(0,0,0,0.2) 0px 2px 8px 0px, rgba(34,197,94,0.03) 0px 1px 0px 0px inset'
+                    : 'rgba(0,0,0,0.15) 0px 2px 8px 0px, rgba(255,255,255,0.04) 0px 1px 0px 0px inset',
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded" style={{
+                      background: launchCoin ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)',
+                      border: launchCoin ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                    }}>
+                      <svg className={`w-4 h-4 transition-colors ${launchCoin ? 'text-green-400' : 'text-stone-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-mono font-bold text-stone-200">
+                        Launch a coin on Base with your agent?
+                      </h3>
+                      <p className="text-xs font-mono text-stone-500">
+                        Optional — deploy a token alongside your agent
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLaunchCoin(!launchCoin)}
+                    className="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
+                    style={{
+                      background: launchCoin
+                        ? 'linear-gradient(90deg, rgba(34,197,94,0.6), rgba(34,197,94,0.8))'
+                        : 'rgba(255,255,255,0.1)',
+                      boxShadow: launchCoin
+                        ? 'rgba(34,197,94,0.3) 0px 0px 8px 0px'
+                        : 'inset rgba(0,0,0,0.2) 0px 1px 2px 0px',
+                    }}
+                  >
+                    <span
+                      className="block w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200"
+                      style={{
+                        transform: launchCoin ? 'translateX(22px)' : 'translateX(2px)',
+                        marginTop: '2px',
+                      }}
+                    />
+                  </button>
+                </div>
+
+                {/* Expandable coin fields */}
+                <div
+                  className="overflow-hidden transition-all duration-300"
+                  style={{
+                    maxHeight: launchCoin ? '300px' : '0px',
+                    opacity: launchCoin ? 1 : 0,
+                    marginTop: launchCoin ? '16px' : '0px',
+                  }}
+                >
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-mono text-stone-400 mb-1">Token Ticker *</label>
+                      <input
+                        type="text"
+                        value={tokenTicker}
+                        onChange={(e) => setTokenTicker(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
+                        placeholder="e.g., AGENT"
+                        className="w-full px-3 py-2 bg-[#0a0908] border border-stone-700 rounded font-mono text-sm text-[#e8ddd0] placeholder-stone-600 focus:outline-none focus:border-green-500/50 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-mono text-stone-400 mb-1">Token Name *</label>
+                      <input
+                        type="text"
+                        value={tokenName}
+                        onChange={(e) => setTokenName(e.target.value.slice(0, 50))}
+                        placeholder="e.g., AgentCoin"
+                        className="w-full px-3 py-2 bg-[#0a0908] border border-stone-700 rounded font-mono text-sm text-[#e8ddd0] placeholder-stone-600 focus:outline-none focus:border-green-500/50 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono text-stone-400 mb-1">Token Description</label>
+                    <input
+                      type="text"
+                      value={tokenDescription}
+                      onChange={(e) => setTokenDescription(e.target.value.slice(0, 200))}
+                      placeholder="A brief description of what your token represents..."
+                      className="w-full px-3 py-2 bg-[#0a0908] border border-stone-700 rounded font-mono text-sm text-[#e8ddd0] placeholder-stone-600 focus:outline-none focus:border-green-500/50 transition-colors"
+                    />
+                  </div>
+                  <p className="text-xs font-mono text-stone-600 mt-2">
+                    Deploys via Bankr on Base L2. You can configure supply and liquidity later.
+                  </p>
+                </div>
               </div>
 
               {/* Bankr Wallet Integration - Agent-First Design */}
