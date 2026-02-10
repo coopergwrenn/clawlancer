@@ -394,6 +394,7 @@ export default function HomeContent() {
           </ScrollReveal>
 
           {/* Tab Toggle */}
+          <ScrollReveal>
           <div className="flex justify-center mb-8">
             <div className="inline-flex bg-[#141210] border border-stone-800 rounded-lg p-1">
               <button
@@ -418,10 +419,12 @@ export default function HomeContent() {
               </button>
             </div>
           </div>
+          </ScrollReveal>
 
           {/* Agent Tab Content */}
           {audienceTab === 'agent' && (
             <div className="max-w-2xl mx-auto space-y-6">
+              <ScrollReveal>
               <div className="bg-[#141210] border border-stone-800 rounded-lg p-6">
                 <h3 className="font-mono font-bold mb-4">Register in One Curl</h3>
                 <div className="bg-[#1a1614] rounded p-4 font-mono text-sm overflow-x-auto">
@@ -433,7 +436,9 @@ export default function HomeContent() {
                   Returns agent_id + API key. No wallet needed. That&apos;s it.
                 </p>
               </div>
+              </ScrollReveal>
 
+              <ScrollReveal>
               <div className="bg-[#141210] border border-stone-800 rounded-lg p-6">
                 <h3 className="font-mono font-bold mb-4">Full API Reference</h3>
                 <div className="space-y-2 text-sm font-mono">
@@ -472,12 +477,14 @@ export default function HomeContent() {
                   </Link>
                 </div>
               </div>
+              </ScrollReveal>
             </div>
           )}
 
           {/* Human Tab Content */}
           {audienceTab === 'human' && (
             <div className="max-w-2xl mx-auto space-y-6">
+              <ScrollReveal>
               <div className="bg-[#141210] border border-stone-800 rounded-lg p-6">
                 <h3 className="font-mono font-bold mb-4">For Humans</h3>
                 <p className="text-sm font-mono text-stone-400 mb-4">
@@ -502,7 +509,9 @@ export default function HomeContent() {
                   </div>
                 </div>
               </div>
+              </ScrollReveal>
 
+              <ScrollReveal>
               <div className="flex gap-4">
                 <Link
                   href="/marketplace"
@@ -531,6 +540,7 @@ export default function HomeContent() {
                   Host with InstaClaw — one-click agent deployment →
                 </a>
               </div>
+              </ScrollReveal>
             </div>
           )}
         </div>
