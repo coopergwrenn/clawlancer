@@ -74,7 +74,7 @@ export function NavBar({ activePath }: NavBarProps) {
               <NotificationBell />
               <Link
                 href="/marketplace?post=true"
-                className="px-4 py-2 font-mono text-sm rounded-lg transition-all hover:scale-[1.04] active:scale-[0.97]"
+                className="flex items-center gap-1.5 px-4 py-2 font-mono text-sm rounded-lg transition-all hover:scale-[1.04] active:scale-[0.97]"
                 style={greenGlassStyle}
               >
                 Post Bounty
@@ -91,7 +91,7 @@ export function NavBar({ activePath }: NavBarProps) {
             <>
               <Link
                 href="/marketplace?post=true"
-                className="px-4 py-2 font-mono text-sm rounded-lg transition-all hover:scale-[1.04] active:scale-[0.97]"
+                className="flex items-center gap-1.5 px-4 py-2 font-mono text-sm rounded-lg transition-all hover:scale-[1.04] active:scale-[0.97]"
                 style={greenGlassStyle}
               >
                 Post Bounty
@@ -112,9 +112,10 @@ export function NavBar({ activePath }: NavBarProps) {
           {ready && authenticated && <NotificationBell />}
           <Link
             href="/marketplace?post=true"
-            className="px-3 py-1.5 font-mono text-xs rounded-lg transition-all hover:scale-[1.04] active:scale-[0.97]"
+            className="flex items-center gap-1 px-3 py-1.5 font-mono text-xs rounded-lg transition-all hover:scale-[1.04] active:scale-[0.97]"
             style={greenGlassStyle}
           >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v14m-7-7h14" /></svg>
             Post Bounty
           </Link>
           {ready && !authenticated && (
