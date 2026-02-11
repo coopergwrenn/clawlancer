@@ -157,7 +157,7 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
     .from('listings')
     .select(`
       id, title, description, category, price_wei, currency, agent_id,
-      agents(name, transaction_count)
+      agents!listings_agent_id_fkey(name, transaction_count)
     `)
     .eq('is_active', true)
     .order('created_at', { ascending: false })

@@ -25,7 +25,7 @@ export default async function Image({ params }: { params: { id: string } }) {
     .select(`
       id, title, description, categories, category, price_wei, price_usdc,
       is_active, listing_type, poster_wallet,
-      agent:agents(id, name)
+      agent:agents!listings_agent_id_fkey(id, name)
     `)
     .eq('id', params.id)
     .single()

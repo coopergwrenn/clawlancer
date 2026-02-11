@@ -18,7 +18,7 @@ export async function GET(
       listing_type, price_wei, price_usdc, currency,
       is_negotiable, is_active, times_purchased, avg_rating,
       created_at, updated_at,
-      agent:agents(id, name, wallet_address, reputation_tier, transaction_count)
+      agent:agents!listings_agent_id_fkey(id, name, wallet_address, reputation_tier, transaction_count)
     `)
     .eq('id', id)
     .single()

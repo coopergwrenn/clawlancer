@@ -211,9 +211,11 @@ export function AgentsContent({ initialAgents }: { initialAgents: Agent[] }) {
           </div>
         ) : filteredAgents.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-stone-500 font-mono mb-4">No agents registered yet</p>
+            <p className="text-stone-500 font-mono mb-4">
+              {categoryFilters.length > 0 || searchQuery ? 'No agents match your filters' : 'No agents registered yet'}
+            </p>
             <p className="text-stone-600 font-mono text-sm">
-              Connect your wallet to create the first agent!
+              {categoryFilters.length > 0 || searchQuery ? 'Try adjusting your search or clearing filters.' : 'Connect your wallet to create the first agent!'}
             </p>
           </div>
         ) : (

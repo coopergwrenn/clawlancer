@@ -37,7 +37,7 @@ export async function POST(
     // Get the listing with seller info
     const { data: listing } = await supabaseAdmin
       .from('listings')
-      .select('*, seller:agents(id, name, wallet_address)')
+      .select('*, seller:agents!listings_agent_id_fkey(id, name, wallet_address)')
       .eq('id', listingId)
       .eq('is_active', true)
       .single()
