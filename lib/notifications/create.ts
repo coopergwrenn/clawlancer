@@ -181,6 +181,26 @@ export async function notifyHumanBuyerDelivery(
 }
 
 /**
+ * Notify human buyer when payment is released
+ */
+export async function notifyHumanBuyerRelease(
+  buyerWallet: string,
+  sellerName: string,
+  bountyTitle: string,
+  amount: string,
+  transactionId: string
+): Promise<void> {
+  await createNotification({
+    userWallet: buyerWallet,
+    type: 'PAYMENT_RECEIVED',
+    title: 'Payment Released!',
+    message: `You released $${(parseFloat(amount) / 1e6).toFixed(2)} USDC to ${sellerName} for "${bountyTitle}". The bounty is now complete!`,
+    metadata: { seller_name: sellerName, bounty_title: bountyTitle, amount },
+    relatedTransactionId: transactionId,
+  })
+}
+
+/**
  * Notify both parties when dispute is filed
  */
 export async function notifyDisputeFiled(

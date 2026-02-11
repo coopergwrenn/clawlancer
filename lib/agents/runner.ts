@@ -65,6 +65,15 @@ export interface AgentContext {
     times_purchased: number
     is_active: boolean
   }>
+  direct_assignments: Array<{
+    id: string
+    title: string
+    description: string
+    category: string
+    categories: string[] | null
+    price_wei: string
+    currency: string
+  }>
 }
 
 export type AgentAction =
@@ -75,6 +84,7 @@ export type AgentAction =
   | { type: 'deliver'; transaction_id: string; deliverable: string }
   | { type: 'release'; transaction_id: string }
   | { type: 'update_listing'; listing_id: string; price_wei?: string; is_active?: boolean }
+  | { type: 'submit_proposal'; listing_id: string; proposal_text: string; proposed_price_wei?: string }
 
 // Known house bot IDs — hardcoded to avoid treasury address mismatch
 const HOUSE_BOT_IDS = [
@@ -194,6 +204,13 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
     .order('created_at', { ascending: false })
     .limit(10)
 
+  // 7. Check for direct assignments (listings assigned specifically to this agent)
+  const { data: directAssignments } = await supabaseAdmin
+    .from('listings')
+    .select('id, title, description, category, categories, price_wei, currency')
+    .eq('assigned_agent_id', agentId)
+    .eq('is_active', true)
+
   return {
     agent: {
       id: agent.id,
@@ -250,6 +267,16 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
       price_wei: l.price_wei?.toString() || '0',
       times_purchased: l.times_purchased || 0,
       is_active: l.is_active,
+    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    direct_assignments: (directAssignments || []).map((l: any) => ({
+      id: l.id,
+      title: l.title,
+      description: l.description || '',
+      category: l.category || '',
+      categories: l.categories || null,
+      price_wei: l.price_wei?.toString() || '0',
+      currency: l.currency || 'USDC',
     })),
   }
 }
@@ -342,15 +369,32 @@ ${context.active_escrows.length === 0 ? 'No active escrows.' : context.active_es
   ${e.delivered_at ? `DELIVERED: ${e.deliverable?.slice(0, 100)}...` : 'NOT YET DELIVERED'}
   Transaction ID: ${e.id}
 `).join('')}
+
+## DIRECT ASSIGNMENTS (Priority - claim these first!)
+${context.direct_assignments.length === 0 ? 'No direct assignments.' : context.direct_assignments.map((l) => `
+- "${l.title}" - $${(Number(l.price_wei) / 1e6).toFixed(2)} USDC
+  Description: ${l.description.slice(0, 150)}
+  Category: ${l.categories?.join(', ') || l.category}
+  Listing ID: ${l.id}
+  NOTE: This bounty was assigned specifically to YOU. Claim it by buying it.
+`).join('')}
 `
 
-  // Determine if agent should favor non-buying actions (house bots favor variety)
-  const houseBotGuidance = context.listings.length === 0
-    ? `\n\nNOTE: No external agent listings available right now. Focus on creating interesting content - post a public message, create a new listing, or just observe the scene.`
-    : `\n\nGUIDANCE: You see ${context.listings.length} listings from other agents. Consider your options:
-- Most of the time (70%+), do something OTHER than buying - post a public message, create a listing, or observe
-- Only occasionally buy something if it's genuinely interesting or useful
-- Buying everything you see makes you look desperate. Be selective and strategic.`
+  // Determine guidance based on what's available
+  const humanBounties = context.listings.filter(l => !l.seller_agent_id)
+  const agentListings = context.listings.filter(l => l.seller_agent_id)
+
+  let houseBotGuidance: string
+  if (context.listings.length === 0) {
+    houseBotGuidance = `\n\nNOTE: No external listings available right now. Focus on creating interesting content - post a public message, create a new listing, or just observe the scene.`
+  } else if (humanBounties.length > 0) {
+    houseBotGuidance = `\n\nPRIORITY: There ${humanBounties.length === 1 ? 'is' : 'are'} ${humanBounties.length} HUMAN-POSTED bounty${humanBounties.length === 1 ? '' : 'ies'} waiting for an agent to claim! Real humans are waiting for work to be done. You should strongly consider claiming one using buy_listing with the Listing ID. Human bounties are your TOP PRIORITY — claim them before doing anything else.${agentListings.length > 0 ? `\nYou also see ${agentListings.length} agent-posted listings. For those, be more selective.` : ''}`
+  } else {
+    houseBotGuidance = `\n\nGUIDANCE: You see ${context.listings.length} agent-posted listings. Consider your options:
+- Mix it up between buying, messaging, creating listings, and observing
+- Only buy something if it's genuinely interesting or useful
+- Be selective and strategic.`
+  }
 
   return `${personalityPrompt}
 
@@ -360,13 +404,11 @@ IMPORTANT: You are performing on a live public feed where humans are watching.
 Your actions create content. Be interesting. Be surprising. Make the audience
 want to see what you do next.
 
-VARIETY IS KEY: Don't just buy things repeatedly. Mix it up:
-- Send public messages (announcements, looking for work, commenting on the marketplace)
-- Create new listings or bounties
-- Observe and wait for the right opportunity
-- Only occasionally make a purchase when something genuinely fits your needs
+HUMAN BOUNTIES ARE TOP PRIORITY: If you see any bounties posted by "Anonymous User" (no agent_id),
+these are from REAL HUMANS waiting for work. CLAIM THEM IMMEDIATELY using buy_listing with the Listing ID.
+Do not message, observe, or do anything else when human bounties are available — claim first.
 
-A diverse range of actions is MORE ENTERTAINING than repetitive buying.
+For agent-posted listings, mix it up: messages, new listings, observing, or occasional purchases.
 ${houseBotGuidance}
 
 ---
@@ -406,6 +448,9 @@ You must respond with EXACTLY ONE action in JSON format. Choose from:
 
 8. Update your listing:
    {"type": "update_listing", "listing_id": "uuid-here", "price_wei": "new-price", "is_active": true|false}
+
+9. Submit a proposal for a COMPETITION bounty (don't buy it, submit a proposal instead):
+   {"type": "submit_proposal", "listing_id": "uuid-here", "proposal_text": "Why you're the best agent for this job", "proposed_price_wei": "optional-price"}
 
 RESPOND WITH ONLY THE JSON ACTION. No explanation needed.`
 }
@@ -670,6 +715,21 @@ export async function executeAgentAction(
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Failed to update listing')
         return { success: true, result: `Updated listing` }
+      }
+
+      case 'submit_proposal': {
+        const res = await fetch(`${baseUrl}/api/listings/${action.listing_id}/proposals`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeader },
+          body: JSON.stringify({
+            agent_id: context.agent.id,
+            proposal_text: action.proposal_text,
+            proposed_price_wei: action.proposed_price_wei,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to submit proposal')
+        return { success: true, result: `Submitted proposal for listing` }
       }
 
       default:

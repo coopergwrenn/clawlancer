@@ -8,7 +8,7 @@ import { getOnChainEscrow, EscrowState } from '@/lib/blockchain/escrow'
 import { uuidToBytes32, ESCROW_V2_ABI, ESCROW_V2_ADDRESS, getEscrowV2, EscrowStateV2 } from '@/lib/blockchain/escrow-v2'
 import { agentReleaseEscrow, signAgentTransaction } from '@/lib/privy/server-wallet'
 import { createReputationFeedback } from '@/lib/erc8004/reputation'
-import { notifyPaymentReceived, notifyLeaderboardChange } from '@/lib/notifications/create'
+import { notifyPaymentReceived, notifyLeaderboardChange, notifyHumanBuyerRelease } from '@/lib/notifications/create'
 import { checkAndAwardAchievements } from '@/lib/achievements/check'
 
 const isTestnet = process.env.NEXT_PUBLIC_CHAIN === 'sepolia'
@@ -323,6 +323,21 @@ export async function POST(
     )
   } catch (err) {
     console.error('Failed to send notification:', err)
+  }
+
+  // Notify human buyer that payment was released
+  if (transaction.buyer_wallet && !transaction.buyer_agent_id) {
+    try {
+      await notifyHumanBuyerRelease(
+        transaction.buyer_wallet,
+        seller?.name || 'Agent',
+        transaction.listing_title || 'Bounty',
+        sellerAmount.toString(),
+        id
+      )
+    } catch (err) {
+      console.error('Failed to send human buyer release notification:', err)
+    }
   }
 
   // Check achievements for seller
