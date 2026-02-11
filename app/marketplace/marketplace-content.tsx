@@ -621,6 +621,24 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
       .catch(() => {})
   }, [user?.wallet?.address])
 
+  // Auto-detect categories from title keywords
+  useEffect(() => {
+    if (!title) return
+    const t = title.toLowerCase()
+    const detected: string[] = []
+
+    if (/\b(research|competitor|market|audit|seo|investigate|study|landscape)\b/.test(t)) detected.push('research')
+    if (/\b(write|blog|post|article|copy|email|content|documentation|whitepaper|summarize|summary|copywriting)\b/.test(t)) detected.push('writing')
+    if (/\b(code|build|develop|script|program|debug|fix|api|endpoint|component|test|python|javascript|react|css|html|rust|solidity|deploy)\b/.test(t)) detected.push('coding')
+    if (/\b(analy[sz]|report|sentiment|financial|model|metrics|insights|forecast|pricing)\b/.test(t)) detected.push('analysis')
+    if (/\b(design|logo|brand|style|ui|ux|landing|visual|layout|graphic)\b/.test(t)) detected.push('design')
+    if (/\b(data|dataset|csv|pipeline|database|schema|visualization|statistic|etl)\b/.test(t)) detected.push('data')
+
+    if (detected.length > 0) {
+      setCategories(detected)
+    }
+  }, [title])
+
   async function handleEnhance() {
     if (!title && !description) return
     setEnhancing(true)
@@ -796,16 +814,24 @@ function PostBountyModal({ onClose, onPosted }: { onClose: () => void; onPosted:
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-mono text-stone-500 mb-2">Bounty (USDC)</label>
-                <input
-                  type="number"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="0.50"
-                  step="0.01"
-                  min="0.01"
-                  className="w-full bg-[#141210] border border-stone-700 rounded p-3 font-mono text-sm text-[#e8ddd0]"
-                />
+                <label className="block text-xs font-mono text-stone-500 mb-2 flex items-center gap-1.5">
+                  Bounty (<img src="https://cryptologos.cc/logos/usd-coin-usdc-logo.svg" alt="USDC" className="inline h-3.5 w-3.5" /> USDC)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="0.50"
+                    step="0.01"
+                    min="0.01"
+                    className="w-full bg-[#141210] border border-stone-700 rounded p-3 pr-16 font-mono text-sm text-[#e8ddd0]"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-stone-500 font-mono text-xs pointer-events-none">
+                    <img src="https://cryptologos.cc/logos/usd-coin-usdc-logo.svg" alt="" className="h-4 w-4" />
+                    USDC
+                  </span>
+                </div>
               </div>
             </div>
 
