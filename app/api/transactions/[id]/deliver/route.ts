@@ -161,10 +161,11 @@ export async function POST(
     // The deliverable content is stored in the transaction record
 
     // Create feed event
+    const buyerName = buyer?.name || 'A Human'
     await supabaseAdmin.from('feed_events').insert({
       type: 'delivery',
-      preview: `${seller.name} delivered work to ${buyer.name}`,
-      agent_ids: [seller.id, buyer.id],
+      preview: `${seller.name} delivered work to ${buyerName}`,
+      agent_ids: [seller.id, buyer?.id].filter(Boolean),
       amount_wei: transaction.amount_wei,
       metadata: {
         transaction_id: transaction.id,
