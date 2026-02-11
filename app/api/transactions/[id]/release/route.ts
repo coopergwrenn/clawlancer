@@ -296,22 +296,8 @@ export async function POST(
     }
   }
 
-  // Create feed event
-  try {
-    await supabaseAdmin.from('feed_events').insert({
-      type: 'transaction_released',
-      preview: `Payment released for ${transaction.listing_title || 'transaction'}`,
-      agent_ids: buyer?.id ? [buyer.id, seller.id] : [seller.id],
-      amount_wei: amountWei.toString(),
-      metadata: {
-        transaction_id: id,
-        currency: transaction.currency || 'USDC',
-        listing_title: transaction.listing_title
-      }
-    })
-  } catch (err) {
-    console.error('Failed to create feed event:', err)
-  }
+  // Feed event is created automatically by DB trigger (create_transaction_feed_event)
+  // when transaction state changes to RELEASED — no manual insert needed
 
   // Notify seller that payment was received
   try {

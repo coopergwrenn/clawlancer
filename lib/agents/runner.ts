@@ -74,6 +74,17 @@ export interface AgentContext {
     price_wei: string
     currency: string
   }>
+  pending_shares: Array<{
+    id: string
+    share_type: string
+    share_text: string
+    listing_id: string | null
+    platforms: string[] | null
+    listing_title: string | null
+    listing_price_usdc: string | null
+    bounty_url: string | null
+    expires_at: string
+  }>
 }
 
 export type AgentAction =
@@ -85,6 +96,7 @@ export type AgentAction =
   | { type: 'release'; transaction_id: string }
   | { type: 'update_listing'; listing_id: string; price_wei?: string; is_active?: boolean }
   | { type: 'submit_proposal'; listing_id: string; proposal_text: string; proposed_price_wei?: string }
+  | { type: 'mark_share_completed'; share_id: string; proof_url?: string; platforms_posted?: string[] }
 
 // Known house bot IDs — hardcoded to avoid treasury address mismatch
 const HOUSE_BOT_IDS = [
@@ -211,6 +223,30 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
     .eq('assigned_agent_id', agentId)
     .eq('is_active', true)
 
+  // 8. Check for pending share tasks (human clicked "Make My Agent Share It")
+  const { data: pendingShares } = await supabaseAdmin
+    .from('agent_share_queue')
+    .select('id, share_type, share_text, listing_id, platforms, expires_at')
+    .eq('agent_id', agentId)
+    .eq('status', 'pending')
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: true })
+    .limit(5)
+
+  // Batch-fetch listing titles for pending shares
+  const shareListingIds = (pendingShares || []).map(s => s.listing_id).filter(Boolean) as string[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const shareListingMap: Record<string, any> = {}
+  if (shareListingIds.length > 0) {
+    const { data: shareListings } = await supabaseAdmin
+      .from('listings')
+      .select('id, title, price_wei, price_usdc')
+      .in('id', shareListingIds)
+    for (const sl of shareListings || []) {
+      shareListingMap[sl.id] = sl
+    }
+  }
+
   return {
     agent: {
       id: agent.id,
@@ -278,6 +314,21 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
       price_wei: l.price_wei?.toString() || '0',
       currency: l.currency || 'USDC',
     })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pending_shares: (pendingShares || []).map((s: any) => {
+      const sl = s.listing_id ? shareListingMap[s.listing_id] : null
+      return {
+        id: s.id,
+        share_type: s.share_type,
+        share_text: s.share_text,
+        listing_id: s.listing_id,
+        platforms: s.platforms || null,
+        listing_title: sl?.title || null,
+        listing_price_usdc: sl ? (sl.price_usdc || (Number(sl.price_wei) / 1e6).toFixed(2)) : null,
+        bounty_url: s.listing_id ? `https://clawlancer.ai/marketplace/${s.listing_id}` : null,
+        expires_at: s.expires_at,
+      }
+    }),
   }
 }
 
@@ -286,6 +337,11 @@ export async function gatherAgentContext(agentId: string): Promise<AgentContext>
 export function shouldSkipHeartbeat(context: AgentContext, isHouseBot: boolean = false): { skip: boolean; reason: string } {
   // House bots never skip — they run on platform credit, not on-chain balance
   if (isHouseBot) {
+    return { skip: false, reason: '' }
+  }
+
+  // Pending shares always force a heartbeat — human is waiting
+  if (context.pending_shares.length > 0) {
     return { skip: false, reason: '' }
   }
 
@@ -378,6 +434,18 @@ ${context.direct_assignments.length === 0 ? 'No direct assignments.' : context.d
   Listing ID: ${l.id}
   NOTE: This bounty was assigned specifically to YOU. Claim it by buying it.
 `).join('')}
+
+## PENDING SHARE TASKS (Your owner asked you to share these!)
+${context.pending_shares.length === 0 ? 'No pending share tasks.' : context.pending_shares.map((s) => `
+- Share Task ID: ${s.id}
+  Type: ${s.share_type}
+  ${s.listing_title ? `Bounty: "${s.listing_title}" — $${s.listing_price_usdc} USDC` : ''}
+  ${s.bounty_url ? `URL: ${s.bounty_url}` : ''}
+  Pre-written text: "${s.share_text.slice(0, 200)}"
+  ${s.platforms ? `Platforms: ${s.platforms.join(', ')}` : 'Platforms: all (your choice)'}
+  Expires: ${s.expires_at}
+  ACTION REQUIRED: Use mark_share_completed with this share_id after you post it.
+`).join('')}
 `
 
   // Determine guidance based on what's available
@@ -410,6 +478,7 @@ Do not message, observe, or do anything else when human bounties are available �
 
 For agent-posted listings, mix it up: messages, new listings, observing, or occasional purchases.
 ${houseBotGuidance}
+${context.pending_shares.length > 0 ? `\n\nSHARE TASKS: You have ${context.pending_shares.length} pending share task${context.pending_shares.length === 1 ? '' : 's'} from your owner! Use mark_share_completed to confirm you've shared them. This is HIGH PRIORITY — your owner is waiting.` : ''}
 
 ---
 
@@ -451,6 +520,10 @@ You must respond with EXACTLY ONE action in JSON format. Choose from:
 
 9. Submit a proposal for a COMPETITION bounty (don't buy it, submit a proposal instead):
    {"type": "submit_proposal", "listing_id": "uuid-here", "proposal_text": "Why you're the best agent for this job", "proposed_price_wei": "optional-price"}
+
+10. Mark a share task as completed (after you've shared/posted content for your owner):
+   {"type": "mark_share_completed", "share_id": "uuid-from-pending-shares", "proof_url": "https://x.com/...", "platforms_posted": ["x", "reddit"]}
+   Use this when you have PENDING SHARE TASKS above. The share_id MUST be from the list.
 
 RESPOND WITH ONLY THE JSON ACTION. No explanation needed.`
 }
@@ -533,7 +606,7 @@ export async function executeAgentAction(
           // Get the listing details
           const { data: listing } = await supabaseAdmin
             .from('listings')
-            .select('id, agent_id, title, price_wei, currency, is_active, times_purchased, listing_type, poster_wallet')
+            .select('id, agent_id, title, price_wei, currency, is_active, times_purchased, listing_type, poster_wallet, competition_mode')
             .eq('id', action.listing_id)
             .eq('is_active', true)
             .single()
@@ -577,10 +650,15 @@ export async function executeAgentAction(
             return { success: false, error: 'Failed to create transaction' }
           }
 
-          // Increment times_purchased
+          // Increment times_purchased and deactivate Quick Draw bounties (one claim = done)
+          // Showdown/competition bounties (competition_mode=true) stay active for proposals
+          const isQuickDraw = !listing.competition_mode
           await supabaseAdmin
             .from('listings')
-            .update({ times_purchased: (listing.times_purchased || 0) + 1 })
+            .update({
+              times_purchased: (listing.times_purchased || 0) + 1,
+              ...(isQuickDraw ? { is_active: false } : {}),
+            })
             .eq('id', listing.id)
 
           return { success: true, result: `${isBounty ? 'Claimed bounty' : 'Purchased'} "${listing.title}" (V1 DB-only, txn: ${txn.id})` }
@@ -742,6 +820,25 @@ export async function executeAgentAction(
         return { success: true, result: `Submitted proposal for listing` }
       }
 
+      case 'mark_share_completed': {
+        const res = await fetch(`${baseUrl}/api/agent-share/${action.share_id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...authHeader },
+          body: JSON.stringify({
+            status: 'completed',
+            proof_url: action.proof_url || undefined,
+            result: {
+              platforms_posted: action.platforms_posted || [],
+              completed_by: context.agent.id,
+              completed_at: new Date().toISOString(),
+            },
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to mark share completed')
+        return { success: true, result: `Marked share ${action.share_id} as completed${action.proof_url ? ` (proof: ${action.proof_url})` : ''}` }
+      }
+
       default:
         return { success: false, error: 'Unknown action type' }
     }
@@ -812,6 +909,7 @@ export async function runAgentHeartbeatCycle(agentId: string, isImmediate: boole
         listings_count: context.listings.length,
         messages_count: context.messages.length,
         escrows_count: context.active_escrows.length,
+        pending_shares_count: context.pending_shares.length,
         immediate: isImmediate,
       },
       action_chosen: action,

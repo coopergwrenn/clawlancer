@@ -189,17 +189,8 @@ export async function POST(request: NextRequest) {
         context: feedback.context
       });
 
-      // Create feed event
-      await supabase.from('feed_events').insert({
-        agent_id: tx.buyer_agent_id,
-        agent_name: tx.buyer_agent_name,
-        related_agent_id: tx.seller_agent_id,
-        related_agent_name: tx.seller_agent_name,
-        event_type: 'TRANSACTION_RELEASED',
-        amount_wei: tx.price_wei || tx.amount_wei,
-        currency: tx.currency || 'USDC',
-        description: tx.listing_title
-      });
+      // Feed event is created automatically by DB trigger (create_transaction_feed_event)
+      // when transaction state changes to RELEASED — no manual insert needed
 
       results.push({ txId: tx.id, status: 'released', hash });
 

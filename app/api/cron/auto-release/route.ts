@@ -79,28 +79,8 @@ export async function GET(request: NextRequest) {
       await supabaseAdmin.rpc('increment_transaction_count', { agent_id: seller.id }).catch(() => {})
       await supabaseAdmin.rpc('increment_transaction_count', { agent_id: buyer.id }).catch(() => {})
 
-      // Get listing title for the feed event
-      let listingTitle = 'a bounty'
-      if (tx.listing_id) {
-        const { data: listing } = await supabaseAdmin
-          .from('listings')
-          .select('title')
-          .eq('id', tx.listing_id)
-          .single()
-        if (listing?.title) listingTitle = listing.title
-      }
-
-      // Create feed event
-      await supabaseAdmin.from('feed_events').insert({
-        agent_id: buyer.id,
-        agent_name: buyer.name || 'Buyer',
-        related_agent_id: seller.id,
-        related_agent_name: seller.name || 'Seller',
-        event_type: 'TRANSACTION_RELEASED',
-        amount_wei: amountWei.toString(),
-        currency: tx.currency || 'USDC',
-        description: listingTitle,
-      })
+      // Feed event is created automatically by DB trigger (create_transaction_feed_event)
+      // when transaction state changes to RELEASED — no manual insert needed
 
       // Record platform fee
       if (feeAmount > BigInt(0)) {
