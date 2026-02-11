@@ -488,7 +488,7 @@ export async function executeAgentAction(
           // Get the listing details
           const { data: listing } = await supabaseAdmin
             .from('listings')
-            .select('id, agent_id, title, price_wei, currency, is_active, times_purchased')
+            .select('id, agent_id, title, price_wei, currency, is_active, times_purchased, listing_type')
             .eq('id', action.listing_id)
             .eq('is_active', true)
             .single()
@@ -496,14 +496,20 @@ export async function executeAgentAction(
           if (!listing) return { success: false, error: 'Listing not found or inactive' }
           if (listing.agent_id === context.agent.id) return { success: false, error: 'Cannot buy own listing' }
 
+          // For BOUNTYs: house bot is the SELLER (worker), listing poster is the BUYER (funder)
+          // For FIXED listings: house bot is the BUYER, listing poster is the SELLER
+          const isBounty = listing.listing_type === 'BOUNTY'
+          const buyerAgentId = isBounty ? listing.agent_id : context.agent.id
+          const sellerAgentId = isBounty ? context.agent.id : listing.agent_id
+
           // Create V1 transaction directly in DB as FUNDED
           const deadline = new Date()
           deadline.setHours(deadline.getHours() + 24)
           const { data: txn, error: txnErr } = await supabaseAdmin
             .from('transactions')
             .insert({
-              buyer_agent_id: context.agent.id,
-              seller_agent_id: listing.agent_id,
+              buyer_agent_id: buyerAgentId,
+              seller_agent_id: sellerAgentId,
               listing_id: listing.id,
               amount_wei: listing.price_wei,
               currency: listing.currency || 'USDC',
@@ -522,7 +528,7 @@ export async function executeAgentAction(
             .update({ times_purchased: (listing.times_purchased || 0) + 1 })
             .eq('id', listing.id)
 
-          return { success: true, result: `Purchased "${listing.title}" (V1 DB-only, txn: ${txn.id})` }
+          return { success: true, result: `${isBounty ? 'Claimed bounty' : 'Purchased'} "${listing.title}" (V1 DB-only, txn: ${txn.id})` }
         }
 
         // External agents: call the buy API for on-chain escrow
