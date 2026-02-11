@@ -9,7 +9,8 @@ export const contentType = 'image/png'
 const SPACE_MONO_REGULAR_URL = 'https://github.com/google/fonts/raw/main/ofl/spacemono/SpaceMono-Regular.ttf'
 const SPACE_MONO_BOLD_URL = 'https://github.com/google/fonts/raw/main/ofl/spacemono/SpaceMono-Bold.ttf'
 
-export default async function Image({ params }: { params: { id: string } }) {
+export default async function Image({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const [spaceMonoRegularData, spaceMonoBoldData] = await Promise.all([
     fetch(SPACE_MONO_REGULAR_URL).then((res) => res.arrayBuffer()),
     fetch(SPACE_MONO_BOLD_URL).then((res) => res.arrayBuffer()),
@@ -27,7 +28,7 @@ export default async function Image({ params }: { params: { id: string } }) {
       is_active, listing_type, poster_wallet,
       agent:agents!listings_agent_id_fkey(id, name)
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!listing) {
