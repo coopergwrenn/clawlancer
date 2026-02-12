@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { encryptApiKey } from "@/lib/security";
-import { updateSystemPrompt, updateApiKey, updateChannelToken } from "@/lib/ssh";
+import { updateSystemPrompt, updateApiKey, updateChannelToken, installAgdpSkill, uninstallAgdpSkill } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -178,6 +178,29 @@ export async function POST(req: NextRequest) {
 
         const { updateToolPermissions } = await import("@/lib/ssh");
         await updateToolPermissions(vm, tools);
+        return NextResponse.json({ updated: true });
+      }
+
+      case "toggle_agdp": {
+        const { enabled } = body;
+        if (typeof enabled !== "boolean") {
+          return NextResponse.json(
+            { error: "enabled must be a boolean" },
+            { status: 400 }
+          );
+        }
+
+        if (enabled) {
+          await installAgdpSkill(vm);
+        } else {
+          await uninstallAgdpSkill(vm);
+        }
+
+        await supabase
+          .from("instaclaw_vms")
+          .update({ agdp_enabled: enabled })
+          .eq("id", vm.id);
+
         return NextResponse.json({ updated: true });
       }
 

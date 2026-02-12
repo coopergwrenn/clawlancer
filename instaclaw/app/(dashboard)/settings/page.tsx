@@ -13,6 +13,7 @@ import {
   Hash,
   Phone,
   CreditCard,
+  Store,
 } from "lucide-react";
 import { WorldIDSection } from "@/components/dashboard/world-id-section";
 
@@ -36,6 +37,7 @@ interface VMStatus {
     channelsEnabled: string[];
     hasDiscord: boolean;
     hasBraveSearch: boolean;
+    agdpEnabled: boolean;
   };
   billing?: {
     tier: string;
@@ -63,6 +65,10 @@ export default function SettingsPage() {
   const [whatsappToken, setWhatsappToken] = useState("");
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [whatsappSuccess, setWhatsappSuccess] = useState(false);
+  const [agdpEnabled, setAgdpEnabled] = useState(false);
+  const [togglingAgdp, setTogglingAgdp] = useState(false);
+  const [agdpConfirm, setAgdpConfirm] = useState<"enable" | "disable" | null>(null);
+  const [agdpSuccess, setAgdpSuccess] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -72,6 +78,9 @@ export default function SettingsPage() {
         setVmStatus(data);
         if (data.vm?.systemPrompt) {
           setSystemPrompt(data.vm.systemPrompt);
+        }
+        if (data.vm?.agdpEnabled != null) {
+          setAgdpEnabled(data.vm.agdpEnabled);
         }
       })
       .catch(() => {});
@@ -242,6 +251,32 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleToggleAgdp(enabled: boolean) {
+    setTogglingAgdp(true);
+    setError("");
+    setAgdpConfirm(null);
+    setAgdpSuccess(false);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_agdp", enabled }),
+      });
+      if (res.ok) {
+        setAgdpEnabled(enabled);
+        setAgdpSuccess(true);
+        setTimeout(() => setAgdpSuccess(false), 3000);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to toggle aGDP");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setTogglingAgdp(false);
+    }
+  }
+
   const vm = vmStatus?.vm;
   const billing = vmStatus?.billing;
 
@@ -322,6 +357,108 @@ export default function SettingsPage() {
           {error}
         </p>
       )}
+
+      {/* Marketplace Integrations */}
+      <div>
+        <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
+          <Store className="w-5 h-5" /> Marketplace Integrations
+          {agdpSuccess && (
+            <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
+              {agdpEnabled ? "Enabled" : "Disabled"}
+            </span>
+          )}
+        </h2>
+        <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 mr-4">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-sm font-medium">aGDP Marketplace</h3>
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                  style={{
+                    background: "rgba(168,85,247,0.15)",
+                    color: "rgb(168,85,247)",
+                  }}
+                >
+                  Beta
+                </span>
+              </div>
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Connect to the Virtuals Protocol Agent Commerce marketplace as a secondary bounty source.
+                Clawlancer remains your primary marketplace.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (togglingAgdp) return;
+                setAgdpConfirm(agdpEnabled ? "disable" : "enable");
+              }}
+              disabled={togglingAgdp}
+              className="relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 cursor-pointer disabled:opacity-50"
+              style={{
+                background: agdpEnabled ? "rgb(168,85,247)" : "var(--border)",
+              }}
+              aria-label={agdpEnabled ? "Disable aGDP" : "Enable aGDP"}
+            >
+              <span
+                className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200"
+                style={{
+                  background: "#fff",
+                  transform: agdpEnabled ? "translateX(20px)" : "translateX(0)",
+                }}
+              />
+            </button>
+          </div>
+
+          {togglingAgdp && (
+            <div className="mt-4 flex items-center gap-2 text-xs" style={{ color: "var(--muted)" }}>
+              <RotateCw className="w-3 h-3 animate-spin" />
+              {agdpEnabled ? "Disabling" : "Enabling"} aGDP... This may take a moment while we configure your VM.
+            </div>
+          )}
+
+          {/* Confirmation dialog */}
+          {agdpConfirm && (
+            <div
+              className="mt-4 rounded-lg p-4"
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <p className="text-sm mb-3">
+                {agdpConfirm === "enable"
+                  ? "Enable aGDP? This will install the Virtuals Protocol Agent Commerce skill on your VM. Clawlancer will remain your primary marketplace."
+                  : "Disable aGDP? This will remove the Agent Commerce skill from your VM."}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleToggleAgdp(agdpConfirm === "enable")}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  style={{
+                    background: agdpConfirm === "enable" ? "rgb(168,85,247)" : "rgba(239,68,68,0.1)",
+                    color: agdpConfirm === "enable" ? "#fff" : "#ef4444",
+                    border: agdpConfirm === "enable" ? "none" : "1px solid rgba(239,68,68,0.3)",
+                  }}
+                >
+                  {agdpConfirm === "enable" ? "Enable" : "Disable"}
+                </button>
+                <button
+                  onClick={() => setAgdpConfirm(null)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  style={{
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    color: "var(--foreground)",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Bot Info (read-only) */}
       <div>
