@@ -260,7 +260,263 @@ export default function DashboardPage() {
 
       {vmStatus?.status === "assigned" && vm ? (
         <>
-          {/* Status + Stats */}
+          {/* ── Usage Hero (all-inclusive only) ── */}
+          {usage && vm.apiMode === "all_inclusive" && (
+            <div className="glass rounded-xl p-6 sm:p-8" style={{ border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-5 h-5" style={{ color: usageBarColor }} />
+                  <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>
+                    Today&apos;s Usage
+                  </span>
+                </div>
+                {billing && (
+                  <span
+                    className="px-2.5 py-0.5 rounded-full text-xs font-medium"
+                    style={{
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid var(--border)",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    {billing.tierName}
+                  </span>
+                )}
+              </div>
+
+              {/* Large remaining units */}
+              <div className="mb-5">
+                <p className="text-4xl sm:text-5xl font-bold tracking-tight">
+                  {Math.max(0, usage.dailyLimit - usage.today)}
+                </p>
+                <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
+                  units remaining of {usage.dailyLimit} daily
+                </p>
+              </div>
+
+              {/* Premium progress bar */}
+              <div
+                className="h-3 rounded-full overflow-hidden mb-5"
+                style={{ background: "rgba(255,255,255,0.06)" }}
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${usagePct}%`,
+                    background:
+                      usagePct >= 90
+                        ? "linear-gradient(90deg, #ef4444, #dc2626)"
+                        : usagePct >= 70
+                        ? "linear-gradient(90deg, #f59e0b, #d97706)"
+                        : "linear-gradient(90deg, #22c55e, #16a34a)",
+                    transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+                  }}
+                />
+              </div>
+
+              {/* Usage stats row */}
+              <div
+                className="grid grid-cols-3 gap-4 pt-5 mb-4"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <div>
+                  <p className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                    Today
+                  </p>
+                  <p className="text-xl font-bold mt-0.5">{usage.today}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                    7 Days
+                  </p>
+                  <p className="text-xl font-bold mt-0.5">{usage.week}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+                    30 Days
+                  </p>
+                  <p className="text-xl font-bold mt-0.5">{usage.month}</p>
+                </div>
+              </div>
+
+              {/* Cost weight breakdown */}
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                1 unit = 1 Haiku message &middot; 1 unit = &#8531; Sonnet message &middot; 1 unit = 1/15 Opus message. Resets midnight UTC.
+              </p>
+
+              {/* At-limit banner */}
+              {usage.today >= usage.dailyLimit && usage.creditBalance <= 0 && (
+                <div
+                  className="mt-5 rounded-lg p-4 text-center"
+                  style={{
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.2)",
+                  }}
+                >
+                  <p className="text-sm font-semibold" style={{ color: "#ef4444" }}>
+                    0 units remaining
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "rgba(239,68,68,0.7)" }}>
+                    Grab a credit pack below to keep chatting &mdash; credits kick in instantly.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Credits & Plan ── */}
+          {usage && vm.apiMode === "all_inclusive" ? (
+            <div className="grid gap-5 sm:grid-cols-2">
+              {/* Credit Balance (dark card) */}
+              <div
+                className="glass rounded-xl p-6"
+                style={{
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div className="flex items-center gap-2 mb-4">
+                  <Zap className="w-4 h-4" style={{ color: "#3b82f6" }} />
+                  <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.6)" }}>
+                    Bonus Credits
+                  </span>
+                </div>
+                <p className="text-3xl sm:text-4xl font-bold text-white">
+                  {usage.creditBalance}
+                </p>
+                <p className="text-xs mt-1 mb-5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  {usage.creditBalance > 0
+                    ? "Used after daily limit is reached. Never expire."
+                    : "Buy credits to extend past your daily limit."}
+                </p>
+                <button
+                  onClick={() => {
+                    setShowCreditPacks(!showCreditPacks);
+                    if (!showCreditPacks) {
+                      setTimeout(() => {
+                        creditPackRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                      }, 100);
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                  style={{ background: "#3b82f6", color: "#fff" }}
+                >
+                  Buy Credits
+                </button>
+              </div>
+
+              {/* Billing Summary */}
+              {billing && (
+                <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <CreditCard className="w-4 h-4" style={{ color: "var(--muted)" }} />
+                    <span className="text-sm font-medium">Plan</span>
+                  </div>
+                  <p className="text-xl font-bold">{billing.tierName}</p>
+                  <p className="text-xs mt-0.5 mb-1" style={{ color: "var(--muted)" }}>
+                    {billing.apiMode === "byok" ? "BYOK" : "All-Inclusive"}
+                  </p>
+                  {billing.price !== null && (
+                    <p className="text-sm mb-5" style={{ color: "var(--muted)" }}>
+                      ${billing.price}/mo
+                      {billing.renewalDate && (
+                        <span className="block text-xs mt-0.5">
+                          Renews {new Date(billing.renewalDate).toLocaleDateString()}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  <Link
+                    href="/billing"
+                    className="inline-flex px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    style={{
+                      background: "rgba(255,255,255,0.06)",
+                      color: "var(--muted)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    Manage Plan
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : (
+            billing && (
+              <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <CreditCard className="w-4 h-4" style={{ color: "var(--muted)" }} />
+                  <span className="text-sm font-medium">Plan</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-lg font-bold">
+                      {billing.tierName}{" "}
+                      <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>
+                        {billing.apiMode === "byok" ? "BYOK" : "All-Inclusive"}
+                      </span>
+                    </p>
+                    {billing.price !== null && (
+                      <p className="text-sm" style={{ color: "var(--muted)" }}>
+                        ${billing.price}/mo
+                        {billing.renewalDate && (
+                          <> &mdash; Renews {new Date(billing.renewalDate).toLocaleDateString()}</>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    href="/billing"
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                    style={{
+                      background: "rgba(255,255,255,0.06)",
+                      color: "var(--muted)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    Manage
+                  </Link>
+                </div>
+              </div>
+            )
+          )}
+
+          {/* ── Credit Pack Selector ── */}
+          {showCreditPacks && vm.apiMode === "all_inclusive" && (
+            <div
+              ref={creditPackRef}
+              className="glass rounded-xl p-6"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <p className="text-sm font-medium mb-4">Credit Packs</p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {CREDIT_PACKS.map((pack) => (
+                  <button
+                    key={pack.id}
+                    onClick={() => handleBuyCredits(pack.id)}
+                    disabled={buyingPack !== null}
+                    className="glass rounded-lg p-4 text-left cursor-pointer transition-all hover:border-white/30 disabled:opacity-50"
+                    style={{ border: "1px solid var(--border)" }}
+                  >
+                    <p className="text-2xl font-bold">{pack.credits}</p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                      message units
+                    </p>
+                    <p className="text-sm font-semibold mt-2" style={{ color: "#3b82f6" }}>
+                      {buyingPack === pack.id ? "Redirecting..." : pack.price}
+                    </p>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>
+                Credits never expire and are used automatically after your daily limit is reached.
+              </p>
+            </div>
+          )}
+
+          {/* ── Instance Status ── */}
           <div className="grid gap-5 sm:grid-cols-3">
             <div className="glass rounded-xl p-6">
               <div className="flex items-center gap-2 mb-2">
@@ -309,179 +565,6 @@ export default function DashboardPage() {
               </span>
             </div>
           </div>
-
-          {/* Usage & Credits (all-inclusive only) */}
-          {usage && vm.apiMode === "all_inclusive" && (
-            <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4" style={{ color: "var(--muted)" }} />
-                  <span className="text-sm font-medium">Usage Today</span>
-                </div>
-                <span className="text-sm font-mono" style={{ color: "var(--muted)" }}>
-                  {usage.today} / {usage.dailyLimit} units
-                </span>
-              </div>
-              <div
-                className="h-2 rounded-full overflow-hidden mb-3"
-                style={{ background: "rgba(255,255,255,0.06)" }}
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${usagePct}%`,
-                    background: usageBarColor,
-                    transition: "width 0.5s ease",
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  Haiku = 1 unit, Sonnet = 3 units, Opus = 15 units. Resets midnight UTC.
-                </p>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium" style={{ color: usage.creditBalance > 0 ? "var(--success)" : "var(--muted)" }}>
-                    {usage.creditBalance} bonus credit{usage.creditBalance !== 1 ? "s" : ""}
-                  </span>
-                  <button
-                    onClick={() => setShowCreditPacks(!showCreditPacks)}
-                    className="px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-                    style={{
-                      background: "rgba(59,130,246,0.15)",
-                      color: "#3b82f6",
-                    }}
-                  >
-                    Buy More
-                  </button>
-                </div>
-              </div>
-
-              {/* At-limit banner */}
-              {usage.today >= usage.dailyLimit && usage.creditBalance <= 0 && (
-                <div
-                  className="mt-3 rounded-lg p-3 text-center"
-                  style={{
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.2)",
-                  }}
-                >
-                  <p className="text-sm font-medium" style={{ color: "#ef4444" }}>
-                    You&apos;ve used all your units for today. Grab a credit pack to keep chatting!
-                  </p>
-                </div>
-              )}
-
-              {/* Credit pack selector */}
-              {showCreditPacks && (
-                <div ref={creditPackRef} className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-                  <p className="text-sm font-medium mb-3">Credit Packs</p>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {CREDIT_PACKS.map((pack) => (
-                      <button
-                        key={pack.id}
-                        onClick={() => handleBuyCredits(pack.id)}
-                        disabled={buyingPack !== null}
-                        className="glass rounded-lg p-3 text-left cursor-pointer transition-all hover:border-white/30 disabled:opacity-50"
-                        style={{ border: "1px solid var(--border)" }}
-                      >
-                        <p className="text-lg font-bold">{pack.credits}</p>
-                        <p className="text-xs" style={{ color: "var(--muted)" }}>
-                          message units
-                        </p>
-                        <p className="text-sm font-semibold mt-1" style={{ color: "#3b82f6" }}>
-                          {buyingPack === pack.id ? "Redirecting..." : pack.price}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
-                    Credits never expire and are used after your daily limit is reached.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Weekly/Monthly usage summary */}
-          {usage && (
-            <div className="grid gap-5 sm:grid-cols-3">
-              <div className="glass rounded-xl p-6">
-                <p
-                  className="text-xs uppercase tracking-wide mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Today
-                </p>
-                <p className="text-2xl font-bold">{usage.today}</p>
-                <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  message units
-                </p>
-              </div>
-              <div className="glass rounded-xl p-6">
-                <p
-                  className="text-xs uppercase tracking-wide mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  7 Days
-                </p>
-                <p className="text-2xl font-bold">{usage.week}</p>
-                <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  message units
-                </p>
-              </div>
-              <div className="glass rounded-xl p-6">
-                <p
-                  className="text-xs uppercase tracking-wide mb-1"
-                  style={{ color: "var(--muted)" }}
-                >
-                  30 Days
-                </p>
-                <p className="text-2xl font-bold">{usage.month}</p>
-                <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  message units
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Billing Summary */}
-          {billing && (
-            <div className="glass rounded-xl p-5" style={{ border: "1px solid var(--border)" }}>
-              <div className="flex items-center gap-2 mb-3">
-                <CreditCard className="w-4 h-4" style={{ color: "var(--muted)" }} />
-                <span className="text-sm font-medium">Plan</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-lg font-bold">
-                    {billing.tierName}{" "}
-                    <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>
-                      {billing.apiMode === "byok" ? "BYOK" : "All-Inclusive"}
-                    </span>
-                  </p>
-                  {billing.price !== null && (
-                    <p className="text-sm" style={{ color: "var(--muted)" }}>
-                      ${billing.price}/mo
-                      {billing.renewalDate && (
-                        <> — Renews {new Date(billing.renewalDate).toLocaleDateString()}</>
-                      )}
-                    </p>
-                  )}
-                </div>
-                <Link
-                  href="/billing"
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                  style={{
-                    background: "rgba(255,255,255,0.06)",
-                    color: "var(--muted)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  Manage
-                </Link>
-              </div>
-            </div>
-          )}
 
           {/* Quick Actions */}
           <div>
