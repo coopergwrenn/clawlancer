@@ -200,6 +200,15 @@ export function formatVmName(num: number): string {
 // CloudProvider interface implementation
 // ---------------------------------------------------------------------------
 
+let cachedIds: { sshKeyId: number; firewallId: number } | null = null;
+
+async function getCachedIds() {
+  if (!cachedIds) {
+    cachedIds = await resolveHetznerIds();
+  }
+  return cachedIds;
+}
+
 export const hetznerProvider: CloudProvider = {
   name: "hetzner",
 
@@ -208,7 +217,7 @@ export const hetznerProvider: CloudProvider = {
   },
 
   async createServer(config: ServerConfig): Promise<ServerResult> {
-    const { sshKeyId, firewallId } = await resolveHetznerIds();
+    const { sshKeyId, firewallId } = await getCachedIds();
     const image = getImage();
     const userData = getSnapshotUserData();
 
