@@ -262,17 +262,14 @@ export default function DashboardPage() {
         <>
           {/* ── Usage Hero (all-inclusive only) ── */}
           {usage && vm.apiMode === "all_inclusive" && (
-            <div className="glass rounded-xl p-6 sm:p-8" style={{ border: "1px solid var(--border)" }}>
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-5 h-5" style={{ color: usageBarColor }} />
-                  <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>
-                    Today&apos;s Usage
-                  </span>
-                </div>
+            <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>
+                  Today&apos;s Usage
+                </span>
                 {billing && (
                   <span
-                    className="px-2.5 py-0.5 rounded-full text-xs font-medium"
+                    className="px-2 py-0.5 rounded-full text-xs font-medium"
                     style={{
                       background: "rgba(0,0,0,0.04)",
                       border: "1px solid var(--border)",
@@ -284,80 +281,55 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              {/* Large remaining units */}
-              <div className="mb-5">
-                <p className="text-4xl sm:text-5xl font-bold tracking-tight">
-                  {Math.max(0, usage.dailyLimit - usage.today)}
-                </p>
-                <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-                  units remaining of {usage.dailyLimit} daily
-                </p>
+              {/* Usage fraction */}
+              <div className="flex items-baseline gap-1.5 mb-3">
+                <span className="text-3xl font-semibold tracking-tight">{usage.today}</span>
+                <span className="text-lg" style={{ color: "var(--muted)" }}>/</span>
+                <span className="text-lg" style={{ color: "var(--muted)" }}>{usage.dailyLimit}</span>
+                <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>units used</span>
               </div>
 
-              {/* Premium progress bar */}
+              {/* Progress bar */}
               <div
-                className="h-3 rounded-full overflow-hidden mb-5"
+                className="h-2 rounded-full overflow-hidden mb-4"
                 style={{ background: "rgba(0,0,0,0.06)" }}
               >
                 <div
                   className="h-full rounded-full"
                   style={{
                     width: `${usagePct}%`,
-                    background:
-                      usagePct >= 90
-                        ? "linear-gradient(90deg, #ef4444, #dc2626)"
-                        : usagePct >= 70
-                        ? "linear-gradient(90deg, #f59e0b, #d97706)"
-                        : "linear-gradient(90deg, #22c55e, #16a34a)",
+                    background: usageBarColor,
                     transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
                   }}
                 />
               </div>
 
-              {/* Usage stats row */}
-              <div
-                className="grid grid-cols-3 gap-4 pt-5 mb-4"
-                style={{ borderTop: "1px solid var(--border)" }}
-              >
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-                    Today
-                  </p>
-                  <p className="text-xl font-bold mt-0.5">{usage.today}</p>
+              {/* Week / Month stats */}
+              <div className="flex gap-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>7d</span>
+                  <span className="text-sm font-semibold">{usage.week}</span>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-                    7 Days
-                  </p>
-                  <p className="text-xl font-bold mt-0.5">{usage.week}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-                    30 Days
-                  </p>
-                  <p className="text-xl font-bold mt-0.5">{usage.month}</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>30d</span>
+                  <span className="text-sm font-semibold">{usage.month}</span>
                 </div>
               </div>
-
-              {/* Cost weight breakdown */}
-              <p className="text-xs" style={{ color: "var(--muted)" }}>
-                1 unit = 1 Haiku message &middot; 1 unit = &#8531; Sonnet message &middot; 1 unit = 1/15 Opus message. Resets midnight UTC.
-              </p>
 
               {/* At-limit banner */}
               {usage.today >= usage.dailyLimit && usage.creditBalance <= 0 && (
                 <div
-                  className="mt-5 rounded-lg p-4 text-center"
+                  className="mt-4 rounded-lg p-3 text-center"
                   style={{
                     background: "rgba(239,68,68,0.08)",
                     border: "1px solid rgba(239,68,68,0.2)",
                   }}
                 >
                   <p className="text-sm font-semibold" style={{ color: "#ef4444" }}>
-                    0 units remaining
+                    Daily limit reached
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "rgba(239,68,68,0.7)" }}>
-                    Grab a credit pack below to keep chatting &mdash; credits kick in instantly.
+                  <p className="text-xs mt-0.5" style={{ color: "rgba(239,68,68,0.7)" }}>
+                    Buy credits below to keep chatting — they kick in instantly.
                   </p>
                 </div>
               )}
@@ -367,24 +339,21 @@ export default function DashboardPage() {
           {/* ── Credits & Plan ── */}
           {usage && vm.apiMode === "all_inclusive" ? (
             <div className="grid gap-5 sm:grid-cols-2">
-              {/* Credit Balance (dark card — no .glass to avoid !important override) */}
+              {/* Credit Balance */}
               <div
-                className="rounded-xl p-6"
-                style={{
-                  background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                }}
+                className="glass rounded-xl p-6"
+                style={{ border: "1px solid var(--border)" }}
               >
                 <div className="flex items-center gap-2 mb-4">
-                  <Zap className="w-4 h-4" style={{ color: "#60a5fa" }} />
-                  <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.6)" }}>
+                  <Zap className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                  <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>
                     Bonus Credits
                   </span>
                 </div>
-                <p className="text-3xl sm:text-4xl font-bold" style={{ color: "#ffffff" }}>
+                <p className="text-3xl font-semibold">
                   {usage.creditBalance}
                 </p>
-                <p className="text-xs mt-1 mb-5" style={{ color: "rgba(255,255,255,0.45)" }}>
+                <p className="text-xs mt-1 mb-5" style={{ color: "var(--muted)" }}>
                   {usage.creditBalance > 0
                     ? "Used after daily limit is reached. Never expire."
                     : "Buy credits to extend past your daily limit."}
@@ -402,7 +371,7 @@ export default function DashboardPage() {
                     }
                   }}
                   className="w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer"
-                  style={{ background: "#3b82f6", color: "#fff" }}
+                  style={{ background: "var(--accent)", color: "#fff" }}
                 >
                   Buy Credits
                 </button>
