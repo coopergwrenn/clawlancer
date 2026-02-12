@@ -260,7 +260,7 @@ export default function DashboardPage() {
 
       {vmStatus?.status === "assigned" && vm ? (
         <>
-          {/* ── Usage Hero (all-inclusive only) ── */}
+          {/* ── Usage + Credits (merged card, all-inclusive only) ── */}
           {usage && vm.apiMode === "all_inclusive" && (
             <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
               <div className="flex items-center justify-between mb-4">
@@ -283,7 +283,12 @@ export default function DashboardPage() {
 
               {/* Usage fraction */}
               <div className="flex items-baseline gap-1.5 mb-3">
-                <span className="text-3xl font-semibold tracking-tight">{usage.today}</span>
+                <span
+                  className="text-3xl font-semibold tracking-tight"
+                  style={usagePct >= 100 ? { color: "#ef4444" } : undefined}
+                >
+                  {usage.today}
+                </span>
                 <span className="text-lg" style={{ color: "var(--muted)" }}>/</span>
                 <span className="text-lg" style={{ color: "var(--muted)" }}>{usage.dailyLimit}</span>
                 <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>units used</span>
@@ -305,7 +310,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Week / Month stats */}
-              <div className="flex gap-6">
+              <div className="flex gap-6 mb-0">
                 <div className="flex items-center gap-2">
                   <span className="text-xs" style={{ color: "var(--muted)" }}>7d</span>
                   <span className="text-sm font-semibold">{usage.week}</span>
@@ -329,35 +334,25 @@ export default function DashboardPage() {
                     Daily limit reached
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: "rgba(239,68,68,0.7)" }}>
-                    Buy credits below to keep chatting — they kick in instantly.
+                    Buy credits to keep chatting — they kick in instantly.
                   </p>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ── Credits & Plan ── */}
-          {usage && vm.apiMode === "all_inclusive" ? (
-            <div className="grid gap-5 sm:grid-cols-2">
-              {/* Credit Balance */}
+              {/* ── Credit balance row (inside usage card) ── */}
               <div
-                className="glass rounded-xl p-6"
-                style={{ border: "1px solid var(--border)" }}
+                className="flex items-center justify-between mt-5 pt-5"
+                style={{ borderTop: "1px solid var(--border)" }}
               >
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-3">
                   <Zap className="w-4 h-4" style={{ color: "var(--accent)" }} />
-                  <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>
-                    Bonus Credits
-                  </span>
+                  <div>
+                    <span className="text-sm font-semibold">{usage.creditBalance} credits</span>
+                    <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
+                      {usage.creditBalance > 0 ? "available after daily limit" : "none remaining"}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-3xl font-semibold">
-                  {usage.creditBalance}
-                </p>
-                <p className="text-xs mt-1 mb-5" style={{ color: "var(--muted)" }}>
-                  {usage.creditBalance > 0
-                    ? "Used after daily limit is reached. Never expire."
-                    : "Buy credits to extend past your daily limit."}
-                </p>
                 <button
                   onClick={() => {
                     setShowCreditPacks(!showCreditPacks);
@@ -370,48 +365,47 @@ export default function DashboardPage() {
                       }, 100);
                     }
                   }}
-                  className="w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer shrink-0"
                   style={{ background: "var(--accent)", color: "#fff" }}
                 >
                   Buy Credits
                 </button>
               </div>
+            </div>
+          )}
 
-              {/* Billing Summary */}
-              {billing && (
-                <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
-                  <div className="flex items-center gap-2 mb-4">
+          {/* ── Plan ── */}
+          {usage && vm.apiMode === "all_inclusive" ? (
+            billing && (
+              <div className="glass rounded-xl p-5" style={{ border: "1px solid var(--border)" }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
                     <CreditCard className="w-4 h-4" style={{ color: "var(--muted)" }} />
-                    <span className="text-sm font-medium">Plan</span>
+                    <div>
+                      <span className="text-sm font-bold">{billing.tierName}</span>
+                      <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
+                        {billing.apiMode === "byok" ? "BYOK" : "All-Inclusive"}
+                        {billing.price !== null && <> &middot; ${billing.price}/mo</>}
+                        {billing.renewalDate && (
+                          <> &middot; Renews {new Date(billing.renewalDate).toLocaleDateString()}</>
+                        )}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xl font-bold">{billing.tierName}</p>
-                  <p className="text-xs mt-0.5 mb-1" style={{ color: "var(--muted)" }}>
-                    {billing.apiMode === "byok" ? "BYOK" : "All-Inclusive"}
-                  </p>
-                  {billing.price !== null && (
-                    <p className="text-sm mb-5" style={{ color: "var(--muted)" }}>
-                      ${billing.price}/mo
-                      {billing.renewalDate && (
-                        <span className="block text-xs mt-0.5">
-                          Renews {new Date(billing.renewalDate).toLocaleDateString()}
-                        </span>
-                      )}
-                    </p>
-                  )}
                   <Link
                     href="/billing"
-                    className="inline-flex px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
                     style={{
                       background: "rgba(0,0,0,0.04)",
                       color: "var(--muted)",
                       border: "1px solid var(--border)",
                     }}
                   >
-                    Manage Plan
+                    Manage
                   </Link>
                 </div>
-              )}
-            </div>
+              </div>
+            )
           ) : (
             billing && (
               <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
