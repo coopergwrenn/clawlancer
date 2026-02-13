@@ -62,6 +62,48 @@ const DO_DEFAULTS = {
   tag: "instaclaw",
 } as const;
 
+/**
+ * Returns the snapshot image ID if set, otherwise falls back to ubuntu-24-04-x64.
+ */
+function getImage(): string {
+  return process.env.DIGITALOCEAN_SNAPSHOT_ID || DO_DEFAULTS.image;
+}
+
+/**
+ * Generate lightweight cloud-init user_data for personalizing a snapshot-based VM.
+ * Regenerates SSH host keys, machine-id, and resets the openclaw config.
+ * Returns the script string, or undefined for fresh installs (which use
+ * the full getInstallOpenClawUserData() script instead).
+ */
+function getSnapshotUserData(): string | undefined {
+  if (!process.env.DIGITALOCEAN_SNAPSHOT_ID) return undefined;
+
+  return `#!/bin/bash
+set -euo pipefail
+OPENCLAW_USER="openclaw"
+CONFIG_DIR="/home/\${OPENCLAW_USER}/.openclaw"
+
+rm -f /etc/ssh/ssh_host_* 2>/dev/null || true
+dpkg-reconfigure openssh-server 2>/dev/null || ssh-keygen -A
+systemd-machine-id-setup
+
+mkdir -p "\${CONFIG_DIR}"
+chown "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${CONFIG_DIR}"
+
+cat > "\${CONFIG_DIR}/openclaw.json" <<'EOF'
+{"_placeholder":true,"gateway":{"mode":"local","port":18789,"bind":"lan"}}
+EOF
+chown "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${CONFIG_DIR}/openclaw.json"
+chmod 600 "\${CONFIG_DIR}/openclaw.json"
+
+rm -f /var/lib/fail2ban/fail2ban.sqlite3 2>/dev/null || true
+systemctl restart fail2ban 2>/dev/null || true
+if systemctl is-active ssh.service &>/dev/null; then systemctl restart ssh; fi
+
+touch /tmp/.instaclaw-personalized
+`;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -88,16 +130,20 @@ export const digitalOceanProvider: CloudProvider = {
 
   async createServer(config: ServerConfig): Promise<ServerResult> {
     const sshFingerprint = await getSSHKeyFingerprint(DO_DEFAULTS.sshKeyName);
+    const image = getImage();
 
-    // Use explicit userData if provided, otherwise auto-inject the install script
-    const userData = config.userData ?? getInstallOpenClawUserData();
+    // Snapshot VMs get a lightweight personalization script;
+    // fresh installs get the full OpenClaw install script.
+    const snapshotUserData = getSnapshotUserData();
+    const userData =
+      config.userData ?? snapshotUserData ?? getInstallOpenClawUserData();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body: Record<string, any> = {
       name: config.name,
       region: DO_DEFAULTS.region,
       size: DO_DEFAULTS.size,
-      image: DO_DEFAULTS.image,
+      image,
       ssh_keys: [sshFingerprint],
       tags: [DO_DEFAULTS.tag],
       user_data: userData,

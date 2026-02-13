@@ -118,7 +118,8 @@ export async function GET(req: NextRequest) {
 
   const isSnapshot =
     (provider.name === "hetzner" && !!process.env.HETZNER_SNAPSHOT_ID) ||
-    (provider.name === "linode" && !!process.env.LINODE_SNAPSHOT_ID);
+    (provider.name === "linode" && !!process.env.LINODE_SNAPSHOT_ID) ||
+    (provider.name === "digitalocean" && !!process.env.DIGITALOCEAN_SNAPSHOT_ID);
 
   const provisioned: { name: string; ip: string; provider: string }[] = [];
 
