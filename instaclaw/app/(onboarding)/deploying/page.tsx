@@ -12,9 +12,9 @@ interface DeployStep {
   status: StepStatus;
 }
 
-const MAX_POLL_ATTEMPTS = 45; // 90 seconds at 2s intervals
+const MAX_POLL_ATTEMPTS = 90; // 180 seconds at 2s intervals
 const EARLY_CHECK_THRESHOLD = 15; // Check for issues at 30s
-const MID_CHECK_THRESHOLD = 30; // Check for issues at 60s
+const MID_CHECK_THRESHOLD = 45; // Check for issues at 90s
 
 // Rotating subtitle phrases while deploying
 const SUBTITLE_MESSAGES = [
@@ -149,6 +149,7 @@ function DeployingPageContent() {
   const [errorType, setErrorType] = useState<"checkout" | "no_vms" | "assignment" | "config" | "timeout" | null>(null);
   const autoRetryFired = useRef(false);
   const validationChecked = useRef(false);
+  const configuredRef = useRef(false);
 
   // Track which steps just completed (for the bounce animation)
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set());
@@ -271,8 +272,10 @@ function DeployingPageContent() {
       setPollCount((c) => {
         const next = c + 1;
 
-        // Timeout after MAX_POLL_ATTEMPTS
-        if (next >= MAX_POLL_ATTEMPTS) {
+        // Timeout after MAX_POLL_ATTEMPTS — but NOT if config already
+        // succeeded (gateway URL present). In that case the health check
+        // cron will mark it healthy shortly.
+        if (next >= MAX_POLL_ATTEMPTS && !configuredRef.current) {
           setPolling(false);
           setConfigureFailed(true);
           setErrorType("timeout");
@@ -340,6 +343,7 @@ function DeployingPageContent() {
 
           if (data.vm.gatewayUrl) {
             // Gateway URL set → configure script completed
+            configuredRef.current = true;
             updateStep("configure", "done");
             updateStep("telegram", "done");
 
@@ -896,7 +900,7 @@ function DeployingPageContent() {
                     Deployment Timeout
                   </p>
                   <p className="text-sm" style={{ color: "#666666" }}>
-                    Deployment took longer than expected (90 seconds). Please contact support at{" "}
+                    Deployment took longer than expected. Please contact support at{" "}
                     <a
                       href="mailto:support@instaclaw.io"
                       className="underline hover:opacity-80 transition-opacity"
