@@ -126,7 +126,7 @@ export function Footer() {
               Terms
             </a>
             <a
-              href="mailto:cooper@clawlancer.com"
+              href="mailto:support@instaclaw.io"
               className="hover:underline transition-colors"
               style={{ color: "var(--muted)" }}
             >

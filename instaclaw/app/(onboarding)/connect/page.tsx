@@ -5,6 +5,35 @@ import { useRouter } from "next/navigation";
 
 const TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
 
+const glassStyle = {
+  background:
+    "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow: `
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
+  `,
+} as const;
+
+const glassSelectedStyle = {
+  ...glassStyle,
+  border: "2px solid #DC6743",
+  boxShadow: `
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(220, 103, 67, 0.2) 0px 2px 12px 0px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
+  `,
+} as const;
+
+const glassInputStyle = {
+  ...glassStyle,
+  color: "#333334",
+} as const;
+
 const FAQ_ITEMS = [
   {
     q: "What is a Telegram bot?",
@@ -166,9 +195,11 @@ export default function ConnectPage() {
         setError(
           "Invalid token — check that you copied the full token from BotFather."
         );
+        lastVerifiedToken.current = botToken.trim();
       }
     } catch {
       setError("Network error verifying bot token. Please try again.");
+      lastVerifiedToken.current = botToken.trim();
     } finally {
       setLoading(false);
     }
@@ -187,7 +218,12 @@ export default function ConnectPage() {
       {/* Step Indicator */}
       <div
         className="sticky top-0 z-10 py-4"
-        style={{ background: "#ffffff", borderBottom: "1px solid rgba(0, 0, 0, 0.1)" }}
+        style={{
+          background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.6))",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderBottom: "1px solid rgba(0, 0, 0, 0.06)",
+        }}
       >
         <div className="max-w-2xl mx-auto px-6">
           <div className="flex items-center justify-center gap-2">
@@ -198,16 +234,60 @@ export default function ConnectPage() {
             ].map((step, i) => (
               <div key={step.num} className="flex items-center">
                 <div className="flex flex-col items-center">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all"
-                    style={{
-                      background: step.num === 1 ? "#DC6743" : "#ffffff",
-                      color: step.num === 1 ? "#ffffff" : "#999999",
-                      border: step.num === 1 ? "none" : "1px solid rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    {step.num}
-                  </div>
+                  {step.num === 1 ? (
+                    /* Active step — glowing glass orb */
+                    <span
+                      className="relative flex items-center justify-center w-10 h-10 rounded-full overflow-hidden shrink-0"
+                      style={{
+                        background: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
+                        boxShadow: `
+                          inset 0 -2px 4px rgba(0,0,0,0.3),
+                          inset 0 2px 4px rgba(255,255,255,0.5),
+                          inset 0 0 3px rgba(0,0,0,0.15),
+                          0 1px 4px rgba(0,0,0,0.15)
+                        `,
+                      }}
+                    >
+                      {/* Shimmer sweep */}
+                      <span
+                        className="absolute inset-0 rounded-full"
+                        style={{
+                          background: "linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.4) 45%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.4) 55%, transparent 80%)",
+                          backgroundSize: "300% 100%",
+                          animation: "globe-shimmer 4s linear infinite",
+                        }}
+                      />
+                      {/* Glass highlight */}
+                      <span
+                        className="absolute top-[3px] left-[5px] w-[14px] h-[8px] rounded-full pointer-events-none"
+                        style={{
+                          background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
+                        }}
+                      />
+                      {/* Breathing glow */}
+                      <span
+                        className="absolute inset-[-3px] rounded-full"
+                        style={{
+                          background: "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)",
+                          animation: "globe-glow 4s ease-in-out infinite",
+                        }}
+                      />
+                      <span className="relative text-sm font-semibold" style={{ color: "#ffffff" }}>
+                        {step.num}
+                      </span>
+                    </span>
+                  ) : (
+                    /* Inactive steps — glass orb */
+                    <span
+                      className="flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold"
+                      style={{
+                        ...glassStyle,
+                        color: "#999999",
+                      }}
+                    >
+                      {step.num}
+                    </span>
+                  )}
                   <span
                     className="text-xs mt-1.5 font-medium"
                     style={{ color: step.num === 1 ? "#333334" : "#999999" }}
@@ -217,9 +297,23 @@ export default function ConnectPage() {
                 </div>
                 {i < 2 && (
                   <div
-                    className="w-16 h-px mx-3 mb-5"
-                    style={{ background: "rgba(0, 0, 0, 0.1)" }}
-                  />
+                    className="w-16 mx-3 mb-5 rounded-full overflow-hidden"
+                    style={{
+                      height: "3px",
+                      background: "rgba(0, 0, 0, 0.06)",
+                    }}
+                  >
+                    {i === 0 && (
+                      <div
+                        className="h-full w-full"
+                        style={{
+                          background: "linear-gradient(90deg, rgba(220,103,67,0.15), rgba(220,103,67,0.5), #f0976e, #ffffff, #f0976e, rgba(220,103,67,0.5), rgba(220,103,67,0.15))",
+                          backgroundSize: "300% 100%",
+                          animation: "step-shimmer 2s ease-in-out infinite",
+                        }}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -240,7 +334,7 @@ export default function ConnectPage() {
           >
             Connect Your Bot
           </h1>
-          <p className="text-base" style={{ color: "#666" }}>
+          <p className="text-base" style={{ color: "#999" }}>
             Choose your channels and configure your AI agent.
           </p>
         </div>
@@ -254,132 +348,93 @@ export default function ConnectPage() {
             Channels
           </label>
           <div className="grid grid-cols-2 gap-3 mb-3">
-            <button
-              type="button"
-              onClick={() => selectChannel("telegram")}
-              className="bg-white rounded-lg p-4 text-left transition-all flex items-start gap-3"
-              style={{
-                border: selectedChannel === "telegram"
-                  ? "2px solid #DC6743"
-                  : "1px solid rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 8.8C16.49 10.38 15.84 14.22 15.51 15.98C15.37 16.74 15.09 16.99 14.83 17.02C14.25 17.07 13.81 16.64 13.25 16.27C12.37 15.69 11.87 15.33 11.02 14.77C10.03 14.12 10.67 13.76 11.24 13.18C11.39 13.03 13.95 10.7 14 10.49C14.0069 10.4582 14.006 10.4252 13.9973 10.3938C13.9886 10.3624 13.9724 10.3337 13.95 10.31C13.89 10.26 13.81 10.28 13.74 10.29C13.65 10.31 12.25 11.24 9.52 13.08C9.12 13.35 8.76 13.49 8.44 13.48C8.08 13.47 7.4 13.28 6.89 13.11C6.26 12.91 5.77 12.8 5.81 12.45C5.83 12.27 6.08 12.09 6.55 11.9C9.47 10.63 11.41 9.79 12.38 9.39C15.16 8.23 15.73 8.03 16.11 8.03C16.19 8.03 16.38 8.05 16.5 8.15C16.6 8.23 16.63 8.34 16.64 8.42C16.63 8.48 16.65 8.66 16.64 8.8Z" fill="#229ED9"/>
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm font-semibold" style={{ color: "#333334" }}>
-                  Telegram
-                </p>
-                <p className="text-xs mt-1" style={{ color: "#666" }}>
-                  Bot via @BotFather
-                </p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => selectChannel("discord")}
-              className="bg-white rounded-lg p-4 text-left transition-all flex items-start gap-3"
-              style={{
-                border: selectedChannel === "discord"
-                  ? "2px solid #DC6743"
-                  : "1px solid rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4C14.83 4.31 14.62 4.73 14.48 5.06C12.92 4.83 11.35 4.83 9.82 5.06C9.68 4.73 9.46 4.31 9.29 4C7.78 4.26 6.35 4.71 5.02 5.33C2.44 9.14 1.73 12.86 2.08 16.53C3.87 17.85 5.61 18.65 7.32 19.18C7.72 18.64 8.08 18.07 8.39 17.47C7.82 17.25 7.27 16.98 6.75 16.67C6.89 16.56 7.02 16.45 7.16 16.34C10.18 17.73 13.45 17.73 16.43 16.34C16.57 16.45 16.7 16.56 16.84 16.67C16.32 16.98 15.77 17.25 15.2 17.47C15.51 18.07 15.87 18.64 16.27 19.18C17.98 18.65 19.72 17.85 21.51 16.53C21.92 12.27 20.85 8.59 19.27 5.33ZM8.68 14.18C7.72 14.18 6.93 13.29 6.93 12.19C6.93 11.09 7.7 10.2 8.68 10.2C9.66 10.2 10.45 11.09 10.43 12.19C10.43 13.29 9.66 14.18 8.68 14.18ZM14.91 14.18C13.95 14.18 13.16 13.29 13.16 12.19C13.16 11.09 13.93 10.2 14.91 10.2C15.89 10.2 16.68 11.09 16.66 12.19C16.66 13.29 15.89 14.18 14.91 14.18Z" fill="#5865F2"/>
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm font-semibold" style={{ color: "#333334" }}>
-                  Discord
-                </p>
-                <p className="text-xs mt-1" style={{ color: "#666" }}>
-                  Discord bot token
-                </p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => selectChannel("slack")}
-              className="bg-white rounded-lg p-4 text-left transition-all flex items-start gap-3"
-              style={{
-                border: selectedChannel === "slack"
-                  ? "2px solid #DC6743"
-                  : "1px solid rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M6 15C6 16.1 5.1 17 4 17C2.9 17 2 16.1 2 15C2 13.9 2.9 13 4 13H6V15ZM7 15C7 13.9 7.9 13 9 13C10.1 13 11 13.9 11 15V20C11 21.1 10.1 22 9 22C7.9 22 7 21.1 7 20V15Z" fill="#E01E5A"/>
-                <path d="M9 6C7.9 6 7 5.1 7 4C7 2.9 7.9 2 9 2C10.1 2 11 2.9 11 4V6H9ZM9 7C10.1 7 11 7.9 11 9C11 10.1 10.1 11 9 11H4C2.9 11 2 10.1 2 9C2 7.9 2.9 7 4 7H9Z" fill="#36C5F0"/>
-                <path d="M18 9C18 7.9 18.9 7 20 7C21.1 7 22 7.9 22 9C22 10.1 21.1 11 20 11H18V9ZM17 9C17 10.1 16.1 11 15 11C13.9 11 13 10.1 13 9V4C13 2.9 13.9 2 15 2C16.1 2 17 2.9 17 4V9Z" fill="#2EB67D"/>
-                <path d="M15 18C16.1 18 17 18.9 17 20C17 21.1 16.1 22 15 22C13.9 22 13 21.1 13 20V18H15ZM15 17C13.9 17 13 16.1 13 15C13 13.9 13.9 13 15 13H20C21.1 13 22 13.9 22 15C22 16.1 21.1 17 20 17H15Z" fill="#ECB22E"/>
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm font-semibold" style={{ color: "#333334" }}>
-                  Slack
-                </p>
-                <p className="text-xs mt-1" style={{ color: "#666" }}>
-                  Slack workspace bot
-                </p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => selectChannel("whatsapp")}
-              className="bg-white rounded-lg p-4 text-left transition-all flex items-start gap-3"
-              style={{
-                border: selectedChannel === "whatsapp"
-                  ? "2px solid #DC6743"
-                  : "1px solid rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" fill="#25D366"/>
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm font-semibold" style={{ color: "#333334" }}>
-                  WhatsApp
-                </p>
-                <p className="text-xs mt-1" style={{ color: "#666" }}>
-                  Meta Business API
-                </p>
-              </div>
-            </button>
-          </div>
-
-          {/* iMessage Button - Real blue bubble with tail like iOS Messages */}
-          <div className="relative ml-3">
-            <button
-              type="button"
-              onClick={() => selectChannel("imessage")}
-              className="imessage-bubble w-[calc(100%-12px)] py-5 px-6 text-left transition-all flex items-center gap-4"
-              style={{
-                background: "linear-gradient(135deg, #0B84FE 0%, #0A7AEF 50%, #0B6FE0 100%)",
-                border: "none",
-                boxShadow: selectedChannel === "imessage"
-                  ? "0 4px 14px rgba(11, 132, 254, 0.4), 0 0 0 3px #DC6743"
-                  : "0 3px 10px rgba(11, 132, 254, 0.25)",
-              }}
-            >
-              <div
-                className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+            {[
+              {
+                id: "telegram",
+                label: "Telegram",
+                desc: "Bot via @BotFather",
+                enabled: true,
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 8.8C16.49 10.38 15.84 14.22 15.51 15.98C15.37 16.74 15.09 16.99 14.83 17.02C14.25 17.07 13.81 16.64 13.25 16.27C12.37 15.69 11.87 15.33 11.02 14.77C10.03 14.12 10.67 13.76 11.24 13.18C11.39 13.03 13.95 10.7 14 10.49C14.0069 10.4582 14.006 10.4252 13.9973 10.3938C13.9886 10.3624 13.9724 10.3337 13.95 10.31C13.89 10.26 13.81 10.28 13.74 10.29C13.65 10.31 12.25 11.24 9.52 13.08C9.12 13.35 8.76 13.49 8.44 13.48C8.08 13.47 7.4 13.28 6.89 13.11C6.26 12.91 5.77 12.8 5.81 12.45C5.83 12.27 6.08 12.09 6.55 11.9C9.47 10.63 11.41 9.79 12.38 9.39C15.16 8.23 15.73 8.03 16.11 8.03C16.19 8.03 16.38 8.05 16.5 8.15C16.6 8.23 16.63 8.34 16.64 8.42C16.63 8.48 16.65 8.66 16.64 8.8Z" fill="#229ED9"/>
+                  </svg>
+                ),
+              },
+              {
+                id: "discord",
+                label: "Discord",
+                desc: "Coming soon",
+                enabled: false,
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4C14.83 4.31 14.62 4.73 14.48 5.06C12.92 4.83 11.35 4.83 9.82 5.06C9.68 4.73 9.46 4.31 9.29 4C7.78 4.26 6.35 4.71 5.02 5.33C2.44 9.14 1.73 12.86 2.08 16.53C3.87 17.85 5.61 18.65 7.32 19.18C7.72 18.64 8.08 18.07 8.39 17.47C7.82 17.25 7.27 16.98 6.75 16.67C6.89 16.56 7.02 16.45 7.16 16.34C10.18 17.73 13.45 17.73 16.43 16.34C16.57 16.45 16.7 16.56 16.84 16.67C16.32 16.98 15.77 17.25 15.2 17.47C15.51 18.07 15.87 18.64 16.27 19.18C17.98 18.65 19.72 17.85 21.51 16.53C21.92 12.27 20.85 8.59 19.27 5.33ZM8.68 14.18C7.72 14.18 6.93 13.29 6.93 12.19C6.93 11.09 7.7 10.2 8.68 10.2C9.66 10.2 10.45 11.09 10.43 12.19C10.43 13.29 9.66 14.18 8.68 14.18ZM14.91 14.18C13.95 14.18 13.16 13.29 13.16 12.19C13.16 11.09 13.93 10.2 14.91 10.2C15.89 10.2 16.68 11.09 16.66 12.19C16.66 13.29 15.89 14.18 14.91 14.18Z" fill="#5865F2"/>
+                  </svg>
+                ),
+              },
+              {
+                id: "slack",
+                label: "Slack",
+                desc: "Coming soon",
+                enabled: false,
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 15C6 16.1 5.1 17 4 17C2.9 17 2 16.1 2 15C2 13.9 2.9 13 4 13H6V15ZM7 15C7 13.9 7.9 13 9 13C10.1 13 11 13.9 11 15V20C11 21.1 10.1 22 9 22C7.9 22 7 21.1 7 20V15Z" fill="#E01E5A"/>
+                    <path d="M9 6C7.9 6 7 5.1 7 4C7 2.9 7.9 2 9 2C10.1 2 11 2.9 11 4V6H9ZM9 7C10.1 7 11 7.9 11 9C11 10.1 10.1 11 9 11H4C2.9 11 2 10.1 2 9C2 7.9 2.9 7 4 7H9Z" fill="#36C5F0"/>
+                    <path d="M18 9C18 7.9 18.9 7 20 7C21.1 7 22 7.9 22 9C22 10.1 21.1 11 20 11H18V9ZM17 9C17 10.1 16.1 11 15 11C13.9 11 13 10.1 13 9V4C13 2.9 13.9 2 15 2C16.1 2 17 2.9 17 4V9Z" fill="#2EB67D"/>
+                    <path d="M15 18C16.1 18 17 18.9 17 20C17 21.1 16.1 22 15 22C13.9 22 13 21.1 13 20V18H15ZM15 17C13.9 17 13 16.1 13 15C13 13.9 13.9 13 15 13H20C21.1 13 22 13.9 22 15C22 16.1 21.1 17 20 17H15Z" fill="#ECB22E"/>
+                  </svg>
+                ),
+              },
+              {
+                id: "whatsapp",
+                label: "WhatsApp",
+                desc: "Coming soon",
+                enabled: false,
+                icon: (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" fill="#25D366"/>
+                  </svg>
+                ),
+              },
+            ].map((ch) => (
+              <button
+                key={ch.id}
+                type="button"
+                onClick={() => ch.enabled && selectChannel(ch.id)}
+                disabled={!ch.enabled}
+                className="rounded-xl p-4 text-left transition-all flex items-start gap-3"
                 style={{
-                  background: "rgba(255, 255, 255, 0.25)",
+                  ...(selectedChannel === ch.id && ch.enabled ? glassSelectedStyle : glassStyle),
+                  opacity: ch.enabled ? 1 : 0.65,
+                  cursor: ch.enabled ? "pointer" : "default",
                 }}
               >
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2C6.48 2 2 6.03 2 11C2 13.39 3.03 15.55 4.71 17.13C4.84 17.25 4.92 17.42 4.93 17.6L5 20C5 20.55 5.45 21 6 21C6.17 21 6.33 20.95 6.47 20.87L9.22 19.24C9.42 19.12 9.66 19.09 9.88 19.15C10.58 19.35 11.29 19.46 12 19.46C17.52 19.46 22 15.43 22 10.46C22 5.49 17.52 1.46 12 1.46M12 3.46C16.41 3.46 20 6.56 20 10.46C20 14.36 16.41 17.46 12 17.46C11.41 17.46 10.82 17.39 10.25 17.26C9.68 17.13 9.09 17.19 8.56 17.44L7.09 18.28L7.05 17.03C7.03 16.46 6.78 15.92 6.36 15.54C4.95 14.26 4 12.7 4 11C4 7.1 7.59 4 12 4Z" fill="#ffffff"/>
-                </svg>
-              </div>
-              <div className="flex-1">
-                <p className="text-base font-semibold" style={{ color: "#ffffff" }}>
-                  iMessage
-                </p>
-                <p className="text-sm mt-0.5" style={{ color: "rgba(255, 255, 255, 0.85)" }}>
-                  Apple Messages integration
-                </p>
-              </div>
-            </button>
+                {ch.icon}
+                <div className="flex-1">
+                  <p className="text-sm font-semibold" style={{ color: ch.enabled ? "#333334" : "#999" }}>
+                    {ch.label}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: ch.enabled ? "#666" : "#aaa" }}>
+                    {ch.desc}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* iMessage — teaser bubble */}
+          <div className="flex flex-col items-end mr-1">
+            <div
+              className="imessage-bubble py-2 px-3.5"
+              style={{ background: "#0B84FE" }}
+            >
+              <p className="text-[13px] leading-snug" style={{ color: "#ffffff" }}>
+                Blue bubbles on iMessage coming soon 😉🍎
+              </p>
+            </div>
+            <p className="text-[10px] mt-0.5 mr-1" style={{ color: "#aaa" }}>
+              Delivered
+            </p>
           </div>
 
           {/* Coming Soon Message */}
@@ -400,10 +455,8 @@ export default function ConnectPage() {
 
             {/* Step-by-step instructions - Collapsible */}
             <div
-              className="bg-white rounded-lg mb-4 text-sm overflow-hidden"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-              }}
+              className="rounded-xl mb-4 text-sm overflow-hidden"
+              style={glassStyle}
             >
               <button
                 type="button"
@@ -498,8 +551,8 @@ export default function ConnectPage() {
                   {FAQ_ITEMS.map((item, i) => (
                     <div
                       key={i}
-                      className="bg-white rounded-lg overflow-hidden"
-                      style={{ border: "1px solid rgba(0, 0, 0, 0.1)" }}
+                      className="rounded-xl overflow-hidden"
+                      style={glassStyle}
                     >
                       <button
                         type="button"
@@ -583,22 +636,25 @@ export default function ConnectPage() {
                   placeholder="123456789:ABCdefGHIjklMNOpqrs..."
                   value={botToken}
                   onChange={(e) => handleTokenChange(e.target.value)}
-                  className="flex-1 px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none transition-all"
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-mono outline-none transition-all"
                   style={{
-                    border: error
-                      ? "1px solid #DC6743"
-                      : "1px solid rgba(0, 0, 0, 0.1)",
-                    color: "#333334",
+                    ...glassInputStyle,
+                    border: error ? "2px solid #DC6743" : "none",
                   }}
                 />
                 <button
                   type="button"
                   onClick={handleVerifyToken}
                   disabled={loading || !botToken.trim()}
-                  className="px-6 py-3 bg-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 min-w-[100px]"
-                  style={{
-                    border: "1px solid rgba(0, 0, 0, 0.1)",
-                    color: "#333334",
+                  className={`px-6 py-3 rounded-xl text-sm font-medium transition-all min-w-[100px] ${!botToken.trim() ? "disabled:opacity-50" : ""}`}
+                  style={TOKEN_RE.test(botToken.trim()) && !verified ? {
+                    background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                    backdropFilter: "blur(2px)",
+                    WebkitBackdropFilter: "blur(2px)",
+                    boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px, rgba(255,255,255,0.08) 0px 0px 1.6px 4px inset",
+                    color: "#ffffff",
+                  } : {
+                    ...glassInputStyle,
                   }}
                 >
                   {loading ? (
@@ -643,11 +699,8 @@ export default function ConnectPage() {
               Discord Bot Token
             </label>
             <div
-              className="bg-white rounded-lg p-6 mb-4 text-sm"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#666"
-              }}
+              className="rounded-xl p-6 mb-4 text-sm"
+              style={{ ...glassStyle, color: "#666" }}
             >
               <p
                 className="font-semibold mb-3"
@@ -671,11 +724,8 @@ export default function ConnectPage() {
               placeholder="Discord bot token..."
               value={discordToken}
               onChange={(e) => setDiscordToken(e.target.value)}
-              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#333334",
-              }}
+              className="w-full px-4 py-3 rounded-xl text-sm font-mono outline-none"
+              style={glassInputStyle}
             />
             <p className="text-xs mt-2" style={{ color: "#666" }}>
               Your token is encrypted and stored securely.
@@ -693,11 +743,8 @@ export default function ConnectPage() {
               Slack Bot Token
             </label>
             <div
-              className="bg-white rounded-lg p-6 mb-4 text-sm"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#666"
-              }}
+              className="rounded-xl p-6 mb-4 text-sm"
+              style={{ ...glassStyle, color: "#666" }}
             >
               <p
                 className="font-semibold mb-3"
@@ -721,22 +768,16 @@ export default function ConnectPage() {
               placeholder="xoxb-..."
               value={slackToken}
               onChange={(e) => setSlackToken(e.target.value)}
-              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none mb-3"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#333334",
-              }}
+              className="w-full px-4 py-3 rounded-xl text-sm font-mono outline-none mb-3"
+              style={glassInputStyle}
             />
             <input
               type="password"
               placeholder="Slack Signing Secret..."
               value={slackSigningSecret}
               onChange={(e) => setSlackSigningSecret(e.target.value)}
-              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#333334",
-              }}
+              className="w-full px-4 py-3 rounded-xl text-sm font-mono outline-none"
+              style={glassInputStyle}
             />
             <p className="text-xs mt-2" style={{ color: "#666" }}>
               Your tokens are encrypted and stored securely.
@@ -754,11 +795,8 @@ export default function ConnectPage() {
               WhatsApp Access Token
             </label>
             <div
-              className="bg-white rounded-lg p-6 mb-4 text-sm"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#666"
-              }}
+              className="rounded-xl p-6 mb-4 text-sm"
+              style={{ ...glassStyle, color: "#666" }}
             >
               <p
                 className="font-semibold mb-3"
@@ -787,22 +825,16 @@ export default function ConnectPage() {
               placeholder="WhatsApp access token..."
               value={whatsappToken}
               onChange={(e) => setWhatsappToken(e.target.value)}
-              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none mb-3"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#333334",
-              }}
+              className="w-full px-4 py-3 rounded-xl text-sm font-mono outline-none mb-3"
+              style={glassInputStyle}
             />
             <input
               type="text"
               placeholder="Phone Number ID..."
               value={whatsappPhoneNumberId}
               onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
-              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#333334",
-              }}
+              className="w-full px-4 py-3 rounded-xl text-sm font-mono outline-none"
+              style={glassInputStyle}
             />
             <p className="text-xs mt-2" style={{ color: "#666" }}>
               Your tokens are encrypted and stored securely.
@@ -822,18 +854,20 @@ export default function ConnectPage() {
             <button
               type="button"
               onClick={() => setApiMode("all_inclusive")}
-              className="bg-white rounded-lg p-4 text-left transition-all"
-              style={{
-                border:
-                  apiMode === "all_inclusive"
-                    ? "2px solid #DC6743"
-                    : "1px solid rgba(0, 0, 0, 0.1)",
-              }}
+              className="rounded-xl p-4 text-left transition-all"
+              style={apiMode === "all_inclusive" ? glassSelectedStyle : glassStyle}
             >
               <p className="text-sm font-semibold flex items-center gap-2" style={{ color: "#333334" }}>
                 All-Inclusive
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC6743" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                <svg width="14" height="14" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ filter: "drop-shadow(0 1px 3px rgba(220,103,67,0.35))" }}>
+                  <defs>
+                    <linearGradient id="star-glass" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#e8845e" />
+                      <stop offset="50%" stopColor="#DC6743" />
+                      <stop offset="100%" stopColor="#b84a2a" />
+                    </linearGradient>
+                  </defs>
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="url(#star-glass)" stroke="rgba(255,255,255,0.3)" />
                 </svg>
               </p>
               <p className="text-xs mt-1" style={{ color: "#666" }}>
@@ -843,15 +877,20 @@ export default function ConnectPage() {
             <button
               type="button"
               onClick={() => setApiMode("byok")}
-              className="bg-white rounded-lg p-4 text-left transition-all"
-              style={{
-                border:
-                  apiMode === "byok"
-                    ? "2px solid #DC6743"
-                    : "1px solid rgba(0, 0, 0, 0.1)",
-              }}
+              className="rounded-xl p-4 text-left transition-all"
+              style={apiMode === "byok" ? glassSelectedStyle : glassStyle}
             >
-              <p className="text-sm font-semibold" style={{ color: "#333334" }}>
+              <p className="text-sm font-semibold flex items-center gap-2" style={{ color: "#333334" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.15))" }}>
+                  <defs>
+                    <linearGradient id="key-glass" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#888" />
+                      <stop offset="50%" stopColor="#666" />
+                      <stop offset="100%" stopColor="#444" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" fill="none" stroke="url(#key-glass)" />
+                </svg>
                 BYOK
               </p>
               <p className="text-xs mt-1" style={{ color: "#666" }}>
@@ -875,11 +914,8 @@ export default function ConnectPage() {
               placeholder="sk-ant-..."
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              className="w-full px-4 py-3 bg-white rounded-lg text-sm font-mono outline-none"
-              style={{
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                color: "#333334",
-              }}
+              className="w-full px-4 py-3 rounded-xl text-sm font-mono outline-none"
+              style={glassInputStyle}
             />
             <p className="text-xs mt-2" style={{ color: "#666" }}>
               Your key is encrypted and only used on your dedicated VM.
@@ -928,24 +964,26 @@ export default function ConnectPage() {
                   key={m.id}
                   type="button"
                   onClick={() => setDefaultModel(m.id)}
-                  className="w-full bg-white rounded-lg p-4 text-left transition-all flex items-start gap-3"
-                  style={{
-                    border: defaultModel === m.id
-                      ? "2px solid #DC6743"
-                      : "1px solid rgba(0, 0, 0, 0.1)",
-                  }}
+                  className="w-full rounded-xl p-4 text-left transition-all flex items-start gap-3"
+                  style={defaultModel === m.id ? glassSelectedStyle : glassStyle}
                 >
-                  {/* Radio circle */}
+                  {/* Radio indicator */}
                   <div
-                    className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5"
-                    style={{
-                      borderColor: defaultModel === m.id ? "#DC6743" : "rgba(0, 0, 0, 0.2)",
+                    className="w-5 h-5 rounded-full shrink-0 mt-0.5 relative overflow-hidden"
+                    style={defaultModel === m.id ? {
+                      background: "radial-gradient(circle at 35% 30%, #e8845e, #DC6743 50%, #b84a2a 100%)",
+                      boxShadow: "rgba(220,103,67,0.35) 0px 2px 8px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
+                    } : {
+                      background: "linear-gradient(-75deg, rgba(255,255,255,0.05), rgba(255,255,255,0.2), rgba(255,255,255,0.05))",
+                      boxShadow: "rgba(0,0,0,0.05) 0px 1px 1px 0px inset, rgba(255,255,255,0.5) 0px -1px 1px 0px inset, rgba(0,0,0,0.08) 0px 1px 3px 0px, rgba(255,255,255,0.2) 0px 0px 1px 2px inset",
                     }}
                   >
                     {defaultModel === m.id && (
                       <div
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ background: "#DC6743" }}
+                        className="absolute inset-0 rounded-full"
+                        style={{
+                          background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.5) 0%, transparent 50%)",
+                        }}
                       />
                     )}
                   </div>
@@ -958,7 +996,13 @@ export default function ConnectPage() {
                       {m.recommended && (
                         <span
                           className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                          style={{ background: "rgba(220, 103, 67, 0.1)", color: "#DC6743" }}
+                          style={{
+                            background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                            backdropFilter: "blur(2px)",
+                            WebkitBackdropFilter: "blur(2px)",
+                            boxShadow: "rgba(255,255,255,0.2) 0px 1px 1px 0px inset, rgba(255,255,255,0.25) 0px -1px 1px 0px inset, rgba(220,103,67,0.25) 0px 2px 6px 0px",
+                            color: "#ffffff",
+                          }}
                         >
                           Recommended
                         </span>
@@ -981,7 +1025,10 @@ export default function ConnectPage() {
             <p className="text-xs mt-2" style={{ color: "#999" }}>
               Example: On the Pro plan (500 units/day), Haiku gets ~500 messages/day, Sonnet ~165, Opus ~33.
             </p>
-            <p className="text-xs mt-3 px-3 py-2.5 rounded-lg" style={{ background: "rgba(220,103,67,0.06)", color: "#666" }}>
+            <p className="text-xs mt-3 px-3 py-2.5 rounded-lg" style={{
+              ...glassStyle,
+              color: "#666",
+            }}>
               <span className="font-semibold" style={{ color: "#DC6743" }}>Pro tip:</span>{" "}
               Start with Haiku for everyday tasks. Say &quot;switch to Sonnet&quot; mid-conversation for harder questions — no restart needed.
             </p>
@@ -999,7 +1046,15 @@ export default function ConnectPage() {
           disabled={!selectedChannel || (selectedChannel === "telegram" && !verified)}
           className="w-full px-6 py-3.5 rounded-lg text-base font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           style={{
-            background: "#DC6743",
+            background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+            backdropFilter: "blur(2px)",
+            WebkitBackdropFilter: "blur(2px)",
+            boxShadow: `
+              rgba(255,255,255,0.2) 0px 2px 2px 0px inset,
+              rgba(255, 255, 255, 0.3) 0px -1px 1px 0px inset,
+              rgba(220,103,67,0.35) 0px 4px 16px 0px,
+              rgba(255, 255, 255, 0.08) 0px 0px 1.6px 4px inset
+            `,
             color: "#ffffff",
           }}
         >

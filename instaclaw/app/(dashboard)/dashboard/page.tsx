@@ -43,6 +43,7 @@ interface VMStatus {
     channelsEnabled: string[];
     hasDiscord: boolean;
     hasBraveSearch: boolean;
+    agdpEnabled: boolean;
   };
   billing?: {
     tier: string;
@@ -74,6 +75,7 @@ export default function DashboardPage() {
   const [showCreditPacks, setShowCreditPacks] = useState(false);
   const [creditsPurchased, setCreditsPurchased] = useState(false);
   const [welcomeDismissed, setWelcomeDismissed] = useState(true);
+  const [togglingAgdp, setTogglingAgdp] = useState(false);
   const creditPackRef = useRef<HTMLDivElement>(null);
 
   async function fetchStatus() {
@@ -184,6 +186,24 @@ export default function DashboardPage() {
   function dismissWelcome() {
     setWelcomeDismissed(true);
     localStorage.setItem("instaclaw_welcome_dismissed", "1");
+  }
+
+  async function handleToggleAgdp() {
+    if (!vm || togglingAgdp) return;
+    const newState = !vm.agdpEnabled;
+    setTogglingAgdp(true);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_agdp", enabled: newState }),
+      });
+      if (res.ok) {
+        fetchStatus();
+      }
+    } finally {
+      setTogglingAgdp(false);
+    }
   }
 
   const vm = vmStatus?.vm;
@@ -712,6 +732,78 @@ export default function DashboardPage() {
               </div>
             </div>
           )}
+
+          {/* ── aGDP Marketplace Toggle ── */}
+          <div>
+            <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5" style={{ fontFamily: "var(--font-serif)" }}>
+              Marketplaces
+            </h2>
+            <div
+              className="glass rounded-xl p-6"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                    style={{
+                      background: vm.agdpEnabled
+                        ? "linear-gradient(-75deg, rgba(220,103,67,0.1), rgba(220,103,67,0.2), rgba(220,103,67,0.1))"
+                        : "rgba(0,0,0,0.04)",
+                      border: vm.agdpEnabled
+                        ? "1px solid rgba(220,103,67,0.2)"
+                        : "1px solid var(--border)",
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={vm.agdpEnabled ? "#DC6743" : "var(--muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M2 12h20" />
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">aGDP Agent Commerce</p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                      {vm.agdpEnabled
+                        ? "Active — your bot can accept jobs from the aGDP marketplace"
+                        : "Connect to the aGDP marketplace for additional bounties"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleAgdp}
+                  disabled={togglingAgdp}
+                  className="relative w-12 h-6 rounded-full transition-all cursor-pointer shrink-0 disabled:opacity-50"
+                  style={{
+                    background: vm.agdpEnabled
+                      ? "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e)"
+                      : "rgba(0,0,0,0.12)",
+                    boxShadow: vm.agdpEnabled
+                      ? "rgba(220,103,67,0.3) 0px 2px 8px 0px, rgba(255,255,255,0.2) 0px -1px 1px 0px inset"
+                      : "rgba(0,0,0,0.15) 0px 1px 2px 0px inset, rgba(255,255,255,0.1) 0px -1px 1px 0px inset",
+                  }}
+                >
+                  <span
+                    className="absolute top-1 w-4 h-4 rounded-full transition-all"
+                    style={{
+                      left: vm.agdpEnabled ? "28px" : "4px",
+                      background: vm.agdpEnabled
+                        ? "linear-gradient(-75deg, rgba(255,255,255,0.9), rgba(255,255,255,1), rgba(255,255,255,0.9))"
+                        : "linear-gradient(-75deg, rgba(255,255,255,0.8), rgba(255,255,255,0.95), rgba(255,255,255,0.8))",
+                      boxShadow: "rgba(0,0,0,0.1) 0px 1px 3px 0px, rgba(255,255,255,0.4) 0px -1px 1px 0px inset",
+                      transition: "left 0.2s cubic-bezier(0.23, 1, 0.32, 1)",
+                    }}
+                  />
+                </button>
+              </div>
+              {vm.agdpEnabled && (
+                <p className="text-xs mt-4 pt-4" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                  Clawlancer bounties are prioritized first. aGDP jobs are only picked up when no Clawlancer work is available.
+                </p>
+              )}
+            </div>
+          </div>
         </>
       ) : (
         <div className="glass rounded-xl p-8 text-center">

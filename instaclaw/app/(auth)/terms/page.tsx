@@ -138,11 +138,11 @@ export default function TermsOfService() {
             <p>
               For questions about these terms, contact us at{" "}
               <a
-                href="mailto:cooper@clawlancer.com"
+                href="mailto:support@instaclaw.io"
                 className="underline hover:no-underline"
                 style={{ color: "var(--accent)" }}
               >
-                cooper@clawlancer.com
+                support@instaclaw.io
               </a>
               .
             </p>

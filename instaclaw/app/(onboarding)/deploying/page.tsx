@@ -16,6 +16,18 @@ const MAX_POLL_ATTEMPTS = 45; // 90 seconds at 2s intervals
 const EARLY_CHECK_THRESHOLD = 15; // Check for issues at 30s
 const MID_CHECK_THRESHOLD = 30; // Check for issues at 60s
 
+// Rotating subtitle phrases while deploying
+const SUBTITLE_MESSAGES = [
+  "Hang tight, your AI is coming to life",
+  "Your AI is being born...",
+  "Warming up the neurons...",
+  "Loading personality...",
+  "Teaching it everything you love...",
+  "Almost sentient...",
+  "Brewing digital consciousness...",
+  "Giving it a name tag...",
+];
+
 // Rotating cowboy messages for longer-running steps
 const ROTATING_MESSAGES: Record<string, string[]> = {
   configure: [
@@ -38,6 +50,41 @@ const ROTATING_MESSAGES: Record<string, string[]> = {
     "Poking the server...",
   ],
 };
+
+// ---------------------------------------------------------------------------
+// RotatingSubtitle — crossfades subtitle phrases with gray shimmer
+// ---------------------------------------------------------------------------
+function RotatingSubtitle({ messages }: { messages: string[] }) {
+  const [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState<"active" | "exit" | "enter">("active");
+
+  useEffect(() => {
+    const cycle = setInterval(() => {
+      setPhase("exit");
+      setTimeout(() => {
+        setIndex((i) => (i + 1) % messages.length);
+        setPhase("enter");
+        requestAnimationFrame(() => {
+          setTimeout(() => setPhase("active"), 20);
+        });
+      }, 400);
+    }, 3500);
+    return () => clearInterval(cycle);
+  }, [messages.length]);
+
+  const style: React.CSSProperties =
+    phase === "exit"
+      ? { opacity: 0, transform: "translateY(-4px)", transition: "all 0.4s ease" }
+      : phase === "enter"
+      ? { opacity: 0, transform: "translateY(4px)" }
+      : { opacity: 1, transform: "translateY(0)", transition: "all 0.4s ease" };
+
+  return (
+    <span className="shimmer-text-gray" style={style}>
+      {messages[index]}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // RotatingMessage — crossfades between cowboy phrases every 3s
@@ -394,11 +441,58 @@ function DeployingPageContent() {
     );
   }
 
+  const glassStyle = {
+    background:
+      "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+    backdropFilter: "blur(2px)",
+    WebkitBackdropFilter: "blur(2px)",
+    boxShadow: `
+      rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+      rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+      rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+      rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
+    `,
+  } as const;
+
+  const orangeGlassButton = {
+    background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+    backdropFilter: "blur(2px)",
+    WebkitBackdropFilter: "blur(2px)",
+    boxShadow: `
+      rgba(255,255,255,0.2) 0px 2px 2px 0px inset,
+      rgba(255,255,255,0.3) 0px -1px 1px 0px inset,
+      rgba(220,103,67,0.35) 0px 4px 16px 0px,
+      rgba(255,255,255,0.08) 0px 0px 1.6px 4px inset
+    `,
+    color: "#ffffff",
+  } as const;
+
   return (
     <>
       {/* ---- Styles ---- */}
       <style jsx global>{`
-        /* ===== Claude Code shimmer — orange base with golden highlight sweep ===== */
+        .shimmer-text-gray {
+          color: transparent;
+          background: linear-gradient(
+            90deg,
+            #999999 0%,
+            #999999 35%,
+            #d4d4d4 50%,
+            #999999 65%,
+            #999999 100%
+          );
+          background-size: 300% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: shimmer-gray 3s ease-in-out infinite;
+        }
+
+        @keyframes shimmer-gray {
+          0%   { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
+
         .shimmer-text {
           color: transparent;
           background: linear-gradient(
@@ -425,7 +519,6 @@ function DeployingPageContent() {
           100% { background-position: -100% 0; }
         }
 
-        /* ===== Pulsing orange dot ===== */
         @keyframes pulse-dot {
           0%, 100% { opacity: 0.4; transform: scale(0.9); }
           50%      { opacity: 1;   transform: scale(1.1); }
@@ -434,7 +527,6 @@ function DeployingPageContent() {
           animation: pulse-dot 2s ease-in-out infinite;
         }
 
-        /* ===== Checkmark bounce ===== */
         @keyframes check-bounce {
           0%   { transform: scale(0);   opacity: 0; }
           60%  { transform: scale(1.2); opacity: 1; }
@@ -444,7 +536,6 @@ function DeployingPageContent() {
           animation: check-bounce 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
 
-        /* ===== Progress bar glow ===== */
         @keyframes bar-glow {
           0%, 100% { box-shadow: 0 0 8px rgba(220, 103, 67, 0.3); }
           50%      { box-shadow: 0 0 16px rgba(220, 103, 67, 0.5); }
@@ -452,263 +543,388 @@ function DeployingPageContent() {
       `}</style>
 
       <div
-        className="min-h-screen flex flex-col items-center justify-center px-6 py-16"
+        className="min-h-screen flex flex-col"
         style={{ background: "#f8f7f4" }}
       >
-        {/* Title */}
-        <div className="mb-12 text-center">
-          <h1
-            className="text-4xl font-normal tracking-[-0.5px] mb-3"
-            style={{ fontFamily: "var(--font-serif)", color: "#333334" }}
-          >
-            Deploying Your Instance
-          </h1>
-          <p className="text-base" style={{ color: "#666666" }}>
-            Setting up your dedicated OpenClaw VM
-          </p>
-        </div>
-
-        {/* Progress bar container with clean white background */}
+        {/* Step Indicator */}
         <div
-          className="w-full max-w-lg mb-12 p-8 rounded-lg"
+          className="sticky top-0 z-10 py-4"
           style={{
-            background: "#ffffff",
-            border: "1px solid rgba(0, 0, 0, 0.1)",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+            background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.6))",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderBottom: "1px solid rgba(0, 0, 0, 0.06)",
           }}
         >
-          {/* Progress bar */}
-          <div className="mb-8">
-            <div
-              className="h-1.5 rounded-full overflow-hidden"
-              style={{ background: "rgba(220, 103, 67, 0.1)" }}
+          <div className="max-w-5xl mx-auto px-6">
+            <div className="flex items-center justify-center gap-2">
+              {[
+                { num: 1, label: "Connect" },
+                { num: 2, label: "Plan" },
+                { num: 3, label: "Deploy" },
+              ].map((step, i) => (
+                <div key={step.num} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    {step.num === 3 ? (
+                      /* Active step — glowing glass orb */
+                      <span
+                        className="relative flex items-center justify-center w-10 h-10 rounded-full overflow-hidden shrink-0"
+                        style={{
+                          background: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
+                          boxShadow: `
+                            inset 0 -2px 4px rgba(0,0,0,0.3),
+                            inset 0 2px 4px rgba(255,255,255,0.5),
+                            inset 0 0 3px rgba(0,0,0,0.15),
+                            0 1px 4px rgba(0,0,0,0.15)
+                          `,
+                        }}
+                      >
+                        <span
+                          className="absolute inset-0 rounded-full"
+                          style={{
+                            background: "linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.4) 45%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.4) 55%, transparent 80%)",
+                            backgroundSize: "300% 100%",
+                            animation: "globe-shimmer 4s linear infinite",
+                          }}
+                        />
+                        <span
+                          className="absolute top-[3px] left-[5px] w-[14px] h-[8px] rounded-full pointer-events-none"
+                          style={{
+                            background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
+                          }}
+                        />
+                        <span
+                          className="absolute inset-[-3px] rounded-full"
+                          style={{
+                            background: "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)",
+                            animation: "globe-glow 4s ease-in-out infinite",
+                          }}
+                        />
+                        <span className="relative text-sm font-semibold" style={{ color: "#ffffff" }}>
+                          {step.num}
+                        </span>
+                      </span>
+                    ) : (
+                      /* Completed steps — green glass orb */
+                      <span
+                        className="relative flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold overflow-hidden"
+                        style={{
+                          background: "radial-gradient(circle at 35% 30%, rgba(34,197,94,0.6), rgba(34,197,94,0.35) 50%, rgba(22,163,74,0.7) 100%)",
+                          boxShadow: "rgba(34,197,94,0.3) 0px 2px 8px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
+                          color: "#ffffff",
+                        }}
+                      >
+                        <span
+                          className="absolute inset-0 rounded-full pointer-events-none"
+                          style={{
+                            background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)",
+                          }}
+                        />
+                        <span className="relative">&#10003;</span>
+                      </span>
+                    )}
+                    <span
+                      className="text-xs mt-1.5 font-medium"
+                      style={{ color: step.num === 3 ? "#333334" : "#999999" }}
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                  {i < 2 && (
+                    <div
+                      className="w-16 mx-3 mb-5 rounded-full overflow-hidden"
+                      style={{
+                        height: "2px",
+                        background: "#22c55e",
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
+          {/* Title */}
+          <div className="mb-12 text-center">
+            <h1
+              className="text-4xl font-normal tracking-[-0.5px] mb-3"
+              style={{ fontFamily: "var(--font-serif)", color: "#333334" }}
             >
+              Deploying Your Instance
+            </h1>
+            <p className="text-base">
+              <RotatingSubtitle messages={SUBTITLE_MESSAGES} />
+            </p>
+          </div>
+
+          {/* Progress bar container — glass card */}
+          <div
+            className="w-full max-w-lg mb-12 p-8 rounded-lg"
+            style={glassStyle}
+          >
+            {/* Progress bar */}
+            <div className="mb-8">
               <div
-                className="h-full rounded-full transition-all duration-700 ease-out"
+                className="h-2 rounded-full overflow-hidden"
                 style={{
-                  width: `${progress}%`,
-                  background: "#DC6743",
-                  animation:
-                    progress > 0 && progress < 100
-                      ? "bar-glow 2s ease-in-out infinite"
-                      : "none",
+                  ...glassStyle,
+                  padding: 0,
                 }}
-              />
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out"
+                  style={{
+                    width: `${progress}%`,
+                    background: "linear-gradient(90deg, #c75a34, #DC6743, #e8845e)",
+                    animation:
+                      progress > 0 && progress < 100
+                        ? "bar-glow 2s ease-in-out infinite"
+                        : "none",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Steps */}
+            <div className="space-y-7">
+              {steps.map((step) => (
+                <div
+                  key={step.id}
+                  className="flex items-center gap-4"
+                  style={{ minHeight: "40px" }}
+                >
+                  {/* Icon column — glass orbs */}
+                  <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+                    {step.status === "done" && (
+                      <div className={justCompleted.has(step.id) ? "check-bounce" : ""}>
+                        <span
+                          className="relative flex items-center justify-center w-7 h-7 rounded-full overflow-hidden"
+                          style={{
+                            background: "radial-gradient(circle at 35% 30%, rgba(34,197,94,0.6), rgba(34,197,94,0.35) 50%, rgba(22,163,74,0.7) 100%)",
+                            boxShadow: "rgba(34,197,94,0.3) 0px 2px 6px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
+                          }}
+                        >
+                          <span
+                            className="absolute inset-0 rounded-full pointer-events-none"
+                            style={{
+                              background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)",
+                            }}
+                          />
+                          <Check
+                            className="relative w-3.5 h-3.5"
+                            style={{ color: "#ffffff" }}
+                            strokeWidth={3}
+                          />
+                        </span>
+                      </div>
+                    )}
+                    {step.status === "active" && (
+                      <span
+                        className="relative flex items-center justify-center w-7 h-7 rounded-full overflow-hidden active-dot"
+                        style={{
+                          background: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
+                          boxShadow: "rgba(220,103,67,0.3) 0px 2px 6px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
+                        }}
+                      >
+                        <span
+                          className="absolute inset-0 rounded-full pointer-events-none"
+                          style={{
+                            background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)",
+                          }}
+                        />
+                      </span>
+                    )}
+                    {step.status === "pending" && (
+                      <span
+                        className="flex items-center justify-center w-7 h-7 rounded-full"
+                        style={{
+                          ...glassStyle,
+                          opacity: 0.5,
+                        }}
+                      />
+                    )}
+                    {step.status === "error" && (
+                      <span
+                        className="relative flex items-center justify-center w-7 h-7 rounded-full overflow-hidden"
+                        style={{
+                          background: "radial-gradient(circle at 35% 30%, rgba(239,68,68,0.6), rgba(239,68,68,0.35) 50%, rgba(220,38,38,0.7) 100%)",
+                          boxShadow: "rgba(239,68,68,0.3) 0px 2px 6px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
+                        }}
+                      >
+                        <span
+                          className="absolute inset-0 rounded-full pointer-events-none"
+                          style={{
+                            background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)",
+                          }}
+                        />
+                        <AlertCircle className="relative w-3.5 h-3.5" style={{ color: "#ffffff" }} />
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Text column */}
+                  <div className="flex-1 text-lg font-medium">
+                    {renderStepContent(step)}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Steps */}
-          <div className="space-y-7">
-            {steps.map((step) => (
-              <div
-                key={step.id}
-                className="flex items-center gap-4"
-                style={{ minHeight: "40px" }}
-              >
-                {/* Icon column */}
-                <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-                  {step.status === "done" && (
-                    <div className={justCompleted.has(step.id) ? "check-bounce" : ""}>
-                      <Check
-                        className="w-5 h-5"
-                        style={{ color: "#22c55e" }}
-                        strokeWidth={3}
-                      />
-                    </div>
-                  )}
-                  {step.status === "active" && (
-                    <div
-                      className="w-3 h-3 rounded-full active-dot"
-                      style={{ background: "#DC6743" }}
-                    />
-                  )}
-                  {step.status === "pending" && (
-                    <div
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ background: "rgba(0, 0, 0, 0.15)" }}
-                    />
-                  )}
-                  {step.status === "error" && (
-                    <AlertCircle className="w-5 h-5" style={{ color: "#ef4444" }} />
-                  )}
-                </div>
-
-                {/* Text column */}
-                <div className="flex-1 text-lg font-medium">
-                  {renderStepContent(step)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ---- Error / Retry ---- */}
-        {(configureFailed || validationError) && !retrying && (
-          <div
-            className="rounded-lg p-8 max-w-lg w-full space-y-4"
-            style={{
-              background: "#ffffff",
-              border: "2px solid #ef4444",
-              boxShadow: "0 4px 12px rgba(239, 68, 68, 0.1)",
-            }}
-          >
-            {/* Checkout incomplete error */}
-            {errorType === "checkout" && (
-              <>
-                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                  Checkout Incomplete
-                </p>
-                <p className="text-sm" style={{ color: "#666666" }}>
-                  {validationError || "Payment session not found. Please restart from plan selection."}
-                </p>
-                <button
-                  onClick={() => router.push("/plan")}
-                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer"
-                  style={{
-                    background: "#DC6743",
-                    color: "#ffffff",
-                  }}
-                >
-                  Return to Plan Selection
-                </button>
-              </>
-            )}
-
-            {/* No VMs available */}
-            {errorType === "no_vms" && (
-              <>
-                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                  No Servers Available
-                </p>
-                <p className="text-sm" style={{ color: "#666666" }}>
-                  All instances are currently in use. We&apos;re provisioning more servers. Please try again in a few minutes or contact support.
-                </p>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
-                  style={{
-                    background: "#DC6743",
-                    color: "#ffffff",
-                  }}
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Check Again
-                </button>
-              </>
-            )}
-
-            {/* Assignment failed */}
-            {errorType === "assignment" && (
-              <>
-                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                  Server Assignment Delayed
-                </p>
-                <p className="text-sm" style={{ color: "#666666" }}>
-                  {validationError || "Server assignment is taking longer than expected. This is unusual."} Please contact support at{" "}
-                  <a
-                    href="mailto:cooper@clawlancer.com"
-                    className="underline hover:opacity-80 transition-opacity"
-                    style={{ color: "#DC6743" }}
+          {/* ---- Error / Retry ---- */}
+          {(configureFailed || validationError) && !retrying && (
+            <div
+              className="rounded-lg p-8 max-w-lg w-full space-y-4"
+              style={{
+                ...glassStyle,
+                border: "1.5px solid rgba(239, 68, 68, 0.3)",
+              }}
+            >
+              {/* Checkout incomplete error */}
+              {errorType === "checkout" && (
+                <>
+                  <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                    Checkout Incomplete
+                  </p>
+                  <p className="text-sm" style={{ color: "#666666" }}>
+                    {validationError || "Payment session not found. Please restart from plan selection."}
+                  </p>
+                  <button
+                    onClick={() => router.push("/plan")}
+                    className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer"
+                    style={orangeGlassButton}
                   >
-                    cooper@clawlancer.com
-                  </a>
-                </p>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
-                  style={{
-                    background: "#DC6743",
-                    color: "#ffffff",
-                  }}
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Try Again
-                </button>
-              </>
-            )}
+                    Return to Plan Selection
+                  </button>
+                </>
+              )}
 
-            {/* Configuration failed */}
-            {errorType === "config" && (
-              <>
-                {maxAttemptsReached ? (
-                  <>
-                    <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                      Configuration failed after multiple attempts.
-                    </p>
-                    <p className="text-sm" style={{ color: "#666666" }}>
-                      Please contact support at{" "}
-                      <a
-                        href="mailto:cooper@clawlancer.com"
-                        className="underline hover:opacity-80 transition-opacity"
-                        style={{ color: "#DC6743" }}
-                      >
-                        cooper@clawlancer.com
-                      </a>{" "}
-                      and we&apos;ll get your instance running.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                      Configuration Hit a Snag
-                    </p>
-                    <p className="text-sm" style={{ color: "#666666" }}>
-                      The server setup encountered an issue. Retrying usually fixes it.
-                    </p>
-                    <button
-                      onClick={handleRetry}
-                      className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
-                      style={{
-                        background: "#DC6743",
-                        color: "#ffffff",
-                      }}
+              {/* No VMs available */}
+              {errorType === "no_vms" && (
+                <>
+                  <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                    No Servers Available
+                  </p>
+                  <p className="text-sm" style={{ color: "#666666" }}>
+                    All instances are currently in use. We&apos;re provisioning more servers. Please try again in a few minutes or contact support.
+                  </p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                    style={orangeGlassButton}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Check Again
+                  </button>
+                </>
+              )}
+
+              {/* Assignment failed */}
+              {errorType === "assignment" && (
+                <>
+                  <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                    Server Assignment Delayed
+                  </p>
+                  <p className="text-sm" style={{ color: "#666666" }}>
+                    {validationError || "Server assignment is taking longer than expected. This is unusual."} Please contact support at{" "}
+                    <a
+                      href="mailto:support@instaclaw.io"
+                      className="underline hover:opacity-80 transition-opacity"
+                      style={{ color: "#DC6743" }}
                     >
-                      <RotateCcw className="w-4 h-4" />
-                      Retry Configuration
-                    </button>
-                  </>
-                )}
-              </>
-            )}
-
-            {/* Timeout (generic fallback) */}
-            {errorType === "timeout" && (
-              <>
-                <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
-                  Deployment Timeout
-                </p>
-                <p className="text-sm" style={{ color: "#666666" }}>
-                  Deployment took longer than expected (90 seconds). Please contact support at{" "}
-                  <a
-                    href="mailto:cooper@clawlancer.com"
-                    className="underline hover:opacity-80 transition-opacity"
-                    style={{ color: "#DC6743" }}
+                      support@instaclaw.io
+                    </a>
+                  </p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                    style={orangeGlassButton}
                   >
-                    cooper@clawlancer.com
-                  </a>
-                </p>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
-                  style={{
-                    background: "#DC6743",
-                    color: "#ffffff",
-                  }}
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Try Again
-                </button>
-              </>
-            )}
-          </div>
-        )}
+                    <RotateCcw className="w-4 h-4" />
+                    Try Again
+                  </button>
+                </>
+              )}
 
-        {/* Retrying spinner */}
-        {retrying && (
-          <div className="mt-10">
-            <span className="shimmer-text">Retrying configuration...</span>
-          </div>
-        )}
+              {/* Configuration failed */}
+              {errorType === "config" && (
+                <>
+                  {maxAttemptsReached ? (
+                    <>
+                      <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                        Configuration failed after multiple attempts.
+                      </p>
+                      <p className="text-sm" style={{ color: "#666666" }}>
+                        Please contact support at{" "}
+                        <a
+                          href="mailto:support@instaclaw.io"
+                          className="underline hover:opacity-80 transition-opacity"
+                          style={{ color: "#DC6743" }}
+                        >
+                          support@instaclaw.io
+                        </a>{" "}
+                        and we&apos;ll get your instance running.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                        Configuration Hit a Snag
+                      </p>
+                      <p className="text-sm" style={{ color: "#666666" }}>
+                        The server setup encountered an issue. Retrying usually fixes it.
+                      </p>
+                      <button
+                        onClick={handleRetry}
+                        className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                        style={orangeGlassButton}
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Retry Configuration
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Timeout (generic fallback) */}
+              {errorType === "timeout" && (
+                <>
+                  <p className="text-base font-semibold" style={{ color: "#ef4444" }}>
+                    Deployment Timeout
+                  </p>
+                  <p className="text-sm" style={{ color: "#666666" }}>
+                    Deployment took longer than expected (90 seconds). Please contact support at{" "}
+                    <a
+                      href="mailto:support@instaclaw.io"
+                      className="underline hover:opacity-80 transition-opacity"
+                      style={{ color: "#DC6743" }}
+                    >
+                      support@instaclaw.io
+                    </a>
+                  </p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                    style={orangeGlassButton}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Try Again
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Retrying spinner */}
+          {retrying && (
+            <div className="mt-10">
+              <span className="shimmer-text">Retrying configuration...</span>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

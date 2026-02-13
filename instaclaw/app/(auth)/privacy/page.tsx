@@ -185,11 +185,11 @@ export default function PrivacyPolicy() {
             <p>
               For privacy-related questions or requests, contact us at{" "}
               <a
-                href="mailto:cooper@clawlancer.com"
+                href="mailto:support@instaclaw.io"
                 className="underline hover:no-underline"
                 style={{ color: "var(--accent)" }}
               >
-                cooper@clawlancer.com
+                support@instaclaw.io
               </a>
               .
             </p>

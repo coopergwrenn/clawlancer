@@ -350,33 +350,46 @@ html.lenis body {
   50%      { opacity: 0.7; transform: scale(1.1); }
 }
 
-/* iMessage bubble with tail (like real iOS Messages) */
+/* Step connector line — energy pulse flowing left to right */
+@keyframes step-pulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Brighter looping shimmer for active step connector */
+@keyframes step-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* iMessage bubble — realistic iOS sent-message style */
 .imessage-bubble {
   position: relative;
   border-radius: 18px;
+  border-bottom-right-radius: 2px;
+  margin-right: 10px;
 }
 
-/* Tail pointer using CSS triangle trick */
+/* Blue extension that forms the tail base */
 .imessage-bubble::before {
   content: '';
   position: absolute;
-  bottom: 4px;
-  left: -10px;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 10px 15px 0;
-  border-color: transparent #0A7AEF transparent transparent;
+  bottom: 0;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  background: #0B84FE;
+  border-bottom-left-radius: 14px;
 }
 
-/* Small curved mask to make tail look rounded */
+/* Background-colored mask offset further right to carve the iOS curve */
 .imessage-bubble::after {
   content: '';
   position: absolute;
   bottom: 0;
-  left: -2px;
-  width: 12px;
-  height: 12px;
+  right: -18px;
+  width: 18px;
+  height: 18px;
   background: #f8f7f4;
-  border-radius: 0 0 0 20px;
+  border-bottom-left-radius: 10px;
 }
