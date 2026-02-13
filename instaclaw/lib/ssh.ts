@@ -178,6 +178,22 @@ export async function configureOpenClaw(
       );
     }
 
+    // Enable configured channel plugins (OpenClaw >=2026.2.9 requires explicit plugin enable)
+    if (channels.includes("telegram") && config.telegramBotToken) {
+      scriptParts.push(
+        '# Enable Telegram plugin (config alone is not enough in >=2026.2.9)',
+        'openclaw plugins enable telegram || true',
+        ''
+      );
+    }
+    if (channels.includes("discord") && config.discordBotToken) {
+      scriptParts.push(
+        '# Enable Discord plugin',
+        'openclaw plugins enable discord || true',
+        ''
+      );
+    }
+
     // For all-inclusive: route API calls through the instaclaw.io proxy.
     // Two config locations must be set:
     //   1. auth-profiles.json  — holds the gateway token used as the x-api-key
