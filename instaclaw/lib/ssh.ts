@@ -400,6 +400,8 @@ export async function configureOpenClaw(
     }
 
     // Update VM record in Supabase
+    // IMPORTANT: api_mode and tier MUST be set here (not just in the configure route)
+    // because the configure route's separate DB update can silently fail or race.
     const { error: vmError } = await supabase
       .from("instaclaw_vms")
       .update({
@@ -407,6 +409,8 @@ export async function configureOpenClaw(
         gateway_token: gatewayToken,
         control_ui_url: finalControlUrl,
         default_model: config.model || "claude-sonnet-4-5-20250929",
+        api_mode: config.apiMode,
+        tier: config.tier,
       })
       .eq("id", vm.id);
 
