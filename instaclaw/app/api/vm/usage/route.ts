@@ -4,13 +4,10 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
 const TIER_LIMITS: Record<string, number> = {
-  starter: 200,
+  starter: 400,
   pro: 700,
   power: 2500,
 };
-
-/** Free daily buffer covering automated heartbeat API calls (~72/day). */
-const HEARTBEAT_BUFFER = 100;
 
 export async function GET() {
   const session = await auth();
@@ -30,7 +27,7 @@ export async function GET() {
       today: 0,
       week: 0,
       month: 0,
-      dailyLimit: 200,
+      dailyLimit: 400,
       creditBalance: 0,
     });
   }
@@ -69,7 +66,10 @@ export async function GET() {
         .gte("usage_date", monthAgoStr),
     ]);
 
-    const today = Math.max(0, (todayRes.data?.message_count ?? 0) - HEARTBEAT_BUFFER);
+    const tier = vm.tier || "starter";
+    const dailyLimit = TIER_LIMITS[tier] ?? 400;
+    // Cap displayed usage at the display limit — internal buffer usage is hidden
+    const today = Math.min(todayRes.data?.message_count ?? 0, dailyLimit);
     const week = (weekRes.data ?? []).reduce(
       (sum: number, row: { message_count: number }) => sum + row.message_count,
       0
@@ -79,13 +79,11 @@ export async function GET() {
       0
     );
 
-    const tier = vm.tier || "starter";
-
     return NextResponse.json({
       today,
       week,
       month,
-      dailyLimit: TIER_LIMITS[tier] ?? 200,
+      dailyLimit,
       creditBalance: vm.credit_balance ?? 0,
     });
   } catch (err) {
@@ -94,7 +92,7 @@ export async function GET() {
       today: 0,
       week: 0,
       month: 0,
-      dailyLimit: TIER_LIMITS[vm.tier || "starter"] ?? 200,
+      dailyLimit: TIER_LIMITS[vm.tier || "starter"] ?? 400,
       creditBalance: 0,
     });
   }

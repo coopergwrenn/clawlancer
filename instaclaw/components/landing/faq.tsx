@@ -35,7 +35,7 @@ const faqs = [
   },
   {
     q: "What are credits?",
-    a: "Every message your AI handles uses a small number of units. Starter gives you 200 units/day, Pro gives you 700/day, and Power gives you 2,500/day — limits reset at midnight UTC. Background tasks like heartbeat checks don't count against your limit. If you need more, you can grab a credit pack that kicks in instantly.",
+    a: "Every message your AI handles uses a small number of units. Starter gives you 400 units/day, Pro gives you 700/day, and Power gives you 2,500/day — limits reset at midnight UTC. Background tasks like heartbeat checks don't count against your limit. If you need more, you can grab a credit pack that kicks in instantly.",
     tech: "Units are weighted by model: Haiku costs 1 unit, Sonnet costs 4, Opus costs 19. A simple message with Haiku uses 1 unit. BYOK users bypass the unit system entirely and pay Anthropic directly. Credit packs (50/$5, 200/$15, 500/$30) are available for overflow beyond daily limits. Automated heartbeat/background calls are exempt from daily limits.",
   },
   {

@@ -9,11 +9,18 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const COST_PER_UNIT = 0.004;
 
 /**
- * Free daily buffer to cover automated heartbeat/background API calls.
- * Heartbeats (~72 calls/day at 1-hour intervals) should never consume
- * a user's visible daily limit. The RPC limits include this buffer
- * (e.g. Starter internal limit = 300 = 200 display + 100 buffer).
- * Display values subtract HEARTBEAT_BUFFER from both count and limit.
+ * Hidden buffer added to each tier's internal RPC limit.
+ * Covers automated heartbeat/background calls that shouldn't consume
+ * the user's visible quota. The RPC limits include this buffer:
+ *   Starter internal = 500 = 400 display + 100 buffer
+ *   Pro     internal = 800 = 700 display + 100 buffer
+ *   Power   internal = 2600 = 2500 display + 100 buffer
+ *
+ * Behaviour:
+ *   0 → displayLimit      : normal — user sees usage counting up
+ *   displayLimit+1 → internal : buffer zone — calls still go through,
+ *                                user sees "0 remaining", NO Telegram spam
+ *   internal+1 →           : hard block — RPC denies, proxy returns error
  */
 const HEARTBEAT_BUFFER = 100;
 
@@ -101,9 +108,13 @@ function friendlyStreamResponse(text: string, model: string) {
  *
  * The OpenClaw gateway on each VM calls this endpoint instead of Anthropic
  * directly. This gives us centralized rate limiting per tier:
- *   - Starter: 200 units/day  (internal RPC limit: 300 = 200 + heartbeat buffer)
- *   - Pro:     700 units/day  (internal RPC limit: 800)
- *   - Power:  2500 units/day  (internal RPC limit: 2600)
+ *   - Starter: 400 units/day  (internal limit 500 incl. heartbeat buffer)
+ *   - Pro:     700 units/day  (internal limit 800)
+ *   - Power:  2500 units/day  (internal limit 2600)
+ *
+ * The 100-unit buffer lets automated heartbeats continue even after the
+ * user's visible quota is exhausted, without spamming "out of credits"
+ * messages to Telegram. Hard block only at the internal limit.
  *
  * All tiers have access to all models. Cost weights handle fairness:
  * Haiku=1, Sonnet=4, Opus=19 (reflects actual Anthropic pricing ratios).
@@ -165,7 +176,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // --- Fail-safe: if tier is null, default to starter (200/day + buffer) ---
+    // --- Fail-safe: if tier is null, default to starter ---
     const tier = vm.tier || "starter";
     if (!vm.tier) {
       logger.warn("VM has null tier — defaulting to starter", {
@@ -226,6 +237,8 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Check daily usage limit (with model cost weights) ---
+    // The RPC uses internal limits (display + buffer). It returns:
+    //   allowed: true/false, count: current usage, limit: internal limit
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_daily_limit",
       { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel }
@@ -245,29 +258,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Derive display limit from the RPC's internal limit
+    const internalLimit = limitResult?.limit ?? 1;
+    const displayLimit = Math.max(1, internalLimit - HEARTBEAT_BUFFER);
+    const currentCount = limitResult?.count ?? 0;
+
+    // --- Hard block: internal limit exceeded (RPC denied) ---
+    // This is the ONLY place that returns an "out of credits" message.
+    // It fires at 501+ (Starter), NOT at 401, so heartbeats in the buffer
+    // zone (401-500) never trigger Telegram spam.
     if (limitResult && !limitResult.allowed) {
-      const displayCount = Math.max(0, (limitResult.count ?? 0) - HEARTBEAT_BUFFER);
-      const displayLimit = Math.max(1, (limitResult.limit ?? 1) - HEARTBEAT_BUFFER);
       return friendlyAssistantResponse(
-        `You've hit your daily limit (${displayCount}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
+        `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
         requestedModel,
         isStreaming
       );
     }
 
-    // --- Compute usage warning thresholds ---
-    // Subtract heartbeat buffer so users only see their own usage
-    const rawCount = limitResult?.count ?? 0;
-    const rawLimit = limitResult?.limit ?? 1;
-    const usageCount = Math.max(0, rawCount - HEARTBEAT_BUFFER);
-    const usageLimit = Math.max(1, rawLimit - HEARTBEAT_BUFFER);
-    const usagePct = (usageCount / usageLimit) * 100;
+    // --- Buffer zone: count > displayLimit but < internalLimit ---
+    // Calls still go through (RPC said allowed=true), but we skip usage
+    // warnings so the user doesn't see confusing counts above their limit.
+    // Heartbeats that fire after the user's visible quota is exhausted
+    // land here silently.
+    const inBufferZone = currentCount > displayLimit;
 
+    // --- Compute usage warning thresholds (only in normal zone) ---
     let usageWarning = "";
-    if (usagePct >= 90) {
-      usageWarning = `\n\n---\n⚠️ You've used ${usageCount} of ${usageLimit} daily units. Running low — credit packs available at instaclaw.io/dashboard?buy=credits`;
-    } else if (usagePct >= 80) {
-      usageWarning = `\n\n---\n⚡ You've used ${usageCount} of ${usageLimit} daily units.`;
+    if (!inBufferZone) {
+      const displayCount = Math.min(currentCount, displayLimit);
+      const usagePct = (displayCount / displayLimit) * 100;
+
+      if (usagePct >= 90) {
+        usageWarning = `\n\n---\n⚠️ You've used ${displayCount} of ${displayLimit} daily units. Running low — credit packs available at instaclaw.io/dashboard?buy=credits`;
+      } else if (usagePct >= 80) {
+        usageWarning = `\n\n---\n⚡ You've used ${displayCount} of ${displayLimit} daily units.`;
+      }
     }
 
     // --- Proxy to Anthropic ---
