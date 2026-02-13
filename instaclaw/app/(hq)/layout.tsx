@@ -114,7 +114,7 @@ export default function HQLayout({ children }: { children: React.ReactNode }) {
             style={{ fontFamily: "var(--font-serif)" }}
           >
             <Image src="/logo.png" alt="InstaClaw" width={44} height={44} unoptimized style={{ imageRendering: "pixelated" }} />
-            Instaclaw <span style={{ color: "var(--muted)" }}>HQ</span>
+            <span className="hidden sm:inline">Instaclaw</span> <span className="hidden sm:inline" style={{ color: "var(--muted)" }}>HQ</span>
           </Link>
           <div className="flex items-center gap-1">
             {NAV_TABS.map((tab) => {
