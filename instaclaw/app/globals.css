@@ -166,6 +166,17 @@
     rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset !important;
 }
 
+/* HQ Kanban drag-and-drop */
+.drag-over-column {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.dragging-card {
+  opacity: 0.5;
+}
+
 /* Glassmorphism utility */
 .glass {
   background: rgba(10, 10, 10, 0.6);

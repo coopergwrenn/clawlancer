@@ -50,6 +50,7 @@ export default auth((req) => {
     "/api/invite/validate",
     "/api/health",
     "/api/spots",
+    "/api/hq",
   ];
 
   const isAPI = pathname.startsWith("/api/");
