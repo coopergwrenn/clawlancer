@@ -115,9 +115,13 @@ export async function configureOpenClaw(
       'set -eo pipefail',
       NVM_PREAMBLE,
       '',
-      '# Kill any existing gateway process',
+      '# Kill any existing gateway process (both the runner and the binary)',
+      'pkill -f "openclaw-gateway" 2>/dev/null || true',
       'pkill -f "openclaw gateway" 2>/dev/null || true',
-      'sleep 2',
+      'sleep 3',
+      '',
+      '# Clear stale device pairing state (OpenClaw >=2026.2.9 requires device pairing)',
+      'rm -rf ~/.openclaw/devices 2>/dev/null || true',
       '',
     ];
 
@@ -282,8 +286,32 @@ export async function configureOpenClaw(
       '# Start gateway in background',
       `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
       '',
-      '# Brief wait for gateway to begin initializing',
-      'sleep 3',
+      '# Wait for gateway to initialize',
+      'sleep 5',
+      '',
+      '# Auto-approve local device pairing (OpenClaw >=2026.2.9 requires this)',
+      '# Trigger a health check attempt to generate a pairing request, then approve it.',
+      'openclaw gateway health --timeout 3000 2>/dev/null || true',
+      'sleep 1',
+      'DDIR="$HOME/.openclaw/devices"',
+      'if [ -f "$DDIR/pending.json" ] && [ -f "$DDIR/paired.json" ]; then',
+      '  python3 << \'PYEOF\'',
+      'import json, os',
+      'ddir = os.path.expanduser("~/.openclaw/devices")',
+      'with open(os.path.join(ddir, "pending.json")) as f: pending = json.load(f)',
+      'try:',
+      '  with open(os.path.join(ddir, "paired.json")) as f: paired = json.load(f)',
+      'except: paired = {}',
+      'for rid, req in pending.items():',
+      '  paired[req["deviceId"]] = {"deviceId":req["deviceId"],"publicKey":req.get("publicKey",""),"role":req.get("role","operator"),"roles":req.get("roles",["operator"]),"scopes":req.get("scopes",[]),"approvedAt":req.get("ts",0),"platform":req.get("platform","linux")}',
+      'with open(os.path.join(ddir, "paired.json"), "w") as f: json.dump(paired, f)',
+      'PYEOF',
+      '  # Restart gateway to pick up pairing approval',
+      '  pkill -f "openclaw-gateway" 2>/dev/null || true',
+      '  sleep 3',
+      `  nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      '  sleep 5',
+      'fi',
       '',
       'echo "OPENCLAW_CONFIGURE_DONE"'
     );
@@ -374,9 +402,9 @@ export async function waitForHealth(
   try {
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const cmd = gatewayToken
-          ? `${NVM_PREAMBLE} && openclaw health --token '${gatewayToken}'`
-          : `${NVM_PREAMBLE} && openclaw health`;
+        // Try "openclaw gateway health" first (>=2026.2.9), fall back to "openclaw health" (older)
+        const tokenArg = gatewayToken ? ` --token '${gatewayToken}'` : '';
+        const cmd = `${NVM_PREAMBLE} && (openclaw gateway health${tokenArg} 2>/dev/null || openclaw health${tokenArg})`;
         const result = await ssh.execCommand(cmd);
         if (result.code === 0) return true;
       } catch {
@@ -398,9 +426,9 @@ export async function checkHealth(
   try {
     const ssh = await connectSSH(vm);
     try {
-      const cmd = gatewayToken
-        ? `${NVM_PREAMBLE} && openclaw health --token '${gatewayToken}'`
-        : `${NVM_PREAMBLE} && openclaw health`;
+      // Try "openclaw gateway health" first (>=2026.2.9), fall back to "openclaw health" (older)
+      const tokenArg = gatewayToken ? ` --token '${gatewayToken}'` : '';
+      const cmd = `${NVM_PREAMBLE} && (openclaw gateway health${tokenArg} 2>/dev/null || openclaw health${tokenArg})`;
       const result = await ssh.execCommand(cmd);
       return result.code === 0;
     } finally {
