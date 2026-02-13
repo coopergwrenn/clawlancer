@@ -88,16 +88,19 @@ export async function GET() {
         LIMIT 10`,
         apiKey
       ),
-      // Recent events — last 24 hours
+      // Recent events — last 24 hours (with user + geo for journey grouping)
       hogql(
         `SELECT
           event,
           properties.$current_url as url,
-          timestamp
+          timestamp,
+          distinct_id,
+          properties.$geoip_city_name as city,
+          properties.$geoip_country_code as country_code
         FROM events
         WHERE timestamp >= now() - interval 24 hour
         ORDER BY timestamp DESC
-        LIMIT 50`,
+        LIMIT 100`,
         apiKey
       ),
       // Country-level geo — last 7 days

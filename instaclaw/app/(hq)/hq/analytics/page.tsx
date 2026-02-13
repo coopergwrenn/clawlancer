@@ -19,7 +19,7 @@ interface AnalyticsData {
   daily: [string, number][]; // [day, views]
   topPages: [string, number, number][]; // [path, views, uniques]
   referrers: [string, number][]; // [referrer, visits]
-  recentEvents: [string, string, string][]; // [event, url, timestamp]
+  recentEvents: [string, string, string, string, string | null, string | null][]; // [event, url, timestamp, distinct_id, city, country_code]
   geoCountries: [string, string, number, number][]; // [country_code, country_name, pageviews, unique_visitors]
   geoCities: [string, string, number, number][]; // [city_name, country_code, pageviews, unique_visitors]
 }
@@ -54,6 +54,47 @@ function parseDomain(url: string): string {
   } catch {
     return REFERRER_LABELS[url] || url || "Direct (typed URL)";
   }
+}
+
+const EVENT_LABELS: Record<string, { label: string; color: "accent" | "muted" }> = {
+  $pageview: { label: "Viewed page", color: "accent" },
+  $pageleave: { label: "Left page", color: "muted" },
+  $autocapture: { label: "Clicked", color: "muted" },
+  $web_vitals: { label: "Performance check", color: "muted" },
+  $rageclick: { label: "Rage clicked", color: "accent" },
+  $exception: { label: "Error", color: "accent" },
+};
+
+function eventLabel(event: string): { label: string; color: "accent" | "muted" } {
+  return EVENT_LABELS[event] || { label: event.replace(/^\$/, "").replace(/_/g, " "), color: "muted" };
+}
+
+// Stable pastel colors for user avatars
+const USER_COLORS = [
+  "#DC6743", "#5B8DEF", "#43B581", "#FAA61A", "#9B59B6",
+  "#E74C3C", "#1ABC9C", "#E67E22", "#3498DB", "#2ECC71",
+];
+
+function userColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+  return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
+}
+
+function userLabel(id: string, city: string | null, countryCode: string | null): string {
+  const parts: string[] = [];
+  if (city) parts.push(city);
+  if (countryCode) parts.push(countryCode);
+  const location = parts.length > 0 ? parts.join(", ") : null;
+  const shortId = id.slice(0, 6);
+  return location ? `Visitor ${shortId} — ${location}` : `Visitor ${shortId}`;
+}
+
+interface UserJourney {
+  userId: string;
+  label: string;
+  color: string;
+  events: { event: string; url: string; timestamp: string }[];
 }
 
 export default function AnalyticsPage() {
@@ -128,6 +169,30 @@ export default function AnalyticsPage() {
   }));
   const geoList = geoTab === "countries" ? data.geoCountries : data.geoCities;
   const maxGeoViews = Math.max(...geoList.map(([, , pv]) => pv), 1);
+
+  // Group recent events into user journeys
+  const journeys: UserJourney[] = (() => {
+    const map = new Map<string, UserJourney>();
+    // Events come newest-first; we reverse so journeys read top-to-bottom chronologically
+    const sorted = [...data.recentEvents].reverse();
+    for (const [event, url, timestamp, userId, city, countryCode] of sorted) {
+      if (!map.has(userId)) {
+        map.set(userId, {
+          userId,
+          label: userLabel(userId, city, countryCode),
+          color: userColor(userId),
+          events: [],
+        });
+      }
+      map.get(userId)!.events.push({ event, url, timestamp });
+    }
+    // Sort journeys by most recent activity (last event timestamp)
+    return Array.from(map.values()).sort((a, b) => {
+      const aLast = new Date(a.events[a.events.length - 1].timestamp).getTime();
+      const bLast = new Date(b.events[b.events.length - 1].timestamp).getTime();
+      return bLast - aLast;
+    });
+  })();
 
   return (
     <>
@@ -387,47 +452,65 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Recent Events */}
+      {/* User Journeys */}
       <div className="glass rounded-xl p-4 sm:p-5">
         <h2
           className="text-base font-normal tracking-[-0.3px] mb-3"
           style={{ fontFamily: "var(--font-serif)" }}
         >
-          Recent Events
+          User Journeys
           <span className="text-xs ml-2" style={{ color: "var(--muted)", fontFamily: "inherit" }}>
             Last 24 hours
           </span>
         </h2>
-        {data.recentEvents.length === 0 ? (
-          <p className="text-xs text-center py-8" style={{ color: "var(--muted)" }}>No events yet</p>
+        {journeys.length === 0 ? (
+          <p className="text-xs text-center py-8" style={{ color: "var(--muted)" }}>No activity yet</p>
         ) : (
-          <div className="space-y-1 overflow-y-auto" style={{ maxHeight: 320 }}>
-            {data.recentEvents.map(([event, url, timestamp], i) => {
-              const isPageview = event === "$pageview";
-              return (
-                <div
-                  key={`${timestamp}-${i}`}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm"
-                  style={{ background: "rgba(0,0,0,0.02)" }}
-                >
-                  <span
-                    className="shrink-0 text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{
-                      background: isPageview ? "rgba(220, 103, 67, 0.1)" : "rgba(0,0,0,0.05)",
-                      color: isPageview ? "var(--accent)" : "var(--muted)",
-                    }}
-                  >
-                    {event.replace(/^\$/, "")}
-                  </span>
-                  <span className="truncate flex-1 text-xs" style={{ color: "var(--muted)" }}>
-                    {url ? (() => { try { return new URL(url).pathname; } catch { return url; } })() : "—"}
-                  </span>
-                  <span className="shrink-0 text-xs" style={{ color: "var(--muted)" }}>
-                    {timeAgo(timestamp)}
+          <div className="space-y-4 overflow-y-auto" style={{ maxHeight: 480 }}>
+            {journeys.map((journey) => (
+              <div key={journey.userId}>
+                {/* User header */}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: journey.color }}
+                  />
+                  <span className="text-xs font-medium">{journey.label}</span>
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>
+                    &middot; {journey.events.length} {journey.events.length === 1 ? "event" : "events"}
                   </span>
                 </div>
-              );
-            })}
+                {/* Timeline */}
+                <div className="ml-1 border-l-2 pl-3 space-y-0.5" style={{ borderColor: journey.color + "40" }}>
+                  {journey.events.map((ev, i) => {
+                    const { label, color } = eventLabel(ev.event);
+                    const path = ev.url ? (() => { try { return new URL(ev.url).pathname; } catch { return ev.url; } })() : null;
+                    return (
+                      <div
+                        key={`${ev.timestamp}-${i}`}
+                        className="flex items-center gap-2 py-1 text-xs"
+                      >
+                        <span
+                          className="shrink-0 px-2 py-0.5 rounded-full font-medium"
+                          style={{
+                            background: color === "accent" ? "rgba(220, 103, 67, 0.1)" : "rgba(0,0,0,0.04)",
+                            color: color === "accent" ? "var(--accent)" : "var(--muted)",
+                          }}
+                        >
+                          {label}
+                        </span>
+                        {path && (
+                          <span className="truncate" style={{ color: "var(--muted)" }}>{path}</span>
+                        )}
+                        <span className="shrink-0 ml-auto" style={{ color: "var(--muted)", opacity: 0.6 }}>
+                          {timeAgo(ev.timestamp)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
