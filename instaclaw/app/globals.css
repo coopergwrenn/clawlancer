@@ -168,8 +168,8 @@
 
 /* HQ Kanban drag-and-drop */
 .drag-over-column {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
   transition: background 0.15s, border-color 0.15s;
 }
 

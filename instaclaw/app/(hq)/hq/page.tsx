@@ -82,11 +82,7 @@ function TaskCard({
         const de = e as unknown as DragEvent;
         (de.currentTarget as HTMLElement).classList.remove("dragging-card");
       }}
-      className="rounded-lg p-3 cursor-grab active:cursor-grabbing group"
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid var(--border)",
-      }}
+      className="glass rounded-lg p-3 cursor-grab active:cursor-grabbing group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -108,7 +104,7 @@ function TaskCard({
             {task.assignee && (
               <p
                 className="text-xs mt-1.5 inline-block px-1.5 py-0.5 rounded"
-                style={{ background: "rgba(255,255,255,0.06)", color: "var(--muted)" }}
+                style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)" }}
               >
                 {task.assignee}
               </p>
@@ -118,13 +114,13 @@ function TaskCard({
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <button
             onClick={() => onEdit(task)}
-            className="p-1 rounded hover:bg-white/10 transition-colors"
+            className="p-1 rounded hover:bg-black/5 transition-colors"
           >
             <Pencil className="w-3 h-3" style={{ color: "var(--muted)" }} />
           </button>
           <button
             onClick={() => onDelete(task.id)}
-            className="p-1 rounded hover:bg-white/10 transition-colors"
+            className="p-1 rounded hover:bg-black/5 transition-colors"
           >
             <Trash2 className="w-3 h-3" style={{ color: "var(--error)" }} />
           </button>
@@ -155,8 +151,9 @@ function Column({
     <div
       className={`flex flex-col rounded-xl p-3 min-h-[300px] ${over ? "drag-over-column" : ""}`}
       style={{
-        background: "rgba(255,255,255,0.02)",
+        background: "rgba(0,0,0,0.02)",
         border: "1px solid var(--border)",
+        borderRadius: "0.75rem",
       }}
       onDragOver={(e) => {
         e.preventDefault();
@@ -174,7 +171,7 @@ function Column({
         <h3 className="text-sm font-semibold">{column.label}</h3>
         <span
           className="text-xs px-1.5 py-0.5 rounded"
-          style={{ background: "rgba(255,255,255,0.06)", color: "var(--muted)" }}
+          style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)" }}
         >
           {tasks.length}
         </span>
@@ -227,7 +224,7 @@ function TaskModal({
   }
 
   const inputStyle = {
-    background: "rgba(255,255,255,0.06)",
+    background: "#ffffff",
     border: "1px solid var(--border)",
     color: "var(--foreground)",
   };
@@ -238,7 +235,7 @@ function TaskModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+      style={{ background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)" }}
       onClick={onClose}
     >
       <motion.form
@@ -249,15 +246,17 @@ function TaskModal({
         onSubmit={handleSubmit}
         className="w-full max-w-md rounded-xl p-5 space-y-4"
         style={{
-          background: "#111",
+          background: "var(--card)",
           border: "1px solid var(--border)",
+          color: "var(--foreground)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
         }}
       >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">
             {isEdit ? "Edit Task" : "New Task"}
           </h2>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-white/10">
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-black/5">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -336,7 +335,7 @@ function TaskModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10"
+            className="px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-black/5"
           >
             Cancel
           </button>
@@ -344,7 +343,7 @@ function TaskModal({
             type="submit"
             disabled={!title.trim()}
             className="px-4 py-1.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40"
-            style={{ background: "rgba(255,255,255,0.12)" }}
+            style={{ background: "rgba(0,0,0,0.08)" }}
           >
             {isEdit ? "Save" : "Create"}
           </button>
@@ -392,7 +391,6 @@ export default function HQPage() {
   async function handleSave(data: Partial<Task>) {
     closeModal();
     if (data.id) {
-      // Optimistic update
       setTasks((prev) =>
         prev.map((t) => (t.id === data.id ? { ...t, ...data } : t))
       );
@@ -403,10 +401,9 @@ export default function HQPage() {
         });
         fetchTasks();
       } catch {
-        fetchTasks(); // revert on error
+        fetchTasks();
       }
     } else {
-      // Optimistic add
       const tempId = `temp-${Date.now()}`;
       const newTask: Task = {
         id: tempId,
@@ -433,13 +430,12 @@ export default function HQPage() {
   }
 
   async function handleDelete(id: string) {
-    // Optimistic delete
     const prev = tasks;
     setTasks((t) => t.filter((x) => x.id !== id));
     try {
       await api(`/api/hq/tasks/${id}`, { method: "DELETE" });
     } catch {
-      setTasks(prev); // revert
+      setTasks(prev);
     }
   }
 
@@ -447,7 +443,6 @@ export default function HQPage() {
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
 
-    // Optimistic move
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
     );
@@ -468,8 +463,8 @@ export default function HQPage() {
         <h1 className="text-xl font-bold">Task Board</h1>
         <button
           onClick={openCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors hover:bg-white/10"
-          style={{ background: "rgba(255,255,255,0.08)" }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-snappy transition-colors hover:bg-black/5"
+          style={{ background: "rgba(0,0,0,0.06)" }}
         >
           <Plus className="w-4 h-4" />
           Add Task

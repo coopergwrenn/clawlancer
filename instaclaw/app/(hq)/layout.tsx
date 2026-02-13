@@ -43,7 +43,7 @@ export default function HQLayout({ children }: { children: React.ReactNode }) {
   // Loading state
   if (authed === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" data-theme="dashboard">
         <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--muted)" }} />
       </div>
     );
@@ -52,10 +52,13 @@ export default function HQLayout({ children }: { children: React.ReactNode }) {
   // Password prompt
   if (!authed) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" data-theme="dashboard">
         <form onSubmit={handleLogin} className="w-80 space-y-4 text-center">
           <div className="flex justify-center">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.06)" }}>
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.04)" }}
+            >
               <Lock className="w-5 h-5" style={{ color: "var(--muted)" }} />
             </div>
           </div>
@@ -68,7 +71,7 @@ export default function HQLayout({ children }: { children: React.ReactNode }) {
             autoFocus
             className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
             style={{
-              background: "rgba(255,255,255,0.06)",
+              background: "#ffffff",
               border: "1px solid var(--border)",
               color: "var(--foreground)",
             }}
@@ -80,7 +83,7 @@ export default function HQLayout({ children }: { children: React.ReactNode }) {
             type="submit"
             disabled={loading || !password}
             className="w-full py-2.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40"
-            style={{ background: "rgba(255,255,255,0.1)" }}
+            style={{ background: "rgba(0,0,0,0.08)", color: "var(--foreground)" }}
           >
             {loading ? "Verifying..." : "Enter"}
           </button>
@@ -91,12 +94,19 @@ export default function HQLayout({ children }: { children: React.ReactNode }) {
 
   // Authenticated layout
   return (
-    <div className="min-h-screen">
-      <nav className="border-b" style={{ borderColor: "var(--border)" }}>
+    <div className="min-h-screen" data-theme="dashboard">
+      <nav
+        className="border-b transition-colors"
+        style={{ borderColor: "var(--border)", background: "var(--background)" }}
+      >
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/hq" className="flex items-center gap-2 text-lg font-bold tracking-tight">
-            <Image src="/logo.png" alt="InstaClaw" width={24} height={24} className="invert" unoptimized style={{ imageRendering: "pixelated" }} />
-            InstaClaw <span style={{ color: "var(--muted)" }}>HQ</span>
+          <Link
+            href="/hq"
+            className="flex items-center gap-1 text-xl tracking-[-0.5px] transition-opacity hover:opacity-70"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            <Image src="/logo.png" alt="InstaClaw" width={44} height={44} unoptimized style={{ imageRendering: "pixelated" }} />
+            Instaclaw <span style={{ color: "var(--muted)" }}>HQ</span>
           </Link>
         </div>
       </nav>
