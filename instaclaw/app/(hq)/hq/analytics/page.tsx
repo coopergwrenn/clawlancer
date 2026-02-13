@@ -34,11 +34,25 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+const REFERRER_LABELS: Record<string, string> = {
+  "$direct": "Direct (typed URL)",
+  "t.co": "X (Twitter)",
+  "l.facebook.com": "Facebook",
+  "lm.facebook.com": "Facebook (mobile)",
+  "l.instagram.com": "Instagram",
+  "out.reddit.com": "Reddit",
+  "away.vk.com": "VK",
+  "l.messenger.com": "Messenger",
+  "linkedin.com": "LinkedIn",
+};
+
 function parseDomain(url: string): string {
+  if (url in REFERRER_LABELS) return REFERRER_LABELS[url];
   try {
-    return new URL(url).hostname.replace(/^www\./, "");
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    return REFERRER_LABELS[hostname] || hostname;
   } catch {
-    return url || "(direct)";
+    return REFERRER_LABELS[url] || url || "Direct (typed URL)";
   }
 }
 
