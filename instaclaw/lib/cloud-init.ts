@@ -36,9 +36,12 @@ loginctl enable-linger "\${OPENCLAW_USER}" 2>/dev/null || true
 mkdir -p "\${OPENCLAW_HOME}/.ssh"
 cp /root/.ssh/authorized_keys "\${OPENCLAW_HOME}/.ssh/authorized_keys" 2>/dev/null || true
 DEPLOY_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB9cr49D/z0kHvimN65SWqKOHqJrrJAI6W/VVLlIZ+k4 instaclaw-deploy"
-if ! grep -qF "\${DEPLOY_KEY}" "\${OPENCLAW_HOME}/.ssh/authorized_keys" 2>/dev/null; then
-  echo "\${DEPLOY_KEY}" >> "\${OPENCLAW_HOME}/.ssh/authorized_keys"
-fi
+VERCEL_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICn5FKGDhYrRQm85VX5VtR+mXLt2U+8wfXYZZN+zuHFz instaclaw-deploy@vercel"
+for K in "\${DEPLOY_KEY}" "\${VERCEL_KEY}"; do
+  if ! grep -qF "\${K}" "\${OPENCLAW_HOME}/.ssh/authorized_keys" 2>/dev/null; then
+    echo "\${K}" >> "\${OPENCLAW_HOME}/.ssh/authorized_keys"
+  fi
+done
 chown -R "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${OPENCLAW_HOME}/.ssh"
 chmod 700 "\${OPENCLAW_HOME}/.ssh"
 chmod 600 "\${OPENCLAW_HOME}/.ssh/authorized_keys"

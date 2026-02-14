@@ -89,9 +89,11 @@ systemd-machine-id-setup
 
 # Embed deploy key directly (snapshot may not have correct key baked in)
 OPENCLAW_SSH="/home/\${OPENCLAW_USER}/.ssh"
-DEPLOY_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB9cr49D/z0kHvimN65SWqKOHqJrrJAI6W/VVLlIZ+k4 instaclaw-deploy"
 mkdir -p "\${OPENCLAW_SSH}"
-echo "\${DEPLOY_KEY}" > "\${OPENCLAW_SSH}/authorized_keys"
+cat > "\${OPENCLAW_SSH}/authorized_keys" <<'SSHEOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB9cr49D/z0kHvimN65SWqKOHqJrrJAI6W/VVLlIZ+k4 instaclaw-deploy
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICn5FKGDhYrRQm85VX5VtR+mXLt2U+8wfXYZZN+zuHFz instaclaw-deploy@vercel
+SSHEOF
 chown "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${OPENCLAW_SSH}" "\${OPENCLAW_SSH}/authorized_keys"
 chmod 700 "\${OPENCLAW_SSH}"
 chmod 600 "\${OPENCLAW_SSH}/authorized_keys"
