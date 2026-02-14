@@ -102,6 +102,9 @@ export function GmailConnectPopup({
       setSummary(data.summary);
       setCards(data.cards);
 
+      // Sync MEMORY.md to VM in the background (with retry)
+      syncMemoryToVM();
+
       setTimeout(() => {
         setPhase("insights");
         setCurrentInsight(0);
@@ -110,6 +113,19 @@ export function GmailConnectPopup({
       clearInterval(progressInterval);
       setError(err instanceof Error ? err.message : "Something went wrong");
       setPhase("error");
+    }
+  }, []);
+
+  // Sync MEMORY.md to VM — fire-and-forget with automatic retry
+  const syncMemoryToVM = useCallback(async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch("/api/vm/sync-memory", { method: "POST" });
+        if (res.ok) return;
+      } catch {
+        // Retry
+      }
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
     }
   }, []);
 
