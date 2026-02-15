@@ -203,6 +203,90 @@ const quickActions = [
   { icon: "\u{1F4C5}", label: "Today\u2019s schedule" },
 ];
 
+/* ─── Sticky Input Bar ───────────────────────────────────── */
+
+function StickyInputBar({ placeholder = "Tell your agent what to do next...", showChips = true }: { placeholder?: string; showChips?: boolean }) {
+  return (
+    <div
+      className="sticky bottom-0 z-10 -mx-4 px-4 pt-3 pb-4"
+      style={{
+        background: "linear-gradient(to bottom, transparent, var(--background) 12px)",
+      }}
+    >
+      <div
+        className="rounded-2xl px-5 py-4 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
+        style={{
+          background: "var(--card)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <input
+          type="text"
+          placeholder={placeholder}
+          className="w-full bg-transparent text-sm outline-none"
+          style={{ color: "var(--foreground)" }}
+        />
+      </div>
+
+      {showChips && (
+        <div
+          className="flex gap-2 overflow-x-auto pb-1 mt-3 -mx-1 px-1"
+          style={{ scrollbarWidth: "none" }}
+        >
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer transition-all hover:scale-[1.02]"
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+            >
+              <span>{action.icon}</span>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Chat Sticky Input ──────────────────────────────────── */
+
+function ChatStickyInput() {
+  return (
+    <div
+      className="sticky bottom-0 z-10 -mx-4 px-4 pt-3 pb-4"
+      style={{
+        background: "linear-gradient(to bottom, transparent, var(--background) 12px)",
+      }}
+    >
+      <div
+        className="rounded-2xl p-3 flex items-center gap-3 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]"
+        style={{
+          background: "var(--card)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Message your agent..."
+          className="flex-1 bg-transparent text-sm outline-none"
+          style={{ color: "var(--foreground)" }}
+        />
+        <button
+          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-opacity hover:opacity-80"
+          style={{ background: "var(--accent)" }}
+        >
+          <Send className="w-4 h-4" style={{ color: "#ffffff" }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Status Dot ──────────────────────────────────────────── */
 
 function StatusDot({ status }: { status: TaskStatus }) {
@@ -302,107 +386,76 @@ export default function CommandCenterPage() {
 
 function TasksTab() {
   return (
-    <div className="space-y-4">
-      {mockTasks.map((task) => (
-        <div
-          key={task.id}
-          className="glass rounded-xl p-4 sm:p-5 flex items-center gap-4 cursor-pointer group"
-          style={{ border: "1px solid var(--border)" }}
-        >
-          {/* Checkbox */}
-          <div className="shrink-0">
-            {task.status === "completed" ? (
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center"
-                style={{ background: "var(--foreground)" }}
-              >
-                <Check
-                  className="w-3.5 h-3.5"
-                  style={{ color: "var(--background)" }}
+    <div>
+      <div className="space-y-4 pb-4">
+        {mockTasks.map((task) => (
+          <div
+            key={task.id}
+            className="glass rounded-xl p-4 sm:p-5 flex items-center gap-4 cursor-pointer group"
+            style={{ border: "1px solid var(--border)" }}
+          >
+            {/* Checkbox */}
+            <div className="shrink-0">
+              {task.status === "completed" ? (
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center"
+                  style={{ background: "var(--foreground)" }}
+                >
+                  <Check
+                    className="w-3.5 h-3.5"
+                    style={{ color: "var(--background)" }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="w-6 h-6 rounded-full border-2 transition-colors"
+                  style={{ borderColor: "rgba(0,0,0,0.15)" }}
                 />
-              </div>
-            ) : (
-              <div
-                className="w-6 h-6 rounded-full border-2 transition-colors"
-                style={{ borderColor: "rgba(0,0,0,0.15)" }}
-              />
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* Title & Description */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <StatusDot status={task.status} />
+            {/* Title & Description */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <StatusDot status={task.status} />
+                <p
+                  className="font-medium text-base truncate"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {task.title}
+                </p>
+              </div>
               <p
-                className="font-medium text-base truncate"
-                style={{ color: "var(--foreground)" }}
+                className="text-sm mt-0.5 truncate pl-4"
+                style={{ color: "var(--muted)" }}
               >
-                {task.title}
+                {task.description}
               </p>
             </div>
-            <p
-              className="text-sm mt-0.5 truncate pl-4"
+
+            {/* Integration Icons */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {task.icons.map((icon, i) => (
+                <span
+                  key={i}
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
+                  style={{ background: icon.bg }}
+                >
+                  {icon.emoji}
+                </span>
+              ))}
+            </div>
+
+            {/* Chevron */}
+            <ChevronRight
+              className="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5"
               style={{ color: "var(--muted)" }}
-            >
-              {task.description}
-            </p>
+            />
           </div>
-
-          {/* Integration Icons */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {task.icons.map((icon, i) => (
-              <span
-                key={i}
-                className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
-                style={{ background: icon.bg }}
-              >
-                {icon.emoji}
-              </span>
-            ))}
-          </div>
-
-          {/* Chevron */}
-          <ChevronRight
-            className="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-            style={{ color: "var(--muted)" }}
-          />
-        </div>
-      ))}
-
-      {/* Quick Action Bar */}
-      <div className="mt-8 space-y-3">
-        <div
-          className="glass rounded-2xl px-5 py-4"
-          style={{ border: "1px solid var(--border)" }}
-        >
-          <input
-            type="text"
-            placeholder="Tell your agent what to do next..."
-            className="w-full bg-transparent text-sm outline-none"
-            style={{ color: "var(--foreground)" }}
-          />
-        </div>
-
-        <div
-          className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
-          style={{ scrollbarWidth: "none" }}
-        >
-          {quickActions.map((action) => (
-            <button
-              key={action.label}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer transition-all hover:scale-[1.02]"
-              style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
-              }}
-            >
-              <span>{action.icon}</span>
-              {action.label}
-            </button>
-          ))}
-        </div>
+        ))}
       </div>
+
+      <StickyInputBar />
     </div>
   );
 }
@@ -411,9 +464,9 @@ function TasksTab() {
 
 function ChatTab() {
   return (
-    <div className="space-y-6">
+    <div>
       {/* Sub-header */}
-      <div>
+      <div className="mb-6">
         <h2
           className="text-2xl font-normal tracking-[-0.5px]"
           style={{ fontFamily: "var(--font-serif)" }}
@@ -426,7 +479,7 @@ function ChatTab() {
       </div>
 
       {/* Messages */}
-      <div className="space-y-4">
+      <div className="space-y-4 pb-4">
         {mockChat.map((msg, i) => (
           <div
             key={i}
@@ -475,24 +528,7 @@ function ChatTab() {
         ))}
       </div>
 
-      {/* Chat Input */}
-      <div
-        className="glass rounded-2xl p-3 flex items-center gap-3"
-        style={{ border: "1px solid var(--border)" }}
-      >
-        <input
-          type="text"
-          placeholder="Message your agent..."
-          className="flex-1 bg-transparent text-sm outline-none"
-          style={{ color: "var(--foreground)" }}
-        />
-        <button
-          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-opacity hover:opacity-80"
-          style={{ background: "var(--accent)" }}
-        >
-          <Send className="w-4 h-4" style={{ color: "#ffffff" }} />
-        </button>
-      </div>
+      <ChatStickyInput />
     </div>
   );
 }
