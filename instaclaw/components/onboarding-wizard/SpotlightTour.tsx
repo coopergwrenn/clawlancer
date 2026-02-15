@@ -300,53 +300,49 @@ export default function SpotlightTour({
             </p>
 
             {/* Navigation */}
-            <div className="flex items-center justify-between mt-4">
-              {/* Progress */}
-              <div className="flex items-center gap-1.5">
-                {tourSteps.map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full transition-colors"
-                    style={{
-                      background:
-                        i === currentStep
-                          ? "var(--foreground)"
-                          : i < currentStep
-                          ? "rgba(0,0,0,0.2)"
-                          : "rgba(0,0,0,0.08)",
-                    }}
-                  />
-                ))}
-                <span
-                  className="text-[10px] ml-1.5 tabular-nums"
-                  style={{ color: "var(--muted)" }}
-                >
-                  {currentStep + 1}/{totalSteps}
-                </span>
+            <div className="mt-4 space-y-3">
+              {/* Progress bar */}
+              <div className="w-full rounded-full h-1 overflow-hidden" style={{ background: "rgba(0,0,0,0.06)" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${((currentStep + 1) / totalSteps) * 100}%`,
+                    background: "var(--foreground)",
+                  }}
+                />
               </div>
 
-              {/* Buttons */}
-              <div className="flex items-center gap-2">
-                {currentStep > 0 && (
-                  <button
-                    onClick={goPrev}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-black/5"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                )}
-                <button
-                  onClick={goNext}
-                  className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all hover:opacity-90 active:scale-[0.96]"
-                  style={{
-                    background: "var(--foreground)",
-                    color: "var(--background)",
-                  }}
+              {/* Step counter + buttons */}
+              <div className="flex items-center justify-between">
+                <span
+                  className="text-[11px] tabular-nums"
+                  style={{ color: "var(--muted)" }}
                 >
-                  {isLast ? "Finish Tour" : "Next"}
-                  {!isLast && <ChevronRight className="w-3 h-3" />}
-                </button>
+                  {currentStep + 1} of {totalSteps}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  {currentStep > 0 && (
+                    <button
+                      onClick={goPrev}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-black/5"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    onClick={goNext}
+                    className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all hover:opacity-90 active:scale-[0.96]"
+                    style={{
+                      background: "var(--foreground)",
+                      color: "var(--background)",
+                    }}
+                  >
+                    {isLast ? "Finish Tour" : "Next"}
+                    {!isLast && <ChevronRight className="w-3 h-3" />}
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
