@@ -11,8 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  ArrowUp,
-  ArrowDown,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -27,6 +25,11 @@ interface Task {
   position: number;
   created_at: string;
   updated_at: string;
+}
+
+interface DropIndicator {
+  columnId: string;
+  index: number; // insert before this index (-1 = end of column)
 }
 
 const COLUMNS = [
@@ -72,10 +75,6 @@ function getNextColumn(status: string): string | null {
   return idx < COLUMN_IDS.length - 1 ? COLUMN_IDS[idx + 1] : null;
 }
 
-function getColumnLabel(id: string): string {
-  return COLUMNS.find((c) => c.id === id)?.label || id;
-}
-
 // ── Task Card ──────────────────────────────────────────────────────────
 
 function TaskCard({
@@ -83,43 +82,43 @@ function TaskCard({
   onEdit,
   onDelete,
   onMove,
-  onMoveUp,
-  onMoveDown,
-  isFirst,
-  isLast,
+  draggedId,
+  onDragStart,
+  onDragEnd,
 }: {
   task: Task;
   onEdit: (t: Task) => void;
   onDelete: (id: string) => void;
   onMove: (taskId: string, newStatus: string) => void;
-  onMoveUp: (taskId: string) => void;
-  onMoveDown: (taskId: string) => void;
-  isFirst: boolean;
-  isLast: boolean;
+  draggedId: string | null;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const prev = getPrevColumn(task.status);
   const next = getNextColumn(task.status);
+  const isDragging = draggedId === task.id;
 
   return (
     <motion.div
       layout
       layoutId={task.id}
       initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
+      animate={{ opacity: isDragging ? 0.4 : 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.2 }}
       draggable
       onDragStart={(e) => {
         const de = e as unknown as DragEvent;
         de.dataTransfer?.setData("text/plain", task.id);
-        (de.currentTarget as HTMLElement).classList.add("dragging-card");
+        de.dataTransfer!.effectAllowed = "move";
+        onDragStart(task.id);
       }}
-      onDragEnd={(e) => {
-        const de = e as unknown as DragEvent;
-        (de.currentTarget as HTMLElement).classList.remove("dragging-card");
+      onDragEnd={() => {
+        onDragEnd();
       }}
       className="glass rounded-lg p-3 cursor-grab active:cursor-grabbing group"
+      data-task-id={task.id}
     >
       {/* Clickable header row */}
       <div
@@ -193,7 +192,7 @@ function TaskCard({
                 </span>
               </div>
 
-              {/* Reorder + Actions row */}
+              {/* Actions row */}
               <div className="flex items-center justify-between">
                 <div className="flex gap-1">
                   <button
@@ -214,46 +213,26 @@ function TaskCard({
                   </button>
                 </div>
 
-                <div className="flex gap-1">
-                  {/* Reorder up/down */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onMoveUp(task.id); }}
-                    disabled={isFirst}
-                    className="p-1.5 rounded-md text-xs transition-colors hover:bg-black/5 active:bg-black/5 disabled:opacity-20"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    <ArrowUp className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onMoveDown(task.id); }}
-                    disabled={isLast}
-                    className="p-1.5 rounded-md text-xs transition-colors hover:bg-black/5 active:bg-black/5 disabled:opacity-20"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    <ArrowDown className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Mobile: column move buttons */}
-                  <div className="flex sm:hidden gap-1 ml-1" style={{ borderLeft: "1px solid var(--border)", paddingLeft: "4px" }}>
-                    {prev && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onMove(task.id, prev); }}
-                        className="flex items-center gap-0.5 px-1.5 py-1 rounded-md text-xs transition-colors active:bg-black/5"
-                        style={{ color: "var(--muted)" }}
-                      >
-                        <ChevronLeft className="w-3 h-3" />
-                      </button>
-                    )}
-                    {next && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onMove(task.id, next); }}
-                        className="flex items-center gap-0.5 px-1.5 py-1 rounded-md text-xs transition-colors active:bg-black/5"
-                        style={{ color: "var(--muted)" }}
-                      >
-                        <ChevronRight className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
+                {/* Mobile: column move buttons */}
+                <div className="flex sm:hidden gap-1">
+                  {prev && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(task.id, prev); }}
+                      className="flex items-center gap-0.5 px-1.5 py-1 rounded-md text-xs transition-colors active:bg-black/5"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                  )}
+                  {next && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(task.id, next); }}
+                      className="flex items-center gap-0.5 px-1.5 py-1 rounded-md text-xs transition-colors active:bg-black/5"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -297,45 +276,91 @@ function TaskCard({
 function Column({
   column,
   tasks,
-  onDrop,
+  onReorder,
   onEdit,
   onDelete,
   onMove,
-  onMoveUp,
-  onMoveDown,
+  draggedId,
+  onDragStart,
+  onDragEnd,
+  dropIndicator,
+  onDropIndicatorChange,
   hideBorder,
 }: {
   column: (typeof COLUMNS)[number];
   tasks: Task[];
-  onDrop: (taskId: string, newStatus: string) => void;
+  onReorder: (taskId: string, targetColumnId: string, insertIndex: number) => void;
   onEdit: (t: Task) => void;
   onDelete: (id: string) => void;
   onMove: (taskId: string, newStatus: string) => void;
-  onMoveUp: (taskId: string) => void;
-  onMoveDown: (taskId: string) => void;
+  draggedId: string | null;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+  dropIndicator: DropIndicator | null;
+  onDropIndicatorChange: (indicator: DropIndicator | null) => void;
   hideBorder?: boolean;
 }) {
-  const [over, setOver] = useState(false);
+  const columnRef = useRef<HTMLDivElement>(null);
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+
+    if (!draggedId) return;
+
+    // Find which card the cursor is over and whether it's top or bottom half
+    const cardEls = columnRef.current?.querySelectorAll("[data-task-id]");
+    if (!cardEls || cardEls.length === 0) {
+      onDropIndicatorChange({ columnId: column.id, index: 0 });
+      return;
+    }
+
+    let insertIndex = tasks.length; // default: end
+    for (let i = 0; i < cardEls.length; i++) {
+      const rect = cardEls[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        insertIndex = i;
+        break;
+      }
+    }
+
+    onDropIndicatorChange({ columnId: column.id, index: insertIndex });
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    // Prefer dataTransfer, fall back to draggedId from React state
+    const taskId = e.dataTransfer.getData("text/plain") || draggedId;
+    if (!taskId) return;
+
+    const idx = dropIndicator?.columnId === column.id ? dropIndicator.index : tasks.length;
+    onReorder(taskId, column.id, idx);
+    onDropIndicatorChange(null);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    // Only clear if we actually left the column (not just entered a child)
+    if (!columnRef.current?.contains(e.relatedTarget as Node)) {
+      onDropIndicatorChange(null);
+    }
+  }
+
+  const showIndicator = dropIndicator?.columnId === column.id && draggedId;
 
   return (
     <div
-      className={`flex flex-col rounded-xl p-3 min-h-[200px] sm:min-h-[300px] ${over ? "drag-over-column" : ""}`}
+      ref={columnRef}
+      className="flex flex-col rounded-xl p-3 min-h-[200px] sm:min-h-[300px]"
       style={{
         background: hideBorder ? "transparent" : "rgba(0,0,0,0.02)",
-        border: hideBorder ? "none" : "1px solid var(--border)",
+        border: hideBorder ? "none" : `1px solid ${showIndicator ? "rgba(0,0,0,0.2)" : "var(--border)"}`,
         borderRadius: "0.75rem",
+        transition: "border-color 0.15s",
       }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        const taskId = e.dataTransfer.getData("text/plain");
-        if (taskId) onDrop(taskId, column.id);
-      }}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onDragLeave={handleDragLeave}
     >
       {/* Column header hidden on mobile (tabs handle it) */}
       <div className="hidden sm:flex items-center justify-between mb-3 px-1">
@@ -350,10 +375,42 @@ function Column({
       <div className="flex flex-col gap-2 flex-1">
         <AnimatePresence mode="popLayout">
           {tasks.map((t, i) => (
-            <TaskCard key={t.id} task={t} onEdit={onEdit} onDelete={onDelete} onMove={onMove} onMoveUp={onMoveUp} onMoveDown={onMoveDown} isFirst={i === 0} isLast={i === tasks.length - 1} />
+            <div key={t.id}>
+              {/* Drop indicator line before this card */}
+              {showIndicator && dropIndicator.index === i && (
+                <div
+                  style={{
+                    height: 3,
+                    borderRadius: 2,
+                    background: "rgba(220, 103, 67, 0.5)",
+                    margin: "0 4px 6px",
+                  }}
+                />
+              )}
+              <TaskCard
+                task={t}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onMove={onMove}
+                draggedId={draggedId}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+              />
+            </div>
           ))}
         </AnimatePresence>
-        {tasks.length === 0 && (
+        {/* Drop indicator at end of column */}
+        {showIndicator && dropIndicator.index >= tasks.length && (
+          <div
+            style={{
+              height: 3,
+              borderRadius: 2,
+              background: "rgba(220, 103, 67, 0.5)",
+              margin: "2px 4px",
+            }}
+          />
+        )}
+        {tasks.length === 0 && !showIndicator && (
           <p className="text-xs text-center py-8 sm:py-12" style={{ color: "var(--muted)" }}>
             No tasks
           </p>
@@ -542,6 +599,8 @@ export default function HQPage() {
   const [modal, setModal] = useState<Partial<Task> | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [mobileTab, setMobileTab] = useState("todo");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -622,39 +681,83 @@ export default function HQPage() {
     }
   }
 
-  async function reorderColumn(taskId: string, direction: "up" | "down") {
+  // Unified handler: drag-drop reorder within or across columns
+  async function handleReorder(taskId: string, targetColumnId: string, insertIndex: number) {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    const columnTasks = tasks
-      .filter((t) => t.status === task.status)
+    setDraggedId(null);
+    setDropIndicator(null);
+
+    const sameColumn = task.status === targetColumnId;
+
+    // Build the new ordered list for the target column
+    const targetTasks = tasks
+      .filter((t) => t.status === targetColumnId && t.id !== taskId)
       .sort((a, b) => a.position - b.position);
 
-    const idx = columnTasks.findIndex((t) => t.id === taskId);
-    if (direction === "up" && idx <= 0) return;
-    if (direction === "down" && idx >= columnTasks.length - 1) return;
+    // Adjust insert index if moving within same column
+    let adjustedIndex = insertIndex;
+    if (sameColumn) {
+      const oldIdx = tasks
+        .filter((t) => t.status === targetColumnId)
+        .sort((a, b) => a.position - b.position)
+        .findIndex((t) => t.id === taskId);
+      // After removing the dragged task, indices shift down
+      if (oldIdx < insertIndex) {
+        adjustedIndex = Math.max(0, insertIndex - 1);
+      }
+    }
+    adjustedIndex = Math.min(adjustedIndex, targetTasks.length);
 
-    const newIdx = direction === "up" ? idx - 1 : idx + 1;
-    const reordered = [...columnTasks];
-    const [moved] = reordered.splice(idx, 1);
-    reordered.splice(newIdx, 0, moved);
+    // Insert the task at the target position
+    const movedTask = { ...task, status: targetColumnId };
+    const reordered = [...targetTasks];
+    reordered.splice(adjustedIndex, 0, movedTask);
 
-    // Assign fresh sequential positions so it works even when all are 0
+    // Assign sequential positions
     const updates = reordered.map((t, i) => ({ id: t.id, position: i }));
 
+    // If moving to a different column, also reorder the source column
+    let sourceUpdates: { id: string; position: number }[] = [];
+    if (!sameColumn) {
+      const sourceTasks = tasks
+        .filter((t) => t.status === task.status && t.id !== taskId)
+        .sort((a, b) => a.position - b.position);
+      sourceUpdates = sourceTasks.map((t, i) => ({ id: t.id, position: i }));
+    }
+
+    // Optimistic update
     setTasks((prev) => {
-      const posMap = new Map(updates.map((u) => [u.id, u.position]));
-      return prev.map((t) =>
-        posMap.has(t.id) ? { ...t, position: posMap.get(t.id)! } : t
-      );
+      const posMap = new Map([...updates, ...sourceUpdates].map((u) => [u.id, u.position]));
+      return prev.map((t) => {
+        if (t.id === taskId) {
+          return { ...t, status: targetColumnId, position: posMap.get(t.id) ?? t.position };
+        }
+        return posMap.has(t.id) ? { ...t, position: posMap.get(t.id)! } : t;
+      });
     });
+
+    // Follow task on mobile
+    if (!sameColumn) {
+      setMobileTab(targetColumnId);
+    }
+
+    // Persist
+    const allUpdates = [...updates, ...sourceUpdates];
+    // Also update status for the moved task
+    const patchData = allUpdates.map((u) =>
+      u.id === taskId
+        ? { id: u.id, position: u.position, ...(sameColumn ? {} : { status: targetColumnId }) }
+        : { id: u.id, position: u.position }
+    );
 
     try {
       await Promise.all(
-        updates.map((u) =>
+        patchData.map((u) =>
           api(`/api/hq/tasks/${u.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ position: u.position }),
+            body: JSON.stringify(u),
           })
         )
       );
@@ -663,33 +766,14 @@ export default function HQPage() {
     }
   }
 
-  function handleMoveUp(taskId: string) {
-    reorderColumn(taskId, "up");
-  }
-
-  function handleMoveDown(taskId: string) {
-    reorderColumn(taskId, "down");
-  }
-
-  async function handleDrop(taskId: string, newStatus: string) {
+  // Simple column move for mobile chevron buttons
+  async function handleColumnMove(taskId: string, newStatus: string) {
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
 
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-    );
-
-    // On mobile, follow the task to its new column
-    setMobileTab(newStatus);
-
-    try {
-      await api(`/api/hq/tasks/${taskId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
-      });
-    } catch {
-      fetchTasks();
-    }
+    // Move to end of target column
+    const targetTasks = tasks.filter((t) => t.status === newStatus);
+    handleReorder(taskId, newStatus, targetTasks.length);
   }
 
   const activeColumn = COLUMNS.find((c) => c.id === mobileTab) || COLUMNS[0];
@@ -750,12 +834,15 @@ export default function HQPage() {
         <Column
           column={activeColumn}
           tasks={tasks.filter((t) => t.status === activeColumn.id).sort((a, b) => a.position - b.position)}
-          onDrop={handleDrop}
+          onReorder={handleReorder}
           onEdit={openEdit}
           onDelete={handleDelete}
-          onMove={handleDrop}
-          onMoveUp={handleMoveUp}
-          onMoveDown={handleMoveDown}
+          onMove={handleColumnMove}
+          draggedId={draggedId}
+          onDragStart={setDraggedId}
+          onDragEnd={() => { setDraggedId(null); setDropIndicator(null); }}
+          dropIndicator={dropIndicator}
+          onDropIndicatorChange={setDropIndicator}
           hideBorder
         />
       </div>
@@ -767,12 +854,15 @@ export default function HQPage() {
             key={col.id}
             column={col}
             tasks={tasks.filter((t) => t.status === col.id).sort((a, b) => a.position - b.position)}
-            onDrop={handleDrop}
+            onReorder={handleReorder}
             onEdit={openEdit}
             onDelete={handleDelete}
-            onMove={handleDrop}
-            onMoveUp={handleMoveUp}
-            onMoveDown={handleMoveDown}
+            onMove={handleColumnMove}
+            draggedId={draggedId}
+            onDragStart={setDraggedId}
+            onDragEnd={() => { setDraggedId(null); setDropIndicator(null); }}
+            dropIndicator={dropIndicator}
+            onDropIndicatorChange={setDropIndicator}
           />
         ))}
       </div>
