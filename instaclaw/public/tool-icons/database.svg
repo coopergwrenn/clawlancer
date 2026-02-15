@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <circle cx="24" cy="24" r="24" fill="#8b5cf6"/>
-  <g transform="translate(13,10)">
-    <ellipse cx="11" cy="4" rx="9" ry="4" fill="none" stroke="#fff" stroke-width="2.5"/>
-    <path d="M2 4v8c0 2.2 4 4 9 4s9-1.8 9-4V4" fill="none" stroke="#fff" stroke-width="2.5"/>
-    <path d="M2 12v8c0 2.2 4 4 9 4s9-1.8 9-4v-8" fill="none" stroke="#fff" stroke-width="2.5"/>
+  <g transform="translate(10,8)">
+    <ellipse cx="14" cy="5" rx="12" ry="5" fill="none" stroke="#fff" stroke-width="2.5"/>
+    <path d="M2 5v10c0 2.8 5.4 5 12 5s12-2.2 12-5V5" fill="none" stroke="#fff" stroke-width="2.5"/>
+    <path d="M2 15v10c0 2.8 5.4 5 12 5s12-2.2 12-5V15" fill="none" stroke="#fff" stroke-width="2.5"/>
   </g>
 </svg>
