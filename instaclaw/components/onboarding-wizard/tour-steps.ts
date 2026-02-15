@@ -10,17 +10,79 @@ export interface TourStep {
 }
 
 const tourSteps: TourStep[] = [
+  // ── Dashboard page tour ──────────────────────────────────
   {
     selector: '[data-tour="nav-dashboard"]',
     title: "Dashboard",
     description:
-      "This is your home screen. Check in here to see how your agent is doing, your usage stats, and quick actions.",
+      "This is your home screen. Let's walk through what's here — it's where you'll check in on your agent, your usage, and your plan.",
+    navigateTo: "/dashboard",
   },
+  {
+    selector: '[data-tour="dash-usage"]',
+    title: "Your Daily Usage",
+    description:
+      "This shows how many units you've used today out of your daily allowance. It resets every night at midnight UTC. Different AI models cost different amounts — Haiku is 1 unit, Sonnet is 4, and Opus is 19.",
+    navigateTo: "/dashboard",
+  },
+  {
+    selector: '[data-tour="dash-credits"]',
+    title: "Credits & Buy More",
+    description:
+      "If you hit your daily limit, credits keep you going. Tap the orange \"Buy Credits\" button to grab a pack — they kick in instantly and never expire. If you're running low often, upgrading your plan is usually the better deal.",
+    navigateTo: "/dashboard",
+  },
+  {
+    selector: '[data-tour="dash-plan"]',
+    title: "Your Plan",
+    description:
+      "Here's your current subscription. If you find yourself running out of daily units regularly, consider upgrading to the next plan — you'll get a higher daily limit and it's more cost-effective than buying credit packs.",
+    navigateTo: "/dashboard",
+  },
+  {
+    selector: '[data-tour="dash-status"]',
+    title: "Agent Health & Status",
+    description:
+      "This tells you if your agent's server is healthy and running. A green \"healthy\" status means everything is working perfectly. If it ever shows an issue, try the Restart Bot button below.",
+    navigateTo: "/dashboard",
+  },
+  {
+    selector: '[data-tour="dash-model"]',
+    title: "Switch AI Models",
+    description:
+      "Choose which Claude model your agent uses by default. Here's the best part — you can also switch models just by telling your bot. Say \"use Sonnet\" or \"switch to Opus\" in chat and it changes instantly.",
+    navigateTo: "/dashboard",
+    large: true,
+  },
+  {
+    selector: '[data-tour="dash-verify"]',
+    title: "Verify You're Human",
+    description:
+      "This is optional but worth it. Verifying with World ID proves you're a real person, which gives your agent a higher trust score on the marketplace, priority search visibility, and access to premium bounties.",
+    navigateTo: "/dashboard",
+  },
+  {
+    selector: '[data-tour="dash-marketplace"]',
+    title: "aGDP Marketplace",
+    description:
+      "Turn this on and your agent can pick up paid jobs from the aGDP marketplace when it's not busy with your tasks. It's a way to earn while your agent isn't in use. Your own tasks always come first.",
+    navigateTo: "/dashboard",
+  },
+  {
+    selector: '[data-tour="dash-pro-tip"]',
+    title: "Pro Tip: Talk to Your Bot",
+    description:
+      "Almost everything you see on this dashboard — switching models, checking usage, managing settings — you can do just by chatting with your bot in Telegram or in the Command Center. The dashboard is here if you prefer a visual overview, but your bot can handle it all conversationally.",
+    navigateTo: "/dashboard",
+    large: true,
+  },
+
+  // ── Navigation + Command Center tour ─────────────────────
   {
     selector: '[data-tour="nav-command-center"]',
     title: "Command Center",
     description:
-      "This is where you'll spend most of your time. Give your agent tasks, have conversations, and find everything it creates.",
+      "Now let's check out the Command Center — this is where you'll spend most of your time. Give your agent tasks, have conversations, and find everything it creates.",
   },
   {
     selector: '[data-tour="tab-tasks"]',

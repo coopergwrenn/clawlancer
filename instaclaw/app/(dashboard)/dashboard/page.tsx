@@ -341,13 +341,15 @@ export default function DashboardPage() {
       )}
 
       {/* World ID nudge banner */}
-      <WorldIDBanner />
+      <div data-tour="dash-verify">
+        <WorldIDBanner />
+      </div>
 
       {vmStatus?.status === "assigned" && vm ? (
         <>
           {/* ── Usage + Credits (merged card, all-inclusive only) ── */}
           {usage && vm.apiMode === "all_inclusive" && (
-            <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+            <div data-tour="dash-usage" className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>
                   Today&apos;s Usage
@@ -426,6 +428,7 @@ export default function DashboardPage() {
 
               {/* ── Credit balance row (inside usage card) ── */}
               <div
+                data-tour="dash-credits"
                 className="flex items-center justify-between mt-5 pt-5"
                 style={{ borderTop: "1px solid var(--border)" }}
               >
@@ -462,7 +465,7 @@ export default function DashboardPage() {
           {/* ── Plan ── */}
           {usage && vm.apiMode === "all_inclusive" ? (
             billing && (
-              <div className="glass rounded-xl p-5" style={{ border: "1px solid var(--border)" }}>
+              <div data-tour="dash-plan" className="glass rounded-xl p-5" style={{ border: "1px solid var(--border)" }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <CreditCard className="w-4 h-4" style={{ color: "var(--muted)" }} />
@@ -493,7 +496,7 @@ export default function DashboardPage() {
             )
           ) : (
             billing && (
-              <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+              <div data-tour="dash-plan" className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
                 <div className="flex items-center gap-2 mb-3">
                   <CreditCard className="w-4 h-4" style={{ color: "var(--muted)" }} />
                   <span className="text-sm font-medium">Plan</span>
@@ -565,7 +568,7 @@ export default function DashboardPage() {
           )}
 
           {/* ── Instance Status ── */}
-          <div className="grid gap-5 sm:grid-cols-3">
+          <div data-tour="dash-status" className="grid gap-5 sm:grid-cols-3">
             <div className="glass rounded-xl p-6">
               <div className="flex items-center gap-2 mb-2">
                 <Activity className="w-4 h-4" style={{ color: healthColor }} />
@@ -615,7 +618,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions */}
-          <div>
+          <div data-tour="dash-pro-tip">
             <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5" style={{ fontFamily: "var(--font-serif)" }}>
               Quick Actions
             </h2>
@@ -687,7 +690,7 @@ export default function DashboardPage() {
 
           {/* Model Selector (all-inclusive only) */}
           {vm.apiMode === "all_inclusive" && (
-            <div>
+            <div data-tour="dash-model">
               <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5" style={{ fontFamily: "var(--font-serif)" }}>
                 Model
               </h2>
@@ -737,7 +740,7 @@ export default function DashboardPage() {
           )}
 
           {/* ── aGDP Marketplace Toggle ── */}
-          <div>
+          <div data-tour="dash-marketplace">
             <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5" style={{ fontFamily: "var(--font-serif)" }}>
               Marketplaces
             </h2>
