@@ -129,6 +129,7 @@ const tourSteps: TourStep[] = [
     description:
       "Your extra tools and settings live here. Let's take a quick peek inside.",
     preAction: "open-more",
+    keepMoreOpen: true,
   },
   {
     selector: '[data-tour="nav-files"]',
