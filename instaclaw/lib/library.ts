@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { sanitizeAgentResult } from "@/lib/sanitize-result";
 
 interface SaveToLibraryParams {
   userId: string;
@@ -40,8 +41,10 @@ export async function saveToLibrary(
   params: SaveToLibraryParams
 ) {
   try {
+    // Safety net: sanitize content before saving
+    const cleanContent = sanitizeAgentResult(params.content);
     const type = inferType(params.title);
-    const preview = generatePreview(params.content);
+    const preview = generatePreview(cleanContent);
     const finalTitle =
       params.runNumber && params.runNumber > 1
         ? `${params.title} (Run #${params.runNumber})`
@@ -53,7 +56,7 @@ export async function saveToLibrary(
         user_id: params.userId,
         title: finalTitle,
         type,
-        content: params.content,
+        content: cleanContent,
         preview,
         source_task_id: params.sourceTaskId || null,
         source_chat_message_id: params.sourceChatMessageId || null,

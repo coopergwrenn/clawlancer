@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { buildSystemPrompt, TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { saveToLibrary } from "@/lib/library";
+import { sanitizeAgentResult } from "@/lib/sanitize-result";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -181,6 +182,7 @@ async function executeRerun(
     }
 
     const parsed = parseTaskResponse(rawResponse);
+    parsed.result = sanitizeAgentResult(parsed.result);
     const now = new Date().toISOString();
 
     // Fetch current streak to increment

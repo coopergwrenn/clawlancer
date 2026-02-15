@@ -7,6 +7,8 @@
  * discovered lazily via getUpdates (one-time, brief polling interruption).
  */
 
+import { sanitizeAgentResult } from "@/lib/sanitize-result";
+
 const TELEGRAM_API = "https://api.telegram.org";
 const MAX_MSG_LENGTH = 4000; // Telegram limit is 4096; leave buffer
 
@@ -20,9 +22,11 @@ export async function sendTelegramTaskResult(
   task: { title: string; frequency: string; streak: number; result: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Safety net: sanitize result before sending
+    const cleanResult = sanitizeAgentResult(task.result);
     const header = `📋 ${task.title}\n${task.frequency} · Run #${task.streak}\n${"─".repeat(30)}\n\n`;
     const footer = `\n\n${"─".repeat(30)}\n🤖 Delivered by your InstaClaw agent`;
-    const fullMessage = header + task.result + footer;
+    const fullMessage = header + cleanResult + footer;
 
     const chunks: string[] = [];
 
@@ -32,9 +36,9 @@ export async function sendTelegramTaskResult(
       // First chunk gets the header
       const firstContentLen = MAX_MSG_LENGTH - header.length - 20;
       chunks.push(
-        header + task.result.slice(0, firstContentLen) + "\n\n⏬ (continued...)"
+        header + cleanResult.slice(0, firstContentLen) + "\n\n⏬ (continued...)"
       );
-      let remaining = task.result.slice(firstContentLen).trim();
+      let remaining = cleanResult.slice(firstContentLen).trim();
 
       while (remaining.length > 0) {
         if (remaining.length <= MAX_MSG_LENGTH - footer.length - 20) {

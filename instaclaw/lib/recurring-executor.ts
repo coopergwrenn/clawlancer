@@ -11,6 +11,7 @@ import {
   sendTelegramNotification,
   discoverTelegramChatId,
 } from "@/lib/telegram";
+import { sanitizeAgentResult } from "@/lib/sanitize-result";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -136,6 +137,9 @@ Return ONLY the result content — do NOT include any TASK_META block.`;
     if (!resultContent) {
       throw new Error("Agent returned an empty response.");
     }
+
+    // Strip any raw XML tool-use tags from the response
+    resultContent = sanitizeAgentResult(resultContent);
   } catch (err) {
     clearTimeout(timeout);
     const isTimeout = err instanceof Error && err.name === "AbortError";
