@@ -17,21 +17,22 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
+import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 
 // Primary items always visible on mobile
 const primaryNav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/tasks", label: "Command Center", icon: ClipboardList },
-  { href: "/history", label: "History", icon: MessageSquare },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourKey: "nav-dashboard" },
+  { href: "/tasks", label: "Command Center", icon: ClipboardList, tourKey: "nav-command-center" },
+  { href: "/history", label: "History", icon: MessageSquare, tourKey: "nav-history" },
 ];
 
 // Overflow items shown in the "more" menu on mobile, visible on lg+
 const overflowNav = [
-  { href: "/files", label: "Files", icon: FolderOpen },
-  { href: "/scheduled", label: "Scheduled", icon: Clock },
-  { href: "/env-vars", label: "API Keys", icon: Key },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/billing", label: "Billing", icon: CreditCard },
+  { href: "/files", label: "Files", icon: FolderOpen, tourKey: "nav-files" },
+  { href: "/scheduled", label: "Scheduled", icon: Clock, tourKey: "nav-scheduled" },
+  { href: "/env-vars", label: "API Keys", icon: Key, tourKey: "nav-api-keys" },
+  { href: "/settings", label: "Settings", icon: Settings, tourKey: "nav-settings" },
+  { href: "/billing", label: "Billing", icon: CreditCard, tourKey: "nav-billing" },
 ];
 
 
@@ -45,6 +46,7 @@ export default function DashboardLayout({
   const { data: session, status } = useSession();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const tourControllingMore = useRef(false);
 
   const needsOnboarding =
     status !== "loading" && session?.user && !session.user.onboardingComplete;
@@ -55,10 +57,11 @@ export default function DashboardLayout({
     }
   }, [needsOnboarding, router]);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (suppressed when tour controls it)
   useEffect(() => {
     if (!moreOpen) return;
     function handleClick(e: MouseEvent) {
+      if (tourControllingMore.current) return;
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
         setMoreOpen(false);
       }
@@ -67,9 +70,11 @@ export default function DashboardLayout({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [moreOpen]);
 
-  // Close dropdown on route change
+  // Close dropdown on route change (suppressed when tour controls it)
   useEffect(() => {
-    setMoreOpen(false);
+    if (!tourControllingMore.current) {
+      setMoreOpen(false);
+    }
   }, [pathname]);
 
   if (status === "loading" || needsOnboarding) {
@@ -98,6 +103,7 @@ export default function DashboardLayout({
               <Link
                 key={item.href}
                 href={item.href}
+                data-tour={item.tourKey}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-snappy transition-colors"
                 style={{
                   color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
@@ -112,6 +118,7 @@ export default function DashboardLayout({
             {/* More button + dropdown for overflow items */}
             <div className="relative" ref={moreRef}>
               <button
+                data-tour="nav-more"
                 onClick={() => setMoreOpen((v) => !v)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-snappy transition-colors"
                 style={{
@@ -127,17 +134,19 @@ export default function DashboardLayout({
 
               {moreOpen && (
                 <div
-                  className="absolute right-0 top-full mt-2 w-48 rounded-xl py-1 z-50"
+                  className="absolute right-0 top-full mt-2 w-48 rounded-xl py-1"
                   style={{
                     background: "var(--card)",
                     border: "1px solid var(--border)",
                     boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+                    zIndex: tourControllingMore.current ? 9999 : 50,
                   }}
                 >
                   {overflowNav.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}
+                      data-tour={item.tourKey}
                       className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
                       style={{
                         color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
@@ -166,6 +175,12 @@ export default function DashboardLayout({
 
       {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-12 sm:py-16">{children}</main>
+
+      {/* Onboarding wizard (persists across page navigations) */}
+      <OnboardingWizard
+        setMoreOpen={setMoreOpen}
+        tourControllingMore={tourControllingMore}
+      />
     </div>
   );
 }
