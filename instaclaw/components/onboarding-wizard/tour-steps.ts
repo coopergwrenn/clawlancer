@@ -149,7 +149,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="page-api-keys"]',
     title: "API Keys",
     description:
-      "Give your agent access to services like Brave Search or custom APIs. Add keys here and it can use them in tasks.",
+      "Want to connect a new service? Just paste any API key into your chat with your agent and it handles everything. It saves the key, sets up the integration, and has that skill ready to use. You can also manage all your keys here manually.",
     navigateTo: "/env-vars",
   },
   {
