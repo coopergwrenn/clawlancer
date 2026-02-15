@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import Anthropic from "@anthropic-ai/sdk";
+
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ suggestions: null });
   }
 
   const supabase = getSupabase();
@@ -22,19 +28,24 @@ export async function GET() {
   }
 
   try {
-    const client = new Anthropic();
-
     const insightsText = user.gmail_insights?.length
       ? user.gmail_insights.join(", ")
       : "";
 
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
-      messages: [
-        {
-          role: "user",
-          content: `Based on this user profile, generate exactly 2 personalized task suggestions that would be immediately useful and interesting to them. These are tasks they can give to their AI agent.
+    const res = await fetch(ANTHROPIC_API_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 300,
+        messages: [
+          {
+            role: "user",
+            content: `Based on this user profile, generate exactly 2 personalized task suggestions that would be immediately useful and interesting to them. These are tasks they can give to their AI agent.
 
 User profile:
 ${user.gmail_profile_summary}
@@ -54,12 +65,18 @@ Respond in this exact JSON format, nothing else:
   {"label": "task instruction here", "description": "short description"},
   {"label": "task instruction here", "description": "short description"}
 ]`,
-        },
-      ],
+          },
+        ],
+      }),
     });
 
+    if (!res.ok) {
+      return NextResponse.json({ suggestions: null });
+    }
+
+    const data = await res.json();
     const text =
-      response.content[0].type === "text" ? response.content[0].text : "";
+      data.content?.[0]?.type === "text" ? data.content[0].text : "";
     const suggestions = JSON.parse(text.trim());
 
     return NextResponse.json({ suggestions });
