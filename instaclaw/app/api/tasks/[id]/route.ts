@@ -34,7 +34,7 @@ export async function GET(
 
 /**
  * PATCH /api/tasks/[id]
- * Partial update: { status?, title?, is_recurring?, frequency? }
+ * Partial update: { status?, title?, is_recurring?, frequency?, result? }
  */
 export async function PATCH(
   req: NextRequest,
@@ -89,6 +89,7 @@ export async function PATCH(
   }
 
   if (typeof body.title === "string") update.title = body.title;
+  if (typeof body.result === "string") update.result = body.result;
   if (typeof body.is_recurring === "boolean") update.is_recurring = body.is_recurring;
   if (typeof body.frequency === "string" || body.frequency === null) {
     update.frequency = body.frequency;

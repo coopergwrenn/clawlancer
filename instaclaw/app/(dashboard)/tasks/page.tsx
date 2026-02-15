@@ -11,6 +11,9 @@ import {
   RotateCw,
   Trash2,
   AlertCircle,
+  Pencil,
+  Sparkles,
+  X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -535,6 +538,7 @@ function TaskCard({
   onToggleComplete,
   onDelete,
   onRerun,
+  onTaskUpdated,
 }: {
   task: TaskItem;
   isExpanded: boolean;
@@ -542,8 +546,21 @@ function TaskCard({
   onToggleComplete: () => void;
   onDelete: () => void;
   onRerun: () => void;
+  onTaskUpdated: (updated: TaskItem) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Edit mode
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  // Refine mode
+  const [showRefine, setShowRefine] = useState(false);
+  const [refineInput, setRefineInput] = useState("");
+  const [isRefining, setIsRefining] = useState(false);
+  // Toast
+  const [toast, setToast] = useState<string | null>(null);
+  const refineRef = useRef<HTMLInputElement>(null);
+
   const isFailed = task.status === "failed";
   const isProcessing = task.status === "in_progress";
   const isCompleted = task.status === "completed";
@@ -567,9 +584,76 @@ function TaskCard({
     timingParts.push(`Last: ${timeAgo(task.last_run_at)} \u2705`);
   }
 
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2000);
+  }
+
+  function startEdit() {
+    setEditDraft(task.result ?? "");
+    setIsEditing(true);
+    setShowRefine(false);
+  }
+
+  async function saveEdit() {
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ result: editDraft }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onTaskUpdated(data.task);
+        setIsEditing(false);
+        showToast("Saved");
+      }
+    } catch {
+      // Keep in edit mode on failure
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }
+
+  function cancelEdit() {
+    setIsEditing(false);
+    setEditDraft("");
+  }
+
+  function openRefine() {
+    setShowRefine(true);
+    setIsEditing(false);
+    setRefineInput("");
+    requestAnimationFrame(() => refineRef.current?.focus());
+  }
+
+  async function submitRefine() {
+    if (!refineInput.trim() || isRefining) return;
+    setIsRefining(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/refine`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instruction: refineInput.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onTaskUpdated(data.task);
+        setShowRefine(false);
+        setRefineInput("");
+        showToast("Result updated");
+      }
+    } catch {
+      // Keep refine open on failure
+    } finally {
+      setIsRefining(false);
+    }
+  }
+
   return (
     <div
-      className="glass rounded-xl overflow-hidden"
+      className="glass rounded-xl overflow-hidden relative"
       style={{
         border: isFailed
           ? "1px solid #fca5a5"
@@ -577,6 +661,21 @@ function TaskCard({
         background: isFailed ? "rgba(239,68,68,0.03)" : undefined,
       }}
     >
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="absolute top-2 right-2 z-10 px-3 py-1.5 rounded-lg text-xs font-medium"
+            style={{ background: "var(--foreground)", color: "var(--background)" }}
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main row */}
       <div
         className="p-4 sm:p-5 flex items-start gap-4 cursor-pointer group"
@@ -591,7 +690,6 @@ function TaskCard({
           }}
         >
           {isActive ? (
-            /* Recurring active: pulsing green dot — NOT a checkmark */
             <div
               className="w-6 h-6 rounded-full flex items-center justify-center"
               style={{ border: "2px solid #16a34a" }}
@@ -712,20 +810,86 @@ function TaskCard({
                 </p>
               </div>
 
-              {/* Result */}
+              {/* Result — with edit mode */}
               {task.result && (
                 <div>
-                  <p className="text-xs font-medium mb-1" style={{ color: "var(--muted)" }}>
-                    Result:
-                  </p>
-                  <div
-                    className="rounded-lg p-3 text-sm"
-                    style={{ background: "rgba(0,0,0,0.02)", border: "1px solid var(--border)" }}
-                  >
-                    <div className="prose prose-sm max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_pre]:my-2 [&_pre]:rounded-lg [&_pre]:bg-black/5 [&_pre]:p-3 [&_code]:text-xs [&_code]:bg-black/5 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_pre_code]:bg-transparent [&_pre_code]:p-0">
-                      <ReactMarkdown>{task.result}</ReactMarkdown>
-                    </div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+                      Result:
+                    </p>
+                    {!isEditing && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEdit();
+                        }}
+                        className="p-1 rounded transition-opacity opacity-40 hover:opacity-100 cursor-pointer"
+                        title="Edit result"
+                      >
+                        <Pencil className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
+                      </button>
+                    )}
                   </div>
+
+                  {isEditing ? (
+                    /* Edit mode: textarea */
+                    <div className="space-y-2">
+                      <textarea
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        className="w-full rounded-lg p-3 text-sm font-mono outline-none resize-y"
+                        style={{
+                          background: "var(--card)",
+                          border: "1px solid var(--border)",
+                          color: "var(--foreground)",
+                          minHeight: "200px",
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            saveEdit();
+                          }}
+                          disabled={isSavingEdit}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors disabled:opacity-50"
+                          style={{ background: "var(--foreground)", color: "var(--background)" }}
+                        >
+                          {isSavingEdit ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            cancelEdit();
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Rendered markdown view */
+                    <div
+                      className="rounded-lg p-3 text-sm relative"
+                      style={{
+                        background: "rgba(0,0,0,0.02)",
+                        border: "1px solid var(--border)",
+                        ...(isRefining ? { opacity: 0.5 } : {}),
+                      }}
+                    >
+                      {isRefining && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded-lg" style={{ background: "rgba(248,247,244,0.6)" }}>
+                          <p className="text-xs font-medium animate-pulse" style={{ color: "var(--muted)" }}>Refining...</p>
+                        </div>
+                      )}
+                      <div className="prose prose-sm max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_pre]:my-2 [&_pre]:rounded-lg [&_pre]:bg-black/5 [&_pre]:p-3 [&_code]:text-xs [&_code]:bg-black/5 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+                        <ReactMarkdown>{task.result}</ReactMarkdown>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -774,44 +938,123 @@ function TaskCard({
                 )}
               </div>
 
-              {/* Action buttons */}
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRerun();
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5"
-                  style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
-                >
-                  <RotateCw className="w-3 h-3" />
-                  Re-run
-                </button>
-                {!confirmDelete ? (
+              {/* Action buttons — hidden during edit mode */}
+              {!isEditing && (
+                <div className="flex items-center gap-3 pt-1">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setConfirmDelete(true);
+                      onRerun();
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-red-50"
-                    style={{ color: "#ef4444" }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5"
+                    style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
                   >
-                    <Trash2 className="w-3 h-3" />
-                    Delete
+                    <RotateCw className="w-3 h-3" />
+                    Re-run
                   </button>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete();
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                    style={{ background: "#ef4444", color: "#ffffff" }}
+                  {task.result && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openRefine();
+                      }}
+                      disabled={isRefining}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5 disabled:opacity-50"
+                      style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Refine
+                    </button>
+                  )}
+                  {!confirmDelete ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDelete(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-red-50 ml-auto"
+                      style={{ color: "#ef4444" }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Delete
+                    </button>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer ml-auto"
+                      style={{ background: "#ef4444", color: "#ffffff" }}
+                    >
+                      Confirm delete
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Refine input — slides open below action buttons */}
+              <AnimatePresence>
+                {showRefine && !isEditing && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    Confirm delete
-                  </button>
+                    <div className="space-y-2">
+                      <div
+                        className="rounded-lg p-2 flex items-center gap-2"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+                      >
+                        <input
+                          ref={refineRef}
+                          type="text"
+                          value={refineInput}
+                          onChange={(e) => setRefineInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              submitRefine();
+                            }
+                            if (e.key === "Escape") {
+                              setShowRefine(false);
+                              setRefineInput("");
+                            }
+                          }}
+                          placeholder="Tell your agent what to change..."
+                          className="flex-1 bg-transparent text-sm outline-none"
+                          style={{ color: "var(--foreground)" }}
+                          disabled={isRefining}
+                        />
+                        <button
+                          onClick={submitRefine}
+                          disabled={isRefining || !refineInput.trim()}
+                          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-opacity hover:opacity-80 disabled:opacity-40"
+                          style={{ background: "var(--accent)" }}
+                        >
+                          <Send className="w-3.5 h-3.5" style={{ color: "#ffffff" }} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowRefine(false);
+                            setRefineInput("");
+                          }}
+                          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-opacity hover:opacity-80"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="text-[11px]" style={{ color: "var(--muted)" }}>
+                        e.g., &ldquo;Add a Solana section&rdquo; or &ldquo;Make it shorter&rdquo; or &ldquo;Focus more on DeFi&rdquo;
+                      </p>
+                    </div>
+                  </motion.div>
                 )}
-              </div>
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
@@ -1363,6 +1606,11 @@ export default function CommandCenterPage() {
                         onToggleComplete={() => toggleComplete(task)}
                         onDelete={() => deleteTask(task.id)}
                         onRerun={() => rerunTask(task.id)}
+                        onTaskUpdated={(updated) =>
+                          setTasks((prev) =>
+                            prev.map((t) => (t.id === updated.id ? updated : t))
+                          )
+                        }
                       />
                     ))}
                   </div>
