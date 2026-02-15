@@ -15,28 +15,28 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="nav-dashboard"]',
     title: "Dashboard",
     description:
-      "This is your home screen. Let's walk through what's here — it's where you'll check in on your agent, your usage, and your plan.",
+      "This is your home screen. We'll walk through everything here so you know exactly where to check on your agent, your usage, and your plan.",
     navigateTo: "/dashboard",
   },
   {
     selector: '[data-tour="dash-usage"]',
     title: "Your Daily Usage",
     description:
-      "This shows how many units you've used today out of your daily allowance. It resets every night at midnight UTC. Different AI models cost different amounts — Haiku is 1 unit, Sonnet is 4, and Opus is 19.",
+      "This shows how many units you've used today out of your daily allowance. It resets every night at midnight UTC. Different AI models cost different amounts: Haiku is 1 unit, Sonnet is 4, and Opus is 19.",
     navigateTo: "/dashboard",
   },
   {
     selector: '[data-tour="dash-credits"]',
     title: "Credits & Buy More",
     description:
-      "If you hit your daily limit, credits keep you going. Tap the orange \"Buy Credits\" button to grab a pack — they kick in instantly and never expire. If you're running low often, upgrading your plan is usually the better deal.",
+      "If you hit your daily limit, credits keep you going. Tap the orange \"Buy Credits\" button to grab a pack. They kick in instantly and never expire. If you're running low often, upgrading your plan is usually the better deal.",
     navigateTo: "/dashboard",
   },
   {
     selector: '[data-tour="dash-plan"]',
     title: "Your Plan",
     description:
-      "Here's your current subscription. If you find yourself running out of daily units regularly, consider upgrading to the next plan — you'll get a higher daily limit and it's more cost-effective than buying credit packs.",
+      "Here's your current subscription. If you find yourself running out of daily units regularly, consider upgrading to the next plan. You'll get a higher daily limit and it's more cost-effective than buying credit packs.",
     navigateTo: "/dashboard",
   },
   {
@@ -50,7 +50,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="dash-model"]',
     title: "Switch AI Models",
     description:
-      "Choose which Claude model your agent uses by default. Here's the best part — you can also switch models just by telling your bot. Say \"use Sonnet\" or \"switch to Opus\" in chat and it changes instantly.",
+      "Choose which Claude model your agent uses by default. Here's the best part: you can also switch models just by telling your bot. Say \"use Sonnet\" or \"switch to Opus\" in chat and it changes instantly.",
     navigateTo: "/dashboard",
     large: true,
   },
@@ -72,7 +72,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="dash-pro-tip"]',
     title: "Pro Tip: Talk to Your Bot",
     description:
-      "Almost everything you see on this dashboard — switching models, checking usage, managing settings — you can do just by chatting with your bot in Telegram or in the Command Center. The dashboard is here if you prefer a visual overview, but your bot can handle it all conversationally.",
+      "Almost everything you see on this dashboard, like switching models, checking usage, and managing settings, you can do just by chatting with your bot in Telegram or in the Command Center. The dashboard gives you a visual overview, but your bot can handle it all conversationally.",
     navigateTo: "/dashboard",
     large: true,
   },
@@ -82,20 +82,20 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="nav-command-center"]',
     title: "Command Center",
     description:
-      "Now let's check out the Command Center — this is where you'll spend most of your time. Give your agent tasks, have conversations, and find everything it creates.",
+      "Now let's check out the Command Center. This is where you'll spend most of your time. Give your agent tasks, have conversations, and find everything it creates.",
   },
   {
     selector: '[data-tour="tab-tasks"]',
     title: "Tasks Tab",
     description:
-      "Tell your agent what to do — like \"Research competitors in my industry\" or \"Draft a weekly newsletter.\" It runs each task and saves the result for you.",
+      "Tell your agent what to do, like \"Research competitors in my industry\" or \"Draft a weekly newsletter.\" It runs each task and saves the result for you.",
     navigateTo: "/tasks",
   },
   {
     selector: '[data-tour="tab-chat"]',
     title: "Chat Tab",
     description:
-      "Think of this as texting your agent. Ask questions, brainstorm ideas, or get quick answers — just like chatting with a coworker.",
+      "Think of this as texting your agent. Ask questions, brainstorm ideas, or get quick answers, just like chatting with a coworker.",
   },
   {
     selector: '[data-tour="tab-library"]',
@@ -107,7 +107,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="input-bar"]',
     title: "Type Here to Get Started",
     description:
-      "This is where you give instructions. Just type what you need — your agent has full internet access and works on a private server dedicated to you.",
+      "This is where you give instructions. Just type what you need. Your agent has full internet access and works on a private server dedicated to you.",
     position: "top",
   },
   {
@@ -121,7 +121,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="nav-history"]',
     title: "History",
     description:
-      "A complete record of everything — past conversations, completed tasks, and all results. Nothing gets lost.",
+      "A complete record of everything: past conversations, completed tasks, and all results. Nothing gets lost.",
   },
   {
     selector: '[data-tour="nav-more"]',
@@ -135,7 +135,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="nav-files"]',
     title: "Files",
     description:
-      "Upload documents for your agent to read, or download files it creates — like reports, spreadsheets, or images.",
+      "Upload documents for your agent to read, or download files it creates, like reports, spreadsheets, or images.",
     keepMoreOpen: true,
   },
   {
@@ -156,7 +156,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="nav-settings"]',
     title: "Settings",
     description:
-      "Make it yours — customize your agent's personality, choose its AI model, set a system prompt, and pick how results get delivered.",
+      "Make it yours. Customize your agent's personality, choose its AI model, set a system prompt, and pick how results get delivered.",
     keepMoreOpen: true,
   },
   {
@@ -170,7 +170,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="input-bar"]',
     title: "One Last Thing: Recurring Tasks",
     description:
-      "Here's the real power move. Type something like \"Every morning at 8am, summarize the top AI news\" — your agent will run it on schedule and send results straight to your Telegram. Set it and forget it.",
+      "Here's the real power move. Type something like \"Every morning at 8am, summarize the top AI news\" and your agent will run it on schedule and send results straight to your Telegram. Set it and forget it.",
     navigateTo: "/tasks",
     position: "top",
     large: true,

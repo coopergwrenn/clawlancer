@@ -24,9 +24,12 @@ export default function WelcomeModal({ botConnected, onActivateBot, onSkip }: We
       <motion.div
         className="relative w-full max-w-md rounded-2xl p-8 text-center"
         style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.15)",
+          background: "rgba(255, 255, 255, 0.82)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid rgba(255, 255, 255, 0.5)",
+          boxShadow:
+            "0 24px 64px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.3) inset, 0 -2px 6px rgba(255,255,255,0.4) inset",
         }}
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
@@ -35,7 +38,10 @@ export default function WelcomeModal({ botConnected, onActivateBot, onSkip }: We
         {/* Icon */}
         <div
           className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.05)" }}
+          style={{
+            background: "rgba(0,0,0,0.04)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,255,255,0.5) inset",
+          }}
         >
           <Sparkles className="w-8 h-8" style={{ color: "var(--foreground)" }} />
         </div>
@@ -51,7 +57,7 @@ export default function WelcomeModal({ botConnected, onActivateBot, onSkip }: We
           <>
             <p className="text-sm mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
               Your personal AI agent is deployed and your Telegram bot is
-              already connected — you&apos;re good to go.
+              already connected. You&apos;re good to go.
             </p>
             <p className="text-xs mb-8 leading-relaxed" style={{ color: "var(--muted)", opacity: 0.8 }}>
               Let&apos;s take a quick 30-second tour so you know where
@@ -62,7 +68,7 @@ export default function WelcomeModal({ botConnected, onActivateBot, onSkip }: We
           <>
             <p className="text-sm mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
               Your personal AI agent is deployed and ready to work. There&apos;s
-              just one quick thing left — activating your Telegram bot so your
+              just one quick thing left: activating your Telegram bot so your
               agent can message you directly.
             </p>
             <p className="text-xs mb-8 leading-relaxed" style={{ color: "var(--muted)", opacity: 0.8 }}>

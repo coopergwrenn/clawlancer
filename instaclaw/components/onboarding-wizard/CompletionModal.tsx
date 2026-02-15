@@ -41,9 +41,12 @@ export default function CompletionModal({ onDone, onSuggestion }: CompletionModa
       <motion.div
         className="relative w-full max-w-md rounded-2xl p-8"
         style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.15)",
+          background: "rgba(255, 255, 255, 0.82)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid rgba(255, 255, 255, 0.5)",
+          boxShadow:
+            "0 24px 64px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.3) inset, 0 -2px 6px rgba(255,255,255,0.4) inset",
         }}
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
@@ -52,7 +55,10 @@ export default function CompletionModal({ onDone, onSuggestion }: CompletionModa
         {/* Confetti icon */}
         <motion.div
           className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.05)" }}
+          style={{
+            background: "rgba(0,0,0,0.04)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,255,255,0.5) inset",
+          }}
           initial={{ rotate: -10 }}
           animate={{ rotate: 0 }}
           transition={{ type: "spring", stiffness: 200 }}
@@ -78,13 +84,13 @@ export default function CompletionModal({ onDone, onSuggestion }: CompletionModa
         <div
           className="rounded-xl px-4 py-3.5 mb-4 flex items-start gap-3"
           style={{
-            background: "rgba(220,103,67,0.08)",
-            border: "1px solid rgba(220,103,67,0.2)",
+            background: "rgba(220,103,67,0.06)",
+            border: "1px solid rgba(220,103,67,0.15)",
           }}
         >
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-            style={{ background: "rgba(220,103,67,0.15)" }}
+            style={{ background: "rgba(220,103,67,0.12)" }}
           >
             <MessageCircle className="w-4 h-4" style={{ color: "var(--accent)" }} />
           </div>
@@ -106,7 +112,8 @@ export default function CompletionModal({ onDone, onSuggestion }: CompletionModa
               onClick={() => onSuggestion(s.label)}
               className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left cursor-pointer transition-all hover:bg-black/[0.03] active:scale-[0.98]"
               style={{
-                border: "1px solid var(--border)",
+                border: "1px solid rgba(0,0,0,0.08)",
+                background: "rgba(255,255,255,0.5)",
               }}
             >
               <div

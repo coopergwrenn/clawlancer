@@ -76,9 +76,12 @@ export default function BotVerification({
       <motion.div
         className="relative w-full max-w-md rounded-2xl p-8 text-center"
         style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.15)",
+          background: "rgba(255, 255, 255, 0.82)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid rgba(255, 255, 255, 0.5)",
+          boxShadow:
+            "0 24px 64px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.3) inset, 0 -2px 6px rgba(255,255,255,0.4) inset",
         }}
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
@@ -101,7 +104,7 @@ export default function BotVerification({
               You&apos;re Connected!
             </h2>
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              Perfect — your agent can now send you results on Telegram. Let&apos;s show you around...
+              Your agent can now send you results on Telegram. Let&apos;s show you around...
             </p>
           </motion.div>
         ) : (
@@ -131,14 +134,17 @@ export default function BotVerification({
             </h2>
 
             <p className="text-sm mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
-              Your bot is already created — you just need to open it and send
+              Your bot is already created. You just need to open it and send
               one message to link it to your agent.
             </p>
 
             {/* Step-by-step instructions */}
             <div
               className="text-left rounded-xl p-4 mb-5 space-y-3"
-              style={{ background: "rgba(0,0,0,0.03)" }}
+              style={{
+                background: "rgba(0,0,0,0.03)",
+                border: "1px solid rgba(0,0,0,0.04)",
+              }}
             >
               <div className="flex gap-3">
                 <span className="text-xs font-semibold shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)", color: "var(--background)" }}>1</span>
@@ -173,7 +179,7 @@ export default function BotVerification({
               <div className="flex gap-3">
                 <span className="text-xs font-semibold shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)", color: "var(--background)" }}>4</span>
                 <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
-                  Send any message — even just <strong style={{ color: "var(--foreground)" }}>&quot;hi&quot;</strong> — and we&apos;ll detect it automatically
+                  Send any message, even just <strong style={{ color: "var(--foreground)" }}>&quot;hi&quot;</strong>, and we&apos;ll detect it automatically
                 </p>
               </div>
             </div>

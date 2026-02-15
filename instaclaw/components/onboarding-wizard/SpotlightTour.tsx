@@ -312,11 +312,17 @@ export default function SpotlightTour({
             }`}
             style={{
               ...tooltipInfo.style,
-              background: "var(--card)",
-              border: isMobile ? "none" : "1px solid var(--border)",
+              background: isMobile
+                ? "rgba(255, 255, 255, 0.92)"
+                : "rgba(255, 255, 255, 0.82)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+              border: isMobile
+                ? "none"
+                : "1px solid rgba(255, 255, 255, 0.5)",
               boxShadow: isMobile
-                ? "0 -8px 32px rgba(0,0,0,0.15)"
-                : "0 12px 40px rgba(0,0,0,0.15)",
+                ? "0 -8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.3) inset"
+                : "0 12px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.3) inset, 0 -2px 6px rgba(255,255,255,0.4) inset",
             }}
             initial={{ opacity: 0, y: tooltipInfo.pos === "top" ? 8 : -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -349,7 +355,7 @@ export default function SpotlightTour({
             {/* Navigation */}
             <div className="mt-4 space-y-3">
               {/* Progress bar */}
-              <div className="w-full rounded-full h-1 overflow-hidden" style={{ background: "rgba(0,0,0,0.06)" }}>
+              <div className="w-full rounded-full h-1 overflow-hidden" style={{ background: "rgba(0,0,0,0.08)" }}>
                 <div
                   className="h-full rounded-full transition-all duration-300"
                   style={{
