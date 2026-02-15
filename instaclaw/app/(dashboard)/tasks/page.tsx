@@ -28,30 +28,30 @@ import ReactMarkdown from "react-markdown";
 
 /* ─── Tool Brand Logos ────────────────────────────────────── */
 
-const TOOL_LOGOS: Record<string, { logo: string; label: string }> = {
-  web_search:   { logo: "/tool-icons/web-search.svg", label: "Web Search" },
-  brave_search: { logo: "/tool-icons/brave.svg",      label: "Brave Search" },
-  search:       { logo: "/tool-icons/web-search.svg", label: "Search" },
-  telegram:     { logo: "/tool-icons/telegram.svg",   label: "Telegram" },
-  discord:      { logo: "/tool-icons/discord.svg",    label: "Discord" },
-  email:        { logo: "/tool-icons/gmail.svg",      label: "Email" },
-  gmail:        { logo: "/tool-icons/gmail.svg",      label: "Gmail" },
-  clawlancer:   { logo: "/tool-icons/instaclaw.svg",  label: "Instaclaw" },
-  marketplace:  { logo: "/tool-icons/instaclaw.svg",  label: "Marketplace" },
-  file:         { logo: "/tool-icons/file.svg",       label: "Files" },
-  code:         { logo: "/tool-icons/code.svg",       label: "Code" },
-  database:     { logo: "/tool-icons/database.svg",   label: "Database" },
-  calendar:     { logo: "/tool-icons/calendar.svg",   label: "Calendar" },
-  image:        { logo: "/tool-icons/image.svg",      label: "Image" },
+const TOOL_LOGOS: Record<string, { logo: string; label: string; color: string }> = {
+  web_search:   { logo: "/tool-icons/web-search.svg", label: "Web Search",    color: "#4285F4" },
+  brave_search: { logo: "/tool-icons/brave.svg",      label: "Brave Search",  color: "#FB542B" },
+  search:       { logo: "/tool-icons/web-search.svg", label: "Search",        color: "#4285F4" },
+  telegram:     { logo: "/tool-icons/telegram.svg",   label: "Telegram",      color: "#2AABEE" },
+  discord:      { logo: "/tool-icons/discord.svg",    label: "Discord",       color: "#5865F2" },
+  email:        { logo: "/tool-icons/gmail.svg",      label: "Email",         color: "#EA4335" },
+  gmail:        { logo: "/tool-icons/gmail.svg",      label: "Gmail",         color: "#EA4335" },
+  clawlancer:   { logo: "/tool-icons/instaclaw.svg",  label: "Instaclaw",     color: "#DC6743" },
+  marketplace:  { logo: "/tool-icons/instaclaw.svg",  label: "Marketplace",   color: "#DC6743" },
+  file:         { logo: "/tool-icons/file.svg",       label: "Files",         color: "#34A853" },
+  code:         { logo: "/tool-icons/code.svg",       label: "Code",          color: "#1e1e1e" },
+  database:     { logo: "/tool-icons/database.svg",   label: "Database",      color: "#8b5cf6" },
+  calendar:     { logo: "/tool-icons/calendar.svg",   label: "Calendar",      color: "#4285F4" },
+  image:        { logo: "/tool-icons/image.svg",      label: "Image",         color: "#ec4899" },
 };
 
-function getToolLogo(tool: string): { logo: string; label: string } {
+function getToolLogo(tool: string): { logo: string; label: string; color: string } {
   const key = tool.toLowerCase().replace(/[\s_-]+/g, "_");
   if (TOOL_LOGOS[key]) return TOOL_LOGOS[key];
   for (const [k, v] of Object.entries(TOOL_LOGOS)) {
     if (key.includes(k)) return v;
   }
-  return { logo: "/tool-icons/web-search.svg", label: tool };
+  return { logo: "/tool-icons/web-search.svg", label: tool, color: "#71717a" };
 }
 
 /* ─── Model Options ──────────────────────────────────────── */
@@ -913,24 +913,51 @@ function TaskCard({
             <Repeat className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
           )}
           {task.tools_used.length > 0 && (
-            <div className="flex items-center -space-x-1.5">
+            <div className="flex items-center -space-x-1">
               {task.tools_used.slice(0, 4).map((tool) => {
-                const { logo, label } = getToolLogo(tool);
+                const { logo, label, color } = getToolLogo(tool);
                 return (
-                  <img
+                  <div
                     key={tool}
-                    src={logo}
-                    alt={label}
+                    className="w-7 h-7 rounded-full relative shrink-0 flex items-center justify-center"
                     title={label}
-                    className="w-6 h-6 rounded-full ring-2 ring-white"
-                    style={{ objectFit: "cover" }}
-                  />
+                    style={{
+                      background: `radial-gradient(circle at 35% 35%, ${color}dd, ${color}88 40%, rgba(0,0,0,0.3) 100%)`,
+                      boxShadow: `
+                        inset 0 -2px 4px rgba(0,0,0,0.25),
+                        inset 0 2px 4px rgba(255,255,255,0.4),
+                        inset 0 0 3px rgba(0,0,0,0.15),
+                        0 1px 6px rgba(0,0,0,0.2),
+                        0 1px 2px rgba(0,0,0,0.15)
+                      `,
+                      border: "2px solid rgba(255,255,255,0.9)",
+                    }}
+                  >
+                    <img
+                      src={logo}
+                      alt={label}
+                      className="w-4 h-4 rounded-full"
+                      style={{ position: "relative", zIndex: 2 }}
+                    />
+                    <div
+                      className="absolute top-[2px] left-[4px] w-[12px] h-[6px] rounded-full pointer-events-none"
+                      style={{
+                        background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 100%)",
+                        zIndex: 3,
+                      }}
+                    />
+                  </div>
                 );
               })}
               {task.tools_used.length > 4 && (
                 <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-white text-[9px] font-semibold"
-                  style={{ background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-semibold"
+                  style={{
+                    background: "radial-gradient(circle at 35% 35%, #e5e5e5, #d4d4d4 40%, rgba(0,0,0,0.15) 100%)",
+                    boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.15), inset 0 2px 4px rgba(255,255,255,0.5), 0 1px 4px rgba(0,0,0,0.15)",
+                    border: "2px solid rgba(255,255,255,0.9)",
+                    color: "var(--muted)",
+                  }}
                 >
                   +{task.tools_used.length - 4}
                 </div>
@@ -1072,23 +1099,35 @@ function TaskCard({
 
               {/* Tools used */}
               {task.tools_used.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2.5 flex-wrap">
                   <span className="text-xs" style={{ color: "var(--muted)" }}>
                     Tools:
                   </span>
                   {task.tools_used.map((tool) => {
-                    const { logo, label } = getToolLogo(tool);
+                    const { logo, label, color } = getToolLogo(tool);
                     return (
                       <span
                         key={tool}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+                        className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium"
                         style={{
                           background: "rgba(0,0,0,0.04)",
                           boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
                           color: "var(--foreground)",
                         }}
                       >
-                        <img src={logo} alt={label} className="w-4 h-4 rounded-full" />
+                        <span
+                          className="w-5 h-5 rounded-full relative shrink-0 flex items-center justify-center"
+                          style={{
+                            background: `radial-gradient(circle at 35% 35%, ${color}dd, ${color}88 40%, rgba(0,0,0,0.3) 100%)`,
+                            boxShadow: `
+                              inset 0 -1.5px 3px rgba(0,0,0,0.25),
+                              inset 0 1.5px 3px rgba(255,255,255,0.4),
+                              0 1px 4px rgba(0,0,0,0.15)
+                            `,
+                          }}
+                        >
+                          <img src={logo} alt={label} className="w-3.5 h-3.5 rounded-full relative z-[2]" />
+                        </span>
                         {label}
                       </span>
                     );
