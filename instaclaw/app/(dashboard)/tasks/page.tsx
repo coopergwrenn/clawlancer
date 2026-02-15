@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Check,
   Send,
+  ArrowUp,
   Repeat,
   RotateCw,
   Trash2,
@@ -24,6 +25,15 @@ import {
   Zap,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+
+/* ─── Model Options ──────────────────────────────────────── */
+
+const MODEL_OPTIONS = [
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+  { id: "claude-sonnet-4-5-20250929", label: "Sonnet 4.5" },
+  { id: "claude-opus-4-5-20250820", label: "Opus 4.5" },
+  { id: "claude-opus-4-6", label: "Opus 4.6" },
+];
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -1325,6 +1335,12 @@ export default function CommandCenterPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Model state
+  const [currentModel, setCurrentModel] = useState("claude-sonnet-4-5-20250929");
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [updatingModel, setUpdatingModel] = useState(false);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
+
   const tabs: { key: Tab; label: string; tourKey: string }[] = [
     { key: "tasks", label: "Tasks", tourKey: "tab-tasks" },
     { key: "chat", label: "Chat", tourKey: "tab-chat" },
@@ -1389,6 +1405,53 @@ export default function CommandCenterPage() {
     window.addEventListener("instaclaw:prefill-input", handler);
     return () => window.removeEventListener("instaclaw:prefill-input", handler);
   }, []);
+
+  // Fetch current model from VM status
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/vm/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.model) setCurrentModel(data.model);
+        }
+      } catch {
+        // Non-fatal
+      }
+    })();
+  }, []);
+
+  // Close model picker on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
+        setShowModelPicker(false);
+      }
+    }
+    if (showModelPicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showModelPicker]);
+
+  async function handleModelChange(newModel: string) {
+    setUpdatingModel(true);
+    setShowModelPicker(false);
+    const prev = currentModel;
+    setCurrentModel(newModel);
+    try {
+      const res = await fetch("/api/vm/update-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: newModel }),
+      });
+      if (!res.ok) setCurrentModel(prev);
+    } catch {
+      setCurrentModel(prev);
+    } finally {
+      setUpdatingModel(false);
+    }
+  }
 
   // ─── Task polling ─────────────────────────────────────
 
@@ -2020,14 +2083,57 @@ export default function CommandCenterPage() {
               className="flex-1 bg-transparent text-sm outline-none"
               style={{ color: "var(--foreground)" }}
             />
-            <button
-              onClick={handleSubmit}
-              disabled={!chatInput.trim()}
-              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-opacity hover:opacity-80 disabled:opacity-0"
-              style={{ background: "var(--foreground)" }}
-            >
-              <Send className="w-3.5 h-3.5" style={{ color: "var(--background)" }} />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="relative" ref={modelPickerRef}>
+                <button
+                  onClick={() => setShowModelPicker(!showModelPicker)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
+                  style={{ color: "var(--muted)" }}
+                >
+                  <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {showModelPicker && (
+                  <div
+                    className="absolute bottom-full right-0 mb-1.5 rounded-xl py-1.5 min-w-[160px] z-50"
+                    style={{
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    {MODEL_OPTIONS.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => handleModelChange(m.id)}
+                        className="w-full text-left px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between"
+                        style={{
+                          color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
+                          background: m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent";
+                        }}
+                      >
+                        {m.label}
+                        {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={!chatInput.trim()}
+                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
+                style={{ background: chatInput.trim() ? "var(--accent)" : "var(--accent)" }}
+              >
+                <ArrowUp className="w-4 h-4" style={{ color: "#ffffff" }} strokeWidth={2.5} />
+              </button>
+            </div>
           </div>
           <div
             data-tour="quick-chips"
@@ -2081,14 +2187,57 @@ export default function CommandCenterPage() {
               style={{ color: "var(--foreground)" }}
               disabled={isSending}
             />
-            <button
-              onClick={handleSubmit}
-              disabled={isSending || !chatInput.trim()}
-              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-opacity hover:opacity-80 disabled:opacity-40"
-              style={{ background: "var(--accent)" }}
-            >
-              <Send className="w-4 h-4" style={{ color: "#ffffff" }} />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="relative" ref={activeTab === "chat" ? modelPickerRef : undefined}>
+                <button
+                  onClick={() => setShowModelPicker(!showModelPicker)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
+                  style={{ color: "var(--muted)" }}
+                >
+                  <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {showModelPicker && (
+                  <div
+                    className="absolute bottom-full right-0 mb-1.5 rounded-xl py-1.5 min-w-[160px] z-50"
+                    style={{
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    {MODEL_OPTIONS.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => handleModelChange(m.id)}
+                        className="w-full text-left px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between"
+                        style={{
+                          color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
+                          background: m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent";
+                        }}
+                      >
+                        {m.label}
+                        {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={isSending || !chatInput.trim()}
+                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
+                style={{ background: "var(--accent)" }}
+              >
+                <ArrowUp className="w-4 h-4" style={{ color: "#ffffff" }} strokeWidth={2.5} />
+              </button>
+            </div>
           </div>
         </div>
       )}

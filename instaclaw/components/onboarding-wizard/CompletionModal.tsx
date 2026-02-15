@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { PartyPopper, Zap, Clock, MessageSquare } from "lucide-react";
+import { PartyPopper, Zap, Clock, MessageSquare, MessageCircle } from "lucide-react";
 
 interface CompletionModalProps {
   onDone: () => void;
@@ -68,11 +68,35 @@ export default function CompletionModal({ onDone, onSuggestion }: CompletionModa
         </h2>
 
         <p
-          className="text-sm text-center mb-6 leading-relaxed"
+          className="text-sm text-center mb-5 leading-relaxed"
           style={{ color: "var(--muted)" }}
         >
           Your agent is ready and waiting. Here are a few things you can try right now:
         </p>
+
+        {/* Pro tip callout */}
+        <div
+          className="rounded-xl px-4 py-3.5 mb-4 flex items-start gap-3"
+          style={{
+            background: "rgba(220,103,67,0.08)",
+            border: "1px solid rgba(220,103,67,0.2)",
+          }}
+        >
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+            style={{ background: "rgba(220,103,67,0.15)" }}
+          >
+            <MessageCircle className="w-4 h-4" style={{ color: "var(--accent)" }} />
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-0.5" style={{ color: "var(--foreground)" }}>
+              The best way to use InstaClaw
+            </div>
+            <div className="text-[12px] leading-relaxed" style={{ color: "var(--muted)" }}>
+              Want to install a skill, connect an API, or set something up? Just message your agent in <strong style={{ color: "var(--foreground)" }}>Telegram</strong> (or your preferred channel) and tell it what you want. It&apos;ll figure it out and ask you if it needs help along the way.
+            </div>
+          </div>
+        </div>
 
         {/* Suggestions */}
         <div className="space-y-2">
