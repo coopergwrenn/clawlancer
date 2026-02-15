@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
         health_status: "configuring",
         last_health_check: new Date().toISOString(),
         telegram_bot_username: pending.telegram_bot_username ?? null,
+        telegram_bot_token: pending.telegram_bot_token ?? null,
         discord_bot_token: pending.discord_bot_token ?? null,
         channels_enabled: channels,
         configure_attempts: 0,

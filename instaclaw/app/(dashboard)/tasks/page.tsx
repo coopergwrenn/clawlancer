@@ -19,6 +19,8 @@ import {
   Copy,
   Download,
   Bookmark,
+  Pause,
+  Play,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -26,7 +28,7 @@ import ReactMarkdown from "react-markdown";
 
 type Tab = "tasks" | "chat" | "library";
 
-type TaskStatus = "completed" | "in_progress" | "queued" | "failed" | "active";
+type TaskStatus = "completed" | "in_progress" | "queued" | "failed" | "active" | "paused";
 
 type FilterOption = "all" | "active" | "scheduled" | "completed";
 
@@ -44,6 +46,9 @@ interface TaskItem {
   result: string | null;
   error_message: string | null;
   tools_used: string[];
+  consecutive_failures: number;
+  processing_started_at: string | null;
+  last_delivery_status: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -154,11 +159,38 @@ function timeAgo(iso: string | undefined | null): string {
   }
 }
 
+/** Smart next run formatting */
+function formatNextRun(iso: string | null | undefined, isPaused: boolean): string {
+  if (isPaused) return "Paused";
+  if (!iso) return "";
+  try {
+    const next = new Date(iso).getTime();
+    const diff = next - Date.now();
+    if (diff <= 0) return "Running soon...";
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `in ${mins}m`;
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hours < 24) return remMins > 0 ? `in ${hours}h ${remMins}m` : `in ${hours}h`;
+    const nextDate = new Date(iso);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (nextDate.toDateString() === tomorrow.toDateString()) {
+      return `Tomorrow ${nextDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    }
+    return nextDate.toLocaleDateString([], { weekday: "short" }) +
+      " " +
+      nextDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
 /** Map filter option to status query param */
 function filterToStatus(filter: FilterOption): string | undefined {
   switch (filter) {
     case "active":
-      return "in_progress,active";
+      return "in_progress,active,paused";
     case "scheduled":
       return "queued";
     case "completed":
@@ -230,6 +262,8 @@ function StatusDot({ status }: { status: TaskStatus }) {
       return <span className={base} style={{ background: "#eab308" }} />;
     case "failed":
       return <span className={base} style={{ background: "#ef4444" }} />;
+    case "paused":
+      return <span className={base} style={{ background: "#9ca3af" }} />;
   }
 }
 
@@ -540,6 +574,9 @@ function TaskCard({
   onToggleComplete,
   onDelete,
   onRerun,
+  onTrigger,
+  onPause,
+  onResume,
   onTaskUpdated,
 }: {
   task: TaskItem;
@@ -548,6 +585,9 @@ function TaskCard({
   onToggleComplete: () => void;
   onDelete: () => void;
   onRerun: () => void;
+  onTrigger: () => void;
+  onPause: () => void;
+  onResume: () => void;
   onTaskUpdated: (updated: TaskItem) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -567,6 +607,7 @@ function TaskCard({
   const isProcessing = task.status === "in_progress";
   const isCompleted = task.status === "completed";
   const isActive = task.status === "active";
+  const isPaused = task.status === "paused";
 
   const streakLabel =
     task.streak === 0
@@ -579,11 +620,14 @@ function TaskCard({
 
   const timingParts: string[] = [];
   if (task.frequency) timingParts.push(task.frequency);
-  if (task.is_recurring) timingParts.push(streakLabel);
-  if (task.next_run_at) {
-    timingParts.push(`Next: ${timeAgo(task.next_run_at)}`);
+  if (task.is_recurring && !isPaused) timingParts.push(streakLabel);
+  if (isPaused) {
+    timingParts.push("Paused");
+  } else if (task.is_recurring && task.next_run_at) {
+    const nextLabel = formatNextRun(task.next_run_at, false);
+    timingParts.push(`Next: ${nextLabel}`);
   } else if (task.last_run_at) {
-    timingParts.push(`Last: ${timeAgo(task.last_run_at)} \u2705`);
+    timingParts.push(`Last: ${timeAgo(task.last_run_at)} ${isFailed ? "\u274C" : "\u2705"}`);
   }
 
   function showToast(msg: string) {
@@ -661,6 +705,7 @@ function TaskCard({
           ? "1px solid #fca5a5"
           : "1px solid var(--border)",
         background: isFailed ? "rgba(239,68,68,0.03)" : undefined,
+        opacity: isPaused ? 0.65 : undefined,
       }}
     >
       {/* Toast */}
@@ -688,10 +733,17 @@ function TaskCard({
           className="shrink-0 mt-0.5"
           onClick={(e) => {
             e.stopPropagation();
-            if (!isProcessing && !isActive) onToggleComplete();
+            if (!isProcessing && !isActive && !isPaused) onToggleComplete();
           }}
         >
-          {isActive ? (
+          {isPaused ? (
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center"
+              style={{ border: "2px solid #9ca3af" }}
+            >
+              <Pause className="w-3 h-3" style={{ color: "#9ca3af" }} />
+            </div>
+          ) : isActive ? (
             <div
               className="w-6 h-6 rounded-full flex items-center justify-center"
               style={{ border: "2px solid #16a34a" }}
@@ -742,7 +794,14 @@ function TaskCard({
               : task.description}
           </p>
           {task.is_recurring && timingParts.length > 0 && (
-            <p className="text-xs mt-1 pl-4" style={{ color: "var(--muted)" }}>
+            <p
+              className={`text-xs mt-1 pl-4 ${
+                !isPaused && task.next_run_at && new Date(task.next_run_at).getTime() < Date.now()
+                  ? "animate-pulse"
+                  : ""
+              }`}
+              style={{ color: isPaused ? "#9ca3af" : "var(--muted)" }}
+            >
               {timingParts.join(" \u00B7 ")}
             </p>
           )}
@@ -928,7 +987,7 @@ function TaskCard({
                 </div>
               )}
 
-              {/* Timestamps + recurring info */}
+              {/* Timestamps + recurring info + delivery status */}
               <div className="text-xs space-y-0.5" style={{ color: "var(--muted)" }}>
                 <p>Created: {formatDate(task.created_at)}</p>
                 {isCompleted && <p>Completed: {formatDate(task.updated_at)}</p>}
@@ -938,22 +997,75 @@ function TaskCard({
                     {task.streak > 0 && ` \u00B7 \u{1F525} ${task.streak} streak`}
                   </p>
                 )}
+                {task.is_recurring && task.last_delivery_status && (
+                  <p>
+                    Telegram:{" "}
+                    {task.last_delivery_status === "delivered" ? (
+                      <span style={{ color: "#16a34a" }}>Delivered</span>
+                    ) : task.last_delivery_status === "delivery_failed" ? (
+                      <span style={{ color: "#ef4444" }}>Delivery failed</span>
+                    ) : (
+                      <span>Not connected</span>
+                    )}
+                  </p>
+                )}
               </div>
 
               {/* Action buttons — hidden during edit mode */}
               {!isEditing && (
                 <div className="flex items-center gap-3 pt-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRerun();
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5"
-                    style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
-                  >
-                    <RotateCw className="w-3 h-3" />
-                    Re-run
-                  </button>
+                  {/* Run now (recurring) or Re-run (non-recurring) */}
+                  {task.is_recurring && (isActive || isFailed) ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTrigger();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5"
+                      style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
+                    >
+                      <Play className="w-3 h-3" />
+                      Run now
+                    </button>
+                  ) : isPaused ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResume();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-green-50"
+                      style={{ border: "1px solid var(--border)", color: "#16a34a" }}
+                    >
+                      <Play className="w-3 h-3" />
+                      Resume
+                    </button>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRerun();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5"
+                      style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
+                    >
+                      <RotateCw className="w-3 h-3" />
+                      Re-run
+                    </button>
+                  )}
+                  {/* Pause button for active recurring tasks */}
+                  {isActive && task.is_recurring && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPause();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-black/5"
+                      style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+                    >
+                      <Pause className="w-3 h-3" />
+                      Pause
+                    </button>
+                  )}
                   {task.result && (
                     <button
                       onClick={(e) => {
@@ -1096,7 +1208,13 @@ function useTaskPolling(
           const task = data.task as TaskItem;
           onUpdate(task);
 
-          if (task.status === "completed" || task.status === "failed") {
+          // Stop polling when task finishes (completed/failed) or
+          // recurring task gets a new result (stays "active" but result updated)
+          if (
+            task.status === "completed" ||
+            task.status === "failed" ||
+            (task.status === "active" && task.result && !task.processing_started_at)
+          ) {
             clearInterval(intervalRef.current[taskId]);
             delete intervalRef.current[taskId];
           }
@@ -1249,6 +1367,9 @@ export default function CommandCenterPage() {
         result: null,
         error_message: null,
         tools_used: [],
+        consecutive_failures: 0,
+        processing_started_at: null,
+        last_delivery_status: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -1353,6 +1474,74 @@ export default function CommandCenterPage() {
       fetchTasks(filterToStatus(filter));
     }
   }, [fetchTasks, filter]);
+
+  // ─── Trigger recurring task (run now) ────────────────
+
+  const triggerTask = useCallback(async (taskId: string) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, result: null, error_message: null }
+          : t
+      )
+    );
+    setPollingIds((prev) => [...prev, taskId]);
+
+    try {
+      await fetch(`/api/tasks/${taskId}/trigger`, { method: "POST" });
+    } catch {
+      fetchTasks(filterToStatus(filter));
+    }
+  }, [fetchTasks, filter]);
+
+  // ─── Pause recurring task ───────────────────────────
+
+  const pauseTask = useCallback(async (task: TaskItem) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id ? { ...t, status: "paused" as TaskStatus } : t
+      )
+    );
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "paused" }),
+      });
+      if (!res.ok) {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+      }
+    } catch {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+    }
+  }, []);
+
+  // ─── Resume recurring task ──────────────────────────
+
+  const resumeTask = useCallback(async (task: TaskItem) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id ? { ...t, status: "active" as TaskStatus } : t
+      )
+    );
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? data.task : t))
+        );
+      } else {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+      }
+    } catch {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+    }
+  }, []);
 
   // ─── Fetch chat history on mount ──────────────────────
 
@@ -1654,6 +1843,9 @@ export default function CommandCenterPage() {
                         onToggleComplete={() => toggleComplete(task)}
                         onDelete={() => deleteTask(task.id)}
                         onRerun={() => rerunTask(task.id)}
+                        onTrigger={() => triggerTask(task.id)}
+                        onPause={() => pauseTask(task)}
+                        onResume={() => resumeTask(task)}
                         onTaskUpdated={(updated) =>
                           setTasks((prev) =>
                             prev.map((t) => (t.id === updated.id ? updated : t))

@@ -75,8 +75,9 @@ export async function PATCH(
       queued: ["in_progress", "completed"],
       in_progress: ["completed", "failed"],
       completed: ["queued"],
-      failed: ["queued"],
-      active: ["completed"],
+      failed: ["queued", "active"],
+      active: ["completed", "paused"],
+      paused: ["active"],
     };
     const allowed = validTransitions[existing.status] ?? [];
     if (!allowed.includes(body.status)) {
@@ -86,6 +87,17 @@ export async function PATCH(
       );
     }
     update.status = body.status;
+
+    // Resume logic: reset failures and recalculate next_run_at
+    if (
+      body.status === "active" &&
+      (existing.status === "failed" || existing.status === "paused")
+    ) {
+      update.consecutive_failures = 0;
+      update.error_message = null;
+      // Schedule next run in 5 minutes (gives the scheduler time to pick it up)
+      update.next_run_at = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    }
   }
 
   if (typeof body.title === "string") update.title = body.title;
