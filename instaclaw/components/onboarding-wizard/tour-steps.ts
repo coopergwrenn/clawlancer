@@ -72,7 +72,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="dash-pro-tip"]',
     title: "Pro Tip: Talk to Your Bot",
     description:
-      "Almost everything on this dashboard, you can do just by chatting with your bot. And here's what makes it special: your agent has persistent memory. It learns your preferences, remembers past work, and gets smarter every day the more you use it.",
+      "Almost everything on this dashboard, you can do just by chatting with your bot. Want to add a new tool or service? Just paste an API key into chat and your agent sets it up instantly. And here's what makes it special: your agent has persistent memory. It learns your preferences, remembers past work, and gets smarter every day the more you use it.",
     navigateTo: "/dashboard",
     large: true,
   },
