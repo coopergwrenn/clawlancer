@@ -153,14 +153,28 @@ const tourSteps: TourStep[] = [
     navigateTo: "/env-vars",
   },
   {
-    selector: '[data-tour="page-settings"]',
-    title: "Settings",
+    selector: '[data-tour="settings-plan"]',
+    title: "Settings: Your Plan",
     description:
-      "Make it yours. Customize your agent's personality, choose its AI model, set a system prompt, and pick how results get delivered.",
+      "Here you can view and manage your current subscription. Tap \"Manage Plan\" to upgrade, change payment methods, or view invoices through Stripe.",
     navigateTo: "/settings",
   },
   {
-    selector: '[data-tour="page-billing"]',
+    selector: '[data-tour="settings-bot-info"]',
+    title: "Settings: Bot Info",
+    description:
+      "A quick reference for your bot's details: its username, the server it runs on, your plan type, and which messaging channels are active.",
+    navigateTo: "/settings",
+  },
+  {
+    selector: '[data-tour="settings-gmail"]',
+    title: "Settings: Gmail Personalization",
+    description:
+      "Optionally connect your Gmail so your agent can learn about you from inbox patterns. It only reads metadata, never full emails. This helps your agent give more personalized responses.",
+    navigateTo: "/settings",
+  },
+  {
+    selector: '[data-tour="page-billing-card"]',
     title: "Billing",
     description:
       "View your plan, check usage, and manage payments. Everything billing-related is right here.",

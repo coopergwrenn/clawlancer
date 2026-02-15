@@ -32,7 +32,7 @@ export default function BillingPage() {
         </p>
       </div>
 
-      <div className="glass rounded-xl p-6 space-y-4">
+      <div data-tour="page-billing-card" className="glass rounded-xl p-6 space-y-4">
         <p className="text-sm" style={{ color: "var(--muted)" }}>
           Manage your subscription, update payment methods, and view invoices
           through the Stripe customer portal.

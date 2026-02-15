@@ -330,7 +330,7 @@ export default function SettingsPage() {
 
       {/* Current Plan Section */}
       {vmStatus?.billing && (
-        <div className="glass rounded-xl p-6 space-y-4">
+        <div data-tour="settings-plan" className="glass rounded-xl p-6 space-y-4">
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -468,7 +468,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Bot Info (read-only) */}
-      <div>
+      <div data-tour="settings-bot-info">
         <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
           <Bot className="w-5 h-5" /> Bot Info
         </h2>
@@ -515,7 +515,7 @@ export default function SettingsPage() {
       <WorldIDSection />
 
       {/* Gmail Connection */}
-      <div>
+      <div data-tour="settings-gmail">
         <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
           <Mail className="w-5 h-5" /> Gmail Personalization
         </h2>
