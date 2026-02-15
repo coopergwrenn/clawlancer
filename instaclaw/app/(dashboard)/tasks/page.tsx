@@ -244,7 +244,7 @@ function StatusDot({ status }: { status: TaskStatus }) {
   const base = "w-2 h-2 rounded-full shrink-0";
   switch (status) {
     case "completed":
-      return <span className={base} style={{ background: "#16a34a" }} />;
+      return null;
     case "active":
       return (
         <span
@@ -1325,10 +1325,10 @@ export default function CommandCenterPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "tasks", label: "Tasks" },
-    { key: "chat", label: "Chat" },
-    { key: "library", label: "Library" },
+  const tabs: { key: Tab; label: string; tourKey: string }[] = [
+    { key: "tasks", label: "Tasks", tourKey: "tab-tasks" },
+    { key: "chat", label: "Chat", tourKey: "tab-chat" },
+    { key: "library", label: "Library", tourKey: "tab-library" },
   ];
 
   // Scroll to bottom of chat
@@ -1376,6 +1376,19 @@ export default function CommandCenterPage() {
     fetchTasks(filterToStatus(filter));
     fetchFailedCount();
   }, [filter, fetchTasks, fetchFailedCount]);
+
+  // Listen for onboarding wizard prefill events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent).detail;
+      if (typeof text === "string" && text.trim()) {
+        setChatInput(text);
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
+    };
+    window.addEventListener("instaclaw:prefill-input", handler);
+    return () => window.removeEventListener("instaclaw:prefill-input", handler);
+  }, []);
 
   // ─── Task polling ─────────────────────────────────────
 
@@ -1821,6 +1834,7 @@ export default function CommandCenterPage() {
           {tabs.map((tab) => (
             <button
               key={tab.key}
+              data-tour={tab.tourKey}
               onClick={() => setActiveTab(tab.key)}
               className="relative pb-3 text-sm font-medium transition-colors cursor-pointer"
               style={{
@@ -1977,6 +1991,7 @@ export default function CommandCenterPage() {
       {activeTab === "tasks" && (
         <div
           className="shrink-0 -mx-4 px-4 pt-4"
+          data-tour="input-bar"
           style={{
             background: "linear-gradient(to top, #f8f7f4 80%, transparent)",
             paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
@@ -2015,6 +2030,7 @@ export default function CommandCenterPage() {
             </button>
           </div>
           <div
+            data-tour="quick-chips"
             className="flex gap-1.5 overflow-x-auto pb-1 mt-2.5 px-1"
             style={{ scrollbarWidth: "none" }}
           >
