@@ -10,6 +10,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ function TaskCard({
   onDelete: (id: string) => void;
   onMove: (taskId: string, newStatus: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const prev = getPrevColumn(task.status);
   const next = getNextColumn(task.status);
 
@@ -109,77 +111,155 @@ function TaskCard({
       }}
       className="glass rounded-lg p-3 cursor-grab active:cursor-grabbing group"
     >
-      <div className="flex items-start justify-between gap-2">
+      {/* Clickable header row */}
+      <div
+        className="flex items-start justify-between gap-2 cursor-pointer"
+        onClick={() => setExpanded((v) => !v)}
+      >
         <div className="flex items-start gap-2 flex-1 min-w-0">
           <GripVertical className="w-4 h-4 mt-0.5 shrink-0 opacity-30 group-hover:opacity-60 transition-opacity hidden sm:block" />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2">
               <span
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ background: PRIORITY_COLORS[task.priority] }}
                 title={task.priority}
               />
-              <p className="text-sm font-medium truncate">{task.title}</p>
+              <p className={`text-sm font-medium ${expanded ? "" : "truncate"}`}>{task.title}</p>
             </div>
-            {task.description && (
-              <p className="text-xs truncate" style={{ color: "var(--muted)" }}>
+            {!expanded && task.description && (
+              <p className="text-xs truncate mt-1" style={{ color: "var(--muted)" }}>
                 {task.description}
-              </p>
-            )}
-            {task.assignee && (
-              <p
-                className="text-xs mt-1.5 inline-block px-1.5 py-0.5 rounded"
-                style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)" }}
-              >
-                {task.assignee}
               </p>
             )}
           </div>
         </div>
-        {/* Always visible on mobile, hover on desktop */}
-        <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
-          <button
-            onClick={() => onEdit(task)}
-            className="p-1.5 sm:p-1 rounded hover:bg-black/5 transition-colors"
-          >
-            <Pencil className="w-3.5 h-3.5 sm:w-3 sm:h-3" style={{ color: "var(--muted)" }} />
-          </button>
-          <button
-            onClick={() => onDelete(task.id)}
-            className="p-1.5 sm:p-1 rounded hover:bg-black/5 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5 sm:w-3 sm:h-3" style={{ color: "var(--error)" }} />
-          </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <ChevronDown
+            className="w-4 h-4 transition-transform"
+            style={{
+              color: "var(--muted)",
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          />
         </div>
       </div>
 
-      {/* Mobile: move buttons */}
-      <div className="flex sm:hidden items-center justify-between mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
-        {prev ? (
-          <button
-            onClick={() => onMove(task.id, prev)}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors active:bg-black/5"
-            style={{ color: "var(--muted)" }}
+      {/* Expanded content */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
           >
-            <ChevronLeft className="w-3.5 h-3.5" />
-            {getColumnLabel(prev)}
-          </button>
-        ) : (
-          <span />
+            <div className="pt-2 mt-2" style={{ borderTop: "1px solid var(--border)" }}>
+              {task.description ? (
+                <p className="text-sm whitespace-pre-wrap mb-3" style={{ color: "var(--foreground)", lineHeight: 1.5 }}>
+                  {task.description}
+                </p>
+              ) : (
+                <p className="text-xs italic mb-3" style={{ color: "var(--muted)" }}>
+                  No description
+                </p>
+              )}
+
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                {task.assignee && (
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded"
+                    style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)" }}
+                  >
+                    {task.assignee}
+                  </span>
+                )}
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded capitalize"
+                  style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)" }}
+                >
+                  {task.priority}
+                </span>
+              </div>
+
+              {/* Actions row */}
+              <div className="flex items-center justify-between">
+                <div className="flex gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEdit(task); }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors hover:bg-black/5 active:bg-black/5"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors hover:bg-black/5 active:bg-black/5"
+                    style={{ color: "var(--error)" }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Delete
+                  </button>
+                </div>
+
+                {/* Move buttons */}
+                <div className="flex sm:hidden gap-1">
+                  {prev && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(task.id, prev); }}
+                      className="flex items-center gap-0.5 px-2 py-1 rounded-md text-xs transition-colors active:bg-black/5"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                      {getColumnLabel(prev)}
+                    </button>
+                  )}
+                  {next && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(task.id, next); }}
+                      className="flex items-center gap-0.5 px-2 py-1 rounded-md text-xs transition-colors active:bg-black/5"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {getColumnLabel(next)}
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
         )}
-        {next ? (
-          <button
-            onClick={() => onMove(task.id, next)}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors active:bg-black/5"
-            style={{ color: "var(--muted)" }}
-          >
-            {getColumnLabel(next)}
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        ) : (
-          <span />
-        )}
-      </div>
+      </AnimatePresence>
+
+      {/* Collapsed: show assignee + actions on hover (desktop) */}
+      {!expanded && (
+        <div className="flex items-center justify-between mt-1.5">
+          {task.assignee ? (
+            <span
+              className="text-xs px-1.5 py-0.5 rounded"
+              style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)" }}
+            >
+              {task.assignee}
+            </span>
+          ) : <span />}
+          <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(task); }}
+              className="p-1.5 sm:p-1 rounded hover:bg-black/5 transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5 sm:w-3 sm:h-3" style={{ color: "var(--muted)" }} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+              className="p-1.5 sm:p-1 rounded hover:bg-black/5 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5 sm:w-3 sm:h-3" style={{ color: "var(--error)" }} />
+            </button>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
