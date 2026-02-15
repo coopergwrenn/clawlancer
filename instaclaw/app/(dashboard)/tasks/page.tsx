@@ -23,8 +23,46 @@ import {
   Pause,
   Play,
   Zap,
+  Globe,
+  MessageCircle,
+  Mail,
+  ShoppingBag,
+  FileText,
+  Code,
+  Database,
+  Calendar,
+  Image,
+  Wrench,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+
+/* ─── Tool Icon Config ───────────────────────────────────── */
+
+const TOOL_ICONS: Record<string, { icon: typeof Globe; bg: string; fg: string }> = {
+  web_search:     { icon: Globe,        bg: "#3b82f6", fg: "#ffffff" },
+  brave_search:   { icon: Globe,        bg: "#fb542b", fg: "#ffffff" },
+  search:         { icon: Search,       bg: "#6366f1", fg: "#ffffff" },
+  telegram:       { icon: MessageCircle, bg: "#229ED9", fg: "#ffffff" },
+  discord:        { icon: MessageCircle, bg: "#5865F2", fg: "#ffffff" },
+  email:          { icon: Mail,         bg: "#ea4335", fg: "#ffffff" },
+  gmail:          { icon: Mail,         bg: "#ea4335", fg: "#ffffff" },
+  clawlancer:     { icon: ShoppingBag,  bg: "#DC6743", fg: "#ffffff" },
+  marketplace:    { icon: ShoppingBag,  bg: "#DC6743", fg: "#ffffff" },
+  file:           { icon: FileText,     bg: "#10b981", fg: "#ffffff" },
+  code:           { icon: Code,         bg: "#1e1e1e", fg: "#ffffff" },
+  database:       { icon: Database,     bg: "#8b5cf6", fg: "#ffffff" },
+  calendar:       { icon: Calendar,     bg: "#f43f5e", fg: "#ffffff" },
+  image:          { icon: Image,        bg: "#ec4899", fg: "#ffffff" },
+};
+
+function getToolConfig(tool: string) {
+  const key = tool.toLowerCase().replace(/[\s_-]+/g, "_");
+  if (TOOL_ICONS[key]) return TOOL_ICONS[key];
+  for (const [k, v] of Object.entries(TOOL_ICONS)) {
+    if (key.includes(k)) return v;
+  }
+  return { icon: Wrench, bg: "#71717a", fg: "#ffffff" };
+}
 
 /* ─── Model Options ──────────────────────────────────────── */
 
@@ -885,12 +923,30 @@ function TaskCard({
             <Repeat className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
           )}
           {task.tools_used.length > 0 && (
-            <span
-              className="px-2 py-0.5 rounded-full text-[10px] font-medium"
-              style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}
-            >
-              {task.tools_used.length} tool{task.tools_used.length > 1 ? "s" : ""}
-            </span>
+            <div className="flex items-center -space-x-1.5">
+              {task.tools_used.slice(0, 4).map((tool) => {
+                const config = getToolConfig(tool);
+                const Icon = config.icon;
+                return (
+                  <div
+                    key={tool}
+                    className="w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-white"
+                    style={{ background: config.bg }}
+                    title={tool}
+                  >
+                    <Icon className="w-3 h-3" style={{ color: config.fg }} />
+                  </div>
+                );
+              })}
+              {task.tools_used.length > 4 && (
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-white text-[9px] font-semibold"
+                  style={{ background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                >
+                  +{task.tools_used.length - 4}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -1031,19 +1087,24 @@ function TaskCard({
                   <span className="text-xs" style={{ color: "var(--muted)" }}>
                     Tools:
                   </span>
-                  {task.tools_used.map((tool) => (
-                    <span
-                      key={tool}
-                      className="px-2 py-0.5 rounded-full text-[11px] font-medium"
-                      style={{
-                        background: "var(--card)",
-                        border: "1px solid var(--border)",
-                        color: "var(--foreground)",
-                      }}
-                    >
-                      {tool}
-                    </span>
-                  ))}
+                  {task.tools_used.map((tool) => {
+                    const config = getToolConfig(tool);
+                    const Icon = config.icon;
+                    return (
+                      <span
+                        key={tool}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+                        style={{
+                          background: `${config.bg}10`,
+                          boxShadow: `0 0 0 1px ${config.bg}20`,
+                          color: config.bg,
+                        }}
+                      >
+                        <Icon className="w-3 h-3" />
+                        {tool}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
 
