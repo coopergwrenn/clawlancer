@@ -124,38 +124,69 @@ export default function BotVerification({
             </div>
 
             <h2
-              className="text-2xl font-normal tracking-[-0.5px] mb-2"
+              className="text-2xl font-normal tracking-[-0.5px] mb-3"
               style={{ fontFamily: "var(--font-serif)", color: "var(--foreground)" }}
             >
-              Connect Your Telegram Bot
+              Activate Your Telegram Bot
             </h2>
 
-            <p className="text-sm mb-2 leading-relaxed" style={{ color: "var(--muted)" }}>
-              Tap the button below to open your bot in Telegram, then send it
-              any message — even just &quot;hi&quot; works.
+            <p className="text-sm mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+              Your bot is already created — you just need to open it and send
+              one message to link it to your agent.
             </p>
 
-            <p className="text-xs mb-6 leading-relaxed" style={{ color: "var(--muted)", opacity: 0.7 }}>
-              This links your Telegram to your agent so it can send you task
-              results, notifications, and more.
-            </p>
+            {/* Step-by-step instructions */}
+            <div
+              className="text-left rounded-xl p-4 mb-5 space-y-3"
+              style={{ background: "rgba(0,0,0,0.03)" }}
+            >
+              <div className="flex gap-3">
+                <span className="text-xs font-semibold shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)", color: "var(--background)" }}>1</span>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+                  Open Telegram and go back to your <strong style={{ color: "var(--foreground)" }}>BotFather</strong> chat
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <span className="text-xs font-semibold shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)", color: "var(--background)" }}>2</span>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+                  Find the message that says <strong style={{ color: "var(--foreground)" }}>&quot;Done! Congratulations on your new bot.&quot;</strong>
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <span className="text-xs font-semibold shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)", color: "var(--background)" }}>3</span>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+                  Tap the <strong style={{ color: "var(--foreground)" }}>t.me/{botUsername || "your_bot"}</strong> link in that message to open your bot
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <span className="text-xs font-semibold shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)", color: "var(--background)" }}>4</span>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+                  Send any message — even just <strong style={{ color: "var(--foreground)" }}>&quot;hi&quot;</strong> — and we&apos;ll detect it automatically
+                </p>
+              </div>
+            </div>
 
-            {/* Telegram link */}
+            {/* Direct link as alternative */}
             {telegramUrl && (
-              <a
-                href={telegramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl text-sm font-medium text-white cursor-pointer transition-all hover:opacity-90 active:scale-[0.98]"
-                style={{ background: "#0088cc" }}
-              >
-                Open @{botUsername} in Telegram
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              <div className="mb-1">
+                <p className="text-[11px] mb-2" style={{ color: "var(--muted)", opacity: 0.7 }}>
+                  Or open your bot directly:
+                </p>
+                <a
+                  href={telegramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white cursor-pointer transition-all hover:opacity-90 active:scale-[0.98]"
+                  style={{ background: "#0088cc" }}
+                >
+                  Open @{botUsername} in Telegram
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
             )}
 
             {/* Polling indicator */}
-            <div className="flex items-center justify-center gap-2 mt-6">
+            <div className="flex items-center justify-center gap-2 mt-5">
               {checking ? (
                 <Loader2
                   className="w-3.5 h-3.5 animate-spin"
@@ -168,17 +199,17 @@ export default function BotVerification({
                 />
               )}
               <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Waiting for your message...
+                Listening for your message...
               </span>
             </div>
 
             {/* Skip */}
             <button
               onClick={onSkip}
-              className="mt-5 text-xs cursor-pointer transition-opacity hover:opacity-70"
+              className="mt-4 text-xs cursor-pointer transition-opacity hover:opacity-70"
               style={{ color: "var(--muted)" }}
             >
-              Skip for now — I can do this later in Settings
+              Skip for now
             </button>
           </>
         )}

@@ -47,13 +47,14 @@ export default function WelcomeModal({ onActivateBot, onSkip }: WelcomeModalProp
         </h2>
 
         <p className="text-sm mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
-          Your personal AI agent is live and ready to work for you. Let&apos;s
-          get you set up in about 60 seconds.
+          Your personal AI agent is deployed and ready to work. There&apos;s
+          just one quick thing left — activating your Telegram bot so your
+          agent can message you directly.
         </p>
 
         <p className="text-xs mb-8 leading-relaxed" style={{ color: "var(--muted)", opacity: 0.8 }}>
-          First, we&apos;ll connect your Telegram bot so your agent can send you
-          results directly — then we&apos;ll give you a quick tour.
+          After that, we&apos;ll give you a 30-second tour of the dashboard
+          so you know where everything is.
         </p>
 
         {/* CTA */}
@@ -62,7 +63,7 @@ export default function WelcomeModal({ onActivateBot, onSkip }: WelcomeModalProp
           className="w-full py-3.5 rounded-xl text-sm font-medium cursor-pointer transition-all hover:opacity-90 active:scale-[0.98]"
           style={{ background: "var(--foreground)", color: "var(--background)" }}
         >
-          Let&apos;s Get Started
+          Activate My Bot
         </button>
 
         {/* Skip */}
@@ -71,7 +72,7 @@ export default function WelcomeModal({ onActivateBot, onSkip }: WelcomeModalProp
           className="mt-4 text-xs cursor-pointer transition-opacity hover:opacity-70"
           style={{ color: "var(--muted)" }}
         >
-          I&apos;ll explore on my own
+          I&apos;ll do this later
         </button>
       </motion.div>
     </motion.div>
