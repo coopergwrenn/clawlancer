@@ -34,7 +34,6 @@ const overflowNav = [
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];
 
-const allNav = [...primaryNav, ...overflowNav];
 
 export default function DashboardLayout({
   children,
@@ -94,97 +93,70 @@ export default function DashboardLayout({
           </Link>
 
           <div className="flex items-center gap-1">
-            {/* Desktop: all items */}
-            <div className="hidden lg:flex items-center gap-1">
-              {allNav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-snappy transition-colors"
-                  style={{
-                    color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
-                    background: pathname === item.href ? "rgba(0,0,0,0.06)" : "transparent",
-                  }}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </Link>
-              ))}
-              <button
-                onClick={() => signOut({ callbackUrl: "/" })}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-snappy transition-colors cursor-pointer ml-2 hover:bg-[rgba(0,0,0,0.04)]"
-                style={{ color: "var(--muted)" }}
+            {/* Primary items — always visible */}
+            {primaryNav.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-snappy transition-colors"
+                style={{
+                  color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
+                  background: pathname === item.href ? "rgba(0,0,0,0.06)" : "transparent",
+                }}
               >
-                <LogOut className="w-4 h-4" />
-                Sign Out
+                <item.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{item.label}</span>
+              </Link>
+            ))}
+
+            {/* More button + dropdown for overflow items */}
+            <div className="relative" ref={moreRef}>
+              <button
+                onClick={() => setMoreOpen((v) => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-snappy transition-colors"
+                style={{
+                  color: isOverflowActive || moreOpen ? "var(--foreground)" : "var(--muted)",
+                  background: isOverflowActive || moreOpen ? "rgba(0,0,0,0.06)" : "transparent",
+                }}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+                <span className="hidden sm:inline">More</span>
               </button>
-            </div>
 
-            {/* Mobile/tablet: primary items + more button */}
-            <div className="flex lg:hidden items-center gap-1">
-              {primaryNav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-snappy transition-colors"
+              {moreOpen && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-48 rounded-xl py-1 z-50"
                   style={{
-                    color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
-                    background: pathname === item.href ? "rgba(0,0,0,0.06)" : "transparent",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
                   }}
                 >
-                  <item.icon className="w-4 h-4" />
-                  <span className="hidden sm:inline">{item.label}</span>
-                </Link>
-              ))}
-
-              {/* More button + dropdown */}
-              <div className="relative" ref={moreRef}>
-                <button
-                  onClick={() => setMoreOpen((v) => !v)}
-                  className="flex items-center px-2.5 py-1.5 rounded-lg text-sm transition-snappy transition-colors"
-                  style={{
-                    color: isOverflowActive || moreOpen ? "var(--foreground)" : "var(--muted)",
-                    background: isOverflowActive || moreOpen ? "rgba(0,0,0,0.06)" : "transparent",
-                  }}
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </button>
-
-                {moreOpen && (
-                  <div
-                    className="absolute right-0 top-full mt-2 w-48 rounded-xl py-1 z-50"
-                    style={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-                    }}
-                  >
-                    {overflowNav.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
-                        style={{
-                          color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
-                          background: pathname === item.href ? "rgba(0,0,0,0.04)" : "transparent",
-                        }}
-                      >
-                        <item.icon className="w-4 h-4" />
-                        {item.label}
-                      </Link>
-                    ))}
-                    <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
-                    <button
-                      onClick={() => signOut({ callbackUrl: "/" })}
-                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors w-full cursor-pointer"
-                      style={{ color: "var(--muted)" }}
+                  {overflowNav.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
+                      style={{
+                        color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
+                        background: pathname === item.href ? "rgba(0,0,0,0.04)" : "transparent",
+                      }}
                     >
-                      <LogOut className="w-4 h-4" />
-                      Sign Out
-                    </button>
-                  </div>
-                )}
-              </div>
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </Link>
+                  ))}
+                  <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+                  <button
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors w-full cursor-pointer"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
