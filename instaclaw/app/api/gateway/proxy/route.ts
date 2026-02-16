@@ -35,6 +35,15 @@ const DAILY_SPEND_CAP =
 /** Track whether we've already sent a circuit-breaker alert today. */
 let circuitBreakerAlertDate = "";
 
+/**
+ * Track which VMs have already been shown the daily-limit message today.
+ * Key: "vmId:YYYY-MM-DD", Value: true.
+ * Prevents the limit message from being sent to Telegram hundreds of times.
+ * The friendly message is sent ONCE, then all subsequent calls get a 429.
+ * Memory resets on cold start, so worst case the user sees it a few times.
+ */
+const limitNotifiedToday = new Map<string, boolean>();
+
 /** Extract the model family from a full model id (e.g. "claude-sonnet-4-5-..." → "sonnet"). */
 function modelFamily(model: string): string {
   const lower = model.toLowerCase();
@@ -264,14 +273,37 @@ export async function POST(req: NextRequest) {
     const currentCount = limitResult?.count ?? 0;
 
     // --- Hard block: internal limit exceeded (RPC denied) ---
-    // This is the ONLY place that returns an "out of credits" message.
-    // It fires at 501+ (Starter), NOT at 401, so heartbeats in the buffer
-    // zone (401-500) never trigger Telegram spam.
+    // Send a friendly "daily limit" message ONCE so the user knows why the
+    // bot stopped, then return 429 for all subsequent calls so OpenClaw
+    // backs off instead of spamming Telegram with hundreds of copies.
     if (limitResult && !limitResult.allowed) {
-      return friendlyAssistantResponse(
-        `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
-        requestedModel,
-        isStreaming
+      const notifyKey = `${vm.id}:${todayStr}`;
+
+      if (!limitNotifiedToday.has(notifyKey)) {
+        // First time hitting limit today — send the friendly message once
+        limitNotifiedToday.set(notifyKey, true);
+        return friendlyAssistantResponse(
+          `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
+          requestedModel,
+          isStreaming
+        );
+      }
+
+      // Already notified — return 429 so OpenClaw backs off silently
+      return NextResponse.json(
+        {
+          type: "error",
+          error: {
+            type: "rate_limit_error",
+            message: `Daily limit reached (${displayLimit}/${displayLimit} units). Resets at midnight UTC.`,
+          },
+        },
+        {
+          status: 429,
+          headers: {
+            "retry-after": "3600",
+          },
+        }
       );
     }
 
