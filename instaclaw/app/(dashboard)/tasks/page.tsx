@@ -585,7 +585,7 @@ function ChatBubble({
           style={
             isUser
               ? {
-                  background: "linear-gradient(135deg, #dc6743 0%, #c8583a 50%, #dc6743 100%)",
+                  background: "#dc6743",
                   boxShadow: "0 2px 8px rgba(220,103,67,0.25), 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.20)",
                   color: "#ffffff",
                 }
