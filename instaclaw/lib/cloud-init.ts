@@ -117,6 +117,67 @@ su - openclaw -c '
 `;
 }
 
+/**
+ * Returns a bash script block that installs Chromium system deps, Playwright
+ * browser, creates symlink, sets browser config, and creates swap.
+ * Used by snapshot personalization scripts alongside getConfigProtectionScript().
+ */
+export function getBrowserSetupScript(): string {
+  return `
+# ── Browser setup: system dependencies (idempotent — apt-get -y skips installed) ──
+if ! dpkg -l libnss3 libgbm1 2>/dev/null | grep -q "^ii"; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \\
+    libcups2 libdrm2 libgbm1 libasound2 libpango-1.0-0 libxcomposite1 \\
+    libxdamage1 libxfixes3 libxrandr2 libxshmfence1
+fi
+
+# ── Browser setup: Playwright Chromium (skip if already installed) ──
+if [ ! -d /home/openclaw/.cache/ms-playwright ]; then
+  su - openclaw -c '
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    npx playwright install chromium
+  '
+fi
+
+# ── Browser setup: symlink (skip if already correct) ──
+if [ ! -L /usr/local/bin/chromium-browser ] || [ ! -x /usr/local/bin/chromium-browser ]; then
+  CHROME_BIN=$(find /home/openclaw/.cache/ms-playwright -name "chrome" -type f 2>/dev/null | grep chrome-linux64/chrome | head -1)
+  if [ -n "\${CHROME_BIN}" ]; then
+    ln -sf "\${CHROME_BIN}" /usr/local/bin/chromium-browser
+  fi
+fi
+
+# ── Browser setup: OpenClaw browser config (idempotent — config set overwrites) ──
+su - openclaw -c '
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  openclaw config set browser.executablePath /usr/local/bin/chromium-browser 2>/dev/null || true
+  openclaw config set browser.headless true 2>/dev/null || true
+  openclaw config set browser.noSandbox true 2>/dev/null || true
+  openclaw config set browser.defaultProfile openclaw 2>/dev/null || true
+  python3 -c "
+import json, os
+p = os.path.expanduser(\"~/.openclaw/openclaw.json\")
+c = json.load(open(p))
+c.setdefault(\"browser\", {})[\"profiles\"] = {\"openclaw\": {\"cdpPort\": 18800, \"color\": \"#FF4500\"}}
+json.dump(c, open(p, \"w\"), indent=2)
+" 2>/dev/null || true
+'
+
+# ── Browser setup: 2GB swap (skip if already active) ──
+if ! swapon --show | grep -q /swapfile; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q swapfile /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
+fi
+`;
+}
+
 export function getInstallOpenClawUserData(): string {
   const script = `#!/bin/bash
 set -euo pipefail
@@ -155,7 +216,10 @@ chmod 600 "\${OPENCLAW_HOME}/.ssh/authorized_keys"
 # ── 3. Install system packages ──
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq fail2ban curl git ufw
+apt-get install -y -qq fail2ban curl git ufw \\
+  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \\
+  libgbm1 libasound2 libpango-1.0-0 libxcomposite1 libxdamage1 \\
+  libxfixes3 libxrandr2 libxshmfence1
 
 # ── 4. Configure firewall ──
 ufw allow 22/tcp
@@ -183,6 +247,32 @@ su - "\${OPENCLAW_USER}" -c '
   nvm alias default 22
   npm install -g openclaw mcporter
 '
+
+# ── 7b. Install Playwright Chromium + create symlink (as openclaw user) ──
+if [ ! -d "\${OPENCLAW_HOME}/.cache/ms-playwright" ]; then
+  su - "\${OPENCLAW_USER}" -c '
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    npx playwright install chromium
+  '
+fi
+if [ ! -L /usr/local/bin/chromium-browser ] || [ ! -x /usr/local/bin/chromium-browser ]; then
+  CHROME_BIN=$(find "\${OPENCLAW_HOME}/.cache/ms-playwright" -name "chrome" -type f 2>/dev/null | grep chrome-linux64/chrome | head -1)
+  if [ -n "\${CHROME_BIN}" ]; then
+    ln -sf "\${CHROME_BIN}" /usr/local/bin/chromium-browser
+    echo "Chromium symlinked: \${CHROME_BIN} -> /usr/local/bin/chromium-browser"
+  fi
+fi
+
+# ── 7c. Create 2GB swap (skip if already active) ──
+if ! swapon --show | grep -q /swapfile; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q swapfile /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
+  echo "2GB swap created and enabled"
+fi
 
 # ── 8. Create OpenClaw config directory with placeholder ──
 mkdir -p "\${CONFIG_DIR}"
@@ -370,6 +460,21 @@ This safely merges new settings into the existing config without destroying anyt
 If a README or documentation says to "add" or "set" something in openclaw.json, ALWAYS use openclaw-config-merge. NEVER write the file directly.
 
 After merging config, restart the gateway: openclaw gateway restart
+
+## Web Search
+
+You have a built-in \`web_search\` tool powered by Brave Search. Use it whenever the user asks about current events, recent news, real-time data, or anything that requires up-to-date information beyond your training data. You do NOT need to install anything — just use the tool directly.
+
+## Browser Automation
+
+You have a built-in \`browser\` tool that controls a headless Chromium browser via CDP. Use it to:
+- Visit and read web pages
+- Take screenshots of websites
+- Fill out forms, click buttons, interact with web UIs
+- Extract structured data from web pages
+- Monitor websites for changes
+
+The browser is already running on profile "openclaw" (CDP port 18800). Just use the \`browser\` tool — no setup needed. If the browser is not running, start it with: \`openclaw browser start --browser-profile openclaw\`
 PROMPTEOF
 chown -R "\${OPENCLAW_USER}:\${OPENCLAW_USER}" "\${AGENT_DIR}"
 
@@ -489,6 +594,23 @@ cfg.setdefault(\"skills\", {}).setdefault(\"load\", {})[\"extraDirs\"] = [\"/hom
 with open(config_path, \"w\") as f:
     json.dump(cfg, f, indent=2)
 "
+'
+
+# ── 12. Configure browser for headless Chromium ──
+su - "\${OPENCLAW_USER}" -c '
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  openclaw config set browser.executablePath /usr/local/bin/chromium-browser 2>/dev/null || true
+  openclaw config set browser.headless true 2>/dev/null || true
+  openclaw config set browser.noSandbox true 2>/dev/null || true
+  openclaw config set browser.defaultProfile openclaw 2>/dev/null || true
+  python3 -c "
+import json, os
+p = os.path.expanduser(\"~/.openclaw/openclaw.json\")
+c = json.load(open(p))
+c.setdefault(\"browser\", {})[\"profiles\"] = {\"openclaw\": {\"cdpPort\": 18800, \"color\": \"#FF4500\"}}
+json.dump(c, open(p, \"w\"), indent=2)
+" 2>/dev/null || true
 '
 
 echo "=== InstaClaw VM bootstrap complete at $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="

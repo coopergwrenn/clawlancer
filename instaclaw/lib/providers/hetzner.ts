@@ -1,5 +1,5 @@
 import { logger } from "../logger";
-import { getConfigProtectionScript } from "../cloud-init";
+import { getConfigProtectionScript, getBrowserSetupScript } from "../cloud-init";
 import type { CloudProvider, ServerConfig, ServerResult } from "./types";
 
 const HETZNER_BASE = "https://api.hetzner.cloud/v1";
@@ -175,6 +175,9 @@ loginctl enable-linger "\${OPENCLAW_USER}" 2>/dev/null || true
 
 # Install config protection scripts
 ${getConfigProtectionScript()}
+
+# Install browser (Chromium + Playwright + swap)
+${getBrowserSetupScript()}
 
 touch /tmp/.instaclaw-personalized
 `;

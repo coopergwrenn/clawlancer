@@ -437,6 +437,25 @@ export async function configureOpenClaw(
       );
     }
 
+    // Configure headless browser for web automation (idempotent — config set overwrites safely)
+    scriptParts.push(
+      '# Configure headless browser (skip if already configured)',
+      'if ! openclaw config get browser.executablePath 2>/dev/null | grep -q chromium-browser; then',
+      '  openclaw config set browser.executablePath /usr/local/bin/chromium-browser 2>/dev/null || true',
+      '  openclaw config set browser.headless true 2>/dev/null || true',
+      '  openclaw config set browser.noSandbox true 2>/dev/null || true',
+      '  openclaw config set browser.defaultProfile openclaw 2>/dev/null || true',
+      `  python3 -c "
+import json, os
+p = os.path.expanduser('~/.openclaw/openclaw.json')
+c = json.load(open(p))
+c.setdefault('browser', {})['profiles'] = {'openclaw': {'cdpPort': 18800, 'color': '#FF4500'}}
+json.dump(c, open(p, 'w'), indent=2)
+" 2>/dev/null || true`,
+      'fi',
+      ''
+    );
+
     // Install Clawlancer MCP tools via mcporter
     // mcporter is pre-installed globally on all VMs. Here we:
     // 1. Configure the clawlancer MCP server (API key will be empty until agent registers)
@@ -574,12 +593,18 @@ export async function configureOpenClaw(
       '',
       `echo '${pairingB64}' | base64 -d | python3 2>/dev/null || true`,
       '',
-      '# Restart gateway to pick up pairing approval',
+      '# Restart gateway to pick up pairing approval — install as systemd service',
       'pkill -f "openclaw-gateway" 2>/dev/null || true',
       'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'openclaw gateway install 2>/dev/null || true',
+      'systemctl --user start openclaw-gateway 2>/dev/null || true',
       'sleep 3',
+      '# Fallback: if systemd failed, start with nohup',
+      'if ! systemctl --user is-active openclaw-gateway &>/dev/null; then',
+      `  nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      '  sleep 3',
+      'fi',
       '',
       'echo "OPENCLAW_CONFIGURE_DONE"'
     );
@@ -841,7 +866,38 @@ Before making raw API calls to any service, check if an MCP skill exists. Your C
 
 If something seems like it should work but does not, ask your owner if there is a missing configuration — do not spend more than 15 minutes trying to raw-dog an API.
 
-Use \`mcporter call clawlancer.<tool>\` for all Clawlancer marketplace interactions. Never construct raw HTTP requests to clawlancer.ai when MCP tools are available.`;
+Use \`mcporter call clawlancer.<tool>\` for all Clawlancer marketplace interactions. Never construct raw HTTP requests to clawlancer.ai when MCP tools are available.
+
+## CRITICAL: Config File Protection
+
+~/.openclaw/openclaw.json contains your gateway config, Telegram bot token, authentication, and model settings. If this file is overwritten or corrupted, your entire system will go down.
+
+**NEVER use cat >, echo >, tee, or any command that OVERWRITES ~/.openclaw/openclaw.json.**
+**NEVER write a new JSON file to that path. It will destroy your gateway, Telegram, and auth config.**
+
+To safely add skills or modify config, ALWAYS use the merge script:
+  openclaw-config-merge '{"skills":{"load":{"extraDirs":["/path/to/new/skill"]}}}'
+
+This safely merges new settings into the existing config without destroying anything.
+
+If a README or documentation says to "add" or "set" something in openclaw.json, ALWAYS use openclaw-config-merge. NEVER write the file directly.
+
+After merging config, restart the gateway: openclaw gateway restart
+
+## Web Search
+
+You have a built-in \`web_search\` tool powered by Brave Search. Use it whenever the user asks about current events, recent news, real-time data, or anything that requires up-to-date information beyond your training data. You do NOT need to install anything — just use the tool directly.
+
+## Browser Automation
+
+You have a built-in \`browser\` tool that controls a headless Chromium browser via CDP. Use it to:
+- Visit and read web pages
+- Take screenshots of websites
+- Fill out forms, click buttons, interact with web UIs
+- Extract structured data from web pages
+- Monitor websites for changes
+
+The browser is already running on profile "openclaw" (CDP port 18800). Just use the \`browser\` tool — no setup needed. If the browser is not running, start it with: \`openclaw browser start --browser-profile openclaw\``;
 }
 
 /** Builds USER.md for the OpenClaw workspace from Gmail profile content. */
@@ -1292,6 +1348,93 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
     await ssh.execCommand(`cat > /tmp/ic-restart.sh << 'ICEOF'\n${script}\nICEOF`);
     const result = await ssh.execCommand('bash /tmp/ic-restart.sh; EC=$?; rm -f /tmp/ic-restart.sh; exit $EC');
     return result.code === 0;
+  } finally {
+    ssh.dispose();
+  }
+}
+
+export interface ResetAgentResult {
+  success: boolean;
+  message: string;
+  filesDeleted: number;
+  gatewayRestarted: boolean;
+}
+
+export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> {
+  const ssh = await connectSSH(vm);
+  try {
+    const bootstrapB64 = Buffer.from(WORKSPACE_BOOTSTRAP_SHORT, 'utf-8').toString('base64');
+    const identityB64 = Buffer.from(WORKSPACE_IDENTITY_MD, 'utf-8').toString('base64');
+
+    const script = [
+      '#!/bin/bash',
+      NVM_PREAMBLE,
+      '',
+      '# Stop the gateway',
+      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'sleep 2',
+      '',
+      '# Count files before deletion',
+      'COUNT=0',
+      '',
+      '# Delete session files',
+      'for f in $HOME/.openclaw/agents/main/sessions/*.json $HOME/.openclaw/agents/main/sessions/*.jsonl; do',
+      '  [ -f "$f" ] && rm -f "$f" && COUNT=$((COUNT + 1))',
+      'done',
+      '',
+      '# Delete memory files',
+      'for f in $HOME/.openclaw/workspace/MEMORY.md $HOME/.openclaw/agents/main/agent/MEMORY.md; do',
+      '  [ -f "$f" ] && rm -f "$f" && COUNT=$((COUNT + 1))',
+      'done',
+      '',
+      '# Delete identity',
+      '[ -f "$HOME/.openclaw/workspace/IDENTITY.md" ] && rm -f "$HOME/.openclaw/workspace/IDENTITY.md" && COUNT=$((COUNT + 1))',
+      '',
+      '# Delete daily memory logs',
+      'if [ -d "$HOME/.openclaw/workspace/memory" ]; then',
+      '  MEMCOUNT=$(find $HOME/.openclaw/workspace/memory -type f 2>/dev/null | wc -l)',
+      '  rm -rf "$HOME/.openclaw/workspace/memory"',
+      '  COUNT=$((COUNT + MEMCOUNT))',
+      'fi',
+      '',
+      '# Write fresh BOOTSTRAP.md',
+      `echo '${bootstrapB64}' | base64 -d > "$HOME/.openclaw/workspace/BOOTSTRAP.md"`,
+      'COUNT=$((COUNT + 1))',
+      '',
+      '# Write blank IDENTITY.md template',
+      `echo '${identityB64}' | base64 -d > "$HOME/.openclaw/workspace/IDENTITY.md"`,
+      '',
+      '# Restart gateway',
+      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'sleep 5',
+      '# Auto-start acp serve if aGDP is installed and authenticated',
+      `if [ -d "${AGDP_DIR}" ] && [ -f "${AGDP_DIR}/config.json" ]; then`,
+      `  cd "${AGDP_DIR}" && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 &`,
+      'fi',
+      '',
+      'echo "RESET_DONE:$COUNT"',
+    ].join('\n');
+
+    await ssh.execCommand(`cat > /tmp/ic-reset.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-reset.sh; EC=$?; rm -f /tmp/ic-reset.sh; exit $EC');
+
+    const match = result.stdout.match(/RESET_DONE:(\d+)/);
+    if (match) {
+      return {
+        success: true,
+        message: "Agent memory reset successfully",
+        filesDeleted: parseInt(match[1], 10),
+        gatewayRestarted: true,
+      };
+    }
+
+    logger.error("Agent reset did not complete", { stderr: result.stderr, stdout: result.stdout, route: "lib/ssh" });
+    return {
+      success: false,
+      message: `Reset failed: ${result.stderr || "No completion sentinel found"}`,
+      filesDeleted: 0,
+      gatewayRestarted: false,
+    };
   } finally {
     ssh.dispose();
   }

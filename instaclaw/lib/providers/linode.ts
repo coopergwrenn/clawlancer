@@ -3,6 +3,7 @@ import { logger } from "../logger";
 import {
   getInstallOpenClawUserData,
   getConfigProtectionScript,
+  getBrowserSetupScript,
 } from "../cloud-init";
 import type { CloudProvider, ServerConfig, ServerResult } from "./types";
 
@@ -150,6 +151,9 @@ loginctl enable-linger "\${OPENCLAW_USER}" 2>/dev/null || true
 
 # Install config protection scripts
 ${getConfigProtectionScript()}
+
+# Install browser (Chromium + Playwright + swap)
+${getBrowserSetupScript()}
 
 touch /tmp/.instaclaw-personalized
 `;
