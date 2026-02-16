@@ -2009,22 +2009,19 @@ export default function CommandCenterPage() {
     { key: "library", label: "Library", tourKey: "tab-library" },
   ];
 
-  // Scroll to bottom of chat — tries multiple times to handle AnimatePresence delays
-  const scrollToBottom = useCallback((smooth = false) => {
-    const doScroll = () => {
+  // Scroll to bottom of chat — single smooth scroll after content is ready
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollToBottom = useCallback((delay = 0) => {
+    // Clear any pending scroll to avoid double-fires
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => {
       if (scrollRef.current) {
-        if (smooth) {
-          scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-        } else {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: "smooth",
+        });
       }
-    };
-    // Immediate + rAF for already-rendered content
-    doScroll();
-    requestAnimationFrame(doScroll);
-    // After AnimatePresence exit+enter transition completes (~300ms)
-    setTimeout(doScroll, 350);
+    }, delay);
   }, []);
 
   // ─── Fetch tasks ───────────────────────────────────────
@@ -2384,13 +2381,16 @@ export default function CommandCenterPage() {
   }, []);
 
   // Auto-scroll when messages change or tab switches to chat
-  const prevMsgCount = useRef(0);
   useEffect(() => {
     if (activeTab === "chat") {
-      // Smooth scroll for new messages during conversation, instant for initial load/tab switch
-      const isNewMessage = chatMessages.length > prevMsgCount.current && prevMsgCount.current > 0;
-      scrollToBottom(isNewMessage);
-      prevMsgCount.current = chatMessages.length;
+      // Wait for AnimatePresence transition on tab switch, immediate for message updates
+      scrollToBottom(350);
+    }
+  }, [activeTab, scrollToBottom]);
+
+  useEffect(() => {
+    if (activeTab === "chat" && chatMessages.length > 0) {
+      scrollToBottom(0);
     }
   }, [chatMessages, activeTab, scrollToBottom]);
 
