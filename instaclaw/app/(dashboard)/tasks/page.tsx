@@ -1010,6 +1010,31 @@ function TaskCard({
                 }}
               />
             </div>
+          ) : isProcessing ? (
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center relative"
+              style={{
+                background: "radial-gradient(circle, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.03) 70%, transparent 100%)",
+              }}
+            >
+              <motion.div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: "conic-gradient(from 0deg, transparent 0%, rgba(99,102,241,0.5) 30%, transparent 55%)",
+                  mask: "radial-gradient(circle, transparent 58%, black 62%, black 100%)",
+                  WebkitMask: "radial-gradient(circle, transparent 58%, black 62%, black 100%)",
+                }}
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              />
+              <span
+                className="w-2 h-2 rounded-full relative z-10"
+                style={{
+                  background: "radial-gradient(circle at 35% 30%, #818cf8, #6366f1)",
+                  boxShadow: "0 0 6px rgba(99,102,241,0.35)",
+                }}
+              />
+            </div>
           ) : isCompleted ? (
             <div
               className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-opacity hover:opacity-70"
@@ -1023,24 +1048,29 @@ function TaskCard({
           ) : (
             <div
               className="w-6 h-6 rounded-full border-2 transition-colors cursor-pointer hover:border-gray-400"
-              style={{ borderColor: isProcessing ? "#3b82f6" : "rgba(0,0,0,0.15)" }}
+              style={{ borderColor: "rgba(0,0,0,0.15)" }}
             />
           )}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <StatusDot status={task.status} />
-            <p
-              className={`font-medium text-base truncate ${
-                isProcessing && task.title === "Processing..."
-                  ? "animate-pulse"
-                  : ""
-              }`}
-              style={{ color: "var(--foreground)" }}
-            >
-              {task.title}
-            </p>
+            {!isProcessing && <StatusDot status={task.status} />}
+            {isProcessing && task.title === "Processing..." ? (
+              <p
+                className="font-medium text-base truncate"
+                style={{ color: "#6366f1" }}
+              >
+                Working on it...
+              </p>
+            ) : (
+              <p
+                className="font-medium text-base truncate"
+                style={{ color: "var(--foreground)" }}
+              >
+                {task.title}
+              </p>
+            )}
           </div>
           <p
             className="text-sm mt-0.5 truncate"
