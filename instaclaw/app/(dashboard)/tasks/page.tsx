@@ -2009,13 +2009,22 @@ export default function CommandCenterPage() {
     { key: "library", label: "Library", tourKey: "tab-library" },
   ];
 
-  // Scroll to bottom of chat
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
+  // Scroll to bottom of chat — tries multiple times to handle AnimatePresence delays
+  const scrollToBottom = useCallback((smooth = false) => {
+    const doScroll = () => {
       if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        if (smooth) {
+          scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+        } else {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
       }
-    });
+    };
+    // Immediate + rAF for already-rendered content
+    doScroll();
+    requestAnimationFrame(doScroll);
+    // After AnimatePresence exit+enter transition completes (~300ms)
+    setTimeout(doScroll, 350);
   }, []);
 
   // ─── Fetch tasks ───────────────────────────────────────
@@ -2375,9 +2384,13 @@ export default function CommandCenterPage() {
   }, []);
 
   // Auto-scroll when messages change or tab switches to chat
+  const prevMsgCount = useRef(0);
   useEffect(() => {
     if (activeTab === "chat") {
-      scrollToBottom();
+      // Smooth scroll for new messages during conversation, instant for initial load/tab switch
+      const isNewMessage = chatMessages.length > prevMsgCount.current && prevMsgCount.current > 0;
+      scrollToBottom(isNewMessage);
+      prevMsgCount.current = chatMessages.length;
     }
   }, [chatMessages, activeTab, scrollToBottom]);
 
