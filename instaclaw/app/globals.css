@@ -351,27 +351,10 @@ html.lenis body {
   90%, 100% { background-position: 0% 0; }
 }
 
-/* Gray shimmer for typing indicator phrases */
-.shimmer-text-gray {
-  color: transparent;
-  background: linear-gradient(
-    90deg,
-    #888 0%,
-    #888 35%,
-    #bbb 50%,
-    #888 65%,
-    #888 100%
-  );
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer-gray 2.5s ease-in-out infinite;
-}
-
-@keyframes shimmer-gray {
-  0%   { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+/* Thinking text pulse for typing indicator */
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
 }
 
 @keyframes globe-shimmer {

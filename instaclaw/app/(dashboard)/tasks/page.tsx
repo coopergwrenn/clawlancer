@@ -589,7 +589,7 @@ function TypingIndicator() {
               display: "inline-block",
             }}
           >
-            <span className="shimmer-text-gray">{displayed}</span>
+            <span style={{ color: "#888", animation: "thinking-pulse 2s ease-in-out infinite" }}>{displayed}</span>
             {phase === "typing" && (
               <span
                 className="inline-block w-[2px] h-[14px] ml-0.5 animate-pulse align-middle"
