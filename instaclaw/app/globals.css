@@ -424,3 +424,63 @@ html.lenis body {
 .spotlight-cutout {
   animation: spotlight-pulse 2.5s ease-in-out infinite;
 }
+
+/* Agent chat bubble — glass with left tail */
+.agent-bubble {
+  position: relative;
+  border-radius: 18px;
+  border-bottom-left-radius: 2px;
+  margin-left: 10px;
+}
+
+.agent-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -8px;
+  width: 18px;
+  height: 18px;
+  background: rgba(255,255,255,0.55);
+  border-bottom-right-radius: 14px;
+}
+
+.agent-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -18px;
+  width: 18px;
+  height: 18px;
+  background: #f8f7f4;
+  border-bottom-right-radius: 10px;
+}
+
+/* User chat bubble — accent with right tail */
+.user-bubble {
+  position: relative;
+  border-radius: 18px;
+  border-bottom-right-radius: 2px;
+  margin-right: 10px;
+}
+
+.user-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  background: var(--accent);
+  border-bottom-left-radius: 14px;
+}
+
+.user-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: -18px;
+  width: 18px;
+  height: 18px;
+  background: #f8f7f4;
+  border-bottom-left-radius: 10px;
+}

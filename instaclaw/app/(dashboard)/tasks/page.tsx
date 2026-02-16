@@ -566,22 +566,28 @@ function ChatBubble({
     >
       {!isUser && (
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm"
-          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+          className="w-8 h-8 rounded-full shrink-0 relative flex items-center justify-center"
+          style={{
+            background: "radial-gradient(circle at 35% 35%, rgba(248,247,244,0.95), rgba(220,215,205,0.8) 50%, rgba(180,175,165,0.6) 100%)",
+            boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.5), inset 0 0 3px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.15)",
+          }}
         >
-          {"\u{1F99E}"}
+          <div className="absolute top-[2px] left-[4px] w-[14px] h-[7px] rounded-full pointer-events-none z-10"
+            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0) 100%)" }} />
+          <img src="/logo.png" alt="" className="w-5 h-5 relative z-[1]" style={{ imageRendering: "pixelated" }} />
         </div>
       )}
 
       <div className="max-w-[80%] sm:max-w-[70%] relative">
         <div
-          className="rounded-2xl px-4 py-3 text-sm leading-relaxed"
+          className={`${isUser ? "user-bubble" : "agent-bubble"} px-4 py-3 text-sm leading-relaxed`}
           style={
             isUser
               ? { background: "var(--accent)", color: "#ffffff" }
               : {
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.55)",
+                  backdropFilter: "blur(12px)",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
                   color: "var(--foreground)",
                 }
           }
