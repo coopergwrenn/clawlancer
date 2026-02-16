@@ -284,12 +284,12 @@ const libraryTypeFilters = [
 /* ─── Quick Actions (with pre-fill text) ─────────────────── */
 
 const quickActions = [
-  { icon: "\u{1F50D}", label: "Research", prefill: "Research " },
-  { icon: "\u2709\uFE0F", label: "Draft email", prefill: "Draft an email about " },
-  { icon: "\u{1F4CA}", label: "Market update", prefill: "Give me a market update on the latest crypto and AI news" },
-  { icon: "\u{1F4DD}", label: "Write a post", prefill: "Write a post about " },
-  { icon: "\u{1F99E}", label: "Check bounties", prefill: "Check the Clawlancer marketplace for available bounties and recommend the best ones for me" },
-  { icon: "\u{1F4C5}", label: "Today\u2019s schedule", prefill: "Summarize what I should focus on today based on my priorities and pending work" },
+  { label: "Research", prefill: "Research " },
+  { label: "Draft email", prefill: "Draft an email about " },
+  { label: "Market update", prefill: "Give me a market update on the latest crypto and AI news" },
+  { label: "Write a post", prefill: "Write a post about " },
+  { label: "Check bounties", prefill: "Check the Clawlancer marketplace for available bounties and recommend the best ones for me" },
+  { label: "Today\u2019s schedule", prefill: "Summarize what I should focus on today based on my priorities and pending work" },
 ];
 
 const filterOptions: { key: FilterOption; label: string }[] = [
@@ -669,7 +669,6 @@ function ChatEmptyState({
               color: "var(--foreground)",
             }}
           >
-            <span>{a.icon}</span>
             {a.label}
           </button>
         ))}
@@ -2644,7 +2643,6 @@ export default function CommandCenterPage() {
                   color: "var(--muted)",
                 }}
               >
-                <span>{action.icon}</span>
                 {action.label}
               </button>
             ))}
