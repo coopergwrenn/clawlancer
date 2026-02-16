@@ -15,6 +15,7 @@ export function buildSystemPrompt(
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: "America/New_York",
   });
   parts.push(`Today's date: ${today}\n`);
 
