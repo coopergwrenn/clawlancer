@@ -36,13 +36,14 @@ const DAILY_SPEND_CAP =
 let circuitBreakerAlertDate = "";
 
 /**
- * Track which VMs have already been shown the daily-limit message today.
- * Key: "vmId:YYYY-MM-DD", Value: true.
- * Prevents the limit message from being sent to Telegram hundreds of times.
- * The friendly message is sent ONCE, then all subsequent calls get a 429.
- * Memory resets on cold start, so worst case the user sees it a few times.
+ * Track how many times each VM has been shown the daily-limit message today.
+ * Key: "vmId:YYYY-MM-DD", Value: send count.
+ * The friendly message is sent up to MAX_LIMIT_NOTIFICATIONS times per day,
+ * then all subsequent calls get a 429. Memory resets on cold start, so
+ * worst case the user sees a few extra — still far better than hundreds.
  */
-const limitNotifiedToday = new Map<string, boolean>();
+const limitNotifyCount = new Map<string, number>();
+const MAX_LIMIT_NOTIFICATIONS = 3;
 
 /** Extract the model family from a full model id (e.g. "claude-sonnet-4-5-..." → "sonnet"). */
 function modelFamily(model: string): string {
@@ -278,10 +279,11 @@ export async function POST(req: NextRequest) {
     // backs off instead of spamming Telegram with hundreds of copies.
     if (limitResult && !limitResult.allowed) {
       const notifyKey = `${vm.id}:${todayStr}`;
+      const timesSent = limitNotifyCount.get(notifyKey) ?? 0;
 
-      if (!limitNotifiedToday.has(notifyKey)) {
-        // First time hitting limit today — send the friendly message once
-        limitNotifiedToday.set(notifyKey, true);
+      if (timesSent < MAX_LIMIT_NOTIFICATIONS) {
+        // Send the friendly message up to 3 times so the user sees it
+        limitNotifyCount.set(notifyKey, timesSent + 1);
         return friendlyAssistantResponse(
           `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
           requestedModel,
