@@ -12,21 +12,33 @@ export async function GET() {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.error("[suggestions] No ANTHROPIC_API_KEY set");
-    return NextResponse.json({ suggestions: null });
+    return NextResponse.json({ suggestions: null, reason: "no_api_key" });
   }
 
   const supabase = getSupabase();
 
-  const { data: user } = await supabase
+  const { data: user, error: userError } = await supabase
     .from("instaclaw_users")
     .select("name, gmail_profile_summary, gmail_insights")
     .eq("id", session.user.id)
     .single();
 
+  if (userError) {
+    return NextResponse.json({
+      suggestions: null,
+      reason: "db_error",
+      detail: userError.message,
+      userId: session.user.id,
+    });
+  }
+
   if (!user?.gmail_profile_summary) {
-    console.error("[suggestions] No gmail_profile_summary for user", session.user.id);
-    return NextResponse.json({ suggestions: null });
+    return NextResponse.json({
+      suggestions: null,
+      reason: "no_profile",
+      userId: session.user.id,
+      hasUser: !!user,
+    });
   }
 
   try {
@@ -93,8 +105,12 @@ Respond in this exact JSON format, nothing else:
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
-      console.error("[suggestions] Anthropic API error", res.status, errBody);
-      return NextResponse.json({ suggestions: null });
+      return NextResponse.json({
+        suggestions: null,
+        reason: "anthropic_error",
+        status: res.status,
+        detail: errBody.slice(0, 200),
+      });
     }
 
     const data = await res.json();
@@ -106,7 +122,10 @@ Respond in this exact JSON format, nothing else:
     response.headers.set("Cache-Control", "private, max-age=3600");
     return response;
   } catch (err) {
-    console.error("[suggestions] Unexpected error", err);
-    return NextResponse.json({ suggestions: null });
+    return NextResponse.json({
+      suggestions: null,
+      reason: "parse_or_fetch_error",
+      detail: err instanceof Error ? err.message : String(err),
+    });
   }
 }
