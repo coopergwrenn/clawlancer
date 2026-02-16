@@ -32,7 +32,7 @@ import ReactMarkdown from "react-markdown";
 function TelegramMark({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M20 4.5L3 11.5c-.6.3-.6.8.1.9l4.4 1.4 1.7 5.3c.2.5.6.6 1 .3l2.4-2 4.7 3.5c.5.4 1 .2 1.2-.5L21.2 5.6c.2-.8-.3-1.3-1.2-.9l0 0zM9.5 14.2l7.5-5.2c.3-.2.3.1.1.2L10.5 15l-.4 3-1-3.5.4-.3z" fill="#fff"/>
+      <path d="M20 4.5L3 11.5c-.6.3-.6.8.1.9l4.4 1.4 1.7 5.3c.2.5.6.6 1 .3l2.4-2 4.7 3.5c.5.4 1 .2 1.2-.5L21.2 5.6c.2-.8-.3-1.3-1.2-.9l0 0zM9.5 14.2l7.5-5.2c.3-.2.3.1.1.2L10.5 15l-.4 3-1-3.5.4-.3z" fill="currentColor"/>
     </svg>
   );
 }
@@ -175,6 +175,7 @@ function ToolOrb({ tool, size = 28 }: { tool: string; size?: number }) {
       style={{
         width: size,
         height: size,
+        color: "#fff",
         background: `radial-gradient(circle at 35% 35%, ${color}, ${color}cc 60%, ${color}88 100%)`,
         boxShadow: `
           inset 0 -2px 4px rgba(0,0,0,0.2),
@@ -1315,9 +1316,19 @@ function TaskCard({
                       }}
                     >
                       <span
-                        className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+                        className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
                         style={{
                           background: task.last_delivery_status === "delivered"
+                            ? "rgba(34,197,94,0.12)"
+                            : task.last_delivery_status === "delivery_failed"
+                              ? "rgba(239,68,68,0.12)"
+                              : "rgba(0,0,0,0.06)",
+                          boxShadow: task.last_delivery_status === "delivered"
+                            ? "0 0 0 1px rgba(34,197,94,0.15), inset 0 1px 0 rgba(255,255,255,0.5)"
+                            : task.last_delivery_status === "delivery_failed"
+                              ? "0 0 0 1px rgba(239,68,68,0.15), inset 0 1px 0 rgba(255,255,255,0.5)"
+                              : "0 0 0 1px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.5)",
+                          color: task.last_delivery_status === "delivered"
                             ? "#16a34a"
                             : task.last_delivery_status === "delivery_failed"
                               ? "#ef4444"
