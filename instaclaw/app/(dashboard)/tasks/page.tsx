@@ -584,11 +584,8 @@ function ChatBubble({
           style={
             isUser
               ? {
-                  background: "linear-gradient(135deg, rgba(220,103,67,0.85) 0%, rgba(200,88,55,0.75) 50%, rgba(220,103,67,0.80) 100%)",
-                  backdropFilter: "blur(16px)",
-                  WebkitBackdropFilter: "blur(16px)",
-                  boxShadow: "0 2px 8px rgba(220,103,67,0.25), 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.30), inset 0 -1px 0 rgba(0,0,0,0.08)",
-                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "linear-gradient(135deg, #dc6743 0%, #c8583a 50%, #dc6743 100%)",
+                  boxShadow: "0 2px 8px rgba(220,103,67,0.25), 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.08)",
                   color: "#ffffff",
                 }
               : {
