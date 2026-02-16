@@ -2375,7 +2375,7 @@ export default function CommandCenterPage() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-6.5rem)] sm:h-[calc(100dvh-7.5rem)] -mb-12 sm:-mb-16">
+    <div className="flex flex-col h-[calc(100dvh-3.75rem)] sm:h-[calc(100dvh-7.5rem)] -mt-10 sm:mt-0 -mb-12 sm:-mb-16">
       {/* ── Static header (never scrolls) ───────────────────── */}
       <div className="shrink-0">
         <h1
