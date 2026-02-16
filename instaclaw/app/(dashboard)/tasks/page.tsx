@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   Check,
@@ -805,6 +806,41 @@ function TaskCard({
   // Toast
   const [toast, setToast] = useState<string | null>(null);
   const refineRef = useRef<HTMLInputElement>(null);
+  // Run history
+  const [runHistory, setRunHistory] = useState<LibraryItem[] | null>(null);
+  const [runHistoryLoading, setRunHistoryLoading] = useState(false);
+  const [currentRunIndex, setCurrentRunIndex] = useState(0);
+
+  // Fetch run history when a recurring task with a result is expanded
+  useEffect(() => {
+    if (!isExpanded || !task.is_recurring || !task.result || runHistory !== null) return;
+    let cancelled = false;
+    setRunHistoryLoading(true);
+    fetch(`/api/library/list?source_task_id=${task.id}&limit=100&sort=created_at&order=desc`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setRunHistory(data.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setRunHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRunHistoryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isExpanded, task.is_recurring, task.result, task.id, runHistory]);
+
+  // Reset index on collapse
+  useEffect(() => {
+    if (!isExpanded) setCurrentRunIndex(0);
+  }, [isExpanded]);
+
+  const allRuns = runHistory ?? [];
+  const totalRuns = allRuns.length;
+  const hasHistory = totalRuns > 1;
+  const currentRun = allRuns[currentRunIndex];
+  const displayedContent = currentRun?.content ?? task.result;
+  const displayedDate = currentRun?.created_at ?? task.last_run_at;
 
   const isFailed = task.status === "failed";
   const isProcessing = task.status === "in_progress";
@@ -1169,11 +1205,64 @@ function TaskCard({
               {/* Result — with edit mode */}
               {task.result && (
                 <div>
+                  {/* Run navigator header */}
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--muted)", opacity: 0.6 }}>
                       Result
                     </p>
-                    {!isEditing && (
+                    {task.is_recurring && runHistoryLoading ? (
+                      /* Skeleton shimmer while loading */
+                      <div
+                        className="h-6 w-48 rounded-full animate-pulse"
+                        style={{
+                          background: "rgba(255,255,255,0.35)",
+                          border: "1px solid rgba(0,0,0,0.05)",
+                        }}
+                      />
+                    ) : task.is_recurring && hasHistory ? (
+                      /* Run navigator pill */
+                      <div
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+                        style={{
+                          background: "rgba(255,255,255,0.45)",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+                          border: "1px solid rgba(0,0,0,0.06)",
+                        }}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentRunIndex((i) => Math.min(i + 1, totalRuns - 1));
+                          }}
+                          disabled={currentRunIndex >= totalRuns - 1}
+                          className="p-0.5 rounded transition-all cursor-pointer disabled:opacity-25 hover:bg-black/5"
+                          title="Older run"
+                        >
+                          <ChevronLeft className="w-3 h-3" style={{ color: "var(--muted)" }} />
+                        </button>
+                        <span
+                          className="text-[11px] font-medium"
+                          style={{ color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}
+                        >
+                          Run {totalRuns - currentRunIndex} of {totalRuns}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentRunIndex((i) => Math.max(i - 1, 0));
+                          }}
+                          disabled={currentRunIndex <= 0}
+                          className="p-0.5 rounded transition-all cursor-pointer disabled:opacity-25 hover:bg-black/5"
+                          title="Newer run"
+                        >
+                          <ChevronRight className="w-3 h-3" style={{ color: "var(--muted)" }} />
+                        </button>
+                        <span className="text-[10px] ml-0.5" style={{ color: "var(--muted)", opacity: 0.6 }}>
+                          {formatDate(displayedDate)}
+                        </span>
+                      </div>
+                    ) : !isEditing ? (
+                      /* Default edit button for non-recurring or single-run */
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1195,8 +1284,46 @@ function TaskCard({
                       >
                         <Pencil className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
                       </button>
-                    )}
+                    ) : null}
                   </div>
+
+                  {/* Delivery banner — only for latest run of recurring tasks */}
+                  {task.is_recurring && currentRunIndex === 0 && task.last_delivery_status && (
+                    <div
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl mb-2 text-xs font-medium"
+                      style={{
+                        background: task.last_delivery_status === "delivered"
+                          ? "rgba(34,197,94,0.06)"
+                          : task.last_delivery_status === "delivery_failed"
+                            ? "rgba(239,68,68,0.06)"
+                            : "rgba(255,255,255,0.35)",
+                        border: task.last_delivery_status === "delivered"
+                          ? "1px solid rgba(34,197,94,0.12)"
+                          : task.last_delivery_status === "delivery_failed"
+                            ? "1px solid rgba(239,68,68,0.12)"
+                            : "1px solid rgba(0,0,0,0.06)",
+                        boxShadow: task.last_delivery_status === "delivered"
+                          ? "0 0 0 1px rgba(34,197,94,0.08), 0 1px 2px rgba(34,197,94,0.04)"
+                          : task.last_delivery_status === "delivery_failed"
+                            ? "0 0 0 1px rgba(239,68,68,0.08), 0 1px 2px rgba(239,68,68,0.04)"
+                            : "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+                        color: task.last_delivery_status === "delivered"
+                          ? "#16a34a"
+                          : task.last_delivery_status === "delivery_failed"
+                            ? "#ef4444"
+                            : "var(--muted)",
+                      }}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      {task.last_delivery_status === "delivered" ? (
+                        <>Auto-sent to Telegram <TelegramMark size={14} /></>
+                      ) : task.last_delivery_status === "delivery_failed" ? (
+                        "Delivery failed"
+                      ) : (
+                        "Telegram not connected"
+                      )}
+                    </div>
+                  )}
 
                   {isEditing ? (
                     /* Edit mode: textarea */
@@ -1248,31 +1375,38 @@ function TaskCard({
                       </div>
                     </div>
                   ) : (
-                    /* Rendered markdown view — glass card */
-                    <div
-                      className="rounded-xl p-3.5 text-sm relative"
-                      style={{
-                        background: "rgba(255,255,255,0.35)",
-                        border: "1px solid rgba(0,0,0,0.05)",
-                        boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03), 0 1px 0 rgba(255,255,255,0.6)",
-                        ...(isRefining ? { opacity: 0.5 } : {}),
-                      }}
-                    >
-                      {isRefining && (
-                        <div
-                          className="absolute inset-0 flex items-center justify-center rounded-xl"
-                          style={{
-                            background: "rgba(255,255,255,0.6)",
-                            backdropFilter: "blur(2px)",
-                          }}
-                        >
-                          <p className="text-xs font-medium animate-pulse" style={{ color: "var(--muted)" }}>Refining...</p>
+                    /* Rendered markdown view — glass card with crossfade */
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={currentRunIndex}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="rounded-xl p-3.5 text-sm relative"
+                        style={{
+                          background: "rgba(255,255,255,0.35)",
+                          border: "1px solid rgba(0,0,0,0.05)",
+                          boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03), 0 1px 0 rgba(255,255,255,0.6)",
+                          ...(isRefining ? { opacity: 0.5 } : {}),
+                        }}
+                      >
+                        {isRefining && (
+                          <div
+                            className="absolute inset-0 flex items-center justify-center rounded-xl"
+                            style={{
+                              background: "rgba(255,255,255,0.6)",
+                              backdropFilter: "blur(2px)",
+                            }}
+                          >
+                            <p className="text-xs font-medium animate-pulse" style={{ color: "var(--muted)" }}>Refining...</p>
+                          </div>
+                        )}
+                        <div className="prose prose-sm max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_pre]:my-2 [&_pre]:rounded-lg [&_pre]:bg-black/5 [&_pre]:p-3 [&_code]:text-xs [&_code]:bg-black/5 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+                          <ReactMarkdown>{displayedContent}</ReactMarkdown>
                         </div>
-                      )}
-                      <div className="prose prose-sm max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_pre]:my-2 [&_pre]:rounded-lg [&_pre]:bg-black/5 [&_pre]:p-3 [&_code]:text-xs [&_code]:bg-black/5 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_pre_code]:bg-transparent [&_pre_code]:p-0">
-                        <ReactMarkdown>{task.result}</ReactMarkdown>
-                      </div>
-                    </div>
+                      </motion.div>
+                    </AnimatePresence>
                   )}
                 </div>
               )}
@@ -1362,35 +1496,6 @@ function TaskCard({
                     {task.streak > 0 && ` \u00B7 ${task.streak} streak`}
                   </span>
                 )}
-                {task.is_recurring && task.last_delivery_status && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]"
-                    style={{
-                      background: task.last_delivery_status === "delivered"
-                        ? "rgba(34,197,94,0.06)"
-                        : task.last_delivery_status === "delivery_failed"
-                          ? "rgba(239,68,68,0.06)"
-                          : "rgba(255,255,255,0.45)",
-                      boxShadow: task.last_delivery_status === "delivered"
-                        ? "0 0 0 1px rgba(34,197,94,0.1), 0 1px 2px rgba(34,197,94,0.04)"
-                        : task.last_delivery_status === "delivery_failed"
-                          ? "0 0 0 1px rgba(239,68,68,0.1), 0 1px 2px rgba(239,68,68,0.04)"
-                          : "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
-                      border: task.last_delivery_status === "delivered"
-                        ? "1px solid rgba(34,197,94,0.08)"
-                        : task.last_delivery_status === "delivery_failed"
-                          ? "1px solid rgba(239,68,68,0.08)"
-                          : "1px solid rgba(0,0,0,0.06)",
-                      color: task.last_delivery_status === "delivered"
-                        ? "#16a34a"
-                        : task.last_delivery_status === "delivery_failed"
-                          ? "#ef4444"
-                          : "var(--muted)",
-                    }}
-                  >
-                    Telegram: {task.last_delivery_status === "delivered" ? "Delivered" : task.last_delivery_status === "delivery_failed" ? "Failed" : "Not connected"}
-                  </span>
-                )}
               </div>
 
               {/* Action buttons — glass styled */}
@@ -1471,7 +1576,7 @@ function TaskCard({
                       Pause
                     </button>
                   )}
-                  {task.result && (
+                  {task.result && currentRunIndex === 0 && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1498,9 +1603,9 @@ function TaskCard({
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ml-auto"
                       style={{
-                        background: "rgba(239,68,68,0.04)",
-                        boxShadow: "0 1px 3px rgba(239,68,68,0.06), inset 0 1px 0 rgba(255,255,255,0.4)",
-                        border: "1px solid rgba(239,68,68,0.1)",
+                        background: "rgba(255,255,255,0.5)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
+                        border: "1px solid rgba(0,0,0,0.08)",
                         color: "#ef4444",
                       }}
                     >
@@ -1515,9 +1620,10 @@ function TaskCard({
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ml-auto"
                       style={{
-                        background: "#ef4444",
-                        color: "#ffffff",
-                        boxShadow: "0 1px 3px rgba(239,68,68,0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
+                        background: "rgba(239,68,68,0.12)",
+                        boxShadow: "0 1px 3px rgba(239,68,68,0.1), inset 0 1px 0 rgba(255,255,255,0.4)",
+                        border: "1px solid rgba(239,68,68,0.18)",
+                        color: "#dc2626",
                       }}
                     >
                       Confirm delete

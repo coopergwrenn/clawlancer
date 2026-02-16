@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     MAX_LIMIT
   );
   const offset = Math.max(0, parseInt(params.get("offset") ?? "0", 10) || 0);
+  const sourceTaskId = params.get("source_task_id");
 
   const supabase = getSupabase();
 
@@ -46,6 +47,10 @@ export async function GET(req: NextRequest) {
 
   if (pinnedOnly) {
     query = query.eq("is_pinned", true);
+  }
+
+  if (sourceTaskId) {
+    query = query.eq("source_task_id", sourceTaskId);
   }
 
   if (search && search.length > 0) {
