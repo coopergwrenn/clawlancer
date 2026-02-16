@@ -145,8 +145,8 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
   <tr><td style="padding:12px 16px;background-color:#161616;border-radius:8px;">
-    <p style="margin:0 0 6px 0;font-family:${font};font-size:13px;color:#999;line-height:1.5;font-style:italic;">"I'm going to Tokyo for 5 days in March. Plan the entire trip. Find flights under $800, boutique hotels in Shibuya, the best ramen spots, a day trip to Hakone, and build me a full day-by-day itinerary."</p>
-    <p style="margin:0;font-family:${font};font-size:12px;color:#666;line-height:1.5;">It browsed real travel sites, compared prices, read reviews, and came back with a complete trip plan with links to everything. One message.</p>
+    <p style="margin:0 0 6px 0;font-family:${font};font-size:13px;color:#999;line-height:1.5;font-style:italic;">"Here's my budget: $2,500. I'm going to Tokyo for 5 days in March. Find flights, a boutique hotel in Shibuya, the best ramen spots, a day trip to Hakone, build me a day-by-day itinerary, and book everything."</p>
+    <p style="margin:0;font-family:${font};font-size:12px;color:#666;line-height:1.5;">It browsed real travel sites, compared prices, read reviews, built a full itinerary, and then actually booked the flights and hotel. Give your agent a wallet and it handles the rest. You showed up to the airport with everything already paid for.</p>
   </td></tr>
   </table>
 
