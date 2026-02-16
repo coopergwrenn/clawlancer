@@ -608,6 +608,12 @@ function ChatBubble({
           {msg.isStreaming && (
             <span className="inline-block w-1.5 h-4 ml-0.5 bg-current animate-pulse" />
           )}
+          {/* iMessage-style SVG tail */}
+          {isUser && (
+            <svg className="absolute bottom-0 -right-[8px] w-[12px] h-[20px]" viewBox="0 0 12 20" fill="none">
+              <path d="M0 0C0 8 9 15 12 20H0V0Z" fill="#dc6743" />
+            </svg>
+          )}
         </div>
         <div className="flex items-center gap-1 mt-1.5">
           {msg.created_at && (
@@ -2542,7 +2548,7 @@ export default function CommandCenterPage() {
                 ) : chatMessages.length === 0 && !isSending ? (
                   <ChatEmptyState onChipClick={handleChipClick} chips={chips} />
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-4 pr-3">
                     {chatMessages.map((msg, i) => (
                       <ChatBubble
                         key={msg.id || `msg-${i}`}
