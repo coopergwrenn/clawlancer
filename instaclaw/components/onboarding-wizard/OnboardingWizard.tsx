@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useEffect, useCallback, useRef } from "react";
+import { useReducer, useEffect, useCallback, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { useRouter } from "next/navigation";
 import WelcomeModal from "./WelcomeModal";
@@ -104,8 +104,19 @@ export default function OnboardingWizard({
   const [state, dispatch] = useReducer(reducer, initialState);
   const router = useRouter();
   const fetchedRef = useRef(false);
+  const [restartTrigger, setRestartTrigger] = useState(0);
 
-  // Fetch wizard status on mount
+  // Listen for restart-wizard events (from the sparkle button in nav)
+  useEffect(() => {
+    const handler = () => {
+      fetchedRef.current = false;
+      setRestartTrigger((t) => t + 1);
+    };
+    window.addEventListener("instaclaw:restart-wizard", handler);
+    return () => window.removeEventListener("instaclaw:restart-wizard", handler);
+  }, []);
+
+  // Fetch wizard status on mount or restart
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
@@ -131,7 +142,7 @@ export default function OnboardingWizard({
         dispatch({ type: "LOADED", shouldShow: false, currentStep: 0, botUsername: null, botConnected: false, gmailPopupActive: false, gmailConnected: false });
       }
     })();
-  }, []);
+  }, [restartTrigger]);
 
   // Persist step changes
   const saveStep = useCallback(async (step: number) => {

@@ -15,6 +15,7 @@ import {
   Key,
   MoreHorizontal,
   ClipboardList,
+  Sparkles,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
@@ -170,6 +171,19 @@ export default function DashboardLayout({
                 </div>
               )}
             </div>
+
+            {/* Restart wizard button */}
+            <button
+              onClick={async () => {
+                await fetch("/api/onboarding/restart-wizard", { method: "PATCH" });
+                window.dispatchEvent(new Event("instaclaw:restart-wizard"));
+              }}
+              className="w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95"
+              style={{ color: "var(--muted)" }}
+              title="Take the tour again"
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </nav>
