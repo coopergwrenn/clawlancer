@@ -706,7 +706,7 @@ export default function DashboardPage() {
                     className="text-xs"
                     style={{ color: "var(--muted)" }}
                   >
-                    {restarting ? "Restarting..." : "Restart OpenClaw gateway"}
+                    {restarting ? "Restarting..." : "Use if your bot is unresponsive"}
                   </p>
                 </div>
               </button>
