@@ -2763,7 +2763,7 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ── Scrollable content area ─────────────────────────── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 pt-6 pb-2">
+      <div ref={scrollRef} className={`flex-1 min-h-0 ${activeTab === "chat" ? "flex flex-col overflow-hidden pt-2" : "overflow-y-auto pt-6 pb-2"}`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -2771,6 +2771,7 @@ export default function CommandCenterPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
+            className={activeTab === "chat" ? "flex-1 min-h-0 flex flex-col" : ""}
           >
             {activeTab === "tasks" && (
               <div>
@@ -2829,32 +2830,32 @@ export default function CommandCenterPage() {
             )}
 
             {activeTab === "chat" && (
-              <div className="relative -mx-4 sm:mx-0 overflow-hidden" style={{ height: "calc(100% + 1rem)", marginTop: "-0.5rem" }}>
+              <div className="relative -mx-4 sm:mx-0 overflow-hidden flex-1 min-h-0 flex flex-col">
                 {/* ── Overlay sidebar: Conversation list ─────────── */}
                 <AnimatePresence>
                   {showConversationList && (
                     <>
-                      {/* Backdrop */}
+                      {/* Backdrop — fixed to cover entire screen */}
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="absolute inset-0 z-30"
-                        style={{ background: "rgba(0,0,0,0.15)" }}
+                        className="fixed inset-0 z-[60]"
+                        style={{ background: "rgba(0,0,0,0.2)" }}
                         onClick={() => setShowConversationList(false)}
                       />
-                      {/* Sidebar panel */}
+                      {/* Sidebar panel — fixed to left edge */}
                       <motion.div
                         initial={{ x: "-100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "-100%" }}
                         transition={{ type: "spring", damping: 28, stiffness: 320 }}
-                        className="absolute top-0 left-0 bottom-0 z-40 flex flex-col w-[280px] max-w-[85vw]"
+                        className="fixed top-0 left-0 bottom-0 z-[70] flex flex-col w-[280px] max-w-[85vw]"
                         style={{
-                          background: "var(--card)",
+                          background: "#f8f7f4",
                           borderRight: "1px solid var(--border)",
-                          boxShadow: "4px 0 24px rgba(0,0,0,0.08)",
+                          boxShadow: "4px 0 24px rgba(0,0,0,0.1)",
                         }}
                       >
                         {/* Sidebar header */}
@@ -3014,7 +3015,7 @@ export default function CommandCenterPage() {
                 </AnimatePresence>
 
                 {/* ── Main chat area (always full width) ──────────── */}
-                <div className="flex flex-col h-full">
+                <div className="flex flex-col flex-1 min-h-0">
                   {/* Chat header with sidebar toggle */}
                   <div className="flex items-center gap-2 px-3 py-2 shrink-0 border-b" style={{ borderColor: "var(--border)" }}>
                     <button
@@ -3087,9 +3088,10 @@ export default function CommandCenterPage() {
 
                   {/* Chat input */}
                   <div
-                    className="shrink-0 px-3 pt-2 pb-3"
+                    className="shrink-0 px-3 pt-2"
                     style={{
                       background: "linear-gradient(to top, #f8f7f4 80%, transparent)",
+                      paddingBottom: "max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))",
                     }}
                   >
                     <div
