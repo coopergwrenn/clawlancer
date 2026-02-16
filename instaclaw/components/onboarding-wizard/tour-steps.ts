@@ -43,7 +43,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="dash-status"]',
     title: "Agent Health & Status",
     description:
-      "This tells you if your agent's server is healthy and running. A green \"healthy\" status means everything is working perfectly. If it ever shows an issue, try the Restart Bot button below.",
+      "This tells you if your agent's server is healthy and running. A green \"healthy\" status means everything is working perfectly. If your bot ever stops responding or feels stuck, scroll down and hit \"Restart Bot\" to get it back on track.",
     navigateTo: "/dashboard",
   },
   {
