@@ -207,8 +207,16 @@ export default function DashboardPage() {
         body: JSON.stringify({ action: "toggle_agdp", enabled: newState }),
       });
       if (res.ok) {
-        fetchStatus();
+        // Wait briefly for the VM config to settle, then refresh
+        setTimeout(fetchStatus, 2000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setResetToast({ message: data.error || "Failed to toggle aGDP", type: "error" });
+        setTimeout(() => setResetToast(null), 4000);
       }
+    } catch {
+      setResetToast({ message: "Network error toggling aGDP", type: "error" });
+      setTimeout(() => setResetToast(null), 4000);
     } finally {
       setTogglingAgdp(false);
     }
@@ -861,7 +869,13 @@ export default function DashboardPage() {
                   />
                 </button>
               </div>
-              {vm.agdpEnabled && (
+              {togglingAgdp && (
+                <div className="mt-4 pt-4 flex items-center gap-2 text-xs" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  {vm.agdpEnabled ? "Disabling" : "Enabling"} aGDP... This may take a moment.
+                </div>
+              )}
+              {!togglingAgdp && vm.agdpEnabled && (
                 <p className="text-xs mt-4 pt-4" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
                   Clawlancer bounties are prioritized first. aGDP jobs are only picked up when no Clawlancer work is available.
                 </p>
