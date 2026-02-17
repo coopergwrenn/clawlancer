@@ -8,11 +8,15 @@ import { sanitizeAgentResult } from "@/lib/sanitize-result";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
+const GATEWAY_TIMEOUT_MS = 120_000;
 
 /**
  * POST /api/tasks/create
  *
  * Creates a task, returns it immediately, then executes it in the background.
+ * When the VM gateway is healthy, tasks are proxied through it for full tool
+ * access (Brave Search, browser, etc.) — same capabilities as Telegram.
+ * Falls back to direct Anthropic API if the gateway is unreachable.
  */
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -44,10 +48,10 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabase();
 
-  // Check user has a VM before creating the task
+  // Check user has a VM — fetch gateway details too
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -101,7 +105,14 @@ async function executeTask(
   taskId: string,
   userId: string,
   description: string,
-  vm: { id: string; default_model: string | null; system_prompt: string | null },
+  vm: {
+    id: string;
+    default_model: string | null;
+    system_prompt: string | null;
+    gateway_url: string | null;
+    gateway_token: string | null;
+    health_status: string | null;
+  },
   apiKey: string
 ) {
   const supabase = getSupabase();
@@ -124,33 +135,93 @@ async function executeTask(
       ) + TASK_EXECUTION_SUFFIX;
 
     const model = vm.default_model || "claude-haiku-4-5-20251001";
+    const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
-    // Call Anthropic (non-streaming for tasks)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
-
-    const anthropicRes = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        system: systemPrompt,
-        messages: [{ role: "user", content: description }],
-      }),
-      signal: controller.signal,
+    const requestBody = JSON.stringify({
+      model,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: "user", content: description }],
     });
 
-    clearTimeout(timeout);
+    // ── Try gateway first, fall back to direct Anthropic ──────
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      logger.error("Anthropic API error in task execution", {
-        status: anthropicRes.status,
+    let upstreamRes: Response | null = null;
+
+    if (canUseGateway) {
+      try {
+        const gatewayUrl = vm.gateway_url!.replace(/\/+$/, "");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+
+        upstreamRes = await fetch(`${gatewayUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": vm.gateway_token!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: requestBody,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!upstreamRes.ok) {
+          const errText = await upstreamRes.text();
+          logger.warn("Gateway error in task execution, falling back to direct Anthropic", {
+            status: upstreamRes.status,
+            error: errText.slice(0, 300),
+            route: "tasks/create",
+            vmId: vm.id,
+            taskId,
+            userId,
+          });
+          upstreamRes = null;
+        } else {
+          logger.info("Task proxied through gateway", {
+            route: "tasks/create",
+            vmId: vm.id,
+            taskId,
+            userId,
+          });
+        }
+      } catch (gwErr) {
+        logger.warn("Gateway unreachable for task, falling back to direct Anthropic", {
+          error: String(gwErr),
+          route: "tasks/create",
+          vmId: vm.id,
+          gatewayUrl: vm.gateway_url,
+          taskId,
+          userId,
+        });
+        upstreamRes = null;
+      }
+    }
+
+    // Fallback: direct Anthropic API (no tools)
+    if (!upstreamRes) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+
+      upstreamRes = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: requestBody,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+    }
+
+    if (!upstreamRes.ok) {
+      const errText = await upstreamRes.text();
+      logger.error("API error in task execution", {
+        status: upstreamRes.status,
         error: errText.slice(0, 500),
         taskId,
         userId,
@@ -165,7 +236,7 @@ async function executeTask(
       return;
     }
 
-    const data = await anthropicRes.json();
+    const data = await upstreamRes.json();
     const rawResponse =
       data.content
         ?.filter((b: { type: string }) => b.type === "text")

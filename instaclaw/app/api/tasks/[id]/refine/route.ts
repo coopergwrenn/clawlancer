@@ -6,11 +6,13 @@ import { buildSystemPrompt } from "@/lib/system-prompt";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
+const GATEWAY_TIMEOUT_MS = 120_000;
 
 /**
  * POST /api/tasks/[id]/refine
  *
  * Refines an existing task result using natural language instructions.
+ * Proxies through the VM gateway when healthy for full tool access.
  * Does NOT re-parse TASK_META — title, recurring status, etc. stay the same.
  */
 export async function POST(
@@ -65,10 +67,10 @@ export async function POST(
     );
   }
 
-  // Get VM + user profile for system prompt
+  // Get VM with gateway details + user profile
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -93,6 +95,7 @@ export async function POST(
   );
 
   const model = vm.default_model || "claude-haiku-4-5-20251001";
+  const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
   const userMessage = `Original task: ${task.description}
 
@@ -106,32 +109,88 @@ Please produce an updated version of the result that incorporates the user's req
 
 Return ONLY the updated result content. Do NOT include any TASK_META block — just the refined content.`;
 
+  const requestBody = JSON.stringify({
+    model,
+    max_tokens: MAX_TOKENS,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    // ── Try gateway first, fall back to direct Anthropic ──────
 
-    const anthropicRes = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userMessage }],
-      }),
-      signal: controller.signal,
-    });
+    let upstreamRes: Response | null = null;
 
-    clearTimeout(timeout);
+    if (canUseGateway) {
+      try {
+        const gatewayUrl = vm.gateway_url!.replace(/\/+$/, "");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      logger.error("Anthropic API error in task refinement", {
-        status: anthropicRes.status,
+        upstreamRes = await fetch(`${gatewayUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": vm.gateway_token!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: requestBody,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!upstreamRes.ok) {
+          const errText = await upstreamRes.text();
+          logger.warn("Gateway error in task refine, falling back", {
+            status: upstreamRes.status,
+            error: errText.slice(0, 300),
+            route: "tasks/refine",
+            taskId: id,
+            userId: session.user.id,
+          });
+          upstreamRes = null;
+        } else {
+          logger.info("Task refine proxied through gateway", {
+            route: "tasks/refine",
+            vmId: vm.id,
+            taskId: id,
+          });
+        }
+      } catch (gwErr) {
+        logger.warn("Gateway unreachable for task refine, falling back", {
+          error: String(gwErr),
+          route: "tasks/refine",
+          taskId: id,
+          userId: session.user.id,
+        });
+        upstreamRes = null;
+      }
+    }
+
+    // Fallback: direct Anthropic
+    if (!upstreamRes) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+
+      upstreamRes = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: requestBody,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+    }
+
+    if (!upstreamRes.ok) {
+      const errText = await upstreamRes.text();
+      logger.error("API error in task refinement", {
+        status: upstreamRes.status,
         error: errText.slice(0, 500),
         taskId: id,
         userId: session.user.id,
@@ -142,7 +201,7 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
       );
     }
 
-    const data = await anthropicRes.json();
+    const data = await upstreamRes.json();
     const newResult =
       data.content
         ?.filter((b: { type: string }) => b.type === "text")

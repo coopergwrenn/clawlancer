@@ -8,10 +8,12 @@ import { sanitizeAgentResult } from "@/lib/sanitize-result";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
+const GATEWAY_TIMEOUT_MS = 120_000;
 
 /**
  * POST /api/tasks/[id]/rerun
  * Re-executes a completed or failed task.
+ * Proxies through the VM gateway when healthy for full tool access.
  */
 export async function POST(
   _req: NextRequest,
@@ -62,10 +64,10 @@ export async function POST(
     return NextResponse.json({ error: "Failed to reset task" }, { status: 500 });
   }
 
-  // Get VM
+  // Get VM with gateway details
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -102,7 +104,14 @@ async function executeRerun(
   taskId: string,
   userId: string,
   description: string,
-  vm: { id: string; default_model: string | null; system_prompt: string | null },
+  vm: {
+    id: string;
+    default_model: string | null;
+    system_prompt: string | null;
+    gateway_url: string | null;
+    gateway_token: string | null;
+    health_status: string | null;
+  },
   apiKey: string
 ) {
   const supabase = getSupabase();
@@ -123,32 +132,89 @@ async function executeRerun(
       ) + TASK_EXECUTION_SUFFIX;
 
     const model = vm.default_model || "claude-haiku-4-5-20251001";
+    const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
-
-    const anthropicRes = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        system: systemPrompt,
-        messages: [{ role: "user", content: description }],
-      }),
-      signal: controller.signal,
+    const requestBody = JSON.stringify({
+      model,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: "user", content: description }],
     });
 
-    clearTimeout(timeout);
+    // ── Try gateway first, fall back to direct Anthropic ──────
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      logger.error("Anthropic API error in task rerun", {
-        status: anthropicRes.status,
+    let upstreamRes: Response | null = null;
+
+    if (canUseGateway) {
+      try {
+        const gatewayUrl = vm.gateway_url!.replace(/\/+$/, "");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+
+        upstreamRes = await fetch(`${gatewayUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": vm.gateway_token!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: requestBody,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!upstreamRes.ok) {
+          const errText = await upstreamRes.text();
+          logger.warn("Gateway error in task rerun, falling back", {
+            status: upstreamRes.status,
+            error: errText.slice(0, 300),
+            route: "tasks/rerun",
+            taskId,
+            userId,
+          });
+          upstreamRes = null;
+        } else {
+          logger.info("Task rerun proxied through gateway", {
+            route: "tasks/rerun",
+            vmId: vm.id,
+            taskId,
+          });
+        }
+      } catch (gwErr) {
+        logger.warn("Gateway unreachable for task rerun, falling back", {
+          error: String(gwErr),
+          route: "tasks/rerun",
+          taskId,
+          userId,
+        });
+        upstreamRes = null;
+      }
+    }
+
+    // Fallback: direct Anthropic
+    if (!upstreamRes) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+
+      upstreamRes = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: requestBody,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+    }
+
+    if (!upstreamRes.ok) {
+      const errText = await upstreamRes.text();
+      logger.error("API error in task rerun", {
+        status: upstreamRes.status,
         error: errText.slice(0, 500),
         taskId,
         userId,
@@ -163,7 +229,7 @@ async function executeRerun(
       return;
     }
 
-    const data = await anthropicRes.json();
+    const data = await upstreamRes.json();
     const rawResponse =
       data.content
         ?.filter((b: { type: string }) => b.type === "text")
