@@ -1,8 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
+
+// Give the function enough time for background processing via after().
+// Default Vercel timeout (10s) was causing 499s — Stripe closed the
+// connection before the handler could respond.
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -13,7 +18,6 @@ export async function POST(req: NextRequest) {
   }
 
   const stripe = getStripe();
-  const supabase = getSupabase();
 
   let event;
   try {
@@ -24,16 +28,23 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     logger.error("Webhook signature verification failed", { error: String(err), route: "billing/webhook" });
-    try {
-      await sendAdminAlertEmail(
-        "Stripe Webhook Signature Failure",
-        `Webhook signature verification failed.\nError: ${String(err)}`
-      );
-    } catch {
-      // Non-fatal
-    }
+    sendAdminAlertEmail(
+      "Stripe Webhook Signature Failure",
+      `Webhook signature verification failed.\nError: ${String(err)}`
+    ).catch(() => {});
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
+
+  // Respond to Stripe immediately — process the event after the response is
+  // sent. This prevents 499 timeouts (Stripe closes connections after ~20s).
+  after(() => processEvent(event));
+
+  return NextResponse.json({ received: true });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function processEvent(event: any) {
+  const supabase = getSupabase();
 
   switch (event.type) {
     case "checkout.session.completed": {
@@ -341,33 +352,28 @@ export async function POST(req: NextRequest) {
             .single();
 
           if (vm?.health_status === "suspended") {
-            // Trigger gateway restart
-            try {
-              await fetch(`${process.env.NEXTAUTH_URL}/api/vm/restart`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-                },
-                body: JSON.stringify({ userId: sub.user_id }),
-              });
-
-              // Send "you're back online" email
-              const { data: user } = await supabase
-                .from("instaclaw_users")
-                .select("email")
-                .eq("id", sub.user_id)
-                .single();
-
-              if (user?.email) {
-                try {
-                  await sendVMReadyEmail(user.email, `${process.env.NEXTAUTH_URL}/dashboard`);
-                } catch (emailErr) {
-                  logger.error("Failed to send VM restored email", { error: String(emailErr), route: "billing/webhook" });
-                }
-              }
-            } catch (err) {
+            // Fire-and-forget: restart VM + send email without blocking
+            fetch(`${process.env.NEXTAUTH_URL}/api/vm/restart`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+              },
+              body: JSON.stringify({ userId: sub.user_id }),
+            }).catch((err) => {
               logger.error("Failed to restart suspended VM", { error: String(err), route: "billing/webhook", userId: sub.user_id });
+            });
+
+            const { data: user } = await supabase
+              .from("instaclaw_users")
+              .select("email")
+              .eq("id", sub.user_id)
+              .single();
+
+            if (user?.email) {
+              sendVMReadyEmail(user.email, `${process.env.NEXTAUTH_URL}/dashboard`).catch((emailErr) => {
+                logger.error("Failed to send VM restored email", { error: String(emailErr), route: "billing/webhook" });
+              });
             }
           }
         }
@@ -410,6 +416,4 @@ export async function POST(req: NextRequest) {
       break;
     }
   }
-
-  return NextResponse.json({ received: true });
 }
