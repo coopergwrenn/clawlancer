@@ -1256,12 +1256,30 @@ function TaskCard({
             </div>
           ) : isCompleted ? (
             <div
-              className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-opacity hover:opacity-70"
-              style={{ background: "var(--foreground)" }}
+              className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-opacity hover:opacity-80 relative shrink-0"
+              style={{
+                background: "radial-gradient(circle at 35% 35%, #4a4a4a, #2a2a2acc 60%, #1a1a1a88 100%)",
+                boxShadow: `
+                  inset 0 -2px 4px rgba(0,0,0,0.25),
+                  inset 0 2px 3px rgba(255,255,255,0.3),
+                  0 2px 6px rgba(0,0,0,0.2)
+                `,
+              }}
             >
+              <div
+                className="absolute rounded-full pointer-events-none"
+                style={{
+                  top: "8%",
+                  left: "15%",
+                  width: "45%",
+                  height: "28%",
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 100%)",
+                }}
+              />
               <Check
-                className="w-3.5 h-3.5"
-                style={{ color: "var(--background)" }}
+                className="w-3.5 h-3.5 relative z-[1]"
+                style={{ color: "#fff" }}
+                strokeWidth={3}
               />
             </div>
           ) : (
