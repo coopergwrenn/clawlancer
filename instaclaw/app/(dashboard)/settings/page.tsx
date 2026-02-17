@@ -343,10 +343,12 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={openBillingPortal}
-              className="px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] flex items-center gap-2"
+              className="px-5 py-2.5 rounded-full text-sm font-semibold transition-all active:scale-95 cursor-pointer flex items-center gap-2"
               style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
+                background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                color: "#000000",
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                backdropFilter: "blur(8px)",
               }}
             >
               <ExternalLink className="w-4 h-4" />
