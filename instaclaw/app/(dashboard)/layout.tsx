@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
+import { motion } from "motion/react";
 import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 
 // Primary items always visible on mobile
@@ -99,22 +100,40 @@ export default function DashboardLayout({
           </Link>
 
           <div className="flex items-center gap-1">
-            {/* Primary items — always visible */}
-            {primaryNav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                data-tour={item.tourKey}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-snappy transition-colors"
-                style={{
-                  color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
-                  background: pathname === item.href ? "rgba(0,0,0,0.06)" : "transparent",
-                }}
-              >
-                <item.icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{item.label}</span>
-              </Link>
-            ))}
+            {/* Primary items — always visible, with sliding glass pill */}
+            {primaryNav.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  data-tour={item.tourKey}
+                  className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-colors"
+                  style={{
+                    color: isActive ? "var(--foreground)" : "var(--muted)",
+                  }}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="nav-pill"
+                      className="absolute inset-0 rounded-lg"
+                      style={{
+                        background: "rgba(0,0,0,0.06)",
+                        boxShadow: "0 0 0 1px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+                        backdropFilter: "blur(8px)",
+                      }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30,
+                      }}
+                    />
+                  )}
+                  <item.icon className="w-4 h-4 relative z-10" />
+                  <span className="hidden sm:inline relative z-10">{item.label}</span>
+                </Link>
+              );
+            })}
 
             {/* More button + dropdown for overflow items */}
             <div className="relative" ref={moreRef}>
