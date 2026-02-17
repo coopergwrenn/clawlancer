@@ -837,25 +837,26 @@ export default function DashboardPage() {
                   type="button"
                   onClick={handleToggleAgdp}
                   disabled={togglingAgdp}
-                  className="relative w-12 h-6 rounded-full transition-all cursor-pointer shrink-0 disabled:opacity-50"
+                  className="relative w-12 h-7 rounded-full transition-all cursor-pointer shrink-0 disabled:opacity-50"
                   style={{
                     background: vm.agdpEnabled
-                      ? "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e)"
-                      : "rgba(0,0,0,0.12)",
+                      ? "linear-gradient(135deg, rgba(22,22,22,0.7), rgba(40,40,40,0.8))"
+                      : "rgba(0,0,0,0.08)",
                     boxShadow: vm.agdpEnabled
-                      ? "rgba(220,103,67,0.3) 0px 2px 8px 0px, rgba(255,255,255,0.2) 0px -1px 1px 0px inset"
-                      : "rgba(0,0,0,0.15) 0px 1px 2px 0px inset, rgba(255,255,255,0.1) 0px -1px 1px 0px inset",
+                      ? "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05)"
+                      : "0 0 0 1px rgba(0,0,0,0.08), inset 0 1px 2px rgba(0,0,0,0.06)",
+                    backdropFilter: "blur(8px)",
                   }}
                 >
                   <span
-                    className="absolute top-1 w-4 h-4 rounded-full transition-all"
+                    className="absolute top-1 w-5 h-5 rounded-full transition-all"
                     style={{
-                      left: vm.agdpEnabled ? "28px" : "4px",
+                      left: vm.agdpEnabled ? "24px" : "4px",
                       background: vm.agdpEnabled
-                        ? "linear-gradient(-75deg, rgba(255,255,255,0.9), rgba(255,255,255,1), rgba(255,255,255,0.9))"
-                        : "linear-gradient(-75deg, rgba(255,255,255,0.8), rgba(255,255,255,0.95), rgba(255,255,255,0.8))",
-                      boxShadow: "rgba(0,0,0,0.1) 0px 1px 3px 0px, rgba(255,255,255,0.4) 0px -1px 1px 0px inset",
-                      transition: "left 0.2s cubic-bezier(0.23, 1, 0.32, 1)",
+                        ? "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,240,240,0.9))"
+                        : "linear-gradient(135deg, rgba(255,255,255,0.85), rgba(230,230,230,0.8))",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
+                      transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
                     }}
                   />
                 </button>
