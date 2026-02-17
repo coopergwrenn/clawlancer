@@ -216,7 +216,10 @@ export default function OnboardingWizard({
               dispatch({ type: "GO_TO_BOT_VERIFY" });
             }
           }}
-          onSkip={() => dispatch({ type: "SKIP_BOT_VERIFY" })}
+          onSkip={() => {
+            completeWizard();
+            dispatch({ type: "DONE" });
+          }}
         />
       )}
 
