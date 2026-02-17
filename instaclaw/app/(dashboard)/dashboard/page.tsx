@@ -294,7 +294,7 @@ export default function DashboardPage() {
             Your AI agent is live on a dedicated server. Here&apos;s what to know:
           </p>
           <div className="space-y-2 text-sm" style={{ color: "var(--muted)" }}>
-            <p><strong style={{ color: "var(--foreground)" }}>Daily units</strong> — Your plan includes a daily unit allowance that resets at midnight UTC. Haiku costs 1 unit, Sonnet 4, Opus 19. Background tasks don&apos;t count against your limit.</p>
+            <p><strong style={{ color: "var(--foreground)" }}>Daily units</strong> — Your plan includes a daily unit allowance that resets at midnight UTC. Haiku costs 1 unit, Sonnet 4, Opus 19. Background heartbeat checks have their own separate budget and won&apos;t eat into your daily units.</p>
             <p><strong style={{ color: "var(--foreground)" }}>Switch models anytime</strong> — Just tell your bot &quot;use Sonnet&quot; or &quot;switch to Opus&quot; in chat.</p>
             <p><strong style={{ color: "var(--foreground)" }}>Credit packs</strong> — Need more after your daily limit? Buy credits below — they kick in instantly.</p>
           </div>

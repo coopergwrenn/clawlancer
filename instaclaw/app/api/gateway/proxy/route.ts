@@ -12,9 +12,12 @@ const COST_PER_UNIT = 0.004;
  * Hidden buffer added to each tier's internal RPC limit.
  * Covers automated heartbeat/background calls that shouldn't consume
  * the user's visible quota. The RPC limits include this buffer:
- *   Starter internal = 500 = 400 display + 100 buffer
- *   Pro     internal = 800 = 700 display + 100 buffer
- *   Power   internal = 2600 = 2500 display + 100 buffer
+ *   Starter internal = 600 = 400 display + 200 buffer
+ *   Pro     internal = 900 = 700 display + 200 buffer
+ *   Power   internal = 2700 = 2500 display + 200 buffer
+ *
+ * With 3h heartbeat interval → 8 heartbeats/day × ~20 LLM calls = ~160 units,
+ * well within the 200-unit buffer.
  *
  * Behaviour:
  *   0 → displayLimit      : normal — user sees usage counting up
@@ -22,7 +25,7 @@ const COST_PER_UNIT = 0.004;
  *                                user sees "0 remaining", NO Telegram spam
  *   internal+1 →           : hard block — RPC denies, proxy returns error
  */
-const HEARTBEAT_BUFFER = 100;
+const HEARTBEAT_BUFFER = 200;
 
 /**
  * Global daily spend cap in dollars. If total platform-wide usage exceeds
@@ -118,13 +121,14 @@ function friendlyStreamResponse(text: string, model: string) {
  *
  * The OpenClaw gateway on each VM calls this endpoint instead of Anthropic
  * directly. This gives us centralized rate limiting per tier:
- *   - Starter: 400 units/day  (internal limit 500 incl. heartbeat buffer)
- *   - Pro:     700 units/day  (internal limit 800)
- *   - Power:  2500 units/day  (internal limit 2600)
+ *   - Starter: 400 units/day  (internal limit 600 incl. 200 heartbeat buffer)
+ *   - Pro:     700 units/day  (internal limit 900)
+ *   - Power:  2500 units/day  (internal limit 2700)
  *
- * The 100-unit buffer lets automated heartbeats continue even after the
- * user's visible quota is exhausted, without spamming "out of credits"
- * messages to Telegram. Hard block only at the internal limit.
+ * The 200-unit buffer lets automated heartbeats (8/day @ 3h intervals)
+ * continue even after the user's visible quota is exhausted, without
+ * spamming "out of credits" messages to Telegram. Hard block only at
+ * the internal limit.
  *
  * All tiers have access to all models. Cost weights handle fairness:
  * Haiku=1, Sonnet=4, Opus=19 (reflects actual Anthropic pricing ratios).
