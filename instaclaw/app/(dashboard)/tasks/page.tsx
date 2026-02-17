@@ -3254,7 +3254,7 @@ export default function CommandCenterPage() {
           data-tour="input-bar"
           style={{
             background: "linear-gradient(to top, #f8f7f4 80%, transparent)",
-            paddingBottom: "max(1.25rem, calc(env(safe-area-inset-bottom) + 0.5rem))",
+            paddingBottom: "max(1.75rem, calc(env(safe-area-inset-bottom) + 0.75rem))",
           }}
         >
           <div
