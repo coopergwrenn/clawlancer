@@ -2034,6 +2034,9 @@ export default function CommandCenterPage() {
   const [renameTitleDraft, setRenameTitleDraft] = useState("");
   const loadingConvRef = useRef<string | null>(null);
 
+  // Dynamic viewport height for keyboard-aware layout on mobile
+  const [chatViewHeight, setChatViewHeight] = useState<number | null>(null);
+
   // Personalized quick action chips
   const [personalChips, setPersonalChips] = useState<{ label: string; prefill: string }[] | null>(null);
 
@@ -2150,40 +2153,44 @@ export default function CommandCenterPage() {
     }
   }, [showModelPicker]);
 
-  // Lock body scroll when chat tab is active (prevents page-level scroll on mobile)
-  // Uses position:fixed on body — the only reliable way to prevent iOS Safari scrolling
+  // Keyboard-aware layout: dynamically resize chat container using visualViewport
+  // When keyboard opens, visualViewport.height shrinks → container shrinks → input stays visible
+  // When keyboard closes, height grows back → input returns to bottom
   useEffect(() => {
-    if (activeTab === "chat") {
-      const scrollY = window.scrollY;
-      window.scrollTo(0, 0);
-
-      // Fix body in place (iOS Safari ignores overflow:hidden during keyboard transitions)
-      document.documentElement.style.overflow = "hidden";
-      document.body.style.position = "fixed";
-      document.body.style.top = "0";
-      document.body.style.left = "0";
-      document.body.style.right = "0";
-      document.body.style.bottom = "0";
-      document.body.style.overflow = "hidden";
-
-      // Reset scroll on keyboard open/close (visualViewport resize)
-      const resetScroll = () => window.scrollTo(0, 0);
-      window.visualViewport?.addEventListener("resize", resetScroll);
-      window.visualViewport?.addEventListener("scroll", resetScroll);
-
-      return () => {
-        document.documentElement.style.overflow = "";
-        document.body.style.position = "";
-        document.body.style.top = "";
-        document.body.style.left = "";
-        document.body.style.right = "";
-        document.body.style.bottom = "";
-        document.body.style.overflow = "";
-        window.visualViewport?.removeEventListener("resize", resetScroll);
-        window.visualViewport?.removeEventListener("scroll", resetScroll);
-        window.scrollTo(0, scrollY);
-      };
+    if (activeTab !== "chat") {
+      setChatViewHeight(null);
+      return;
     }
+
+    window.scrollTo(0, 0);
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    // nav(56px) + main-padding-top(48px) - negative-margin-top(40px) = 64px
+    const MOBILE_OFFSET = 64;
+
+    const update = () => {
+      if (window.innerWidth < 640) {
+        setChatViewHeight(vv.height - MOBILE_OFFSET);
+      }
+      // Reset any page scroll iOS Safari might have caused
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+
+    return () => {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      setChatViewHeight(null);
+    };
   }, [activeTab]);
 
   async function handleModelChange(newModel: string) {
@@ -2741,7 +2748,10 @@ export default function CommandCenterPage() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-7.5rem)] -mt-10 sm:mt-0 -mb-12 sm:-mb-16">
+    <div
+      className="flex flex-col h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-7.5rem)] -mt-10 sm:mt-0 -mb-12 sm:-mb-16"
+      style={chatViewHeight != null ? { height: `${chatViewHeight}px` } : undefined}
+    >
       {/* ── Static header (never scrolls) ───────────────────── */}
       <div className="shrink-0">
         <h1
@@ -3148,16 +3158,6 @@ export default function CommandCenterPage() {
                         className="flex-1 bg-transparent text-[16px] outline-none"
                         style={{ color: "var(--foreground)" }}
                         disabled={isSending}
-                        onFocus={() => {
-                          // Prevent iOS Safari from scrolling the page when keyboard opens
-                          setTimeout(() => window.scrollTo(0, 0), 50);
-                          setTimeout(() => window.scrollTo(0, 0), 150);
-                          setTimeout(() => window.scrollTo(0, 0), 300);
-                        }}
-                        onBlur={() => {
-                          // Reset scroll when keyboard closes
-                          setTimeout(() => window.scrollTo(0, 0), 50);
-                        }}
                       />
                       <div className="flex items-center gap-1.5 shrink-0">
                         <div className="relative" ref={modelPickerRef}>
