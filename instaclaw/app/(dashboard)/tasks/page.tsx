@@ -3122,9 +3122,13 @@ export default function CommandCenterPage() {
                           }
                         }}
                         placeholder="Message your agent..."
-                        className="flex-1 bg-transparent text-sm outline-none"
+                        className="flex-1 bg-transparent text-[16px] outline-none"
                         style={{ color: "var(--foreground)" }}
                         disabled={isSending}
+                        onFocus={() => {
+                          // Prevent iOS Safari from scrolling the page when keyboard opens
+                          setTimeout(() => window.scrollTo(0, 0), 50);
+                        }}
                       />
                       <div className="flex items-center gap-1.5 shrink-0">
                         <div className="relative" ref={modelPickerRef}>

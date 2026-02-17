@@ -18,6 +18,8 @@ const instrumentSerif = Instrument_Serif({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 
