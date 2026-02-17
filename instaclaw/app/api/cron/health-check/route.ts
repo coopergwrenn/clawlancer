@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealth, restartGateway, stopGateway } from "@/lib/ssh";
+import { checkHealthExtended, clearSessions, restartGateway, stopGateway, auditVMConfig, CONFIG_SPEC } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment
+const CONFIG_AUDIT_BATCH_SIZE = 3; // Max VMs to audit per cycle (staggered)
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
 
 export async function GET(req: NextRequest) {
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
   // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, assigned_to, name")
+    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, assigned_to, name, config_version")
     .eq("status", "assigned")
     .not("gateway_url", "is", null);
 
@@ -33,13 +34,48 @@ export async function GET(req: NextRequest) {
   let unhealthy = 0;
   let alerted = 0;
   let restarted = 0;
+  let sessionsCleared = 0;
+
+  // Track which VMs are healthy for the config audit pass
+  const healthyVmIds = new Set<string>();
 
   for (const vm of vms) {
-    const isHealthy = await checkHealth(vm, vm.gateway_token ?? undefined);
+    const result = await checkHealthExtended(vm, vm.gateway_token ?? undefined);
     const currentFailCount = vm.health_fail_count ?? 0;
 
-    if (isHealthy) {
+    if (result.healthy) {
       healthy++;
+      healthyVmIds.add(vm.id);
+
+      // Check for session overflow
+      if (result.largestSessionBytes > CONFIG_SPEC.maxSessionBytes) {
+        logger.warn("Session overflow detected, auto-clearing", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          largestSessionBytes: result.largestSessionBytes,
+          maxSessionBytes: CONFIG_SPEC.maxSessionBytes,
+        });
+
+        try {
+          const cleared = await clearSessions(vm);
+          if (cleared) {
+            sessionsCleared++;
+            logger.info("Sessions cleared and gateway restarted", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+            });
+          }
+        } catch (err) {
+          logger.error("Failed to clear sessions", {
+            error: String(err),
+            route: "cron/health-check",
+            vmId: vm.id,
+          });
+        }
+      }
+
       // Reset fail count on success
       await supabase
         .from("instaclaw_vms")
@@ -242,6 +278,63 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ========================================================================
+  // Fourth pass: Config audit for stale-version VMs
+  // Only audit healthy VMs (no point fixing config on a down gateway).
+  // Staggered: limit to CONFIG_AUDIT_BATCH_SIZE per cycle to avoid timeout.
+  // ========================================================================
+  let configsAudited = 0;
+  let configsFixed = 0;
+
+  const staleVms = vms.filter(
+    (vm) =>
+      healthyVmIds.has(vm.id) &&
+      (vm.config_version ?? 0) < CONFIG_SPEC.version
+  );
+
+  const auditBatch = staleVms.slice(0, CONFIG_AUDIT_BATCH_SIZE);
+
+  for (const vm of auditBatch) {
+    try {
+      const auditResult = await auditVMConfig(vm);
+      configsAudited++;
+
+      if (auditResult.fixed.length > 0) {
+        configsFixed++;
+        logger.info("Config drift fixed", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          fixed: auditResult.fixed,
+          alreadyCorrect: auditResult.alreadyCorrect,
+          missingFiles: auditResult.missingFiles,
+        });
+      }
+
+      if (auditResult.missingFiles.length > 0) {
+        logger.warn("Required workspace files missing", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          missingFiles: auditResult.missingFiles,
+        });
+      }
+
+      // Update config_version — even if nothing was fixed, the check passed
+      await supabase
+        .from("instaclaw_vms")
+        .update({ config_version: CONFIG_SPEC.version })
+        .eq("id", vm.id);
+    } catch (err) {
+      logger.error("Config audit failed", {
+        error: String(err),
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+      });
+    }
+  }
+
   return NextResponse.json({
     checked: vms.length,
     healthy,
@@ -250,5 +343,8 @@ export async function GET(req: NextRequest) {
     alerted,
     webhooksFixed,
     suspended,
+    sessionsCleared,
+    configsAudited,
+    configsFixed,
   });
 }

@@ -31,6 +31,23 @@ const NVM_PREAMBLE =
 // OpenClaw gateway port (default for openclaw gateway run)
 const GATEWAY_PORT = 18789;
 
+// ── Fleet-wide config spec (single source of truth) ──
+// Bump `version` whenever you change any value below. The health check
+// compares each VM's `config_version` column against this — if behind,
+// it SSHes in and applies the missing config automatically.
+export const CONFIG_SPEC = {
+  version: 1,
+  settings: {
+    "agents.defaults.heartbeat.every": "3h",
+    "agents.defaults.compaction.reserveTokensFloor": "30000",
+    "commands.restart": "true",
+  } as Record<string, string>,
+  // Files that must exist in ~/.openclaw/workspace/
+  requiredWorkspaceFiles: ["SOUL.md", "AGENTS.md"],
+  // Max session file size in bytes before auto-clear (10MB)
+  maxSessionBytes: 10 * 1024 * 1024,
+};
+
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
   // Only allow alphanumeric, dashes, underscores, colons, dots, and slashes
@@ -731,6 +748,134 @@ export async function checkHealth(
       // Try "openclaw gateway health" first (>=2026.2.9), fall back to "openclaw health" (older)
       const tokenArg = gatewayToken ? ` --token '${gatewayToken}'` : '';
       const cmd = `${NVM_PREAMBLE} && (openclaw gateway health${tokenArg} 2>/dev/null || openclaw health${tokenArg})`;
+      const result = await ssh.execCommand(cmd);
+      return result.code === 0;
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return false;
+  }
+}
+
+export async function checkHealthExtended(
+  vm: VMRecord,
+  gatewayToken?: string
+): Promise<{ healthy: boolean; largestSessionBytes: number }> {
+  if (gatewayToken) assertSafeShellArg(gatewayToken, "gatewayToken");
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const tokenArg = gatewayToken ? ` --token '${gatewayToken}'` : '';
+      // Single SSH command: health check + largest session file size
+      const cmd = [
+        NVM_PREAMBLE,
+        `&& (openclaw gateway health${tokenArg} 2>/dev/null || openclaw health${tokenArg})`,
+        '; echo "EXIT:$?"',
+        // Report largest .jsonl session file size in bytes (or 0 if none)
+        '&& du -b ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | sort -rn | head -1 | cut -f1 || echo "0"',
+      ].join(' ');
+      const result = await ssh.execCommand(cmd);
+
+      const exitMatch = result.stdout.match(/EXIT:(\d+)/);
+      const healthy = exitMatch ? exitMatch[1] === "0" : result.code === 0;
+
+      // Parse largest session size from output lines after EXIT marker
+      let largestSessionBytes = 0;
+      const lines = result.stdout.split('\n');
+      for (const line of lines) {
+        if (line.match(/EXIT:/)) continue;
+        const sizeNum = parseInt(line.trim(), 10);
+        if (!isNaN(sizeNum) && sizeNum > largestSessionBytes) {
+          largestSessionBytes = sizeNum;
+        }
+      }
+
+      return { healthy, largestSessionBytes };
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return { healthy: false, largestSessionBytes: 0 };
+  }
+}
+
+export interface AuditResult {
+  fixed: string[];
+  alreadyCorrect: string[];
+  missingFiles: string[];
+}
+
+export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
+  const ssh = await connectSSH(vm);
+  try {
+    const fixed: string[] = [];
+    const alreadyCorrect: string[] = [];
+    const missingFiles: string[] = [];
+
+    // 1. Check all spec settings in a single SSH command
+    const getCommands = Object.keys(CONFIG_SPEC.settings)
+      .map((key) => `echo "CFG:${key}=$(openclaw config get ${key} 2>/dev/null)"`)
+      .join(' && ');
+    const fileChecks = CONFIG_SPEC.requiredWorkspaceFiles
+      .map((f) => `echo "FILE:${f}=$(test -f ~/.openclaw/workspace/${f} && echo exists || echo missing)"`)
+      .join(' && ');
+
+    const checkCmd = `${NVM_PREAMBLE} && ${getCommands} && ${fileChecks}`;
+    const checkResult = await ssh.execCommand(checkCmd);
+
+    // Parse current config values
+    const settingsToFix: string[] = [];
+    for (const line of checkResult.stdout.split('\n')) {
+      const cfgMatch = line.match(/^CFG:(.+?)=(.*)$/);
+      if (cfgMatch) {
+        const [, key, currentValue] = cfgMatch;
+        const expected = CONFIG_SPEC.settings[key];
+        if (expected !== undefined) {
+          if (currentValue.trim() === expected) {
+            alreadyCorrect.push(key);
+          } else {
+            settingsToFix.push(key);
+          }
+        }
+      }
+
+      const fileMatch = line.match(/^FILE:(.+?)=(.+)$/);
+      if (fileMatch) {
+        const [, fileName, status] = fileMatch;
+        if (status.trim() === "missing") {
+          missingFiles.push(fileName);
+        }
+      }
+    }
+
+    // 2. Fix any drifted settings
+    if (settingsToFix.length > 0) {
+      const fixCommands = settingsToFix
+        .map((key) => `openclaw config set ${key} '${CONFIG_SPEC.settings[key]}' || true`)
+        .join(' && ');
+      const fixCmd = `${NVM_PREAMBLE} && ${fixCommands}`;
+      await ssh.execCommand(fixCmd);
+      fixed.push(...settingsToFix);
+    }
+
+    return { fixed, alreadyCorrect, missingFiles };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+export async function clearSessions(vm: VMRecord): Promise<boolean> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const cmd = [
+        NVM_PREAMBLE,
+        '&& rm -f ~/.openclaw/agents/main/sessions/*.jsonl ~/.openclaw/agents/main/sessions/sessions.json',
+        '&& (openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
+        '&& sleep 2',
+        `&& nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      ].join(' ');
       const result = await ssh.execCommand(cmd);
       return result.code === 0;
     } finally {
