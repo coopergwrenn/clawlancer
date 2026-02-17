@@ -487,6 +487,7 @@ export default function DashboardPage() {
                     textShadow: "0 1px 2px rgba(0,0,0,0.15)",
                   }}
                 >
+                  <Zap className="w-3.5 h-3.5 inline -mt-px mr-1" fill="currentColor" />
                   Buy Credits
                 </button>
               </div>
