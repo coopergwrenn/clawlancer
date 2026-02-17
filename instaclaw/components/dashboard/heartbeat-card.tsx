@@ -404,20 +404,24 @@ export default function HeartbeatCard() {
               </span>
               {updating ? (
                 <span
-                  className="text-xs tabular-nums font-medium px-2 py-0.5 rounded-md inline-flex items-center gap-1.5"
+                  className="text-[11px] tabular-nums font-medium px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5"
                   style={{
-                    color: "#DC6743",
-                    background: "rgba(220,103,67,0.08)",
+                    color: "var(--foreground)",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.04)",
+                    backdropFilter: "blur(8px)",
                   }}
                 >
                   <span
-                    className="w-3 h-3 rounded-full border-2 border-current"
+                    className="w-2.5 h-2.5 rounded-full border-[1.5px]"
                     style={{
-                      borderTopColor: "transparent",
+                      borderColor: "var(--border)",
+                      borderTopColor: "#DC6743",
                       animation: "spin 0.8s linear infinite",
                     }}
                   />
-                  Updating to {updating}…
+                  {updating}
                 </span>
               ) : (
                 <span
