@@ -34,6 +34,7 @@ import {
   Mic,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import HeartbeatCard from "@/components/dashboard/heartbeat-card";
 
 /* ─── Inline Tool Brand Icons ─────────────────────────────── */
 
@@ -3275,6 +3276,8 @@ export default function CommandCenterPage() {
                     </button>
                   </div>
                 )}
+
+                <HeartbeatCard />
 
                 {isLoadingTasks ? (
                   <TasksSkeleton />

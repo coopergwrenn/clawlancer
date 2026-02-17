@@ -766,6 +766,64 @@ export async function updateModel(vm: VMRecord, model: string): Promise<boolean>
   }
 }
 
+const ALLOWED_HEARTBEAT_INTERVALS = ["1h", "3h", "6h", "12h", "off"];
+
+export async function updateHeartbeatInterval(
+  vm: VMRecord,
+  interval: string
+): Promise<boolean> {
+  if (!ALLOWED_HEARTBEAT_INTERVALS.includes(interval)) {
+    throw new Error(`Invalid heartbeat interval: ${interval}`);
+  }
+  assertSafeShellArg(interval, "interval");
+
+  const ssh = await connectSSH(vm);
+  try {
+    if (interval === "off") {
+      // Disable heartbeats by setting a very large interval
+      const script = [
+        "#!/bin/bash",
+        NVM_PREAMBLE,
+        `openclaw config set agents.defaults.heartbeat.every '999h'`,
+        "# Restart gateway to pick up new config",
+        'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+        "sleep 2",
+        `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+        "sleep 5",
+      ].join("\n");
+
+      await ssh.execCommand(
+        `cat > /tmp/ic-hb-update.sh << 'ICEOF'\n${script}\nICEOF`
+      );
+      const result = await ssh.execCommand(
+        "bash /tmp/ic-hb-update.sh; EC=$?; rm -f /tmp/ic-hb-update.sh; exit $EC"
+      );
+      return result.code === 0;
+    }
+
+    const script = [
+      "#!/bin/bash",
+      NVM_PREAMBLE,
+      `openclaw config set agents.defaults.heartbeat.every '${interval}'`,
+      "# Restart gateway to pick up new config",
+      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      "sleep 2",
+      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      "sleep 5",
+    ].join("\n");
+
+    await ssh.execCommand(
+      `cat > /tmp/ic-hb-update.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-hb-update.sh; EC=$?; rm -f /tmp/ic-hb-update.sh; exit $EC"
+    );
+    return result.code === 0;
+  } finally {
+    ssh.dispose();
+  }
+}
+
 export async function updateMemoryMd(
   vm: VMRecord,
   content: string

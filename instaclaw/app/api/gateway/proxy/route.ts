@@ -338,6 +338,38 @@ export async function POST(req: NextRequest) {
     // land here silently.
     const inBufferZone = currentCount > displayLimit;
 
+    // --- Heartbeat tracking: update heartbeat columns when in buffer zone ---
+    if (inBufferZone) {
+      const intervalMs: Record<string, number> = {
+        "1h": 3_600_000,
+        "3h": 10_800_000,
+        "6h": 21_600_000,
+        "12h": 43_200_000,
+      };
+      // Fire-and-forget: don't await — we don't want to slow down the proxy
+      supabase
+        .from("instaclaw_vms")
+        .select("heartbeat_interval, heartbeat_credits_used_today")
+        .eq("id", vm.id)
+        .single()
+        .then(({ data: hbData }) => {
+          const now = new Date();
+          const interval = hbData?.heartbeat_interval ?? "3h";
+          const nextMs = intervalMs[interval] ?? 10_800_000;
+          const nextAt = new Date(now.getTime() + nextMs);
+          const creditsToday = (hbData?.heartbeat_credits_used_today ?? 0) + 1;
+          supabase
+            .from("instaclaw_vms")
+            .update({
+              heartbeat_last_at: now.toISOString(),
+              heartbeat_next_at: nextAt.toISOString(),
+              heartbeat_credits_used_today: creditsToday,
+            })
+            .eq("id", vm.id)
+            .then(() => {});
+        });
+    }
+
     // --- Compute usage warning thresholds (only in normal zone) ---
     let usageWarning = "";
     if (!inBufferZone) {

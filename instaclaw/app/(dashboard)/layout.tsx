@@ -49,6 +49,7 @@ export default function DashboardLayout({
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const tourControllingMore = useRef(false);
+  const [heartbeatHealth, setHeartbeatHealth] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
 
   const needsOnboarding =
     status !== "loading" && session?.user && !session.user.onboardingComplete;
@@ -84,6 +85,19 @@ export default function DashboardLayout({
       router.replace("/signin");
     }
   }, [status, router]);
+
+  // Poll heartbeat health for nav dot
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const poll = () =>
+      fetch("/api/heartbeat/status")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d?.healthStatus) setHeartbeatHealth(d.healthStatus); })
+        .catch(() => {});
+    poll();
+    const t = setInterval(poll, 60_000);
+    return () => clearInterval(t);
+  }, [status]);
 
   if (status === "loading" || status === "unauthenticated" || needsOnboarding) {
     return null;
@@ -135,7 +149,22 @@ export default function DashboardLayout({
                       }}
                     />
                   )}
-                  <item.icon className="w-4 h-4 relative z-10" />
+                  <span className="relative">
+                    <item.icon className="w-4 h-4 relative z-10" />
+                    {item.href === "/tasks" && heartbeatHealth && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full z-20"
+                        style={{
+                          background:
+                            heartbeatHealth === "healthy"
+                              ? "#22c55e"
+                              : heartbeatHealth === "unhealthy"
+                                ? "#ef4444"
+                                : "#9ca3af",
+                        }}
+                      />
+                    )}
+                  </span>
                   <span className="hidden sm:inline relative z-10">{item.label}</span>
                 </Link>
               );

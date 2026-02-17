@@ -488,3 +488,26 @@ html.lenis body {
   60%  { opacity: 1; transform: translateY(-1px) scale(1.01); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* ─── Heartbeat Dashboard Animations ─────────────── */
+
+/* Double-beat pulse: mimics a real heartbeat (two quick beats then pause).
+   Duration is controlled by --hb-duration CSS variable set inline. */
+@keyframes heartbeat-pulse {
+  0%   { transform: scale(1); }
+  8%   { transform: scale(1.15); }
+  14%  { transform: scale(1); }
+  20%  { transform: scale(1.1); }
+  28%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+/* Soft glow ring that syncs with the heartbeat pulse */
+@keyframes heartbeat-glow {
+  0%   { opacity: 0; transform: scale(0.8); }
+  8%   { opacity: 0.5; transform: scale(1.2); }
+  14%  { opacity: 0.1; transform: scale(1); }
+  20%  { opacity: 0.4; transform: scale(1.15); }
+  28%  { opacity: 0; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
