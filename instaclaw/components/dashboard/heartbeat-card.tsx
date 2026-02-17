@@ -102,18 +102,28 @@ export default function HeartbeatCard() {
   const [nlSending, setNlSending] = useState(false);
   const [nlResponse, setNlResponse] = useState<string | null>(null);
   const [hintIdx, setHintIdx] = useState(0);
+  const [sliderValue, setSliderValue] = useState(3); // hours as decimal
+  const [sliderDragging, setSliderDragging] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/heartbeat/status");
-      if (res.ok) setData(await res.json());
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+        // Sync slider with server interval (only when not dragging)
+        if (!sliderDragging && json.interval !== "off") {
+          const match = json.interval.match(/^(\d+(?:\.\d+)?)h$/);
+          if (match) setSliderValue(parseFloat(match[1]));
+        }
+      }
     } catch {
       /* retry next poll */
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sliderDragging]);
 
   useEffect(() => {
     fetchStatus();
@@ -138,6 +148,11 @@ export default function HeartbeatCard() {
   const changeInterval = async (interval: string) => {
     if (updating || interval === data?.interval) return;
     setUpdating(interval);
+    // Sync slider when a pill is clicked
+    if (interval !== "off") {
+      const m = interval.match(/^(\d+(?:\.\d+)?)h$/);
+      if (m) setSliderValue(parseFloat(m[1]));
+    }
     try {
       const res = await fetch("/api/heartbeat/update-interval", {
         method: "POST",
@@ -155,6 +170,16 @@ export default function HeartbeatCard() {
     } finally {
       setUpdating(null);
     }
+  };
+
+  // Commit slider value on release
+  const commitSlider = async (hours: number) => {
+    setSliderDragging(false);
+    // Round to 1 decimal for clean display
+    const rounded = Math.round(hours * 10) / 10;
+    const interval = `${rounded}h`;
+    if (interval === data?.interval) return;
+    await changeInterval(interval);
   };
 
   const sendNlConfig = async () => {
@@ -190,9 +215,19 @@ export default function HeartbeatCard() {
         ? "#ef4444"
         : "#9ca3af";
   const isPaused = data?.healthStatus === "paused" || data?.interval === "off";
-  const animDuration = isPaused
-    ? "0s"
-    : INTERVAL_DURATION[data?.interval ?? "3h"] ?? "1.4s";
+  // Compute animation duration — interpolate for custom intervals
+  const getAnimDuration = () => {
+    if (isPaused) return "0s";
+    if (INTERVAL_DURATION[data?.interval ?? "3h"]) return INTERVAL_DURATION[data?.interval ?? "3h"];
+    const m = data?.interval?.match(/^(\d+(?:\.\d+)?)h$/);
+    if (m) {
+      const h = parseFloat(m[1]);
+      // Clamp between 0.6s (very fast) and 3.5s (very slow)
+      return `${Math.max(0.6, Math.min(3.5, h * 0.35))}s`;
+    }
+    return "1.4s";
+  };
+  const animDuration = getAnimDuration();
 
   // ── Loading skeleton ──
   if (loading) {
@@ -357,11 +392,24 @@ export default function HeartbeatCard() {
               <span className="text-xs font-medium" style={{ color: "var(--foreground)" }}>
                 Frequency
               </span>
-              <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-                {INTERVAL_LABELS[data.interval] ?? data.interval}
+              <span
+                className="text-xs tabular-nums font-medium px-2 py-0.5 rounded-md"
+                style={{
+                  color: sliderDragging ? "#DC6743" : "var(--muted)",
+                  background: sliderDragging ? "rgba(220,103,67,0.08)" : "transparent",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {isPaused
+                  ? "Off"
+                  : sliderDragging
+                    ? `${(Math.round(sliderValue * 10) / 10).toFixed(1)}h`
+                    : INTERVAL_LABELS[data.interval] ?? `${data.interval}`}
               </span>
             </div>
-            <div className="flex gap-2">
+
+            {/* Preset pills */}
+            <div className="flex gap-2 mb-4">
               {INTERVALS.map((iv) => {
                 const isActive = data.interval === iv;
                 const isLoading = updating === iv;
@@ -389,6 +437,53 @@ export default function HeartbeatCard() {
                 );
               })}
             </div>
+
+            {/* Precision slider */}
+            <div className="relative">
+              {/* Filled track */}
+              <div
+                className="absolute top-1/2 left-0 h-1.5 rounded-full pointer-events-none"
+                style={{
+                  width: `${((sliderValue - 0.5) / 11.5) * 100}%`,
+                  transform: "translateY(-50%)",
+                  background: "linear-gradient(90deg, #DC6743, #c2553a)",
+                  transition: sliderDragging ? "none" : "width 0.3s ease",
+                  zIndex: 1,
+                }}
+              />
+              <input
+                type="range"
+                min={0.5}
+                max={12}
+                step={0.1}
+                value={sliderValue}
+                onChange={(e) => {
+                  setSliderValue(parseFloat(e.target.value));
+                  setSliderDragging(true);
+                }}
+                onMouseUp={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
+                onTouchEnd={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
+                disabled={!!updating || isPaused}
+                className="hb-slider relative"
+                style={{
+                  zIndex: 2,
+                  opacity: isPaused ? 0.4 : 1,
+                }}
+              />
+              {/* Scale labels */}
+              <div className="flex justify-between mt-1.5 px-0.5">
+                {["0.5h", "3h", "6h", "9h", "12h"].map((label) => (
+                  <span
+                    key={label}
+                    className="text-[9px] tabular-nums"
+                    style={{ color: "var(--muted)", opacity: 0.6 }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <p className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>
               More frequent = more responsive, but uses more of the pool above.
             </p>

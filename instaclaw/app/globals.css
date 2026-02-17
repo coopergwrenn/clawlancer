@@ -489,6 +489,70 @@ html.lenis body {
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ─── Heartbeat Slider ────────────────────────────── */
+
+.hb-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.06);
+  outline: none;
+  cursor: pointer;
+}
+
+.hb-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fff, #f5f5f4);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.08),
+    0 2px 6px rgba(0,0,0,0.12),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+  cursor: grab;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.hb-slider::-webkit-slider-thumb:hover {
+  box-shadow:
+    0 0 0 1px rgba(220,103,67,0.3),
+    0 2px 8px rgba(220,103,67,0.2),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+  transform: scale(1.1);
+}
+
+.hb-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(0.95);
+  box-shadow:
+    0 0 0 1px rgba(220,103,67,0.4),
+    0 1px 4px rgba(220,103,67,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+}
+
+.hb-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #fff, #f5f5f4);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.08),
+    0 2px 6px rgba(0,0,0,0.12),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+  cursor: grab;
+}
+
+.hb-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.06);
+}
+
 /* ─── Heartbeat Dashboard Animations ─────────────── */
 
 /* Double-beat pulse: mimics a real heartbeat (two quick beats then pause).

@@ -737,6 +737,96 @@ export async function waitForHealth(
   }
 }
 
+export async function migrateUserData(
+  sourceVm: VMRecord,
+  targetVm: VMRecord
+): Promise<{ migrated: boolean; filesCount: number; bytesTransferred: number }> {
+  const tarPath = "/tmp/user-migrate.tar.gz";
+  const localTarPath = `/tmp/instaclaw-migrate-${sourceVm.id}-${Date.now()}.tar.gz`;
+
+  let sourceSSH;
+  let targetSSH;
+
+  try {
+    // Step 1: SSH into source VM and create tar of user data
+    sourceSSH = await connectSSH(sourceVm);
+    const tarCmd = [
+      "cd ~/.openclaw &&",
+      `tar czf ${tarPath}`,
+      "--exclude=node_modules",
+      "--exclude=openclaw.json",
+      "--exclude=devices",
+      "--exclude=identity",
+      "--exclude=agents/main/agent/auth-profiles.json",
+      "--exclude=agents/main/agent/models.json",
+      "--exclude=agents/main/agent/system-prompt.md",
+      "workspace/",
+      "agents/main/sessions/",
+      "media/",
+      "subagents/",
+      "2>/dev/null || true",
+    ].join(" ");
+    await sourceSSH.execCommand(tarCmd);
+
+    // Check tar was created and get its size
+    const statResult = await sourceSSH.execCommand(`stat -c '%s' ${tarPath} 2>/dev/null || echo "0"`);
+    const tarSize = parseInt(statResult.stdout.trim(), 10);
+    if (!tarSize || tarSize < 100) {
+      logger.info("No user data to migrate (empty tar)", {
+        route: "lib/ssh",
+        sourceVm: sourceVm.id,
+        targetVm: targetVm.id,
+      });
+      return { migrated: false, filesCount: 0, bytesTransferred: 0 };
+    }
+
+    // Step 2: SFTP download tar from source to local ephemeral storage
+    await sourceSSH.getFile(localTarPath, tarPath);
+
+    // Step 3: Clean up source
+    await sourceSSH.execCommand(`rm -f ${tarPath}`);
+    sourceSSH.dispose();
+    sourceSSH = undefined;
+
+    // Step 4: SFTP upload tar to target
+    targetSSH = await connectSSH(targetVm);
+    await targetSSH.putFile(localTarPath, tarPath);
+
+    // Step 5: Extract on target (overwrites default templates with real user data)
+    const extractResult = await targetSSH.execCommand(
+      `cd ~/.openclaw && tar xzf ${tarPath} && rm -f ${tarPath} && echo "MIGRATE_OK"`
+    );
+
+    // Count migrated files
+    const countResult = await targetSSH.execCommand(
+      "find ~/.openclaw/workspace ~/.openclaw/agents/main/sessions ~/.openclaw/media ~/.openclaw/subagents -type f 2>/dev/null | wc -l"
+    );
+    const filesCount = parseInt(countResult.stdout.trim(), 10) || 0;
+
+    const migrated = extractResult.stdout.includes("MIGRATE_OK");
+
+    logger.info("User data migration complete", {
+      route: "lib/ssh",
+      sourceVm: sourceVm.id,
+      targetVm: targetVm.id,
+      migrated,
+      filesCount,
+      bytesTransferred: tarSize,
+    });
+
+    return { migrated, filesCount, bytesTransferred: tarSize };
+  } finally {
+    // Clean up local temp file
+    try {
+      const fs = await import("fs");
+      if (fs.existsSync(localTarPath)) fs.unlinkSync(localTarPath);
+    } catch { /* best-effort */ }
+
+    if (sourceSSH) sourceSSH.dispose();
+    if (targetSSH) targetSSH.dispose();
+  }
+}
+
 export async function checkHealth(
   vm: VMRecord,
   gatewayToken?: string
@@ -912,13 +1002,24 @@ export async function updateModel(vm: VMRecord, model: string): Promise<boolean>
   }
 }
 
-const ALLOWED_HEARTBEAT_INTERVALS = ["1h", "3h", "6h", "12h", "off"];
+/**
+ * Validate a heartbeat interval string.
+ * Accepts: "off", or a decimal number followed by "h" (e.g. "3h", "1.5h", "0.5h").
+ * Range: 0.5h – 24h.
+ */
+function validateHeartbeatInterval(interval: string): boolean {
+  if (interval === "off") return true;
+  const match = interval.match(/^(\d+(?:\.\d+)?)h$/);
+  if (!match) return false;
+  const hours = parseFloat(match[1]);
+  return hours >= 0.5 && hours <= 24;
+}
 
 export async function updateHeartbeatInterval(
   vm: VMRecord,
   interval: string
 ): Promise<boolean> {
-  if (!ALLOWED_HEARTBEAT_INTERVALS.includes(interval)) {
+  if (!validateHeartbeatInterval(interval)) {
     throw new Error(`Invalid heartbeat interval: ${interval}`);
   }
   assertSafeShellArg(interval, "interval");

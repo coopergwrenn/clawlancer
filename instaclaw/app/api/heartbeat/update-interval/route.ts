@@ -4,7 +4,22 @@ import { getSupabase } from "@/lib/supabase";
 import { updateHeartbeatInterval } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
-const ALLOWED_INTERVALS = ["1h", "3h", "6h", "12h", "off"];
+/** Parse an interval string like "3h" or "1.5h" into milliseconds. Returns null for "off". */
+function intervalToMs(interval: string): number | null {
+  if (interval === "off") return null;
+  const match = interval.match(/^(\d+(?:\.\d+)?)h$/);
+  if (!match) return null;
+  return parseFloat(match[1]) * 3_600_000;
+}
+
+/** Validate interval: "off" or decimal hours between 0.5 and 24. */
+function isValidInterval(interval: string): boolean {
+  if (interval === "off") return true;
+  const match = interval.match(/^(\d+(?:\.\d+)?)h$/);
+  if (!match) return false;
+  const hours = parseFloat(match[1]);
+  return hours >= 0.5 && hours <= 24;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,12 +30,9 @@ export async function POST(req: NextRequest) {
 
     const { interval } = await req.json();
 
-    if (!interval || !ALLOWED_INTERVALS.includes(interval)) {
+    if (!interval || typeof interval !== "string" || !isValidInterval(interval)) {
       return NextResponse.json(
-        {
-          error:
-            "Invalid interval. Must be one of: " + ALLOWED_INTERVALS.join(", "),
-        },
+        { error: "Invalid interval. Use 'off' or a value between 0.5h and 24h (e.g. '3h', '1.5h')." },
         { status: 400 }
       );
     }
@@ -48,17 +60,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Compute next heartbeat time
-    const intervalMs: Record<string, number> = {
-      "1h": 3_600_000,
-      "3h": 10_800_000,
-      "6h": 21_600_000,
-      "12h": 43_200_000,
-    };
+    const ms = intervalToMs(interval);
     const now = new Date();
-    const nextAt =
-      interval === "off"
-        ? null
-        : new Date(now.getTime() + (intervalMs[interval] ?? 10_800_000));
+    const nextAt = ms ? new Date(now.getTime() + ms) : null;
 
     // Update DB record
     await supabase

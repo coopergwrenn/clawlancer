@@ -340,12 +340,6 @@ export async function POST(req: NextRequest) {
 
     // --- Heartbeat tracking: update heartbeat columns when in buffer zone ---
     if (inBufferZone) {
-      const intervalMs: Record<string, number> = {
-        "1h": 3_600_000,
-        "3h": 10_800_000,
-        "6h": 21_600_000,
-        "12h": 43_200_000,
-      };
       // Fire-and-forget: don't await — we don't want to slow down the proxy
       supabase
         .from("instaclaw_vms")
@@ -355,7 +349,9 @@ export async function POST(req: NextRequest) {
         .then(({ data: hbData }) => {
           const now = new Date();
           const interval = hbData?.heartbeat_interval ?? "3h";
-          const nextMs = intervalMs[interval] ?? 10_800_000;
+          // Parse interval: "3h" → 10800000ms, "1.5h" → 5400000ms
+          const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
+          const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
           const nextAt = new Date(now.getTime() + nextMs);
           const creditsToday = (hbData?.heartbeat_credits_used_today ?? 0) + 1;
           supabase
