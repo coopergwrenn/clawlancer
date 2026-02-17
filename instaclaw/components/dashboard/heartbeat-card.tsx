@@ -105,6 +105,8 @@ export default function HeartbeatCard() {
   const [sliderValue, setSliderValue] = useState(3); // hours as decimal
   const [sliderDragging, setSliderDragging] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  // Ref-based lock: prevents poll from overwriting slider while dragging OR while an update is in flight
+  const skipSliderSyncRef = useRef(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -112,8 +114,8 @@ export default function HeartbeatCard() {
       if (res.ok) {
         const json = await res.json();
         setData(json);
-        // Sync slider with server interval (only when not dragging)
-        if (!sliderDragging && json.interval !== "off") {
+        // Only sync slider from server when not dragging and no update in flight
+        if (!skipSliderSyncRef.current && json.interval !== "off") {
           const match = json.interval.match(/^(\d+(?:\.\d+)?)h$/);
           if (match) setSliderValue(parseFloat(match[1]));
         }
@@ -123,7 +125,7 @@ export default function HeartbeatCard() {
     } finally {
       setLoading(false);
     }
-  }, [sliderDragging]);
+  }, []);
 
   useEffect(() => {
     fetchStatus();
@@ -147,6 +149,7 @@ export default function HeartbeatCard() {
 
   const changeInterval = async (interval: string) => {
     if (updating || interval === data?.interval) return;
+    skipSliderSyncRef.current = true;
     setUpdating(interval);
     // Sync slider when a pill is clicked
     if (interval !== "off") {
@@ -161,12 +164,16 @@ export default function HeartbeatCard() {
       });
       if (res.ok) {
         setToast(interval === "off" ? "Heartbeats paused" : `Interval → ${interval}`);
+        // Unlock sync BEFORE fetching so we pick up the new server value
+        skipSliderSyncRef.current = false;
         await fetchStatus();
       } else {
         setToast("Failed to update");
+        skipSliderSyncRef.current = false;
       }
     } catch {
       setToast("Failed to update");
+      skipSliderSyncRef.current = false;
     } finally {
       setUpdating(null);
     }
@@ -178,7 +185,10 @@ export default function HeartbeatCard() {
     // Round to 1 decimal for clean display
     const rounded = Math.round(hours * 10) / 10;
     const interval = `${rounded}h`;
-    if (interval === data?.interval) return;
+    if (interval === data?.interval) {
+      skipSliderSyncRef.current = false;
+      return;
+    }
     await changeInterval(interval);
   };
 
@@ -449,6 +459,7 @@ export default function HeartbeatCard() {
                 onChange={(e) => {
                   setSliderValue(parseFloat(e.target.value));
                   setSliderDragging(true);
+                  skipSliderSyncRef.current = true;
                 }}
                 onMouseUp={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
                 onTouchEnd={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
