@@ -31,6 +31,7 @@ import {
   FileText,
   Telescope,
   Link2,
+  Mic,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -3656,6 +3657,13 @@ export default function CommandCenterPage() {
                           )}
                         </div>
                         <button
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
+                          style={{ color: "var(--muted)" }}
+                          title="Voice input"
+                        >
+                          <Mic className="w-4 h-4" strokeWidth={2} />
+                        </button>
+                        <button
                           onClick={handleSubmit}
                           disabled={isSending || !chatInput.trim()}
                           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
@@ -3816,6 +3824,13 @@ export default function CommandCenterPage() {
                   </div>
                 )}
               </div>
+              <button
+                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
+                style={{ color: "var(--muted)" }}
+                title="Voice input"
+              >
+                <Mic className="w-4 h-4" strokeWidth={2} />
+              </button>
               <button
                 onClick={handleSubmit}
                 disabled={!chatInput.trim()}
