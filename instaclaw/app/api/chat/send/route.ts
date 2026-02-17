@@ -6,14 +6,17 @@ import { buildSystemPrompt } from "@/lib/system-prompt";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_HISTORY = 40; // messages to include for context
-const MAX_TOKENS = 2048;
+const MAX_TOKENS = 4096;
+const GATEWAY_TIMEOUT_MS = 90_000;
 
 /**
  * POST /api/chat/send
  *
  * Sends a message to the user's agent and streams the response.
- * The system prompt comes from the VM's config + user profile data.
- * Chat history is stored in Supabase, scoped by conversation_id.
+ * When the VM has a healthy gateway, messages are proxied through the
+ * OpenClaw gateway on the VM — giving Command Center chat the same
+ * tool access (Brave Search, browser, etc.) as Telegram.
+ * Falls back to direct Anthropic API if the gateway is unreachable.
  */
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -78,10 +81,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to resolve conversation" }, { status: 500 });
   }
 
-  // Get VM info (for model + system_prompt)
+  // Get VM info (model, system_prompt, gateway details)
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -99,7 +102,7 @@ export async function POST(req: NextRequest) {
     .eq("id", session.user.id)
     .single();
 
-  // Build system prompt — dynamic based on active toggles
+  // Build system prompt
   const basePrompt = buildSystemPrompt(
     vm.system_prompt,
     user?.name,
@@ -107,33 +110,46 @@ export async function POST(req: NextRequest) {
     user?.gmail_insights
   );
 
-  const hasActiveToggles = toggles.deepResearch || toggles.webSearch || toggles.styleMatch;
+  // Determine if we can proxy through the VM gateway
+  const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
-  let commandCenterSuffix = "\n\nIMPORTANT — You're currently chatting through the web Command Center.";
+  // Build the Command Center system prompt suffix
+  let commandCenterSuffix: string;
 
-  if (hasActiveToggles) {
-    // When toggles are active, tell the agent it has enhanced capabilities for this message
-    const activeCapabilities: string[] = [];
+  if (canUseGateway) {
+    // Gateway mode: agent has full tool access
+    commandCenterSuffix =
+      "\n\nYou're currently chatting through the web Command Center. " +
+      "You have full tool access — web search, browser automation, file operations, and all your usual capabilities work here just like on Telegram. " +
+      "Use your tools proactively when they'd help answer the user's question.";
+
+    // Add toggle-specific instructions
+    const toggleInstructions: string[] = [];
     if (toggles.deepResearch) {
-      activeCapabilities.push("Deep Research (perform thorough, multi-step research — break questions down, explore broadly, cross-reference, and provide comprehensive answers with citations)");
+      toggleInstructions.push(
+        "The user has enabled DEEP RESEARCH mode. Perform thorough, multi-step research — break the question down, search broadly using web search, cross-reference multiple sources, and provide a comprehensive answer with citations."
+      );
     }
     if (toggles.webSearch) {
-      activeCapabilities.push("Web Search (search the web for current, up-to-date information — prioritize recent and authoritative sources)");
+      toggleInstructions.push(
+        "The user has enabled WEB SEARCH. Prioritize using web search to find current, up-to-date information. Cite your sources."
+      );
     }
     if (toggles.styleMatch) {
-      activeCapabilities.push("Style Match (match the user's personal writing style based on their email patterns and previous messages)");
+      toggleInstructions.push(
+        "The user has enabled STYLE MATCH. Match the user's personal writing style based on their email patterns and previous messages."
+      );
     }
-    commandCenterSuffix +=
-      " The user has enabled the following capabilities for this message: " +
-      activeCapabilities.join("; ") + ". " +
-      "Act on these capabilities fully — you have permission and are expected to use them. " +
-      "For any additional tools not currently enabled (like browser automation), suggest the user enable them via the + menu or send the request via Telegram.";
+    if (toggleInstructions.length > 0) {
+      commandCenterSuffix += "\n\n" + toggleInstructions.join("\n");
+    }
   } else {
-    // Default: no toggles active — guide to Telegram for tool-heavy tasks
-    commandCenterSuffix +=
-      " You can help with conversation, planning, writing, analysis, brainstorming, and anything that doesn't require tools in this interface. " +
-      "For tasks that require web search, deep research, or tool execution, let the user know they can either enable those capabilities using the + button next to the input, or send the request via Telegram where you have full tool access. " +
-      "Never say \"I can't do that\" — instead guide them: \"You can enable Web Search or Deep Research from the + menu, or send me that on Telegram for full tool access.\"";
+    // Fallback mode: no gateway, direct Anthropic (no tools)
+    commandCenterSuffix =
+      "\n\nIMPORTANT — You're currently chatting through the web Command Center. " +
+      "Your agent VM is currently offline, so tool access (web search, browser, etc.) is temporarily unavailable. " +
+      "You can still help with conversation, planning, writing, analysis, and brainstorming. " +
+      "For tasks requiring tools, let the user know their agent needs to be online — they can check the dashboard for status.";
   }
 
   commandCenterSuffix += " Never output raw XML tags or fake tool calls. Just respond naturally.";
@@ -170,166 +186,224 @@ export async function POST(req: NextRequest) {
 
   const wasEmpty = (convMeta?.message_count ?? 0) === 0;
 
-  // Call Anthropic with streaming
   const model = vm.default_model || "claude-haiku-4-5-20251001";
+  const requestBody = JSON.stringify({
+    model,
+    max_tokens: MAX_TOKENS,
+    system: systemPrompt,
+    messages,
+    stream: true,
+  });
 
-  try {
-    const anthropicRes = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        system: systemPrompt,
-        messages,
-        stream: true,
-      }),
-    });
+  // ── Try gateway first, fall back to direct Anthropic ──────────
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      logger.error("Anthropic API error in chat", {
-        status: anthropicRes.status,
-        error: errText.slice(0, 500),
+  let upstreamRes: Response;
+
+  if (canUseGateway) {
+    try {
+      const gatewayUrl = vm.gateway_url!.replace(/\/+$/, "");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+
+      upstreamRes = await fetch(`${gatewayUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": vm.gateway_token!,
+          "anthropic-version": "2023-06-01",
+        },
+        body: requestBody,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!upstreamRes.ok) {
+        const errText = await upstreamRes.text();
+        logger.warn("Gateway returned error, falling back to direct Anthropic", {
+          status: upstreamRes.status,
+          error: errText.slice(0, 300),
+          route: "chat/send",
+          vmId: vm.id,
+          userId: session.user.id,
+        });
+        // Fall through to direct Anthropic below
+        upstreamRes = null!;
+      } else {
+        logger.info("Chat proxied through gateway", {
+          route: "chat/send",
+          vmId: vm.id,
+          userId: session.user.id,
+        });
+      }
+    } catch (gwErr) {
+      logger.warn("Gateway unreachable, falling back to direct Anthropic", {
+        error: String(gwErr),
+        route: "chat/send",
+        vmId: vm.id,
+        gatewayUrl: vm.gateway_url,
+        userId: session.user.id,
+      });
+      upstreamRes = null!;
+    }
+  } else {
+    upstreamRes = null!;
+  }
+
+  // Fallback: direct Anthropic API (no tools)
+  if (!upstreamRes) {
+    try {
+      upstreamRes = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: requestBody,
+      });
+
+      if (!upstreamRes.ok) {
+        const errText = await upstreamRes.text();
+        logger.error("Anthropic API error in chat", {
+          status: upstreamRes.status,
+          error: errText.slice(0, 500),
+          route: "chat/send",
+          userId: session.user.id,
+        });
+        return NextResponse.json(
+          { error: "Your agent encountered an error. Please try again." },
+          { status: 502 }
+        );
+      }
+    } catch (err) {
+      logger.error("Chat send error", {
+        error: String(err),
         route: "chat/send",
         userId: session.user.id,
       });
       return NextResponse.json(
-        { error: "Your agent encountered an error. Please try again." },
+        { error: "Your agent is currently offline. Check your dashboard for status." },
         { status: 502 }
       );
     }
-
-    // Pipe the SSE stream through and accumulate the full response
-    // so we can save it to the database when done
-    const userId = session.user.id;
-    const convId = conversationId;
-    const reader = anthropicRes.body?.getReader();
-    if (!reader) {
-      return NextResponse.json({ error: "No response stream" }, { status: 502 });
-    }
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        const decoder = new TextDecoder();
-        let fullText = "";
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            // Forward raw SSE bytes to client
-            controller.enqueue(value);
-
-            // Parse out text deltas for saving
-            const chunk = decoder.decode(value, { stream: true });
-            for (const line of chunk.split("\n")) {
-              if (!line.startsWith("data: ")) continue;
-              const data = line.slice(6);
-              if (data === "[DONE]") continue;
-              try {
-                const event = JSON.parse(data);
-                if (
-                  event.type === "content_block_delta" &&
-                  event.delta?.type === "text_delta"
-                ) {
-                  fullText += event.delta.text;
-                }
-              } catch {
-                // Not valid JSON — skip
-              }
-            }
-          }
-
-          // Save the complete assistant response + update conversation metadata
-          if (fullText.length > 0) {
-            const db = getSupabase();
-
-            // Save assistant message
-            db.from("instaclaw_chat_messages")
-              .insert({
-                user_id: userId,
-                conversation_id: convId,
-                role: "assistant",
-                content: fullText,
-              })
-              .then(({ error }) => {
-                if (error) {
-                  logger.error("Failed to save assistant message", {
-                    error: String(error),
-                    route: "chat/send",
-                    userId,
-                  });
-                }
-              });
-
-            // Update conversation metadata
-            const preview = fullText.slice(0, 100);
-            const updateFields: Record<string, unknown> = {
-              last_message_preview: preview,
-              updated_at: new Date().toISOString(),
-            };
-
-            // Auto-title from first user message if conversation was empty
-            if (wasEmpty) {
-              const words = message.split(/\s+/);
-              let title = "";
-              for (const word of words) {
-                if ((title + " " + word).trim().length > 50) break;
-                title = (title + " " + word).trim();
-              }
-              updateFields.title = title || message.slice(0, 50);
-            }
-
-            // Update metadata + increment message_count
-            db.from("instaclaw_conversations")
-              .select("message_count")
-              .eq("id", convId)
-              .single()
-              .then(({ data: conv }) => {
-                db.from("instaclaw_conversations")
-                  .update({
-                    ...updateFields,
-                    message_count: ((conv?.message_count ?? 0) + 2),
-                  })
-                  .eq("id", convId)
-                  .then(() => {});
-              });
-          }
-        } catch (err) {
-          logger.error("Stream processing error", {
-            error: String(err),
-            route: "chat/send",
-            userId,
-          });
-        } finally {
-          controller.close();
-        }
-      },
-    });
-
-    return new NextResponse(stream, {
-      status: 200,
-      headers: {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache",
-        connection: "keep-alive",
-      },
-    });
-  } catch (err) {
-    logger.error("Chat send error", {
-      error: String(err),
-      route: "chat/send",
-      userId: session.user.id,
-    });
-    return NextResponse.json(
-      { error: "Your agent is currently offline. Check your dashboard for status." },
-      { status: 502 }
-    );
   }
+
+  // ── Stream response back to client ────────────────────────────
+
+  const userId = session.user.id;
+  const convId = conversationId;
+  const reader = upstreamRes.body?.getReader();
+  if (!reader) {
+    return NextResponse.json({ error: "No response stream" }, { status: 502 });
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Forward raw SSE bytes to client
+          controller.enqueue(value);
+
+          // Parse out text deltas for saving
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+            try {
+              const event = JSON.parse(data);
+              if (
+                event.type === "content_block_delta" &&
+                event.delta?.type === "text_delta"
+              ) {
+                fullText += event.delta.text;
+              }
+            } catch {
+              // Not valid JSON — skip
+            }
+          }
+        }
+
+        // Save the complete assistant response + update conversation metadata
+        if (fullText.length > 0) {
+          const db = getSupabase();
+
+          // Save assistant message
+          db.from("instaclaw_chat_messages")
+            .insert({
+              user_id: userId,
+              conversation_id: convId,
+              role: "assistant",
+              content: fullText,
+            })
+            .then(({ error }) => {
+              if (error) {
+                logger.error("Failed to save assistant message", {
+                  error: String(error),
+                  route: "chat/send",
+                  userId,
+                });
+              }
+            });
+
+          // Update conversation metadata
+          const preview = fullText.slice(0, 100);
+          const updateFields: Record<string, unknown> = {
+            last_message_preview: preview,
+            updated_at: new Date().toISOString(),
+          };
+
+          // Auto-title from first user message if conversation was empty
+          if (wasEmpty) {
+            const words = message.split(/\s+/);
+            let title = "";
+            for (const word of words) {
+              if ((title + " " + word).trim().length > 50) break;
+              title = (title + " " + word).trim();
+            }
+            updateFields.title = title || message.slice(0, 50);
+          }
+
+          // Update metadata + increment message_count
+          db.from("instaclaw_conversations")
+            .select("message_count")
+            .eq("id", convId)
+            .single()
+            .then(({ data: conv }) => {
+              db.from("instaclaw_conversations")
+                .update({
+                  ...updateFields,
+                  message_count: ((conv?.message_count ?? 0) + 2),
+                })
+                .eq("id", convId)
+                .then(() => {});
+            });
+        }
+      } catch (err) {
+        logger.error("Stream processing error", {
+          error: String(err),
+          route: "chat/send",
+          userId,
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new NextResponse(stream, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    },
+  });
 }

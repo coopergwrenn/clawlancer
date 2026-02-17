@@ -2746,18 +2746,6 @@ export default function CommandCenterPage() {
       setIsSending(true);
       setChatError(null);
 
-      // Build augmented message with toggle prefixes
-      let augmented = text.trim();
-      if (deepResearchEnabled) {
-        augmented = `[DEEP RESEARCH MODE] Use thorough, multi-step research. Break the question down, search broadly, cross-reference sources, and provide a comprehensive answer with citations.\n\n${augmented}`;
-      }
-      if (webSearchEnabled) {
-        augmented = `[WEB SEARCH] Use web search to find current information for this query. Prioritize recent and authoritative sources.\n\n${augmented}`;
-      }
-      if (useMyStyleEnabled) {
-        augmented = `[STYLE MATCH] Match the user's personal writing style based on their previous messages and email patterns.\n\n${augmented}`;
-      }
-
       // Handle file upload if attached
       let fileRef = "";
       const fileToUpload = attachedFile;
@@ -2790,7 +2778,7 @@ export default function CommandCenterPage() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            message: augmented + fileRef,
+            message: text.trim() + fileRef,
             conversation_id: convId,
             toggles: {
               deepResearch: deepResearchEnabled,
