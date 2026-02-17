@@ -24,8 +24,9 @@ interface UserConfig {
 
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
+// Also loads LD_LIBRARY_PATH for userspace browser libs (libxkbcommon, libcairo, etc.)
 const NVM_PREAMBLE =
-  'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"';
+  'export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"';
 
 // OpenClaw gateway port (default for openclaw gateway run)
 const GATEWAY_PORT = 18789;
