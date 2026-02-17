@@ -95,13 +95,19 @@ export async function POST(req: NextRequest) {
     .eq("id", session.user.id)
     .single();
 
-  // Build system prompt
-  const systemPrompt = buildSystemPrompt(
+  // Build system prompt — append Command Center chat constraint
+  // (the shared prompt mentions tools that only exist on the VM via Telegram)
+  const basePrompt = buildSystemPrompt(
     vm.system_prompt,
     user?.name,
     user?.gmail_profile_summary,
     user?.gmail_insights
   );
+  const systemPrompt =
+    basePrompt +
+    "\n\nIMPORTANT — Command Center Chat context: In this web chat interface you do NOT have access to tools, web search, browser automation, code execution, or any external capabilities. " +
+    "Never output XML tags, tool calls, or pretend to search the web. Respond directly using your knowledge. " +
+    "If the user asks for something that requires real-time data or tool access, let them know you can handle it as a task instead.";
 
   // Get recent chat history scoped to this conversation
   const { data: history } = await supabase
