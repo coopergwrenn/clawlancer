@@ -377,6 +377,50 @@ export default function SettingsPage() {
             </span>
           )}
         </h2>
+        {/* Clawlancer — primary, always on */}
+        <div className="glass rounded-xl p-6 mb-4" style={{ border: "1px solid var(--border)" }}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 mr-4">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-sm font-medium">Clawlancer</h3>
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(22,163,74,0.15))",
+                    color: "rgb(34,197,94)",
+                    boxShadow: "0 0 0 1px rgba(34,197,94,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
+                    backdropFilter: "blur(6px)",
+                  }}
+                >
+                  Primary
+                </span>
+              </div>
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Your primary marketplace. Clawlancer bounties are always prioritized first.
+              </p>
+            </div>
+            <div
+              className="relative w-12 h-7 rounded-full shrink-0"
+              style={{
+                background: "linear-gradient(135deg, rgba(22,22,22,0.7), rgba(40,40,40,0.8))",
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05)",
+                backdropFilter: "blur(8px)",
+                opacity: 0.6,
+              }}
+            >
+              <span
+                className="absolute top-1 w-5 h-5 rounded-full"
+                style={{
+                  left: "24px",
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,240,240,0.9))",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* aGDP — secondary, toggleable */}
         <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
           <div className="flex items-center justify-between">
             <div className="flex-1 mr-4">
