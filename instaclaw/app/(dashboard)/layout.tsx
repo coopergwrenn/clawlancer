@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   MessageSquare,
   Sparkles,
+  Heart,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
@@ -30,6 +31,7 @@ const primaryNav = [
 
 // Overflow items shown in the "more" menu on mobile, visible on lg+
 const overflowNav = [
+  { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat" },
   { href: "/files", label: "Files", icon: FolderOpen, tourKey: "nav-files" },
   { href: "/scheduled", label: "Scheduled", icon: Clock, tourKey: "nav-scheduled" },
   { href: "/env-vars", label: "API Keys", icon: Key, tourKey: "nav-api-keys" },
@@ -149,22 +151,7 @@ export default function DashboardLayout({
                       }}
                     />
                   )}
-                  <span className="relative">
-                    <item.icon className="w-4 h-4 relative z-10" />
-                    {item.href === "/tasks" && heartbeatHealth && (
-                      <span
-                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full z-20"
-                        style={{
-                          background:
-                            heartbeatHealth === "healthy"
-                              ? "#22c55e"
-                              : heartbeatHealth === "unhealthy"
-                                ? "#ef4444"
-                                : "#9ca3af",
-                        }}
-                      />
-                    )}
-                  </span>
+                  <item.icon className="w-4 h-4 relative z-10" />
                   <span className="hidden sm:inline relative z-10">{item.label}</span>
                 </Link>
               );
@@ -183,7 +170,20 @@ export default function DashboardLayout({
                   backdropFilter: "blur(8px)",
                 }}
               >
-                <MoreHorizontal className="w-4 h-4" />
+                <span className="relative">
+                  <MoreHorizontal className="w-4 h-4" />
+                  {heartbeatHealth && heartbeatHealth !== "healthy" && (
+                    <span
+                      className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
+                      style={{
+                        background:
+                          heartbeatHealth === "unhealthy"
+                            ? "#ef4444"
+                            : "#9ca3af",
+                      }}
+                    />
+                  )}
+                </span>
                 <span className="hidden sm:inline">More</span>
               </button>
 
