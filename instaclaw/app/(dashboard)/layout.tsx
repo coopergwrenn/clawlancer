@@ -26,12 +26,12 @@ import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 const primaryNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourKey: "nav-dashboard" },
   { href: "/tasks", label: "Command Center", icon: MessageSquare, tourKey: "nav-command-center" },
-  { href: "/history", label: "History", icon: History, tourKey: "nav-history" },
+  { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat" },
 ];
 
 // Overflow items shown in the "more" menu on mobile, visible on lg+
 const overflowNav = [
-  { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat" },
+  { href: "/history", label: "History", icon: History, tourKey: "nav-history" },
   { href: "/files", label: "Files", icon: FolderOpen, tourKey: "nav-files" },
   { href: "/scheduled", label: "Scheduled", icon: Clock, tourKey: "nav-scheduled" },
   { href: "/env-vars", label: "API Keys", icon: Key, tourKey: "nav-api-keys" },
