@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Send } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────
 
@@ -428,18 +428,10 @@ export default function HeartbeatCard() {
               <button
                 onClick={sendNlConfig}
                 disabled={nlSending || !nlInput.trim()}
-                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition-all cursor-pointer active:scale-95"
-                style={{
-                  background: nlInput.trim()
-                    ? "linear-gradient(135deg, rgba(220,103,67,0.85), rgba(194,85,58,0.95))"
-                    : "rgba(0,0,0,0.04)",
-                  color: nlInput.trim() ? "#fff" : "var(--muted)",
-                  boxShadow: nlInput.trim()
-                    ? "0 0 0 1px rgba(220,103,67,0.3), 0 2px 6px rgba(220,103,67,0.2)"
-                    : "none",
-                }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
+                style={{ background: "var(--accent)" }}
               >
-                <Send className="w-3 h-3" />
+                <ArrowUp className="w-4 h-4" style={{ color: "#ffffff" }} strokeWidth={2.5} />
               </button>
             </div>
 
