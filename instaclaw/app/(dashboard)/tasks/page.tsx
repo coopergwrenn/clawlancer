@@ -2428,11 +2428,6 @@ export default function CommandCenterPage() {
     }
   }, []);
 
-  // Open sidebar by default on desktop
-  useEffect(() => {
-    if (window.innerWidth >= 640) setShowConversationList(true);
-  }, []);
-
   useEffect(() => {
     loadConversations();
     // Load saved message IDs for library bookmarks
@@ -2835,27 +2830,27 @@ export default function CommandCenterPage() {
                 <AnimatePresence>
                   {showConversationList && (
                     <>
-                      {/* Backdrop — fixed to cover entire screen */}
+                      {/* Backdrop — contained within chat section */}
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="fixed inset-0 z-[60]"
-                        style={{ background: "rgba(0,0,0,0.2)" }}
+                        className="absolute inset-0 z-30"
+                        style={{ background: "rgba(0,0,0,0.15)" }}
                         onClick={() => setShowConversationList(false)}
                       />
-                      {/* Sidebar panel — fixed to left edge */}
+                      {/* Sidebar panel — within chat section */}
                       <motion.div
                         initial={{ x: "-100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "-100%" }}
                         transition={{ type: "spring", damping: 28, stiffness: 320 }}
-                        className="fixed top-0 left-0 bottom-0 z-[70] flex flex-col w-[280px] max-w-[85vw]"
+                        className="absolute top-0 left-0 bottom-0 z-40 flex flex-col w-[280px] max-w-[85vw]"
                         style={{
                           background: "#f8f7f4",
                           borderRight: "1px solid var(--border)",
-                          boxShadow: "4px 0 24px rgba(0,0,0,0.1)",
+                          boxShadow: "4px 0 24px rgba(0,0,0,0.08)",
                         }}
                       >
                         {/* Sidebar header */}
