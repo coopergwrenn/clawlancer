@@ -383,10 +383,12 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="text-sm font-medium">aGDP Marketplace</h3>
                 <span
-                  className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                  className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                   style={{
-                    background: "rgba(249,115,22,0.15)",
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.15))",
                     color: "rgb(249,115,22)",
+                    boxShadow: "0 0 0 1px rgba(249,115,22,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
+                    backdropFilter: "blur(6px)",
                   }}
                 >
                   Beta
