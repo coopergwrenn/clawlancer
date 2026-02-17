@@ -188,10 +188,12 @@ export function WorldIDSection() {
               {({ open }) => (
                 <button
                   onClick={open}
-                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
                   style={{
-                    background: "#ffffff",
+                    background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
                     color: "#000000",
+                    boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                    backdropFilter: "blur(8px)",
                   }}
                 >
                   <WorldLogo className="w-4 h-4" style={{ color: "#000000" }} />
