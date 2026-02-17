@@ -2106,7 +2106,7 @@ export default function CommandCenterPage() {
 
   // Capability toggles (session-scoped)
   const [deepResearchEnabled, setDeepResearchEnabled] = useState(false);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [useMyStyleEnabled, setUseMyStyleEnabled] = useState(false);
 
   // File attachment
