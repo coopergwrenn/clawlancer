@@ -439,39 +439,51 @@ export default function SettingsPage() {
           {/* Confirmation dialog */}
           {agdpConfirm && (
             <div
-              className="mt-4 rounded-lg p-4"
+              className="mt-4 rounded-2xl p-5"
               style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
+                background: "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
+                border: agdpConfirm === "enable"
+                  ? "1px solid rgba(249,115,22,0.2)"
+                  : "1px solid rgba(239,68,68,0.2)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+                backdropFilter: "blur(12px)",
               }}
             >
-              <p className="text-sm mb-3">
+              <p className="text-sm font-medium mb-1">
+                {agdpConfirm === "enable" ? "Enable aGDP?" : "Disable aGDP?"}
+              </p>
+              <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
                 {agdpConfirm === "enable"
-                  ? "Enable aGDP? This will install the Virtuals Protocol Agent Commerce skill on your VM. Clawlancer will remain your primary marketplace."
-                  : "Disable aGDP? This will remove the Agent Commerce skill from your VM."}
+                  ? "This will install the Virtuals Protocol Agent Commerce skill on your VM. Clawlancer remains your primary marketplace."
+                  : "This will remove the Agent Commerce skill from your VM."}
               </p>
               <div className="flex gap-2">
                 <button
-                  onClick={() => handleToggleAgdp(agdpConfirm === "enable")}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                  style={{
-                    background: agdpConfirm === "enable" ? "rgb(249,115,22)" : "rgba(239,68,68,0.1)",
-                    color: agdpConfirm === "enable" ? "#fff" : "#ef4444",
-                    border: agdpConfirm === "enable" ? "none" : "1px solid rgba(239,68,68,0.3)",
-                  }}
-                >
-                  {agdpConfirm === "enable" ? "Enable" : "Disable"}
-                </button>
-                <button
                   onClick={() => setAgdpConfirm(null)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
                   style={{
-                    background: "var(--card)",
-                    border: "1px solid var(--border)",
-                    color: "var(--foreground)",
+                    background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                    color: "#000",
+                    boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                    backdropFilter: "blur(8px)",
                   }}
                 >
                   Cancel
+                </button>
+                <button
+                  onClick={() => handleToggleAgdp(agdpConfirm === "enable")}
+                  className="px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95 cursor-pointer"
+                  style={agdpConfirm === "enable" ? {
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                    color: "#fff",
+                    boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                  } : {
+                    background: "linear-gradient(135deg, rgba(239,68,68,0.85), rgba(220,38,38,0.95))",
+                    color: "#fff",
+                    boxShadow: "0 0 0 1px rgba(239,68,68,0.3), 0 2px 8px rgba(239,68,68,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                  }}
+                >
+                  {agdpConfirm === "enable" ? "Enable" : "Disable"}
                 </button>
               </div>
             </div>
