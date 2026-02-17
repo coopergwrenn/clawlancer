@@ -2151,14 +2151,37 @@ export default function CommandCenterPage() {
   }, [showModelPicker]);
 
   // Lock body scroll when chat tab is active (prevents page-level scroll on mobile)
+  // Uses position:fixed on body — the only reliable way to prevent iOS Safari scrolling
   useEffect(() => {
     if (activeTab === "chat") {
+      const scrollY = window.scrollY;
       window.scrollTo(0, 0);
+
+      // Fix body in place (iOS Safari ignores overflow:hidden during keyboard transitions)
       document.documentElement.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.top = "0";
+      document.body.style.left = "0";
+      document.body.style.right = "0";
+      document.body.style.bottom = "0";
       document.body.style.overflow = "hidden";
+
+      // Reset scroll on keyboard open/close (visualViewport resize)
+      const resetScroll = () => window.scrollTo(0, 0);
+      window.visualViewport?.addEventListener("resize", resetScroll);
+      window.visualViewport?.addEventListener("scroll", resetScroll);
+
       return () => {
         document.documentElement.style.overflow = "";
+        document.body.style.position = "";
+        document.body.style.top = "";
+        document.body.style.left = "";
+        document.body.style.right = "";
+        document.body.style.bottom = "";
         document.body.style.overflow = "";
+        window.visualViewport?.removeEventListener("resize", resetScroll);
+        window.visualViewport?.removeEventListener("scroll", resetScroll);
+        window.scrollTo(0, scrollY);
       };
     }
   }, [activeTab]);
@@ -3127,6 +3150,12 @@ export default function CommandCenterPage() {
                         disabled={isSending}
                         onFocus={() => {
                           // Prevent iOS Safari from scrolling the page when keyboard opens
+                          setTimeout(() => window.scrollTo(0, 0), 50);
+                          setTimeout(() => window.scrollTo(0, 0), 150);
+                          setTimeout(() => window.scrollTo(0, 0), 300);
+                        }}
+                        onBlur={() => {
+                          // Reset scroll when keyboard closes
                           setTimeout(() => window.scrollTo(0, 0), 50);
                         }}
                       />
