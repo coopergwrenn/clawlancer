@@ -3064,59 +3064,73 @@ export default function CommandCenterPage() {
   );
 
   // Toggle indicator pills (shown above input when toggles are active)
+  // Glass pill style matching suggestion chips
+  const glassPillStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,0.6)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
+    border: "1px solid rgba(0,0,0,0.06)",
+    color: "var(--muted)",
+  };
+
   const togglePills = (hasAnyToggle || attachedFile) ? (
-    <div className="flex items-center gap-1.5 pb-1.5 flex-wrap">
+    <div className="flex items-center gap-1.5 pb-1.5 flex-wrap px-1">
       <AnimatePresence>
         {deepResearchEnabled && (
           <motion.span
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-            style={{ background: "rgba(124,58,237,0.1)", color: "#7c3aed" }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+            style={glassPillStyle}
           >
-            <Telescope className="w-3 h-3" />
+            <Telescope className="w-3 h-3" style={{ color: "#7c3aed" }} />
             Deep research
-            <button onClick={() => setDeepResearchEnabled(false)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+            <button onClick={() => setDeepResearchEnabled(false)} className="ml-0.5 cursor-pointer rounded-full p-0.5 transition-colors hover:bg-black/[0.06] active:scale-90"><X className="w-2.5 h-2.5" /></button>
           </motion.span>
         )}
         {webSearchEnabled && (
           <motion.span
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-            style={{ background: "rgba(37,99,235,0.1)", color: "#2563eb" }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+            style={glassPillStyle}
           >
-            <Globe className="w-3 h-3" />
+            <Globe className="w-3 h-3" style={{ color: "#4285F4" }} />
             Web search
-            <button onClick={() => setWebSearchEnabled(false)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+            <button onClick={() => setWebSearchEnabled(false)} className="ml-0.5 cursor-pointer rounded-full p-0.5 transition-colors hover:bg-black/[0.06] active:scale-90"><X className="w-2.5 h-2.5" /></button>
           </motion.span>
         )}
         {useMyStyleEnabled && (
           <motion.span
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-            style={{ background: "rgba(220,103,67,0.1)", color: "var(--accent)" }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+            style={glassPillStyle}
           >
-            <Pencil className="w-3 h-3" />
+            <Pencil className="w-3 h-3" style={{ color: "var(--accent)" }} />
             My style
-            <button onClick={() => setUseMyStyleEnabled(false)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+            <button onClick={() => setUseMyStyleEnabled(false)} className="ml-0.5 cursor-pointer rounded-full p-0.5 transition-colors hover:bg-black/[0.06] active:scale-90"><X className="w-2.5 h-2.5" /></button>
           </motion.span>
         )}
         {attachedFile && (
           <motion.span
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-            style={{ background: "rgba(34,197,94,0.1)", color: "#16a34a" }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+            style={glassPillStyle}
           >
-            <FileText className="w-3 h-3" />
+            <FileText className="w-3 h-3" style={{ color: "#34A853" }} />
             <span className="max-w-[120px] truncate">{attachedFile.name}</span>
-            <button onClick={() => setAttachedFile(null)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+            <button onClick={() => setAttachedFile(null)} className="ml-0.5 cursor-pointer rounded-full p-0.5 transition-colors hover:bg-black/[0.06] active:scale-90"><X className="w-2.5 h-2.5" /></button>
           </motion.span>
         )}
       </AnimatePresence>
