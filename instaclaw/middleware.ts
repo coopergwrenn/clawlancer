@@ -19,7 +19,12 @@ export default auth((req) => {
   const isAuthenticated = !!req.auth?.user;
 
   // --- Protected page routes: redirect to sign-in if unauthenticated ---
-  const protectedPages = ["/dashboard", "/settings", "/billing", "/admin"];
+  // NOTE: Pages under the (dashboard) route group resolve WITHOUT the group
+  // prefix (e.g. /tasks, not /dashboard/tasks). Each must be listed here.
+  const protectedPages = [
+    "/dashboard", "/settings", "/billing", "/admin",
+    "/tasks", "/history", "/files", "/scheduled", "/env-vars",
+  ];
   const isProtectedPage = protectedPages.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
@@ -73,6 +78,11 @@ export const config = {
     "/settings/:path*",
     "/billing/:path*",
     "/admin/:path*",
+    "/tasks/:path*",
+    "/history/:path*",
+    "/files/:path*",
+    "/scheduled/:path*",
+    "/env-vars/:path*",
     "/api/((?!auth|_next).*)",
   ],
 };

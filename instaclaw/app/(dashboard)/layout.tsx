@@ -79,7 +79,13 @@ export default function DashboardLayout({
     }
   }, [pathname]);
 
-  if (status === "loading" || needsOnboarding) {
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/signin");
+    }
+  }, [status, router]);
+
+  if (status === "loading" || status === "unauthenticated" || needsOnboarding) {
     return null;
   }
 
