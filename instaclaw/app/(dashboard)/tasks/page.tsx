@@ -2758,7 +2758,7 @@ export default function CommandCenterPage() {
 
   return (
     <div
-      className="flex flex-col h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-7.5rem)] -mt-10 sm:mt-0 -mb-12 sm:-mb-16"
+      className="flex flex-col h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-5.5rem)] -mt-10 sm:-mt-8 -mb-12 sm:-mb-16"
       style={chatViewHeight != null ? { height: `${chatViewHeight}px` } : undefined}
     >
       {/* ── Static header (never scrolls) ───────────────────── */}
@@ -3121,7 +3121,7 @@ export default function CommandCenterPage() {
                     className="shrink-0 px-3 pt-2"
                     style={{
                       background: "linear-gradient(to top, #f8f7f4 80%, transparent)",
-                      paddingBottom: "max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))",
+                      paddingBottom: "max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))",
                     }}
                   >
                     {/* Quick action chips — show when not typing and not sending */}
