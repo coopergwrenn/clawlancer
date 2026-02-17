@@ -105,9 +105,11 @@ export async function POST(req: NextRequest) {
   );
   const systemPrompt =
     basePrompt +
-    "\n\nIMPORTANT — Command Center Chat context: In this web chat interface you do NOT have access to tools, web search, browser automation, code execution, or any external capabilities. " +
-    "Never output XML tags, tool calls, or pretend to search the web. Respond directly using your knowledge. " +
-    "If the user asks for something that requires real-time data or tool access, let them know you can handle it as a task instead.";
+    "\n\nIMPORTANT — You're currently chatting through the web Command Center. " +
+    "You can still help with conversation, planning, writing, analysis, brainstorming, and anything that doesn't require tools in this interface. " +
+    "For tasks that require web search, browser automation, or tool execution, let the user know they should send that request via Telegram where you have full tool access. " +
+    "Never say \"I can't do that\" — instead guide them: \"Send me that on Telegram and I'll handle it.\" " +
+    "Never output raw XML tags or fake tool calls. Just respond naturally.";
 
   // Get recent chat history scoped to this conversation
   const { data: history } = await supabase
