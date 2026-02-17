@@ -2150,6 +2150,19 @@ export default function CommandCenterPage() {
     }
   }, [showModelPicker]);
 
+  // Lock body scroll when chat tab is active (prevents page-level scroll on mobile)
+  useEffect(() => {
+    if (activeTab === "chat") {
+      window.scrollTo(0, 0);
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.documentElement.style.overflow = "";
+        document.body.style.overflow = "";
+      };
+    }
+  }, [activeTab]);
+
   async function handleModelChange(newModel: string) {
     setUpdatingModel(true);
     setShowModelPicker(false);
@@ -2705,7 +2718,7 @@ export default function CommandCenterPage() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-3.75rem)] sm:h-[calc(100dvh-7.5rem)] -mt-10 sm:mt-0 -mb-12 sm:-mb-16">
+    <div className="flex flex-col h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-7.5rem)] -mt-10 sm:mt-0 -mb-12 sm:-mb-16">
       {/* ── Static header (never scrolls) ───────────────────── */}
       <div className="shrink-0">
         <h1
