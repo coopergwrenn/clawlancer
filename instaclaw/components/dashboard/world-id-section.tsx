@@ -129,98 +129,116 @@ export function WorldIDSection() {
         <Shield className="w-5 h-5" /> Human Verification
       </h2>
       <div
-        className="glass rounded-xl p-5 space-y-4"
+        className="glass rounded-2xl p-6 overflow-hidden relative"
         style={{
-          border: "1px solid rgba(234,179,8,0.3)",
-          background: "rgba(234,179,8,0.03)",
+          border: "1px solid var(--border)",
+          background: "linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
         }}
       >
-        <div>
-          <p className="text-sm font-semibold mb-1">Prove you&apos;re human, unlock more business.</p>
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
+        {/* Header */}
+        <div className="mb-5">
+          <p className="text-base font-semibold tracking-[-0.3px] mb-1">
+            Prove you&apos;re human, unlock more business.
+          </p>
+          <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
             Agents backed by World ID verified humans get more trust, more visibility, and more opportunities.
           </p>
         </div>
 
-        <div className="space-y-1.5">
-          <p className="text-xs flex items-center gap-2">
-            <Shield className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--muted)" }} />
-            <span style={{ color: "var(--muted)" }}>Higher trust scores on the marketplace</span>
-          </p>
-          <p className="text-xs flex items-center gap-2">
-            <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--muted)" }} />
-            <span style={{ color: "var(--muted)" }}>Priority visibility in search results</span>
-          </p>
-          <p className="text-xs flex items-center gap-2">
-            <Award className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--muted)" }} />
-            <span style={{ color: "var(--muted)" }}>Access to premium bounties that require verified agents</span>
-          </p>
-          <p className="text-xs flex items-center gap-2">
-            <Globe className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--muted)" }} />
-            <span style={{ color: "var(--muted)" }}>A verified badge on your agent&apos;s public profile</span>
-          </p>
-        </div>
-
-        <p className="text-xs" style={{ color: "var(--muted)" }}>
-          World ID uses zero-knowledge proofs — we never see your personal data. You just prove you&apos;re a unique human.
-        </p>
-
-        {status && status.total_verified_count > 0 && (
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            {status.total_verified_count} agent owner{status.total_verified_count !== 1 ? "s have" : " has"} already verified
-          </p>
-        )}
-
-        <div>
-          {verifying ? (
-            <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Verifying with World ID...
-            </div>
-          ) : (
-            <IDKitWidget
-              app_id={appId as `app_${string}`}
-              action="verify-instaclaw-agent"
-              signal={status?.userId}
-              verification_level={VerificationLevel.Orb}
-              onSuccess={handleVerify}
+        {/* Benefits grid */}
+        <div className="grid grid-cols-2 gap-2.5 mb-5">
+          {[
+            { icon: Shield, text: "Higher trust scores" },
+            { icon: Search, text: "Priority search visibility" },
+            { icon: Award, text: "Premium bounty access" },
+            { icon: Globe, text: "Verified profile badge" },
+          ].map(({ icon: Icon, text }) => (
+            <div
+              key={text}
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+              style={{
+                background: "linear-gradient(135deg, rgba(0,0,0,0.03), rgba(0,0,0,0.015))",
+                border: "1px solid rgba(0,0,0,0.05)",
+              }}
             >
-              {({ open }) => (
-                <button
-                  onClick={open}
-                  className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
-                  style={{
-                    background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
-                    color: "#000000",
-                    boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
-                    backdropFilter: "blur(8px)",
-                  }}
-                >
-                  <WorldLogo className="w-4 h-4" style={{ color: "#000000" }} />
-                  Verify with World ID
-                </button>
-              )}
-            </IDKitWidget>
-          )}
-
-          {error && (
-            <p className="text-xs mt-2" style={{ color: "var(--error)" }}>
-              {error}
-            </p>
-          )}
+              <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--foreground)" }} />
+              <span className="text-xs font-medium">{text}</span>
+            </div>
+          ))}
         </div>
 
-        <p className="text-xs" style={{ color: "var(--muted)" }}>
-          Don&apos;t have World App?{" "}
-          <a
-            href="https://worldcoin.org/download"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-          >
-            Download it here
-          </a>
-        </p>
+        {/* Privacy note */}
+        <div
+          className="rounded-xl px-3.5 py-2.5 mb-5"
+          style={{
+            background: "linear-gradient(135deg, rgba(0,0,0,0.025), rgba(0,0,0,0.01))",
+            border: "1px solid rgba(0,0,0,0.04)",
+          }}
+        >
+          <p className="text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
+            World ID uses zero-knowledge proofs — we never see your personal data. You just prove you&apos;re a unique human.
+          </p>
+        </div>
+
+        {/* CTA section */}
+        <div className="flex items-center justify-between">
+          <div>
+            {verifying ? (
+              <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Verifying...
+              </div>
+            ) : (
+              <IDKitWidget
+                app_id={appId as `app_${string}`}
+                action="verify-instaclaw-agent"
+                signal={status?.userId}
+                verification_level={VerificationLevel.Orb}
+                onSuccess={handleVerify}
+              >
+                {({ open }) => (
+                  <button
+                    onClick={open}
+                    className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                      color: "#000000",
+                      boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                      backdropFilter: "blur(8px)",
+                    }}
+                  >
+                    <WorldLogo className="w-4 h-4" style={{ color: "#000000" }} />
+                    Verify with World ID
+                  </button>
+                )}
+              </IDKitWidget>
+            )}
+
+            {error && (
+              <p className="text-xs mt-2" style={{ color: "var(--error)" }}>
+                {error}
+              </p>
+            )}
+          </div>
+
+          <div className="text-right">
+            {status && status.total_verified_count > 0 && (
+              <p className="text-[11px] font-medium mb-1" style={{ color: "var(--muted)" }}>
+                {status.total_verified_count} owner{status.total_verified_count !== 1 ? "s" : ""} verified
+              </p>
+            )}
+            <a
+              href="https://worldcoin.org/download"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] transition-colors"
+              style={{ color: "var(--muted)", textDecoration: "underline", textUnderlineOffset: "2px" }}
+            >
+              Get World App
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );
