@@ -51,7 +51,7 @@ const POLL_INTERVAL = 30_000;
 // ── Helpers ─────────────────────────────────────────
 
 function relativeTime(iso: string | null): string {
-  if (!iso) return "Never";
+  if (!iso) return "—";
   const diff = Date.now() - new Date(iso).getTime();
   if (diff < 0) return "Just now";
   const mins = Math.floor(diff / 60_000);
@@ -63,7 +63,7 @@ function relativeTime(iso: string | null): string {
 }
 
 function countdown(iso: string | null): string {
-  if (!iso) return "--";
+  if (!iso) return "—";
   const diff = new Date(iso).getTime() - Date.now();
   if (diff <= 0) return "Soon";
   const mins = Math.floor(diff / 60_000);
@@ -75,19 +75,12 @@ function countdown(iso: string | null): string {
 
 // ── Heart SVG ───────────────────────────────────────
 
-function HeartIcon({
-  color,
-  className,
-}: {
-  color: string;
-  className?: string;
-}) {
+function HeartIcon({ color }: { color: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill={color}
-      className={className}
-      style={{ width: 32, height: 32 }}
+      style={{ width: 28, height: 28 }}
     >
       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
     </svg>
@@ -212,12 +205,12 @@ export default function HeartbeatCard() {
   if (loading) {
     return (
       <div
-        className="glass rounded-xl p-5 mb-4"
+        className="glass rounded-xl p-6"
         style={{ border: "1px solid var(--border)" }}
       >
         <div className="flex items-center gap-3">
           <div
-            className="w-8 h-8 rounded-full animate-pulse"
+            className="w-7 h-7 rounded-full animate-pulse"
             style={{ background: "var(--border)" }}
           />
           <div
@@ -231,9 +224,14 @@ export default function HeartbeatCard() {
 
   if (!data) return null;
 
+  const creditsPercent = Math.min(
+    100,
+    (data.creditsUsedToday / data.bufferTotal) * 100
+  );
+
   return (
     <div
-      className="glass rounded-xl overflow-hidden relative mb-4"
+      className="glass rounded-xl overflow-hidden relative"
       style={{ border: "1px solid var(--border)" }}
     >
       {/* Toast */}
@@ -243,7 +241,7 @@ export default function HeartbeatCard() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="absolute top-2 right-2 z-10 px-3 py-1.5 rounded-lg text-xs font-medium"
+            className="absolute top-3 right-3 z-10 px-3 py-1.5 rounded-lg text-xs font-medium"
             style={{
               background: "var(--foreground)",
               color: "var(--background)",
@@ -254,9 +252,9 @@ export default function HeartbeatCard() {
         )}
       </AnimatePresence>
 
-      <div className="p-4 sm:p-5">
-        {/* ── Header: Heart + Title ── */}
-        <div className="flex items-center gap-3 mb-4">
+      <div className="p-6">
+        {/* ── Header: Heart + Status ── */}
+        <div className="flex items-center gap-3 mb-6">
           <div className="relative flex items-center justify-center">
             {/* Glow ring */}
             {!isPaused && (
@@ -284,34 +282,47 @@ export default function HeartbeatCard() {
             </div>
           </div>
           <div>
-            <h3
-              className="text-sm font-semibold"
+            <p
+              className="text-sm font-medium"
               style={{ color: "var(--foreground)" }}
             >
-              Heartbeat
-            </h3>
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
               {isPaused
                 ? "Paused"
                 : data.healthStatus === "unhealthy"
                   ? "Missed check-in"
-                  : `Every ${data.interval}`}
+                  : `Checking in every ${data.interval}`}
+            </p>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              {isPaused
+                ? "Your agent won't check in until you turn this back on."
+                : data.healthStatus === "unhealthy"
+                  ? "Your agent hasn't checked in for longer than expected."
+                  : "Your agent is waking up on schedule."}
             </p>
           </div>
         </div>
 
         {/* ── Stats Row ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <StatCell label="Last" value={relativeTime(data.lastAt)} />
-          <StatCell label="Next" value={isPaused ? "--" : countdown(data.nextAt)} />
-          <StatCell label="Today" value={`${data.creditsUsedToday}`} />
-          {/* Buffer usage bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <StatCell
+            label="Last check-in"
+            value={relativeTime(data.lastAt)}
+          />
+          <StatCell
+            label="Next check-in"
+            value={isPaused ? "—" : countdown(data.nextAt)}
+          />
+          <StatCell
+            label="Check-ins today"
+            value={`${data.creditsUsedToday}`}
+          />
+          {/* Heartbeat credit pool */}
           <div>
             <p
               className="text-[10px] uppercase tracking-wider mb-1"
               style={{ color: "var(--muted)" }}
             >
-              Buffer
+              Daily pool
             </p>
             <div className="flex items-center gap-2">
               <div
@@ -321,61 +332,83 @@ export default function HeartbeatCard() {
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
-                    width: `${Math.min(100, (data.creditsUsedToday / data.bufferTotal) * 100)}%`,
+                    width: `${creditsPercent}%`,
                     background:
-                      data.creditsUsedToday / data.bufferTotal > 0.8
-                        ? "#ef4444"
-                        : "#DC6743",
+                      creditsPercent > 80 ? "#ef4444" : "#DC6743",
                   }}
                 />
               </div>
               <span
-                className="text-[10px] tabular-nums"
+                className="text-[10px] tabular-nums whitespace-nowrap"
                 style={{ color: "var(--muted)" }}
               >
                 {data.creditsUsedToday}/{data.bufferTotal}
               </span>
             </div>
+            <p
+              className="text-[10px] mt-1"
+              style={{ color: "var(--muted)" }}
+            >
+              Separate from your daily credits
+            </p>
           </div>
         </div>
 
-        {/* ── Interval Pills ── */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {INTERVALS.map((iv) => {
-            const isActive = data.interval === iv;
-            const isLoading = updating === iv;
-            return (
-              <button
-                key={iv}
-                onClick={() => changeInterval(iv)}
-                disabled={!!updating}
-                className="px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer"
-                style={{
-                  background: isActive
-                    ? "var(--foreground)"
-                    : "rgba(0,0,0,0.04)",
-                  color: isActive
-                    ? "var(--background)"
-                    : "var(--muted)",
-                  border: isActive
-                    ? "1px solid var(--foreground)"
-                    : "1px solid var(--border)",
-                  opacity: isLoading ? 0.5 : 1,
-                }}
-              >
-                {isLoading ? "..." : INTERVAL_LABELS[iv]}
-                {isActive && !isLoading ? " \u2713" : ""}
-              </button>
-            );
-          })}
+        {/* ── Frequency Section ── */}
+        <div className="mb-6">
+          <p
+            className="text-xs font-medium mb-2"
+            style={{ color: "var(--foreground)" }}
+          >
+            Frequency
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {INTERVALS.map((iv) => {
+              const isActive = data.interval === iv;
+              const isLoading = updating === iv;
+              return (
+                <button
+                  key={iv}
+                  onClick={() => changeInterval(iv)}
+                  disabled={!!updating}
+                  className="px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer"
+                  style={{
+                    background: isActive
+                      ? "var(--foreground)"
+                      : "rgba(0,0,0,0.04)",
+                    color: isActive ? "var(--background)" : "var(--muted)",
+                    border: isActive
+                      ? "1px solid var(--foreground)"
+                      : "1px solid var(--border)",
+                    opacity: isLoading ? 0.5 : 1,
+                  }}
+                >
+                  {isLoading ? "..." : INTERVAL_LABELS[iv]}
+                  {isActive && !isLoading ? " \u2713" : ""}
+                </button>
+              );
+            })}
+          </div>
+          <p
+            className="text-xs mt-2"
+            style={{ color: "var(--muted)" }}
+          >
+            More frequent = more responsive, but uses more of your daily pool.
+          </p>
         </div>
 
-        {/* ── NL Mini-Chat ── */}
+        {/* ── NL Config ── */}
         <div>
+          <p
+            className="text-xs font-medium mb-2"
+            style={{ color: "var(--foreground)" }}
+          >
+            Or just tell your agent
+          </p>
           <div
             className="flex items-center gap-2 rounded-lg px-3 py-2"
             style={{
-              background: "rgba(0,0,0,0.02)",
+              background: "var(--card)",
               border: "1px solid var(--border)",
             }}
           >
@@ -392,9 +425,7 @@ export default function HeartbeatCard() {
               placeholder={HINT_EXAMPLES[hintIdx]}
               disabled={nlSending}
               className="flex-1 bg-transparent text-sm outline-none"
-              style={{
-                color: "var(--foreground)",
-              }}
+              style={{ color: "var(--foreground)" }}
             />
             <button
               onClick={sendNlConfig}
