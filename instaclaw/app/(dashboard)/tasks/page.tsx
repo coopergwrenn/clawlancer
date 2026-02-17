@@ -2792,6 +2792,11 @@ export default function CommandCenterPage() {
           body: JSON.stringify({
             message: augmented + fileRef,
             conversation_id: convId,
+            toggles: {
+              deepResearch: deepResearchEnabled,
+              webSearch: webSearchEnabled,
+              styleMatch: useMyStyleEnabled,
+            },
           }),
         });
 

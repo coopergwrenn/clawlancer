@@ -32,10 +32,14 @@ export async function POST(req: NextRequest) {
 
   let message: string;
   let conversationId: string | undefined;
+  let toggles: { deepResearch?: boolean; webSearch?: boolean; styleMatch?: boolean } = {};
   try {
     const body = await req.json();
     message = body.message;
     conversationId = body.conversation_id;
+    if (body.toggles && typeof body.toggles === "object") {
+      toggles = body.toggles;
+    }
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -95,21 +99,46 @@ export async function POST(req: NextRequest) {
     .eq("id", session.user.id)
     .single();
 
-  // Build system prompt — append Command Center chat constraint
-  // (the shared prompt mentions tools that only exist on the VM via Telegram)
+  // Build system prompt — dynamic based on active toggles
   const basePrompt = buildSystemPrompt(
     vm.system_prompt,
     user?.name,
     user?.gmail_profile_summary,
     user?.gmail_insights
   );
-  const systemPrompt =
-    basePrompt +
-    "\n\nIMPORTANT — You're currently chatting through the web Command Center. " +
-    "You can still help with conversation, planning, writing, analysis, brainstorming, and anything that doesn't require tools in this interface. " +
-    "For tasks that require web search, browser automation, or tool execution, let the user know they should send that request via Telegram where you have full tool access. " +
-    "Never say \"I can't do that\" — instead guide them: \"Send me that on Telegram and I'll handle it.\" " +
-    "Never output raw XML tags or fake tool calls. Just respond naturally.";
+
+  const hasActiveToggles = toggles.deepResearch || toggles.webSearch || toggles.styleMatch;
+
+  let commandCenterSuffix = "\n\nIMPORTANT — You're currently chatting through the web Command Center.";
+
+  if (hasActiveToggles) {
+    // When toggles are active, tell the agent it has enhanced capabilities for this message
+    const activeCapabilities: string[] = [];
+    if (toggles.deepResearch) {
+      activeCapabilities.push("Deep Research (perform thorough, multi-step research — break questions down, explore broadly, cross-reference, and provide comprehensive answers with citations)");
+    }
+    if (toggles.webSearch) {
+      activeCapabilities.push("Web Search (search the web for current, up-to-date information — prioritize recent and authoritative sources)");
+    }
+    if (toggles.styleMatch) {
+      activeCapabilities.push("Style Match (match the user's personal writing style based on their email patterns and previous messages)");
+    }
+    commandCenterSuffix +=
+      " The user has enabled the following capabilities for this message: " +
+      activeCapabilities.join("; ") + ". " +
+      "Act on these capabilities fully — you have permission and are expected to use them. " +
+      "For any additional tools not currently enabled (like browser automation), suggest the user enable them via the + menu or send the request via Telegram.";
+  } else {
+    // Default: no toggles active — guide to Telegram for tool-heavy tasks
+    commandCenterSuffix +=
+      " You can help with conversation, planning, writing, analysis, brainstorming, and anything that doesn't require tools in this interface. " +
+      "For tasks that require web search, deep research, or tool execution, let the user know they can either enable those capabilities using the + button next to the input, or send the request via Telegram where you have full tool access. " +
+      "Never say \"I can't do that\" — instead guide them: \"You can enable Web Search or Deep Research from the + menu, or send me that on Telegram for full tool access.\"";
+  }
+
+  commandCenterSuffix += " Never output raw XML tags or fake tool calls. Just respond naturally.";
+
+  const systemPrompt = basePrompt + commandCenterSuffix;
 
   // Get recent chat history scoped to this conversation
   const { data: history } = await supabase
