@@ -439,18 +439,7 @@ export default function HeartbeatCard() {
             </div>
 
             {/* Precision slider */}
-            <div className="relative">
-              {/* Filled track */}
-              <div
-                className="absolute top-1/2 left-0 h-1.5 rounded-full pointer-events-none"
-                style={{
-                  width: `${((sliderValue - 0.5) / 11.5) * 100}%`,
-                  transform: "translateY(-50%)",
-                  background: "linear-gradient(90deg, #DC6743, #c2553a)",
-                  transition: sliderDragging ? "none" : "width 0.3s ease",
-                  zIndex: 1,
-                }}
-              />
+            <div>
               <input
                 type="range"
                 min={0.5}
@@ -464,19 +453,18 @@ export default function HeartbeatCard() {
                 onMouseUp={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
                 onTouchEnd={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
                 disabled={!!updating || isPaused}
-                className="hb-slider relative"
+                className="hb-slider"
                 style={{
-                  zIndex: 2,
-                  opacity: isPaused ? 0.4 : 1,
+                  background: `linear-gradient(to right, #DC6743 0%, #c2553a ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) 100%)`,
                 }}
               />
               {/* Scale labels */}
-              <div className="flex justify-between mt-1.5 px-0.5">
+              <div className="flex justify-between mt-1 px-0.5">
                 {["0.5h", "3h", "6h", "9h", "12h"].map((label) => (
                   <span
                     key={label}
                     className="text-[9px] tabular-nums"
-                    style={{ color: "var(--muted)", opacity: 0.6 }}
+                    style={{ color: "var(--muted)", opacity: 0.5 }}
                   >
                     {label}
                   </span>
