@@ -2143,8 +2143,10 @@ export default function CommandCenterPage() {
 
   // Fetch personalized quick action suggestions
   const [isRefreshingChips, setIsRefreshingChips] = useState(false);
+  const [chipsJustRefreshed, setChipsJustRefreshed] = useState(false);
   const refreshChips = useCallback(async () => {
     setIsRefreshingChips(true);
+    setChipsJustRefreshed(false);
     try {
       const res = await fetch("/api/tasks/suggestions");
       const data = await res.json();
@@ -2153,6 +2155,8 @@ export default function CommandCenterPage() {
       // Non-fatal
     } finally {
       setIsRefreshingChips(false);
+      setChipsJustRefreshed(true);
+      setTimeout(() => setChipsJustRefreshed(false), 600);
     }
   }, []);
 
@@ -3175,18 +3179,25 @@ export default function CommandCenterPage() {
                     {/* Quick action chips — show when not typing and not sending */}
                     {!isSending && !chatInput.trim() && (
                       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: "none" }}>
-                        {chips.slice(0, 4).map((a) => (
+                        {chips.slice(0, 4).map((a, i) => (
                           <button
                             key={a.label}
                             onClick={() => handleChipClick(a.prefill)}
                             className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.97]"
                             style={{
-                              background: "rgba(255,255,255,0.6)",
+                              background: isRefreshingChips
+                                ? "linear-gradient(to top, rgba(220,103,67,0.1), rgba(255,180,120,0.05), rgba(255,255,255,0.6)) no-repeat"
+                                : "rgba(255,255,255,0.6)",
+                              backgroundSize: isRefreshingChips ? "100% 200%" : undefined,
                               backdropFilter: "blur(8px)",
-                              boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                              border: "1px solid rgba(0,0,0,0.06)",
+                              border: isRefreshingChips ? "1px solid rgba(220,103,67,0.15)" : "1px solid rgba(0,0,0,0.06)",
                               color: "var(--foreground)",
                               whiteSpace: "nowrap",
+                              animation: isRefreshingChips
+                                ? `chip-fill 0.8s ease-out ${i * 0.1}s forwards, chip-glow 0.8s ease-out ${i * 0.1}s forwards`
+                                : chipsJustRefreshed
+                                  ? `chip-fade-in 0.4s ease-out ${i * 0.08}s both`
+                                  : undefined,
                             }}
                           >
                             {a.label}
@@ -3195,18 +3206,21 @@ export default function CommandCenterPage() {
                         <button
                           onClick={refreshChips}
                           disabled={isRefreshingChips}
-                          className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:opacity-40"
+                          className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:cursor-default"
                           style={{
                             background: "rgba(255,255,255,0.5)",
                             backdropFilter: "blur(8px)",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                            border: "1px solid rgba(0,0,0,0.06)",
+                            border: isRefreshingChips ? "1px solid rgba(220,103,67,0.2)" : "1px solid rgba(0,0,0,0.06)",
+                            animation: isRefreshingChips ? "refresh-glow 1s ease-in-out infinite" : undefined,
                           }}
                           title="Refresh suggestions"
                         >
                           <RotateCw
                             className="w-3 h-3"
-                            style={{ color: "var(--muted)", animation: isRefreshingChips ? "spin 0.8s linear infinite" : undefined }}
+                            style={{
+                              color: isRefreshingChips ? "var(--accent)" : "var(--muted)",
+                              animation: isRefreshingChips ? "refresh-spin 0.7s linear infinite" : undefined,
+                            }}
                           />
                         </button>
                       </div>
@@ -3327,16 +3341,23 @@ export default function CommandCenterPage() {
             className="flex items-center gap-1.5 overflow-x-auto pb-2 px-1"
             style={{ scrollbarWidth: "none" }}
           >
-            {chips.map((action) => (
+            {chips.map((action, i) => (
               <button
                 key={action.label}
                 onClick={() => handleChipClick(action.prefill)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
                 style={{
-                  background: "rgba(255,255,255,0.45)",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
-                  border: "1px solid rgba(0,0,0,0.06)",
+                  background: isRefreshingChips
+                    ? "linear-gradient(to top, rgba(220,103,67,0.1), rgba(255,180,120,0.05), rgba(255,255,255,0.45)) no-repeat"
+                    : "rgba(255,255,255,0.45)",
+                  backgroundSize: isRefreshingChips ? "100% 200%" : undefined,
+                  border: isRefreshingChips ? "1px solid rgba(220,103,67,0.15)" : "1px solid rgba(0,0,0,0.06)",
                   color: "var(--muted)",
+                  animation: isRefreshingChips
+                    ? `chip-fill 0.8s ease-out ${i * 0.1}s forwards, chip-glow 0.8s ease-out ${i * 0.1}s forwards`
+                    : chipsJustRefreshed
+                      ? `chip-fade-in 0.4s ease-out ${i * 0.08}s both`
+                      : undefined,
                 }}
               >
                 {action.label}
@@ -3345,18 +3366,21 @@ export default function CommandCenterPage() {
             <button
               onClick={refreshChips}
               disabled={isRefreshingChips}
-              className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:opacity-40"
+              className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:cursor-default"
               style={{
                 background: "rgba(255,255,255,0.5)",
                 backdropFilter: "blur(8px)",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                border: "1px solid rgba(0,0,0,0.06)",
+                border: isRefreshingChips ? "1px solid rgba(220,103,67,0.2)" : "1px solid rgba(0,0,0,0.06)",
+                animation: isRefreshingChips ? "refresh-glow 1s ease-in-out infinite" : undefined,
               }}
               title="Refresh suggestions"
             >
               <RotateCw
                 className="w-3 h-3"
-                style={{ color: "var(--muted)", animation: isRefreshingChips ? "spin 0.8s linear infinite" : undefined }}
+                style={{
+                  color: isRefreshingChips ? "var(--accent)" : "var(--muted)",
+                  animation: isRefreshingChips ? "refresh-spin 0.7s linear infinite" : undefined,
+                }}
               />
             </button>
           </div>
