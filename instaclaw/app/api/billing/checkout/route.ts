@@ -11,10 +11,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { tier, apiMode, trial } = (await req.json()) as {
+    const { tier, apiMode, trial, cancelUrl } = (await req.json()) as {
       tier: Tier;
       apiMode: ApiMode;
       trial?: boolean;
+      cancelUrl?: string;
     };
 
     if (!["starter", "pro", "power"].includes(tier)) {
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/plan`,
+      cancel_url: cancelUrl ? `${origin}${cancelUrl}` : `${origin}/plan`,
       ...(trial
         ? { subscription_data: { trial_period_days: 3 } }
         : {}),

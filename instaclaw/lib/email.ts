@@ -171,6 +171,14 @@ export function buildInviteEmailHtml(inviteCode: string): string {
     <p style="margin:0;font-family:${font};font-size:14px;color:#cccccc;line-height:1.7;">And here's the wild part: <span style="color:#ffffff;font-weight:600;">it gets smarter every single day</span>. It remembers everything you've told it, learns your preferences, adapts to how you think, and optimizes itself over time. The agent you have in a month will be 10x more powerful than the one you start with today.</p>
   </td></tr>
   </table>
+
+  <!-- WORLD ID CALLOUT -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td style="padding:12px 16px;background-color:#161616;border-radius:8px;">
+    <p style="margin:0 0 6px 0;font-family:${font};font-size:14px;font-weight:700;color:#ffffff;"><img src="data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='%23000000' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M18.1167 1.60446C16.2783 0.53482 14.2727 0 12.1 0C9.92731 0 7.92173 0.53482 6.08329 1.60446C4.24485 2.6741 2.7741 4.14485 1.70446 5.98329C0.634826 7.82173 0.100006 9.8273 0.100006 12C0.100006 14.1727 0.634826 16.1783 1.70446 18.0167C2.7741 19.8552 4.24485 21.3259 6.08329 22.3955C7.92173 23.4652 9.92731 24 12.1 24C14.2727 24 16.2783 23.4652 18.1167 22.3955C19.9552 21.3259 21.4259 19.8552 22.4956 18.0167C23.5652 16.1783 24.1 14.1727 24.1 12C24.1 9.8273 23.5652 7.82173 22.4956 5.98329C21.4259 4.14485 19.9552 2.6741 18.1167 1.60446ZM12.8354 16.3454C11.4649 16.3454 10.3953 15.9443 9.55962 15.1755C8.99137 14.6407 8.62369 14.0056 8.45656 13.2368H21.4259C21.2922 14.3398 20.958 15.376 20.49 16.3454H12.8688H12.8354ZM8.45656 10.7967C8.62369 10.0613 8.99137 9.39276 9.55962 8.85794C10.3953 8.08914 11.4649 7.68802 12.8354 7.68802H20.49C20.9914 8.65738 21.2922 9.6936 21.4259 10.7967H8.45656ZM3.97744 7.22006C4.8131 5.78273 5.94959 4.61282 7.38691 3.77716C8.82424 2.94151 10.3953 2.50696 12.1334 2.50696C13.8716 2.50696 15.4426 2.94151 16.88 3.77716C17.6153 4.2117 18.2504 4.71309 18.8521 5.31476H12.802C11.4315 5.31476 10.1947 5.6156 9.12508 6.18385C8.05544 6.75209 7.21978 7.55432 6.65154 8.55711C6.25042 9.25906 5.98302 10.0279 5.84931 10.8301H2.87438C3.00809 9.55989 3.4092 8.35655 4.0443 7.25348L3.97744 7.22006ZM16.8465 20.2228C15.4092 21.0585 13.8382 21.493 12.1 21.493C10.3618 21.493 8.79082 21.0585 7.35349 20.2228C5.91616 19.3872 4.77967 18.2173 3.94402 16.78C3.30892 15.6769 2.90781 14.507 2.7741 13.2368H5.74903C5.88274 14.039 6.15014 14.8078 6.55126 15.5097C7.15293 16.5125 7.98859 17.2813 9.0248 17.883C10.0944 18.4513 11.3312 18.7521 12.7017 18.7521H18.7184C18.1501 19.3203 17.5151 19.8217 16.8131 20.2228H16.8465Z'/%3E%3C/svg%3E" alt="World ID" width="18" height="18" style="display:inline-block;vertical-align:middle;margin-right:6px;border:0;" />Verified with World ID</p>
+    <p style="margin:0;font-family:${font};font-size:13px;color:#999;line-height:1.5;">InstaClaw supports World ID verification — prove you're a real human, and your agent gets a verified badge. As AI agents become economic actors, proof of humanity is everything. We're building on World ID so your agent carries the trust it deserves.</p>
+  </td></tr>
+  </table>
 </td></tr>
 
 <!-- DIVIDER -->
@@ -428,7 +436,7 @@ export async function sendCanceledEmail(email: string): Promise<void> {
         <p style="color: #888; line-height: 1.6;">
           Your InstaClaw subscription has been canceled and your OpenClaw instance has been deactivated. If this was a mistake, you can re-subscribe at any time.
         </p>
-        <a href="${process.env.NEXTAUTH_URL}/signup" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        <a href="${process.env.NEXTAUTH_URL}/billing" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Re-subscribe
         </a>
       </div>
