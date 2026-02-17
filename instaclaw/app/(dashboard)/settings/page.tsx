@@ -384,12 +384,13 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="text-sm font-medium">Clawlancer</h3>
                 <span
-                  className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                  className="text-[10px] px-2.5 py-1 rounded-full font-semibold"
                   style={{
-                    background: "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(22,163,74,0.15))",
+                    background: "linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.18))",
                     color: "rgb(34,197,94)",
-                    boxShadow: "0 0 0 1px rgba(34,197,94,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
-                    backdropFilter: "blur(6px)",
+                    boxShadow: "0 0 0 1px rgba(34,197,94,0.25), 0 2px 6px rgba(34,197,94,0.12), inset 0 1px 0 rgba(255,255,255,0.15)",
+                    backdropFilter: "blur(8px)",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.06)",
                   }}
                 >
                   Primary
