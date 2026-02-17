@@ -574,3 +574,10 @@ html.lenis body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Shimmer bar for slider loading state */
+@keyframes hb-shimmer {
+  0%   { width: 20%; opacity: 0.4; }
+  50%  { width: 80%; opacity: 1; }
+  100% { width: 20%; opacity: 0.4; }
+}

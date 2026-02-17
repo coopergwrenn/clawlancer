@@ -469,58 +469,56 @@ export default function HeartbeatCard() {
 
             {/* Precision slider */}
             <div className="relative">
-              {/* Updating shimmer overlay */}
-              {updating && (
+              {updating ? (
+                /* Clean shimmer bar replacing slider during SSH update */
                 <div
-                  className="absolute inset-0 z-10 rounded-lg flex items-center justify-center pointer-events-none"
-                  style={{
-                    background: "rgba(0,0,0,0.5)",
-                    backdropFilter: "blur(1px)",
-                  }}
+                  className="h-[6px] rounded-full overflow-hidden my-[15px]"
+                  style={{ background: "rgba(0,0,0,0.06)" }}
                 >
-                  <span
-                    className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                  <div
+                    className="h-full rounded-full"
                     style={{
-                      color: "#DC6743",
-                      background: "rgba(220,103,67,0.08)",
-                      border: "1px solid rgba(220,103,67,0.15)",
+                      width: "60%",
+                      background: "linear-gradient(90deg, #DC6743, #c2553a)",
+                      animation: "hb-shimmer 1.5s ease-in-out infinite",
                     }}
-                  >
-                    Applying via SSH…
-                  </span>
+                  />
                 </div>
+              ) : (
+              <>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={12}
+                  step={0.1}
+                  value={sliderValue}
+                  onChange={(e) => {
+                    setSliderValue(parseFloat(e.target.value));
+                    setSliderDragging(true);
+                    skipSliderSyncRef.current = true;
+                  }}
+                  onMouseUp={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
+                  onTouchEnd={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
+                  disabled={isPaused}
+                  className="hb-slider"
+                  style={{
+                    background: `linear-gradient(to right, #DC6743 0%, #c2553a ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) 100%)`,
+                  }}
+                />
+                {/* Scale labels */}
+                <div className="flex justify-between mt-1 px-0.5">
+                  {["0.5h", "3h", "6h", "9h", "12h"].map((label) => (
+                    <span
+                      key={label}
+                      className="text-[9px] tabular-nums"
+                      style={{ color: "var(--muted)", opacity: 0.5 }}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </>
               )}
-              <input
-                type="range"
-                min={0.5}
-                max={12}
-                step={0.1}
-                value={sliderValue}
-                onChange={(e) => {
-                  setSliderValue(parseFloat(e.target.value));
-                  setSliderDragging(true);
-                  skipSliderSyncRef.current = true;
-                }}
-                onMouseUp={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
-                onTouchEnd={(e) => commitSlider(parseFloat((e.target as HTMLInputElement).value))}
-                disabled={!!updating || isPaused}
-                className="hb-slider"
-                style={{
-                  background: `linear-gradient(to right, #DC6743 0%, #c2553a ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) 100%)`,
-                }}
-              />
-              {/* Scale labels */}
-              <div className="flex justify-between mt-1 px-0.5">
-                {["0.5h", "3h", "6h", "9h", "12h"].map((label) => (
-                  <span
-                    key={label}
-                    className="text-[9px] tabular-nums"
-                    style={{ color: "var(--muted)", opacity: 0.5 }}
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
             </div>
 
             <p className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>
