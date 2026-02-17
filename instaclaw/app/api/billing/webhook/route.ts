@@ -255,6 +255,21 @@ async function processEvent(event: any) {
           .update({ status: "canceled", payment_status: "current" })
           .eq("user_id", sub.user_id);
 
+        // Stamp the VM with last_assigned_to so we can find it for future migration
+        // if the user re-subscribes and gets a different VM
+        const { data: userVm } = await supabase
+          .from("instaclaw_vms")
+          .select("id")
+          .eq("assigned_to", sub.user_id)
+          .single();
+
+        if (userVm) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ last_assigned_to: sub.user_id })
+            .eq("id", userVm.id);
+        }
+
         // Reclaim the VM
         await supabase.rpc("instaclaw_reclaim_vm", {
           p_user_id: sub.user_id,

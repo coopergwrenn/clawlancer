@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { configureOpenClaw, waitForHealth } from "@/lib/ssh";
+import { configureOpenClaw, waitForHealth, migrateUserData } from "@/lib/ssh";
 import { validateAdminKey } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail } from "@/lib/email";
 
-// SSH + configure-vm.sh + health check can take 60-90s
-export const maxDuration = 120;
+// SSH + configure-vm.sh + health check + optional data migration can take 60-150s
+export const maxDuration = 180;
 
 export async function POST(req: NextRequest) {
   // This endpoint is called internally by the billing webhook and cron jobs.
@@ -147,6 +147,43 @@ export async function POST(req: NextRequest) {
       .from("instaclaw_pending_users")
       .delete()
       .eq("user_id", userId);
+
+    // ── Migrate user data from previous VM (best-effort) ──
+    // If the user previously had a VM (cancelled + re-subscribed), copy their
+    // workspace, sessions, media, and subagents to the new VM.
+    const { data: previousVm } = await supabase
+      .from("instaclaw_vms")
+      .select("id, ip_address, ssh_port, ssh_user")
+      .eq("last_assigned_to", userId)
+      .neq("id", vm.id)
+      .limit(1)
+      .single();
+
+    if (previousVm) {
+      try {
+        const migrationResult = await migrateUserData(previousVm, vm);
+        logger.info("User data migrated from previous VM", {
+          route: "vm/configure",
+          userId,
+          sourceVm: previousVm.id,
+          targetVm: vm.id,
+          ...migrationResult,
+        });
+        // Clear last_assigned_to after successful migration
+        await supabase
+          .from("instaclaw_vms")
+          .update({ last_assigned_to: null })
+          .eq("id", previousVm.id);
+      } catch (migErr) {
+        logger.error("Migration failed (non-blocking)", {
+          route: "vm/configure",
+          userId,
+          sourceVm: previousVm.id,
+          targetVm: vm.id,
+          error: String(migErr),
+        });
+      }
+    }
 
     // ── Quick health check (3 attempts × 3s = 9s max) ──
     // If the gateway comes up fast, the user sees instant completion.
