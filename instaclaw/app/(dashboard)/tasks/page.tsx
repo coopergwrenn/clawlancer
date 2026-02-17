@@ -2515,6 +2515,15 @@ export default function CommandCenterPage() {
     prevMsgCount.current = chatMessages.length;
   }, [chatMessages.length, activeTab, scrollToBottom]);
 
+  // Auto-scroll: during streaming → scroll as new content arrives
+  const streamingContent = chatMessages.find((m) => m.isStreaming)?.content ?? "";
+  useEffect(() => {
+    if (activeTab === "chat" && streamingContent) {
+      const el = chatScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+  }, [activeTab, streamingContent]);
+
   // ─── Conversation actions ─────────────────────────────
 
   const createNewConversation = useCallback(() => {
