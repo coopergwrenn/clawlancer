@@ -62,7 +62,7 @@ for vm in json.load(sys.stdin):
 " | while IFS='|' read -r VM_ID VM_IP VM_PORT VM_USER VM_NAME; do
   echo "[$VM_NAME] $VM_IP — updating heartbeat to 3h..."
 
-  RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
+  RESULT=$(ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
     -i "$SSH_KEY_FILE" -p "$VM_PORT" "${VM_USER}@${VM_IP}" \
     "${NVM_PREAMBLE} && openclaw config set agents.defaults.heartbeat.every 3h && echo HEARTBEAT_UPDATED" 2>/dev/null || true)
 
