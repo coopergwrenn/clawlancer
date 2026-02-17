@@ -478,8 +478,14 @@ export default function DashboardPage() {
                       }, 100);
                     }
                   }}
-                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer shrink-0"
-                  style={{ background: "var(--accent)", color: "#fff" }}
+                  className="px-5 py-2.5 rounded-full text-sm font-semibold transition-all cursor-pointer shrink-0 active:scale-95"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                    color: "#fff",
+                    boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                    backdropFilter: "blur(8px)",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.15)",
+                  }}
                 >
                   Buy Credits
                 </button>
