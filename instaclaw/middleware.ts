@@ -48,6 +48,7 @@ export default auth((req) => {
     "/api/gateway",
     "/api/waitlist",
     "/api/invite/validate",
+    "/api/invite/store",
     "/api/health",
     "/api/spots",
     "/api/hq",

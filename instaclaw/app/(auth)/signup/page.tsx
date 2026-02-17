@@ -43,7 +43,12 @@ export default function SignupPage() {
   }
 
   async function handleGoogleSignIn() {
-    document.cookie = `instaclaw_invite_code=${encodeURIComponent(code)}; path=/; max-age=3600; SameSite=Lax`;
+    // Store invite code in a server-set HttpOnly cookie (survives OAuth redirects reliably)
+    await fetch("/api/invite/store", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
     await signIn("google", { callbackUrl: "/connect" });
   }
 
