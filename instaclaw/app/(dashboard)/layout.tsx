@@ -9,7 +9,7 @@ import {
   Settings,
   CreditCard,
   LogOut,
-  MessageSquare,
+  History,
   Clock,
   FolderOpen,
   Key,
@@ -24,7 +24,7 @@ import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 const primaryNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourKey: "nav-dashboard" },
   { href: "/tasks", label: "Command Center", icon: ClipboardList, tourKey: "nav-command-center" },
-  { href: "/history", label: "History", icon: MessageSquare, tourKey: "nav-history" },
+  { href: "/history", label: "History", icon: History, tourKey: "nav-history" },
 ];
 
 // Overflow items shown in the "more" menu on mobile, visible on lg+
