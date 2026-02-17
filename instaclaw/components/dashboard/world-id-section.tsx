@@ -131,8 +131,7 @@ export function WorldIDSection() {
       <div
         className="glass rounded-xl p-5 space-y-4"
         style={{
-          border: "1px solid rgba(234,179,8,0.3)",
-          background: "rgba(234,179,8,0.03)",
+          border: "1px solid var(--border)",
         }}
       >
         <div>
@@ -166,9 +165,22 @@ export function WorldIDSection() {
         </p>
 
         {status && status.total_verified_count > 0 && (
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            {status.total_verified_count} agent owner{status.total_verified_count !== 1 ? "s have" : " has"} already verified
-          </p>
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full"
+              style={{
+                background: "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(22,163,74,0.15))",
+                color: "rgb(34,197,94)",
+                boxShadow: "0 0 0 1px rgba(34,197,94,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
+                backdropFilter: "blur(6px)",
+              }}
+            >
+              {status.total_verified_count} verified
+            </span>
+            <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+              agent owner{status.total_verified_count !== 1 ? "s" : ""}
+            </span>
+          </div>
         )}
 
         <div>
@@ -216,7 +228,8 @@ export function WorldIDSection() {
             href="https://worldcoin.org/download"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline"
+            className="underline transition-colors"
+            style={{ textUnderlineOffset: "2px" }}
           >
             Download it here
           </a>
