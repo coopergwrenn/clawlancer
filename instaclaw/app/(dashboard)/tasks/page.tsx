@@ -27,6 +27,10 @@ import {
   Plus,
   MessageSquare,
   PanelLeft,
+  Globe,
+  FileText,
+  Telescope,
+  Link2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -2094,6 +2098,35 @@ export default function CommandCenterPage() {
   const [updatingModel, setUpdatingModel] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);
 
+  // Plus menu
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [showConnectorsSubmenu, setShowConnectorsSubmenu] = useState(false);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Capability toggles (session-scoped)
+  const [deepResearchEnabled, setDeepResearchEnabled] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [useMyStyleEnabled, setUseMyStyleEnabled] = useState(false);
+
+  // File attachment
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+
+  // Connector info from VM status
+  const [connectorInfo, setConnectorInfo] = useState<{
+    channelsEnabled: string[];
+    hasDiscord: boolean;
+    hasBraveSearch: boolean;
+    gmailConnected: boolean;
+    telegramBotUsername: string | null;
+  }>({
+    channelsEnabled: [],
+    hasDiscord: false,
+    hasBraveSearch: false,
+    gmailConnected: false,
+    telegramBotUsername: null,
+  });
+
   const tabs: { key: Tab; label: string; tourKey: string }[] = [
     { key: "tasks", label: "Tasks", tourKey: "tab-tasks" },
     { key: "chat", label: "Chat", tourKey: "tab-chat" },
@@ -2189,14 +2222,24 @@ export default function CommandCenterPage() {
     return () => window.removeEventListener("instaclaw:prefill-input", handler);
   }, []);
 
-  // Fetch current model from VM status
+  // Fetch current model + connector info from VM status
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/vm/status");
         if (res.ok) {
           const data = await res.json();
-          if (data.model) setCurrentModel(data.model);
+          if (data.vm?.model) setCurrentModel(data.vm.model);
+          else if (data.model) setCurrentModel(data.model);
+          if (data.vm) {
+            setConnectorInfo({
+              channelsEnabled: data.vm.channelsEnabled ?? [],
+              hasDiscord: data.vm.hasDiscord ?? false,
+              hasBraveSearch: data.vm.hasBraveSearch ?? false,
+              gmailConnected: data.vm.gmailConnected ?? false,
+              telegramBotUsername: data.vm.telegramBotUsername ?? null,
+            });
+          }
         }
       } catch {
         // Non-fatal
@@ -2216,6 +2259,36 @@ export default function CommandCenterPage() {
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showModelPicker]);
+
+  // Close plus menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (plusMenuRef.current && !plusMenuRef.current.contains(e.target as Node)) {
+        setShowPlusMenu(false);
+        setShowConnectorsSubmenu(false);
+      }
+    }
+    if (showPlusMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showPlusMenu]);
+
+  // File attachment handler
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      setChatError("File must be under 1MB");
+      setTimeout(() => setChatError(null), 3000);
+      e.target.value = "";
+      return;
+    }
+    setAttachedFile(file);
+    setShowPlusMenu(false);
+    setShowConnectorsSubmenu(false);
+    e.target.value = "";
+  }, []);
 
   // Keyboard-aware layout: dynamically resize chat container using visualViewport
   // When keyboard opens, visualViewport.height shrinks → container shrinks → input stays visible
@@ -2661,6 +2734,7 @@ export default function CommandCenterPage() {
         }
       }
 
+      // Display the original user text in chat
       const userMsg: ChatMsg = {
         role: "user",
         content: text.trim(),
@@ -2671,6 +2745,39 @@ export default function CommandCenterPage() {
       setChatInput("");
       setIsSending(true);
       setChatError(null);
+
+      // Build augmented message with toggle prefixes
+      let augmented = text.trim();
+      if (deepResearchEnabled) {
+        augmented = `[DEEP RESEARCH MODE] Use thorough, multi-step research. Break the question down, search broadly, cross-reference sources, and provide a comprehensive answer with citations.\n\n${augmented}`;
+      }
+      if (webSearchEnabled) {
+        augmented = `[WEB SEARCH] Use web search to find current information for this query. Prioritize recent and authoritative sources.\n\n${augmented}`;
+      }
+      if (useMyStyleEnabled) {
+        augmented = `[STYLE MATCH] Match the user's personal writing style based on their previous messages and email patterns.\n\n${augmented}`;
+      }
+
+      // Handle file upload if attached
+      let fileRef = "";
+      const fileToUpload = attachedFile;
+      if (fileToUpload) {
+        setAttachedFile(null);
+        try {
+          const formData = new FormData();
+          formData.append("file", fileToUpload);
+          const uploadRes = await fetch("/api/bot/files/upload", {
+            method: "POST",
+            body: formData,
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            fileRef = `\n\n[Attached file: ${fileToUpload.name}${uploadData.url ? ` — ${uploadData.url}` : ""}]`;
+          }
+        } catch {
+          // Non-fatal — send message without file
+        }
+      }
 
       const streamingId = "streaming-" + Date.now();
       setChatMessages((prev) => [
@@ -2683,7 +2790,7 @@ export default function CommandCenterPage() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            message: text.trim(),
+            message: augmented + fileRef,
             conversation_id: convId,
           }),
         });
@@ -2745,7 +2852,7 @@ export default function CommandCenterPage() {
         setIsSending(false);
       }
     },
-    [isSending, activeConversationId, loadConversations]
+    [isSending, activeConversationId, loadConversations, deepResearchEnabled, webSearchEnabled, useMyStyleEnabled, attachedFile]
   );
 
   // ─── Save chat message to library ──────────────────
@@ -2820,11 +2927,245 @@ export default function CommandCenterPage() {
     [activeTab, sendMessage, createTask]
   );
 
+  // Connector status helpers
+  const isTelegramConnected = connectorInfo.channelsEnabled.includes("telegram") && !!connectorInfo.telegramBotUsername;
+  const isDiscordConnected = connectorInfo.hasDiscord && connectorInfo.channelsEnabled.includes("discord");
+  const hasAnyToggle = deepResearchEnabled || webSearchEnabled || useMyStyleEnabled;
+
+  // Shared plus menu content
+  const plusMenuContent = (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95, y: 4 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: 4 }}
+      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      className="absolute bottom-full left-0 mb-1.5 rounded-xl py-1.5 min-w-[240px] z-50"
+      style={{
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+      }}
+    >
+      {/* Add files */}
+      <button
+        onClick={() => { fileInputRef.current?.click(); }}
+        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center gap-2.5"
+        style={{ color: "var(--foreground)" }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+      >
+        <FileText className="w-4 h-4" style={{ color: "var(--muted)" }} />
+        Add files or photos
+      </button>
+
+      <div className="my-1 mx-3" style={{ borderTop: "1px solid var(--border)" }} />
+
+      {/* Deep research toggle */}
+      <button
+        onClick={() => setDeepResearchEnabled((v) => !v)}
+        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+        style={{
+          color: deepResearchEnabled ? "#7c3aed" : "var(--foreground)",
+          background: deepResearchEnabled ? "rgba(124,58,237,0.08)" : "transparent",
+        }}
+        onMouseEnter={(e) => { if (!deepResearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = deepResearchEnabled ? "rgba(124,58,237,0.08)" : "transparent"; }}
+      >
+        <span className="flex items-center gap-2.5">
+          <Telescope className="w-4 h-4" />
+          Deep research
+        </span>
+        {deepResearchEnabled && <Check className="w-3.5 h-3.5" />}
+      </button>
+
+      {/* Web search toggle */}
+      <button
+        onClick={() => setWebSearchEnabled((v) => !v)}
+        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+        style={{
+          color: webSearchEnabled ? "#2563eb" : "var(--foreground)",
+          background: webSearchEnabled ? "rgba(37,99,235,0.08)" : "transparent",
+        }}
+        onMouseEnter={(e) => { if (!webSearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = webSearchEnabled ? "rgba(37,99,235,0.08)" : "transparent"; }}
+      >
+        <span className="flex items-center gap-2.5">
+          <Globe className="w-4 h-4" />
+          Web search
+        </span>
+        {webSearchEnabled && <Check className="w-3.5 h-3.5" />}
+      </button>
+
+      {/* Use my style toggle */}
+      <button
+        onClick={() => { if (connectorInfo.gmailConnected) setUseMyStyleEnabled((v) => !v); }}
+        className="w-full text-left px-3.5 py-2.5 text-sm transition-colors flex items-center justify-between"
+        style={{
+          color: !connectorInfo.gmailConnected ? "var(--muted)" : useMyStyleEnabled ? "var(--accent)" : "var(--foreground)",
+          background: useMyStyleEnabled ? "rgba(220,103,67,0.08)" : "transparent",
+          cursor: connectorInfo.gmailConnected ? "pointer" : "default",
+          opacity: connectorInfo.gmailConnected ? 1 : 0.5,
+        }}
+        onMouseEnter={(e) => { if (connectorInfo.gmailConnected && !useMyStyleEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = useMyStyleEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
+      >
+        <span className="flex items-center gap-2.5">
+          <Pencil className="w-4 h-4" />
+          Use my style
+          {!connectorInfo.gmailConnected && <span className="text-[10px] ml-1">(connect Gmail)</span>}
+        </span>
+        {useMyStyleEnabled && <Check className="w-3.5 h-3.5" />}
+      </button>
+
+      <div className="my-1 mx-3" style={{ borderTop: "1px solid var(--border)" }} />
+
+      {/* Connectors */}
+      <button
+        onClick={() => setShowConnectorsSubmenu((v) => !v)}
+        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+        style={{ color: "var(--foreground)" }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+      >
+        <span className="flex items-center gap-2.5">
+          <Link2 className="w-4 h-4" style={{ color: "var(--muted)" }} />
+          Connectors
+        </span>
+        <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showConnectorsSubmenu ? "rotate-90" : ""}`} style={{ color: "var(--muted)" }} />
+      </button>
+
+      <AnimatePresence>
+        {showConnectorsSubmenu && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            {[
+              { name: "Telegram", connected: isTelegramConnected },
+              { name: "Discord", connected: isDiscordConnected },
+              { name: "Slack", connected: false },
+              { name: "WhatsApp", connected: false },
+            ].map((c) => (
+              <div
+                key={c.name}
+                className="flex items-center justify-between px-6 py-1.5 text-xs"
+                style={{ color: "var(--muted)" }}
+              >
+                <span>{c.name}</span>
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: c.connected ? "#22c55e" : "var(--border)" }}
+                  />
+                  {c.connected ? "Connected" : "Not connected"}
+                </span>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+
+  // Toggle indicator pills (shown above input when toggles are active)
+  const togglePills = (hasAnyToggle || attachedFile) ? (
+    <div className="flex items-center gap-1.5 pb-1.5 flex-wrap">
+      <AnimatePresence>
+        {deepResearchEnabled && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+            style={{ background: "rgba(124,58,237,0.1)", color: "#7c3aed" }}
+          >
+            <Telescope className="w-3 h-3" />
+            Deep research
+            <button onClick={() => setDeepResearchEnabled(false)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+          </motion.span>
+        )}
+        {webSearchEnabled && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+            style={{ background: "rgba(37,99,235,0.1)", color: "#2563eb" }}
+          >
+            <Globe className="w-3 h-3" />
+            Web search
+            <button onClick={() => setWebSearchEnabled(false)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+          </motion.span>
+        )}
+        {useMyStyleEnabled && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+            style={{ background: "rgba(220,103,67,0.1)", color: "var(--accent)" }}
+          >
+            <Pencil className="w-3 h-3" />
+            My style
+            <button onClick={() => setUseMyStyleEnabled(false)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+          </motion.span>
+        )}
+        {attachedFile && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+            style={{ background: "rgba(34,197,94,0.1)", color: "#16a34a" }}
+          >
+            <FileText className="w-3 h-3" />
+            <span className="max-w-[120px] truncate">{attachedFile.name}</span>
+            <button onClick={() => setAttachedFile(null)} className="ml-0.5 cursor-pointer hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </div>
+  ) : null;
+
+  // Plus button element
+  const plusButton = (
+    <div className="relative" ref={plusMenuRef}>
+      <button
+        onClick={() => {
+          setShowPlusMenu((v) => !v);
+          setShowModelPicker(false);
+          if (showPlusMenu) setShowConnectorsSubmenu(false);
+        }}
+        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
+        style={{
+          background: showPlusMenu ? "var(--accent)" : "rgba(0,0,0,0.06)",
+          color: showPlusMenu ? "#fff" : "var(--muted)",
+        }}
+      >
+        <Plus className={`w-4 h-4 transition-transform ${showPlusMenu ? "rotate-45" : ""}`} strokeWidth={2.5} />
+      </button>
+      <AnimatePresence>
+        {showPlusMenu && plusMenuContent}
+      </AnimatePresence>
+    </div>
+  );
+
   return (
     <div
       className="flex flex-col h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-5.5rem)] -mt-10 sm:-mt-8 -mb-12 sm:-mb-16"
       style={chatViewHeight != null ? { height: `${chatViewHeight}px` } : undefined}
     >
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept="image/*,.pdf,.txt,.csv,.json,.md"
+        onChange={handleFileSelect}
+      />
       {/* ── Static header (never scrolls) ───────────────────── */}
       <div className="shrink-0">
         <h1
@@ -3239,6 +3580,7 @@ export default function CommandCenterPage() {
                         </button>
                       </div>
                     )}
+                    {togglePills}
                     <div
                       className="rounded-2xl px-4 py-3 flex items-center gap-3"
                       style={{
@@ -3247,6 +3589,7 @@ export default function CommandCenterPage() {
                         boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
                       }}
                     >
+                      {plusButton}
                       <input
                         ref={inputRef}
                         type="text"
@@ -3266,7 +3609,7 @@ export default function CommandCenterPage() {
                       <div className="flex items-center gap-1.5 shrink-0">
                         <div className="relative" ref={modelPickerRef}>
                           <button
-                            onClick={() => setShowModelPicker(!showModelPicker)}
+                            onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                             style={{ color: "var(--muted)" }}
                           >
@@ -3399,6 +3742,7 @@ export default function CommandCenterPage() {
               />
             </button>
           </div>
+          {togglePills}
           <div
             className="rounded-2xl px-5 py-3.5 flex items-center gap-3"
             style={{
@@ -3407,6 +3751,7 @@ export default function CommandCenterPage() {
               boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
             }}
           >
+            {plusButton}
             <input
               ref={inputRef}
               type="text"
@@ -3425,7 +3770,7 @@ export default function CommandCenterPage() {
             <div className="flex items-center gap-1.5 shrink-0">
               <div className="relative" ref={modelPickerRef}>
                 <button
-                  onClick={() => setShowModelPicker(!showModelPicker)}
+                  onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                   style={{ color: "var(--muted)" }}
                 >
