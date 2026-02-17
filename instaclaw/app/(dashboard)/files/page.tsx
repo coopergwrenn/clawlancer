@@ -17,7 +17,7 @@ function formatSize(bytes: number): string {
 }
 
 export default function FilesPage() {
-  const [currentPath, setCurrentPath] = useState("~/workspace");
+  const [currentPath, setCurrentPath] = useState("~/.openclaw/workspace");
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -86,14 +86,14 @@ export default function FilesPage() {
       <div className="flex items-center gap-2">
         <button
           onClick={navigateUp}
-          disabled={currentPath === "~" || currentPath === "~/workspace"}
+          disabled={currentPath === "~" || currentPath === "~/.openclaw/workspace"}
           className="p-1.5 rounded-lg cursor-pointer disabled:opacity-30 transition-colors hover:bg-white/5"
           style={{ color: "var(--muted)" }}
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <code className="text-sm font-mono" style={{ color: "var(--muted)" }}>
-          {currentPath}
+          {currentPath.replace("~/.openclaw/workspace", "~/workspace")}
         </code>
       </div>
 
@@ -113,7 +113,7 @@ export default function FilesPage() {
           </button>
           <div className="glass rounded-xl p-1" style={{ border: "1px solid var(--border)" }}>
             <div className="px-4 py-2 text-xs font-mono" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
-              {viewingFile}
+              {viewingFile?.replace("~/.openclaw/workspace", "~/workspace")}
             </div>
             <pre
               className="p-4 text-xs font-mono overflow-x-auto"
