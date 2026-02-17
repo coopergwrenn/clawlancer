@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { updateHeartbeatInterval } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
-import Anthropic from "@anthropic-ai/sdk";
 
 const ALLOWED_INTERVALS = ["1h", "3h", "6h", "12h", "off"];
 
@@ -55,16 +54,40 @@ export async function POST(req: NextRequest) {
     }
 
     // Use Haiku to parse NL — direct Anthropic call, not proxied through user credits
-    const anthropic = new Anthropic();
-    const aiResponse = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 256,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: message }],
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Platform API key not configured" },
+        { status: 500 }
+      );
+    }
+
+    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 256,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: message }],
+      }),
     });
 
+    if (!aiRes.ok) {
+      logger.error("Anthropic API error", { status: aiRes.status, route: "heartbeat/configure" });
+      return NextResponse.json(
+        { error: "AI parsing failed", response: "Sorry, I couldn't understand that. Try something like 'check in every hour'." },
+        { status: 500 }
+      );
+    }
+
+    const aiResponse = await aiRes.json();
     const text =
-      aiResponse.content[0].type === "text" ? aiResponse.content[0].text : "";
+      aiResponse.content?.[0]?.type === "text" ? aiResponse.content[0].text : "";
     let parsed: { interval: string; response: string };
     try {
       parsed = JSON.parse(text);
