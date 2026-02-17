@@ -385,8 +385,8 @@ export default function SettingsPage() {
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                   style={{
-                    background: "rgba(168,85,247,0.15)",
-                    color: "rgb(168,85,247)",
+                    background: "rgba(249,115,22,0.15)",
+                    color: "rgb(249,115,22)",
                   }}
                 >
                   Beta
@@ -455,7 +455,7 @@ export default function SettingsPage() {
                   onClick={() => handleToggleAgdp(agdpConfirm === "enable")}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                   style={{
-                    background: agdpConfirm === "enable" ? "rgb(168,85,247)" : "rgba(239,68,68,0.1)",
+                    background: agdpConfirm === "enable" ? "rgb(249,115,22)" : "rgba(239,68,68,0.1)",
                     color: agdpConfirm === "enable" ? "#fff" : "#ef4444",
                     border: agdpConfirm === "enable" ? "none" : "1px solid rgba(239,68,68,0.3)",
                   }}
