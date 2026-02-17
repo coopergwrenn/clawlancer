@@ -403,17 +403,27 @@ export default function SettingsPage() {
                 setAgdpConfirm(agdpEnabled ? "disable" : "enable");
               }}
               disabled={togglingAgdp}
-              className="relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 cursor-pointer disabled:opacity-50"
+              className="relative w-12 h-7 rounded-full transition-all flex-shrink-0 cursor-pointer disabled:opacity-50"
               style={{
-                background: agdpEnabled ? "rgb(168,85,247)" : "var(--border)",
+                background: agdpEnabled
+                  ? "linear-gradient(135deg, rgba(22,22,22,0.7), rgba(40,40,40,0.8))"
+                  : "rgba(0,0,0,0.08)",
+                boxShadow: agdpEnabled
+                  ? "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05)"
+                  : "0 0 0 1px rgba(0,0,0,0.08), inset 0 1px 2px rgba(0,0,0,0.06)",
+                backdropFilter: "blur(8px)",
               }}
               aria-label={agdpEnabled ? "Disable aGDP" : "Enable aGDP"}
             >
               <span
-                className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200"
+                className="absolute top-1 w-5 h-5 rounded-full transition-all"
                 style={{
-                  background: "#fff",
-                  transform: agdpEnabled ? "translateX(20px)" : "translateX(0)",
+                  left: agdpEnabled ? "24px" : "4px",
+                  background: agdpEnabled
+                    ? "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,240,240,0.9))"
+                    : "linear-gradient(135deg, rgba(255,255,255,0.85), rgba(230,230,230,0.8))",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
+                  transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
                 }}
               />
             </button>
