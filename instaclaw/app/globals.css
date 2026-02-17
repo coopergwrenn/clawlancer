@@ -569,3 +569,8 @@ html.lenis body {
   28%  { opacity: 0; transform: scale(1); }
   100% { opacity: 0; transform: scale(1); }
 }
+
+/* Spinner for loading states */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

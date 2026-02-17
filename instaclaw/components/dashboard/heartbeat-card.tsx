@@ -402,20 +402,39 @@ export default function HeartbeatCard() {
               <span className="text-xs font-medium" style={{ color: "var(--foreground)" }}>
                 Frequency
               </span>
-              <span
-                className="text-xs tabular-nums font-medium px-2 py-0.5 rounded-md"
-                style={{
-                  color: sliderDragging ? "#DC6743" : "var(--muted)",
-                  background: sliderDragging ? "rgba(220,103,67,0.08)" : "transparent",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {isPaused
-                  ? "Off"
-                  : sliderDragging
-                    ? `${(Math.round(sliderValue * 10) / 10).toFixed(1)}h`
-                    : INTERVAL_LABELS[data.interval] ?? `${data.interval}`}
-              </span>
+              {updating ? (
+                <span
+                  className="text-xs tabular-nums font-medium px-2 py-0.5 rounded-md inline-flex items-center gap-1.5"
+                  style={{
+                    color: "#DC6743",
+                    background: "rgba(220,103,67,0.08)",
+                  }}
+                >
+                  <span
+                    className="w-3 h-3 rounded-full border-2 border-current"
+                    style={{
+                      borderTopColor: "transparent",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
+                  Updating to {updating}…
+                </span>
+              ) : (
+                <span
+                  className="text-xs tabular-nums font-medium px-2 py-0.5 rounded-md"
+                  style={{
+                    color: sliderDragging ? "#DC6743" : "var(--muted)",
+                    background: sliderDragging ? "rgba(220,103,67,0.08)" : "transparent",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {isPaused
+                    ? "Off"
+                    : sliderDragging
+                      ? `${(Math.round(sliderValue * 10) / 10).toFixed(1)}h`
+                      : INTERVAL_LABELS[data.interval] ?? `${data.interval}`}
+                </span>
+              )}
             </div>
 
             {/* Preset pills */}
@@ -449,7 +468,28 @@ export default function HeartbeatCard() {
             </div>
 
             {/* Precision slider */}
-            <div>
+            <div className="relative">
+              {/* Updating shimmer overlay */}
+              {updating && (
+                <div
+                  className="absolute inset-0 z-10 rounded-lg flex items-center justify-center pointer-events-none"
+                  style={{
+                    background: "rgba(0,0,0,0.5)",
+                    backdropFilter: "blur(1px)",
+                  }}
+                >
+                  <span
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                    style={{
+                      color: "#DC6743",
+                      background: "rgba(220,103,67,0.08)",
+                      border: "1px solid rgba(220,103,67,0.15)",
+                    }}
+                  >
+                    Applying via SSH…
+                  </span>
+                </div>
+              )}
               <input
                 type="range"
                 min={0.5}
