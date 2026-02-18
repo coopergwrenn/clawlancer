@@ -10,6 +10,11 @@ function getResend(): Resend {
 }
 
 const FROM = "InstaClaw <noreply@instaclaw.io>";
+const REPLY_TO = "support@instaclaw.io";
+const UNSUB_HEADERS = {
+  "List-Unsubscribe": "<mailto:support@instaclaw.io?subject=Unsubscribe>",
+  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+};
 
 /**
  * Build the invite email HTML. Exported separately so test endpoints can
@@ -244,6 +249,40 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 </html>`;
 }
 
+export function buildInviteEmailText(inviteCode: string): string {
+  const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
+  return `You're in.
+
+You're about to get your own AI agent running on a dedicated server, working for you 24/7. Not a chatbot. An autonomous agent that searches the web, browses real websites, and handles tasks while you sleep.
+
+YOUR INVITE CODE: ${inviteCode}
+
+Activate your agent: ${signupUrl}
+
+Expires in 7 days.
+
+WHAT YOU NEED:
+- Telegram (free at telegram.org)
+- A Google account (one-click sign in)
+- 5 minutes
+
+SETUP:
+1. Enter your invite code at ${signupUrl}
+2. Sign in with Google
+3. Create your Telegram bot via @BotFather
+4. Say hello to your agent
+
+YOUR SUPERPOWERS:
+Your agent can research, automate tasks, browse real websites, earn on marketplaces, write outreach emails, plan trips, and literally anything you can describe in words. It runs 24/7 and gets smarter every day.
+
+Questions? Reply to this email — we read everything.
+
+— InstaClaw
+instaclaw.io | @instaclaws
+
+You're receiving this because you joined the InstaClaw waitlist.`;
+}
+
 export async function sendInviteEmail(
   email: string,
   inviteCode: string
@@ -251,10 +290,12 @@ export async function sendInviteEmail(
   const resend = getResend();
   await resend.emails.send({
     from: FROM,
-    replyTo: "coop@valtlabs.com",
+    replyTo: REPLY_TO,
     to: email,
     subject: "You're in - here's your InstaClaw invite 💫",
     html: buildInviteEmailHtml(inviteCode),
+    text: buildInviteEmailText(inviteCode),
+    headers: UNSUB_HEADERS,
   });
 }
 
@@ -265,6 +306,7 @@ export async function sendVMReadyEmail(
   const resend = getResend();
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "Your OpenClaw Instance is Ready!",
     html: `
@@ -278,6 +320,8 @@ export async function sendVMReadyEmail(
         </a>
       </div>
     `,
+    text: `You're Live!\n\nYour OpenClaw instance has been deployed and is ready to use. Your Telegram bot is now active.\n\nOpen Dashboard: ${controlPanelUrl}\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
   });
 }
 
@@ -285,6 +329,7 @@ export async function sendPendingEmail(email: string): Promise<void> {
   const resend = getResend();
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "Your InstaClaw Setup is Pending",
     html: `
@@ -298,13 +343,17 @@ export async function sendPendingEmail(email: string): Promise<void> {
         </p>
       </div>
     `,
+    text: "Almost There\n\nWe're provisioning your dedicated VM. This usually takes a few minutes, but we're experiencing high demand. We'll email you as soon as your instance is ready.\n\nNo action needed — we'll notify you when it's live.\n\n— InstaClaw",
+    headers: UNSUB_HEADERS,
   });
 }
 
 export async function sendPaymentFailedEmail(email: string): Promise<void> {
   const resend = getResend();
+  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "Payment Failed — Action Required",
     html: `
@@ -313,7 +362,7 @@ export async function sendPaymentFailedEmail(email: string): Promise<void> {
         <p style="color: #888; line-height: 1.6;">
           We were unable to process your latest payment. Please update your payment method to keep your OpenClaw instance running.
         </p>
-        <a href="${process.env.NEXTAUTH_URL}/billing" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        <a href="${billingUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Update Payment Method
         </a>
         <p style="margin-top: 24px; font-size: 12px; color: #888;">
@@ -321,6 +370,8 @@ export async function sendPaymentFailedEmail(email: string): Promise<void> {
         </p>
       </div>
     `,
+    text: `Payment Failed\n\nWe were unable to process your latest payment. Please update your payment method to keep your OpenClaw instance running.\n\nUpdate Payment Method: ${billingUrl}\n\nIf your payment is not resolved, your instance may be suspended.\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
   });
 }
 
@@ -329,8 +380,10 @@ export async function sendHealthAlertEmail(
   vmName: string
 ): Promise<void> {
   const resend = getResend();
+  const dashboardUrl = `${process.env.NEXTAUTH_URL}/dashboard`;
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "Your OpenClaw Instance Needs Attention",
     html: `
@@ -339,11 +392,13 @@ export async function sendHealthAlertEmail(
         <p style="color: #888; line-height: 1.6;">
           Your OpenClaw instance (${vmName}) has failed multiple health checks. We're attempting an automatic restart. If the issue persists, our team will investigate.
         </p>
-        <a href="${process.env.NEXTAUTH_URL}/dashboard" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        <a href="${dashboardUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Check Dashboard
         </a>
       </div>
     `,
+    text: `Health Alert\n\nYour OpenClaw instance (${vmName}) has failed multiple health checks. We're attempting an automatic restart. If the issue persists, our team will investigate.\n\nCheck Dashboard: ${dashboardUrl}\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
   });
 }
 
@@ -352,24 +407,29 @@ export async function sendTrialEndingEmail(
   daysLeft: number
 ): Promise<void> {
   const resend = getResend();
+  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
+  const plural = daysLeft !== 1 ? "s" : "";
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
-    subject: `Your Free Trial Ends in ${daysLeft} Day${daysLeft !== 1 ? "s" : ""}`,
+    subject: `Your Free Trial Ends in ${daysLeft} Day${plural}`,
     html: `
       <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #000; color: #fff;">
         <h1 style="font-size: 24px; margin-bottom: 16px;">Trial Ending Soon</h1>
         <p style="color: #888; line-height: 1.6;">
-          Your InstaClaw free trial ends in ${daysLeft} day${daysLeft !== 1 ? "s" : ""}. After that, your subscription will automatically convert to a paid plan. No action needed if you'd like to continue.
+          Your InstaClaw free trial ends in ${daysLeft} day${plural}. After that, your subscription will automatically convert to a paid plan. No action needed if you'd like to continue.
         </p>
         <p style="color: #888; line-height: 1.6; margin-top: 12px;">
           To cancel before the trial ends, visit your billing page.
         </p>
-        <a href="${process.env.NEXTAUTH_URL}/billing" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        <a href="${billingUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Manage Subscription
         </a>
       </div>
     `,
+    text: `Trial Ending Soon\n\nYour InstaClaw free trial ends in ${daysLeft} day${plural}. After that, your subscription will automatically convert to a paid plan. No action needed if you'd like to continue.\n\nTo cancel before the trial ends, visit your billing page: ${billingUrl}\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
   });
 }
 
@@ -378,20 +438,23 @@ export async function sendWelcomeEmail(
   name: string
 ): Promise<void> {
   const resend = getResend();
+  const connectUrl = `${process.env.NEXTAUTH_URL}/connect`;
+  const displayName = name || "there";
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "Welcome to InstaClaw!",
     html: `
       <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #000; color: #fff;">
-        <h1 style="font-size: 24px; margin-bottom: 16px;">Welcome, ${name || "there"}!</h1>
+        <h1 style="font-size: 24px; margin-bottom: 16px;">Welcome, ${displayName}!</h1>
         <p style="color: #888; line-height: 1.6;">
           Your InstaClaw account has been created. You're one step away from deploying your own personal AI agent.
         </p>
         <p style="color: #888; line-height: 1.6; margin-top: 12px;">
           Complete your setup to get a dedicated OpenClaw instance with Telegram, Discord, and more.
         </p>
-        <a href="${process.env.NEXTAUTH_URL}/connect" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        <a href="${connectUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Start Setup
         </a>
         <p style="margin-top: 24px; font-size: 12px; color: #888;">
@@ -399,6 +462,8 @@ export async function sendWelcomeEmail(
         </p>
       </div>
     `,
+    text: `Welcome, ${displayName}!\n\nYour InstaClaw account has been created. You're one step away from deploying your own personal AI agent.\n\nComplete your setup to get a dedicated OpenClaw instance with Telegram, Discord, and more.\n\nStart Setup: ${connectUrl}\n\nAll plans include a 3-day free trial. No charge until the trial ends.\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
   });
 }
 
@@ -412,6 +477,7 @@ export async function sendAdminAlertEmail(
   const resend = getResend();
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: adminEmail,
     subject: `[InstaClaw Admin] ${subject}`,
     html: `
@@ -421,13 +487,16 @@ export async function sendAdminAlertEmail(
         <pre style="margin-top: 16px; padding: 16px; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #ccc; white-space: pre-wrap; font-size: 13px;">${details}</pre>
       </div>
     `,
+    text: `Admin Alert: ${subject}\n\n${details}`,
   });
 }
 
 export async function sendCanceledEmail(email: string): Promise<void> {
   const resend = getResend();
+  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "Your InstaClaw Subscription Has Been Canceled",
     html: `
@@ -436,19 +505,22 @@ export async function sendCanceledEmail(email: string): Promise<void> {
         <p style="color: #888; line-height: 1.6;">
           Your InstaClaw subscription has been canceled and your OpenClaw instance has been deactivated. If this was a mistake, you can re-subscribe at any time.
         </p>
-        <a href="${process.env.NEXTAUTH_URL}/billing" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        <a href="${billingUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Re-subscribe
         </a>
       </div>
     `,
+    text: `Subscription Canceled\n\nYour InstaClaw subscription has been canceled and your OpenClaw instance has been deactivated. If this was a mistake, you can re-subscribe at any time.\n\nRe-subscribe: ${billingUrl}\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
   });
 }
 
 export async function sendWaitlistUpdateEmail(
   email: string
-): Promise<{ from: string; to: string; subject: string; html: string }> {
+): Promise<{ from: string; replyTo: string; to: string; subject: string; html: string; text: string; headers: Record<string, string> }> {
   return {
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "InstaClaw — You're Almost In",
     html: `
@@ -482,15 +554,19 @@ export async function sendWaitlistUpdateEmail(
         </p>
       </div>
     `,
+    text: "Your wait is almost over.\n\nWe've been heads-down building and scaling InstaClaw, and we're ready to open the doors. Starting this week, we're rolling out access to everyone on the waitlist — including you.\n\nHere's what to expect:\n- Invites going out in waves starting this week\n- Everyone on the waitlist will have access by Friday\n- Your own dedicated OpenClaw instance, ready in minutes\n- We'll send you updates as new features land throughout the week\n\nYou signed up early, and that matters to us. When your invite arrives, you'll get a 3-day free trial to explore everything — no strings attached.\n\nKeep an eye on your inbox. Your invite is coming soon.\n\n— The InstaClaw Team\n\nYou're receiving this because you joined the InstaClaw waitlist.",
+    headers: UNSUB_HEADERS,
   };
 }
 
-export { getResend, FROM };
+export { getResend, FROM, REPLY_TO, UNSUB_HEADERS };
 
 export async function sendSuspendedEmail(email: string): Promise<void> {
   const resend = getResend();
+  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
   await resend.emails.send({
     from: FROM,
+    replyTo: REPLY_TO,
     to: email,
     subject: "Your InstaClaw Instance Has Been Suspended",
     html: `
@@ -502,7 +578,7 @@ export async function sendSuspendedEmail(email: string): Promise<void> {
         <p style="color: #888; line-height: 1.6; margin-top: 12px;">
           Update your payment method to restore service immediately.
         </p>
-        <a href="${process.env.NEXTAUTH_URL}/billing" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        <a href="${billingUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Update Payment Method
         </a>
         <p style="margin-top: 24px; font-size: 12px; color: #888;">
@@ -510,5 +586,7 @@ export async function sendSuspendedEmail(email: string): Promise<void> {
         </p>
       </div>
     `,
+    text: `Service Suspended\n\nYour OpenClaw instance has been suspended due to failed payment. Your data is safe, but the bot is no longer responding to messages.\n\nUpdate your payment method to restore service immediately: ${billingUrl}\n\nYour instance will be automatically restored once payment is successful.\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
   });
 }

@@ -150,7 +150,7 @@ async function sendInviteBlast(count: number, dryRun: boolean) {
   console.log(`\n=== STEP 2: ${mode} — ${count} invite emails ===\n`);
 
   // Import email template builder
-  const { buildInviteEmailHtml } = await import("../lib/email.js");
+  const { buildInviteEmailHtml, buildInviteEmailText, REPLY_TO, UNSUB_HEADERS } = await import("../lib/email.js");
 
   // Get next waitlist entries that haven't been invited
   const { data: entries, error: wlError } = await supabase
@@ -248,10 +248,12 @@ async function sendInviteBlast(count: number, dryRun: boolean) {
       const html = buildInviteEmailHtml(code);
       await resend.emails.send({
         from: "InstaClaw <noreply@instaclaw.io>",
-        replyTo: "coop@valtlabs.com",
+        replyTo: REPLY_TO,
         to: entry.email,
         subject: "You're in - here's your InstaClaw invite 💫",
         html,
+        text: buildInviteEmailText(code),
+        headers: UNSUB_HEADERS,
       });
 
       // Update waitlist entry
