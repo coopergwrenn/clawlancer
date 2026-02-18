@@ -87,59 +87,53 @@ const HEART_PATH =
   "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z";
 
 function HeartIcon({ color, size = 40 }: { color: string; size?: number }) {
+  // Darker shade for bottom/edge depth
+  const darkColor = "#a3402a";
   return (
     <div className="relative" style={{ width: size, height: size }}>
-      {/* Heart shape with 3D orb radial gradient + inset shadow layers */}
       <svg
         viewBox="0 0 24 24"
         style={{
           width: size,
           height: size,
-          filter: `drop-shadow(0 2px 8px rgba(0,0,0,0.2)) drop-shadow(0 1px 3px rgba(0,0,0,0.15))`,
+          filter: `drop-shadow(0 2px 6px ${color}40) drop-shadow(0 1px 3px rgba(0,0,0,0.12))`,
         }}
       >
         <defs>
-          {/* 3D orb gradient — matches landing page testimonial avatar technique */}
+          {/* Base: solid color radial — bright at top-left, slightly darker at edges */}
           <radialGradient id="hb-orb" cx="35%" cy="35%" r="65%">
-            <stop offset="0%" stopColor={color} stopOpacity="0.87" />
-            <stop offset="40%" stopColor={color} stopOpacity="0.55" />
-            <stop offset="100%" stopColor="rgba(0,0,0,1)" stopOpacity="0.3" />
+            <stop offset="0%" stopColor={color} />
+            <stop offset="70%" stopColor={color} />
+            <stop offset="100%" stopColor={darkColor} />
           </radialGradient>
-          {/* Top inset light — bright highlight simulating light from above */}
-          <linearGradient id="hb-inset-top" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fff" stopOpacity="0.4" />
-            <stop offset="40%" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-          {/* Bottom inset shadow */}
-          <linearGradient id="hb-inset-btm" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#000" stopOpacity="0.25" />
-            <stop offset="50%" stopColor="#000" stopOpacity="0" />
-          </linearGradient>
-          {/* Inner dark vignette */}
-          <radialGradient id="hb-vignette" cx="50%" cy="50%" r="50%">
-            <stop offset="60%" stopColor="#000" stopOpacity="0" />
-            <stop offset="100%" stopColor="#000" stopOpacity="0.15" />
+          {/* Top-left specular — white highlight for glass shine */}
+          <radialGradient id="hb-spec" cx="35%" cy="30%" r="35%">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="#fff" stopOpacity="0" />
           </radialGradient>
+          {/* Bottom shadow — subtle darkening at the base */}
+          <linearGradient id="hb-btm" x1="0" y1="0.6" x2="0" y2="1">
+            <stop offset="0%" stopColor="#000" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000" stopOpacity="0.18" />
+          </linearGradient>
         </defs>
-        {/* Base orb fill */}
-        <path d={HEART_PATH} fill={`url(#hb-orb)`} />
-        {/* Top light inset */}
-        <path d={HEART_PATH} fill="url(#hb-inset-top)" />
-        {/* Bottom shadow inset */}
-        <path d={HEART_PATH} fill="url(#hb-inset-btm)" />
-        {/* Vignette edge */}
-        <path d={HEART_PATH} fill="url(#hb-vignette)" />
+        {/* Solid orb base — stays clearly orange */}
+        <path d={HEART_PATH} fill="url(#hb-orb)" />
+        {/* Specular highlight */}
+        <path d={HEART_PATH} fill="url(#hb-spec)" />
+        {/* Bottom depth */}
+        <path d={HEART_PATH} fill="url(#hb-btm)" />
       </svg>
-      {/* Glass specular highlight — the white gloss on the top-left */}
+      {/* Glass gloss — small white reflection on top-left lobe */}
       <div
         className="absolute rounded-full pointer-events-none"
         style={{
-          top: "12%",
-          left: "18%",
-          width: "38%",
-          height: "28%",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
-          filter: "blur(1px)",
+          top: "15%",
+          left: "15%",
+          width: "30%",
+          height: "22%",
+          background: "linear-gradient(170deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 100%)",
+          filter: "blur(1.5px)",
         }}
       />
     </div>
