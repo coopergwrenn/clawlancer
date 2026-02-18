@@ -1317,71 +1317,6 @@ function TaskCard({
               ? task.error_message
               : task.description}
           </p>
-          {task.is_recurring && (frequencyLabel || nextRunLabel) && (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              className="flex items-center gap-1.5 flex-wrap text-xs mt-2 pt-2"
-              style={{ borderTop: "1px solid var(--border)" }}
-            >
-              {frequencyLabel && (
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
-                  style={{
-                    background: "rgba(255,255,255,0.45)",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
-                    border: "1px solid rgba(0,0,0,0.06)",
-                    color: "var(--muted)",
-                  }}
-                >
-                  <Repeat className="w-2.5 h-2.5" />
-                  {frequencyLabel}
-                </span>
-              )}
-              {nextRunLabel && (
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
-                  style={{
-                    background: isOverdue
-                      ? "rgba(34,197,94,0.08)"
-                      : isPaused
-                        ? "rgba(156,163,175,0.08)"
-                        : "rgba(255,255,255,0.45)",
-                    boxShadow: isOverdue
-                      ? "0 0 0 1px rgba(34,197,94,0.15), 0 1px 2px rgba(34,197,94,0.06)"
-                      : "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
-                    border: isOverdue
-                      ? "1px solid rgba(34,197,94,0.12)"
-                      : "1px solid rgba(0,0,0,0.06)",
-                    color: isOverdue ? "#16a34a" : isPaused ? "#9ca3af" : "var(--muted)",
-                  }}
-                >
-                  {isOverdue && (
-                    <span
-                      className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
-                      style={{ background: "#22c55e" }}
-                    />
-                  )}
-                  {isPaused && <Pause className="w-2.5 h-2.5" />}
-                  {nextRunLabel}
-                </span>
-              )}
-              {!isPaused && (
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
-                  style={{
-                    background: "rgba(220,103,67,0.08)",
-                    boxShadow: "0 0 0 1px rgba(220,103,67,0.12), 0 1px 2px rgba(220,103,67,0.06)",
-                    color: "#DC6743",
-                  }}
-                >
-                  <Zap className="w-2.5 h-2.5" style={{ fill: "#DC6743" }} />
-                  {streakText} streak
-                </span>
-              )}
-            </motion.div>
-          )}
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0 mt-1">
@@ -1434,6 +1369,72 @@ function TaskCard({
           />
         )}
       </div>
+
+      {/* Recurring info pills — full card width for proper horizontal flow */}
+      {task.is_recurring && (frequencyLabel || nextRunLabel) && (
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          className="flex items-center gap-1.5 flex-wrap text-xs px-4 sm:px-5 pb-3 -mt-1"
+        >
+          {frequencyLabel && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
+              style={{
+                background: "rgba(255,255,255,0.45)",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+                border: "1px solid rgba(0,0,0,0.06)",
+                color: "var(--muted)",
+              }}
+            >
+              <Repeat className="w-2.5 h-2.5" />
+              {frequencyLabel}
+            </span>
+          )}
+          {nextRunLabel && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
+              style={{
+                background: isOverdue
+                  ? "rgba(34,197,94,0.08)"
+                  : isPaused
+                    ? "rgba(156,163,175,0.08)"
+                    : "rgba(255,255,255,0.45)",
+                boxShadow: isOverdue
+                  ? "0 0 0 1px rgba(34,197,94,0.15), 0 1px 2px rgba(34,197,94,0.06)"
+                  : "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+                border: isOverdue
+                  ? "1px solid rgba(34,197,94,0.12)"
+                  : "1px solid rgba(0,0,0,0.06)",
+                color: isOverdue ? "#16a34a" : isPaused ? "#9ca3af" : "var(--muted)",
+              }}
+            >
+              {isOverdue && (
+                <span
+                  className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ background: "#22c55e" }}
+                />
+              )}
+              {isPaused && <Pause className="w-2.5 h-2.5" />}
+              {nextRunLabel}
+            </span>
+          )}
+          {!isPaused && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full"
+              style={{
+                background: "rgba(220,103,67,0.08)",
+                boxShadow: "0 0 0 1px rgba(220,103,67,0.12), 0 1px 2px rgba(220,103,67,0.06)",
+                color: "#DC6743",
+              }}
+            >
+              <Zap className="w-2.5 h-2.5" style={{ fill: "#DC6743" }} />
+              {streakText} streak
+            </span>
+          )}
+        </motion.div>
+      )}
 
       {/* Expanded detail section */}
       <AnimatePresence>
