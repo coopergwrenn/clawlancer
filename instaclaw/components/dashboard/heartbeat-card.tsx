@@ -474,16 +474,20 @@ export default function HeartbeatCard() {
             {/* Precision slider */}
             <div className="relative">
               {updating ? (
-                /* Clean shimmer bar replacing slider during SSH update */
+                /* Glass shimmer bar replacing slider during SSH update */
                 <div
-                  className="h-[6px] rounded-full overflow-hidden my-[15px]"
-                  style={{ background: "rgba(0,0,0,0.06)" }}
+                  className="h-[4px] rounded-full overflow-hidden my-[15px]"
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
                 >
                   <div
                     className="h-full rounded-full"
                     style={{
                       width: "60%",
-                      background: "linear-gradient(90deg, #DC6743, #c2553a)",
+                      background: "linear-gradient(90deg, rgba(220,103,67,0.6), #DC6743, rgba(220,103,67,0.6))",
+                      boxShadow: "0 0 8px rgba(220,103,67,0.2)",
                       animation: "hb-shimmer 1.5s ease-in-out infinite",
                     }}
                   />
