@@ -409,9 +409,9 @@ export default function HeartbeatCard() {
 
           {/* ── Stats grid ── */}
           <div className="grid grid-cols-3 gap-3 mb-6">
-            <StatTile label="Last check-in" value={relativeTime(data.lastAt)} />
-            <StatTile label="Next" value={isPaused ? "—" : countdown(data.nextAt)} />
-            <StatTile label="Today" value={`${data.creditsUsedToday}`} />
+            <StatTile label="Last seen" value={relativeTime(data.lastAt)} />
+            <StatTile label="Next in" value={isPaused ? "—" : countdown(data.nextAt)} />
+            <StatTile label="Credits used" value={`${data.creditsUsedToday}`} />
           </div>
 
           {/* ── Pool bar ── */}
@@ -672,7 +672,7 @@ export default function HeartbeatCard() {
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="rounded-lg px-3 py-2.5 text-center"
+      className="rounded-lg px-3 py-3 text-center"
       style={{
         background: "linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
         border: "1px solid rgba(255,255,255,0.06)",
@@ -680,11 +680,11 @@ function StatTile({ label, value }: { label: string; value: string }) {
         backdropFilter: "blur(12px)",
       }}
     >
-      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>
-        {label}
-      </p>
-      <p className="text-sm font-semibold tabular-nums" style={{ color: "var(--foreground)" }}>
+      <p className="text-sm font-semibold tabular-nums mb-0.5" style={{ color: "var(--foreground)" }}>
         {value}
+      </p>
+      <p className="text-[11px]" style={{ color: "var(--muted)", opacity: 0.7 }}>
+        {label}
       </p>
     </div>
   );
