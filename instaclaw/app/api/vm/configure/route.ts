@@ -60,25 +60,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get pending user config
+    // Get pending user config (may not exist — e.g. user paid but didn't
+    // finish the onboarding wizard). Fall back to sensible defaults.
     const { data: pending } = await supabase
       .from("instaclaw_pending_users")
       .select("*")
       .eq("user_id", userId)
       .single();
 
-    if (!pending) {
-      return NextResponse.json(
-        { error: "No pending configuration" },
-        { status: 404 }
-      );
-    }
+    // If no pending config, build defaults from subscription + VM data
+    const { data: subscription } = !pending
+      ? await supabase
+          .from("instaclaw_subscriptions")
+          .select("tier, status")
+          .eq("user_id", userId)
+          .single()
+      : { data: null };
+
+    const effectiveTier = pending?.tier ?? subscription?.tier ?? vm.tier ?? "starter";
+    const effectiveApiMode = pending?.api_mode ?? vm.api_mode ?? "all_inclusive";
+    const effectiveModel = pending?.default_model ?? vm.default_model ?? "claude-sonnet-4-5-20250929";
+    const effectiveTelegramToken = pending?.telegram_bot_token ?? undefined;
+    const effectiveDiscordToken = pending?.discord_bot_token ?? undefined;
 
     // Determine channels
     const channels: string[] = [];
-    if (pending.telegram_bot_token) channels.push("telegram");
-    if (pending.discord_bot_token) channels.push("discord");
-    if (channels.length === 0) channels.push("telegram");
+    if (effectiveTelegramToken) channels.push("telegram");
+    if (effectiveDiscordToken) channels.push("discord");
+    // No channels is fine — gateway runs without messaging, user adds later
 
     // Fetch Gmail personality profile if user connected Gmail during onboarding
     let gmailProfileSummary: string | undefined;
@@ -102,14 +111,24 @@ export async function POST(req: NextRequest) {
       ].join("\n");
     }
 
+    if (!pending) {
+      logger.info("No pending config — configuring VM with defaults", {
+        route: "vm/configure",
+        userId,
+        tier: effectiveTier,
+        apiMode: effectiveApiMode,
+        channels,
+      });
+    }
+
     // Configure OpenClaw on the VM
     const result = await configureOpenClaw(vm, {
-      telegramBotToken: pending.telegram_bot_token,
-      apiMode: pending.api_mode,
-      apiKey: pending.api_key,
-      tier: pending.tier,
-      model: pending.default_model,
-      discordBotToken: pending.discord_bot_token ?? undefined,
+      telegramBotToken: effectiveTelegramToken,
+      apiMode: effectiveApiMode,
+      apiKey: pending?.api_key,
+      tier: effectiveTier,
+      model: effectiveModel,
+      discordBotToken: effectiveDiscordToken,
       channels,
       gmailProfileSummary,
     });
@@ -122,14 +141,14 @@ export async function POST(req: NextRequest) {
       .update({
         health_status: "configuring",
         last_health_check: new Date().toISOString(),
-        telegram_bot_username: pending.telegram_bot_username ?? null,
-        telegram_bot_token: pending.telegram_bot_token ?? null,
-        discord_bot_token: pending.discord_bot_token ?? null,
+        telegram_bot_username: pending?.telegram_bot_username ?? null,
+        telegram_bot_token: effectiveTelegramToken ?? null,
+        discord_bot_token: effectiveDiscordToken ?? null,
         channels_enabled: channels,
         configure_attempts: 0,
-        default_model: pending.default_model ?? "claude-sonnet-4-5-20250929",
-        api_mode: pending.api_mode,
-        tier: pending.tier,
+        default_model: effectiveModel,
+        api_mode: effectiveApiMode,
+        tier: effectiveTier,
       })
       .eq("id", vm.id);
 
@@ -143,10 +162,12 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", userId);
 
-    await supabase
-      .from("instaclaw_pending_users")
-      .delete()
-      .eq("user_id", userId);
+    if (pending) {
+      await supabase
+        .from("instaclaw_pending_users")
+        .delete()
+        .eq("user_id", userId);
+    }
 
     // ── Migrate user data from previous VM (best-effort) ──
     // If the user previously had a VM (cancelled + re-subscribed), copy their

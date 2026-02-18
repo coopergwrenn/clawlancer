@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, clearSessions, restartGateway, stopGateway, auditVMConfig, CONFIG_SPEC } from "@/lib/ssh";
+import { checkHealthExtended, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, CONFIG_SPEC } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -335,6 +335,41 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ========================================================================
+  // Fifth pass: Ensure MEMORY.md exists on all healthy VMs
+  // Without this file, agents have no long-term memory from day one.
+  // Piggybacks on the healthy VM list — only checks VMs we know are reachable.
+  // Limit to 5 per cycle to avoid SSH overload.
+  // ========================================================================
+  let memoryFilesCreated = 0;
+
+  const memoryCheckBatch = vms
+    .filter((vm) => healthyVmIds.has(vm.id))
+    .slice(0, 5);
+
+  for (const vm of memoryCheckBatch) {
+    try {
+      const created = await ensureMemoryFile(vm);
+      if (created) {
+        memoryFilesCreated++;
+      }
+    } catch (err) {
+      logger.error("Memory file check failed", {
+        error: String(err),
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+      });
+    }
+  }
+
+  if (memoryFilesCreated > 0) {
+    logger.info("Memory files created on VMs", {
+      route: "cron/health-check",
+      memoryFilesCreated,
+    });
+  }
+
   return NextResponse.json({
     checked: vms.length,
     healthy,
@@ -346,5 +381,6 @@ export async function GET(req: NextRequest) {
     sessionsCleared,
     configsAudited,
     configsFixed,
+    memoryFilesCreated,
   });
 }

@@ -134,51 +134,43 @@ async function processEvent(event: any) {
         break;
       }
 
-      // Check if user has pending config, if so trigger VM assignment
-      const { data: pending } = await supabase
-        .from("instaclaw_pending_users")
-        .select("*")
-        .eq("user_id", userId)
-        .single();
+      // Try to assign a VM — configure will use pending config if available,
+      // or fall back to sensible defaults (gateway running, no channels yet).
+      const { data: vm } = await supabase.rpc("instaclaw_assign_vm", {
+        p_user_id: userId,
+      });
 
-      if (pending) {
-        // Try to assign a VM
-        const { data: vm } = await supabase.rpc("instaclaw_assign_vm", {
-          p_user_id: userId,
+      if (vm) {
+        // VM assigned — fire-and-forget configuration.
+        // The configure endpoint runs in its own serverless invocation,
+        // so we don't need to await it. This prevents the webhook from
+        // timing out (Stripe expects a response within ~20s).
+        fetch(
+          `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+            },
+            body: JSON.stringify({ userId }),
+          }
+        ).catch((err) => {
+          logger.error("VM configure fire-and-forget failed", { error: String(err), route: "billing/webhook", userId });
         });
-
-        if (vm) {
-          // VM assigned — fire-and-forget configuration.
-          // The configure endpoint runs in its own serverless invocation,
-          // so we don't need to await it. This prevents the webhook from
-          // timing out (Stripe expects a response within ~20s).
-          fetch(
-            `${process.env.NEXTAUTH_URL}/api/vm/configure`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-              },
-              body: JSON.stringify({ userId }),
-            }
-          ).catch((err) => {
-            logger.error("VM configure fire-and-forget failed", { error: String(err), route: "billing/webhook", userId });
-          });
-        }
-        // If no VM available, send pending email
-        if (!vm) {
-          const { data: user } = await supabase
-            .from("instaclaw_users")
-            .select("email")
-            .eq("id", userId)
-            .single();
-          if (user?.email) {
-            try {
-              await sendPendingEmail(user.email);
-            } catch (emailErr) {
-              logger.error("Failed to send pending email", { error: String(emailErr), route: "billing/webhook", userId });
-            }
+      }
+      // If no VM available, send pending email
+      if (!vm) {
+        const { data: user } = await supabase
+          .from("instaclaw_users")
+          .select("email")
+          .eq("id", userId)
+          .single();
+        if (user?.email) {
+          try {
+            await sendPendingEmail(user.email);
+          } catch (emailErr) {
+            logger.error("Failed to send pending email", { error: String(emailErr), route: "billing/webhook", userId });
           }
         }
       }

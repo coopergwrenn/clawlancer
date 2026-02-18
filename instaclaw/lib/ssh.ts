@@ -20,7 +20,7 @@ interface VMRecord {
 }
 
 interface UserConfig {
-  telegramBotToken: string;
+  telegramBotToken?: string;
   apiMode: "all_inclusive" | "byok";
   apiKey?: string;
   tier: string;
@@ -1093,6 +1093,30 @@ export async function clearSessions(vm: VMRecord): Promise<boolean> {
         `&& nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
       ].join(' ');
       const result = await ssh.execCommand(cmd);
+      return result.code === 0;
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return false;
+  }
+}
+
+export async function ensureMemoryFile(vm: VMRecord): Promise<boolean> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const result = await ssh.execCommand(
+        'mkdir -p ~/.openclaw/workspace/memory && ' +
+        'test -f ~/.openclaw/workspace/MEMORY.md || ' +
+        "cat > ~/.openclaw/workspace/MEMORY.md << 'MEMEOF'\n" +
+        '# MEMORY.md - Long-Term Memory\n' +
+        '\n' +
+        '_Start capturing what matters here. Decisions, context, things to remember._\n' +
+        '\n' +
+        '---\n' +
+        'MEMEOF'
+      );
       return result.code === 0;
     } finally {
       ssh.dispose();
