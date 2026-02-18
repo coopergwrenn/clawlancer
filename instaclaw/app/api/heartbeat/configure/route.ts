@@ -98,12 +98,21 @@ export async function POST(req: NextRequest) {
     }
 
     const aiResponse = await aiRes.json();
-    const text =
+    let text =
       aiResponse.content?.[0]?.type === "text" ? aiResponse.content[0].text : "";
+
+    // Strip markdown code fences if the AI wrapped its response
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    // Also try extracting JSON from within the text if there's surrounding prose
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) text = jsonMatch[0];
+
     let parsed: { interval: string; response: string };
     try {
       parsed = JSON.parse(text);
     } catch {
+      logger.error("Failed to parse AI response", { text, route: "heartbeat/configure" });
       return NextResponse.json({
         interval: vm.heartbeat_interval,
         response: "Sorry, I couldn't understand that. Try something like 'check in every hour' or 'pause heartbeats'.",
