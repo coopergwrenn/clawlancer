@@ -81,59 +81,68 @@ function countdown(iso: string | null): string {
   return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`;
 }
 
-// ── Glass Heart SVG ─────────────────────────────────
+// ── Glass Orb Heart ─────────────────────────────────
+
+const HEART_PATH =
+  "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z";
 
 function HeartIcon({ color, size = 40 }: { color: string; size?: number }) {
-  const id = "hb-heart";
   return (
-    <svg viewBox="0 0 24 24" style={{ width: size, height: size, filter: `drop-shadow(0 2px 6px ${color}50)` }}>
-      <defs>
-        {/* Base radial gradient — 3D orb lighting */}
-        <radialGradient id={`${id}-base`} cx="35%" cy="30%" r="65%">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.45" />
-          <stop offset="35%" stopColor={color} stopOpacity="0.9" />
-          <stop offset="100%" stopColor={color} stopOpacity="1" />
-        </radialGradient>
-        {/* Top specular highlight */}
-        <radialGradient id={`${id}-spec`} cx="38%" cy="25%" r="30%">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.7" />
-          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
-        </radialGradient>
-        {/* Bottom inner shadow for depth */}
-        <radialGradient id={`${id}-depth`} cx="50%" cy="80%" r="50%">
-          <stop offset="0%" stopColor="#000" stopOpacity="0.2" />
-          <stop offset="100%" stopColor="#000" stopOpacity="0" />
-        </radialGradient>
-        {/* Rim light — edge catch */}
-        <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.3" />
-          <stop offset="50%" stopColor="#fff" stopOpacity="0" />
-          <stop offset="100%" stopColor="#fff" stopOpacity="0.15" />
-        </linearGradient>
-      </defs>
-      {/* Heart shape path */}
-      <path
-        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-        fill={`url(#${id}-base)`}
+    <div className="relative" style={{ width: size, height: size }}>
+      {/* Heart shape with 3D orb radial gradient + inset shadow layers */}
+      <svg
+        viewBox="0 0 24 24"
+        style={{
+          width: size,
+          height: size,
+          filter: `drop-shadow(0 2px 8px rgba(0,0,0,0.2)) drop-shadow(0 1px 3px rgba(0,0,0,0.15))`,
+        }}
+      >
+        <defs>
+          {/* 3D orb gradient — matches landing page testimonial avatar technique */}
+          <radialGradient id="hb-orb" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stopColor={color} stopOpacity="0.87" />
+            <stop offset="40%" stopColor={color} stopOpacity="0.55" />
+            <stop offset="100%" stopColor="rgba(0,0,0,1)" stopOpacity="0.3" />
+          </radialGradient>
+          {/* Top inset light — bright highlight simulating light from above */}
+          <linearGradient id="hb-inset-top" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.4" />
+            <stop offset="40%" stopColor="#fff" stopOpacity="0" />
+          </linearGradient>
+          {/* Bottom inset shadow */}
+          <linearGradient id="hb-inset-btm" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#000" stopOpacity="0.25" />
+            <stop offset="50%" stopColor="#000" stopOpacity="0" />
+          </linearGradient>
+          {/* Inner dark vignette */}
+          <radialGradient id="hb-vignette" cx="50%" cy="50%" r="50%">
+            <stop offset="60%" stopColor="#000" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000" stopOpacity="0.15" />
+          </radialGradient>
+        </defs>
+        {/* Base orb fill */}
+        <path d={HEART_PATH} fill={`url(#hb-orb)`} />
+        {/* Top light inset */}
+        <path d={HEART_PATH} fill="url(#hb-inset-top)" />
+        {/* Bottom shadow inset */}
+        <path d={HEART_PATH} fill="url(#hb-inset-btm)" />
+        {/* Vignette edge */}
+        <path d={HEART_PATH} fill="url(#hb-vignette)" />
+      </svg>
+      {/* Glass specular highlight — the white gloss on the top-left */}
+      <div
+        className="absolute rounded-full pointer-events-none"
+        style={{
+          top: "12%",
+          left: "18%",
+          width: "38%",
+          height: "28%",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
+          filter: "blur(1px)",
+        }}
       />
-      {/* Depth layer */}
-      <path
-        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-        fill={`url(#${id}-depth)`}
-      />
-      {/* Specular highlight */}
-      <path
-        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-        fill={`url(#${id}-spec)`}
-      />
-      {/* Rim light */}
-      <path
-        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-        fill="none"
-        stroke={`url(#${id}-rim)`}
-        strokeWidth="0.5"
-      />
-    </svg>
+    </div>
   );
 }
 
@@ -356,23 +365,23 @@ export default function HeartbeatCard() {
 
             {/* Status badge */}
             <div
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium mb-1"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium mb-1.5"
               style={{
-                background: isPaused
-                  ? "rgba(0,0,0,0.04)"
-                  : data.healthStatus === "unhealthy"
-                    ? "rgba(239,68,68,0.08)"
-                    : "rgba(220,103,67,0.08)",
+                background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
+                border: `1px solid ${
+                  isPaused
+                    ? "rgba(255,255,255,0.06)"
+                    : data.healthStatus === "unhealthy"
+                      ? "rgba(239,68,68,0.2)"
+                      : "rgba(34,197,94,0.2)"
+                }`,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.06)",
+                backdropFilter: "blur(12px)",
                 color: isPaused
                   ? "var(--muted)"
                   : data.healthStatus === "unhealthy"
                     ? "#ef4444"
-                    : "#DC6743",
-                border: isPaused
-                  ? "1px solid var(--border)"
-                  : data.healthStatus === "unhealthy"
-                    ? "1px solid rgba(239,68,68,0.15)"
-                    : "1px solid rgba(220,103,67,0.15)",
+                    : "var(--foreground)",
               }}
             >
               <span
@@ -383,6 +392,11 @@ export default function HeartbeatCard() {
                     : data.healthStatus === "unhealthy"
                       ? "#ef4444"
                       : "#22c55e",
+                  boxShadow: isPaused
+                    ? "none"
+                    : data.healthStatus === "unhealthy"
+                      ? "0 0 4px rgba(239,68,68,0.4)"
+                      : "0 0 4px rgba(34,197,94,0.4)",
                 }}
               />
               {isPaused
@@ -392,12 +406,10 @@ export default function HeartbeatCard() {
                   : "On schedule"}
             </div>
 
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
+            <p className="text-[11px]" style={{ color: "var(--muted)", opacity: 0.7 }}>
               {isPaused
-                ? "Your agent won\u2019t check in until you turn this back on."
-                : data.healthStatus === "unhealthy"
-                  ? "Your agent hasn\u2019t checked in for longer than expected."
-                  : `Checking in every ${data.interval}`}
+                ? "Paused until you turn it back on"
+                : `Every ${data.interval}`}
             </p>
           </div>
 
@@ -658,8 +670,10 @@ function StatTile({ label, value }: { label: string; value: string }) {
     <div
       className="rounded-lg px-3 py-2.5 text-center"
       style={{
-        background: "rgba(0,0,0,0.02)",
-        border: "1px solid rgba(0,0,0,0.05)",
+        background: "linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
+        border: "1px solid rgba(255,255,255,0.06)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.05)",
+        backdropFilter: "blur(12px)",
       }}
     >
       <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>
