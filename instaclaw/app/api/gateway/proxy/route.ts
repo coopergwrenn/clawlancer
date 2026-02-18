@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
+import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -9,23 +10,19 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const COST_PER_UNIT = 0.004;
 
 /**
- * Hidden buffer added to each tier's internal RPC limit.
- * Covers automated heartbeat/background calls that shouldn't consume
- * the user's visible quota. The RPC limits include this buffer:
- *   Starter internal = 600 = 400 display + 200 buffer
- *   Pro     internal = 900 = 700 display + 200 buffer
- *   Power   internal = 2700 = 2500 display + 200 buffer
+ * The RPC returns a 'source' field that tells the proxy how to handle
+ * each call:
+ *   'daily_limit' — within display limit, normal usage
+ *   'credits'     — over display limit but user has credit pack balance
+ *   'buffer'      — over display limit, no credits, within heartbeat buffer
+ *   null          — hard block, everything exhausted
  *
- * With 3h heartbeat interval → 8 heartbeats/day × ~20 LLM calls = ~160 units,
- * well within the 200-unit buffer.
+ * Display limits: Starter=600, Pro=1000, Power=2500
+ * Internal limits (display + 200 buffer): Starter=800, Pro=1200, Power=2700
  *
- * Behaviour:
- *   0 → displayLimit      : normal — user sees usage counting up
- *   displayLimit+1 → internal : buffer zone — calls still go through,
- *                                user sees "0 remaining", NO Telegram spam
- *   internal+1 →           : hard block — RPC denies, proxy returns error
+ * Notification dedup is stored in the DB (instaclaw_vms.limit_notified_date)
+ * so it survives Vercel cold starts.
  */
-const HEARTBEAT_BUFFER = 200;
 
 /**
  * Global daily spend cap in dollars. If total platform-wide usage exceeds
@@ -37,21 +34,6 @@ const DAILY_SPEND_CAP =
 
 /** Track whether we've already sent a circuit-breaker alert today. */
 let circuitBreakerAlertDate = "";
-
-/**
- * Notification dedup is stored in the DB (instaclaw_vms.limit_notified_date)
- * so it survives Vercel cold starts. The friendly limit message is sent once
- * per day; all subsequent calls return a silent empty response.
- */
-
-/** Extract the model family from a full model id (e.g. "claude-sonnet-4-5-..." → "sonnet"). */
-function modelFamily(model: string): string {
-  const lower = model.toLowerCase();
-  if (lower.includes("opus")) return "opus";
-  if (lower.includes("sonnet")) return "sonnet";
-  if (lower.includes("haiku")) return "haiku";
-  return "unknown";
-}
 
 /**
  * Build a valid Anthropic Messages API response containing a friendly text
@@ -113,18 +95,54 @@ function friendlyStreamResponse(text: string, model: string) {
 }
 
 /**
+ * Return a valid but empty assistant response (no content).
+ * OpenClaw treats this as "nothing to say" and won't forward to Telegram.
+ */
+function silentEmptyResponse(model: string, stream: boolean) {
+  if (stream) {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        const msgId = `msg_limit_${Date.now()}`;
+        controller.enqueue(encoder.encode(`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: msgId, type: "message", role: "assistant", content: [], model, stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } })}\n\n`));
+        controller.enqueue(encoder.encode(`event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 0 } })}\n\n`));
+        controller.enqueue(encoder.encode(`event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream", "cache-control": "no-cache" },
+    });
+  }
+  return NextResponse.json(
+    {
+      id: `msg_limit_${Date.now()}`,
+      type: "message",
+      role: "assistant",
+      content: [],
+      model,
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+    { status: 200 }
+  );
+}
+
+/**
  * Gateway proxy for all-inclusive VMs.
  *
  * The OpenClaw gateway on each VM calls this endpoint instead of Anthropic
  * directly. This gives us centralized rate limiting per tier:
- *   - Starter: 400 units/day  (internal limit 600 incl. 200 heartbeat buffer)
- *   - Pro:     700 units/day  (internal limit 900)
+ *   - Starter: 600 units/day  (internal limit 800 incl. 200 heartbeat buffer)
+ *   - Pro:    1000 units/day  (internal limit 1200)
  *   - Power:  2500 units/day  (internal limit 2700)
  *
- * The 200-unit buffer lets automated heartbeats (8/day @ 3h intervals)
- * continue even after the user's visible quota is exhausted, without
- * spamming "out of credits" messages to Telegram. Hard block only at
- * the internal limit.
+ * Flow after display limit:
+ *   1. Credits kick in first — if the user has a credit pack, they keep chatting
+ *   2. No credits → buffer zone (heartbeats/system only, user messages blocked)
+ *   3. Buffer exhausted → hard block on everything
  *
  * All tiers have access to all models. Cost weights handle fairness:
  * Haiku=1, Sonnet=4, Opus=19 (reflects actual Anthropic pricing ratios).
@@ -153,6 +171,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!vm) {
+      // Track proxy 401 for alerting — find VM by IP and alert if repeated
+      trackProxy401(gatewayToken, req).catch(() => {});
       return NextResponse.json(
         { error: "Invalid gateway token" },
         { status: 401 }
@@ -247,8 +267,7 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Check daily usage limit (with model cost weights) ---
-    // The RPC uses internal limits (display + buffer). It returns:
-    //   allowed: true/false, count: current usage, limit: internal limit
+    // The RPC returns source: 'daily_limit' | 'credits' | 'buffer' | null
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_daily_limit",
       { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel }
@@ -268,79 +287,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Derive display limit from the RPC's internal limit
-    const internalLimit = limitResult?.limit ?? 1;
-    const displayLimit = Math.max(1, internalLimit - HEARTBEAT_BUFFER);
+    const displayLimit = limitResult?.display_limit ?? 600;
     const currentCount = limitResult?.count ?? 0;
+    const source: string | null = limitResult?.source ?? null;
 
-    // --- Hard block: internal limit exceeded (RPC denied) ---
-    // Send a friendly "daily limit" message ONCE per day, tracked in the DB
-    // (limit_notified_date column) so it survives Vercel cold starts.
-    // All subsequent calls return a silent empty response so OpenClaw
-    // won't forward anything to Telegram.
+    // --- Hard block: everything exhausted (RPC denied) ---
+    // User was already notified when they entered the buffer zone.
+    // Return silent empty response for all calls.
     if (limitResult && !limitResult.allowed) {
-      const alreadyNotifiedToday = vm.limit_notified_date === todayStr;
-
-      if (!alreadyNotifiedToday) {
-        // First time hitting the limit today — send the friendly message
-        // and record the date in DB (fire-and-forget).
-        supabase
-          .from("instaclaw_vms")
-          .update({ limit_notified_date: todayStr })
-          .eq("id", vm.id)
-          .then(() => {});
-
-        return friendlyAssistantResponse(
-          `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
-          requestedModel,
-          isStreaming
-        );
-      }
-
-      // Already notified today — return a valid but empty assistant response
-      // with stop_reason "end_turn". OpenClaw treats this as "nothing to say"
-      // and won't forward anything to Telegram.
-      if (isStreaming) {
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream({
-          start(controller) {
-            const msgId = `msg_limit_${Date.now()}`;
-            controller.enqueue(encoder.encode(`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: msgId, type: "message", role: "assistant", content: [], model: requestedModel, stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } })}\n\n`));
-            controller.enqueue(encoder.encode(`event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 0 } })}\n\n`));
-            controller.enqueue(encoder.encode(`event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`));
-            controller.close();
-          },
-        });
-        return new Response(stream, {
-          status: 200,
-          headers: { "content-type": "text/event-stream", "cache-control": "no-cache" },
-        });
-      }
-      return NextResponse.json(
-        {
-          id: `msg_limit_${Date.now()}`,
-          type: "message",
-          role: "assistant",
-          content: [],
-          model: requestedModel,
-          stop_reason: "end_turn",
-          stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 },
-        },
-        { status: 200 }
-      );
+      return silentEmptyResponse(requestedModel, isStreaming);
     }
 
-    // --- Buffer zone: count > displayLimit but < internalLimit ---
-    // Calls still go through (RPC said allowed=true), but we skip usage
-    // warnings so the user doesn't see confusing counts above their limit.
-    // Heartbeats that fire after the user's visible quota is exhausted
-    // land here silently.
-    const inBufferZone = currentCount > displayLimit;
+    // --- Buffer zone: heartbeats/system only, user messages blocked ---
+    // The RPC allowed the call (within internal limit) but there are no
+    // credits. Send the "daily limit" notification once, then silent.
+    if (source === "buffer") {
+      const alreadyNotifiedToday = vm.limit_notified_date === todayStr;
 
-    // --- Heartbeat tracking: update heartbeat columns when in buffer zone ---
-    if (inBufferZone) {
-      // Fire-and-forget: don't await — we don't want to slow down the proxy
+      // Track buffer usage for heartbeat dashboard (fire-and-forget)
       supabase
         .from("instaclaw_vms")
         .select("heartbeat_interval, heartbeat_credits_used_today")
@@ -349,7 +313,6 @@ export async function POST(req: NextRequest) {
         .then(({ data: hbData }) => {
           const now = new Date();
           const interval = hbData?.heartbeat_interval ?? "3h";
-          // Parse interval: "3h" → 10800000ms, "1.5h" → 5400000ms
           const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
           const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
           const nextAt = new Date(now.getTime() + nextMs);
@@ -364,11 +327,32 @@ export async function POST(req: NextRequest) {
             .eq("id", vm.id)
             .then(() => {});
         });
+
+      if (!alreadyNotifiedToday) {
+        // First time hitting the limit today — send the friendly notification
+        supabase
+          .from("instaclaw_vms")
+          .update({ limit_notified_date: todayStr })
+          .eq("id", vm.id)
+          .then(() => {});
+
+        return friendlyAssistantResponse(
+          `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
+          requestedModel,
+          isStreaming
+        );
+      }
+
+      // Already notified — silent empty response
+      return silentEmptyResponse(requestedModel, isStreaming);
     }
 
-    // --- Compute usage warning thresholds (only in normal zone) ---
+    // --- Normal zone or credits: forward to Anthropic ---
+    // source === 'daily_limit' (within display limit) or 'credits' (user paid)
+
+    // Compute usage warnings (only for daily_limit source, not credits)
     let usageWarning = "";
-    if (!inBufferZone) {
+    if (source === "daily_limit") {
       const displayCount = Math.min(currentCount, displayLimit);
       const usagePct = (displayCount / displayLimit) * 100;
 
@@ -378,6 +362,9 @@ export async function POST(req: NextRequest) {
         usageWarning = `\n\n---\n⚡ You've used ${displayCount} of ${displayLimit} daily units.`;
       }
     }
+
+    // Reset proxy 401 counter on successful auth (fire-and-forget)
+    resetProxy401Count(vm.id).catch(() => {});
 
     // --- Proxy to Anthropic ---
     const apiKey = process.env.ANTHROPIC_API_KEY;

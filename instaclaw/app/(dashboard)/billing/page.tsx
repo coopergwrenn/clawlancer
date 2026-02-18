@@ -11,7 +11,7 @@ const tiers = [
     allInclusive: 29,
     byok: 14,
     description: "Perfect for getting started",
-    dailyUnits: 400,
+    dailyUnits: 600,
     features: [
       "Always-on AI that works while you sleep",
       "Learns your preferences over time",
@@ -29,7 +29,7 @@ const tiers = [
     allInclusive: 99,
     byok: 39,
     description: "For everyday use",
-    dailyUnits: 700,
+    dailyUnits: 1000,
     features: [
       "Nearly 2x more daily AI capacity",
       "Handles complex, multi-step tasks",

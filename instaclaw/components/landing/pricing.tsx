@@ -26,7 +26,7 @@ const tiers = [
     byok: "$14",
     description: "Perfect for personal use",
     features: [
-      "400 daily units (Haiku = 1, Sonnet = 4, Opus = 19)",
+      "600 daily units (Haiku = 1, Sonnet = 4, Opus = 19)",
       "All models included — Haiku, Sonnet & Opus",
       "Dedicated VM + all channels",
       "Switch models anytime via your bot",
@@ -40,7 +40,7 @@ const tiers = [
     byok: "$39",
     description: "For power users",
     features: [
-      "700 daily units — nearly 2x Starter",
+      "1,000 daily units — nearly 2x Starter",
       "All models included — Haiku, Sonnet & Opus",
       "Priority support",
       "Early access to new features",
@@ -54,7 +54,7 @@ const tiers = [
     byok: "$99",
     description: "Maximum performance",
     features: [
-      "2,500 daily units — over 6x Starter",
+      "2,500 daily units — over 4x Starter",
       "All models included — Haiku, Sonnet & Opus",
       "Upgraded server resources",
       "Dedicated support",

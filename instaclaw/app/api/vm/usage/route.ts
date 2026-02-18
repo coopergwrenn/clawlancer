@@ -4,8 +4,8 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
 const TIER_LIMITS: Record<string, number> = {
-  starter: 400,
-  pro: 700,
+  starter: 600,
+  pro: 1000,
   power: 2500,
 };
 
@@ -27,7 +27,7 @@ export async function GET() {
       today: 0,
       week: 0,
       month: 0,
-      dailyLimit: 400,
+      dailyLimit: 600,
       creditBalance: 0,
     });
   }
@@ -67,7 +67,7 @@ export async function GET() {
     ]);
 
     const tier = vm.tier || "starter";
-    const dailyLimit = TIER_LIMITS[tier] ?? 400;
+    const dailyLimit = TIER_LIMITS[tier] ?? 600;
     // Cap displayed usage at the display limit — internal buffer usage is hidden
     const today = Math.min(todayRes.data?.message_count ?? 0, dailyLimit);
     const week = (weekRes.data ?? []).reduce(
@@ -92,7 +92,7 @@ export async function GET() {
       today: 0,
       week: 0,
       month: 0,
-      dailyLimit: TIER_LIMITS[vm.tier || "starter"] ?? 400,
+      dailyLimit: TIER_LIMITS[vm.tier || "starter"] ?? 600,
       creditBalance: 0,
     });
   }

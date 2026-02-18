@@ -1023,7 +1023,7 @@ export default function ConnectPage() {
               All models are always available — just tell your bot &quot;use Sonnet&quot; or &quot;switch to Opus&quot; anytime.
             </p>
             <p className="text-xs mt-2" style={{ color: "#999" }}>
-              Example: On the Pro plan (700 units/day), Haiku gets ~700 messages/day, Sonnet ~175, Opus ~36.
+              Example: On the Pro plan (1,000 units/day), Haiku gets ~1,000 messages/day, Sonnet ~250, Opus ~52.
             </p>
             <p className="text-xs mt-3 px-3 py-2.5 rounded-lg" style={{
               ...glassStyle,
