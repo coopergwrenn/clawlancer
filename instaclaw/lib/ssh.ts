@@ -757,8 +757,29 @@ export async function testProxyRoundTrip(
   maxRetries = 2
 ): Promise<{ success: boolean; error?: string }> {
   const baseUrl = process.env.NEXTAUTH_URL || "https://instaclaw.io";
-  const url = `${baseUrl}/api/gateway/v1/messages`;
 
+  // Test both /v1/messages (legacy) and /v1/responses (OpenClaw >=2026.2.3)
+  // to catch missing route issues early.
+  const endpoints = [
+    `${baseUrl}/api/gateway/v1/messages`,
+    `${baseUrl}/api/gateway/v1/responses`,
+  ];
+
+  for (const url of endpoints) {
+    const result = await testProxyEndpoint(url, gatewayToken, maxRetries);
+    if (!result.success) {
+      return result;
+    }
+  }
+
+  return { success: true };
+}
+
+async function testProxyEndpoint(
+  url: string,
+  gatewayToken: string,
+  maxRetries: number
+): Promise<{ success: boolean; error?: string }> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetch(url, {
@@ -787,17 +808,17 @@ export async function testProxyRoundTrip(
         continue;
       }
 
-      return { success: false, error: `HTTP ${res.status}: ${snippet}` };
+      return { success: false, error: `${url}: HTTP ${res.status}: ${snippet}` };
     } catch (err) {
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, 3000));
         continue;
       }
-      return { success: false, error: String(err) };
+      return { success: false, error: `${url}: ${String(err)}` };
     }
   }
 
-  return { success: false, error: "Exhausted retries" };
+  return { success: false, error: `${url}: Exhausted retries` };
 }
 
 export async function waitForHealth(
