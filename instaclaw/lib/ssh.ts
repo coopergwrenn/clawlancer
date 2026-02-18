@@ -52,7 +52,7 @@ export const CONFIG_SPEC = {
     "commands.restart": "true",
   } as Record<string, string>,
   // Files that must exist in ~/.openclaw/workspace/
-  requiredWorkspaceFiles: ["SOUL.md", "AGENTS.md", "CAPABILITIES.md"],
+  requiredWorkspaceFiles: ["SOUL.md", "AGENTS.md", "CAPABILITIES.md", "MEMORY.md"],
   // Max session file size in bytes before auto-clear (10MB)
   maxSessionBytes: 10 * 1024 * 1024,
 };
@@ -598,6 +598,22 @@ json.dump(c, open(p, 'w'), indent=2)
       );
     }
 
+    // Always create MEMORY.md (if not already written by Gmail branch above)
+    // and the memory/ directory for daily logs. Without these, the agent has
+    // no long-term memory from day one — which is how Ibrahim's bot lost days of context.
+    scriptParts.push(
+      '# Ensure MEMORY.md and memory/ dir exist (belt and suspenders)',
+      `test -f "${workspaceDir}/MEMORY.md" || cat > "${workspaceDir}/MEMORY.md" << 'MEMEOF'`,
+      '# MEMORY.md - Long-Term Memory',
+      '',
+      '_Start capturing what matters here. Decisions, context, things to remember._',
+      '',
+      '---',
+      'MEMEOF',
+      `mkdir -p "${workspaceDir}/memory"`,
+      ''
+    );
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [
@@ -992,6 +1008,25 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
       const toolsB64 = Buffer.from(WORKSPACE_TOOLS_MD_TEMPLATE, 'utf-8').toString('base64');
       await ssh.execCommand(`echo '${toolsB64}' | base64 -d > ${workspaceDir}/TOOLS.md`);
       fixed.push('TOOLS.md');
+    }
+
+    // 3b2. Write MEMORY.md + memory/ dir only if missing (agent-editable, never overwrite)
+    const memCheck = await ssh.execCommand(`test -f ${workspaceDir}/MEMORY.md && echo exists || echo missing`);
+    if (memCheck.stdout.trim() === 'missing') {
+      const memoryMdContent = [
+        '# MEMORY.md - Long-Term Memory',
+        '',
+        '_Start capturing what matters here. Decisions, context, things to remember._',
+        '',
+        '---',
+      ].join('\n');
+      const memB64 = Buffer.from(memoryMdContent, 'utf-8').toString('base64');
+      await ssh.execCommand(`echo '${memB64}' | base64 -d > ${workspaceDir}/MEMORY.md`);
+      await ssh.execCommand(`mkdir -p ${workspaceDir}/memory`);
+      fixed.push('MEMORY.md');
+      // Remove from missingFiles since we just wrote it
+      const idx = missingFiles.indexOf('MEMORY.md');
+      if (idx >= 0) missingFiles.splice(idx, 1);
     }
 
     // 3c. Write generate_workspace_index.sh

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Mail } from "lucide-react";
+import { X, Mail, ShieldAlert } from "lucide-react";
 
 type Phase =
   | "prompt"
@@ -229,12 +229,43 @@ export function GmailConnectPopup({
                 </h2>
 
                 <p
-                  className="text-sm mb-8 leading-relaxed max-w-sm mx-auto"
+                  className="text-sm mb-5 leading-relaxed max-w-sm mx-auto"
                   style={{ color: "var(--muted)" }}
                 >
                   Connect Gmail so your agent can learn about you from your
                   inbox patterns. Only metadata is read — never full emails.
                 </p>
+
+                {/* Google unverified app warning */}
+                <div
+                  className="rounded-xl p-4 mb-6 text-left"
+                  style={{
+                    background: "rgba(234,179,8,0.06)",
+                    border: "1px solid rgba(234,179,8,0.2)",
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <ShieldAlert
+                      className="w-5 h-5 shrink-0 mt-0.5"
+                      style={{ color: "#ca8a04" }}
+                    />
+                    <div>
+                      <p className="text-sm font-semibold mb-1.5" style={{ color: "#92400e" }}>
+                        Heads up — Google will show a warning
+                      </p>
+                      <p className="text-xs leading-relaxed mb-2" style={{ color: "#78716c" }}>
+                        Google will say &quot;Google hasn&apos;t verified this app.&quot; This is
+                        normal for new platforms — we&apos;re in the process of getting verified
+                        (takes a few weeks). It&apos;s safe to proceed.
+                      </p>
+                      <p className="text-xs font-medium leading-relaxed" style={{ color: "#92400e" }}>
+                        Click <span style={{ fontWeight: 700 }}>&quot;Advanced&quot;</span> &rarr;{" "}
+                        <span style={{ fontWeight: 700 }}>&quot;Go to instaclaw.io (unsafe)&quot;</span> to
+                        continue. We only request read-only access to personalize your agent.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
                 <button
                   onClick={handleConnect}
@@ -254,7 +285,7 @@ export function GmailConnectPopup({
                   className="mt-4 text-sm transition-opacity hover:opacity-70 cursor-pointer"
                   style={{ color: "var(--muted)" }}
                 >
-                  Maybe later
+                  Skip for now — you can connect later in Settings
                 </button>
 
                 <p

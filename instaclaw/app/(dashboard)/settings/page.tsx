@@ -15,6 +15,7 @@ import {
   CreditCard,
   Store,
   Mail,
+  ShieldAlert,
 } from "lucide-react";
 import { WorldIDSection } from "@/components/dashboard/world-id-section";
 
@@ -635,6 +636,26 @@ export default function SettingsPage() {
               </a>
             )}
           </div>
+          {!gmailConnected && (
+            <div
+              className="rounded-lg p-3 mt-4 flex items-start gap-2.5"
+              style={{
+                background: "rgba(234,179,8,0.06)",
+                border: "1px solid rgba(234,179,8,0.15)",
+              }}
+            >
+              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#ca8a04" }} />
+              <div>
+                <p className="text-xs leading-relaxed" style={{ color: "#78716c" }}>
+                  Google will show an &quot;unverified app&quot; warning — this is normal while we
+                  complete verification. Click{" "}
+                  <strong style={{ color: "#92400e" }}>Advanced</strong> &rarr;{" "}
+                  <strong style={{ color: "#92400e" }}>Go to instaclaw.io (unsafe)</strong> to
+                  proceed. We only request read-only access.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
