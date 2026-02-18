@@ -129,6 +129,13 @@ const tourSteps: TourStep[] = [
     position: "top",
   },
   {
+    selector: '[data-tour="page-heartbeat"]',
+    title: "Heartbeat",
+    description:
+      "This is your agent's pulse. It automatically wakes up on a schedule to check messages, process tasks, and stay on top of things. You can control how often it checks in. More frequent means more responsive, but uses more of its separate daily heartbeat credits.",
+    navigateTo: "/heartbeat",
+  },
+  {
     selector: '[data-tour="nav-history"]',
     title: "History",
     description:

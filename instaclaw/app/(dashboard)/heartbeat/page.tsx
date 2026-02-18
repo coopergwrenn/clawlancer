@@ -4,7 +4,7 @@ import HeartbeatCard from "@/components/dashboard/heartbeat-card";
 
 export default function HeartbeatPage() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-10">
+    <div className="max-w-2xl mx-auto px-4 py-8 space-y-10" data-tour="page-heartbeat">
       {/* ── Page Header ── */}
       <div>
         <h1
