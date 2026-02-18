@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { configureOpenClaw, waitForHealth, migrateUserData } from "@/lib/ssh";
+import { configureOpenClaw, waitForHealth, migrateUserData, testProxyRoundTrip } from "@/lib/ssh";
 import { validateAdminKey } from "@/lib/security";
 import { logger } from "@/lib/logger";
-import { sendVMReadyEmail } from "@/lib/email";
+import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 
 // SSH + configure-vm.sh + health check + optional data migration can take 60-150s
 export const maxDuration = 180;
@@ -212,30 +212,62 @@ export async function POST(req: NextRequest) {
     const healthy = await waitForHealth(vm, result.gatewayToken, 3, 3000);
 
     if (healthy) {
-      await supabase
-        .from("instaclaw_vms")
-        .update({
-          health_status: "healthy",
-          last_health_check: new Date().toISOString(),
-        })
-        .eq("id", vm.id);
+      // Proxy round-trip test: verify the full chain (gateway token → proxy → Anthropic)
+      // Only for all-inclusive VMs that route through our proxy
+      let proxyOk = true;
+      if (effectiveApiMode === "all_inclusive") {
+        const proxyResult = await testProxyRoundTrip(result.gatewayToken);
+        proxyOk = proxyResult.success;
 
-      // Send deployment success email
-      const { data: user } = await supabase
-        .from("instaclaw_users")
-        .select("email")
-        .eq("id", userId)
-        .single();
-
-      if (user?.email) {
-        try {
-          await sendVMReadyEmail(user.email, `${process.env.NEXTAUTH_URL}/dashboard`);
-        } catch (emailErr) {
-          logger.error("Failed to send VM ready email", {
-            error: String(emailErr),
+        if (!proxyOk) {
+          logger.error("Proxy round-trip test failed after configure", {
             route: "vm/configure",
             userId,
+            vmId: vm.id,
+            error: proxyResult.error,
           });
+
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              health_status: "unhealthy",
+              last_health_check: new Date().toISOString(),
+            })
+            .eq("id", vm.id);
+
+          sendAdminAlertEmail(
+            "Proxy Round-Trip Failed After Configure",
+            `VM ${vm.id} (user: ${userId}) passed local health check but failed proxy round-trip.\n\nError: ${proxyResult.error}\n\nThe health cron will auto-restart the gateway on the next cycle.`
+          ).catch(() => {});
+        }
+      }
+
+      if (proxyOk) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            health_status: "healthy",
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", vm.id);
+
+        // Send deployment success email
+        const { data: user } = await supabase
+          .from("instaclaw_users")
+          .select("email")
+          .eq("id", userId)
+          .single();
+
+        if (user?.email) {
+          try {
+            await sendVMReadyEmail(user.email, `${process.env.NEXTAUTH_URL}/dashboard`);
+          } catch (emailErr) {
+            logger.error("Failed to send VM ready email", {
+              error: String(emailErr),
+              route: "vm/configure",
+              userId,
+            });
+          }
         }
       }
     }

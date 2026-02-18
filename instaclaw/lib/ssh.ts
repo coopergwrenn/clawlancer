@@ -748,6 +748,58 @@ json.dump(c, open(p, 'w'), indent=2)
   }
 }
 
+/**
+ * Test the full proxy round-trip: VM gateway token → instaclaw.io proxy → Anthropic → response.
+ * Used after configure to verify proxy auth works end-to-end (catches token mismatch issues).
+ */
+export async function testProxyRoundTrip(
+  gatewayToken: string,
+  maxRetries = 2
+): Promise<{ success: boolean; error?: string }> {
+  const baseUrl = process.env.NEXTAUTH_URL || "https://instaclaw.io";
+  const url = `${baseUrl}/api/gateway/v1/messages`;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": gatewayToken,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }],
+        }),
+      });
+
+      if (res.status === 200) {
+        return { success: true };
+      }
+
+      const body = await res.text().catch(() => "");
+      const snippet = body.slice(0, 200);
+
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+
+      return { success: false, error: `HTTP ${res.status}: ${snippet}` };
+    } catch (err) {
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+      return { success: false, error: String(err) };
+    }
+  }
+
+  return { success: false, error: "Exhausted retries" };
+}
+
 export async function waitForHealth(
   vm: VMRecord,
   gatewayToken?: string,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, CONFIG_SPEC } from "@/lib/ssh";
-import { sendHealthAlertEmail, sendSuspendedEmail } from "@/lib/email";
+import { checkHealthExtended, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, CONFIG_SPEC } from "@/lib/ssh";
+import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, assigned_to, name, config_version")
+    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count")
     .eq("status", "assigned")
     .not("gateway_url", "is", null);
 
@@ -370,6 +370,71 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // ========================================================================
+  // Sixth pass: Proxy round-trip validation for healthy all_inclusive VMs
+  // Catches VMs that pass local health check but have broken proxy auth
+  // (the EuroPartShop scenario). Limit to 3 per cycle to control cost/time.
+  // ========================================================================
+  let proxyChecked = 0;
+  let proxyFailed = 0;
+  const PROXY_CHECK_BATCH_SIZE = 3;
+  const PROXY_401_THRESHOLD = 3;
+
+  const proxyCheckBatch = vms
+    .filter(
+      (vm) =>
+        healthyVmIds.has(vm.id) &&
+        vm.api_mode === "all_inclusive" &&
+        vm.gateway_token
+    )
+    .slice(0, PROXY_CHECK_BATCH_SIZE);
+
+  for (const vm of proxyCheckBatch) {
+    try {
+      const result = await testProxyRoundTrip(vm.gateway_token!, 1);
+      proxyChecked++;
+
+      if (!result.success) {
+        proxyFailed++;
+        const newCount = (vm.proxy_401_count ?? 0) + 1;
+
+        await supabase
+          .from("instaclaw_vms")
+          .update({ proxy_401_count: newCount })
+          .eq("id", vm.id);
+
+        logger.warn("Proxy round-trip failed for healthy VM", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          error: result.error,
+          proxy401Count: newCount,
+        });
+
+        if (newCount >= PROXY_401_THRESHOLD) {
+          await sendAdminAlertEmail(
+            "Cron: Proxy Round-Trip Failure",
+            `VM ${vm.id} (${vm.name ?? "unnamed"}, user: ${vm.assigned_to}) passes local health check but has failed ${newCount} consecutive proxy round-trip tests.\n\nLatest error: ${result.error}\n\nThis VM needs a reconfigure to fix the proxy auth chain.`
+          );
+        }
+      } else {
+        // Proxy OK — reset counter if it was previously non-zero
+        if ((vm.proxy_401_count ?? 0) > 0) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ proxy_401_count: 0 })
+            .eq("id", vm.id);
+        }
+      }
+    } catch (err) {
+      logger.error("Proxy round-trip check failed", {
+        error: String(err),
+        route: "cron/health-check",
+        vmId: vm.id,
+      });
+    }
+  }
+
   return NextResponse.json({
     checked: vms.length,
     healthy,
@@ -382,5 +447,7 @@ export async function GET(req: NextRequest) {
     configsAudited,
     configsFixed,
     memoryFilesCreated,
+    proxyChecked,
+    proxyFailed,
   });
 }

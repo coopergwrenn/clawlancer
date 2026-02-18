@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Zap,
   Eraser,
+  Wrench,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
@@ -81,6 +82,7 @@ export default function DashboardPage() {
   const [creditsPurchased, setCreditsPurchased] = useState(false);
   const [welcomeDismissed, setWelcomeDismissed] = useState(true);
   const [togglingAgdp, setTogglingAgdp] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetToast, setResetToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -152,6 +154,25 @@ export default function DashboardPage() {
       setTimeout(fetchStatus, 3000);
     } finally {
       setRestarting(false);
+    }
+  }
+
+  async function handleRepair() {
+    setRepairing(true);
+    try {
+      const res = await fetch("/api/vm/repair", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setResetToast({ message: "Repair started — your agent will be back online in ~60 seconds", type: "success" });
+      } else {
+        setResetToast({ message: data.error || "Repair failed", type: "error" });
+      }
+      setTimeout(fetchStatus, 5000);
+    } catch {
+      setResetToast({ message: "Network error — could not reach server", type: "error" });
+    } finally {
+      setRepairing(false);
+      setTimeout(() => setResetToast(null), 4000);
     }
   }
 
@@ -722,6 +743,29 @@ export default function DashboardPage() {
                     style={{ color: "var(--muted)" }}
                   >
                     {restarting ? "Restarting..." : "Use if your bot is unresponsive"}
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={handleRepair}
+                disabled={repairing}
+                className="glass rounded-xl p-4 flex items-center gap-3 transition-all hover:border-white/30 cursor-pointer disabled:opacity-50 text-left"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                <Wrench
+                  className={`w-5 h-5 ${repairing ? "animate-spin" : ""}`}
+                  style={{ color: "#333334" }}
+                />
+                <div>
+                  <p className="text-sm font-semibold">
+                    {repairing ? "Repairing..." : "Repair Agent"}
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    Full reconfigure — fixes broken proxy, tokens, config
                   </p>
                 </div>
               </button>
