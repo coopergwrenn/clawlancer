@@ -282,10 +282,14 @@ export function GmailConnectPopup({
 
                 <button
                   onClick={handleDismiss}
-                  className="mt-4 text-sm transition-opacity hover:opacity-70 cursor-pointer"
-                  style={{ color: "var(--muted)" }}
+                  className="w-full mt-3 px-6 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer"
+                  style={{
+                    background: "rgba(0,0,0,0.04)",
+                    border: "1px solid var(--border)",
+                    color: "var(--foreground)",
+                  }}
                 >
-                  Skip for now — you can connect later in Settings
+                  Skip for now — connect later in Settings
                 </button>
 
                 <p
