@@ -16,6 +16,18 @@ const MAX_POLL_ATTEMPTS = 90; // 180 seconds at 2s intervals
 const EARLY_CHECK_THRESHOLD = 15; // Check for issues at 30s
 const MID_CHECK_THRESHOLD = 45; // Check for issues at 90s
 
+/** Safely parse JSON from a fetch response. Returns null if response is not JSON
+ *  (e.g. Vercel timeout returning HTML). Prevents "Unexpected token" crashes. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function safeJson(res: Response): Promise<any | null> {
+  try {
+    const text = await res.text();
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 // Rotating subtitle phrases while deploying
 const SUBTITLE_MESSAGES = [
   "Hang tight, your AI is coming to life",
@@ -173,7 +185,8 @@ function DeployingPageContent() {
           });
 
           if (verifyRes.ok) {
-            const verifyData = await verifyRes.json();
+            const verifyData = await safeJson(verifyRes);
+            if (!verifyData) return; // Non-JSON — let polling handle it
 
             if (verifyData.verified && verifyData.status === "paid") {
               // Payment confirmed, VM assignment triggered
@@ -213,7 +226,8 @@ function DeployingPageContent() {
 
         // Fallback: Check VM status if no session_id or verification failed
         const res = await fetch("/api/vm/status");
-        const data = await res.json();
+        const data = await safeJson(res);
+        if (!data) return; // Non-JSON response (e.g. timeout) — let polling handle it
 
         // Check if there's no pending user at all
         if (data.status === "no_user") {
@@ -293,13 +307,15 @@ function DeployingPageContent() {
 
       try {
         const res = await fetch("/api/vm/status");
-        const data = await res.json();
+        const data = await safeJson(res);
+        if (!data) return; // Non-JSON response (timeout/error) — skip this poll cycle
 
         // Early check (30s): Still on "assign"? Might be no VMs available
         if (pollCount >= EARLY_CHECK_THRESHOLD && data.status === "pending") {
           // Check if there are VMs available
           const poolRes = await fetch("/api/vm/pool-status");
-          const poolData = await poolRes.json();
+          const poolData = await safeJson(poolRes);
+          if (!poolData) return; // Non-JSON — skip this check
 
           if (poolData.availableVMs === 0) {
             setPolling(false);
@@ -403,9 +419,9 @@ function DeployingPageContent() {
 
     try {
       const res = await fetch("/api/vm/retry-configure", { method: "POST" });
-      const data = await res.json();
+      const data = await safeJson(res);
 
-      if (res.ok && data.retried) {
+      if (res.ok && data?.retried) {
         setPollCount(0);
         setPolling(true);
       } else {

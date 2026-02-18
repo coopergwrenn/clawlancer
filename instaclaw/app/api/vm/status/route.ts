@@ -4,6 +4,11 @@ import { getSupabase } from "@/lib/supabase";
 import { getStripe, TIER_DISPLAY, Tier, ApiMode } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel from killing this function before it can return JSON.
+// The deploying page polls this every 2s — a timeout returns HTML, not JSON,
+// causing "Unexpected token" parse errors on the client.
+export const maxDuration = 30;
+
 export async function GET() {
   try {
     const session = await auth();

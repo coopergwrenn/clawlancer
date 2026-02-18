@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 
+export const maxDuration = 10;
+
 /**
  * GET /api/vm/pool-status
  * Returns the count of available VMs in the pool
