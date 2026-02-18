@@ -1,6 +1,15 @@
 import { getSupabase } from "./supabase";
 import { generateGatewayToken } from "./security";
 import { logger } from "./logger";
+import {
+  INTELLIGENCE_MARKER_START,
+  SYSTEM_PROMPT_INTELLIGENCE_BLOCKS,
+  WORKSPACE_CAPABILITIES_MD,
+  WORKSPACE_TOOLS_MD_TEMPLATE,
+  AGENTS_MD_PHILOSOPHY_SECTION,
+  SOUL_MD_LEARNED_PREFERENCES,
+  WORKSPACE_INDEX_SCRIPT,
+} from "./agent-intelligence";
 
 interface VMRecord {
   id: string;
@@ -36,14 +45,14 @@ const GATEWAY_PORT = 18789;
 // compares each VM's `config_version` column against this — if behind,
 // it SSHes in and applies the missing config automatically.
 export const CONFIG_SPEC = {
-  version: 1,
+  version: 2,
   settings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
     "commands.restart": "true",
   } as Record<string, string>,
   // Files that must exist in ~/.openclaw/workspace/
-  requiredWorkspaceFiles: ["SOUL.md", "AGENTS.md"],
+  requiredWorkspaceFiles: ["SOUL.md", "AGENTS.md", "CAPABILITIES.md"],
   // Max session file size in bytes before auto-clear (10MB)
   maxSessionBytes: 10 * 1024 * 1024,
 };
@@ -527,15 +536,28 @@ json.dump(c, open(p, 'w'), indent=2)
     const workspaceDir = '$HOME/.openclaw/workspace';
 
     // Common workspace files (written for every VM regardless of Gmail)
-    const soulB64 = Buffer.from(WORKSPACE_SOUL_MD, 'utf-8').toString('base64');
-    const agentsB64 = Buffer.from(WORKSPACE_AGENTS_MD, 'utf-8').toString('base64');
+    // Augment SOUL.md and AGENTS.md with intelligence sections
+    const augmentedSoul = WORKSPACE_SOUL_MD + SOUL_MD_LEARNED_PREFERENCES;
+    const augmentedAgents = WORKSPACE_AGENTS_MD + AGENTS_MD_PHILOSOPHY_SECTION;
+    const soulB64 = Buffer.from(augmentedSoul, 'utf-8').toString('base64');
+    const agentsB64 = Buffer.from(augmentedAgents, 'utf-8').toString('base64');
     const identityB64 = Buffer.from(WORKSPACE_IDENTITY_MD, 'utf-8').toString('base64');
+    const capabilitiesB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');
+    const toolsB64 = Buffer.from(WORKSPACE_TOOLS_MD_TEMPLATE, 'utf-8').toString('base64');
+    const indexScriptB64 = Buffer.from(WORKSPACE_INDEX_SCRIPT, 'utf-8').toString('base64');
 
     scriptParts.push(
       '# Write custom workspace files (SOUL.md, AGENTS.md, IDENTITY.md)',
       `echo '${soulB64}' | base64 -d > "${workspaceDir}/SOUL.md"`,
       `echo '${agentsB64}' | base64 -d > "${workspaceDir}/AGENTS.md"`,
       `echo '${identityB64}' | base64 -d > "${workspaceDir}/IDENTITY.md"`,
+      '',
+      '# Write intelligence workspace files (CAPABILITIES.md, TOOLS.md, index script)',
+      `echo '${capabilitiesB64}' | base64 -d > "${workspaceDir}/CAPABILITIES.md"`,
+      `echo '${toolsB64}' | base64 -d > "${workspaceDir}/TOOLS.md"`,
+      'mkdir -p "$HOME/.openclaw/scripts"',
+      `echo '${indexScriptB64}' | base64 -d > "$HOME/.openclaw/scripts/generate_workspace_index.sh"`,
+      'chmod +x "$HOME/.openclaw/scripts/generate_workspace_index.sh"',
       ''
     );
 
@@ -949,6 +971,75 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
       fixed.push(...settingsToFix);
     }
 
+    // 3. Deploy intelligence upgrade files
+    const workspaceDir = '~/.openclaw/workspace';
+    const agentDir = '~/.openclaw/agents/main/agent';
+    let systemPromptModified = false;
+
+    // 3a. Write CAPABILITIES.md (always overwrite — read-only reference)
+    const capB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');
+    await ssh.execCommand(`echo '${capB64}' | base64 -d > ${workspaceDir}/CAPABILITIES.md`);
+    if (missingFiles.includes('CAPABILITIES.md')) {
+      fixed.push('CAPABILITIES.md');
+      // Remove from missingFiles since we just wrote it
+      const idx = missingFiles.indexOf('CAPABILITIES.md');
+      if (idx >= 0) missingFiles.splice(idx, 1);
+    }
+
+    // 3b. Write TOOLS.md only if missing (agent-editable, never overwrite)
+    const toolsCheck = await ssh.execCommand(`test -f ${workspaceDir}/TOOLS.md && echo exists || echo missing`);
+    if (toolsCheck.stdout.trim() === 'missing') {
+      const toolsB64 = Buffer.from(WORKSPACE_TOOLS_MD_TEMPLATE, 'utf-8').toString('base64');
+      await ssh.execCommand(`echo '${toolsB64}' | base64 -d > ${workspaceDir}/TOOLS.md`);
+      fixed.push('TOOLS.md');
+    }
+
+    // 3c. Write generate_workspace_index.sh
+    const idxB64 = Buffer.from(WORKSPACE_INDEX_SCRIPT, 'utf-8').toString('base64');
+    await ssh.execCommand(`mkdir -p ~/.openclaw/scripts && echo '${idxB64}' | base64 -d > ~/.openclaw/scripts/generate_workspace_index.sh && chmod +x ~/.openclaw/scripts/generate_workspace_index.sh`);
+
+    // 3d. Append intelligence blocks to system-prompt.md if marker not present
+    const markerCheck = await ssh.execCommand(
+      `grep -qF "${INTELLIGENCE_MARKER_START}" ${agentDir}/system-prompt.md 2>/dev/null && echo PRESENT || echo ABSENT`
+    );
+    if (markerCheck.stdout.trim() === 'ABSENT') {
+      const intelB64 = Buffer.from(SYSTEM_PROMPT_INTELLIGENCE_BLOCKS, 'utf-8').toString('base64');
+      await ssh.execCommand(`echo '${intelB64}' | base64 -d >> ${agentDir}/system-prompt.md`);
+      fixed.push('system-prompt.md (intelligence blocks)');
+      systemPromptModified = true;
+    }
+
+    // 3e. Append learned preferences to SOUL.md if not present
+    const prefsCheck = await ssh.execCommand(
+      `grep -qF "Learned Preferences" ${workspaceDir}/SOUL.md 2>/dev/null && echo PRESENT || echo ABSENT`
+    );
+    if (prefsCheck.stdout.trim() === 'ABSENT') {
+      const prefsB64 = Buffer.from(SOUL_MD_LEARNED_PREFERENCES, 'utf-8').toString('base64');
+      await ssh.execCommand(`echo '${prefsB64}' | base64 -d >> ${workspaceDir}/SOUL.md`);
+      fixed.push('SOUL.md (learned preferences)');
+    }
+
+    // 3f. Append philosophy section to AGENTS.md if not present
+    const philCheck = await ssh.execCommand(
+      `grep -qF "Problem-Solving Philosophy" ${workspaceDir}/AGENTS.md 2>/dev/null && echo PRESENT || echo ABSENT`
+    );
+    if (philCheck.stdout.trim() === 'ABSENT') {
+      const philB64 = Buffer.from(AGENTS_MD_PHILOSOPHY_SECTION, 'utf-8').toString('base64');
+      await ssh.execCommand(`echo '${philB64}' | base64 -d >> ${workspaceDir}/AGENTS.md`);
+      fixed.push('AGENTS.md (philosophy section)');
+    }
+
+    // 3g. Restart gateway ONLY if system-prompt.md was modified
+    if (systemPromptModified) {
+      await ssh.execCommand(`${NVM_PREAMBLE} && openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true`);
+      await new Promise((r) => setTimeout(r, 2000));
+      await ssh.execCommand(
+        `${NVM_PREAMBLE} && nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`
+      );
+      await new Promise((r) => setTimeout(r, 3000));
+      fixed.push('gateway restarted');
+    }
+
     return { fixed, alreadyCorrect, missingFiles };
   } finally {
     ssh.dispose();
@@ -1206,7 +1297,7 @@ You have a built-in \`browser\` tool that controls a headless Chromium browser v
 - Extract structured data from web pages
 - Monitor websites for changes
 
-The browser is already running on profile "openclaw" (CDP port 18800). Just use the \`browser\` tool — no setup needed. If the browser is not running, start it with: \`openclaw browser start --browser-profile openclaw\``;
+The browser is already running on profile "openclaw" (CDP port 18800). Just use the \`browser\` tool — no setup needed. If the browser is not running, start it with: \`openclaw browser start --browser-profile openclaw\`` + SYSTEM_PROMPT_INTELLIGENCE_BLOCKS;
 }
 
 /** Builds USER.md for the OpenClaw workspace from Gmail profile content. */
@@ -1674,6 +1765,7 @@ export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> 
   try {
     const bootstrapB64 = Buffer.from(WORKSPACE_BOOTSTRAP_SHORT, 'utf-8').toString('base64');
     const identityB64 = Buffer.from(WORKSPACE_IDENTITY_MD, 'utf-8').toString('base64');
+    const resetCapB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');
 
     const script = [
       '#!/bin/bash',
@@ -1713,6 +1805,9 @@ export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> 
       '',
       '# Write blank IDENTITY.md template',
       `echo '${identityB64}' | base64 -d > "$HOME/.openclaw/workspace/IDENTITY.md"`,
+      '',
+      '# Write CAPABILITIES.md (read-only reference, always present after reset)',
+      `echo '${resetCapB64}' | base64 -d > "$HOME/.openclaw/workspace/CAPABILITIES.md"`,
       '',
       '# Restart gateway (try systemd first, fallback to nohup)',
       'systemctl --user start openclaw-gateway 2>/dev/null || true',
