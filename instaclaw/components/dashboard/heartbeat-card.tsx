@@ -506,7 +506,10 @@ export default function HeartbeatCard() {
                   disabled={isPaused}
                   className="hb-slider"
                   style={{
-                    background: `linear-gradient(to right, #DC6743 0%, #c2553a ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) ${((sliderValue - 0.5) / 11.5) * 100}%, rgba(0,0,0,0.06) 100%)`,
+                    background: (() => {
+                      const pct = ((sliderValue - 0.5) / 11.5) * 100;
+                      return `linear-gradient(to right, #DC6743 0%, #c2553a ${pct}%, rgba(255,255,255,0.06) ${pct}%, rgba(255,255,255,0.03) 100%)`;
+                    })(),
                   }}
                 />
                 {/* Scale labels */}
