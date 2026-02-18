@@ -39,14 +39,10 @@ const DAILY_SPEND_CAP =
 let circuitBreakerAlertDate = "";
 
 /**
- * Track how many times each VM has been shown the daily-limit message today.
- * Key: "vmId:YYYY-MM-DD", Value: send count.
- * The friendly message is sent up to MAX_LIMIT_NOTIFICATIONS times per day,
- * then all subsequent calls get a 429. Memory resets on cold start, so
- * worst case the user sees a few extra — still far better than hundreds.
+ * Notification dedup is stored in the DB (instaclaw_vms.limit_notified_date)
+ * so it survives Vercel cold starts. The friendly limit message is sent once
+ * per day; all subsequent calls return a silent empty response.
  */
-const limitNotifyCount = new Map<string, number>();
-const MAX_LIMIT_NOTIFICATIONS = 3;
 
 /** Extract the model family from a full model id (e.g. "claude-sonnet-4-5-..." → "sonnet"). */
 function modelFamily(model: string): string {
@@ -152,7 +148,7 @@ export async function POST(req: NextRequest) {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, gateway_token, api_mode, tier, default_model")
+      .select("id, gateway_token, api_mode, tier, default_model, limit_notified_date")
       .eq("gateway_token", gatewayToken)
       .single();
 
@@ -278,16 +274,22 @@ export async function POST(req: NextRequest) {
     const currentCount = limitResult?.count ?? 0;
 
     // --- Hard block: internal limit exceeded (RPC denied) ---
-    // Send a friendly "daily limit" message ONCE so the user knows why the
-    // bot stopped, then return 429 for all subsequent calls so OpenClaw
-    // backs off instead of spamming Telegram with hundreds of copies.
+    // Send a friendly "daily limit" message ONCE per day, tracked in the DB
+    // (limit_notified_date column) so it survives Vercel cold starts.
+    // All subsequent calls return a silent empty response so OpenClaw
+    // won't forward anything to Telegram.
     if (limitResult && !limitResult.allowed) {
-      const notifyKey = `${vm.id}:${todayStr}`;
-      const timesSent = limitNotifyCount.get(notifyKey) ?? 0;
+      const alreadyNotifiedToday = vm.limit_notified_date === todayStr;
 
-      if (timesSent < MAX_LIMIT_NOTIFICATIONS) {
-        // Send the friendly message up to 3 times so the user sees it
-        limitNotifyCount.set(notifyKey, timesSent + 1);
+      if (!alreadyNotifiedToday) {
+        // First time hitting the limit today — send the friendly message
+        // and record the date in DB (fire-and-forget).
+        supabase
+          .from("instaclaw_vms")
+          .update({ limit_notified_date: todayStr })
+          .eq("id", vm.id)
+          .then(() => {});
+
         return friendlyAssistantResponse(
           `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
           requestedModel,
@@ -295,15 +297,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Already notified — return a valid but empty assistant response with
-      // stop_reason "end_turn". OpenClaw treats this as "nothing to say" and
-      // won't forward anything to Telegram. A 429 doesn't work because
-      // OpenClaw extracts the error message text and sends it as a chat msg.
+      // Already notified today — return a valid but empty assistant response
+      // with stop_reason "end_turn". OpenClaw treats this as "nothing to say"
+      // and won't forward anything to Telegram.
       if (isStreaming) {
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           start(controller) {
-            // Minimal SSE stream: message_start → content_block_start → content_block_stop → message_delta(end_turn) → message_stop
             const msgId = `msg_limit_${Date.now()}`;
             controller.enqueue(encoder.encode(`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: msgId, type: "message", role: "assistant", content: [], model: requestedModel, stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } })}\n\n`));
             controller.enqueue(encoder.encode(`event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 0 } })}\n\n`));
