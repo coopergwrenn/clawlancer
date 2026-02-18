@@ -4,26 +4,38 @@ import { getSupabase } from "@/lib/supabase";
 import { updateHeartbeatInterval } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
-const ALLOWED_INTERVALS = ["1h", "3h", "6h", "12h", "off"];
+/** Validate: "off" or decimal hours 0.5–24 like "1h", "2.5h", "12h" */
+function isValidInterval(interval: string): boolean {
+  if (interval === "off") return true;
+  const match = interval.match(/^(\d+(?:\.\d+)?)h$/);
+  if (!match) return false;
+  const hours = parseFloat(match[1]);
+  return hours >= 0.5 && hours <= 24;
+}
 
 const SYSTEM_PROMPT = `You parse natural language heartbeat configuration requests for an AI agent.
 The user wants to change how often their agent checks in (heartbeats).
 
-Available intervals: 1h, 3h, 6h, 12h, off
+The interval can be any value from 0.5h to 24h (e.g. "1h", "2h", "4.5h", "12h") or "off" to pause.
+Common presets: 1h, 3h, 6h, 12h — but any decimal between 0.5 and 24 is valid.
 
 Respond with ONLY valid JSON (no markdown, no code fences):
 {
-  "interval": "<one of: 1h, 3h, 6h, 12h, off>",
+  "interval": "<a value like 1h, 2.5h, 6h, etc. or off>",
   "response": "<short friendly confirmation, 1-2 sentences>"
 }
 
 Examples:
 - "check in every hour" → {"interval":"1h","response":"Got it! I'll check in every hour now."}
+- "check in more often" → {"interval":"1h","response":"Bumped it up! I'll check in every hour now."}
+- "every 2 hours" → {"interval":"2h","response":"Set to every 2 hours."}
 - "stop checking in" → {"interval":"off","response":"Heartbeats paused. I won't check in until you turn them back on."}
 - "less frequent please" → {"interval":"6h","response":"Slowing down to every 6 hours."}
-- "only during mornings" → {"interval":"3h","response":"I'll keep checking in every 3 hours. (Custom time-window schedules are coming soon!)"}
+- "slow down" → {"interval":"6h","response":"Slowing down to every 6 hours."}
+- "twice a day" → {"interval":"12h","response":"Set to twice a day."}
+- "pause" → {"interval":"off","response":"Heartbeats paused."}
 
-If the request is unclear, default to 3h and explain in the response.`;
+IMPORTANT: Always choose a specific interval that best matches the user's intent. Do NOT default to 3h unless the user explicitly asks for 3 hours. If the user says "more often", go to 1h. If they say "less often" or "slow down", go to 6h or 12h.`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -92,12 +104,29 @@ export async function POST(req: NextRequest) {
     try {
       parsed = JSON.parse(text);
     } catch {
-      parsed = { interval: "3h", response: "I'll keep checking in every 3 hours." };
+      return NextResponse.json({
+        interval: vm.heartbeat_interval,
+        response: "Sorry, I couldn't understand that. Try something like 'check in every hour' or 'pause heartbeats'.",
+        updated: false,
+      });
     }
 
     // Validate the parsed interval
-    if (!ALLOWED_INTERVALS.includes(parsed.interval)) {
-      parsed.interval = "3h";
+    if (!isValidInterval(parsed.interval)) {
+      return NextResponse.json({
+        interval: vm.heartbeat_interval,
+        response: `I couldn't set that interval. Try a value between 0.5h and 24h, or 'off' to pause.`,
+        updated: false,
+      });
+    }
+
+    // Skip SSH if it's already the current interval
+    if (parsed.interval === vm.heartbeat_interval) {
+      return NextResponse.json({
+        interval: parsed.interval,
+        response: parsed.response,
+        updated: true,
+      });
     }
 
     // Apply via SSH
@@ -113,20 +142,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update DB
-    const intervalMs: Record<string, number> = {
-      "1h": 3_600_000,
-      "3h": 10_800_000,
-      "6h": 21_600_000,
-      "12h": 43_200_000,
-    };
+    // Compute next heartbeat time from interval
     const now = new Date();
-    const nextAt =
-      parsed.interval === "off"
-        ? null
-        : new Date(
-            now.getTime() + (intervalMs[parsed.interval] ?? 10_800_000)
-          );
+    let nextAt: Date | null = null;
+    if (parsed.interval !== "off") {
+      const hMatch = parsed.interval.match(/^(\d+(?:\.\d+)?)h$/);
+      const ms = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
+      nextAt = new Date(now.getTime() + ms);
+    }
 
     await supabase
       .from("instaclaw_vms")
