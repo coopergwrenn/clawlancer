@@ -438,6 +438,10 @@ export async function configureOpenClaw(
         '',
         '# Set provider base URL — this is what the gateway actually uses for outbound API calls',
         `openclaw config set 'models.providers.anthropic' '{"baseUrl":"${proxyBaseUrl}","models":[]}' --json || true`,
+        '',
+        '# Force Anthropic Messages API format — OpenClaw >=2026.2.3 defaults to openai-responses',
+        '# which sends OpenAI-format requests that our proxy cannot forward to Anthropic as-is',
+        'openclaw config set models.providers.anthropic.api anthropic-messages || true',
         ''
       );
     }
