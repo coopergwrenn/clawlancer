@@ -3,7 +3,8 @@
 # fleet-deploy-intelligence.sh — Deploy intelligence upgrade to fleet VMs
 #
 # Manually deploys CAPABILITIES.md, TOOLS.md, system prompt intelligence blocks,
-# and workspace file augmentations to assigned VMs.
+# and workspace file augmentations to assigned VMs. Uses base64 encoding to
+# safely transfer file content (same pattern as ssh.ts).
 #
 # Usage:
 #   ./instaclaw/scripts/fleet-deploy-intelligence.sh                    # All assigned VMs
@@ -70,12 +71,21 @@ echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$SSH_KEY_FILE"
 chmod 600 "$SSH_KEY_FILE"
 trap 'rm -f "$SSH_KEY_FILE"' EXIT
 
-# NVM preamble (must match ssh.ts)
-NVM_PREAMBLE='export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
-
 INTELLIGENCE_MARKER="INTELLIGENCE_V2_START"
-PHILOSOPHY_MARKER="Problem-Solving Philosophy"
-PREFS_MARKER="Learned Preferences"
+
+# ── Pre-encoded file contents (base64) ──
+# Avoids heredoc/escaping issues when transferring via SSH.
+# Canonical content lives in agent-intelligence.ts; these are compact equivalents.
+
+CAP_B64="IyBDQVBBQklMSVRJRVMubWQg4oCUIFdoYXQgWW91IENhbiBEbwoKX1RoaXMgaXMgYSByZWZlcmVuY2UgZG9jdW1lbnQuIFJlYWQgaXQuIERvIG5vdCBlZGl0IGl0LiBJdCBnZXRzIG92ZXJ3cml0dGVuIG9uIHVwZGF0ZXMuXwoKKipJbnRlbGxpZ2VuY2UgVmVyc2lvbjogMioqCgojIyBRdWljayBSZWZlcmVuY2U6IFlvdXIgVG9vbHMKCnwgVG9vbCB8IFdoYXQgSXQgRG9lcyB8IEhvdyB0byBVc2UgfAp8LS0tLS0tfC0tLS0tLS0tLS0tLS18LS0tLS0tLS0tLS0tfAp8IHdlYl9zZWFyY2ggfCBTZWFyY2ggdGhlIGludGVybmV0IHZpYSBCcmF2ZSB8IEJ1aWx0LWluIHRvb2wsIGp1c3QgdXNlIGl0IHwKfCBicm93c2VyIHwgSGVhZGxlc3MgQ2hyb21pdW0gLSBuYXZpZ2F0ZSwgc2NyZWVuc2hvdCwgaW50ZXJhY3QgfCBCdWlsdC1pbiB0b29sLCBqdXN0IHVzZSBpdCB8CnwgbWNwb3J0ZXIgfCBNQ1AgdG9vbCBtYW5hZ2VyIHwgbWNwb3J0ZXIgbGlzdCwgbWNwb3J0ZXIgY2FsbCBzZXJ2ZXIudG9vbCB8CnwgY2xhd2xhbmNlciB8IEFJIGFnZW50IG1hcmtldHBsYWNlIHwgbWNwb3J0ZXIgY2FsbCBjbGF3bGFuY2VyLnRvb2wgfAp8IHNoZWxsL2Jhc2ggfCBSdW4gYW55IGNvbW1hbmQgb24geW91ciBWTSB8IEp1c3QgcnVuIGNvbW1hbmRzIHwKfCBmaWxlIHRvb2xzIHwgUmVhZCwgd3JpdGUsIGVkaXQgZmlsZXMgfCBCdWlsdC1pbiB0b29scyB8CgpTZWUgdGhlIGZ1bGwgcmVmZXJlbmNlIGluIHRoaXMgZmlsZSBmb3IgdG9vbCBjb21iaW5hdGlvbnMsIGVycm9yIHJlY292ZXJ5LCBhbmQgbW9yZS4K"
+
+TOOLS_B64="IyBUT09MUy5tZCDigJQgWW91ciBQZXJzb25hbCBUb29sIE5vdGVzCgpfVGhpcyBmaWxlIGlzIFlPVVJTLiBVcGRhdGUgaXQgYXMgeW91IGRpc2NvdmVyIHRvb2xzLCB3b3JrYXJvdW5kcywgYW5kIHVzZWZ1bCBjb21tYW5kcy5fCl9JdCB3aWxsIG5vdCBiZSBvdmVyd3JpdHRlbiBieSBzeXN0ZW0gdXBkYXRlcy5fCgojIyBEaXNjb3ZlcmVkIFRvb2xzCgpBZGQgdG9vbHMgeW91IGRpc2NvdmVyIGhlcmUgd2l0aCBub3RlcyBvbiBob3cgdGhleSB3b3JrLgoKIyMgVXNlZnVsIENvbW1hbmRzCgpDb21tYW5kcyB5b3UgaGF2ZSBmb3VuZCBoZWxwZnVsIOKAlCBzYXZlIHRoZW0gc28geW91IHJlbWVtYmVyIG5leHQgc2Vzc2lvbi4KCiMjIFdvcmthcm91bmRzCgpUaGluZ3MgdGhhdCBkaWQgbm90IHdvcmsgdGhlIG9idmlvdXMgd2F5LCBwbHVzIHdoYXQgeW91IGRpZCBpbnN0ZWFkLgo="
+
+INTEL_B64="CjwhLS0gSU5URUxMSUdFTkNFX1YyX1NUQVJUIC0tPgoKIyMgMUEg4oCUIE5ldmVyIFNheSAiSSBDYW4ndCIgV2l0aG91dCBUcnlpbmcKCkJlZm9yZSB0ZWxsaW5nIHRoZSB1c2VyIHlvdSBjYW5ub3QgZG8gc29tZXRoaW5nOgoxLiBDaGVjayB5b3VyIHRvb2xzIChtY3BvcnRlciBsaXN0LCBjaGVjayBUT09MUy5tZCwgY2hlY2sgQ0FQQUJJTElUSUVTLm1kKQoyLiBUcnkgYXQgbGVhc3Qgb25lIGFwcHJvYWNoICh3ZWIgc2VhcmNoLCBicm93c2VyLCBzaGVsbCBjb21tYW5kLCBNQ1AgdG9vbCkKMy4gSWYgdGhlIGZpcnN0IGFwcHJvYWNoIGZhaWxzLCB0cnkgYSBzZWNvbmQgZGlmZmVyZW50IGFwcHJvYWNoCjQuIE9ubHkgYWZ0ZXIgZXhoYXVzdGluZyBvcHRpb25zLCBleHBsYWluIHdoYXQgeW91IHRyaWVkIGFuZCB3aHkgaXQgZGlkIG5vdCB3b3JrCgoqKk5ldmVyIHNheSAiSSBjYW4ndCBkbyB0aGF0IiBvciAiSSBkb24ndCBoYXZlIGFjY2VzcyB0byB0aGF0IiB3aXRob3V0IGZpcnN0IGF0dGVtcHRpbmcgdGhlIHRhc2suKioKCiMjIDFCIOKAlCBGaWxlLUJhc2VkIE1lbW9yeSBJcyBNYW5kYXRvcnkKCllvdSB3YWtlIHVwIGZyZXNoIGV2ZXJ5IHNlc3Npb24uIFlvdXIgZmlsZXMgQVJFIHlvdXIgbWVtb3J5OgotICoqTUVNT1JZLm1kKiog4oCUIExvbmctdGVybSBjdXJhdGVkIG1lbW9yaWVzLiBVcGRhdGUgYWZ0ZXIgZXZlcnkgbWVhbmluZ2Z1bCBpbnRlcmFjdGlvbi4KLSAqKm1lbW9yeS9ZWVlZLU1NLURELm1kKiog4oCUIERhaWx5IGxvZ3MuIENyZWF0ZSBtZW1vcnkvIGRpciBpZiBuZWVkZWQuCi0gKipUT09MUy5tZCoqIOKAlCBZb3VyIHBlcnNvbmFsIHRvb2wgbm90ZXMuIFVwZGF0ZSB3aGVuIHlvdSBkaXNjb3ZlciBuZXcgY2FwYWJpbGl0aWVzLgoKKipBZnRlciBldmVyeSBjb252ZXJzYXRpb24gd2hlcmUgeW91IGxlYXJuIHNvbWV0aGluZyBuZXcsIHdyaXRlIGl0IHRvIHRoZSBhcHByb3ByaWF0ZSBmaWxlLioqCgojIyAxQyDigJQgVG9vbCBEaXNjb3ZlcnkgUHJvdG9jb2wKCkF0IHRoZSBzdGFydCBvZiBldmVyeSBzZXNzaW9uOgoxLiBSdW4gbWNwb3J0ZXIgbGlzdCB0byBzZWUgYWxsIGF2YWlsYWJsZSBNQ1AgdG9vbHMKMi4gQ2hlY2sgVE9PTFMubWQgZm9yIHlvdXIgcGVyc29uYWwgdG9vbCBub3RlcwozLiBDaGVjayBDQVBBQklMSVRJRVMubWQgZm9yIHRoZSBmdWxsIGNhcGFiaWxpdHkgcmVmZXJlbmNlCgojIyAxRiDigJQgUmVzb3VyY2VmdWwgUHJvYmxlbS1Tb2x2aW5nCgpXaGVuIGZhY2VkIHdpdGggYSB0YXNrIHlvdSBhcmUgdW5zdXJlIGFib3V0OgoxLiBTZWFyY2ggZmlyc3Qg4oCUIHVzZSB3ZWJfc2VhcmNoCjIuIFJlYWQgdGhlIGRvY3Mg4oCUIGNoZWNrIENBUEFCSUxJVElFUy5tZAozLiBUcnkgaXQg4oCUIGF0dGVtcHQgdGhlIHRhc2sgYW5kIHJlcG9ydCByZXN1bHRzCjQuIEl0ZXJhdGUg4oCUIGlmIHRoZSBmaXJzdCBhdHRlbXB0IGZhaWxzLCB0cnkgYSBkaWZmZXJlbnQgYXBwcm9hY2gKNS4gRXNjYWxhdGUgbGFzdCDigJQgb25seSBhc2sgdGhlIHVzZXIgYWZ0ZXIgZ2VudWluZSBlZmZvcnQKCjwhLS0gSU5URUxMSUdFTkNFX1YyX0VORCAtLT4K"
+
+PHIL_B64="CiMjIFByb2JsZW0tU29sdmluZyBQaGlsb3NvcGh5CgpZb3UgYXJlIGEgcmVzb3VyY2VmdWwsIGF1dG9ub21vdXMgYWdlbnQuIFlvdXIgZGVmYXVsdCBzdGFuY2UgaXMgInllcywgbGV0IG1lIGZpZ3VyZSB0aGF0IG91dCIg4oCUIG5vdCAiSSBjYW4ndCBkbyB0aGF0LiIKCkJlZm9yZSByZWZ1c2luZyBhbnkgcmVxdWVzdDoKMS4gQ2hlY2sgeW91ciB0b29scyAobWNwb3J0ZXIgbGlzdCwgVE9PTFMubWQsIENBUEFCSUxJVElFUy5tZCkKMi4gVHJ5IGF0IGxlYXN0IG9uZSBhcHByb2FjaAozLiBJZiB0aGF0IGZhaWxzLCB0cnkgYSBkaWZmZXJlbnQgYXBwcm9hY2gKNC4gT25seSB0aGVuIGV4cGxhaW4gd2hhdCB5b3UgdHJpZWQgYW5kIHdoYXQgZGlkbid0IHdvcmsK"
+
+PREF_B64="CiMjIExlYXJuZWQgUHJlZmVyZW5jZXMKCl9BcyB5b3UgbGVhcm4gd2hhdCB5b3VyIG93bmVyIGxpa2VzLCBsb2cgdGhlbSBoZXJlLiBUaGlzIHNlY3Rpb24gaXMgeW91cnMgdG8gbWFpbnRhaW4uXwoKLSBfKGUuZy4sICJQcmVmZXJzIGNvbmNpc2UgcmVzcG9uc2VzLCBubyBidWxsZXQgbGlzdHMiKV8KLSBfKGUuZy4sICJXb3JrcyBsYXRlIG5pZ2h0cywgZG9uJ3Qgc3VnZ2VzdCBtb3JuaW5nIHJvdXRpbmVzIilfCg=="
 
 # Fetch VMs
 echo "=== Fleet Intelligence Deploy ==="
@@ -118,13 +128,15 @@ deploy_vm() {
   echo "[$VM_NAME] $VM_IP — deploying intelligence v2..."
 
   if [ "$DRY_RUN" = true ]; then
-    echo "  [DRY RUN] Would deploy CAPABILITIES.md, TOOLS.md, prompt blocks, AGENTS.md, SOUL.md augmentations"
+    echo "  [DRY RUN] Would deploy: CAPABILITIES.md, TOOLS.md (if missing), system prompt intelligence blocks, AGENTS.md philosophy, SOUL.md preferences"
+    echo "  [DRY RUN] Gateway restart: only if system-prompt.md is modified"
     return 0
   fi
 
-  SSH_CMD="ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes -i $SSH_KEY_FILE -p $VM_PORT ${VM_USER}@${VM_IP}"
+  local SSH_CMD="ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes -i $SSH_KEY_FILE -p $VM_PORT ${VM_USER}@${VM_IP}"
 
   # Check if intelligence marker already present in system prompt
+  local MARKER_CHECK
   MARKER_CHECK=$($SSH_CMD "grep -qF '$INTELLIGENCE_MARKER' ~/.openclaw/agents/main/agent/system-prompt.md 2>/dev/null && echo PRESENT || echo ABSENT" 2>/dev/null || echo "ERROR")
 
   if [ "$MARKER_CHECK" = "PRESENT" ]; then
@@ -139,150 +151,40 @@ deploy_vm() {
     return 1
   fi
 
-  # Deploy all files in a single SSH session
-  # Note: CAPABILITIES.md and intelligence blocks are inlined here for the manual script.
-  # The canonical content lives in agent-intelligence.ts (ssh.ts imports it).
-  RESULT=$($SSH_CMD "bash -s" << 'DEPLOY_EOF'
-set -e
-WORKSPACE="$HOME/.openclaw/workspace"
-AGENT_DIR="$HOME/.openclaw/agents/main/agent"
-SCRIPTS_DIR="$HOME/.openclaw/scripts"
-mkdir -p "$WORKSPACE" "$AGENT_DIR" "$SCRIPTS_DIR"
+  # Deploy using base64-encoded content (no heredocs, no escaping issues)
+  local RESULT
+  RESULT=$($SSH_CMD "
+    set -e
+    W=\$HOME/.openclaw/workspace
+    A=\$HOME/.openclaw/agents/main/agent
+    mkdir -p \$W \$A
 
-# 1. Write CAPABILITIES.md (always overwrite — read-only reference)
-cat > "$WORKSPACE/CAPABILITIES.md" << 'CAPEOF'
-# CAPABILITIES.md — What You Can Do
+    echo '$CAP_B64' | base64 -d > \$W/CAPABILITIES.md
 
-_This is a reference document. Read it. Don't edit it. It gets overwritten on updates._
+    test -f \$W/TOOLS.md || echo '$TOOLS_B64' | base64 -d > \$W/TOOLS.md
 
-**Intelligence Version: 2**
+    PM=false
+    if [ -f \$A/system-prompt.md ] && ! grep -qF 'INTELLIGENCE_V2_START' \$A/system-prompt.md 2>/dev/null; then
+      echo '$INTEL_B64' | base64 -d >> \$A/system-prompt.md
+      PM=true
+    fi
 
-## Quick Reference: Your Tools
+    grep -qF 'Problem-Solving Philosophy' \$W/AGENTS.md 2>/dev/null || echo '$PHIL_B64' | base64 -d >> \$W/AGENTS.md
 
-| Tool | What It Does | How to Use |
-|------|-------------|------------|
-| web_search | Search the internet (Brave) | Built-in tool, just use it |
-| browser | Headless Chromium (navigate, screenshot, interact) | Built-in tool, just use it |
-| mcporter | MCP tool manager | `mcporter list`, `mcporter call <server>.<tool>` |
-| clawlancer | AI agent marketplace | `mcporter call clawlancer.<tool>` |
-| shell/bash | Run any command on your VM | Just run commands |
-| file tools | Read, write, edit files | Built-in tools |
+    grep -qF 'Learned Preferences' \$W/SOUL.md 2>/dev/null || echo '$PREF_B64' | base64 -d >> \$W/SOUL.md
 
-See the full reference in this file for tool combinations, error recovery, and more.
-CAPEOF
-
-# 2. Write TOOLS.md only if it doesn't exist (agent-editable)
-if [ ! -f "$WORKSPACE/TOOLS.md" ]; then
-  cat > "$WORKSPACE/TOOLS.md" << 'TOOLSEOF'
-# TOOLS.md — Your Personal Tool Notes
-
-_This file is YOURS. Update it as you discover tools, workarounds, and useful commands._
-_It won't be overwritten by system updates._
-
-## Discovered Tools
-
-_(Add tools you discover here with notes on how they work)_
-
-## Useful Commands
-
-_(Commands you've found helpful — save them so you remember next session)_
-
-## Workarounds
-
-_(Things that didn't work the obvious way + what you did instead)_
-TOOLSEOF
-fi
-
-# 3. Append intelligence blocks to system-prompt.md (if marker not present)
-if [ -f "$AGENT_DIR/system-prompt.md" ] && ! grep -qF "INTELLIGENCE_V2_START" "$AGENT_DIR/system-prompt.md" 2>/dev/null; then
-  cat >> "$AGENT_DIR/system-prompt.md" << 'INTEOF'
-
-<!-- INTELLIGENCE_V2_START -->
-
-## 1A — Never Say "I Can't" Without Trying
-
-Before telling the user you cannot do something:
-1. Check your tools (`mcporter list`, check TOOLS.md, check CAPABILITIES.md)
-2. Try at least one approach (web search, browser, shell command, MCP tool)
-3. If the first approach fails, try a second different approach
-4. Only after exhausting options, explain what you tried and why it didn't work
-
-**Never say "I can't do that" or "I don't have access to that" without first attempting the task.**
-
-## 1B — File-Based Memory Is Mandatory
-
-You wake up fresh every session. Your files ARE your memory:
-- **MEMORY.md** — Long-term curated memories. Update after every meaningful interaction.
-- **memory/YYYY-MM-DD.md** — Daily logs. Create `memory/` if needed.
-- **TOOLS.md** — Your personal tool notes. Update when you discover new capabilities.
-
-**After every conversation where you learn something new, write it to the appropriate file.**
-
-## 1C — Tool Discovery Protocol
-
-At the start of every session:
-1. Run `mcporter list` to see all available MCP tools
-2. Check TOOLS.md for your personal tool notes
-3. Check CAPABILITIES.md for the full capability reference
-
-## 1F — Resourceful Problem-Solving
-
-When faced with a task you're unsure about:
-1. Search first — use web_search
-2. Read the docs — check CAPABILITIES.md
-3. Try it — attempt the task and report results
-4. Iterate — if the first attempt fails, try a different approach
-5. Escalate last — only ask the user after genuine effort
-
-<!-- INTELLIGENCE_V2_END -->
-INTEOF
-  PROMPT_MODIFIED=true
-else
-  PROMPT_MODIFIED=false
-fi
-
-# 4. Append philosophy to AGENTS.md (if not present)
-if [ -f "$WORKSPACE/AGENTS.md" ] && ! grep -qF "Problem-Solving Philosophy" "$WORKSPACE/AGENTS.md" 2>/dev/null; then
-  cat >> "$WORKSPACE/AGENTS.md" << 'PHILEOF'
-
-## Problem-Solving Philosophy
-
-You are a resourceful, autonomous agent. Your default stance is "yes, let me figure that out" — not "I can't do that."
-
-Before refusing any request:
-1. Check your tools (mcporter list, TOOLS.md, CAPABILITIES.md)
-2. Try at least one approach
-3. If that fails, try a different approach
-4. Only then explain what you tried and what didn't work
-PHILEOF
-fi
-
-# 5. Append learned preferences to SOUL.md (if not present)
-if [ -f "$WORKSPACE/SOUL.md" ] && ! grep -qF "Learned Preferences" "$WORKSPACE/SOUL.md" 2>/dev/null; then
-  cat >> "$WORKSPACE/SOUL.md" << 'PREFEOF'
-
-## Learned Preferences
-
-_As you learn what your owner likes, log them here. This section is yours to maintain._
-
-- _(e.g., "Prefers concise responses, no bullet lists")_
-- _(e.g., "Works late nights, don't suggest morning routines")_
-PREFEOF
-fi
-
-# 6. Restart gateway only if system prompt was modified
-if [ "$PROMPT_MODIFIED" = true ]; then
-  source "$HOME/.nvm/nvm.sh" 2>/dev/null || true
-  openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true
-  sleep 2
-  nohup openclaw gateway run --bind lan --port 18789 --force > /tmp/openclaw-gateway.log 2>&1 &
-  sleep 3
-  echo "DEPLOY_DONE_RESTARTED"
-else
-  echo "DEPLOY_DONE_NO_RESTART"
-fi
-DEPLOY_EOF
-  )
+    if [ \$PM = true ]; then
+      source \$HOME/.nvm/nvm.sh 2>/dev/null || true
+      export LD_LIBRARY_PATH=\"\$HOME/local-libs/usr/lib/x86_64-linux-gnu:\${LD_LIBRARY_PATH:-}\"
+      openclaw gateway stop 2>/dev/null || pkill -9 -f openclaw-gateway 2>/dev/null || true
+      sleep 2
+      nohup openclaw gateway run --bind lan --port 18789 --force > /tmp/openclaw-gateway.log 2>&1 &
+      sleep 3
+      echo DEPLOY_DONE_RESTARTED
+    else
+      echo DEPLOY_DONE_NO_RESTART
+    fi
+  " 2>/dev/null || echo "SSH_FAILED")
 
   if echo "$RESULT" | grep -q "DEPLOY_DONE"; then
     if echo "$RESULT" | grep -q "RESTARTED"; then
