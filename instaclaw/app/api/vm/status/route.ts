@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { getStripe, TIER_DISPLAY, Tier, ApiMode } from "@/lib/stripe";
+import { TIER_DISPLAY, Tier, ApiMode } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
 
-// Prevent Vercel from killing this function before it can return JSON.
-// The deploying page polls this every 2s — a timeout returns HTML, not JSON,
-// causing "Unexpected token" parse errors on the client.
-export const maxDuration = 30;
+// This endpoint is polled every 2s by the deploying page. Keep it fast —
+// Supabase queries only, NO external API calls (Stripe, Telegram, etc.).
+export const maxDuration = 15;
 
 export async function GET() {
   try {
@@ -35,7 +34,11 @@ export async function GET() {
         .eq("user_id", session.user.id)
         .single();
 
-      // Build billing info
+      // Build billing info — use only Supabase data, never call Stripe here.
+      // The renewal date is synced to current_period_end by the
+      // customer.subscription.updated webhook. If it's missing, return null.
+      // This endpoint is polled every 2s during deployment — calling Stripe
+      // on each poll would hit rate limits (100 req/s) with ~67 concurrent users.
       let billing = null;
       if (sub) {
         const tierKey = sub.tier as Tier;
@@ -47,24 +50,6 @@ export async function GET() {
             : tierDisplay.allInclusive
           : null;
 
-        // Try to get current_period_end from Stripe for accurate renewal date
-        let renewalDate = sub.current_period_end;
-        if (!renewalDate && sub.stripe_subscription_id) {
-          try {
-            const stripe = getStripe();
-            const stripeSub = await stripe.subscriptions.retrieve(
-              sub.stripe_subscription_id
-            );
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const periodEnd = (stripeSub as any).current_period_end as number | undefined;
-            if (periodEnd) {
-              renewalDate = new Date(periodEnd * 1000).toISOString();
-            }
-          } catch {
-            // Non-fatal
-          }
-        }
-
         billing = {
           tier: sub.tier,
           tierName: tierDisplay?.name ?? sub.tier,
@@ -72,7 +57,7 @@ export async function GET() {
           price,
           status: sub.status,
           paymentStatus: sub.payment_status ?? "current",
-          renewalDate,
+          renewalDate: sub.current_period_end ?? null,
           trialEndsAt: sub.trial_ends_at ?? null,
         };
       }
