@@ -152,9 +152,12 @@ function silentEmptyResponse(model: string, stream: boolean) {
 export async function POST(req: NextRequest) {
   try {
     // --- Authenticate via gateway token ---
-    // Accept from x-gateway-token (legacy) or x-api-key (Anthropic SDK compat)
+    // Accept from x-gateway-token (legacy), x-api-key (Anthropic SDK),
+    // or Authorization: Bearer <token> (OpenAI SDK / openai-responses format)
+    const authHeader = req.headers.get("authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
     const gatewayToken =
-      req.headers.get("x-gateway-token") || req.headers.get("x-api-key");
+      req.headers.get("x-gateway-token") || req.headers.get("x-api-key") || bearerToken;
     if (!gatewayToken) {
       return NextResponse.json(
         { error: "Missing authentication" },
