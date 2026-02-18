@@ -81,12 +81,58 @@ function countdown(iso: string | null): string {
   return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`;
 }
 
-// ── Heart SVG ───────────────────────────────────────
+// ── Glass Heart SVG ─────────────────────────────────
 
 function HeartIcon({ color, size = 40 }: { color: string; size?: number }) {
+  const id = "hb-heart";
   return (
-    <svg viewBox="0 0 24 24" fill={color} style={{ width: size, height: size }}>
-      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+    <svg viewBox="0 0 24 24" style={{ width: size, height: size, filter: `drop-shadow(0 2px 6px ${color}50)` }}>
+      <defs>
+        {/* Base radial gradient — 3D orb lighting */}
+        <radialGradient id={`${id}-base`} cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.45" />
+          <stop offset="35%" stopColor={color} stopOpacity="0.9" />
+          <stop offset="100%" stopColor={color} stopOpacity="1" />
+        </radialGradient>
+        {/* Top specular highlight */}
+        <radialGradient id={`${id}-spec`} cx="38%" cy="25%" r="30%">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.7" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
+        {/* Bottom inner shadow for depth */}
+        <radialGradient id={`${id}-depth`} cx="50%" cy="80%" r="50%">
+          <stop offset="0%" stopColor="#000" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="#000" stopOpacity="0" />
+        </radialGradient>
+        {/* Rim light — edge catch */}
+        <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.3" />
+          <stop offset="50%" stopColor="#fff" stopOpacity="0" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0.15" />
+        </linearGradient>
+      </defs>
+      {/* Heart shape path */}
+      <path
+        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+        fill={`url(#${id}-base)`}
+      />
+      {/* Depth layer */}
+      <path
+        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+        fill={`url(#${id}-depth)`}
+      />
+      {/* Specular highlight */}
+      <path
+        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+        fill={`url(#${id}-spec)`}
+      />
+      {/* Rim light */}
+      <path
+        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+        fill="none"
+        stroke={`url(#${id}-rim)`}
+        strokeWidth="0.5"
+      />
     </svg>
   );
 }
@@ -454,15 +500,17 @@ export default function HeartbeatCard() {
                     className="flex-1 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer active:scale-[0.97]"
                     style={{
                       background: isActive
-                        ? "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.92))"
-                        : "rgba(0,0,0,0.03)",
-                      color: isActive ? "#fff" : "var(--muted)",
+                        ? "linear-gradient(145deg, rgba(255,255,255,0.1), rgba(255,255,255,0.04))"
+                        : "rgba(255,255,255,0.03)",
+                      color: isActive ? "var(--foreground)" : "var(--muted)",
+                      border: isActive
+                        ? "1px solid rgba(220,103,67,0.3)"
+                        : "1px solid rgba(255,255,255,0.06)",
                       boxShadow: isActive
-                        ? "0 0 0 1px rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.06)"
-                        : "0 0 0 1px rgba(0,0,0,0.06)",
-                      backdropFilter: "blur(8px)",
+                        ? "0 0 0 1px rgba(220,103,67,0.08), 0 2px 8px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.08)"
+                        : "inset 0 1px 0 rgba(255,255,255,0.04)",
+                      backdropFilter: "blur(12px)",
                       opacity: isLoading ? 0.5 : 1,
-                      textShadow: isActive ? "0 1px 2px rgba(0,0,0,0.3)" : "none",
                     }}
                   >
                     {isLoading ? "..." : INTERVAL_SHORT[iv]}
