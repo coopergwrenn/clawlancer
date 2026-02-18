@@ -159,7 +159,6 @@ export default function HeartbeatCard() {
   const [nlSending, setNlSending] = useState(false);
   const [nlResponse, setNlResponse] = useState<string | null>(null);
   const [hintIdx, setHintIdx] = useState(0);
-  const [thinkIdx, setThinkIdx] = useState(0);
   const [sliderValue, setSliderValue] = useState(3); // hours as decimal
   const [sliderDragging, setSliderDragging] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
@@ -198,18 +197,6 @@ export default function HeartbeatCard() {
     );
     return () => clearInterval(t);
   }, []);
-
-  useEffect(() => {
-    if (!nlSending) {
-      setThinkIdx(0);
-      return;
-    }
-    const t = setInterval(
-      () => setThinkIdx((i) => (i + 1) % THINKING_PHRASES.length),
-      2000
-    );
-    return () => clearInterval(t);
-  }, [nlSending]);
 
   useEffect(() => {
     if (!toast) return;
@@ -639,28 +626,8 @@ export default function HeartbeatCard() {
               }}
             >
               {nlSending ? (
-                <div className="flex-1 flex items-center gap-2 overflow-hidden">
-                  <span
-                    className="w-3 h-3 rounded-full border-[1.5px] shrink-0"
-                    style={{
-                      borderColor: "rgba(220,103,67,0.3)",
-                      borderTopColor: "#DC6743",
-                      animation: "spin 0.8s linear infinite",
-                    }}
-                  />
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={thinkIdx}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.2 }}
-                      className="text-sm"
-                      style={{ color: "var(--muted)" }}
-                    >
-                      {THINKING_PHRASES[thinkIdx]}
-                    </motion.span>
-                  </AnimatePresence>
+                <div className="flex-1 overflow-hidden">
+                  <NlThinkingText />
                 </div>
               ) : (
                 <input
@@ -733,5 +700,66 @@ function StatTile({ label, value }: { label: string; value: string }) {
         {label}
       </p>
     </div>
+  );
+}
+
+// ── Typewriter + Shimmer Thinking Text ───────────────
+
+function NlThinkingText() {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [displayed, setDisplayed] = useState("");
+  const [phase, setPhase] = useState<"typing" | "visible" | "exit">("typing");
+
+  const phrase = THINKING_PHRASES[phraseIndex];
+
+  // Typewriter: reveal one character at a time
+  useEffect(() => {
+    if (phase !== "typing") return;
+    if (displayed.length < phrase.length) {
+      const timer = setTimeout(() => {
+        setDisplayed(phrase.slice(0, displayed.length + 1));
+      }, 30 + Math.random() * 30);
+      return () => clearTimeout(timer);
+    }
+    // Done typing → hold visible
+    const hold = setTimeout(() => setPhase("visible"), 1200);
+    return () => clearTimeout(hold);
+  }, [displayed, phase, phrase]);
+
+  // Visible → exit
+  useEffect(() => {
+    if (phase !== "visible") return;
+    const timer = setTimeout(() => setPhase("exit"), 200);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  // Exit → next phrase
+  useEffect(() => {
+    if (phase !== "exit") return;
+    const timer = setTimeout(() => {
+      setPhraseIndex((i) => (i + 1) % THINKING_PHRASES.length);
+      setDisplayed("");
+      setPhase("typing");
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  return (
+    <span
+      className="text-sm inline-block"
+      style={{
+        opacity: phase === "exit" ? 0 : 1,
+        transform: phase === "exit" ? "translateY(-4px)" : "translateY(0)",
+        transition: "all 0.35s ease",
+      }}
+    >
+      <span className="thinking-text">{displayed}</span>
+      {phase === "typing" && (
+        <span
+          className="inline-block w-[2px] h-[13px] ml-0.5 align-middle"
+          style={{ background: "var(--muted)", animation: "cursor-blink 0.8s step-end infinite" }}
+        />
+      )}
+    </span>
   );
 }
