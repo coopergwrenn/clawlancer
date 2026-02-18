@@ -3608,7 +3608,7 @@ export default function CommandCenterPage() {
                     )}
                     {togglePills}
                     <div
-                      className="rounded-2xl px-4 py-3 flex items-center gap-3"
+                      className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3 overflow-hidden"
                       style={{
                         background: "rgba(255,255,255,0.8)",
                         backdropFilter: "blur(12px)",
@@ -3628,19 +3628,27 @@ export default function CommandCenterPage() {
                           }
                         }}
                         placeholder="Message your agent..."
-                        className="flex-1 bg-transparent text-[16px] outline-none"
+                        className="flex-1 min-w-0 bg-transparent text-[16px] outline-none"
                         style={{ color: "var(--foreground)" }}
                         disabled={isSending}
                       />
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                         <div className="relative" ref={modelPickerRef}>
                           <button
                             onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
+                            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                             style={{ color: "var(--muted)" }}
                           >
                             <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}</span>
                             <ChevronDown className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
+                            className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
+                            style={{ color: "var(--muted)" }}
+                            title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
                           </button>
                           {showModelPicker && (
                             <div
@@ -3777,7 +3785,7 @@ export default function CommandCenterPage() {
           </div>
           {togglePills}
           <div
-            className="rounded-2xl px-5 py-3.5 flex items-center gap-3"
+            className="rounded-2xl px-3 py-2.5 sm:px-5 sm:py-3.5 flex items-center gap-2 sm:gap-3 overflow-hidden"
             style={{
               background: "rgba(255,255,255,0.8)",
               backdropFilter: "blur(12px)",
@@ -3797,18 +3805,26 @@ export default function CommandCenterPage() {
                 }
               }}
               placeholder="Tell your agent what to do next..."
-              className="flex-1 bg-transparent text-sm outline-none"
+              className="flex-1 min-w-0 bg-transparent text-sm outline-none"
               style={{ color: "var(--foreground)" }}
             />
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               <div className="relative" ref={modelPickerRef}>
                 <button
                   onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
+                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                   style={{ color: "var(--muted)" }}
                 >
                   <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}</span>
                   <ChevronDown className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
+                  className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
+                  style={{ color: "var(--muted)" }}
+                  title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
                 </button>
                 {showModelPicker && (
                   <div
