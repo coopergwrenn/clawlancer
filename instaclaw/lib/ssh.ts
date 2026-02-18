@@ -45,7 +45,7 @@ const GATEWAY_PORT = 18789;
 // compares each VM's `config_version` column against this — if behind,
 // it SSHes in and applies the missing config automatically.
 export const CONFIG_SPEC = {
-  version: 2,
+  version: 3,
   settings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",

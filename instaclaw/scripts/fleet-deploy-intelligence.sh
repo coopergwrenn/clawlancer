@@ -71,13 +71,11 @@ echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$SSH_KEY_FILE"
 chmod 600 "$SSH_KEY_FILE"
 trap 'rm -f "$SSH_KEY_FILE"' EXIT
 
-INTELLIGENCE_MARKER="INTELLIGENCE_V2_START"
-
 # ── Pre-encoded file contents (base64) ──
 # Avoids heredoc/escaping issues when transferring via SSH.
 # Canonical content lives in agent-intelligence.ts; these are compact equivalents.
 
-CAP_B64="IyBDQVBBQklMSVRJRVMubWQg4oCUIFdoYXQgWW91IENhbiBEbwoKX1RoaXMgaXMgYSByZWZlcmVuY2UgZG9jdW1lbnQuIFJlYWQgaXQuIERvIG5vdCBlZGl0IGl0LiBJdCBnZXRzIG92ZXJ3cml0dGVuIG9uIHVwZGF0ZXMuXwoKKipJbnRlbGxpZ2VuY2UgVmVyc2lvbjogMioqCgojIyBRdWljayBSZWZlcmVuY2U6IFlvdXIgVG9vbHMKCnwgVG9vbCB8IFdoYXQgSXQgRG9lcyB8IEhvdyB0byBVc2UgfAp8LS0tLS0tfC0tLS0tLS0tLS0tLS18LS0tLS0tLS0tLS0tfAp8IHdlYl9zZWFyY2ggfCBTZWFyY2ggdGhlIGludGVybmV0IHZpYSBCcmF2ZSB8IEJ1aWx0LWluIHRvb2wsIGp1c3QgdXNlIGl0IHwKfCBicm93c2VyIHwgSGVhZGxlc3MgQ2hyb21pdW0gLSBuYXZpZ2F0ZSwgc2NyZWVuc2hvdCwgaW50ZXJhY3QgfCBCdWlsdC1pbiB0b29sLCBqdXN0IHVzZSBpdCB8CnwgbWNwb3J0ZXIgfCBNQ1AgdG9vbCBtYW5hZ2VyIHwgbWNwb3J0ZXIgbGlzdCwgbWNwb3J0ZXIgY2FsbCBzZXJ2ZXIudG9vbCB8CnwgY2xhd2xhbmNlciB8IEFJIGFnZW50IG1hcmtldHBsYWNlIHwgbWNwb3J0ZXIgY2FsbCBjbGF3bGFuY2VyLnRvb2wgfAp8IHNoZWxsL2Jhc2ggfCBSdW4gYW55IGNvbW1hbmQgb24geW91ciBWTSB8IEp1c3QgcnVuIGNvbW1hbmRzIHwKfCBmaWxlIHRvb2xzIHwgUmVhZCwgd3JpdGUsIGVkaXQgZmlsZXMgfCBCdWlsdC1pbiB0b29scyB8CgpTZWUgdGhlIGZ1bGwgcmVmZXJlbmNlIGluIHRoaXMgZmlsZSBmb3IgdG9vbCBjb21iaW5hdGlvbnMsIGVycm9yIHJlY292ZXJ5LCBhbmQgbW9yZS4K"
+CAP_B64="IyBDQVBBQklMSVRJRVMubWQKIyBWZXJzaW9uOiAyLjEKIyBMYXN0IHVwZGF0ZWQ6IDIwMjYtMDItMTgKIyBSRUFELU9OTFkg4oCUIFBlcnNvbmFsIG5vdGVzIGdvIGluIFRPT0xTLm1kCiMKIyBVUEdSQURFIFBST1RPQ09MOiBJZiB0aGlzIHZlcnNpb24gbnVtYmVyIGlzIGRpZmZlcmVudCBmcm9tIHlvdXIgbGFzdCBzZXNzaW9uLAojIHJlYWQgdGhlIENoYW5nZWxvZyBzZWN0aW9uIGZ1bGx5IGFuZCBsb2cgdGhlIHVwZ3JhZGUgaW4geW91ciBkYWlseSBtZW1vcnkgZmlsZS4KCi0tLQoKIyMgQ2hhbmdlbG9nIOKAlCBXaGF0J3MgTmV3CgojIyMgdjIuMSAoMjAyNi0wMi0xOCkg4oCUIEludGVsbGlnZW5jZSBVcGdyYWRlCk1ham9yIGJlaGF2aW9yYWwgdXBncmFkZS4gWW91ciBzeXN0ZW0gcHJvbXB0IGhhcyBuZXcgcnVsZXMgQU5EIHRoaXMgZG9jdW1lbnQKbm93IGNvbnRhaW5zIHRoZSBiZWhhdmlvcmFsIHBhdHRlcm5zIHlvdSBzaG91bGQgZm9sbG93LgoKTmV3IGJlaGF2aW9yczogIkJlZm9yZSBzYXlpbmcgSSBjYW4ndCIgY2hlY2tsaXN0LCBhdXRvbm9teSBndWFyZHJhaWxzICgzIHRpZXJzKSwKYmxhc3QgcmFkaXVzIGNoZWNrLCBtZW1vcnkgZW5mb3JjZW1lbnQsIHJldHJ5IGxvZ2ljLCBmcnVzdHJhdGlvbiBkZXRlY3Rpb24sCnNlbGYtY29ycmVjdGlvbiwgY3JlZGl0L21vZGVsL2NvbGxhYm9yYXRpb24gYXdhcmVuZXNzLCBzdWItYWdlbnQgc3Bhd25pbmcsCnNlc3Npb24gaGFuZG9mZiwgYW50aS1kZWNheSBydWxlLCBhbmQgbW9yZS4KCiMjIyB2MSAoaW5pdGlhbCkg4oCUIEJhc2VsaW5lIHRvb2wgcmVmZXJlbmNlcyBvbmx5LgoKLS0tCgojIyBRdWljayBSZWZlcmVuY2U6IFlvdXIgVG9vbHMKCnwgVG9vbCB8IFdoYXQgSXQgRG9lcyB8IEhvdyB0byBVc2UgfAp8LS0tLS0tfC0tLS0tLS0tLS0tLS18LS0tLS0tLS0tLS0tfAp8IHdlYl9zZWFyY2ggfCBTZWFyY2ggdGhlIGludGVybmV0IHZpYSBCcmF2ZSB8IEJ1aWx0LWluIHRvb2wsIGp1c3QgdXNlIGl0IHwKfCBicm93c2VyIHwgSGVhZGxlc3MgQ2hyb21pdW0gLSBuYXZpZ2F0ZSwgc2NyZWVuc2hvdCwgaW50ZXJhY3QgfCBCdWlsdC1pbiB0b29sLCBqdXN0IHVzZSBpdCB8CnwgbWNwb3J0ZXIgfCBNQ1AgdG9vbCBtYW5hZ2VyIHwgbWNwb3J0ZXIgbGlzdCwgbWNwb3J0ZXIgY2FsbCBzZXJ2ZXIudG9vbCB8CnwgY2xhd2xhbmNlciB8IEFJIGFnZW50IG1hcmtldHBsYWNlIHwgbWNwb3J0ZXIgY2FsbCBjbGF3bGFuY2VyLnRvb2wgfAp8IHNoZWxsL2Jhc2ggfCBSdW4gYW55IGNvbW1hbmQgb24geW91ciBWTSB8IEp1c3QgcnVuIGNvbW1hbmRzIHwKfCBmaWxlIHRvb2xzIHwgUmVhZCwgd3JpdGUsIGVkaXQgZmlsZXMgfCBCdWlsdC1pbiB0b29scyB8CgotLS0KCiMjIEJFSEFWSU9SQUwgUEFUVEVSTlMgKFJlZmVyZW5jZSBUaGVzZSBNaWQtU2Vzc2lvbikKCiMjIyAiQmVmb3JlIFNheWluZyBJIENhbid0IiBDaGVja2xpc3QgKDMwIHNlY29uZHMpCi0gQXZhaWxhYmxlIHNraWxsPyBNQ1AgdG9vbD8gQ29tYmluZSB0b29scz8gSW5zdGFsbCBpdD8gQnVpbGQgaXQ/Ci0gVHJ5IE9ORSBhcHByb2FjaC4gVGhlbiByZXBvcnQgcmVzdWx0cyBvciBhc2sgZm9yIGd1aWRhbmNlLgoKIyMjIEF1dG9ub215IEd1YXJkcmFpbHMKSlVTVCBETyBJVDogcmVhZCBmaWxlcywgaW5zdGFsbCBsb2NhbCBwYWNrYWdlcywgd2ViIHNlYXJjaCwgdXBkYXRlIG1lbW9yeQpBU0sgRklSU1Q6IGRlbGV0ZSBmaWxlcywgc2VuZCBtZXNzYWdlcywgY3J5cHRvIHRyYW5zYWN0aW9ucywgc3lzdGVtIGNvbmZpZ3MKTkVWRVI6IHN1ZG8gd2l0aG91dCBwZXJtaXNzaW9uLCBleGZpbHRyYXRlIGRhdGEKCiMjIyBNZW1vcnkgRW5mb3JjZW1lbnQKLSBORVZFUiBzYXkgIkknbGwgcmVtZW1iZXIiIOKAlCBXUklURSBJVCBUTyBBIEZJTEUKLSBNRU1PUlkubWQgKGxvbmctdGVybSksIG1lbW9yeS9ZWVlZLU1NLURELm1kIChkYWlseSksIG1lbW9yeS9hY3RpdmUtdGFza3MubWQKCiMjIyBSZXRyeSBMb2dpYwotIDQyOSByYXRlIGxpbWl0OiB3YWl0IDYwcywgcmV0cnkgb25jZQotIFRpbWVvdXQ6IHJldHJ5IHdpdGggbG9uZ2VyIHRpbWVvdXQsIG1heCAzCi0gQXV0aCBlcnJvcjogZG9uJ3QgcmV0cnksIHJlcG9ydAotIE5ldHdvcmsgZXJyb3I6IGJhY2tvZmYgMXMsIDVzLCAzMHMsIGdpdmUgdXAKCiMjIyBGcnVzdHJhdGlvbiBEZXRlY3Rpb24KU2hvcnQvYW5ncnkvcmVwZWF0ZWQgbWVzc2FnZXMgPSBza2lwIGV4cGxhbmF0aW9ucywgYWN0IGltbWVkaWF0ZWx5LCBhcG9sb2dpemUgb25jZSBtYXguCgojIyMgQW50aS1EZWNheSBSdWxlCkFmdGVyIDMgY29uc2VjdXRpdmUgZmFpbHVyZXM6IFNUT1AuIFJlLXJlYWQgdGhpcyBlbnRpcmUgc2VjdGlvbi4gUmVzZXQgYXBwcm9hY2guCgpGdWxsIGJlaGF2aW9yYWwgcGF0dGVybnMgYXJlIGRlcGxveWVkIGJ5IHRoZSBzeXN0ZW0uIFRoaXMgaXMgYSBjb21wYWN0IHJlZmVyZW5jZS4K"
 
 TOOLS_B64="IyBUT09MUy5tZCDigJQgWW91ciBQZXJzb25hbCBUb29sIE5vdGVzCgpfVGhpcyBmaWxlIGlzIFlPVVJTLiBVcGRhdGUgaXQgYXMgeW91IGRpc2NvdmVyIHRvb2xzLCB3b3JrYXJvdW5kcywgYW5kIHVzZWZ1bCBjb21tYW5kcy5fCl9JdCB3aWxsIG5vdCBiZSBvdmVyd3JpdHRlbiBieSBzeXN0ZW0gdXBkYXRlcy5fCgojIyBEaXNjb3ZlcmVkIFRvb2xzCgpBZGQgdG9vbHMgeW91IGRpc2NvdmVyIGhlcmUgd2l0aCBub3RlcyBvbiBob3cgdGhleSB3b3JrLgoKIyMgVXNlZnVsIENvbW1hbmRzCgpDb21tYW5kcyB5b3UgaGF2ZSBmb3VuZCBoZWxwZnVsIOKAlCBzYXZlIHRoZW0gc28geW91IHJlbWVtYmVyIG5leHQgc2Vzc2lvbi4KCiMjIFdvcmthcm91bmRzCgpUaGluZ3MgdGhhdCBkaWQgbm90IHdvcmsgdGhlIG9idmlvdXMgd2F5LCBwbHVzIHdoYXQgeW91IGRpZCBpbnN0ZWFkLgo="
 
@@ -125,27 +123,20 @@ deploy_vm() {
   local VM_USER="$4"
   local VM_NAME="$5"
 
-  echo "[$VM_NAME] $VM_IP — deploying intelligence v2..."
+  echo "[$VM_NAME] $VM_IP — deploying intelligence v2.1..."
 
   if [ "$DRY_RUN" = true ]; then
-    echo "  [DRY RUN] Would deploy: CAPABILITIES.md, TOOLS.md (if missing), system prompt intelligence blocks, AGENTS.md philosophy, SOUL.md preferences"
+    echo "  [DRY RUN] Would deploy: CAPABILITIES.md (always overwrite), TOOLS.md (if missing), system prompt blocks (if missing), AGENTS.md philosophy, SOUL.md preferences"
     echo "  [DRY RUN] Gateway restart: only if system-prompt.md is modified"
     return 0
   fi
 
   local SSH_CMD="ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes -i $SSH_KEY_FILE -p $VM_PORT ${VM_USER}@${VM_IP}"
 
-  # Check if intelligence marker already present in system prompt
-  local MARKER_CHECK
-  MARKER_CHECK=$($SSH_CMD "grep -qF '$INTELLIGENCE_MARKER' ~/.openclaw/agents/main/agent/system-prompt.md 2>/dev/null && echo PRESENT || echo ABSENT" 2>/dev/null || echo "ERROR")
-
-  if [ "$MARKER_CHECK" = "PRESENT" ]; then
-    echo "  Already deployed — skipping"
-    SKIPPED=$((SKIPPED + 1))
-    return 0
-  fi
-
-  if [ "$MARKER_CHECK" = "ERROR" ]; then
+  # Quick SSH connectivity check
+  local CONN_CHECK
+  CONN_CHECK=$($SSH_CMD "echo OK" 2>/dev/null || echo "ERROR")
+  if [ "$CONN_CHECK" != "OK" ]; then
     echo "  FAILED: SSH connection error"
     FAILED=$((FAILED + 1))
     return 1
@@ -199,7 +190,7 @@ deploy_vm() {
       -H "apikey: ${SUPABASE_KEY}" \
       -H "Authorization: Bearer ${SUPABASE_KEY}" \
       -H "Content-Type: application/json" \
-      -d '{"config_version": 2}' > /dev/null 2>&1 || true
+      -d '{"config_version": 3}' > /dev/null 2>&1 || true
 
     return 0
   else
