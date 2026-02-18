@@ -54,6 +54,14 @@ const HINT_EXAMPLES = [
   "only check in every 6 hours",
 ];
 
+const THINKING_PHRASES = [
+  "Talking to your agent…",
+  "Adjusting the schedule…",
+  "On it…",
+  "Tweaking the heartbeat…",
+  "One sec…",
+];
+
 const POLL_INTERVAL = 30_000;
 
 // ── Helpers ─────────────────────────────────────────
@@ -151,6 +159,7 @@ export default function HeartbeatCard() {
   const [nlSending, setNlSending] = useState(false);
   const [nlResponse, setNlResponse] = useState<string | null>(null);
   const [hintIdx, setHintIdx] = useState(0);
+  const [thinkIdx, setThinkIdx] = useState(0);
   const [sliderValue, setSliderValue] = useState(3); // hours as decimal
   const [sliderDragging, setSliderDragging] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
@@ -189,6 +198,18 @@ export default function HeartbeatCard() {
     );
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (!nlSending) {
+      setThinkIdx(0);
+      return;
+    }
+    const t = setInterval(
+      () => setThinkIdx((i) => (i + 1) % THINKING_PHRASES.length),
+      2000
+    );
+    return () => clearInterval(t);
+  }, [nlSending]);
 
   useEffect(() => {
     if (!toast) return;
@@ -610,28 +631,53 @@ export default function HeartbeatCard() {
               Or just tell your agent
             </span>
             <div
-              className="flex items-center gap-2 rounded-xl px-4 py-3 mt-2"
+              className="flex items-center gap-2 rounded-xl px-4 py-3 mt-2 transition-all"
               style={{
-                background: "rgba(0,0,0,0.02)",
-                border: "1px solid var(--border)",
+                background: nlSending ? "rgba(220,103,67,0.04)" : "rgba(0,0,0,0.02)",
+                border: nlSending ? "1px solid rgba(220,103,67,0.15)" : "1px solid var(--border)",
                 boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03)",
               }}
             >
-              <input
-                type="text"
-                value={nlInput}
-                onChange={(e) => setNlInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendNlConfig();
-                  }
-                }}
-                placeholder={HINT_EXAMPLES[hintIdx]}
-                disabled={nlSending}
-                className="flex-1 bg-transparent text-sm outline-none"
-                style={{ color: "var(--foreground)" }}
-              />
+              {nlSending ? (
+                <div className="flex-1 flex items-center gap-2 overflow-hidden">
+                  <span
+                    className="w-3 h-3 rounded-full border-[1.5px] shrink-0"
+                    style={{
+                      borderColor: "rgba(220,103,67,0.3)",
+                      borderTopColor: "#DC6743",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
+                  <AnimatePresence mode="wait">
+                    <motion.span
+                      key={thinkIdx}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-sm"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {THINKING_PHRASES[thinkIdx]}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={nlInput}
+                  onChange={(e) => setNlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendNlConfig();
+                    }
+                  }}
+                  placeholder={HINT_EXAMPLES[hintIdx]}
+                  className="flex-1 bg-transparent text-sm outline-none"
+                  style={{ color: "var(--foreground)" }}
+                />
+              )}
               <button
                 onClick={sendNlConfig}
                 disabled={nlSending || !nlInput.trim()}
