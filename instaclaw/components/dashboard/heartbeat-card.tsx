@@ -493,8 +493,13 @@ export default function HeartbeatCard() {
               )}
             </div>
 
+            {/* Quick pick label */}
+            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--muted)", opacity: 0.6 }}>
+              Quick pick
+            </p>
+
             {/* Preset pills */}
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-5">
               {INTERVALS.map((iv) => {
                 const isActive = data.interval === iv;
                 const isLoading = updating === iv;
@@ -506,15 +511,15 @@ export default function HeartbeatCard() {
                     className="flex-1 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer active:scale-[0.97]"
                     style={{
                       background: isActive
-                        ? "linear-gradient(145deg, rgba(255,255,255,0.1), rgba(255,255,255,0.04))"
-                        : "rgba(255,255,255,0.03)",
+                        ? "linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05))"
+                        : "linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
                       color: isActive ? "var(--foreground)" : "var(--muted)",
                       border: isActive
                         ? "1px solid rgba(220,103,67,0.3)"
-                        : "1px solid rgba(255,255,255,0.06)",
+                        : "1px solid rgba(255,255,255,0.1)",
                       boxShadow: isActive
                         ? "0 0 0 1px rgba(220,103,67,0.08), 0 2px 8px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.08)"
-                        : "inset 0 1px 0 rgba(255,255,255,0.04)",
+                        : "0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.05)",
                       backdropFilter: "blur(12px)",
                       opacity: isLoading ? 0.5 : 1,
                     }}
@@ -524,6 +529,11 @@ export default function HeartbeatCard() {
                 );
               })}
             </div>
+
+            {/* Fine-tune label */}
+            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--muted)", opacity: 0.6 }}>
+              Fine-tune
+            </p>
 
             {/* Precision slider */}
             <div className="relative">
