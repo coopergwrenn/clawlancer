@@ -283,9 +283,6 @@ function buildOpenClawConfig(
 
   // Base config structure matching what openclaw onboard produces
   const ocConfig: Record<string, unknown> = {
-    meta: {
-      version: 1,
-    },
     wizard: {
       lastRunAt: now,
       lastRunVersion: "2026.2.12",
@@ -320,10 +317,13 @@ function buildOpenClawConfig(
     },
     channels: {} as Record<string, unknown>,
     gateway: {
+      mode: "local",
       port: GATEWAY_PORT,
       bind: "lan",
-      auth: "token",
-      token: gatewayToken,
+      auth: {
+        mode: "token",
+        token: gatewayToken,
+      },
     },
     models: {
       providers: {
