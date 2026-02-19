@@ -19,6 +19,7 @@ export default {
   ],
   pages: {
     signIn: "/signin",
+    error: "/auth-error",
   },
   session: {
     strategy: "jwt",

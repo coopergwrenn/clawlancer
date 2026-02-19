@@ -43,13 +43,36 @@ export default function SignupPage() {
   }
 
   async function handleGoogleSignIn() {
-    // Store invite code in a server-set HttpOnly cookie (survives OAuth redirects reliably)
-    await fetch("/api/invite/store", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
-    });
-    await signIn("google", { callbackUrl: "/connect" });
+    setLoading(true);
+    setError("");
+
+    try {
+      // Store invite code in a server-set HttpOnly cookie (survives OAuth redirects reliably)
+      const res = await fetch("/api/invite/store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message || "Failed to store invite code. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const storeData = await res.json().catch(() => ({}));
+      if (!storeData.ok) {
+        setError("Failed to store invite code. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      await signIn("google", { callbackUrl: "/connect" });
+    } catch {
+      setError("Network error. Please try again.");
+      setLoading(false);
+    }
   }
 
   return (
@@ -137,10 +160,17 @@ export default function SignupPage() {
               ✓ Invite code accepted
             </div>
 
+            {error && (
+              <p className="text-sm text-center" style={{ color: "#ef4444" }}>
+                {error}
+              </p>
+            )}
+
             {/* Google sign-in */}
             <button
               onClick={handleGoogleSignIn}
-              className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-3"
+              disabled={loading}
+              className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-3"
               style={{
                 background: "#ffffff",
                 color: "#333334",
