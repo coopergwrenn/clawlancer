@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, gateway_token, api_mode, tier, default_model, limit_notified_date")
+      .select("id, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval")
       .eq("gateway_token", gatewayToken)
       .single();
 
@@ -269,12 +269,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // --- Detect heartbeat vs user call ---
+    // Heartbeats fire on a schedule and produce a burst of API calls.
+    // If a heartbeat is due (next_at in the past) or recently fired (last_at
+    // within 5 minutes), classify this call as a heartbeat. Heartbeat calls
+    // draw from a separate 400-unit budget and never touch the user's quota.
+    const now = new Date();
+    const hbNextAt = vm.heartbeat_next_at ? new Date(vm.heartbeat_next_at) : null;
+    const hbLastAt = vm.heartbeat_last_at ? new Date(vm.heartbeat_last_at) : null;
+    const heartbeatDue = hbNextAt && now >= hbNextAt;
+    const heartbeatRecent = hbLastAt && (now.getTime() - hbLastAt.getTime()) < 5 * 60 * 1000;
+    const isHeartbeat = !!(heartbeatDue || heartbeatRecent);
+
     // --- Check daily usage limit (read-only, no increment) ---
-    // The RPC returns source: 'daily_limit' | 'credits' | 'buffer' | null
+    // The RPC returns source: 'daily_limit' | 'credits' | 'buffer' | 'heartbeat' | null
     // Usage is NOT incremented here — only after a successful Anthropic response.
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_limit_only",
-      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel }
+      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat }
     );
 
     if (limitError) {
@@ -295,6 +307,11 @@ export async function POST(req: NextRequest) {
     const currentCount = limitResult?.count ?? 0;
     const source: string | null = limitResult?.source ?? null;
 
+    // --- Heartbeat budget exhausted: silently drop ---
+    if (source === "heartbeat_exhausted") {
+      return silentEmptyResponse(requestedModel, isStreaming);
+    }
+
     // --- Hard block: everything exhausted (RPC denied) ---
     // User was already notified when they entered the buffer zone.
     // Return silent empty response for all calls.
@@ -302,38 +319,14 @@ export async function POST(req: NextRequest) {
       return silentEmptyResponse(requestedModel, isStreaming);
     }
 
-    // --- Buffer zone: heartbeats/system only, user messages blocked ---
+    // --- Buffer zone: safety margin, user messages blocked ---
     // The RPC allowed the call (within internal limit) but there are no
     // credits. Send the "daily limit" notification once, then silent.
+    // Heartbeats never land here — they have their own budget path above.
     if (source === "buffer") {
       const alreadyNotifiedToday = vm.limit_notified_date === todayStr;
 
-      // Track buffer usage for heartbeat dashboard (fire-and-forget)
-      supabase
-        .from("instaclaw_vms")
-        .select("heartbeat_interval, heartbeat_credits_used_today")
-        .eq("id", vm.id)
-        .single()
-        .then(({ data: hbData }) => {
-          const now = new Date();
-          const interval = hbData?.heartbeat_interval ?? "3h";
-          const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
-          const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
-          const nextAt = new Date(now.getTime() + nextMs);
-          const creditsToday = (hbData?.heartbeat_credits_used_today ?? 0) + 1;
-          supabase
-            .from("instaclaw_vms")
-            .update({
-              heartbeat_last_at: now.toISOString(),
-              heartbeat_next_at: nextAt.toISOString(),
-              heartbeat_credits_used_today: creditsToday,
-            })
-            .eq("id", vm.id)
-            .then(() => {});
-        });
-
       if (!alreadyNotifiedToday) {
-        // First time hitting the limit today — send the friendly notification
         supabase
           .from("instaclaw_vms")
           .update({ limit_notified_date: todayStr })
@@ -347,7 +340,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Already notified — silent empty response
       return silentEmptyResponse(requestedModel, isStreaming);
     }
 
@@ -413,6 +405,7 @@ export async function POST(req: NextRequest) {
       .rpc("instaclaw_increment_usage", {
         p_vm_id: vm.id,
         p_model: requestedModel,
+        p_is_heartbeat: isHeartbeat,
       })
       .then(({ error: incError }) => {
         if (incError) {
@@ -420,9 +413,25 @@ export async function POST(req: NextRequest) {
             route: "gateway/proxy",
             vmId: vm.id,
             error: String(incError),
+            isHeartbeat,
           });
         }
       });
+
+    // Update heartbeat timing if this was a heartbeat call (fire-and-forget)
+    if (isHeartbeat && heartbeatDue) {
+      const interval = vm.heartbeat_interval ?? "3h";
+      const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
+      const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
+      supabase
+        .from("instaclaw_vms")
+        .update({
+          heartbeat_last_at: now.toISOString(),
+          heartbeat_next_at: new Date(now.getTime() + nextMs).toISOString(),
+        })
+        .eq("id", vm.id)
+        .then(() => {});
+    }
 
     // If streaming or no usage warning needed, pass through the response directly.
     // Streaming responses are SSE text that can't be JSON-parsed, so we never
