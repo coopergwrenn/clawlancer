@@ -65,11 +65,8 @@ export function buildInviteEmailHtml(inviteCode: string): string {
   <tr><td style="padding:28px 24px;text-align:center;">
     <p style="margin:0 0 12px 0;font-family:${font};font-size:13px;color:#888;text-transform:uppercase;letter-spacing:1.5px;">Your invite code</p>
     <p style="margin:0 0 24px 0;font-family:${mono};font-size:32px;font-weight:700;color:#ffffff;letter-spacing:6px;">${inviteCode}</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
-    <tr><td style="background-color:#ffffff;border-radius:8px;">
-      <a href="${signupUrl}" target="_blank" style="display:inline-block;padding:14px 40px;font-family:${font};font-size:16px;font-weight:700;color:#000000;text-decoration:none;">Activate Your Agent &rarr;</a>
-    </td></tr>
-    </table>
+    <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${signupUrl}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="17%" fillcolor="#ffffff"><center style="color:#000000;font-family:sans-serif;font-size:16px;font-weight:bold;">Activate Your Agent &rarr;</center></v:roundrect><![endif]-->
+    <!--[if !mso]><!--><a href="${signupUrl}" target="_blank" style="display:inline-block;padding:14px 40px;background-color:#ffffff;border-radius:8px;font-family:${font};font-size:16px;font-weight:700;color:#000000;text-decoration:none;mso-hide:all;">Activate Your Agent &rarr;</a><!--<![endif]-->
     <p style="margin:16px 0 0 0;font-family:${font};font-size:12px;color:#666;">Expires in 7 days &middot; <a href="${signupUrl}" style="color:#888;text-decoration:underline;">${signupUrl.replace("https://", "")}</a></p>
   </td></tr>
   </table>
@@ -224,11 +221,8 @@ export function buildInviteEmailHtml(inviteCode: string): string {
     <p style="margin:0 0 4px 0;font-family:${font};font-size:15px;color:#ffffff;font-weight:600;">Your agent is waiting.</p>
     <p style="margin:0 0 16px 0;font-family:${font};font-size:13px;color:#888;">Use your code to activate it:</p>
     <p style="margin:0 0 20px 0;font-family:${mono};font-size:28px;font-weight:700;color:#ffffff;letter-spacing:5px;">${inviteCode}</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
-    <tr><td style="background-color:#ffffff;border-radius:8px;">
-      <a href="${signupUrl}" target="_blank" style="display:inline-block;padding:14px 40px;font-family:${font};font-size:16px;font-weight:700;color:#000000;text-decoration:none;">Activate Your Agent &rarr;</a>
-    </td></tr>
-    </table>
+    <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${signupUrl}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="17%" fillcolor="#ffffff"><center style="color:#000000;font-family:sans-serif;font-size:16px;font-weight:bold;">Activate Your Agent &rarr;</center></v:roundrect><![endif]-->
+    <!--[if !mso]><!--><a href="${signupUrl}" target="_blank" style="display:inline-block;padding:14px 40px;background-color:#ffffff;border-radius:8px;font-family:${font};font-size:16px;font-weight:700;color:#000000;text-decoration:none;mso-hide:all;">Activate Your Agent &rarr;</a><!--<![endif]-->
   </td></tr>
   </table>
 </td></tr>
