@@ -40,6 +40,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Check if user already has an active subscription (e.g. VM reassignment)
+    const { data: existingSub } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("id, status")
+      .eq("user_id", session.user.id)
+      .eq("status", "active")
+      .single();
+
+    if (existingSub) {
+      // User already paid — skip Stripe checkout, trigger configure, go to deploying
+      const origin = req.headers.get("origin") ?? process.env.NEXTAUTH_URL!;
+      fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+        },
+        body: JSON.stringify({ userId: session.user.id }),
+      }).catch((err) => {
+        logger.error("Configure fire-and-forget failed (existing sub)", {
+          error: String(err),
+          route: "billing/checkout",
+          userId: session.user.id,
+        });
+      });
+      return NextResponse.json({ url: `${origin}/deploying` });
+    }
+
     // Check for active deployment lock (within last 15 minutes)
     if (user.deployment_lock_at) {
       const lockAge = Date.now() - new Date(user.deployment_lock_at).getTime();
