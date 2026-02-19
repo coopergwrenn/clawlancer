@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { configureOpenClaw, waitForHealth, migrateUserData, testProxyRoundTrip } from "@/lib/ssh";
+import { configureOpenClaw, waitForHealth, migrateUserData, testProxyRoundTrip, setupTLSBackground } from "@/lib/ssh";
 import { validateAdminKey, decryptApiKey } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
@@ -173,6 +173,14 @@ export async function POST(req: NextRequest) {
         .delete()
         .eq("user_id", userId);
     }
+
+    // ── Background TLS setup (runs after response is sent) ──
+    // configureOpenClaw() now returns HTTP URLs for instant completion.
+    // TLS (GoDaddy DNS + Caddy) upgrades to HTTPS in the background.
+    const tlsHostname = `${vm.id}.vm.instaclaw.io`;
+    after(async () => {
+      await setupTLSBackground(vm, tlsHostname);
+    });
 
     // ── Migrate user data from previous VM (best-effort) ──
     // If the user previously had a VM (cancelled + re-subscribed), copy their
