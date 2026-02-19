@@ -313,7 +313,7 @@ export default function SettingsPage() {
         setTimeout(() => setAgdpSuccess(false), 3000);
       } else {
         const data = await res.json();
-        setError(data.error || "Failed to toggle aGDP");
+        setError(data.error || "Failed to toggle Virtuals Protocol");
       }
     } catch {
       setError("Network error");
@@ -459,12 +459,12 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* aGDP — secondary, toggleable */}
+        {/* Virtuals Protocol (ACP) — secondary, toggleable */}
         <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
           <div className="flex items-center justify-between">
             <div className="flex-1 mr-4">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-sm font-medium">aGDP Marketplace</h3>
+                <h3 className="text-sm font-medium">Virtuals Protocol (ACP)</h3>
                 <span
                   className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                   style={{
@@ -498,7 +498,7 @@ export default function SettingsPage() {
                   : "0 0 0 1px rgba(0,0,0,0.08), inset 0 1px 2px rgba(0,0,0,0.06)",
                 backdropFilter: "blur(8px)",
               }}
-              aria-label={agdpEnabled ? "Disable aGDP" : "Enable aGDP"}
+              aria-label={agdpEnabled ? "Disable Virtuals Protocol" : "Enable Virtuals Protocol"}
             >
               <span
                 className="absolute top-1 w-5 h-5 rounded-full transition-all"
@@ -517,7 +517,7 @@ export default function SettingsPage() {
           {togglingAgdp && (
             <div className="mt-4 flex items-center gap-2 text-xs" style={{ color: "var(--muted)" }}>
               <RotateCw className="w-3 h-3 animate-spin" />
-              {agdpEnabled ? "Disabling" : "Enabling"} aGDP... This may take a moment while we configure your VM.
+              {agdpEnabled ? "Disabling" : "Enabling"} Virtuals Protocol... This may take a moment while we configure your VM.
             </div>
           )}
 
@@ -535,12 +535,12 @@ export default function SettingsPage() {
               }}
             >
               <p className="text-sm font-medium mb-1">
-                {agdpConfirm === "enable" ? "Enable aGDP?" : "Disable aGDP?"}
+                {agdpConfirm === "enable" ? "Enable Virtuals Protocol?" : "Disable Virtuals Protocol?"}
               </p>
               <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
                 {agdpConfirm === "enable"
-                  ? "This will install the Virtuals Protocol Agent Commerce skill on your VM. Clawlancer remains your primary marketplace."
-                  : "This will remove the Agent Commerce skill from your VM."}
+                  ? "This will install the Virtuals Protocol Agent Commerce skill on your VM. After enabling, message your bot to complete Virtuals authentication. Clawlancer remains your primary marketplace."
+                  : "This will remove the Agent Commerce skill from your VM. Your agent will no longer accept jobs from the Virtuals marketplace."}
               </p>
               <div className="flex gap-2">
                 <button

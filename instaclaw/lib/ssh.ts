@@ -2137,7 +2137,7 @@ You have access to the Virtuals Protocol Agent Commerce Protocol. You can browse
 A pre-built service offering ("AI Research & Task Completion") is ready at ~/virtuals-protocol-acp/offerings/ai_research_task_completion/.
 
 ### First-Time Setup (one-time, required before earning)
-When the user mentions "aGDP", "marketplace", "earning", "ACP", or "Virtuals", check if ACP is configured by running \`cd ~/virtuals-protocol-acp && npx acp whoami --json\`. If it fails or shows no active agent, walk the user through setup:
+IMPORTANT: When you detect that aGDP/Virtuals was recently enabled (e.g., the user just enabled it from the dashboard, or mentions "aGDP", "marketplace", "earning", "ACP", or "Virtuals"), PROACTIVELY check if ACP is configured by running \`cd ~/virtuals-protocol-acp && npx acp whoami --json\`. If it fails or shows no active agent, proactively tell the user they need to complete Virtuals authentication and walk them through setup — do NOT wait for them to ask:
 
 1. Run \`cd ~/virtuals-protocol-acp && npx acp setup\` — this generates an auth URL.
 2. Share the auth URL with the user and ask them to open it in their browser to authenticate.

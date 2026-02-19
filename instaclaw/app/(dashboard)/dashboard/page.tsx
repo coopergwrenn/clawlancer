@@ -83,6 +83,8 @@ export default function DashboardPage() {
   const [creditsPurchased, setCreditsPurchased] = useState(false);
   const [welcomeDismissed, setWelcomeDismissed] = useState(true);
   const [togglingAgdp, setTogglingAgdp] = useState(false);
+  const [agdpConfirm, setAgdpConfirm] = useState<"enable" | "disable" | null>(null);
+  const [showAgdpSetup, setShowAgdpSetup] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -147,6 +149,13 @@ export default function DashboardPage() {
       setWelcomeDismissed(false);
     }
   }, []);
+
+  // Show Virtuals setup guide if agdp is enabled but setup not dismissed
+  useEffect(() => {
+    if (vmStatus?.vm?.agdpEnabled && !localStorage.getItem("instaclaw_agdp_setup_dismissed")) {
+      setShowAgdpSetup(true);
+    }
+  }, [vmStatus?.vm?.agdpEnabled]);
 
   async function handleRestart() {
     setRestarting(true);
@@ -218,26 +227,33 @@ export default function DashboardPage() {
     localStorage.setItem("instaclaw_welcome_dismissed", "1");
   }
 
-  async function handleToggleAgdp() {
+  async function handleToggleAgdp(enabled: boolean) {
     if (!vm || togglingAgdp) return;
-    const newState = !vm.agdpEnabled;
+    setAgdpConfirm(null);
     setTogglingAgdp(true);
     try {
       const res = await fetch("/api/settings/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle_agdp", enabled: newState }),
+        body: JSON.stringify({ action: "toggle_agdp", enabled }),
       });
       if (res.ok) {
         // Wait briefly for the VM config to settle, then refresh
         setTimeout(fetchStatus, 2000);
+        // Show setup guide when enabling
+        if (enabled) {
+          localStorage.removeItem("instaclaw_agdp_setup_dismissed");
+          setShowAgdpSetup(true);
+        } else {
+          setShowAgdpSetup(false);
+        }
       } else {
         const data = await res.json().catch(() => ({}));
-        setResetToast({ message: data.error || "Failed to toggle aGDP", type: "error" });
+        setResetToast({ message: data.error || "Failed to update marketplace", type: "error" });
         setTimeout(() => setResetToast(null), 4000);
       }
     } catch {
-      setResetToast({ message: "Network error toggling aGDP", type: "error" });
+      setResetToast({ message: "Network error updating marketplace", type: "error" });
       setTimeout(() => setResetToast(null), 4000);
     } finally {
       setTogglingAgdp(false);
@@ -849,7 +865,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ── aGDP Marketplace Toggle ── */}
+          {/* ── Virtuals Protocol (ACP) Marketplace Toggle ── */}
           <div data-tour="dash-marketplace">
             <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5" style={{ fontFamily: "var(--font-serif)" }}>
               Marketplaces
@@ -878,17 +894,20 @@ export default function DashboardPage() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">aGDP Agent Commerce</p>
+                    <p className="text-sm font-semibold">Virtuals Protocol (ACP)</p>
                     <p className="text-xs" style={{ color: "var(--muted)" }}>
                       {vm.agdpEnabled
-                        ? "Active — your bot can accept jobs from the aGDP marketplace"
-                        : "Connect to the aGDP marketplace for additional bounties"}
+                        ? "Active — your bot can accept jobs from the Virtuals marketplace"
+                        : "Connect to the Virtuals Protocol marketplace to earn from AI jobs"}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={handleToggleAgdp}
+                  onClick={() => {
+                    if (togglingAgdp) return;
+                    setAgdpConfirm(vm.agdpEnabled ? "disable" : "enable");
+                  }}
                   disabled={togglingAgdp}
                   className="relative w-12 h-7 rounded-full transition-all cursor-pointer shrink-0 disabled:opacity-50"
                   style={{
@@ -914,18 +933,138 @@ export default function DashboardPage() {
                   />
                 </button>
               </div>
+
+              {/* Confirmation dialog */}
+              {agdpConfirm && (
+                <div
+                  className="mt-4 pt-4 rounded-2xl p-5"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
+                    border: agdpConfirm === "enable"
+                      ? "1px solid rgba(249,115,22,0.2)"
+                      : "1px solid rgba(239,68,68,0.2)",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+                    backdropFilter: "blur(12px)",
+                  }}
+                >
+                  <p className="text-sm font-medium mb-1">
+                    {agdpConfirm === "enable" ? "Enable Virtuals Protocol?" : "Disable Virtuals Protocol?"}
+                  </p>
+                  <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+                    {agdpConfirm === "enable"
+                      ? "This will install the Virtuals Protocol Agent Commerce skill on your VM. After enabling, you'll need to message your bot to complete Virtuals authentication."
+                      : "This will remove the Agent Commerce skill from your VM. Your agent will no longer accept jobs from the Virtuals marketplace."}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setAgdpConfirm(null)}
+                      className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+                      style={{
+                        background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                        color: "#000",
+                        boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                        backdropFilter: "blur(8px)",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleToggleAgdp(agdpConfirm === "enable")}
+                      className="px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95 cursor-pointer"
+                      style={agdpConfirm === "enable" ? {
+                        background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                        color: "#fff",
+                        boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                      } : {
+                        background: "linear-gradient(135deg, rgba(239,68,68,0.85), rgba(220,38,38,0.95))",
+                        color: "#fff",
+                        boxShadow: "0 0 0 1px rgba(239,68,68,0.3), 0 2px 8px rgba(239,68,68,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                      }}
+                    >
+                      {agdpConfirm === "enable" ? "Enable" : "Disable"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {togglingAgdp && (
                 <div className="mt-4 pt-4 flex items-center gap-2 text-xs" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
                   <RefreshCw className="w-3 h-3 animate-spin" />
-                  {vm.agdpEnabled ? "Disabling" : "Enabling"} aGDP... This may take a moment.
+                  {vm.agdpEnabled ? "Disabling" : "Enabling"} Virtuals Protocol... This may take a moment.
                 </div>
               )}
-              {!togglingAgdp && vm.agdpEnabled && (
+              {!togglingAgdp && vm.agdpEnabled && !agdpConfirm && (
                 <p className="text-xs mt-4 pt-4" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
-                  Clawlancer bounties are prioritized first. aGDP jobs are only picked up when no Clawlancer work is available.
+                  Clawlancer bounties are prioritized first. Virtuals jobs are only picked up when no Clawlancer work is available.
                 </p>
               )}
             </div>
+
+            {/* Post-enable setup guide */}
+            {showAgdpSetup && vm.agdpEnabled && !togglingAgdp && (
+              <div
+                className="glass rounded-xl p-6 mt-4 relative"
+                style={{
+                  border: "1px solid rgba(249,115,22,0.2)",
+                  background: "linear-gradient(135deg, rgba(249,115,22,0.04), rgba(234,88,12,0.02))",
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setShowAgdpSetup(false);
+                    localStorage.setItem("instaclaw_agdp_setup_dismissed", "1");
+                  }}
+                  className="absolute top-4 right-4 w-6 h-6 flex items-center justify-center rounded-full cursor-pointer"
+                  style={{ color: "var(--muted)", background: "rgba(0,0,0,0.04)" }}
+                >
+                  <span className="text-sm leading-none">&times;</span>
+                </button>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: "#ea580c" }}>
+                  Complete Virtuals Setup
+                </h3>
+                <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+                  Virtuals Protocol is enabled, but you need to authenticate through your bot to start earning. Follow these steps:
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                      style={{ background: "rgba(249,115,22,0.15)", color: "#ea580c" }}
+                    >
+                      1
+                    </span>
+                    <p className="text-sm" style={{ color: "var(--muted)" }}>
+                      Open your bot on Telegram
+                      {vm.telegramBotUsername && (
+                        <> — <a href={`https://t.me/${vm.telegramBotUsername}`} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#ea580c" }}>@{vm.telegramBotUsername}</a></>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                      style={{ background: "rgba(249,115,22,0.15)", color: "#ea580c" }}
+                    >
+                      2
+                    </span>
+                    <p className="text-sm" style={{ color: "var(--muted)" }}>
+                      Send: <strong style={{ color: "var(--foreground)" }}>&quot;Set up Virtuals marketplace&quot;</strong>
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                      style={{ background: "rgba(249,115,22,0.15)", color: "#ea580c" }}
+                    >
+                      3
+                    </span>
+                    <p className="text-sm" style={{ color: "var(--muted)" }}>
+                      Your bot will send you an auth link — open it in your browser to finish
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : (

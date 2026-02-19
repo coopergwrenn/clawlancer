@@ -63,9 +63,9 @@ const tourSteps: TourStep[] = [
   },
   {
     selector: '[data-tour="dash-marketplace"]',
-    title: "aGDP Marketplace",
+    title: "Virtuals Marketplace",
     description:
-      "Turn this on and your agent can pick up paid jobs from the aGDP marketplace when it's not busy with your tasks. It's a way to earn while your agent isn't in use. Your own tasks always come first.",
+      "Turn this on and your agent can pick up paid jobs from the Virtuals Protocol marketplace when it's not busy with your tasks. After enabling, message your bot to complete the one-time Virtuals authentication. Your own tasks always come first.",
     navigateTo: "/dashboard",
   },
   {
