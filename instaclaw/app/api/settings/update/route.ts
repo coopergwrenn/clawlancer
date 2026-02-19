@@ -85,6 +85,55 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ updated: true });
       }
 
+      case "update_telegram_token": {
+        const { telegramToken } = body;
+        if (!telegramToken || typeof telegramToken !== "string") {
+          return NextResponse.json(
+            { error: "telegramToken is required" },
+            { status: 400 }
+          );
+        }
+
+        // Validate the token by calling Telegram's getMe API
+        let botUsername: string;
+        try {
+          const getMeRes = await fetch(`https://api.telegram.org/bot${telegramToken}/getMe`);
+          const getMeData = await getMeRes.json();
+          if (!getMeData.ok || !getMeData.result?.username) {
+            return NextResponse.json(
+              { error: "Invalid Telegram bot token" },
+              { status: 400 }
+            );
+          }
+          botUsername = getMeData.result.username;
+        } catch {
+          return NextResponse.json(
+            { error: "Failed to validate Telegram bot token" },
+            { status: 400 }
+          );
+        }
+
+        await updateChannelToken(vm, "telegram", { botToken: telegramToken });
+
+        // Update DB
+        const tgChannels: string[] = vm.channels_enabled ?? ["telegram"];
+        if (!tgChannels.includes("telegram")) {
+          tgChannels.push("telegram");
+        }
+
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            telegram_bot_token: telegramToken,
+            telegram_bot_username: botUsername,
+            telegram_chat_id: null,
+            channels_enabled: tgChannels,
+          })
+          .eq("id", vm.id);
+
+        return NextResponse.json({ updated: true, botUsername });
+      }
+
       case "update_discord_token": {
         const { discordToken } = body;
         if (!discordToken || typeof discordToken !== "string") {

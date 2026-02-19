@@ -60,6 +60,9 @@ export default function SettingsPage() {
   const [keySuccess, setKeySuccess] = useState(false);
   const [updatingModel, setUpdatingModel] = useState(false);
   const [modelSuccess, setModelSuccess] = useState(false);
+  const [telegramToken, setTelegramToken] = useState("");
+  const [savingTelegram, setSavingTelegram] = useState(false);
+  const [telegramSuccess, setTelegramSuccess] = useState(false);
   const [discordToken, setDiscordToken] = useState("");
   const [savingDiscord, setSavingDiscord] = useState(false);
   const [discordSuccess, setDiscordSuccess] = useState(false);
@@ -170,6 +173,39 @@ export default function SettingsPage() {
       }
     } finally {
       setUpdatingModel(false);
+    }
+  }
+
+  async function handleUpdateTelegram() {
+    if (!telegramToken.trim()) return;
+    setSavingTelegram(true);
+    setError("");
+    setTelegramSuccess(false);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_telegram_token",
+          telegramToken: telegramToken.trim(),
+        }),
+      });
+      if (res.ok) {
+        setTelegramSuccess(true);
+        setTelegramToken("");
+        setTimeout(() => setTelegramSuccess(false), 3000);
+        // Refresh status to pick up new bot username
+        const statusRes = await fetch("/api/vm/status");
+        const data = await statusRes.json();
+        setVmStatus(data);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to update Telegram token");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setSavingTelegram(false);
     }
   }
 
@@ -661,6 +697,61 @@ export default function SettingsPage() {
       </div>
 
       {/* Channel Token Management */}
+      {vm.channelsEnabled?.includes("telegram") && (
+        <div>
+          <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
+            <Bot className="w-5 h-5" /> Telegram Bot Token
+            {telegramSuccess && (
+              <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
+                Updated
+              </span>
+            )}
+          </h2>
+          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
+            {vm.telegramBotUsername && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm" style={{ color: "var(--muted)" }}>
+                  Current bot:
+                </span>
+                <span className="text-sm font-mono">
+                  @{vm.telegramBotUsername}
+                </span>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                type="password"
+                placeholder="New Telegram bot token..."
+                value={telegramToken}
+                onChange={(e) => setTelegramToken(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
+                }}
+              />
+              <button
+                onClick={handleUpdateTelegram}
+                disabled={savingTelegram || !telegramToken.trim()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors"
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
+                }}
+              >
+                <Save className="w-3 h-3" />
+                {savingTelegram ? "Saving..." : "Save"}
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Update your Telegram bot token. The gateway will restart with the new token immediately.
+            </p>
+          </div>
+        </div>
+      )}
+
       {vm.channelsEnabled?.includes("discord") && (
         <div>
           <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>

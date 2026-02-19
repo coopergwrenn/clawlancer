@@ -1833,7 +1833,7 @@ export async function setupTLS(
 
 export async function updateChannelToken(
   vm: VMRecord,
-  channel: "discord" | "slack" | "whatsapp",
+  channel: "discord" | "slack" | "whatsapp" | "telegram",
   tokens: Record<string, string>
 ): Promise<void> {
   // Validate all token values before they reach a shell
@@ -1850,6 +1850,13 @@ export async function updateChannelToken(
 
     if (channel === "discord") {
       configCmds.push(`openclaw config set channels.discord.allowFrom '["*"]'`);
+    }
+
+    if (channel === "telegram") {
+      configCmds.unshift(`curl -s "https://api.telegram.org/bot${tokens.botToken}/deleteWebhook" > /dev/null 2>&1 || true`);
+      configCmds.push(`openclaw config set channels.telegram.allowFrom '["*"]'`);
+      configCmds.push(`openclaw config set channels.telegram.dmPolicy open`);
+      configCmds.push(`openclaw config set channels.telegram.streamMode partial`);
     }
 
     const script = [
