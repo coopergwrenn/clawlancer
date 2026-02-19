@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { configureOpenClaw, waitForHealth, migrateUserData, testProxyRoundTrip } from "@/lib/ssh";
-import { validateAdminKey } from "@/lib/security";
+import { validateAdminKey, decryptApiKey } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 
@@ -121,11 +121,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Decrypt BYOK API key if present (stored encrypted in DB)
+    const decryptedApiKey = pending?.api_key
+      ? await decryptApiKey(pending.api_key)
+      : undefined;
+
     // Configure OpenClaw on the VM
     const result = await configureOpenClaw(vm, {
       telegramBotToken: effectiveTelegramToken,
       apiMode: effectiveApiMode,
-      apiKey: pending?.api_key,
+      apiKey: decryptedApiKey,
       tier: effectiveTier,
       model: effectiveModel,
       discordBotToken: effectiveDiscordToken,
