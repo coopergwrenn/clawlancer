@@ -40,9 +40,41 @@ interface VmDetail {
   monthlyCost: number;
 }
 
+interface ModelCost {
+  model: string;
+  units: number;
+  calls: number;
+  cost: number;
+}
+
+interface VmCostDetail {
+  vmId: string;
+  tier: string | null;
+  model: string;
+  userUnits: number;
+  userCost: number;
+  heartbeatUnits: number;
+  heartbeatCost: number;
+  totalCost: number;
+}
+
+interface ApiCosts {
+  periodStart: string;
+  daysElapsed: number;
+  daysInMonth: number;
+  totalSpend: number;
+  projectedMonthly: number;
+  userMessages: number;
+  heartbeats: number;
+  heartbeatCalls: number;
+  byModel: ModelCost[];
+  byVm: VmCostDetail[];
+}
+
 interface MarginsData {
   providers: ProviderData[];
   tiers: TierData[];
+  apiCosts: ApiCosts;
   totals: {
     totalVms: number;
     assignedVms: number;
@@ -51,6 +83,9 @@ interface MarginsData {
     monthlyRevenue: number;
     grossMargin: number;
     marginPercent: number;
+    projectedApiSpend: number;
+    trueGrossMargin: number;
+    trueMarginPercent: number;
   };
   vms: VmDetail[];
 }
@@ -62,8 +97,27 @@ const PROVIDER_COLORS: Record<string, string> = {
 };
 
 function fmt(n: number): string {
-  return "$" + n.toLocaleString();
+  if (Math.abs(n) < 1 && n !== 0) return "$" + n.toFixed(2);
+  return "$" + Math.round(n).toLocaleString();
 }
+
+function fmtCents(n: number): string {
+  return "$" + n.toFixed(2);
+}
+
+const MODEL_LABELS: Record<string, string> = {
+  minimax: "MiniMax M2.5",
+  haiku: "Haiku 4.5",
+  sonnet: "Sonnet 4.5",
+  opus: "Opus 4.6",
+};
+
+const MODEL_COLORS: Record<string, string> = {
+  minimax: "#8B5CF6",
+  haiku: "#3B82F6",
+  sonnet: "#F59E0B",
+  opus: "#DC2626",
+};
 
 export default function MarginsPage() {
   const [data, setData] = useState<MarginsData | null>(null);
@@ -118,22 +172,10 @@ export default function MarginsPage() {
 
   if (!data) return null;
 
-  const { totals, providers, tiers, vms } = data;
-  const marginPositive = totals.grossMargin >= 0;
+  const { totals, providers, tiers, apiCosts, vms } = data;
+  const trueMarginPositive = totals.trueGrossMargin >= 0;
 
   const kpis = [
-    {
-      label: "Total VMs",
-      value: totals.totalVms.toString(),
-      sub: `${totals.assignedVms} assigned · ${totals.availableVms} available`,
-      icon: Server,
-    },
-    {
-      label: "Monthly Infra Cost",
-      value: fmt(totals.monthlyInfraCost),
-      sub: `${fmt(totals.monthlyInfraCost / Math.max(totals.totalVms, 1))} avg/vm`,
-      icon: DollarSign,
-    },
     {
       label: "Monthly Revenue",
       value: fmt(totals.monthlyRevenue),
@@ -141,11 +183,23 @@ export default function MarginsPage() {
       icon: TrendingUp,
     },
     {
-      label: "Gross Margin",
-      value: fmt(totals.grossMargin),
-      sub: `${totals.marginPercent.toFixed(1)}%`,
+      label: "Infra Cost",
+      value: fmt(totals.monthlyInfraCost),
+      sub: `${fmt(totals.monthlyInfraCost / Math.max(totals.totalVms, 1))} avg/vm · ${totals.totalVms} VMs`,
+      icon: Server,
+    },
+    {
+      label: "API Spend (proj.)",
+      value: fmtCents(totals.projectedApiSpend),
+      sub: `${fmtCents(apiCosts.totalSpend)} MTD · day ${apiCosts.daysElapsed}/${apiCosts.daysInMonth}`,
       icon: DollarSign,
-      color: marginPositive ? "#16a34a" : "#dc2626",
+    },
+    {
+      label: "True Margin",
+      value: fmt(totals.trueGrossMargin),
+      sub: `${totals.trueMarginPercent.toFixed(1)}% after infra + API`,
+      icon: DollarSign,
+      color: trueMarginPositive ? "#16a34a" : "#dc2626",
     },
   ];
 
@@ -280,6 +334,139 @@ export default function MarginsPage() {
             </p>
           </div>
         )}
+      </div>
+
+      {/* API Cost Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-6">
+        {/* By Model */}
+        <div className="glass rounded-xl p-4 sm:p-5">
+          <h2
+            className="text-base font-normal tracking-[-0.3px] mb-4"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            API Cost by Model
+            <span className="text-xs ml-2" style={{ color: "var(--muted)", fontFamily: "inherit" }}>
+              MTD
+            </span>
+          </h2>
+          <div className="space-y-3">
+            {apiCosts.byModel.map((m) => {
+              const label = MODEL_LABELS[m.model] ?? m.model;
+              const color = MODEL_COLORS[m.model] ?? "var(--muted)";
+              const maxCost = Math.max(...apiCosts.byModel.map((x) => x.cost), 0.01);
+              const barPct = (m.cost / maxCost) * 100;
+              return (
+                <div key={m.model}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                      <span className="font-medium">{label}</span>
+                    </div>
+                    <span style={{ color: "var(--muted)" }}>
+                      {fmtCents(m.cost)} · {Math.round(m.calls)} calls
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.06)" }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${barPct}%`, background: color, minWidth: barPct > 0 ? 4 : 0 }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {/* Heartbeat line */}
+            <div className="pt-2 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full" style={{ background: "#10B981" }} />
+                  <span className="font-medium">Heartbeats (MiniMax)</span>
+                </div>
+                <span style={{ color: "var(--muted)" }}>
+                  {fmtCents(apiCosts.heartbeats)} · {Math.round(apiCosts.heartbeatCalls)} calls
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* User vs Heartbeat split */}
+        <div className="glass rounded-xl p-4 sm:p-5">
+          <h2
+            className="text-base font-normal tracking-[-0.3px] mb-4"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Cost Split
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span style={{ color: "var(--muted)" }}>User messages</span>
+                <span className="font-medium">{fmtCents(apiCosts.userMessages)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span style={{ color: "var(--muted)" }}>Heartbeats</span>
+                <span className="font-medium">{fmtCents(apiCosts.heartbeats)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs font-medium pt-2 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                <span>Total MTD</span>
+                <span>{fmtCents(apiCosts.totalSpend)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs mt-1.5">
+                <span style={{ color: "var(--muted)" }}>Projected month</span>
+                <span className="font-medium">{fmtCents(apiCosts.projectedMonthly)}</span>
+              </div>
+            </div>
+            {/* Stacked bar */}
+            <div>
+              <div className="w-full h-4 rounded-full overflow-hidden flex" style={{ background: "rgba(0,0,0,0.06)" }}>
+                {apiCosts.totalSpend > 0 && (
+                  <>
+                    <div
+                      className="h-full"
+                      style={{
+                        width: `${(apiCosts.userMessages / apiCosts.totalSpend) * 100}%`,
+                        background: "var(--accent)",
+                      }}
+                    />
+                    <div
+                      className="h-full"
+                      style={{
+                        width: `${(apiCosts.heartbeats / apiCosts.totalSpend) * 100}%`,
+                        background: "#10B981",
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+              <div className="flex justify-between text-[10px] mt-1" style={{ color: "var(--muted)" }}>
+                <span>User msgs ({apiCosts.totalSpend > 0 ? ((apiCosts.userMessages / apiCosts.totalSpend) * 100).toFixed(0) : 0}%)</span>
+                <span>Heartbeats ({apiCosts.totalSpend > 0 ? ((apiCosts.heartbeats / apiCosts.totalSpend) * 100).toFixed(0) : 0}%)</span>
+              </div>
+            </div>
+            {/* Margin waterfall */}
+            <div className="pt-3 border-t space-y-1.5" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+              <div className="flex items-center justify-between text-xs">
+                <span style={{ color: "var(--muted)" }}>Revenue</span>
+                <span className="font-medium">{fmt(totals.monthlyRevenue)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span style={{ color: "var(--muted)" }}>- Infra</span>
+                <span style={{ color: "#dc2626" }}>-{fmt(totals.monthlyInfraCost)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span style={{ color: "var(--muted)" }}>- API (proj.)</span>
+                <span style={{ color: "#dc2626" }}>-{fmtCents(totals.projectedApiSpend)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs font-medium pt-1.5 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                <span>True margin</span>
+                <span style={{ color: trueMarginPositive ? "#16a34a" : "#dc2626" }}>
+                  {fmt(totals.trueGrossMargin)} ({totals.trueMarginPercent.toFixed(1)}%)
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Tier Profitability */}
