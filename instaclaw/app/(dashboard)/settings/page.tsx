@@ -734,14 +734,15 @@ export default function SettingsPage() {
               <button
                 onClick={handleUpdateTelegram}
                 disabled={savingTelegram || !telegramToken.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-50 transition-all active:scale-95"
                 style={{
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  color: "var(--foreground)",
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                  color: "#000000",
+                  boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                  backdropFilter: "blur(8px)",
                 }}
               >
-                <Save className="w-3 h-3" />
+                <Save className="w-3.5 h-3.5" />
                 {savingTelegram ? "Saving..." : "Save"}
               </button>
             </div>
