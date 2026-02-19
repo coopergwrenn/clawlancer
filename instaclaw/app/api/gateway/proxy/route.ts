@@ -269,10 +269,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // --- Check daily usage limit (with model cost weights) ---
+    // --- Check daily usage limit (read-only, no increment) ---
     // The RPC returns source: 'daily_limit' | 'credits' | 'buffer' | null
+    // Usage is NOT incremented here — only after a successful Anthropic response.
     const { data: limitResult, error: limitError } = await supabase.rpc(
-      "instaclaw_check_daily_limit",
+      "instaclaw_check_limit_only",
       { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel }
     );
 
@@ -388,6 +389,40 @@ export async function POST(req: NextRequest) {
       },
       body,
     });
+
+    // --- On Anthropic error (4xx/5xx): DON'T increment usage, log and return ---
+    if (anthropicRes.status >= 400) {
+      const errBody = await anthropicRes.text();
+      logger.error("Anthropic API error — usage NOT incremented", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        status: anthropicRes.status,
+        response: errBody.slice(0, 500),
+        model: requestedModel,
+      });
+      return new NextResponse(errBody, {
+        status: anthropicRes.status,
+        headers: {
+          "content-type": anthropicRes.headers.get("content-type") || "application/json",
+        },
+      });
+    }
+
+    // --- Success (2xx): increment usage AFTER confirmed Anthropic response ---
+    supabase
+      .rpc("instaclaw_increment_usage", {
+        p_vm_id: vm.id,
+        p_model: requestedModel,
+      })
+      .then(({ error: incError }) => {
+        if (incError) {
+          logger.error("Failed to increment usage after successful API call", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            error: String(incError),
+          });
+        }
+      });
 
     // If streaming or no usage warning needed, pass through the response directly.
     // Streaming responses are SSE text that can't be JSON-parsed, so we never
