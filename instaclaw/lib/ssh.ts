@@ -310,7 +310,10 @@ export async function configureOpenClaw(
     if (!apiKey) {
       throw new Error("No API key available for configuration");
     }
-    assertSafeShellArg(apiKey, "apiKey");
+    // For all-inclusive mode the apiKey is our generated gatewayToken (always safe).
+    // For BYOK mode the apiKey is a decrypted user key — base64-encode it to avoid
+    // any shell-special characters in the SSH command.
+    const apiKeyB64 = Buffer.from(apiKey, "utf-8").toString("base64");
 
     // For all-inclusive: proxy base URL so OpenClaw routes through instaclaw.io
     const proxyBaseUrl =
@@ -357,9 +360,11 @@ export async function configureOpenClaw(
       'rm -f ~/.openclaw/openclaw.json',
       '',
       '# Non-interactive onboard: sets up auth profile + base gateway config',
+      '# API key is base64-encoded to prevent any shell injection from user-supplied keys',
+      `OPENCLAW_API_KEY="$(echo '${apiKeyB64}' | base64 -d)"`,
       `openclaw onboard --non-interactive --accept-risk \\`,
       `  --auth-choice apiKey \\`,
-      `  --anthropic-api-key '${apiKey}' \\`,
+      `  --anthropic-api-key "$OPENCLAW_API_KEY" \\`,
       `  --gateway-bind lan \\`,
       `  --gateway-auth token \\`,
       `  --gateway-token '${gatewayToken}' \\`,
@@ -1496,7 +1501,8 @@ export async function updateApiKey(
   vm: VMRecord,
   apiKey: string
 ): Promise<void> {
-  assertSafeShellArg(apiKey, "apiKey");
+  // No assertSafeShellArg needed — the key is embedded inside a JSON object
+  // that is base64-encoded before being passed to the shell command.
 
   const ssh = await connectSSH(vm);
   try {
