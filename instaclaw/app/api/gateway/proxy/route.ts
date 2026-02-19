@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
+import { clearSessions, type VMRecord } from "@/lib/ssh";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
@@ -170,7 +171,7 @@ export async function POST(req: NextRequest) {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls")
       .eq("gateway_token", gatewayToken)
       .single();
 
@@ -457,6 +458,39 @@ export async function POST(req: NextRequest) {
         response: errBody.slice(0, 500),
         model: requestedModel,
       });
+
+      // --- Auto-recover from corrupted thinking block signatures ---
+      // This error means the conversation history contains a thinking block
+      // whose signature is invalid. The only fix is to clear the session
+      // and restart the gateway. Without this, EVERY subsequent message
+      // from the user hits the same error in an infinite loop.
+      if (errBody.includes("Invalid signature in thinking block")) {
+        logger.warn("Corrupted thinking block detected — auto-clearing sessions", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+        });
+        // Fire-and-forget: clear sessions + restart gateway via SSH
+        clearSessions(vm as VMRecord).then((ok) => {
+          if (ok) {
+            logger.info("Sessions auto-cleared after thinking block corruption", {
+              route: "gateway/proxy",
+              vmId: vm.id,
+            });
+          } else {
+            logger.error("Failed to auto-clear sessions after thinking block corruption", {
+              route: "gateway/proxy",
+              vmId: vm.id,
+            });
+          }
+        }).catch(() => {});
+        // Return a friendly message instead of the raw API error
+        return friendlyAssistantResponse(
+          "I ran into a conversation error and had to reset. Let's start fresh — what can I help you with?",
+          requestedModel,
+          isStreaming
+        );
+      }
+
       return new NextResponse(errBody, {
         status: providerRes.status,
         headers: {

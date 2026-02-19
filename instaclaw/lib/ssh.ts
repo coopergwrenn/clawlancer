@@ -11,7 +11,7 @@ import {
   WORKSPACE_INDEX_SCRIPT,
 } from "./agent-intelligence";
 
-interface VMRecord {
+export interface VMRecord {
   id: string;
   ip_address: string;
   ssh_port: number;
@@ -53,8 +53,9 @@ export const CONFIG_SPEC = {
   } as Record<string, string>,
   // Files that must exist in ~/.openclaw/workspace/
   requiredWorkspaceFiles: ["SOUL.md", "AGENTS.md", "CAPABILITIES.md", "MEMORY.md"],
-  // Max session file size in bytes before auto-clear (10MB)
-  maxSessionBytes: 10 * 1024 * 1024,
+  // Max session file size in bytes before auto-clear (2MB)
+  // Lowered from 10MB — a 2.4MB session caused "Invalid signature in thinking block"
+  maxSessionBytes: 2 * 1024 * 1024,
 };
 
 // Strict input validation to prevent shell injection
@@ -266,6 +267,121 @@ Once you have a name and identity:
 - Delete this file (BOOTSTRAP.md) — you don't need a birth certificate anymore`;
 }
 
+/**
+ * Build the complete openclaw.json config object in TypeScript.
+ * Replaces `openclaw onboard` + 15-20 individual `openclaw config set` calls
+ * with a single JSON write (~0.5s vs ~40-60s).
+ */
+function buildOpenClawConfig(
+  config: UserConfig,
+  gatewayToken: string,
+  proxyBaseUrl: string,
+  openclawModel: string,
+  braveKey?: string
+): object {
+  const now = new Date().toISOString();
+
+  // Base config structure matching what openclaw onboard produces
+  const ocConfig: Record<string, unknown> = {
+    meta: {
+      version: 1,
+    },
+    wizard: {
+      lastRunAt: now,
+      lastRunVersion: "2026.2.12",
+      lastRunCommand: "onboard",
+      lastRunMode: "local",
+    },
+    browser: {
+      executablePath: "/usr/local/bin/chromium-browser",
+      headless: true,
+      noSandbox: true,
+      defaultProfile: "openclaw",
+      profiles: {
+        openclaw: { cdpPort: 18800, color: "#FF4500" },
+      },
+    },
+    agents: {
+      defaults: {
+        model: {
+          primary: openclawModel,
+        },
+        heartbeat: {
+          every: "3h",
+        },
+        compaction: {
+          reserveTokensFloor: 30000,
+        },
+      },
+    },
+    messages: {},
+    commands: {
+      restart: true,
+    },
+    channels: {} as Record<string, unknown>,
+    gateway: {
+      port: GATEWAY_PORT,
+      bind: "lan",
+      auth: "token",
+      token: gatewayToken,
+    },
+    models: {
+      providers: {
+        anthropic: proxyBaseUrl
+          ? { baseUrl: proxyBaseUrl, api: "anthropic-messages", models: [] }
+          : {},
+      },
+    },
+    skills: {
+      load: {
+        extraDirs: ["/home/openclaw/.openclaw/skills"],
+      },
+    },
+    plugins: {
+      entries: {} as Record<string, unknown>,
+    },
+  };
+
+  // Configure Telegram channel
+  if (config.channels?.includes("telegram") && config.telegramBotToken) {
+    (ocConfig.channels as Record<string, unknown>).telegram = {
+      botToken: config.telegramBotToken,
+      allowFrom: ["*"],
+      dmPolicy: "open",
+      groupPolicy: "allowlist",
+      streamMode: "partial",
+    };
+    (ocConfig.plugins as Record<string, unknown>).entries = {
+      ...((ocConfig.plugins as Record<string, unknown>).entries as Record<string, unknown>),
+      telegram: { enabled: true },
+    };
+  }
+
+  // Configure Discord channel
+  if (config.channels?.includes("discord") && config.discordBotToken) {
+    (ocConfig.channels as Record<string, unknown>).discord = {
+      botToken: config.discordBotToken,
+      allowFrom: ["*"],
+    };
+    (ocConfig.plugins as Record<string, unknown>).entries = {
+      ...((ocConfig.plugins as Record<string, unknown>).entries as Record<string, unknown>),
+      discord: { enabled: true },
+    };
+  }
+
+  // Configure Brave web search
+  if (braveKey) {
+    ocConfig.tools = {
+      webSearch: {
+        provider: "brave",
+        apiKey: braveKey,
+      },
+    };
+  }
+
+  return ocConfig;
+}
+
 // Dynamic import to avoid Turbopack bundling issues with ssh2's native crypto
 async function connectSSH(vm: VMRecord) {
   if (!process.env.SSH_PRIVATE_KEY_B64) {
@@ -312,9 +428,8 @@ export async function configureOpenClaw(
       throw new Error("No API key available for configuration");
     }
     // For all-inclusive mode the apiKey is our generated gatewayToken (always safe).
-    // For BYOK mode the apiKey is a decrypted user key — base64-encode it to avoid
-    // any shell-special characters in the SSH command.
-    const apiKeyB64 = Buffer.from(apiKey, "utf-8").toString("base64");
+    // For BYOK mode the apiKey is a decrypted user key — written via base64
+    // in auth-profiles.json to avoid shell injection.
 
     // For all-inclusive: proxy base URL so OpenClaw routes through instaclaw.io
     const proxyBaseUrl =
@@ -356,149 +471,42 @@ export async function configureOpenClaw(
       );
     }
 
+    // Build the complete openclaw.json as a single JSON object
+    const braveKey = config.braveApiKey || (config.apiMode === "all_inclusive" ? process.env.BRAVE_API_KEY : undefined);
+    const ocConfig = buildOpenClawConfig(config, gatewayToken, proxyBaseUrl, openclawModel, braveKey);
+    const ocConfigB64 = Buffer.from(JSON.stringify(ocConfig, null, 2), "utf-8").toString("base64");
+
     scriptParts.push(
-      '# Clean old config for fresh onboard',
-      'rm -f ~/.openclaw/openclaw.json',
-      '',
-      '# Non-interactive onboard: sets up auth profile + base gateway config',
-      '# API key is base64-encoded to prevent any shell injection from user-supplied keys',
-      `OPENCLAW_API_KEY="$(echo '${apiKeyB64}' | base64 -d)"`,
-      `openclaw onboard --non-interactive --accept-risk \\`,
-      `  --auth-choice apiKey \\`,
-      `  --anthropic-api-key "$OPENCLAW_API_KEY" \\`,
-      `  --gateway-bind lan \\`,
-      `  --gateway-auth token \\`,
-      `  --gateway-token '${gatewayToken}' \\`,
-      `  --skip-channels --no-install-daemon || true`,
-      '',
-      '# Verify onboard produced a config file',
-      'if [ ! -f ~/.openclaw/openclaw.json ]; then',
-      '  echo "FATAL: openclaw onboard did not create config file" >&2',
-      '  exit 1',
-      'fi',
+      '# Write complete openclaw.json in one shot (replaces onboard + all config set calls)',
+      'mkdir -p ~/.openclaw',
+      `echo '${ocConfigB64}' | base64 -d > ~/.openclaw/openclaw.json`,
       ''
     );
 
-    // Configure Telegram channel if enabled
-    if (channels.includes("telegram") && config.telegramBotToken) {
-      scriptParts.push(
-        '# Configure Telegram channel (open DM policy for SaaS)',
-        `openclaw config set channels.telegram.botToken '${config.telegramBotToken}' || true`,
-        `openclaw config set channels.telegram.allowFrom '["*"]' || true`,
-        'openclaw config set channels.telegram.dmPolicy open || true',
-        'openclaw config set channels.telegram.groupPolicy allowlist || true',
-        'openclaw config set channels.telegram.streamMode partial || true',
-        ''
-      );
-    }
-
-    // Configure Discord channel if enabled
-    if (channels.includes("discord") && config.discordBotToken) {
-      assertSafeShellArg(config.discordBotToken, "discordBotToken");
-      scriptParts.push(
-        '# Configure Discord channel',
-        `openclaw config set channels.discord.botToken '${config.discordBotToken}' || true`,
-        `openclaw config set channels.discord.allowFrom '["*"]' || true`,
-        ''
-      );
-    }
-
-    // Enable configured channel plugins (OpenClaw >=2026.2.9 requires explicit plugin enable)
-    if (channels.includes("telegram") && config.telegramBotToken) {
-      scriptParts.push(
-        '# Enable Telegram plugin (config alone is not enough in >=2026.2.9)',
-        'openclaw plugins enable telegram || true',
-        ''
-      );
-    }
-    if (channels.includes("discord") && config.discordBotToken) {
-      scriptParts.push(
-        '# Enable Discord plugin',
-        'openclaw plugins enable discord || true',
-        ''
-      );
-    }
-
-    // For all-inclusive: route API calls through the instaclaw.io proxy.
-    // Two config locations must be set:
-    //   1. auth-profiles.json  — holds the gateway token used as the x-api-key
-    //   2. models.providers.anthropic.baseUrl — the URL OpenClaw actually hits
-    //      (auth-profiles.json's baseUrl field is NOT used for outbound calls)
-    if (proxyBaseUrl) {
+    // Write auth-profiles.json (separate file, not in openclaw.json)
+    // All-inclusive: uses gatewayToken as key + proxy baseUrl
+    // BYOK: uses the user's actual API key (direct to Anthropic)
+    {
+      const authProfileData: Record<string, unknown> = {
+        type: "api_key",
+        provider: "anthropic",
+        key: apiKey,
+      };
+      if (proxyBaseUrl) {
+        authProfileData.baseUrl = proxyBaseUrl;
+      }
       const authProfile = JSON.stringify({
-        profiles: {
-          "anthropic:default": {
-            type: "api_key",
-            provider: "anthropic",
-            key: gatewayToken,
-            baseUrl: proxyBaseUrl,
-          },
-        },
+        profiles: { "anthropic:default": authProfileData },
       });
       const authB64 = Buffer.from(authProfile, "utf-8").toString("base64");
       scriptParts.push(
-        '# Override auth profile to route through instaclaw.io proxy',
+        '# Write auth profile (API key for Anthropic)',
         'AUTH_DIR="$HOME/.openclaw/agents/main/agent"',
         'mkdir -p "$AUTH_DIR"',
         `echo '${authB64}' | base64 -d > "$AUTH_DIR/auth-profiles.json"`,
-        '',
-        '# Set provider base URL — this is what the gateway actually uses for outbound API calls',
-        `openclaw config set 'models.providers.anthropic' '{"baseUrl":"${proxyBaseUrl}","models":[]}' --json || true`,
-        '',
-        '# Force Anthropic Messages API format — OpenClaw >=2026.2.3 defaults to openai-responses',
-        '# which sends OpenAI-format requests that our proxy cannot forward to Anthropic as-is',
-        'openclaw config set models.providers.anthropic.api anthropic-messages || true',
         ''
       );
     }
-
-    // Set model
-    scriptParts.push(
-      '# Set model',
-      `openclaw config set agents.defaults.model.primary '${openclawModel}' || true`,
-      '',
-      '# Set heartbeat interval to 3 hours (1h burns too many credits — 24/day × ~20 LLM calls each)',
-      'openclaw config set agents.defaults.heartbeat.every 3h || true',
-      '',
-      '# Trigger compaction early to prevent context overflow (8K was too tight — system',
-      '# prompt + workspace files alone can exceed 8K, so compaction itself would overflow)',
-      'openclaw config set agents.defaults.compaction.reserveTokensFloor 30000 || true',
-      '',
-      '# Enable /restart command so users can self-service reset their conversation',
-      'openclaw config set commands.restart true || true',
-      ''
-    );
-
-    // Configure Brave web search if available
-    const braveKey = config.braveApiKey || (config.apiMode === "all_inclusive" ? process.env.BRAVE_API_KEY : undefined);
-    if (braveKey) {
-      assertSafeShellArg(braveKey, "braveApiKey");
-      scriptParts.push(
-        '# Configure web search (Brave)',
-        `openclaw config set tools.webSearch.provider brave || true`,
-        `openclaw config set tools.webSearch.apiKey '${braveKey}' || true`,
-        ''
-      );
-    }
-
-    // Configure headless browser for web automation (idempotent — config set overwrites safely)
-    scriptParts.push(
-      '# Configure headless browser (skip if already configured)',
-      'if ! openclaw config get browser.executablePath 2>/dev/null | grep -q chromium-browser; then',
-      '  openclaw config set browser.executablePath /usr/local/bin/chromium-browser 2>/dev/null || true',
-      '  openclaw config set browser.headless true 2>/dev/null || true',
-      '  openclaw config set browser.noSandbox true 2>/dev/null || true',
-      '  openclaw config set browser.defaultProfile openclaw 2>/dev/null || true',
-      `  python3 -c "
-import json, os
-p = os.path.expanduser('~/.openclaw/openclaw.json')
-c = json.load(open(p))
-c.setdefault('browser', {})['profiles'] = {'openclaw': {'cdpPort': 18800, 'color': '#FF4500'}}
-json.dump(c, open(p, 'w'), indent=2)
-" 2>/dev/null || true`,
-      'fi',
-      ''
-    );
 
     // Install Clawlancer MCP tools via mcporter
     // mcporter is pre-installed globally on all VMs. Here we:
@@ -514,9 +522,6 @@ json.dump(c, open(p, 'w'), indent=2)
       '  --env CLAWLANCER_BASE_URL=https://clawlancer.ai \\',
       '  --scope home \\',
       '  --description "Clawlancer AI agent marketplace" || true',
-      '',
-      '# Register skill directory with OpenClaw (hardcoded path to avoid $HOME expansion issues)',
-      'openclaw config set skills.load.extraDirs \'["/home/openclaw/.openclaw/skills"]\' 2>/dev/null || true',
       '',
       '# Install HEARTBEAT.md — lightweight check-in (max ~5-8 LLM calls)',
       'AGENT_DIR="$HOME/.openclaw/agents/main/agent"',
@@ -641,37 +646,36 @@ json.dump(c, open(p, 'w'), indent=2)
     ].join('\n');
     const pairingB64 = Buffer.from(pairingPython, 'utf-8').toString('base64');
 
+    // Optimized gateway start: install → start → sleep 2 → pair → restart
+    // (eliminates double start cycle, reduces sleeps from ~16s to ~4s)
     scriptParts.push(
-      '# Start gateway in background',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      '# Install gateway as systemd service and start',
+      'openclaw gateway install 2>/dev/null || true',
+      'systemctl --user start openclaw-gateway 2>/dev/null || true',
       '',
       '# Wait for gateway to initialize',
-      'sleep 3',
+      'sleep 2',
       '',
       '# Auto-approve local device pairing (OpenClaw >=2026.2.9 requires this)',
       '# Trigger a health check to generate a pairing request, then wait for pending.json.',
       'openclaw gateway health --timeout 3000 2>/dev/null || true',
       '',
-      '# Poll for pending.json to appear (gateway writes it async after health check)',
+      '# Poll for pending.json to appear (max 5 attempts instead of 10)',
       'PAIRING_TRIES=0',
-      'while [ $PAIRING_TRIES -lt 10 ] && [ ! -s ~/.openclaw/devices/pending.json ]; do',
+      'while [ $PAIRING_TRIES -lt 5 ] && [ ! -s ~/.openclaw/devices/pending.json ]; do',
       '  sleep 1',
       '  PAIRING_TRIES=$((PAIRING_TRIES + 1))',
       'done',
       '',
       `echo '${pairingB64}' | base64 -d | python3 2>/dev/null || true`,
       '',
-      '# Restart gateway to pick up pairing approval — install as systemd service',
-      'pkill -f "openclaw-gateway" 2>/dev/null || true',
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
-      'sleep 2',
-      'openclaw gateway install 2>/dev/null || true',
-      'systemctl --user start openclaw-gateway 2>/dev/null || true',
-      'sleep 3',
-      '# Fallback: if systemd failed, start with nohup',
+      '# Restart gateway to pick up pairing approval',
+      'systemctl --user restart openclaw-gateway 2>/dev/null || true',
+      '',
+      '# Fallback: if systemd not available, start with nohup',
       'if ! systemctl --user is-active openclaw-gateway &>/dev/null; then',
       `  nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
-      '  sleep 3',
+      '  sleep 2',
       'fi',
       '',
       'echo "OPENCLAW_CONFIGURE_DONE"'
@@ -688,57 +692,14 @@ json.dump(c, open(p, 'w'), indent=2)
       throw new Error(`VM configuration failed: ${result.stderr || result.stdout}`);
     }
 
+    // Update VM record in Supabase with HTTP URLs (TLS runs in background via route)
     const supabase = getSupabase();
-    const hostname = `${vm.id}.vm.instaclaw.io`;
-
-    // ── Setup TLS with GoDaddy DNS + Caddy + Let's Encrypt ──
-    // This is NOT optional. If it fails, we fallback to HTTP but log an error.
-    let finalGatewayUrl = `http://${vm.ip_address}:${GATEWAY_PORT}`;
-    let finalControlUrl = `http://${vm.ip_address}:${GATEWAY_PORT}`;
-
-    try {
-      // Import GoDaddy DNS functions
-      const { createVMDNSRecord } = await import("./godaddy");
-
-      // Step 1: Create DNS A record
-      const dnsOk = await createVMDNSRecord(vm.id, vm.ip_address);
-      if (!dnsOk) {
-        throw new Error("GoDaddy DNS record creation failed - check GODADDY_API_KEY and GODADDY_API_SECRET");
-      }
-
-      // Step 2: Install Caddy and configure TLS
-      const tlsOk = await setupTLS(vm, hostname);
-      if (!tlsOk) {
-        throw new Error("Caddy TLS setup failed");
-      }
-
-      // Success! Use HTTPS
-      finalGatewayUrl = `https://${hostname}`;
-      finalControlUrl = `https://${hostname}`;
-
-      logger.info("TLS setup successful", {
-        route: "lib/ssh",
-        vmId: vm.id,
-        hostname,
-      });
-    } catch (tlsErr) {
-      logger.error("TLS setup failed - VM will use HTTP (INSECURE)", {
-        error: String(tlsErr),
-        route: "lib/ssh",
-        vmId: vm.id,
-      });
-      // Fallback to HTTP - insecure but functional
-    }
-
-    // Update VM record in Supabase
-    // IMPORTANT: api_mode and tier MUST be set here (not just in the configure route)
-    // because the configure route's separate DB update can silently fail or race.
     const { error: vmError } = await supabase
       .from("instaclaw_vms")
       .update({
-        gateway_url: finalGatewayUrl,
+        gateway_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
         gateway_token: gatewayToken,
-        control_ui_url: finalControlUrl,
+        control_ui_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
         default_model: config.model || "claude-sonnet-4-5-20250929",
         api_mode: config.apiMode,
         tier: config.tier,
@@ -750,7 +711,11 @@ json.dump(c, open(p, 'w'), indent=2)
       throw new Error("Failed to update VM record in database");
     }
 
-    return { gatewayUrl: finalGatewayUrl, gatewayToken, controlUiUrl: finalControlUrl };
+    return {
+      gatewayUrl: `http://${vm.ip_address}:${GATEWAY_PORT}`,
+      gatewayToken,
+      controlUiUrl: `http://${vm.ip_address}:${GATEWAY_PORT}`,
+    };
   } finally {
     ssh.dispose();
   }
@@ -1783,6 +1748,108 @@ export async function readFile(
     return result.stdout;
   } finally {
     ssh.dispose();
+  }
+}
+
+/**
+ * Check if TLS (Caddy) is already configured for the given hostname on the VM.
+ * Saves 2-90s for reconfigured VMs that already have Caddy running.
+ */
+async function isTLSAlreadyConfigured(
+  vm: VMRecord,
+  hostname: string
+): Promise<boolean> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const result = await ssh.execCommand(
+        `grep -qF '${hostname}' /etc/caddy/Caddyfile 2>/dev/null && systemctl is-active caddy >/dev/null 2>&1 && echo "TLS_OK"`
+      );
+      return result.stdout.trim() === "TLS_OK";
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Background TLS setup — runs after the configure response is already sent.
+ * 1. Fast-path: skip if TLS already configured (reconfigured VMs)
+ * 2. Create GoDaddy DNS A record
+ * 3. Install/configure Caddy for TLS
+ * 4. Upgrade gateway_url and control_ui_url to HTTPS in DB
+ * Never throws — fully error-tolerant.
+ */
+export async function setupTLSBackground(
+  vm: VMRecord,
+  hostname: string
+): Promise<void> {
+  try {
+    // Fast path: skip if Caddy already running with this hostname
+    if (await isTLSAlreadyConfigured(vm, hostname)) {
+      // Already configured — just ensure DB has HTTPS URLs
+      const supabase = getSupabase();
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          gateway_url: `https://${hostname}`,
+          control_ui_url: `https://${hostname}`,
+        })
+        .eq("id", vm.id);
+
+      logger.info("TLS already configured, updated DB to HTTPS", {
+        route: "lib/ssh",
+        vmId: vm.id,
+        hostname,
+      });
+      return;
+    }
+
+    // Step 1: Create DNS A record
+    const { createVMDNSRecord } = await import("./godaddy");
+    const dnsOk = await createVMDNSRecord(vm.id, vm.ip_address);
+    if (!dnsOk) {
+      logger.error("Background TLS: GoDaddy DNS record creation failed", {
+        route: "lib/ssh",
+        vmId: vm.id,
+      });
+      return;
+    }
+
+    // Step 2: Install Caddy and configure TLS
+    const tlsOk = await setupTLS(vm, hostname);
+    if (!tlsOk) {
+      logger.error("Background TLS: Caddy TLS setup failed", {
+        route: "lib/ssh",
+        vmId: vm.id,
+      });
+      return;
+    }
+
+    // Step 3: Upgrade DB to HTTPS
+    const supabase = getSupabase();
+    await supabase
+      .from("instaclaw_vms")
+      .update({
+        gateway_url: `https://${hostname}`,
+        control_ui_url: `https://${hostname}`,
+      })
+      .eq("id", vm.id);
+
+    logger.info("Background TLS setup successful", {
+      route: "lib/ssh",
+      vmId: vm.id,
+      hostname,
+    });
+  } catch (err) {
+    logger.error("Background TLS setup failed (non-blocking)", {
+      error: String(err),
+      route: "lib/ssh",
+      vmId: vm.id,
+    });
+    // Never throw — VM stays on HTTP (functional)
   }
 }
 
