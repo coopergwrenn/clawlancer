@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -36,10 +37,8 @@ export async function GET(req: NextRequest) {
 
       if (existingVm) continue;
 
-      // Try to assign a VM
-      const { data: vm } = await supabase.rpc("instaclaw_assign_vm", {
-        p_user_id: p.user_id,
-      });
+      // Try to assign a VM (with SSH pre-check to avoid dead VMs)
+      const vm = await assignVMWithSSHCheck(p.user_id);
 
       if (!vm) break; // No more VMs available
 

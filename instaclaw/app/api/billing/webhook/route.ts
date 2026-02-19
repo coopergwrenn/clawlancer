@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
+import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -134,11 +135,8 @@ async function processEvent(event: any) {
         break;
       }
 
-      // Try to assign a VM — configure will use pending config if available,
-      // or fall back to sensible defaults (gateway running, no channels yet).
-      const { data: vm } = await supabase.rpc("instaclaw_assign_vm", {
-        p_user_id: userId,
-      });
+      // Try to assign a VM (with SSH pre-check to avoid dead VMs)
+      const vm = await assignVMWithSSHCheck(userId);
 
       if (vm) {
         // VM assigned — fire-and-forget configuration.

@@ -398,6 +398,95 @@ async function connectSSH(vm: VMRecord) {
   return ssh;
 }
 
+/**
+ * Quick SSH connectivity check — connects and runs `echo ok`.
+ * Returns true if SSH is reachable, false otherwise.
+ * Uses a 10-second timeout to avoid hanging on dead SSH daemons.
+ */
+export async function checkSSHConnectivity(vm: VMRecord): Promise<boolean> {
+  if (!process.env.SSH_PRIVATE_KEY_B64) return false;
+  try {
+    const { NodeSSH } = await import("node-ssh");
+    const ssh = new NodeSSH();
+    await ssh.connect({
+      host: vm.ip_address,
+      port: vm.ssh_port,
+      username: vm.ssh_user,
+      privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64, "base64").toString("utf-8"),
+      readyTimeout: 10_000,
+    });
+    const result = await ssh.execCommand("echo ok");
+    ssh.dispose();
+    return result.stdout.trim() === "ok";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Assign a VM to a user with an SSH pre-check.
+ * Calls the DB assignment RPC, then verifies SSH connectivity.
+ * If SSH is dead, quarantines the VM and retries with the next one.
+ * Returns the assigned VM or null if no healthy VMs are available.
+ */
+export async function assignVMWithSSHCheck(
+  userId: string,
+  maxAttempts = 3
+): Promise<{ id: string; ip_address: string; [key: string]: unknown } | null> {
+  const supabase = getSupabase();
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { data: vm, error } = await supabase.rpc("instaclaw_assign_vm", {
+      p_user_id: userId,
+    });
+
+    if (error || !vm) return null; // No VMs available
+
+    // SSH connectivity check
+    const sshOk = await checkSSHConnectivity({
+      id: vm.id,
+      ip_address: vm.ip_address,
+      ssh_port: vm.ssh_port ?? 22,
+      ssh_user: vm.ssh_user ?? "openclaw",
+    });
+
+    if (sshOk) {
+      logger.info("VM assigned with SSH pre-check passed", {
+        vmId: vm.id,
+        vmName: vm.name,
+        userId,
+        attempt: attempt + 1,
+      });
+      return vm;
+    }
+
+    // SSH failed — quarantine this VM and try the next one
+    logger.error("SSH pre-check failed on VM assignment, quarantining", {
+      vmId: vm.id,
+      vmName: vm.name,
+      ipAddress: vm.ip_address,
+      userId,
+      attempt: attempt + 1,
+    });
+
+    await supabase
+      .from("instaclaw_vms")
+      .update({
+        status: "failed" as const,
+        health_status: "unhealthy",
+        assigned_to: null,
+        assigned_at: null,
+      })
+      .eq("id", vm.id);
+  }
+
+  logger.error("All VM assignment attempts failed SSH pre-check", {
+    userId,
+    maxAttempts,
+  });
+  return null;
+}
+
 export async function configureOpenClaw(
   vm: VMRecord,
   config: UserConfig
@@ -434,7 +523,7 @@ export async function configureOpenClaw(
     // For all-inclusive: proxy base URL so OpenClaw routes through instaclaw.io
     const proxyBaseUrl =
       config.apiMode === "all_inclusive"
-        ? (process.env.NEXTAUTH_URL || "https://instaclaw.io") + "/api/gateway"
+        ? (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway"
         : "";
 
     const openclawModel = toOpenClawModel(config.model || "claude-sonnet-4-5-20250929");
@@ -729,7 +818,7 @@ export async function testProxyRoundTrip(
   gatewayToken: string,
   maxRetries = 2
 ): Promise<{ success: boolean; error?: string }> {
-  const baseUrl = process.env.NEXTAUTH_URL || "https://instaclaw.io";
+  const baseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim();
 
   // Test both /v1/messages (legacy) and /v1/responses (OpenClaw >=2026.2.3)
   // to catch missing route issues early.

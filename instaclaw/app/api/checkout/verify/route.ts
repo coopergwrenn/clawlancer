@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
+import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 /**
@@ -96,24 +97,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try to assign a VM immediately
-    const { data: vm, error: assignError } = await supabase.rpc("instaclaw_assign_vm", {
-      p_user_id: userId,
-    });
-
-    if (assignError) {
-      logger.error("VM assignment failed", {
-        error: String(assignError),
-        route: "checkout/verify",
-        userId,
-      });
-      return NextResponse.json({
-        verified: true,
-        status: "paid",
-        vmAssigned: false,
-        error: "assignment_failed",
-      });
-    }
+    // Try to assign a VM (with SSH pre-check to avoid dead VMs)
+    const vm = await assignVMWithSSHCheck(userId);
 
     if (!vm) {
       logger.warn("No VMs available", {

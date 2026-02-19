@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -43,12 +44,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try to assign
-    const { data: vm, error } = await supabase.rpc("instaclaw_assign_vm", {
-      p_user_id: targetUserId,
-    });
+    // Try to assign (with SSH pre-check to avoid dead VMs)
+    const vm = await assignVMWithSSHCheck(targetUserId);
 
-    if (error || !vm) {
+    if (!vm) {
       return NextResponse.json({
         assigned: false,
         message: "No VMs available. You've been added to the queue.",

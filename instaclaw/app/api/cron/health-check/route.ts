@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, CONFIG_SPEC } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, CONFIG_SPEC } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
+const SSH_QUARANTINE_THRESHOLD = 3; // Auto-quarantine after 3 consecutive SSH failures
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment
 const CONFIG_AUDIT_BATCH_SIZE = 3; // Max VMs to audit per cycle (staggered)
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count")
+    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count")
     .eq("status", "assigned")
     .not("gateway_url", "is", null);
 
@@ -35,11 +36,103 @@ export async function GET(req: NextRequest) {
   let alerted = 0;
   let restarted = 0;
   let sessionsCleared = 0;
+  let sshChecked = 0;
+  let sshFailed = 0;
+  let sshQuarantined = 0;
+
+  // ========================================================================
+  // Pass 0: SSH connectivity check — catch dead SSH daemons before they
+  // waste time on gateway health checks. VMs that fail SSH get their
+  // ssh_fail_count incremented. After SSH_QUARANTINE_THRESHOLD consecutive
+  // failures, auto-quarantine the VM (mark as failed).
+  // ========================================================================
+  const sshAliveVms: typeof vms = [];
+
+  for (const vm of vms) {
+    const sshOk = await checkSSHConnectivity({
+      id: vm.id,
+      ip_address: vm.ip_address,
+      ssh_port: vm.ssh_port ?? 22,
+      ssh_user: vm.ssh_user ?? "openclaw",
+    });
+    sshChecked++;
+
+    if (sshOk) {
+      // SSH is alive — reset counter if it was non-zero
+      if ((vm.ssh_fail_count ?? 0) > 0) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({ ssh_fail_count: 0 })
+          .eq("id", vm.id);
+      }
+      sshAliveVms.push(vm);
+      continue;
+    }
+
+    // SSH failed
+    sshFailed++;
+    const newSshFailCount = (vm.ssh_fail_count ?? 0) + 1;
+
+    logger.warn("SSH connectivity check failed", {
+      route: "cron/health-check",
+      vmId: vm.id,
+      vmName: vm.name,
+      ipAddress: vm.ip_address,
+      sshFailCount: newSshFailCount,
+    });
+
+    if (newSshFailCount >= SSH_QUARANTINE_THRESHOLD) {
+      // Auto-quarantine: mark VM as failed
+      sshQuarantined++;
+
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          status: "failed" as const,
+          health_status: "unhealthy",
+          ssh_fail_count: newSshFailCount,
+          last_health_check: new Date().toISOString(),
+        })
+        .eq("id", vm.id);
+
+      logger.error("VM auto-quarantined: SSH unreachable", {
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+        ipAddress: vm.ip_address,
+        sshFailCount: newSshFailCount,
+        assignedTo: vm.assigned_to,
+      });
+
+      // Alert admin
+      if (ADMIN_EMAIL) {
+        try {
+          await sendAdminAlertEmail(
+            "VM Auto-Quarantined: SSH Dead",
+            `VM ${vm.name ?? vm.id} (${vm.ip_address}) has failed ${newSshFailCount} consecutive SSH connectivity checks and has been auto-quarantined.\n\nAssigned to user: ${vm.assigned_to ?? "none"}\n\nThe VM status has been set to "failed". If a user was assigned, they will need to be moved to a new VM.`
+          );
+        } catch {
+          // Non-fatal
+        }
+      }
+    } else {
+      // Not yet at threshold — just increment counter
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          ssh_fail_count: newSshFailCount,
+          health_status: "unhealthy",
+          last_health_check: new Date().toISOString(),
+        })
+        .eq("id", vm.id);
+    }
+  }
 
   // Track which VMs are healthy for the config audit pass
   const healthyVmIds = new Set<string>();
 
-  for (const vm of vms) {
+  // Only check gateway health on VMs with working SSH
+  for (const vm of sshAliveVms) {
     const result = await checkHealthExtended(vm, vm.gateway_token ?? undefined);
     const currentFailCount = vm.health_fail_count ?? 0;
 
@@ -435,8 +528,93 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ========================================================================
+  // Final pass: SSH check on "ready" pool VMs (not yet assigned)
+  // Catches broken VMs sitting in the pool before a user gets assigned one.
+  // ========================================================================
+  let poolSshChecked = 0;
+  let poolSshQuarantined = 0;
+
+  const { data: readyVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, ip_address, ssh_port, ssh_user, name, ssh_fail_count")
+    .eq("status", "ready")
+    .limit(5); // Check up to 5 per cycle to avoid timeout
+
+  if (readyVms?.length) {
+    for (const rvm of readyVms) {
+      const sshOk = await checkSSHConnectivity({
+        id: rvm.id,
+        ip_address: rvm.ip_address,
+        ssh_port: rvm.ssh_port ?? 22,
+        ssh_user: rvm.ssh_user ?? "openclaw",
+      });
+      poolSshChecked++;
+
+      if (sshOk) {
+        if ((rvm.ssh_fail_count ?? 0) > 0) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ ssh_fail_count: 0 })
+            .eq("id", rvm.id);
+        }
+        continue;
+      }
+
+      const newCount = (rvm.ssh_fail_count ?? 0) + 1;
+
+      if (newCount >= SSH_QUARANTINE_THRESHOLD) {
+        poolSshQuarantined++;
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            status: "failed" as const,
+            health_status: "unhealthy",
+            ssh_fail_count: newCount,
+          })
+          .eq("id", rvm.id);
+
+        logger.error("Ready VM auto-quarantined: SSH unreachable", {
+          route: "cron/health-check",
+          vmId: rvm.id,
+          vmName: rvm.name,
+          ipAddress: rvm.ip_address,
+          sshFailCount: newCount,
+        });
+
+        if (ADMIN_EMAIL) {
+          try {
+            await sendAdminAlertEmail(
+              "Pool VM Auto-Quarantined: SSH Dead",
+              `Ready pool VM ${rvm.name ?? rvm.id} (${rvm.ip_address}) has failed ${newCount} consecutive SSH checks and has been removed from the pool.\n\nThis VM was never assigned to a user.`
+            );
+          } catch {
+            // Non-fatal
+          }
+        }
+      } else {
+        await supabase
+          .from("instaclaw_vms")
+          .update({ ssh_fail_count: newCount })
+          .eq("id", rvm.id);
+
+        logger.warn("Ready pool VM SSH check failed", {
+          route: "cron/health-check",
+          vmId: rvm.id,
+          vmName: rvm.name,
+          sshFailCount: newCount,
+        });
+      }
+    }
+  }
+
   return NextResponse.json({
     checked: vms.length,
+    sshChecked,
+    sshFailed,
+    sshQuarantined,
+    poolSshChecked,
+    poolSshQuarantined,
     healthy,
     unhealthy,
     restarted,
