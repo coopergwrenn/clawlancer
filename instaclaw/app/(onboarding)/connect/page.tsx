@@ -71,7 +71,7 @@ export default function ConnectPage() {
     "all_inclusive"
   );
   const [apiKey, setApiKey] = useState("");
-  const [defaultModel, setDefaultModel] = useState("claude-haiku-4-5-20251001");
+  const [defaultModel, setDefaultModel] = useState("minimax-m2.5");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
@@ -939,11 +939,18 @@ export default function ConnectPage() {
             <div className="space-y-2">
               {[
                 {
+                  id: "minimax-m2.5",
+                  label: "MiniMax M2.5",
+                  cost: "0.2 units/message",
+                  desc: "5x more messages per credit — fast, capable, and great for everyday tasks.",
+                  recommended: true,
+                },
+                {
                   id: "claude-haiku-4-5-20251001",
                   label: "Claude Haiku 4.5",
                   cost: "1 unit/message",
-                  desc: "Great for everyday tasks — fast, capable, and stretches your units the furthest.",
-                  recommended: true,
+                  desc: "Solid all-rounder from Anthropic. Quick and reliable.",
+                  recommended: false,
                 },
                 {
                   id: "claude-sonnet-4-5-20250929",

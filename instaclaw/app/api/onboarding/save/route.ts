@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 
 const BOT_TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
 const ALLOWED_MODELS = [
+  "minimax-m2.5",
   "claude-haiku-4-5-20251001",
   "claude-sonnet-4-5-20250929",
   "claude-opus-4-5-20250820",

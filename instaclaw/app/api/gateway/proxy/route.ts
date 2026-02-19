@@ -5,6 +5,7 @@ import { sendAdminAlertEmail } from "@/lib/email";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
 
 /** Estimated cost per message unit in dollars (haiku-equivalent). */
 const COST_PER_UNIT = 0.004;
@@ -145,7 +146,7 @@ function silentEmptyResponse(model: string, stream: boolean) {
  *   3. Buffer exhausted → hard block on everything
  *
  * All tiers have access to all models. Cost weights handle fairness:
- * Haiku=1, Sonnet=4, Opus=19 (reflects actual Anthropic pricing ratios).
+ * MiniMax=0.2, Haiku=1, Sonnet=4, Opus=19.
  *
  * Auth: x-api-key header (gateway token, sent by Anthropic SDK on VMs).
  */
@@ -222,12 +223,13 @@ export async function POST(req: NextRequest) {
     const body = await req.text();
     let requestedModel: string;
     let isStreaming = false;
+    let parsedBody: Record<string, unknown> | null = null;
     try {
-      const parsed = JSON.parse(body);
-      requestedModel = parsed.model || vm.default_model || "claude-haiku-4-5-20251001";
-      isStreaming = parsed.stream === true;
+      parsedBody = JSON.parse(body);
+      requestedModel = (parsedBody!.model as string) || vm.default_model || "minimax-m2.5";
+      isStreaming = parsedBody!.stream === true;
     } catch {
-      requestedModel = vm.default_model || "claude-haiku-4-5-20251001";
+      requestedModel = vm.default_model || "minimax-m2.5";
     }
 
     // --- Global daily spend circuit breaker ---
@@ -370,7 +372,7 @@ export async function POST(req: NextRequest) {
     // Compute usage warnings (only for daily_limit source, not credits)
     let usageWarning = "";
     if (source === "daily_limit") {
-      const displayCount = Math.min(currentCount, displayLimit);
+      const displayCount = Math.round(Math.min(currentCount, displayLimit));
       const usagePct = (displayCount / displayLimit) * 100;
 
       if (usagePct >= 90) {
@@ -383,45 +385,78 @@ export async function POST(req: NextRequest) {
     // Reset proxy 401 counter on successful auth (fire-and-forget)
     resetProxy401Count(vm.id).catch(() => {});
 
-    // --- Proxy to Anthropic ---
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      logger.error("ANTHROPIC_API_KEY not set for proxy", { route: "gateway/proxy" });
-      return NextResponse.json(
-        { error: "Platform API key not configured" },
-        { status: 500 }
-      );
-    }
+    // --- Route to the correct provider ---
+    const isMinimax = requestedModel.toLowerCase().includes("minimax");
+    let providerUrl: string;
+    let providerHeaders: Record<string, string>;
+    let providerBody: string;
 
-    const anthropicRes = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
+    if (isMinimax) {
+      const minimaxKey = process.env.MINIMAX_API_KEY;
+      if (!minimaxKey) {
+        logger.error("MINIMAX_API_KEY not set for proxy", { route: "gateway/proxy" });
+        return NextResponse.json(
+          { error: "MiniMax API key not configured" },
+          { status: 500 }
+        );
+      }
+      providerUrl = MINIMAX_API_URL;
+      providerHeaders = {
+        "content-type": "application/json",
+        "authorization": `Bearer ${minimaxKey}`,
+        "anthropic-version": req.headers.get("anthropic-version") || "2023-06-01",
+      };
+      // Rewrite model name to what MiniMax's API expects
+      if (parsedBody) {
+        parsedBody.model = "MiniMax-M2.5";
+        providerBody = JSON.stringify(parsedBody);
+      } else {
+        providerBody = body;
+      }
+    } else {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        logger.error("ANTHROPIC_API_KEY not set for proxy", { route: "gateway/proxy" });
+        return NextResponse.json(
+          { error: "Platform API key not configured" },
+          { status: 500 }
+        );
+      }
+      providerUrl = ANTHROPIC_API_URL;
+      providerHeaders = {
         "content-type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": req.headers.get("anthropic-version") || "2023-06-01",
-      },
-      body,
+      };
+      providerBody = body;
+    }
+
+    const providerRes = await fetch(providerUrl, {
+      method: "POST",
+      headers: providerHeaders,
+      body: providerBody,
     });
 
-    // --- On Anthropic error (4xx/5xx): DON'T increment usage, log and return ---
-    if (anthropicRes.status >= 400) {
-      const errBody = await anthropicRes.text();
-      logger.error("Anthropic API error — usage NOT incremented", {
+    // --- On provider error (4xx/5xx): DON'T increment usage, log and return ---
+    if (providerRes.status >= 400) {
+      const errBody = await providerRes.text();
+      logger.error("Provider API error — usage NOT incremented", {
         route: "gateway/proxy",
         vmId: vm.id,
-        status: anthropicRes.status,
+        provider: isMinimax ? "minimax" : "anthropic",
+        status: providerRes.status,
         response: errBody.slice(0, 500),
         model: requestedModel,
       });
       return new NextResponse(errBody, {
-        status: anthropicRes.status,
+        status: providerRes.status,
         headers: {
-          "content-type": anthropicRes.headers.get("content-type") || "application/json",
+          "content-type": providerRes.headers.get("content-type") || "application/json",
         },
       });
     }
 
-    // --- Success (2xx): increment usage AFTER confirmed Anthropic response ---
+    // --- Success (2xx): increment usage AFTER confirmed provider response ---
     supabase
       .rpc("instaclaw_increment_usage", {
         p_vm_id: vm.id,
@@ -472,16 +507,16 @@ export async function POST(req: NextRequest) {
     // try to buffer/modify them — that was causing "request ended without sending
     // any chunks" when the buffered SSE was returned as a single JSON blob.
     if (isStreaming || !usageWarning) {
-      return new NextResponse(anthropicRes.body, {
-        status: anthropicRes.status,
+      return new NextResponse(providerRes.body, {
+        status: providerRes.status,
         headers: {
-          "content-type": anthropicRes.headers.get("content-type") || "application/json",
+          "content-type": providerRes.headers.get("content-type") || "application/json",
         },
       });
     }
 
     // Non-streaming: append usage warning to the AI response
-    const resText = await anthropicRes.text();
+    const resText = await providerRes.text();
     try {
       const resBody = JSON.parse(resText);
       if (resBody.content && Array.isArray(resBody.content)) {
@@ -494,14 +529,14 @@ export async function POST(req: NextRequest) {
         }
       }
       return NextResponse.json(resBody, {
-        status: anthropicRes.status,
+        status: providerRes.status,
       });
     } catch {
       // If parsing fails, return original response without warning
       return new NextResponse(resText, {
-        status: anthropicRes.status,
+        status: providerRes.status,
         headers: {
-          "content-type": anthropicRes.headers.get("content-type") || "application/json",
+          "content-type": providerRes.headers.get("content-type") || "application/json",
         },
       });
     }
