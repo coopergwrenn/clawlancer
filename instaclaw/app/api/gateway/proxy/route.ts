@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval")
+      .select("id, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls")
       .eq("gateway_token", gatewayToken)
       .single();
 
@@ -273,13 +273,34 @@ export async function POST(req: NextRequest) {
     // Heartbeats fire on a schedule and produce a burst of API calls.
     // If a heartbeat is due (next_at in the past) or recently fired (last_at
     // within 5 minutes), classify this call as a heartbeat. Heartbeat calls
-    // draw from a separate 400-unit budget and never touch the user's quota.
+    // draw from a separate 100-unit daily budget and never touch the user's quota.
     const now = new Date();
     const hbNextAt = vm.heartbeat_next_at ? new Date(vm.heartbeat_next_at) : null;
     const hbLastAt = vm.heartbeat_last_at ? new Date(vm.heartbeat_last_at) : null;
     const heartbeatDue = hbNextAt && now >= hbNextAt;
     const heartbeatRecent = hbLastAt && (now.getTime() - hbLastAt.getTime()) < 5 * 60 * 1000;
     const isHeartbeat = !!(heartbeatDue || heartbeatRecent);
+
+    // --- Per-cycle heartbeat cap (max 10 API calls per heartbeat cycle) ---
+    // Each heartbeat cycle should be a quick check-in, not 50-60 LLM calls.
+    // This hard cap prevents runaway heartbeats from burning budget.
+    const HEARTBEAT_CYCLE_CAP = 10;
+    if (isHeartbeat) {
+      const cycleCallsSoFar = vm.heartbeat_cycle_calls ?? 0;
+
+      if (heartbeatDue) {
+        // New cycle starting — reset the counter (happens in timing update below)
+      } else if (cycleCallsSoFar >= HEARTBEAT_CYCLE_CAP) {
+        // Current cycle already hit the cap — silently drop
+        logger.info("Heartbeat cycle cap reached", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          cycleCallsSoFar,
+          cap: HEARTBEAT_CYCLE_CAP,
+        });
+        return silentEmptyResponse(requestedModel, isStreaming);
+      }
+    }
 
     // --- Check daily usage limit (read-only, no increment) ---
     // The RPC returns source: 'daily_limit' | 'credits' | 'buffer' | 'heartbeat' | null
@@ -418,19 +439,32 @@ export async function POST(req: NextRequest) {
         }
       });
 
-    // Update heartbeat timing if this was a heartbeat call (fire-and-forget)
-    if (isHeartbeat && heartbeatDue) {
-      const interval = vm.heartbeat_interval ?? "3h";
-      const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
-      const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
-      supabase
-        .from("instaclaw_vms")
-        .update({
-          heartbeat_last_at: now.toISOString(),
-          heartbeat_next_at: new Date(now.getTime() + nextMs).toISOString(),
-        })
-        .eq("id", vm.id)
-        .then(() => {});
+    // Update heartbeat timing + cycle counter (fire-and-forget)
+    if (isHeartbeat) {
+      if (heartbeatDue) {
+        // New cycle: reset cycle counter to 1 (this call), update timing
+        const interval = vm.heartbeat_interval ?? "3h";
+        const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
+        const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
+        supabase
+          .from("instaclaw_vms")
+          .update({
+            heartbeat_last_at: now.toISOString(),
+            heartbeat_next_at: new Date(now.getTime() + nextMs).toISOString(),
+            heartbeat_cycle_calls: 1,
+          })
+          .eq("id", vm.id)
+          .then(() => {});
+      } else {
+        // Continuing cycle: increment cycle counter
+        supabase
+          .from("instaclaw_vms")
+          .update({
+            heartbeat_cycle_calls: (vm.heartbeat_cycle_calls ?? 0) + 1,
+          })
+          .eq("id", vm.id)
+          .then(() => {});
+      }
     }
 
     // If streaming or no usage warning needed, pass through the response directly.
