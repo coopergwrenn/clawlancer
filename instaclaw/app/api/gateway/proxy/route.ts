@@ -283,6 +283,15 @@ export async function POST(req: NextRequest) {
     const heartbeatRecent = hbLastAt && (now.getTime() - hbLastAt.getTime()) < 5 * 60 * 1000;
     const isHeartbeat = !!(heartbeatDue || heartbeatRecent);
 
+    // --- Heartbeat model override: always use minimax-m2.5 for background tasks ---
+    // Users shouldn't burn Sonnet/Opus credits on heartbeat check-ins.
+    if (isHeartbeat && !requestedModel.toLowerCase().includes("minimax")) {
+      requestedModel = "minimax-m2.5";
+      if (parsedBody) {
+        parsedBody.model = "minimax-m2.5";
+      }
+    }
+
     // --- Per-cycle heartbeat cap (max 10 API calls per heartbeat cycle) ---
     // Each heartbeat cycle should be a quick check-in, not 50-60 LLM calls.
     // This hard cap prevents runaway heartbeats from burning budget.
