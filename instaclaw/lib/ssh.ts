@@ -517,9 +517,15 @@ export async function checkSSHConnectivity(vm: VMRecord): Promise<boolean> {
       privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64, "base64").toString("utf-8"),
       readyTimeout: 10_000,
     });
-    const result = await ssh.execCommand("echo ok");
+    // Verify SSH works AND OpenClaw is installed AND gateway port is not blocked
+    const result = await ssh.execCommand(
+      "echo ok && which openclaw >/dev/null 2>&1 && echo claw_ok && (ss -tlnp | grep -q :18789 && echo gw_up || echo gw_down)"
+    );
     ssh.dispose();
-    return result.stdout.trim() === "ok";
+    const out = result.stdout.trim();
+    // Must have SSH + OpenClaw installed. Gateway doesn't need to be running
+    // (configure will start it), but SSH + openclaw binary must exist.
+    return out.includes("ok") && out.includes("claw_ok");
   } catch {
     return false;
   }
@@ -533,7 +539,7 @@ export async function checkSSHConnectivity(vm: VMRecord): Promise<boolean> {
  */
 export async function assignVMWithSSHCheck(
   userId: string,
-  maxAttempts = 3
+  maxAttempts = 5
 ): Promise<{ id: string; ip_address: string; [key: string]: unknown } | null> {
   const supabase = getSupabase();
 
