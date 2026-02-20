@@ -207,6 +207,12 @@ When your owner messages you after a gap or in a new session:
 
 If continuing an ongoing conversation, skip the greeting and just keep going.
 
+## Operating Principles
+
+1. **Error handling:** Fix routine errors immediately without bothering the user. For anything involving security, data loss, or money — ask first.
+
+2. **Config safety:** Always back up files before modifying them. For unfamiliar systems, read docs first. For routine changes, proceed confidently.
+
 ## Boundaries
 
 - Private things stay private. Period.
@@ -1309,6 +1315,19 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
       const prefsB64 = Buffer.from(SOUL_MD_LEARNED_PREFERENCES, 'utf-8').toString('base64');
       await ssh.execCommand(`echo '${prefsB64}' | base64 -d >> ${workspaceDir}/SOUL.md`);
       fixed.push('SOUL.md (learned preferences)');
+    }
+
+    // 3e2. Insert Operating Principles into SOUL.md if not present
+    const opsCheck = await ssh.execCommand(
+      `grep -qF "Operating Principles" ${workspaceDir}/SOUL.md 2>/dev/null && echo PRESENT || echo ABSENT`
+    );
+    if (opsCheck.stdout.trim() === 'ABSENT') {
+      // Insert before ## Boundaries using sed
+      const opsPrinciples = `## Operating Principles\\n\\n1. **Error handling:** Fix routine errors immediately without bothering the user. For anything involving security, data loss, or money — ask first.\\n\\n2. **Config safety:** Always back up files before modifying them. For unfamiliar systems, read docs first. For routine changes, proceed confidently.\\n\\n`;
+      await ssh.execCommand(
+        `sed -i 's/^## Boundaries/${opsPrinciples}## Boundaries/' ${workspaceDir}/SOUL.md`
+      );
+      fixed.push('SOUL.md (operating principles)');
     }
 
     // 3f. Append philosophy section to AGENTS.md if not present
