@@ -16,6 +16,7 @@ const MAX_POLL_ATTEMPTS = 180; // 180 seconds at 1s intervals
 const EARLY_CHECK_THRESHOLD = 30; // Check for issues at 30s
 const MID_CHECK_THRESHOLD = 90; // Check for issues at 90s
 const SOFT_TIMEOUT_THRESHOLD = 90; // Show recovery UI at 90s
+const CHECK_ANYWAY_THRESHOLD = 60; // Show "check anyway" button at 60s
 
 /** Safely parse JSON from a fetch response. Returns null if response is not JSON
  *  (e.g. Vercel timeout returning HTML). Prevents "Unexpected token" crashes. */
@@ -166,6 +167,8 @@ function DeployingPageContent() {
   const softTimeoutFired = useRef(false);
   const [softTimeout, setSoftTimeout] = useState(false);
   const [recoveryChecking, setRecoveryChecking] = useState(false);
+  const [showCheckAnyway, setShowCheckAnyway] = useState(false);
+  const [checkingAnyway, setCheckingAnyway] = useState(false);
 
   // Track which steps just completed (for the bounce animation)
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set());
@@ -394,6 +397,11 @@ function DeployingPageContent() {
                 () => {}
               );
             }
+          }
+
+          // ── Show "check anyway" escape hatch at 60s ──
+          if (pollCount >= CHECK_ANYWAY_THRESHOLD && !showCheckAnyway && data.vm?.healthStatus !== "healthy") {
+            setShowCheckAnyway(true);
           }
 
           // ── Soft timeout at 90s: show recovery UI ──
@@ -820,6 +828,40 @@ function DeployingPageContent() {
               ))}
             </div>
           </div>
+
+          {/* ---- "Check anyway" escape hatch (60s) ---- */}
+          {showCheckAnyway && !softTimeout && !configureFailed && !retrying && (
+            <div className="max-w-lg w-full mb-4 flex justify-center">
+              <button
+                onClick={async () => {
+                  setCheckingAnyway(true);
+                  try {
+                    const res = await fetch("/api/vm/health-check-now", { method: "POST" });
+                    const data = await safeJson(res);
+                    if (data?.healthy) {
+                      updateStep("health", "done");
+                      updateStep("configure", "done");
+                      updateStep("telegram", "done");
+                      setPolling(false);
+                      setShowCheckAnyway(false);
+                      setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+                      return;
+                    }
+                  } catch {}
+                  setCheckingAnyway(false);
+                }}
+                disabled={checkingAnyway}
+                className="px-5 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                style={{
+                  ...glassStyle,
+                  color: "#DC6743",
+                  opacity: checkingAnyway ? 0.6 : 1,
+                }}
+              >
+                {checkingAnyway ? "Checking..." : "My agent might be ready \u2014 check now"}
+              </button>
+            </div>
+          )}
 
           {/* ---- Soft timeout recovery (90s) ---- */}
           {softTimeout && !configureFailed && !retrying && (

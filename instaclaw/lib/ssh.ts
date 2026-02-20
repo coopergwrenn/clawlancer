@@ -611,7 +611,13 @@ export async function configureOpenClaw(
     throw new Error("API key required for BYOK mode");
   }
 
+  // Timeline tracking — timestamps at each phase for debugging
+  const timeline: Record<string, number> = {};
+  const mark = (phase: string) => { timeline[phase] = Date.now(); };
+  mark("start");
+
   const ssh = await connectSSH(vm);
+  mark("ssh_connected");
 
   try {
     const gatewayToken = generateGatewayToken();
@@ -889,18 +895,24 @@ export async function configureOpenClaw(
     const script = scriptParts.join('\n');
 
     // Write script to temp file, then execute it — avoids pkill self-match issue
+    mark("script_upload_start");
     await ssh.execCommand(`cat > /tmp/ic-configure.sh << 'ICEOF'\n${script}\nICEOF`);
+    mark("script_exec_start");
     const result = await ssh.execCommand('bash /tmp/ic-configure.sh; EC=$?; rm -f /tmp/ic-configure.sh; exit $EC');
+    mark("script_exec_done");
 
     if (result.code !== 0 || !result.stdout.includes("OPENCLAW_CONFIGURE_DONE")) {
-      logger.error("OpenClaw configure failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
+      logger.error("OpenClaw configure failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh", timeline });
       throw new Error(`VM configuration failed: ${result.stderr || result.stdout}`);
     }
 
-    // Update VM record in Supabase with HTTP URLs (TLS runs in background via route)
-    // CRITICAL: telegram_bot_token MUST be written here — not in a later update.
-    // The route's subsequent DB update may never execute if the function is killed
-    // after this point (Vercel timeout, after() abort, etc.).
+    // Update VM record in Supabase with HTTP URLs + "healthy" status in ONE atomic write.
+    // CRITICAL: This is the single most important DB update in the entire configure flow.
+    // If Vercel kills the function after this point, the user still gets a working bot
+    // because gateway_url + health_status "healthy" are already in the DB.
+    // Background tasks (proxy test, TLS) can downgrade if needed, but the user is never
+    // stuck in "configuring" state when the bot is actually working.
+    mark("db_write_start");
     const supabase = getSupabase();
     const { error: vmError } = await supabase
       .from("instaclaw_vms")
@@ -908,6 +920,8 @@ export async function configureOpenClaw(
         gateway_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
         gateway_token: gatewayToken,
         control_ui_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
+        health_status: "healthy",
+        last_health_check: new Date().toISOString(),
         default_model: config.model || "claude-sonnet-4-5-20250929",
         api_mode: config.apiMode,
         tier: config.tier,
@@ -916,11 +930,27 @@ export async function configureOpenClaw(
         channels_enabled: config.channels ?? [],
       })
       .eq("id", vm.id);
+    mark("db_write_done");
 
     if (vmError) {
-      logger.error("Failed to update VM record", { error: String(vmError), route: "lib/ssh", vmId: vm.id });
+      logger.error("Failed to update VM record", { error: String(vmError), route: "lib/ssh", vmId: vm.id, timeline });
       throw new Error("Failed to update VM record in database");
     }
+
+    // Log the full configure timeline for debugging
+    const durations: Record<string, string> = {};
+    const phases = Object.keys(timeline);
+    for (let i = 1; i < phases.length; i++) {
+      durations[`${phases[i - 1]}_to_${phases[i]}`] = `${timeline[phases[i]] - timeline[phases[i - 1]]}ms`;
+    }
+    durations.total = `${timeline[phases[phases.length - 1]] - timeline[phases[0]]}ms`;
+
+    logger.info("Configure timeline", {
+      route: "lib/ssh",
+      vmId: vm.id,
+      durations,
+      timeline,
+    });
 
     return {
       gatewayUrl: `http://${vm.ip_address}:${GATEWAY_PORT}`,

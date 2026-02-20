@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { configureOpenClaw, waitForHealth, migrateUserData, testProxyRoundTrip, setupTLSBackground } from "@/lib/ssh";
+import { configureOpenClaw, migrateUserData, testProxyRoundTrip, setupTLSBackground } from "@/lib/ssh";
 import { validateAdminKey, decryptApiKey } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   let userId: string | undefined;
 
   try {
+    const routeStart = Date.now();
     const body = await req.json();
     userId = body.userId;
 
@@ -132,6 +133,7 @@ export async function POST(req: NextRequest) {
       : undefined;
 
     // Configure OpenClaw on the VM
+    const configureStart = Date.now();
     const result = await configureOpenClaw(vm, {
       telegramBotToken: effectiveTelegramToken,
       apiMode: effectiveApiMode,
@@ -143,22 +145,15 @@ export async function POST(req: NextRequest) {
       gmailProfileSummary,
     });
 
-    // ── Critical DB updates first (before any health check) ──
-    // This ensures gateway info is persisted even if the function times out
-    // during the health check phase.
+    // ── Supplemental DB updates (configureOpenClaw already wrote the critical fields) ──
+    // configureOpenClaw's atomic update already wrote: gateway_url, gateway_token,
+    // health_status "healthy", telegram_bot_token, discord_bot_token, channels_enabled,
+    // default_model, api_mode, tier. We only add fields not covered there.
     await supabase
       .from("instaclaw_vms")
       .update({
-        health_status: "configuring",
-        last_health_check: new Date().toISOString(),
         telegram_bot_username: pending?.telegram_bot_username ?? vm.telegram_bot_username ?? null,
-        telegram_bot_token: effectiveTelegramToken ?? null,
-        discord_bot_token: effectiveDiscordToken ?? null,
-        channels_enabled: channels,
         configure_attempts: 0,
-        default_model: effectiveModel,
-        api_mode: effectiveApiMode,
-        tier: effectiveTier,
       })
       .eq("id", vm.id);
 
@@ -224,53 +219,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Single health ping (1 attempt, 3s timeout) ──
-    // If gateway responds, mark healthy immediately. Don't gate user on proxy test.
-    const healthy = await waitForHealth(vm, result.gatewayToken, 1, 3000);
+    // configureOpenClaw() already wrote health_status "healthy" atomically.
+    // No blocking health check needed — the user is unblocked immediately.
 
-    if (healthy) {
-      await supabase
-        .from("instaclaw_vms")
-        .update({
-          health_status: "healthy",
-          last_health_check: new Date().toISOString(),
-        })
-        .eq("id", vm.id);
-    }
-
-    // ── Background proxy round-trip test (runs after response is sent) ──
-    // Verifies the full chain (gateway token → proxy → Anthropic).
-    // Does NOT block the user — if it fails, marks proxy_status separately.
-    if (effectiveApiMode === "all_inclusive") {
+    // ── Background validation (runs after response is sent) ──
+    {
       const capturedGatewayToken = result.gatewayToken;
       const capturedVmId = vm.id;
-      const capturedUserId = userId;
-      after(async () => {
-        const proxyResult = await testProxyRoundTrip(capturedGatewayToken);
-        if (!proxyResult.success) {
-          logger.error("Proxy round-trip test failed after configure", {
-            route: "vm/configure",
-            userId: capturedUserId,
-            vmId: capturedVmId,
-            error: proxyResult.error,
-          });
-          sendAdminAlertEmail(
-            "Proxy Round-Trip Failed After Configure",
-            `VM ${capturedVmId} (user: ${capturedUserId}) passed local health check but failed proxy round-trip.\n\nError: ${proxyResult.error}\n\nThe health cron will auto-restart the gateway on the next cycle.`
-          ).catch(() => {});
-        }
-      });
-    }
+      const capturedUserId = userId!;
+      const capturedApiMode = effectiveApiMode;
 
-    // Send deployment success email in background
-    if (healthy) {
-      const emailUserId = userId!;
+      // Proxy round-trip test (all-inclusive only) + deployment email
       after(async () => {
+        // Validate proxy chain if all-inclusive
+        if (capturedApiMode === "all_inclusive") {
+          const proxyResult = await testProxyRoundTrip(capturedGatewayToken);
+          if (!proxyResult.success) {
+            logger.error("Proxy round-trip test failed after configure", {
+              route: "vm/configure",
+              userId: capturedUserId,
+              vmId: capturedVmId,
+              error: proxyResult.error,
+            });
+            sendAdminAlertEmail(
+              "Proxy Round-Trip Failed After Configure",
+              `VM ${capturedVmId} (user: ${capturedUserId}) passed local health check but failed proxy round-trip.\n\nError: ${proxyResult.error}\n\nThe health cron will auto-restart the gateway on the next cycle.`
+            ).catch(() => {});
+          }
+        }
+
+        // Send deployment success email
         const sb = getSupabase();
         const { data: user } = await sb
           .from("instaclaw_users")
           .select("email")
-          .eq("id", emailUserId)
+          .eq("id", capturedUserId)
           .single();
         if (user?.email) {
           try {
@@ -279,16 +262,29 @@ export async function POST(req: NextRequest) {
             logger.error("Failed to send VM ready email", {
               error: String(emailErr),
               route: "vm/configure",
-              userId: emailUserId,
+              userId: capturedUserId,
             });
           }
         }
       });
     }
 
+    // Log route-level configure timeline
+    const routeEnd = Date.now();
+    logger.info("Configure route timeline", {
+      route: "vm/configure",
+      userId,
+      vmId: vm.id,
+      durations: {
+        route_setup: `${configureStart - routeStart}ms`,
+        configureOpenClaw: `${Date.now() - configureStart}ms`,
+        route_total: `${routeEnd - routeStart}ms`,
+      },
+    });
+
     return NextResponse.json({
       configured: true,
-      healthy,
+      healthy: true, // configureOpenClaw wrote "healthy" atomically
     });
   } catch (err) {
     logger.error("VM configure error", { error: String(err), route: "vm/configure", userId });
