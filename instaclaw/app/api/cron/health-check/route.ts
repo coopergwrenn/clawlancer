@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, CONFIG_SPEC } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, CONFIG_SPEC } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
   let alerted = 0;
   let restarted = 0;
   let sessionsCleared = 0;
+  let browsersKilled = 0;
   let sshChecked = 0;
   let sshFailed = 0;
   let sshQuarantined = 0;
@@ -167,6 +168,26 @@ export async function GET(req: NextRequest) {
             vmId: vm.id,
           });
         }
+      }
+
+      // Ephemeral browser: kill Chrome if stale (>30min) or memory-heavy (>40% RAM)
+      try {
+        const browserResult = await killStaleBrowser(vm);
+        if (browserResult.killed) {
+          browsersKilled++;
+          logger.info("Stale browser killed", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            reason: browserResult.reason,
+          });
+        }
+      } catch (err) {
+        logger.error("Failed to check/kill stale browser", {
+          error: String(err),
+          route: "cron/health-check",
+          vmId: vm.id,
+        });
       }
 
       // Reset fail count on success
@@ -622,6 +643,7 @@ export async function GET(req: NextRequest) {
     webhooksFixed,
     suspended,
     sessionsCleared,
+    browsersKilled,
     configsAudited,
     configsFixed,
     memoryFilesCreated,

@@ -40,6 +40,14 @@ const NVM_PREAMBLE =
 // OpenClaw gateway port (default for openclaw gateway run)
 const GATEWAY_PORT = 18789;
 
+// ── Ephemeral browser: kill Chrome + clear session data on every restart ──
+// Chrome should never persist between gateway restarts. This prevents tab
+// accumulation, session restore memory bloat, and OOM kills.
+const CHROME_CLEANUP = [
+  'pkill -9 -f "chrome.*remote-debugging-port" 2>/dev/null || true',
+  'rm -rf ~/.openclaw/browser/*/user-data/Default/Sessions ~/.openclaw/browser/*/user-data/Default/"Session Storage" ~/.openclaw/browser/*/user-data/Default/"Current Session" ~/.openclaw/browser/*/user-data/Default/"Current Tabs" ~/.openclaw/browser/*/user-data/Default/"Last Session" ~/.openclaw/browser/*/user-data/Default/"Last Tabs" 2>/dev/null || true',
+].join(' && ');
+
 // ── Fleet-wide config spec (single source of truth) ──
 // Bump `version` whenever you change any value below. The health check
 // compares each VM's `config_version` column against this — if behind,
@@ -1240,6 +1248,8 @@ export async function clearSessions(vm: VMRecord): Promise<boolean> {
         '&& cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
         '&& rm -f ~/.openclaw/agents/main/sessions/*.jsonl ~/.openclaw/agents/main/sessions/sessions.json',
         '&& (openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
+        // Ephemeral browser: kill Chrome + clear session restore data
+        `&& ${CHROME_CLEANUP}`,
         '&& sleep 2',
         // Restore config to prevent onboard wizard from wiping channels
         '&& cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
@@ -1304,10 +1314,12 @@ except Exception:
 " 2>/dev/null || true`
       );
 
-      // Stop gateway, restore config, restart
+      // Stop gateway, kill Chrome, restore config, restart
       const restartCmd = [
         NVM_PREAMBLE,
         '&& (openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
+        // Ephemeral browser: kill Chrome + clear session restore data
+        `&& ${CHROME_CLEANUP}`,
         '&& sleep 2',
         '&& cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
         `&& nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
@@ -1319,6 +1331,63 @@ except Exception:
     }
   } catch {
     return false;
+  }
+}
+
+/**
+ * Ephemeral browser enforcement for the health cron.
+ * Kills Chrome if:
+ *   - Running for more than 30 minutes continuously
+ *   - Using more than 40% of total system RAM
+ * Also clears session restore data so Chrome starts clean next time.
+ * Returns { killed: boolean, reason: string | null }.
+ */
+export async function killStaleBrowser(vm: VMRecord): Promise<{ killed: boolean; reason: string | null }> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      // Check if any Chrome process is running with remote-debugging-port
+      const chromeCheck = await ssh.execCommand(
+        'pgrep -f "chrome.*remote-debugging-port" > /dev/null 2>&1 && echo RUNNING || echo STOPPED'
+      );
+      if (chromeCheck.stdout.trim() !== 'RUNNING') {
+        return { killed: false, reason: null };
+      }
+
+      // Check Chrome uptime (oldest Chrome process, in minutes)
+      const uptimeCheck = await ssh.execCommand(
+        'ps -o etimes= -p $(pgrep -of "chrome.*remote-debugging-port") 2>/dev/null || echo 0'
+      );
+      const uptimeSeconds = parseInt(uptimeCheck.stdout.trim(), 10) || 0;
+      const uptimeMinutes = uptimeSeconds / 60;
+
+      // Check Chrome RSS as percentage of total RAM
+      const memCheck = await ssh.execCommand(
+        "ps aux | grep 'chrome.*remote-debugging-port' | grep -v grep | awk '{sum+=$6} END {print sum}'"
+      );
+      const chromeKB = parseInt(memCheck.stdout.trim(), 10) || 0;
+      const totalMemCheck = await ssh.execCommand("grep MemTotal /proc/meminfo | awk '{print $2}'");
+      const totalKB = parseInt(totalMemCheck.stdout.trim(), 10) || 1;
+      const memPct = (chromeKB / totalKB) * 100;
+
+      let reason: string | null = null;
+      if (memPct > 40) {
+        reason = `chrome using ${memPct.toFixed(0)}% RAM (${(chromeKB / 1024).toFixed(0)}MB)`;
+      } else if (uptimeMinutes > 30) {
+        reason = `chrome running for ${uptimeMinutes.toFixed(0)} minutes`;
+      }
+
+      if (reason) {
+        await ssh.execCommand(CHROME_CLEANUP);
+        return { killed: true, reason };
+      }
+
+      return { killed: false, reason: null };
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return { killed: false, reason: null };
   }
 }
 
@@ -2123,9 +2192,15 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
     const script = [
       '#!/bin/bash',
       NVM_PREAMBLE,
+      '# Back up config before restart',
+      'cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
       'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'pkill -f "acp serve" 2>/dev/null || true',
+      `# Ephemeral browser: kill Chrome + clear session restore data`,
+      CHROME_CLEANUP,
       'sleep 2',
+      '# Restore config to prevent onboard wizard from wiping channels',
+      'cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
       `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
       'sleep 5',
       '# Auto-start acp serve if aGDP is installed and authenticated',
