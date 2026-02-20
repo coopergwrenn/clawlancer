@@ -80,13 +80,18 @@ export async function POST(req: NextRequest) {
     const effectiveTier = pending?.tier ?? subscription?.tier ?? vm.tier ?? "starter";
     const effectiveApiMode = pending?.api_mode ?? vm.api_mode ?? "all_inclusive";
     const effectiveModel = pending?.default_model ?? vm.default_model ?? "claude-sonnet-4-5-20250929";
-    const effectiveTelegramToken = pending?.telegram_bot_token ?? undefined;
-    const effectiveDiscordToken = pending?.discord_bot_token ?? undefined;
+    // Preserve existing tokens when reconfiguring (pending record is deleted after first setup)
+    const effectiveTelegramToken = pending?.telegram_bot_token ?? vm.telegram_bot_token ?? undefined;
+    const effectiveDiscordToken = pending?.discord_bot_token ?? vm.discord_bot_token ?? undefined;
 
-    // Determine channels
+    // Determine channels — preserve any existing channels (slack, whatsapp) too
     const channels: string[] = [];
     if (effectiveTelegramToken) channels.push("telegram");
     if (effectiveDiscordToken) channels.push("discord");
+    const existingChannels: string[] = vm.channels_enabled ?? [];
+    for (const ch of existingChannels) {
+      if (!channels.includes(ch)) channels.push(ch);
+    }
     // No channels is fine — gateway runs without messaging, user adds later
 
     // Fetch Gmail personality profile if user connected Gmail during onboarding
@@ -146,7 +151,7 @@ export async function POST(req: NextRequest) {
       .update({
         health_status: "configuring",
         last_health_check: new Date().toISOString(),
-        telegram_bot_username: pending?.telegram_bot_username ?? null,
+        telegram_bot_username: pending?.telegram_bot_username ?? vm.telegram_bot_username ?? null,
         telegram_bot_token: effectiveTelegramToken ?? null,
         discord_bot_token: effectiveDiscordToken ?? null,
         channels_enabled: channels,
