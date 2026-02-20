@@ -64,9 +64,12 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 
 <!-- THE HOOK -->
 <tr><td style="padding:32px 32px 0 32px;">
-  <h1 class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:26px;font-weight:700;color:#111111;line-height:1.2;">You just got superpowers.</h1>
+  <h1 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:26px;font-weight:700;color:#111111;line-height:1.2;">You just got superpowers.</h1>
+  <p class="text-secondary" style="margin:0 0 10px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    We're giving you something that didn't exist a year ago &mdash; your own AI employee running on a dedicated server, working for you 24/7.
+  </p>
   <p class="text-secondary" style="margin:0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    Your own AI agent on a dedicated server, working for you 24/7. It browses real websites, automates tasks, and gets things done while you sleep. Talk to it from Telegram, your dashboard, or anywhere &mdash; it's always on.
+    Not a chatbot. A full autonomous agent with a browser, web search, persistent memory, and a personality that learns you over time. It gets smarter every day.
   </p>
 </td></tr>
 
@@ -78,7 +81,7 @@ export function buildInviteEmailHtml(inviteCode: string): string {
     <p class="text-primary" style="margin:0 0 18px 0;font-family:${mono};font-size:28px;font-weight:700;color:#111111;letter-spacing:5px;">${inviteCode}</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
     <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
-      <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Activate Your Agent &#8594;</a>
+      <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Deploy Your Agent &#8594;</a>
     </td></tr>
     </table>
     <p class="text-faint" style="margin:12px 0 0 0;font-family:${font};font-size:12px;color:#999999;">Expires in 7 days</p>
@@ -86,11 +89,37 @@ export function buildInviteEmailHtml(inviteCode: string): string {
   </table>
 </td></tr>
 
-<!-- WHAT YOU NEED -->
-<tr><td style="padding:0 32px 24px 32px;">
-  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">A Google account</span> &mdash; one-click sign in</p>
-  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">60-second activation</span> &mdash; that's it, you're live</p>
-  <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">3-day free trial</span> &mdash; see if you love it before you pay a cent</p>
+<!-- WHAT HAPPENS NEXT -->
+<tr><td style="padding:0 32px 20px 32px;">
+  <h2 class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">What happens next:</h2>
+  <p class="text-secondary" style="margin:0 0 6px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Sign in with Google</span> &mdash; one click, no passwords</p>
+  <p class="text-secondary" style="margin:0 0 6px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Name your agent and connect Telegram</span> &mdash; or use the dashboard, or both</p>
+  <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Start talking</span> &mdash; your agent is live in 60 seconds</p>
+  <p class="text-primary" style="margin:0;font-family:${font};font-size:14px;color:#111111;line-height:1.6;font-weight:600;">That's it. 3-day free trial. No credit card required.</p>
+</td></tr>
+
+<!-- DIVIDER -->
+<tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="divider" style="border-top:1px solid #e5e5e5;height:1px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+
+<!-- WHAT YOUR AGENT CAN DO -->
+<tr><td style="padding:20px 32px;">
+  <h2 class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">What your agent can do from day one:</h2>
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;">Browse real websites and pull live data.</p>
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;">Write, edit, and analyze code.</p>
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;">Research any topic and deliver reports.</p>
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;">Monitor things while you sleep.</p>
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;">Remember every conversation and build on it.</p>
+  <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;">Execute multi-step tasks autonomously.</p>
+  <p class="text-primary" style="margin:0;font-family:${font};font-size:15px;color:#111111;line-height:1.6;font-weight:600;">This isn't a demo. It's your first hire that never clocks out.</p>
+</td></tr>
+
+<!-- BOTTOM CTA -->
+<tr><td style="padding:8px 32px 28px 32px;text-align:center;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+  <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
+    <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Deploy Your Agent &#8594;</a>
+  </td></tr>
+  </table>
 </td></tr>
 
 <!-- FOOTER -->
@@ -110,17 +139,34 @@ export function buildInviteEmailText(inviteCode: string): string {
   const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
   return `You just got superpowers.
 
-Your own AI agent on a dedicated server, working for you 24/7. It browses real websites, automates tasks, and gets things done while you sleep. Talk to it from Telegram, your dashboard, or anywhere — it's always on.
+We're giving you something that didn't exist a year ago — your own AI employee running on a dedicated server, working for you 24/7.
+
+Not a chatbot. A full autonomous agent with a browser, web search, persistent memory, and a personality that learns you over time. It gets smarter every day.
 
 YOUR INVITE CODE: ${inviteCode}
 
-Activate your agent: ${signupUrl}
+Deploy your agent: ${signupUrl}
 
 Expires in 7 days.
 
-A Google account — one-click sign in
-60-second activation — that's it, you're live
-3-day free trial — see if you love it before you pay a cent
+WHAT HAPPENS NEXT:
+- Sign in with Google — one click, no passwords
+- Name your agent and connect Telegram — or use the dashboard, or both
+- Start talking — your agent is live in 60 seconds
+
+That's it. 3-day free trial. No credit card required.
+
+WHAT YOUR AGENT CAN DO FROM DAY ONE:
+- Browse real websites and pull live data
+- Write, edit, and analyze code
+- Research any topic and deliver reports
+- Monitor things while you sleep
+- Remember every conversation and build on it
+- Execute multi-step tasks autonomously
+
+This isn't a demo. It's your first hire that never clocks out.
+
+Deploy your agent: ${signupUrl}
 
 Questions? Reply to this email — we read every message.
 
