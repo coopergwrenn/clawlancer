@@ -164,6 +164,7 @@ function DeployingPageContent() {
   const autoRetryFired = useRef(false);
   const validationChecked = useRef(false);
   const configuredRef = useRef(false);
+  const configuredAtPoll = useRef<number | null>(null); // poll count when gateway_url first seen
   const softTimeoutFired = useRef(false);
   const [softTimeout, setSoftTimeout] = useState(false);
   const [recoveryChecking, setRecoveryChecking] = useState(false);
@@ -365,20 +366,33 @@ function DeployingPageContent() {
           }
 
           if (data.vm.gatewayUrl) {
-            // Gateway URL set → configure script completed, bot is live.
-            // Redirect to dashboard. If health_status isn't "healthy" yet,
-            // it doesn't matter — the gateway is running and the dashboard
-            // handles health states gracefully.
+            // Gateway URL set → configure script completed
             configuredRef.current = true;
+            if (configuredAtPoll.current === null) {
+              configuredAtPoll.current = pollCount;
+            }
             updateStep("configure", "done");
             updateStep("telegram", "done");
-            updateStep("health", "done");
-            setPolling(false);
-            setSoftTimeout(false);
-            clearInterval(interval);
-            // Full page navigation (not router.push) so the NextAuth
-            // session is re-fetched with the updated onboardingComplete flag.
-            setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+
+            if (data.vm.healthStatus === "healthy") {
+              // Fully ready — redirect to dashboard
+              updateStep("health", "done");
+              setPolling(false);
+              setSoftTimeout(false);
+              clearInterval(interval);
+              setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+            } else if (pollCount - (configuredAtPoll.current ?? pollCount) >= 5) {
+              // 5-second grace period elapsed — gateway is running, redirect
+              // anyway. The dashboard handles unhealthy states gracefully.
+              updateStep("health", "done");
+              setPolling(false);
+              setSoftTimeout(false);
+              clearInterval(interval);
+              setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+            } else {
+              // Within 5s grace period — still checking health
+              updateStep("health", "active");
+            }
           } else {
             // No gateway URL yet — configure still running
             updateStep("configure", "active");
