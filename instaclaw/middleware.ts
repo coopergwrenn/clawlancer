@@ -50,6 +50,7 @@ export default auth((req) => {
     "/api/cron",
     "/api/vm/configure",
     "/api/admin/provision",
+    "/api/admin/pool-audit",
     "/api/gateway",
     "/api/waitlist",
     "/api/invite/validate",
