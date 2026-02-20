@@ -955,7 +955,6 @@ export async function configureOpenClaw(
         last_health_check: new Date().toISOString(),
         ssh_fail_count: 0,
         health_fail_count: 0,
-        consecutive_failures: 0,
         config_version: 1,
         default_model: config.model || "claude-sonnet-4-5-20250929",
         api_mode: config.apiMode,
