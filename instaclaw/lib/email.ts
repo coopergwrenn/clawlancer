@@ -49,7 +49,7 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 </style>
 </head>
 <body class="email-body" style="margin:0;padding:0;background-color:#f2f2f2;">
-<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">Your own AI agent on a dedicated server, working 24/7.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">You just got superpowers. Your own AI agent, always on.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-body" style="background-color:#f2f2f2;">
 <tr><td align="center" style="padding:24px 16px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="email-card" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;">
@@ -64,9 +64,9 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 
 <!-- THE HOOK -->
 <tr><td style="padding:32px 32px 0 32px;">
-  <h1 class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:26px;font-weight:700;color:#111111;line-height:1.2;">You're in.</h1>
+  <h1 class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:26px;font-weight:700;color:#111111;line-height:1.2;">You just got superpowers.</h1>
   <p class="text-secondary" style="margin:0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    Your own AI agent on a dedicated server, working 24/7. Not a chatbot &mdash; an autonomous agent that browses real websites, automates tasks, and works while you sleep.
+    Your own AI agent on a dedicated server, working for you 24/7. It browses real websites, automates tasks, and gets things done while you sleep. Talk to it from Telegram, your dashboard, or anywhere &mdash; it's always on.
   </p>
 </td></tr>
 
@@ -88,9 +88,9 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 
 <!-- WHAT YOU NEED -->
 <tr><td style="padding:0 32px 24px 32px;">
-  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Telegram</span> &mdash; how you talk to your agent (<a href="https://telegram.org" style="color:#555555;text-decoration:underline;">telegram.org</a>)</p>
   <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">A Google account</span> &mdash; one-click sign in</p>
-  <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">5 minutes</span> &mdash; seriously, that's it. No credit card.</p>
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">60-second activation</span> &mdash; that's it, you're live</p>
+  <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">3-day free trial</span> &mdash; see if you love it before you pay a cent</p>
 </td></tr>
 
 <!-- FOOTER -->
@@ -108,9 +108,9 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 
 export function buildInviteEmailText(inviteCode: string): string {
   const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
-  return `You're in.
+  return `You just got superpowers.
 
-Your own AI agent on a dedicated server, working 24/7. Not a chatbot — an autonomous agent that browses real websites, automates tasks, and works while you sleep.
+Your own AI agent on a dedicated server, working for you 24/7. It browses real websites, automates tasks, and gets things done while you sleep. Talk to it from Telegram, your dashboard, or anywhere — it's always on.
 
 YOUR INVITE CODE: ${inviteCode}
 
@@ -118,7 +118,9 @@ Activate your agent: ${signupUrl}
 
 Expires in 7 days.
 
-All you need: Telegram (telegram.org), a Google account, and 5 minutes. No credit card.
+A Google account — one-click sign in
+60-second activation — that's it, you're live
+3-day free trial — see if you love it before you pay a cent
 
 Questions? Reply to this email — we read every message.
 
