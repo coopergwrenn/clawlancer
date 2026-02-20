@@ -149,7 +149,7 @@ export default function OnboardingWizard({
           currentStep: data.currentStep ?? 0,
           botUsername: data.telegramBotUsername ?? null,
           botConnected: data.botConnected ?? false,
-          gmailPopupActive: gmailDismissedRef.current ? false : !data.gmailPopupDismissed,
+          gmailPopupActive: gmailDismissedRef.current ? false : (!data.gmailPopupDismissed && !data.gmailConnected),
           gmailConnected: data.gmailConnected ?? false,
         });
       } catch {
