@@ -43,7 +43,8 @@ export function buildInviteEmailHtml(inviteCode: string): string {
   .text-muted { color: #888888 !important; }
   .text-faint { color: #666666 !important; }
   .divider { border-color: #333333 !important; }
-  .btn-dark { background-color: #ffffff !important; color: #000000 !important; }
+  .btn-td { background-color: #ffffff !important; }
+  .btn-link { color: #000000 !important; }
   .step-num { background-color: #333333 !important; color: #999999 !important; }
 }
 </style>
@@ -82,7 +83,11 @@ export function buildInviteEmailHtml(inviteCode: string): string {
   <tr><td style="padding:28px 24px;text-align:center;">
     <p class="text-muted" style="margin:0 0 10px 0;font-family:${font};font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:1.5px;">Your invite code</p>
     <p class="text-primary" style="margin:0 0 20px 0;font-family:${mono};font-size:28px;font-weight:700;color:#111111;letter-spacing:5px;">${inviteCode}</p>
-    <a href="${signupUrl}" target="_blank" class="btn-dark" style="display:inline-block;padding:14px 36px;background-color:#111111;border-radius:8px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">Activate Your Agent &#8594;</a>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+    <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
+      <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Activate Your Agent &#8594;</a>
+    </td></tr>
+    </table>
     <p class="text-faint" style="margin:14px 0 0 0;font-family:${font};font-size:12px;color:#999999;">Expires in 7 days</p>
   </td></tr>
   </table>
@@ -169,7 +174,11 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 <!-- BOTTOM CTA -->
 <tr><td style="padding:4px 32px 32px 32px;text-align:center;">
   <p class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:15px;color:#111111;font-weight:600;">Your agent is waiting.</p>
-  <a href="${signupUrl}" target="_blank" class="btn-dark" style="display:inline-block;padding:14px 36px;background-color:#111111;border-radius:8px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">Activate Your Agent &#8594;</a>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+  <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
+    <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Activate Your Agent &#8594;</a>
+  </td></tr>
+  </table>
 </td></tr>
 
 <!-- FOOTER -->
