@@ -606,7 +606,7 @@ export async function assignVMWithSSHCheck(
 export async function configureOpenClaw(
   vm: VMRecord,
   config: UserConfig
-): Promise<{ gatewayUrl: string; gatewayToken: string; controlUiUrl: string }> {
+): Promise<{ gatewayUrl: string; gatewayToken: string; controlUiUrl: string; gatewayVerified: boolean }> {
   if (config.apiMode === "byok" && !config.apiKey) {
     throw new Error("API key required for BYOK mode");
   }
@@ -889,6 +889,26 @@ export async function configureOpenClaw(
       '  sleep 2',
       'fi',
       '',
+      '# Verify gateway is actually alive with a localhost health ping',
+      'GATEWAY_ALIVE=false',
+      'for ATTEMPT in 1 2; do',
+      '  sleep 2',
+      `  if curl -s -m 5 http://localhost:${GATEWAY_PORT}/health > /dev/null 2>&1; then`,
+      '    GATEWAY_ALIVE=true',
+      '    break',
+      '  fi',
+      '  # Retry: restart gateway once if first check fails',
+      '  if [ "$ATTEMPT" = "1" ]; then',
+      '    systemctl --user restart openclaw-gateway 2>/dev/null || true',
+      '  fi',
+      'done',
+      '',
+      'if [ "$GATEWAY_ALIVE" = "true" ]; then',
+      '  echo "GATEWAY_VERIFIED"',
+      'else',
+      '  echo "GATEWAY_NOT_RESPONDING"',
+      'fi',
+      '',
       'echo "OPENCLAW_CONFIGURE_DONE"'
     );
 
@@ -906,12 +926,23 @@ export async function configureOpenClaw(
       throw new Error(`VM configuration failed: ${result.stderr || result.stdout}`);
     }
 
-    // Update VM record in Supabase with HTTP URLs + "healthy" status in ONE atomic write.
-    // CRITICAL: This is the single most important DB update in the entire configure flow.
-    // If Vercel kills the function after this point, the user still gets a working bot
-    // because gateway_url + health_status "healthy" are already in the DB.
-    // Background tasks (proxy test, TLS) can downgrade if needed, but the user is never
-    // stuck in "configuring" state when the bot is actually working.
+    // Check if gateway is actually alive (verified by localhost curl inside VM)
+    const gatewayVerified = result.stdout.includes("GATEWAY_VERIFIED");
+    const healthStatus = gatewayVerified ? "healthy" : "unhealthy";
+
+    if (!gatewayVerified) {
+      logger.error("Gateway not responding after configure", {
+        route: "lib/ssh",
+        vmId: vm.id,
+        stdout: result.stdout.slice(-500),
+        timeline,
+      });
+    }
+
+    // Update VM record in Supabase with HTTP URLs in ONE atomic write.
+    // health_status is set based on whether the gateway actually responded.
+    // If healthy: user sees immediate success. If unhealthy: deploy page shows
+    // the issue and the health-check cron will retry.
     mark("db_write_start");
     const supabase = getSupabase();
     const { error: vmError } = await supabase
@@ -920,7 +951,7 @@ export async function configureOpenClaw(
         gateway_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
         gateway_token: gatewayToken,
         control_ui_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
-        health_status: "healthy",
+        health_status: healthStatus,
         last_health_check: new Date().toISOString(),
         ssh_fail_count: 0,
         health_fail_count: 0,
@@ -960,6 +991,7 @@ export async function configureOpenClaw(
       gatewayUrl: `http://${vm.ip_address}:${GATEWAY_PORT}`,
       gatewayToken,
       controlUiUrl: `http://${vm.ip_address}:${GATEWAY_PORT}`,
+      gatewayVerified,
     };
   } finally {
     ssh.dispose();

@@ -219,8 +219,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // configureOpenClaw() already wrote health_status "healthy" atomically.
-    // No blocking health check needed — the user is unblocked immediately.
+    // configureOpenClaw() verified the gateway with a localhost health ping
+    // and wrote health_status accordingly (healthy or unhealthy).
 
     // ── Background validation (runs after response is sent) ──
     {
@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       configured: true,
-      healthy: true, // configureOpenClaw wrote "healthy" atomically
+      healthy: result.gatewayVerified, // based on localhost health ping inside VM
     });
   } catch (err) {
     logger.error("VM configure error", { error: String(err), route: "vm/configure", userId });
