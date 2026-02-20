@@ -1222,9 +1222,13 @@ export async function clearSessions(vm: VMRecord): Promise<boolean> {
     try {
       const cmd = [
         NVM_PREAMBLE,
+        // Back up openclaw.json before restart (gateway --force can wipe channel config)
+        '&& cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
         '&& rm -f ~/.openclaw/agents/main/sessions/*.jsonl ~/.openclaw/agents/main/sessions/sessions.json',
         '&& (openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
         '&& sleep 2',
+        // Restore config to prevent onboard wizard from wiping channels
+        '&& cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
         `&& nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
       ].join(' ');
       const result = await ssh.execCommand(cmd);
