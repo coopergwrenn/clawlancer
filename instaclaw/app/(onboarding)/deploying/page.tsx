@@ -12,9 +12,10 @@ interface DeployStep {
   status: StepStatus;
 }
 
-const MAX_POLL_ATTEMPTS = 90; // 180 seconds at 2s intervals
-const EARLY_CHECK_THRESHOLD = 15; // Check for issues at 30s
-const MID_CHECK_THRESHOLD = 45; // Check for issues at 90s
+const MAX_POLL_ATTEMPTS = 180; // 180 seconds at 1s intervals
+const EARLY_CHECK_THRESHOLD = 30; // Check for issues at 30s
+const MID_CHECK_THRESHOLD = 90; // Check for issues at 90s
+const SOFT_TIMEOUT_THRESHOLD = 90; // Show recovery UI at 90s
 
 /** Safely parse JSON from a fetch response. Returns null if response is not JSON
  *  (e.g. Vercel timeout returning HTML). Prevents "Unexpected token" crashes. */
@@ -162,6 +163,9 @@ function DeployingPageContent() {
   const autoRetryFired = useRef(false);
   const validationChecked = useRef(false);
   const configuredRef = useRef(false);
+  const softTimeoutFired = useRef(false);
+  const [softTimeout, setSoftTimeout] = useState(false);
+  const [recoveryChecking, setRecoveryChecking] = useState(false);
 
   // Track which steps just completed (for the bounce animation)
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set());
@@ -364,34 +368,53 @@ function DeployingPageContent() {
             updateStep("telegram", "done");
 
             if (data.vm.healthStatus === "healthy") {
-              // Fully ready
+              // Fully ready — redirect to dashboard
               updateStep("health", "done");
               setPolling(false);
+              setSoftTimeout(false);
               clearInterval(interval);
               // Full page navigation (not router.push) so the NextAuth
               // session is re-fetched with the updated onboardingComplete flag.
               setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
             } else {
-              // "configuring" or "unknown" — actively trigger health check
+              // "configuring" or "unknown" — configure route will mark healthy
               updateStep("health", "active");
-              fetch("/api/vm/health-check-now", { method: "POST" }).catch(
-                () => {}
-              );
             }
           } else {
             // No gateway URL yet — configure still running
             updateStep("configure", "active");
 
             // Auto-trigger retry if VM assigned but configure hasn't
-            // produced a gateway_url after 30 polls (~60s).
+            // produced a gateway_url after 60 polls (~60s at 1s interval).
             // This handles the case where the fire-and-forget from
             // the webhook never reached the configure endpoint.
-            if (pollCount >= 30 && !autoRetryFired.current) {
+            if (pollCount >= 60 && !autoRetryFired.current) {
               autoRetryFired.current = true;
               fetch("/api/vm/retry-configure", { method: "POST" }).catch(
                 () => {}
               );
             }
+          }
+
+          // ── Soft timeout at 90s: show recovery UI ──
+          if (pollCount >= SOFT_TIMEOUT_THRESHOLD && !softTimeoutFired.current && data.vm?.healthStatus !== "healthy") {
+            softTimeoutFired.current = true;
+            setSoftTimeout(true);
+
+            // Fire one final health check to see if the agent is actually ready
+            setRecoveryChecking(true);
+            fetch("/api/vm/health-check-now", { method: "POST" })
+              .then((r) => safeJson(r))
+              .then((d) => {
+                setRecoveryChecking(false);
+                if (d?.healthy) {
+                  updateStep("health", "done");
+                  setPolling(false);
+                  setSoftTimeout(false);
+                  setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+                }
+              })
+              .catch(() => setRecoveryChecking(false));
           }
         } else if (data.status === "pending") {
           updateStep("assign", "active");
@@ -399,7 +422,7 @@ function DeployingPageContent() {
       } catch {
         // Continue polling
       }
-    }, 2000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [router, updateStep, polling]);
@@ -797,6 +820,49 @@ function DeployingPageContent() {
               ))}
             </div>
           </div>
+
+          {/* ---- Soft timeout recovery (90s) ---- */}
+          {softTimeout && !configureFailed && !retrying && (
+            <div
+              className="rounded-lg p-8 max-w-lg w-full space-y-4 mb-6"
+              style={{
+                ...glassStyle,
+                border: "1.5px solid rgba(220, 103, 67, 0.3)",
+              }}
+            >
+              <p className="text-base font-semibold" style={{ color: "#DC6743" }}>
+                Taking longer than expected
+              </p>
+              {recoveryChecking ? (
+                <p className="text-sm" style={{ color: "#666666" }}>
+                  Checking your agent...
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm" style={{ color: "#666666" }}>
+                    Your agent is still setting up. You can refresh in a minute or go to your dashboard — it&apos;ll be ready when you get there.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="flex-1 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+                      style={glassStyle}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Refresh
+                    </button>
+                    <button
+                      onClick={() => { window.location.href = "/dashboard"; }}
+                      className="flex-1 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer"
+                      style={orangeGlassButton}
+                    >
+                      Go to Dashboard
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* ---- Error / Retry ---- */}
           {(configureFailed || validationError) && !retrying && (

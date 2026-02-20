@@ -224,58 +224,54 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Quick health check (3 attempts × 3s = 9s max) ──
-    // If the gateway comes up fast, the user sees instant completion.
-    // If not, the health-check cron will upgrade "configuring" → "healthy".
-    const healthy = await waitForHealth(vm, result.gatewayToken, 3, 3000);
+    // ── Single health ping (1 attempt, 3s timeout) ──
+    // If gateway responds, mark healthy immediately. Don't gate user on proxy test.
+    const healthy = await waitForHealth(vm, result.gatewayToken, 1, 3000);
 
     if (healthy) {
-      // Proxy round-trip test: verify the full chain (gateway token → proxy → Anthropic)
-      // Only for all-inclusive VMs that route through our proxy
-      let proxyOk = true;
-      if (effectiveApiMode === "all_inclusive") {
-        const proxyResult = await testProxyRoundTrip(result.gatewayToken);
-        proxyOk = proxyResult.success;
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          health_status: "healthy",
+          last_health_check: new Date().toISOString(),
+        })
+        .eq("id", vm.id);
+    }
 
-        if (!proxyOk) {
+    // ── Background proxy round-trip test (runs after response is sent) ──
+    // Verifies the full chain (gateway token → proxy → Anthropic).
+    // Does NOT block the user — if it fails, marks proxy_status separately.
+    if (effectiveApiMode === "all_inclusive") {
+      const capturedGatewayToken = result.gatewayToken;
+      const capturedVmId = vm.id;
+      const capturedUserId = userId;
+      after(async () => {
+        const proxyResult = await testProxyRoundTrip(capturedGatewayToken);
+        if (!proxyResult.success) {
           logger.error("Proxy round-trip test failed after configure", {
             route: "vm/configure",
-            userId,
-            vmId: vm.id,
+            userId: capturedUserId,
+            vmId: capturedVmId,
             error: proxyResult.error,
           });
-
-          await supabase
-            .from("instaclaw_vms")
-            .update({
-              health_status: "unhealthy",
-              last_health_check: new Date().toISOString(),
-            })
-            .eq("id", vm.id);
-
           sendAdminAlertEmail(
             "Proxy Round-Trip Failed After Configure",
-            `VM ${vm.id} (user: ${userId}) passed local health check but failed proxy round-trip.\n\nError: ${proxyResult.error}\n\nThe health cron will auto-restart the gateway on the next cycle.`
+            `VM ${capturedVmId} (user: ${capturedUserId}) passed local health check but failed proxy round-trip.\n\nError: ${proxyResult.error}\n\nThe health cron will auto-restart the gateway on the next cycle.`
           ).catch(() => {});
         }
-      }
+      });
+    }
 
-      if (proxyOk) {
-        await supabase
-          .from("instaclaw_vms")
-          .update({
-            health_status: "healthy",
-            last_health_check: new Date().toISOString(),
-          })
-          .eq("id", vm.id);
-
-        // Send deployment success email
-        const { data: user } = await supabase
+    // Send deployment success email in background
+    if (healthy) {
+      const emailUserId = userId!;
+      after(async () => {
+        const sb = getSupabase();
+        const { data: user } = await sb
           .from("instaclaw_users")
           .select("email")
-          .eq("id", userId)
+          .eq("id", emailUserId)
           .single();
-
         if (user?.email) {
           try {
             await sendVMReadyEmail(user.email, `${process.env.NEXTAUTH_URL}/dashboard`);
@@ -283,11 +279,11 @@ export async function POST(req: NextRequest) {
             logger.error("Failed to send VM ready email", {
               error: String(emailErr),
               route: "vm/configure",
-              userId,
+              userId: emailUserId,
             });
           }
         }
-      }
+      });
     }
 
     return NextResponse.json({
