@@ -74,6 +74,7 @@ export default function ConnectPage() {
   const [defaultModel, setDefaultModel] = useState("minimax-m2.5");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [verified, setVerified] = useState(false);
   const [botUsername, setBotUsername] = useState("");
   const [faqOpen, setFaqOpen] = useState(false);
@@ -150,21 +151,43 @@ export default function ConnectPage() {
       return;
     }
 
-    sessionStorage.setItem(
-      "instaclaw_onboarding",
-      JSON.stringify({
-        botToken: selectedChannel === "telegram" ? botToken.trim() : undefined,
-        discordToken: selectedChannel === "discord" ? discordToken.trim() : undefined,
-        slackToken: selectedChannel === "slack" ? slackToken.trim() : undefined,
-        slackSigningSecret: selectedChannel === "slack" ? slackSigningSecret.trim() : undefined,
-        whatsappToken: selectedChannel === "whatsapp" ? whatsappToken.trim() : undefined,
-        whatsappPhoneNumberId: selectedChannel === "whatsapp" ? whatsappPhoneNumberId.trim() : undefined,
-        channels: [selectedChannel],
-        apiMode,
-        apiKey: apiMode === "byok" ? apiKey.trim() : undefined,
-        models: apiMode === "all_inclusive" ? [defaultModel] : undefined,
-      })
-    );
+    const onboardingData = {
+      botToken: selectedChannel === "telegram" ? botToken.trim() : undefined,
+      discordToken: selectedChannel === "discord" ? discordToken.trim() : undefined,
+      slackToken: selectedChannel === "slack" ? slackToken.trim() : undefined,
+      slackSigningSecret: selectedChannel === "slack" ? slackSigningSecret.trim() : undefined,
+      whatsappToken: selectedChannel === "whatsapp" ? whatsappToken.trim() : undefined,
+      whatsappPhoneNumberId: selectedChannel === "whatsapp" ? whatsappPhoneNumberId.trim() : undefined,
+      channels: [selectedChannel],
+      apiMode,
+      apiKey: apiMode === "byok" ? apiKey.trim() : undefined,
+      model: apiMode === "all_inclusive" ? defaultModel : undefined,
+    };
+
+    // Save to sessionStorage as secondary cache for Plan page UI
+    sessionStorage.setItem("instaclaw_onboarding", JSON.stringify(onboardingData));
+
+    // Save to DB immediately — token must be persisted before any navigation
+    setSaving(true);
+    try {
+      const saveRes = await fetch("/api/onboarding/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(onboardingData),
+      });
+
+      if (!saveRes.ok) {
+        const err = await saveRes.json();
+        setError(err.error || "Failed to save configuration. Please try again.");
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setError("Network error saving configuration. Please try again.");
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
 
     router.push("/plan");
   }
@@ -1050,7 +1073,7 @@ export default function ConnectPage() {
 
         <button
           onClick={handleContinue}
-          disabled={!selectedChannel || (selectedChannel === "telegram" && !verified)}
+          disabled={saving || !selectedChannel || (selectedChannel === "telegram" && !verified)}
           className="w-full px-6 py-3.5 rounded-lg text-base font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           style={{
             background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
@@ -1065,7 +1088,30 @@ export default function ConnectPage() {
             color: "#ffffff",
           }}
         >
-          Continue to Plan Selection
+          {saving ? (
+            <span className="flex items-center gap-2 justify-center">
+              <svg
+                className="animate-spin h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              Saving...
+            </span>
+          ) : "Continue to Plan Selection"}
         </button>
 
         {/* Glow animation for verified state */}
