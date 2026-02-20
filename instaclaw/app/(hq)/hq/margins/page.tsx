@@ -77,6 +77,7 @@ interface MarginsData {
   apiCosts: ApiCosts;
   totals: {
     totalVms: number;
+    activeSubscribers: number;
     assignedVms: number;
     availableVms: number;
     monthlyInfraCost: number;
@@ -179,7 +180,7 @@ export default function MarginsPage() {
     {
       label: "Monthly Revenue",
       value: fmt(totals.monthlyRevenue),
-      sub: `${totals.assignedVms} subscribers`,
+      sub: `${totals.activeSubscribers} subscribers`,
       icon: TrendingUp,
     },
     {
@@ -203,9 +204,9 @@ export default function MarginsPage() {
     },
   ];
 
-  // For tier table: compute per-user VM cost (total infra / assigned)
+  // For tier table: compute per-user VM cost (total infra / active subscribers)
   const avgVmCost =
-    totals.assignedVms > 0 ? totals.monthlyInfraCost / totals.assignedVms : 0;
+    totals.activeSubscribers > 0 ? totals.monthlyInfraCost / totals.activeSubscribers : 0;
 
   const maxTierRevenue = Math.max(...tiers.map((t) => t.totalRevenue), 1);
 

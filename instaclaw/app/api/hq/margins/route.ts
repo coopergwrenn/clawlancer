@@ -82,17 +82,32 @@ export async function GET() {
       monthlyCost: counts.vmCount * (VM_MONTHLY_COST[name] ?? 0),
     }));
 
-    // --- Tier breakdown ---
+    // --- Subscription-based tier breakdown (source of truth for revenue) ---
+    const { data: subscriptions } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("user_id, tier, status")
+      .in("status", ["active", "trialing"]);
+
+    const subList = subscriptions ?? [];
+
+    // Build a map of user_id → vm api_mode for price lookup
+    const userApiModeMap = new Map<string, ApiMode>();
+    for (const vm of vmList) {
+      if (vm.assigned_to) {
+        userApiModeMap.set(vm.assigned_to, (vm.api_mode ?? "all_inclusive") as ApiMode);
+      }
+    }
+
     const tierMap = new Map<string, { count: number; revenuePerVm: number; totalRevenue: number }>();
 
-    for (const vm of vmList) {
-      if (vm.status !== "assigned" || !vm.tier) continue;
+    for (const sub of subList) {
+      if (!sub.tier) continue;
 
-      const tier = vm.tier as Tier;
-      const apiMode = (vm.api_mode ?? "all_inclusive") as ApiMode;
+      const tier = sub.tier as Tier;
       const tierInfo = TIER_DISPLAY[tier];
       if (!tierInfo) continue;
 
+      const apiMode = userApiModeMap.get(sub.user_id) ?? "all_inclusive";
       const price = apiMode === "byok" ? tierInfo.byok : tierInfo.allInclusive;
       const key = `${tier}_${apiMode}`;
 
@@ -116,6 +131,7 @@ export async function GET() {
 
     // --- Totals ---
     const totalVms = vmList.length;
+    const activeSubscribers = subList.length;
     const assignedVms = vmList.filter((v) => v.status === "assigned").length;
     const availableVms = vmList.filter((v) => v.status === "ready").length;
     const monthlyInfraCost = providers.reduce((sum, p) => sum + p.monthlyCost, 0);
@@ -263,6 +279,7 @@ export async function GET() {
       apiCosts,
       totals: {
         totalVms,
+        activeSubscribers,
         assignedVms,
         availableVms,
         monthlyInfraCost,
