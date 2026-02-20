@@ -116,9 +116,13 @@ export default function OnboardingWizard({
     return () => window.removeEventListener("instaclaw:restart-wizard", handler);
   }, []);
 
-  // Re-check wizard status after Gmail popup is dismissed
+  // Re-check wizard status after Gmail popup is dismissed.
+  // We use a ref to skip the gmailPopupActive gate on re-fetch since the
+  // /api/gmail/dismiss DB write may not have completed yet (race condition).
+  const gmailDismissedRef = useRef(false);
   useEffect(() => {
     const handler = () => {
+      gmailDismissedRef.current = true;
       fetchedRef.current = false;
       setRestartTrigger((t) => t + 1);
     };
@@ -145,7 +149,7 @@ export default function OnboardingWizard({
           currentStep: data.currentStep ?? 0,
           botUsername: data.telegramBotUsername ?? null,
           botConnected: data.botConnected ?? false,
-          gmailPopupActive: !data.gmailPopupDismissed,
+          gmailPopupActive: gmailDismissedRef.current ? false : !data.gmailPopupDismissed,
           gmailConnected: data.gmailConnected ?? false,
         });
       } catch {
