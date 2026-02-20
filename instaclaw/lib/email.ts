@@ -45,12 +45,11 @@ export function buildInviteEmailHtml(inviteCode: string): string {
   .divider { border-color: #333333 !important; }
   .btn-td { background-color: #ffffff !important; }
   .btn-link { color: #000000 !important; }
-  .step-num { background-color: #333333 !important; color: #999999 !important; }
 }
 </style>
 </head>
 <body class="email-body" style="margin:0;padding:0;background-color:#f2f2f2;">
-<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">Your own AI agent on a dedicated server, working 24/7. This changes everything.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">Your own AI agent on a dedicated server, working 24/7.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-body" style="background-color:#f2f2f2;">
 <tr><td align="center" style="padding:24px 16px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="email-card" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;">
@@ -65,129 +64,39 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 
 <!-- THE HOOK -->
 <tr><td style="padding:32px 32px 0 32px;">
-  <h1 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:26px;font-weight:700;color:#111111;line-height:1.2;">You're in.</h1>
-  <p class="text-secondary" style="margin:0 0 10px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    You're about to get your own AI agent running on a dedicated server, working for you 24/7. Not a chatbot. An autonomous agent that searches the web, browses real websites, and handles tasks while you sleep.
-  </p>
-  <p class="text-secondary" style="margin:0 0 10px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    People are already using their agents to find clients, automate outreach, research deals, and build new revenue streams on autopilot.
-  </p>
-  <p class="text-primary" style="margin:0;font-family:${font};font-size:15px;color:#111111;line-height:1.7;font-weight:600;">
-    This isn't ChatGPT. This is your own personal AI with superpowers.
+  <h1 class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:26px;font-weight:700;color:#111111;line-height:1.2;">You're in.</h1>
+  <p class="text-secondary" style="margin:0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    Your own AI agent on a dedicated server, working 24/7. Not a chatbot &mdash; an autonomous agent that browses real websites, automates tasks, and works while you sleep.
   </p>
 </td></tr>
 
-<!-- INVITE CODE + BUTTON (single cell, no nested tables) -->
-<tr><td style="padding:28px 32px;">
+<!-- INVITE CODE + BUTTON -->
+<tr><td style="padding:24px 32px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="code-box" style="background-color:#f7f7f7;border:2px solid #e0e0e0;border-radius:10px;">
-  <tr><td style="padding:28px 24px;text-align:center;">
-    <p class="text-muted" style="margin:0 0 10px 0;font-family:${font};font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:1.5px;">Your invite code</p>
-    <p class="text-primary" style="margin:0 0 20px 0;font-family:${mono};font-size:28px;font-weight:700;color:#111111;letter-spacing:5px;">${inviteCode}</p>
+  <tr><td style="padding:24px 24px;text-align:center;">
+    <p class="text-muted" style="margin:0 0 8px 0;font-family:${font};font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:1.5px;">Your invite code</p>
+    <p class="text-primary" style="margin:0 0 18px 0;font-family:${mono};font-size:28px;font-weight:700;color:#111111;letter-spacing:5px;">${inviteCode}</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
     <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
       <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Activate Your Agent &#8594;</a>
     </td></tr>
     </table>
-    <p class="text-faint" style="margin:14px 0 0 0;font-family:${font};font-size:12px;color:#999999;">Expires in 7 days</p>
+    <p class="text-faint" style="margin:12px 0 0 0;font-family:${font};font-size:12px;color:#999999;">Expires in 7 days</p>
   </td></tr>
   </table>
 </td></tr>
 
 <!-- WHAT YOU NEED -->
-<tr><td style="padding:0 32px 28px 32px;">
-  <h2 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">Here's all you need:</h2>
-  <p class="text-secondary" style="margin:0 0 6px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Telegram</span> &mdash; how you talk to your agent. Free at <a href="https://telegram.org" style="color:#555555;text-decoration:underline;">telegram.org</a></p>
-  <p class="text-secondary" style="margin:0 0 6px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">5 minutes</span> &mdash; seriously, that's it.</p>
-  <p class="text-secondary" style="margin:0 0 6px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">A Google account</span> &mdash; one-click sign in.</p>
-  <p class="text-primary" style="margin:12px 0 0 0;font-family:${font};font-size:13px;color:#111111;line-height:1.6;font-weight:600;">No credit card. No catch.</p>
-</td></tr>
-
-<!-- DIVIDER -->
-<tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="divider" style="border-top:1px solid #e5e5e5;height:1px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
-
-<!-- SETUP STEPS -->
-<tr><td style="padding:28px 32px;">
-  <h2 class="text-primary" style="margin:0 0 16px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">Up and running in 5 minutes</h2>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-  <tr><td style="padding:8px 0;vertical-align:top;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td style="width:28px;vertical-align:top;"><span class="step-num" style="display:inline-block;width:22px;height:22px;background-color:#e8e8e8;border-radius:50%;text-align:center;line-height:22px;font-family:${font};font-size:11px;font-weight:700;color:#888888;">1</span></td>
-    <td class="text-secondary" style="padding-left:10px;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Enter your invite code</span> at <a href="${signupUrl}" style="color:#555555;text-decoration:underline;">instaclaw.io/signup</a></td>
-  </tr></table></td></tr>
-  <tr><td style="padding:8px 0;vertical-align:top;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td style="width:28px;vertical-align:top;"><span class="step-num" style="display:inline-block;width:22px;height:22px;background-color:#e8e8e8;border-radius:50%;text-align:center;line-height:22px;font-family:${font};font-size:11px;font-weight:700;color:#888888;">2</span></td>
-    <td class="text-secondary" style="padding-left:10px;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Sign in with Google</span> &mdash; we provision your server instantly</td>
-  </tr></table></td></tr>
-  <tr><td style="padding:8px 0;vertical-align:top;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td style="width:28px;vertical-align:top;"><span class="step-num" style="display:inline-block;width:22px;height:22px;background-color:#e8e8e8;border-radius:50%;text-align:center;line-height:22px;font-family:${font};font-size:11px;font-weight:700;color:#888888;">3</span></td>
-    <td class="text-secondary" style="padding-left:10px;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Create your Telegram bot</span> via @BotFather (we walk you through it)</td>
-  </tr></table></td></tr>
-  <tr><td style="padding:8px 0;vertical-align:top;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td style="width:28px;vertical-align:top;"><span class="step-num" style="display:inline-block;width:22px;height:22px;background-color:#e8e8e8;border-radius:50%;text-align:center;line-height:22px;font-family:${font};font-size:11px;font-weight:700;color:#888888;">4</span></td>
-    <td class="text-secondary" style="padding-left:10px;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Say hello</span> &mdash; your agent is now running 24/7</td>
-  </tr></table></td></tr>
-  </table>
-</td></tr>
-
-<!-- DIVIDER -->
-<tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="divider" style="border-top:1px solid #e5e5e5;height:1px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
-
-<!-- SUPERPOWERS (condensed) -->
-<tr><td style="padding:28px 32px;">
-  <h2 class="text-primary" style="margin:0 0 6px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">Your superpowers</h2>
-  <p class="text-muted" style="margin:0 0 16px 0;font-family:${font};font-size:13px;color:#888888;">Real things people have asked their agent. One message.</p>
-
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-  <tr><td class="code-box" style="padding:10px 14px;background-color:#f7f7f7;border-radius:6px;">
-    <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:13px;color:#555555;line-height:1.5;font-style:italic;">"Find every YC company in AI dev tools, go to their websites, pull pricing, and make me a comparison table."</p>
-    <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#999999;">It opened 20+ websites, extracted data, returned a formatted breakdown in 4 minutes.</p>
-  </td></tr>
-  </table>
-
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
-  <tr><td class="code-box" style="padding:10px 14px;background-color:#f7f7f7;border-radius:6px;">
-    <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:13px;color:#555555;line-height:1.5;font-style:italic;">"Every morning at 7am, check HN, TechCrunch, and Product Hunt. Send me a summary before I wake up."</p>
-    <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#999999;">Set it once. Personalized briefing waiting for you every day, forever.</p>
-  </td></tr>
-  </table>
-
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
-  <tr><td class="code-box" style="padding:10px 14px;background-color:#f7f7f7;border-radius:6px;">
-    <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:13px;color:#555555;line-height:1.5;font-style:italic;">"Plan my Tokyo trip: flights, hotel in Shibuya, ramen spots, day-by-day itinerary. Budget: $2,500."</p>
-    <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#999999;">It browsed travel sites, compared prices, built an itinerary, and booked everything.</p>
-  </td></tr>
-  </table>
-
-  <p class="text-secondary" style="margin:14px 0 0 0;font-family:${font};font-size:13px;color:#555555;line-height:1.6;">Your agent can do <span class="text-primary" style="color:#111111;font-weight:600;">literally anything you can describe in words</span>. And it gets smarter every day &mdash; it remembers everything and adapts to how you think.</p>
-</td></tr>
-
-<!-- DIVIDER -->
-<tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="divider" style="border-top:1px solid #e5e5e5;height:1px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
-
-<!-- FAQ (condensed) -->
-<tr><td style="padding:28px 32px;">
-  <h2 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">Quick answers</h2>
-  <p class="text-secondary" style="margin:0 0 12px 0;font-family:${font};font-size:13px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">"Different from ChatGPT?"</span> &mdash; Night and day. This is an autonomous worker on its own server. It browses real websites, runs on a schedule, remembers everything, and works while you're offline.</p>
-  <p class="text-secondary" style="margin:0 0 12px 0;font-family:${font};font-size:13px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">"How much?"</span> &mdash; Free trial, no credit card. We'll give you a heads up before anything changes.</p>
-  <p class="text-secondary" style="margin:0;font-family:${font};font-size:13px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">"What if I get stuck?"</span> &mdash; Reply to this email. We read every message.</p>
-</td></tr>
-
-<!-- BOTTOM CTA -->
-<tr><td style="padding:4px 32px 32px 32px;text-align:center;">
-  <p class="text-primary" style="margin:0 0 12px 0;font-family:${font};font-size:15px;color:#111111;font-weight:600;">Your agent is waiting.</p>
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
-  <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
-    <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Activate Your Agent &#8594;</a>
-  </td></tr>
-  </table>
+<tr><td style="padding:0 32px 24px 32px;">
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">Telegram</span> &mdash; how you talk to your agent (<a href="https://telegram.org" style="color:#555555;text-decoration:underline;">telegram.org</a>)</p>
+  <p class="text-secondary" style="margin:0 0 4px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">A Google account</span> &mdash; one-click sign in</p>
+  <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span class="text-primary" style="color:#111111;font-weight:600;">5 minutes</span> &mdash; seriously, that's it. No credit card.</p>
 </td></tr>
 
 <!-- FOOTER -->
-<tr><td class="divider" style="padding:20px 32px 24px 32px;border-top:1px solid #e5e5e5;">
-  <p class="text-muted" style="margin:0 0 6px 0;font-family:${font};font-size:13px;color:#888888;">InstaClaw &mdash; Your AI, Your Superpower</p>
-  <p class="text-faint" style="margin:0 0 12px 0;font-family:${font};font-size:12px;color:#999999;">
-    <a href="https://instaclaw.io" style="color:#999999;text-decoration:underline;">instaclaw.io</a> &nbsp;&middot;&nbsp; <a href="https://x.com/instaclaws" style="color:#999999;text-decoration:underline;">@instaclaws</a>
-  </p>
-  <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#bbbbbb;line-height:1.5;">You're receiving this because you joined the InstaClaw waitlist. If you didn't request this, you can ignore this email.</p>
+<tr><td class="divider" style="padding:16px 32px 20px 32px;border-top:1px solid #e5e5e5;">
+  <p class="text-muted" style="margin:0 0 4px 0;font-family:${font};font-size:12px;color:#888888;">Questions? Reply to this email &mdash; we read every message.</p>
+  <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#bbbbbb;"><a href="https://instaclaw.io" style="color:#999999;text-decoration:underline;">instaclaw.io</a> &nbsp;&middot;&nbsp; <a href="https://x.com/instaclaws" style="color:#999999;text-decoration:underline;">@instaclaws</a></p>
 </td></tr>
 
 </table>
@@ -201,7 +110,7 @@ export function buildInviteEmailText(inviteCode: string): string {
   const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
   return `You're in.
 
-You're about to get your own AI agent running on a dedicated server, working for you 24/7. Not a chatbot. An autonomous agent that searches the web, browses real websites, and handles tasks while you sleep.
+Your own AI agent on a dedicated server, working 24/7. Not a chatbot — an autonomous agent that browses real websites, automates tasks, and works while you sleep.
 
 YOUR INVITE CODE: ${inviteCode}
 
@@ -209,26 +118,12 @@ Activate your agent: ${signupUrl}
 
 Expires in 7 days.
 
-WHAT YOU NEED:
-- Telegram (free at telegram.org)
-- A Google account (one-click sign in)
-- 5 minutes
+All you need: Telegram (telegram.org), a Google account, and 5 minutes. No credit card.
 
-SETUP:
-1. Enter your invite code at ${signupUrl}
-2. Sign in with Google
-3. Create your Telegram bot via @BotFather
-4. Say hello to your agent
-
-YOUR SUPERPOWERS:
-Your agent can research, automate tasks, browse real websites, earn on marketplaces, write outreach emails, plan trips, and literally anything you can describe in words. It runs 24/7 and gets smarter every day.
-
-Questions? Reply to this email — we read everything.
+Questions? Reply to this email — we read every message.
 
 — InstaClaw
-instaclaw.io | @instaclaws
-
-You're receiving this because you joined the InstaClaw waitlist.`;
+instaclaw.io | @instaclaws`;
 }
 
 export async function sendInviteEmail(
