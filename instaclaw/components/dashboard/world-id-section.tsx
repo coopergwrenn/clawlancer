@@ -17,6 +17,7 @@ interface WorldIDStatus {
 
 export function WorldIDSection() {
   const appId = process.env.NEXT_PUBLIC_WORLD_APP_ID;
+  const worldInviteCode = process.env.NEXT_PUBLIC_WORLD_INVITE_CODE;
   const [status, setStatus] = useState<WorldIDStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
@@ -225,7 +226,7 @@ export function WorldIDSection() {
         <p className="text-xs" style={{ color: "var(--muted)" }}>
           Don&apos;t have World App?{" "}
           <a
-            href="https://worldcoin.org/download"
+            href={worldInviteCode ? `https://world.org/join/${worldInviteCode}` : "https://worldcoin.org/download"}
             target="_blank"
             rel="noopener noreferrer"
             className="underline transition-colors"
