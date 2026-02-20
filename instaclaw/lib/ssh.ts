@@ -1241,6 +1241,73 @@ export async function clearSessions(vm: VMRecord): Promise<boolean> {
   }
 }
 
+/**
+ * Surgically remove only the corrupted session instead of wiping everything.
+ * Finds the most recently modified .jsonl file (the active conversation that
+ * triggered the API error), deletes only that file, removes its entry from
+ * sessions.json, and restarts the gateway. All other sessions are preserved.
+ */
+export async function repairCorruptedSession(vm: VMRecord): Promise<boolean> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const sessDir = '~/.openclaw/agents/main/sessions';
+
+      // Back up config before restart
+      await ssh.execCommand('cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true');
+
+      // Find the most recently modified .jsonl (the corrupted active session)
+      const findResult = await ssh.execCommand(
+        `ls -t ${sessDir}/*.jsonl 2>/dev/null | head -1`
+      );
+      const corruptFile = findResult.stdout.trim();
+
+      if (!corruptFile) {
+        // No session files at all — nothing to repair
+        return true;
+      }
+
+      // Extract session ID from filename (e.g. "abc123.jsonl" → "abc123")
+      const sessionId = corruptFile.split('/').pop()?.replace('.jsonl', '') ?? '';
+
+      // Delete only the corrupted session file
+      await ssh.execCommand(`rm -f "${corruptFile}"`);
+
+      // Remove the entry from sessions.json (preserve all other sessions)
+      await ssh.execCommand(
+        `python3 -c "
+import json, sys
+try:
+    with open('${sessDir}/sessions.json', 'r') as f:
+        data = json.load(f)
+    to_del = [k for k, v in data.items() if v.get('sessionId') == '${sessionId}']
+    for k in to_del:
+        del data[k]
+    with open('${sessDir}/sessions.json', 'w') as f:
+        json.dump(data, f)
+except Exception:
+    pass
+" 2>/dev/null || true`
+      );
+
+      // Stop gateway, restore config, restart
+      const restartCmd = [
+        NVM_PREAMBLE,
+        '&& (openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
+        '&& sleep 2',
+        '&& cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
+        `&& nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      ].join(' ');
+      const result = await ssh.execCommand(restartCmd);
+      return result.code === 0;
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureMemoryFile(vm: VMRecord): Promise<boolean> {
   try {
     const ssh = await connectSSH(vm);

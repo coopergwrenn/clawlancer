@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
-import { clearSessions, type VMRecord } from "@/lib/ssh";
+import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
@@ -465,19 +465,19 @@ export async function POST(req: NextRequest) {
       // and restart the gateway. Without this, EVERY subsequent message
       // from the user hits the same error in an infinite loop.
       if (errBody.includes("Invalid signature in thinking block")) {
-        logger.warn("Corrupted thinking block detected — auto-clearing sessions", {
+        logger.warn("Corrupted thinking block detected — repairing session", {
           route: "gateway/proxy",
           vmId: vm.id,
         });
-        // Fire-and-forget: clear sessions + restart gateway via SSH
-        clearSessions(vm as VMRecord).then((ok) => {
+        // Fire-and-forget: remove only the corrupted session + restart gateway
+        repairCorruptedSession(vm as VMRecord).then((ok) => {
           if (ok) {
-            logger.info("Sessions auto-cleared after thinking block corruption", {
+            logger.info("Corrupted session removed (other sessions preserved)", {
               route: "gateway/proxy",
               vmId: vm.id,
             });
           } else {
-            logger.error("Failed to auto-clear sessions after thinking block corruption", {
+            logger.error("Failed to repair corrupted session", {
               route: "gateway/proxy",
               vmId: vm.id,
             });
