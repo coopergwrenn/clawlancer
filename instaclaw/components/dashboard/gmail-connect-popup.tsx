@@ -152,11 +152,15 @@ export function GmailConnectPopup({
     fetch("/api/gmail/dismiss", { method: "POST" }).catch(() => {});
     setVisible(false);
     onClose();
+    // Tell the onboarding wizard it can now show
+    window.dispatchEvent(new Event("instaclaw:gmail-popup-closed"));
   }
 
   function handleDone() {
     setVisible(false);
     onConnected();
+    // Tell the onboarding wizard it can now show
+    window.dispatchEvent(new Event("instaclaw:gmail-popup-closed"));
   }
 
   if (!visible) return null;

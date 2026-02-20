@@ -116,6 +116,16 @@ export default function OnboardingWizard({
     return () => window.removeEventListener("instaclaw:restart-wizard", handler);
   }, []);
 
+  // Re-check wizard status after Gmail popup is dismissed
+  useEffect(() => {
+    const handler = () => {
+      fetchedRef.current = false;
+      setRestartTrigger((t) => t + 1);
+    };
+    window.addEventListener("instaclaw:gmail-popup-closed", handler);
+    return () => window.removeEventListener("instaclaw:gmail-popup-closed", handler);
+  }, []);
+
   // Fetch wizard status on mount or restart
   useEffect(() => {
     if (fetchedRef.current) return;
