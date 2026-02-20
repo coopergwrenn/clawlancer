@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, CONFIG_SPEC } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, CONFIG_SPEC } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -141,9 +141,9 @@ export async function GET(req: NextRequest) {
       healthy++;
       healthyVmIds.add(vm.id);
 
-      // Check for session overflow
+      // Check for session overflow — rotate instead of deleting
       if (result.largestSessionBytes > CONFIG_SPEC.maxSessionBytes) {
-        logger.warn("Session overflow detected, auto-clearing", {
+        logger.warn("Session overflow detected, rotating", {
           route: "cron/health-check",
           vmId: vm.id,
           vmName: vm.name,
@@ -152,17 +152,19 @@ export async function GET(req: NextRequest) {
         });
 
         try {
-          const cleared = await clearSessions(vm);
-          if (cleared) {
+          const rotateResult = await rotateOversizedSession(vm);
+          if (rotateResult.rotated) {
             sessionsCleared++;
-            logger.info("Sessions cleared and gateway restarted", {
+            logger.info("Oversized session rotated (archived, not deleted)", {
               route: "cron/health-check",
               vmId: vm.id,
               vmName: vm.name,
+              file: rotateResult.file,
+              sizeBytes: rotateResult.sizeBytes,
             });
           }
         } catch (err) {
-          logger.error("Failed to clear sessions", {
+          logger.error("Failed to rotate session", {
             error: String(err),
             route: "cron/health-check",
             vmId: vm.id,

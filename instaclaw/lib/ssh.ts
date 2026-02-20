@@ -53,7 +53,7 @@ const CHROME_CLEANUP = [
 // compares each VM's `config_version` column against this — if behind,
 // it SSHes in and applies the missing config automatically.
 export const CONFIG_SPEC = {
-  version: 5,
+  version: 6,
   settings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
@@ -61,10 +61,70 @@ export const CONFIG_SPEC = {
   } as Record<string, string>,
   // Files that must exist in ~/.openclaw/workspace/
   requiredWorkspaceFiles: ["SOUL.md", "AGENTS.md", "CAPABILITIES.md", "MEMORY.md"],
-  // Max session file size in bytes before auto-clear (2MB)
-  // Lowered from 10MB — a 2.4MB session caused "Invalid signature in thinking block"
-  maxSessionBytes: 2 * 1024 * 1024,
+  // Max session file size in bytes before auto-rotate (1MB)
+  // Sessions approaching this size get rotated (preserved but inactive).
+  // With thinking blocks stripped, sessions grow ~5x slower.
+  maxSessionBytes: 1 * 1024 * 1024,
 };
+
+// ── Thinking block stripping script ──
+// Runs every minute via cron on each VM. Strips thinking blocks from
+// session .jsonl files AFTER OpenClaw writes them. This prevents the
+// "Invalid signature in thinking block" error that occurs when thinking
+// block signatures get corrupted in large session files.
+// The model still gets thinking on the CURRENT turn — we only strip
+// thinking from SAVED history so it's never replayed to the API.
+const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
+"""Strip thinking blocks from OpenClaw session files.
+Prevents 'Invalid signature in thinking block' errors by removing
+thinking blocks after each API response. The model still thinks on
+the current turn -- we only strip from saved history."""
+import json, os, time, glob, sys
+
+SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
+SKIP_IF_MODIFIED_WITHIN = 10  # seconds -- avoid race with active writes
+
+total_stripped = 0
+
+for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+    mtime = os.path.getmtime(jsonl_file)
+    if time.time() - mtime < SKIP_IF_MODIFIED_WITHIN:
+        continue
+
+    modified = False
+    cleaned_lines = []
+
+    try:
+        with open(jsonl_file) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                    msg = d.get("message", {})
+                    if msg and msg.get("role") == "assistant":
+                        content = msg.get("content", [])
+                        if isinstance(content, list):
+                            new_content = [b for b in content
+                                           if not (isinstance(b, dict) and b.get("type") == "thinking")]
+                            if len(new_content) != len(content):
+                                d["message"]["content"] = new_content
+                                total_stripped += len(content) - len(new_content)
+                                modified = True
+                    cleaned_lines.append(json.dumps(d, ensure_ascii=False))
+                except json.JSONDecodeError:
+                    cleaned_lines.append(line.rstrip("\\n"))
+
+        if modified:
+            tmp = jsonl_file + ".tmp"
+            with open(tmp, "w") as f:
+                for cl in cleaned_lines:
+                    f.write(cl + "\\n")
+            os.replace(tmp, jsonl_file)
+    except Exception:
+        pass  # never crash the cron
+
+if total_stripped > 0:
+    print(f"Stripped {total_stripped} thinking blocks")
+`;
 
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
@@ -1194,6 +1254,18 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
     const idxB64 = Buffer.from(WORKSPACE_INDEX_SCRIPT, 'utf-8').toString('base64');
     await ssh.execCommand(`mkdir -p ~/.openclaw/scripts && echo '${idxB64}' | base64 -d > ~/.openclaw/scripts/generate_workspace_index.sh && chmod +x ~/.openclaw/scripts/generate_workspace_index.sh`);
 
+    // 3c2. Deploy thinking block stripping script + cron
+    const stripB64 = Buffer.from(STRIP_THINKING_SCRIPT, 'utf-8').toString('base64');
+    await ssh.execCommand(`echo '${stripB64}' | base64 -d > ~/.openclaw/scripts/strip-thinking.py && chmod +x ~/.openclaw/scripts/strip-thinking.py`);
+    // Ensure cron job exists (runs every minute)
+    const cronCheck = await ssh.execCommand('crontab -l 2>/dev/null | grep -qF "strip-thinking.py" && echo PRESENT || echo ABSENT');
+    if (cronCheck.stdout.trim() === 'ABSENT') {
+      await ssh.execCommand(
+        '(crontab -l 2>/dev/null; echo "* * * * * python3 ~/.openclaw/scripts/strip-thinking.py > /dev/null 2>&1") | crontab -'
+      );
+      fixed.push('strip-thinking cron');
+    }
+
     // 3d. Append intelligence blocks to system-prompt.md if marker not present
     const markerCheck = await ssh.execCommand(
       `grep -qF "${INTELLIGENCE_MARKER_START}" ${agentDir}/system-prompt.md 2>/dev/null && echo PRESENT || echo ABSENT`
@@ -1333,6 +1405,67 @@ except Exception:
     }
   } catch {
     return false;
+  }
+}
+
+/**
+ * Rotate an oversized session instead of deleting it.
+ * Renames the largest .jsonl file to .jsonl.archived so it's preserved
+ * on disk but never replayed to the API. Removes its entry from
+ * sessions.json. The gateway auto-creates a new session on next message.
+ * No gateway restart needed — OpenClaw handles missing sessions gracefully.
+ */
+export async function rotateOversizedSession(vm: VMRecord): Promise<{ rotated: boolean; file: string | null; sizeBytes: number }> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const sessDir = '~/.openclaw/agents/main/sessions';
+
+      // Find the largest .jsonl file and its size
+      const findResult = await ssh.execCommand(
+        `ls -lS ${sessDir}/*.jsonl 2>/dev/null | head -1 | awk '{print $5, $NF}'`
+      );
+      const parts = findResult.stdout.trim().split(/\s+/);
+      if (parts.length < 2) {
+        return { rotated: false, file: null, sizeBytes: 0 };
+      }
+
+      const sizeBytes = parseInt(parts[0], 10) || 0;
+      const filePath = parts[1];
+
+      if (sizeBytes < CONFIG_SPEC.maxSessionBytes) {
+        return { rotated: false, file: null, sizeBytes };
+      }
+
+      // Extract session ID from filename
+      const sessionId = filePath.split('/').pop()?.replace('.jsonl', '') ?? '';
+
+      // Rename to .archived (preserved but never replayed)
+      await ssh.execCommand(`mv "${filePath}" "${filePath}.archived"`);
+
+      // Remove entry from sessions.json
+      await ssh.execCommand(
+        `python3 -c "
+import json
+try:
+    with open('${sessDir}/sessions.json', 'r') as f:
+        data = json.load(f)
+    to_del = [k for k, v in data.items() if v.get('sessionId') == '${sessionId}']
+    for k in to_del:
+        del data[k]
+    with open('${sessDir}/sessions.json', 'w') as f:
+        json.dump(data, f)
+except Exception:
+    pass
+" 2>/dev/null || true`
+      );
+
+      return { rotated: true, file: filePath, sizeBytes };
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return { rotated: false, file: null, sizeBytes: 0 };
   }
 }
 
