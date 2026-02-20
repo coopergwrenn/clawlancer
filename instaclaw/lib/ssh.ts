@@ -387,6 +387,16 @@ function buildOpenClawConfig(
     };
   }
 
+  // Configure memory search (OpenAI embeddings)
+  if (process.env.OPENAI_API_KEY) {
+    ocConfig.memory = {
+      provider: "openai",
+      remote: {
+        apiKey: process.env.OPENAI_API_KEY,
+      },
+    };
+  }
+
   return ocConfig;
 }
 
