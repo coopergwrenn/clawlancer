@@ -53,7 +53,7 @@ const CHROME_CLEANUP = [
 // compares each VM's `config_version` column against this — if behind,
 // it SSHes in and applies the missing config automatically.
 export const CONFIG_SPEC = {
-  version: 6,
+  version: 7,
   settings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
@@ -78,8 +78,10 @@ const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
 """Strip thinking blocks from OpenClaw session files.
 Prevents 'Invalid signature in thinking block' errors by removing
 thinking blocks after each API response. The model still thinks on
-the current turn -- we only strip from saved history."""
-import json, os, time, glob, sys
+the current turn -- we only strip from saved history.
+After stripping, restarts the gateway if it's been running >60min
+so OpenClaw reloads the clean files from disk."""
+import json, os, time, glob, subprocess
 
 SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
 SKIP_IF_MODIFIED_WITHIN = 10  # seconds -- avoid race with active writes
@@ -124,6 +126,28 @@ for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
 
 if total_stripped > 0:
     print(f"Stripped {total_stripped} thinking blocks")
+    # Restart gateway so OpenClaw reloads clean session files from disk.
+    # Only restart if the gateway has been running >60 minutes (avoid restart
+    # loops on freshly started gateways where stripping is still catching up).
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "show", "openclaw-gateway", "--property=ActiveEnterTimestamp"],
+            capture_output=True, text=True, timeout=5
+        )
+        # Parse timestamp like "ActiveEnterTimestamp=Thu 2026-02-20 04:10:54 UTC"
+        ts_str = r.stdout.strip().split("=", 1)[-1]
+        if ts_str and ts_str != "n/a":
+            from datetime import datetime, timezone
+            # Parse the systemd timestamp
+            ts = datetime.strptime(ts_str, "%a %Y-%m-%d %H:%M:%S %Z").replace(tzinfo=timezone.utc)
+            uptime_mins = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+            if uptime_mins > 60:
+                print(f"Gateway uptime {uptime_mins:.0f}min > 60min, restarting to reload clean sessions")
+                subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
+            else:
+                print(f"Gateway uptime {uptime_mins:.0f}min < 60min, skipping restart")
+    except Exception as e:
+        print(f"Restart check failed: {e}")
 `;
 
 // Strict input validation to prevent shell injection
