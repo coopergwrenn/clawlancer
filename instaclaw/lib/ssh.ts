@@ -387,15 +387,9 @@ function buildOpenClawConfig(
     };
   }
 
-  // Configure memory search (OpenAI embeddings)
-  if (process.env.OPENAI_API_KEY) {
-    ocConfig.memory = {
-      provider: "openai",
-      remote: {
-        apiKey: process.env.OPENAI_API_KEY,
-      },
-    };
-  }
+  // NOTE: memory search (OpenAI embeddings) requires auth-profiles.json,
+  // NOT openclaw.json. The memory.provider/remote keys in openclaw.json
+  // crash the gateway on v2026.2.3-1. See fleet-enable-memory-v2.sh.
 
   return ocConfig;
 }
