@@ -898,6 +898,9 @@ export async function configureOpenClaw(
     }
 
     // Update VM record in Supabase with HTTP URLs (TLS runs in background via route)
+    // CRITICAL: telegram_bot_token MUST be written here — not in a later update.
+    // The route's subsequent DB update may never execute if the function is killed
+    // after this point (Vercel timeout, after() abort, etc.).
     const supabase = getSupabase();
     const { error: vmError } = await supabase
       .from("instaclaw_vms")
@@ -908,6 +911,9 @@ export async function configureOpenClaw(
         default_model: config.model || "claude-sonnet-4-5-20250929",
         api_mode: config.apiMode,
         tier: config.tier,
+        telegram_bot_token: config.telegramBotToken ?? null,
+        discord_bot_token: config.discordBotToken ?? null,
+        channels_enabled: config.channels ?? [],
       })
       .eq("id", vm.id);
 
