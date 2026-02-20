@@ -365,24 +365,20 @@ function DeployingPageContent() {
           }
 
           if (data.vm.gatewayUrl) {
-            // Gateway URL set → configure script completed
+            // Gateway URL set → configure script completed, bot is live.
+            // Redirect to dashboard. If health_status isn't "healthy" yet,
+            // it doesn't matter — the gateway is running and the dashboard
+            // handles health states gracefully.
             configuredRef.current = true;
             updateStep("configure", "done");
             updateStep("telegram", "done");
-
-            if (data.vm.healthStatus === "healthy") {
-              // Fully ready — redirect to dashboard
-              updateStep("health", "done");
-              setPolling(false);
-              setSoftTimeout(false);
-              clearInterval(interval);
-              // Full page navigation (not router.push) so the NextAuth
-              // session is re-fetched with the updated onboardingComplete flag.
-              setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
-            } else {
-              // "configuring" or "unknown" — configure route will mark healthy
-              updateStep("health", "active");
-            }
+            updateStep("health", "done");
+            setPolling(false);
+            setSoftTimeout(false);
+            clearInterval(interval);
+            // Full page navigation (not router.push) so the NextAuth
+            // session is re-fetched with the updated onboardingComplete flag.
+            setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
           } else {
             // No gateway URL yet — configure still running
             updateStep("configure", "active");
