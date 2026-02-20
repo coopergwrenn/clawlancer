@@ -21,7 +21,7 @@ interface WizardState {
 }
 
 type WizardAction =
-  | { type: "LOADED"; shouldShow: boolean; currentStep: number; botUsername: string | null; botConnected: boolean; gmailPopupActive: boolean; gmailConnected: boolean }
+  | { type: "LOADED"; shouldShow: boolean; currentStep: number; botUsername: string | null; botConnected: boolean; gmailPopupActive: boolean; gmailConnected: boolean; isRestart: boolean }
   | { type: "GO_TO_BOT_VERIFY" }
   | { type: "SKIP_BOT_VERIFY" }
   | { type: "BOT_VERIFIED" }
@@ -36,6 +36,17 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
       if (!action.shouldShow) return { ...state, phase: "done" };
       // If gmail popup is still active, wait (done state — we'll re-check)
       if (action.gmailPopupActive) return { ...state, phase: "done" };
+      // Sparkle button restart — skip welcome, go straight to tour
+      if (action.isRestart) {
+        return {
+          ...state,
+          phase: "tour",
+          tourStep: 0,
+          botUsername: action.botUsername,
+          botConnected: action.botConnected,
+          gmailConnected: action.gmailConnected,
+        };
+      }
       // Resume from saved step
       if (action.currentStep > 0) {
         return {
@@ -47,6 +58,7 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
           gmailConnected: action.gmailConnected,
         };
       }
+      // First-time: show welcome (with "Activate My Bot" or "Show Me Around")
       return {
         ...state,
         phase: "welcome",
@@ -106,10 +118,23 @@ export default function OnboardingWizard({
   const fetchedRef = useRef(false);
   const [restartTrigger, setRestartTrigger] = useState(0);
 
+  // Detect Gmail OAuth return during render (before effects replace the URL).
+  // If the user just came back from Google OAuth, the Gmail insights popup
+  // will be showing — the wizard must wait for it to finish.
+  const [gmailOAuthReturn] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("gmail_ready") === "1" || !!params.get("gmail_error");
+  });
+
+  // Track whether the current fetch is a sparkle-button restart vs initial load
+  const isRestartRef = useRef(false);
+
   // Listen for restart-wizard events (from the sparkle button in nav)
   useEffect(() => {
     const handler = () => {
       fetchedRef.current = false;
+      isRestartRef.current = true;
       setRestartTrigger((t) => t + 1);
     };
     window.addEventListener("instaclaw:restart-wizard", handler);
@@ -133,13 +158,18 @@ export default function OnboardingWizard({
   // Fetch wizard status on mount or restart
   useEffect(() => {
     if (fetchedRef.current) return;
+    // Gmail OAuth return in progress — wait for insights flow to finish
+    if (gmailOAuthReturn && !gmailDismissedRef.current) return;
     fetchedRef.current = true;
+
+    const restart = isRestartRef.current;
+    isRestartRef.current = false;
 
     (async () => {
       try {
         const res = await fetch("/api/onboarding/wizard-status");
         if (!res.ok) {
-          dispatch({ type: "LOADED", shouldShow: false, currentStep: 0, botUsername: null, botConnected: false, gmailPopupActive: false, gmailConnected: false });
+          dispatch({ type: "LOADED", shouldShow: false, currentStep: 0, botUsername: null, botConnected: false, gmailPopupActive: false, gmailConnected: false, isRestart: restart });
           return;
         }
         const data = await res.json();
@@ -151,9 +181,10 @@ export default function OnboardingWizard({
           botConnected: data.botConnected ?? false,
           gmailPopupActive: gmailDismissedRef.current ? false : (!data.gmailPopupDismissed && !data.gmailConnected),
           gmailConnected: data.gmailConnected ?? false,
+          isRestart: restart,
         });
       } catch {
-        dispatch({ type: "LOADED", shouldShow: false, currentStep: 0, botUsername: null, botConnected: false, gmailPopupActive: false, gmailConnected: false });
+        dispatch({ type: "LOADED", shouldShow: false, currentStep: 0, botUsername: null, botConnected: false, gmailPopupActive: false, gmailConnected: false, isRestart: restart });
       }
     })();
   }, [restartTrigger]);

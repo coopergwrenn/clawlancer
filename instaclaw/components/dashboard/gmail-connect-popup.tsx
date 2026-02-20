@@ -157,6 +157,7 @@ export function GmailConnectPopup({
   }
 
   function handleDone() {
+    fetch("/api/gmail/dismiss", { method: "POST" }).catch(() => {});
     setVisible(false);
     onConnected();
     // Tell the onboarding wizard it can now show
