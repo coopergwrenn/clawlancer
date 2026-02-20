@@ -58,11 +58,12 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Count ready (unassigned) VMs
+  // Count ready (unassigned) Linode VMs only
   const { count: readyCount } = await supabase
     .from("instaclaw_vms")
     .select("*", { count: "exact", head: true })
-    .eq("status", "ready");
+    .eq("status", "ready")
+    .eq("provider", "linode");
 
   const ready = readyCount ?? 0;
 

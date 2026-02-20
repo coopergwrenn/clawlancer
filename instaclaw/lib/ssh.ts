@@ -442,6 +442,20 @@ export async function assignVMWithSSHCheck(
 
     if (error || !vm) return null; // No VMs available
 
+    // SAFETY: Only Linode VMs — reject and unassign anything else
+    if (vm.provider !== "linode") {
+      logger.warn("Non-Linode VM returned from assignment, rejecting", {
+        vmId: vm.id,
+        provider: vm.provider,
+        userId,
+      });
+      await supabase
+        .from("instaclaw_vms")
+        .update({ status: "failed", health_status: "unhealthy", assigned_to: null, assigned_at: null })
+        .eq("id", vm.id);
+      continue;
+    }
+
     // SSH connectivity check
     const sshOk = await checkSSHConnectivity({
       id: vm.id,
