@@ -857,40 +857,45 @@ export async function configureOpenClaw(
     ].join('\n');
     const pairingB64 = Buffer.from(pairingPython, 'utf-8').toString('base64');
 
-    // Optimized gateway start: install → start → sleep 2 → pair → restart
-    // (eliminates double start cycle, reduces sleeps from ~16s to ~4s)
+    // Gateway start sequence: install → start → sleep → pair AFTER start.
+    // IMPORTANT: Pairing must happen AFTER the final gateway start because
+    // a restart invalidates previous pairings (new identity generated).
     scriptParts.push(
       '# Install gateway as systemd service and start',
       'openclaw gateway install 2>/dev/null || true',
       'systemctl --user start openclaw-gateway 2>/dev/null || true',
       '',
-      '# Wait for gateway to initialize',
-      'sleep 2',
+      '# Fallback: if systemd not available, start with nohup',
+      'if ! systemctl --user is-active openclaw-gateway &>/dev/null; then',
+      `  nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'fi',
+      '',
+      '# Wait for gateway to initialize and bind to port',
+      'sleep 3',
       '',
       '# Auto-approve local device pairing (OpenClaw >=2026.2.9 requires this)',
       '# Trigger a health check to generate a pairing request, then wait for pending.json.',
       'openclaw gateway health --timeout 3000 2>/dev/null || true',
       '',
-      '# Poll for pending.json to appear (max 5 attempts instead of 10)',
+      '# Poll for pending.json to appear (max 5 attempts)',
       'PAIRING_TRIES=0',
       'while [ $PAIRING_TRIES -lt 5 ] && [ ! -s ~/.openclaw/devices/pending.json ]; do',
       '  sleep 1',
       '  PAIRING_TRIES=$((PAIRING_TRIES + 1))',
       'done',
       '',
+      '# Run auto-approve script',
       `echo '${pairingB64}' | base64 -d | python3 2>/dev/null || true`,
       '',
-      '# Restart gateway to pick up pairing approval',
-      'systemctl --user restart openclaw-gateway 2>/dev/null || true',
+      '# Log pairing result for debugging',
+      'echo "PAIRING_RESULT: paired.json=$(cat ~/.openclaw/devices/paired.json 2>/dev/null | wc -c) bytes, pending.json=$(cat ~/.openclaw/devices/pending.json 2>/dev/null | wc -c) bytes"',
       '',
-      '# Fallback: if systemd not available, start with nohup',
-      'if ! systemctl --user is-active openclaw-gateway &>/dev/null; then',
-      `  nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
-      '  sleep 2',
-      'fi',
+      '# Do NOT restart the gateway after pairing — restarts invalidate pairings.',
+      '# The gateway watches paired.json and picks up changes automatically.',
       '',
       '# Verify gateway is actually alive with a localhost health ping',
-      '# 3 attempts × 3s sleep = 9s max wait. The gateway needs time to bind after restart.',
+      '# 3 attempts × 3s sleep = 9s max wait.',
+      '# Do NOT restart the gateway here — it would invalidate the pairing we just set up.',
       'GATEWAY_ALIVE=false',
       'for ATTEMPT in 1 2 3; do',
       '  sleep 3',
@@ -900,10 +905,6 @@ export async function configureOpenClaw(
       '    break',
       '  fi',
       '  echo "GATEWAY_HEALTH_FAIL_ATTEMPT_$ATTEMPT"',
-      '  # Restart gateway on first failure to recover from startup issues',
-      '  if [ "$ATTEMPT" = "1" ]; then',
-      '    systemctl --user restart openclaw-gateway 2>/dev/null || true',
-      '  fi',
       'done',
       '',
       'if [ "$GATEWAY_ALIVE" = "true" ]; then',
@@ -1194,15 +1195,14 @@ export async function checkHealth(
   vm: VMRecord,
   gatewayToken?: string
 ): Promise<boolean> {
-  if (gatewayToken) assertSafeShellArg(gatewayToken, "gatewayToken");
   try {
     const ssh = await connectSSH(vm);
     try {
-      // Try "openclaw gateway health" first (>=2026.2.9), fall back to "openclaw health" (older)
-      const tokenArg = gatewayToken ? ` --token '${gatewayToken}'` : '';
-      const cmd = `${NVM_PREAMBLE} && (openclaw gateway health${tokenArg} 2>/dev/null || openclaw health${tokenArg})`;
+      // Use HTTP curl to check gateway health. This is more reliable than
+      // `openclaw gateway health` (WebSocket) which requires device pairing.
+      const cmd = `curl -s -m 5 -o /dev/null -w '%{http_code}' http://localhost:${GATEWAY_PORT}/health`;
       const result = await ssh.execCommand(cmd);
-      return result.code === 0;
+      return result.stdout.trim() === "200";
     } finally {
       ssh.dispose();
     }
@@ -1215,29 +1215,29 @@ export async function checkHealthExtended(
   vm: VMRecord,
   gatewayToken?: string
 ): Promise<{ healthy: boolean; largestSessionBytes: number }> {
-  if (gatewayToken) assertSafeShellArg(gatewayToken, "gatewayToken");
   try {
     const ssh = await connectSSH(vm);
     try {
-      const tokenArg = gatewayToken ? ` --token '${gatewayToken}'` : '';
-      // Single SSH command: health check + largest session file size
+      // Single SSH command: HTTP health check + largest session file size.
+      // Uses curl instead of `openclaw gateway health` because the CLI
+      // command requires device pairing (WebSocket), but curl checks the
+      // HTTP endpoint directly — a more reliable health signal.
       const cmd = [
-        NVM_PREAMBLE,
-        `&& (openclaw gateway health${tokenArg} 2>/dev/null || openclaw health${tokenArg})`,
-        '; echo "EXIT:$?"',
+        `HTTP_CODE=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://localhost:${GATEWAY_PORT}/health)`,
+        `; echo "HTTP:$HTTP_CODE"`,
         // Report largest .jsonl session file size in bytes (or 0 if none)
-        '&& du -b ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | sort -rn | head -1 | cut -f1 || echo "0"',
+        '; du -b ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | sort -rn | head -1 | cut -f1 || echo "0"',
       ].join(' ');
       const result = await ssh.execCommand(cmd);
 
-      const exitMatch = result.stdout.match(/EXIT:(\d+)/);
-      const healthy = exitMatch ? exitMatch[1] === "0" : result.code === 0;
+      const httpMatch = result.stdout.match(/HTTP:(\d+)/);
+      const healthy = httpMatch ? httpMatch[1] === "200" : false;
 
-      // Parse largest session size from output lines after EXIT marker
+      // Parse largest session size from output lines after HTTP marker
       let largestSessionBytes = 0;
       const lines = result.stdout.split('\n');
       for (const line of lines) {
-        if (line.match(/EXIT:/)) continue;
+        if (line.match(/HTTP:/)) continue;
         const sizeNum = parseInt(line.trim(), 10);
         if (!isNaN(sizeNum) && sizeNum > largestSessionBytes) {
           largestSessionBytes = sizeNum;
