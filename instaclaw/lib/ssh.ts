@@ -569,7 +569,7 @@ export async function configureOpenClaw(
       '',
       '# Kill any existing gateway process (both the runner and the binary)',
       'pkill -f "openclaw-gateway" 2>/dev/null || true',
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
       '',
       '# Clear stale device pairing state (OpenClaw >=2026.2.9 requires device pairing)',
@@ -1226,13 +1226,10 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
     }
 
     // 3g. Restart gateway ONLY if system-prompt.md was modified
+    // Use systemd so Restart=always protects against future crashes
     if (systemPromptModified) {
-      await ssh.execCommand(`${NVM_PREAMBLE} && openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true`);
-      await new Promise((r) => setTimeout(r, 2000));
-      await ssh.execCommand(
-        `${NVM_PREAMBLE} && nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`
-      );
-      await new Promise((r) => setTimeout(r, 3000));
+      await ssh.execCommand('systemctl --user restart openclaw-gateway 2>/dev/null || (pkill -9 -f "openclaw-gateway" 2>/dev/null; sleep 2; systemctl --user start openclaw-gateway) || true');
+      await new Promise((r) => setTimeout(r, 5000));
       fixed.push('gateway restarted');
     }
 
@@ -1247,17 +1244,18 @@ export async function clearSessions(vm: VMRecord): Promise<boolean> {
     const ssh = await connectSSH(vm);
     try {
       const cmd = [
-        NVM_PREAMBLE,
         // Back up openclaw.json before restart (gateway --force can wipe channel config)
-        '&& cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
+        'cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
+        // Stop via systemd (keeps Restart=always working for future crashes)
+        '&& (systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
         '&& rm -f ~/.openclaw/agents/main/sessions/*.jsonl ~/.openclaw/agents/main/sessions/sessions.json',
-        '&& (openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
         // Ephemeral browser: kill Chrome + clear session restore data
         `&& ${CHROME_CLEANUP}`,
         '&& sleep 2',
         // Restore config to prevent onboard wizard from wiping channels
         '&& cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
-        `&& nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+        // Start via systemd so Restart=always protects against future crashes
+        '&& systemctl --user start openclaw-gateway',
       ].join(' ');
       const result = await ssh.execCommand(cmd);
       return result.code === 0;
@@ -1318,15 +1316,15 @@ except Exception:
 " 2>/dev/null || true`
       );
 
-      // Stop gateway, kill Chrome, restore config, restart
+      // Stop gateway, kill Chrome, restore config, restart via systemd
       const restartCmd = [
-        NVM_PREAMBLE,
-        '&& (openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
+        '(systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
         // Ephemeral browser: kill Chrome + clear session restore data
         `&& ${CHROME_CLEANUP}`,
         '&& sleep 2',
         '&& cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
-        `&& nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+        // Start via systemd so Restart=always protects against future crashes
+        '&& systemctl --user start openclaw-gateway',
       ].join(' ');
       const result = await ssh.execCommand(restartCmd);
       return result.code === 0;
@@ -1431,9 +1429,9 @@ export async function updateModel(vm: VMRecord, model: string): Promise<boolean>
       NVM_PREAMBLE,
       `openclaw config set agents.defaults.model.primary '${openclawModel}'`,
       '# Restart gateway to pick up new model',
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       'sleep 5',
     ].join('\n');
 
@@ -1476,9 +1474,9 @@ export async function updateHeartbeatInterval(
         NVM_PREAMBLE,
         `openclaw config set agents.defaults.heartbeat.every '999h'`,
         "# Restart gateway to pick up new config",
-        'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+        'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
         "sleep 2",
-        `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+        'systemctl --user start openclaw-gateway',
         "sleep 5",
       ].join("\n");
 
@@ -1496,9 +1494,9 @@ export async function updateHeartbeatInterval(
       NVM_PREAMBLE,
       `openclaw config set agents.defaults.heartbeat.every '${interval}'`,
       "# Restart gateway to pick up new config",
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       "sleep 2",
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       "sleep 5",
     ].join("\n");
 
@@ -1562,14 +1560,12 @@ export async function updateMemoryMd(
       `rm -f $HOME/.openclaw/agents/main/sessions/*.jsonl $HOME/.openclaw/agents/main/sessions/sessions.json`
     );
 
-    // 6. Restart gateway to pick up new files
-    await ssh.execCommand(`${NVM_PREAMBLE} && openclaw gateway stop 2>/dev/null || true`);
+    // 6. Restart gateway to pick up new files (via systemd for Restart=always protection)
+    await ssh.execCommand('systemctl --user stop openclaw-gateway 2>/dev/null || true');
     await new Promise((r) => setTimeout(r, 2000));
-    await ssh.execCommand(`pkill -9 -f "openclaw-gateway" 2>/dev/null || true`);
+    await ssh.execCommand('pkill -9 -f "openclaw-gateway" 2>/dev/null || true');
     await new Promise((r) => setTimeout(r, 1000));
-    await ssh.execCommand(
-      `${NVM_PREAMBLE} && nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`
-    );
+    await ssh.execCommand('systemctl --user start openclaw-gateway');
     await new Promise((r) => setTimeout(r, 5000));
   } finally {
     ssh.dispose();
@@ -1698,9 +1694,9 @@ export async function updateSystemPrompt(
     const script = [
       '#!/bin/bash',
       NVM_PREAMBLE,
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       'sleep 3',
     ].join('\n');
     await ssh.execCommand(`cat > /tmp/ic-sysprompt.sh << 'ICEOF'\n${script}\nICEOF`);
@@ -1741,9 +1737,9 @@ export async function updateApiKey(
       'mkdir -p "$AUTH_DIR"',
       `echo '${authB64}' | base64 -d > "$AUTH_DIR/auth-profiles.json"`,
       '',
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       'sleep 3',
     ].join('\n');
     await ssh.execCommand(`cat > /tmp/ic-apikey.sh << 'ICEOF'\n${script}\nICEOF`);
@@ -1895,9 +1891,9 @@ export async function updateToolPermissions(
       '#!/bin/bash',
       NVM_PREAMBLE,
       ...commands,
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       'sleep 3',
     ].join('\n');
     await ssh.execCommand(`cat > /tmp/ic-tools.sh << 'ICEOF'\n${script}\nICEOF`);
@@ -2177,9 +2173,9 @@ export async function updateChannelToken(
       '#!/bin/bash',
       NVM_PREAMBLE,
       ...configCmds,
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       'sleep 3',
     ].join('\n');
 
@@ -2195,17 +2191,18 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
   try {
     const script = [
       '#!/bin/bash',
-      NVM_PREAMBLE,
       '# Back up config before restart',
       'cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      '# Stop via systemd (keeps Restart=always working for future crashes)',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'pkill -f "acp serve" 2>/dev/null || true',
       `# Ephemeral browser: kill Chrome + clear session restore data`,
       CHROME_CLEANUP,
       'sleep 2',
       '# Restore config to prevent onboard wizard from wiping channels',
       'cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      '# Start via systemd so Restart=always protects against future crashes',
+      'systemctl --user start openclaw-gateway',
       'sleep 5',
       '# Auto-start acp serve if aGDP is installed and authenticated',
       `if [ -d "${AGDP_DIR}" ] && [ -f "${AGDP_DIR}/config.json" ]; then`,
@@ -2239,8 +2236,8 @@ export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> 
       '#!/bin/bash',
       NVM_PREAMBLE,
       '',
-      '# Stop the gateway (systemd service AND any rogue nohup processes)',
-      'openclaw gateway stop 2>/dev/null || true',
+      '# Stop the gateway via systemd (keeps Restart=always working)',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || true',
       'pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
       '',
@@ -2277,13 +2274,9 @@ export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> 
       '# Write CAPABILITIES.md (read-only reference, always present after reset)',
       `echo '${resetCapB64}' | base64 -d > "$HOME/.openclaw/workspace/CAPABILITIES.md"`,
       '',
-      '# Restart gateway (try systemd first, fallback to nohup)',
-      'systemctl --user start openclaw-gateway 2>/dev/null || true',
-      'sleep 3',
-      'if ! pgrep -f "openclaw-gateway" &>/dev/null; then',
-      `  nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
-      '  sleep 5',
-      'fi',
+      '# Restart gateway via systemd (Restart=always protects against future crashes)',
+      'systemctl --user start openclaw-gateway',
+      'sleep 5',
       '# Auto-start acp serve if aGDP is installed and authenticated',
       `if [ -d "${AGDP_DIR}" ] && [ -f "${AGDP_DIR}/config.json" ]; then`,
       `  cd "${AGDP_DIR}" && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 &`,
@@ -2320,7 +2313,7 @@ export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> 
 export async function stopGateway(vm: VMRecord): Promise<boolean> {
   const ssh = await connectSSH(vm);
   try {
-    await ssh.execCommand(`${NVM_PREAMBLE} && openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true`);
+    await ssh.execCommand('systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true');
     return true; // Always succeed, even if gateway wasn't running
   } finally {
     ssh.dispose();
@@ -2332,8 +2325,8 @@ export async function startGateway(vm: VMRecord): Promise<boolean> {
   try {
     const script = [
       '#!/bin/bash',
-      NVM_PREAMBLE,
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      '# Start via systemd so Restart=always protects against future crashes',
+      'systemctl --user start openclaw-gateway',
       'sleep 5',
       '# Auto-start acp serve if aGDP is installed and authenticated',
       `if [ -d "${AGDP_DIR}" ] && [ -f "${AGDP_DIR}/config.json" ]; then`,
@@ -2441,9 +2434,9 @@ export async function installAgdpSkill(vm: VMRecord): Promise<void> {
       'fi',
       '',
       '# Restart gateway to pick up changes',
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       'sleep 3',
       '',
       '# Start acp serve if auth is already complete (fails silently otherwise)',
@@ -2485,9 +2478,9 @@ export async function uninstallAgdpSkill(vm: VMRecord): Promise<void> {
       'fi',
       '',
       '# Restart gateway to pick up changes',
-      'openclaw gateway stop 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
-      `nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
+      'systemctl --user start openclaw-gateway',
       'sleep 3',
       '',
       'echo "AGDP_UNINSTALL_DONE"',
