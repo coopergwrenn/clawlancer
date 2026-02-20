@@ -14,10 +14,10 @@ export async function POST() {
 
     const supabase = getSupabase();
 
-    // Get user's VM — must be in configure_failed state
+    // Get user's VM
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, health_status, configure_attempts")
+      .select("id, health_status, configure_attempts, gateway_url")
       .eq("assigned_to", session.user.id)
       .single();
 
@@ -25,9 +25,13 @@ export async function POST() {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
     }
 
-    // Allow retry from failed, configuring, or unknown states
+    // Allow retry from failed, configuring, or unknown states.
+    // Also allow retry when gateway_url is missing — this handles the case
+    // where the initial configure request was aborted (e.g. Vercel freeze)
+    // and the VM still shows stale health_status from a previous config.
     const retryableStates = ["configure_failed", "configuring", "unknown", "unhealthy"];
-    if (!retryableStates.includes(vm.health_status ?? "unknown")) {
+    const needsConfigure = !vm.gateway_url;
+    if (!needsConfigure && !retryableStates.includes(vm.health_status ?? "unknown")) {
       return NextResponse.json(
         { error: "VM is not in a retryable state" },
         { status: 400 }
@@ -41,19 +45,10 @@ export async function POST() {
       );
     }
 
-    // Verify pending config exists
-    const { data: pending } = await supabase
-      .from("instaclaw_pending_users")
-      .select("id")
-      .eq("user_id", session.user.id)
-      .single();
-
-    if (!pending) {
-      return NextResponse.json(
-        { error: "No pending configuration found" },
-        { status: 404 }
-      );
-    }
+    // Pending config is optional — the configure endpoint handles missing
+    // pending records by falling back to subscription/VM defaults. This is
+    // important because a previous partial configure attempt may have already
+    // consumed (deleted) the pending record.
 
     // Fire-and-forget the configure call.
     // Returns immediately so the deploying page can resume polling.

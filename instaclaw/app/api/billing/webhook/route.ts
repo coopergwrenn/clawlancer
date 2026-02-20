@@ -6,9 +6,10 @@ import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialE
 import { logger } from "@/lib/logger";
 
 // Give the function enough time for background processing via after().
-// Default Vercel timeout (10s) was causing 499s — Stripe closed the
-// connection before the handler could respond.
-export const maxDuration = 30;
+// The response to Stripe is sent immediately (line 43) — maxDuration only
+// controls how long the after() callback can run. Needs enough headroom for
+// assignVMWithSSHCheck (~10s) + awaiting the configure endpoint (~50s).
+export const maxDuration = 90;
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -139,23 +140,24 @@ async function processEvent(event: any) {
       const vm = await assignVMWithSSHCheck(userId);
 
       if (vm) {
-        // VM assigned — fire-and-forget configuration.
-        // The configure endpoint runs in its own serverless invocation,
-        // so we don't need to await it. This prevents the webhook from
-        // timing out (Stripe expects a response within ~20s).
-        fetch(
-          `${process.env.NEXTAUTH_URL}/api/vm/configure`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-            },
-            body: JSON.stringify({ userId }),
-          }
-        ).catch((err) => {
-          logger.error("VM configure fire-and-forget failed", { error: String(err), route: "billing/webhook", userId });
-        });
+        // VM assigned — trigger configuration. We await the fetch to
+        // guarantee the HTTP request reaches the configure endpoint.
+        // This runs inside after() so the Stripe response is already sent.
+        try {
+          await fetch(
+            `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+              },
+              body: JSON.stringify({ userId }),
+            }
+          );
+        } catch (err) {
+          logger.error("VM configure call failed", { error: String(err), route: "billing/webhook", userId });
+        }
       }
       // If no VM available, send pending email
       if (!vm) {

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
@@ -113,20 +113,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // VM assigned! Trigger configuration (fire-and-forget)
-    fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-      },
-      body: JSON.stringify({ userId }),
-    }).catch((err) => {
-      logger.error("VM configure fire-and-forget failed", {
-        error: String(err),
-        route: "checkout/verify",
-        userId,
-      });
+    // VM assigned! Trigger configuration via after() to guarantee the
+    // request survives past the response. A bare non-awaited fetch() can
+    // be aborted when Vercel freezes the function after sending the response.
+    after(async () => {
+      try {
+        await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+          },
+          body: JSON.stringify({ userId }),
+        });
+      } catch (err) {
+        logger.error("VM configure after() failed", {
+          error: String(err),
+          route: "checkout/verify",
+          userId,
+        });
+      }
     });
 
     logger.info("Checkout verified and VM assigned", {
