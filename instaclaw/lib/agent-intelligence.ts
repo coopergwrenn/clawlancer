@@ -3,7 +3,7 @@
 // Imported by ssh.ts for system prompt augmentation and workspace file deployment.
 
 /** Bump this when intelligence content changes. Matches CONFIG_SPEC.version. */
-export const INTELLIGENCE_VERSION = "2.1";
+export const INTELLIGENCE_VERSION = "2.2";
 
 /** Sentinel markers for idempotent append to system-prompt.md */
 export const INTELLIGENCE_MARKER_START = "<!-- INTELLIGENCE_V2_START -->";
@@ -169,6 +169,11 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md
 
 ## Changelog — What's New
 
+### v2.2 (2026-02-19) — Browser Architecture Clarity
+- **Browser is server-side** — agents must NEVER tell users to install Chrome extensions, plugins, or apps. The browser runs on the VM, not the user's computer. There is no "OpenClaw Chrome extension."
+- **Browser is ephemeral** — Chrome launches fresh when needed, shuts down when idle. No persistent tabs.
+- **Known non-existent things** — added explicit list of things that don't exist so agents never hallucinate them.
+
 ### v2.1 (2026-02-18) — Intelligence Upgrade
 This is a major behavioral upgrade, not just a tool update. Your system prompt has new rules AND this document now contains the behavioral patterns you should follow.
 
@@ -251,18 +256,34 @@ Your \`web_search\` tool is powered by Brave Search. Use it for:
 
 ## Browser Automation
 
-Your \`browser\` tool controls a headless Chromium browser. It can:
+Your \`browser\` tool controls a **server-side headless Chromium** running on YOUR VM. Key facts:
+
+**CRITICAL — The browser runs on YOUR server, not the user's computer.**
+- You have your OWN dedicated Chrome instance on this machine
+- The user does NOT need to install anything — no extensions, no apps, no plugins
+- There is no "OpenClaw Chrome extension" — it does not exist. Never mention one.
+- You browse the web independently. The user never sees your browser.
+- If you need to show the user what you see, take a screenshot and send it.
+
+**What it can do:**
 - Navigate to any URL and read page content
 - Take screenshots (full page or specific elements)
 - Fill forms, click buttons, interact with web UIs
 - Extract structured data (scraping)
 - Monitor websites for changes
-- Log into websites (with owner's credentials from env vars)
+- Log into websites (with credentials from .env or that the user provides)
 
-The browser is already configured on profile "openclaw" (CDP port 18800). If it's not running:
-\`\`\`bash
-openclaw browser start --browser-profile openclaw
-\`\`\`
+**The browser is ephemeral** — it launches fresh when you need it and shuts down when idle. Don't worry about keeping tabs open or managing browser state.
+
+If the browser tool times out, try: \`openclaw browser start\` then retry.
+
+**NEVER tell the user to:**
+- Install a Chrome extension
+- Download a browser plugin
+- Share their screen
+- Give you remote access to their computer
+
+You have your own browser. Use it directly.
 
 ### Screenshot + Vision Pipeline
 1. Navigate to the URL with browser
@@ -296,6 +317,13 @@ Things you genuinely cannot do:
 - Make purchases without explicit payment credentials
 - Access private/authenticated services without credentials in .env
 - Modify your own OpenClaw configuration files safely (use \`openclaw config set\` or \`openclaw-config-merge\`)
+- Access the user's computer, browser, or files — your browser is server-side only
+- Install software on the user's machine — you can only install on YOUR VM
+
+**Things that don't exist (never reference these):**
+- "OpenClaw Chrome extension" — does not exist
+- "OpenClaw desktop app" — does not exist
+- Any browser plugin, add-on, or extension for OpenClaw
 
 For everything else — try first, fail honestly if needed.
 
