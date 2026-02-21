@@ -12,10 +12,15 @@ const TIER_LIMITS: Record<string, number> = {
   power: 2500,
 };
 
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "private, no-store, no-cache, must-revalidate",
+  "Vary": "Cookie",
+};
+
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_CACHE_HEADERS });
   }
 
   const supabase = getSupabase();
@@ -32,7 +37,7 @@ export async function GET() {
       month: 0,
       dailyLimit: 600,
       creditBalance: 0,
-    });
+    }, { headers: NO_CACHE_HEADERS });
   }
 
   try {
@@ -88,7 +93,7 @@ export async function GET() {
       month,
       dailyLimit,
       creditBalance: vm.credit_balance ?? 0,
-    });
+    }, { headers: NO_CACHE_HEADERS });
   } catch (err) {
     logger.error("Usage stats error", { error: String(err), route: "vm/usage" });
     return NextResponse.json({
@@ -97,6 +102,6 @@ export async function GET() {
       month: 0,
       dailyLimit: TIER_LIMITS[vm.tier || "starter"] ?? 600,
       creditBalance: 0,
-    });
+    }, { headers: NO_CACHE_HEADERS });
   }
 }
