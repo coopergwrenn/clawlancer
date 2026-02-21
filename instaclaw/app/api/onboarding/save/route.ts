@@ -153,9 +153,16 @@ export async function POST(req: NextRequest) {
 
     // Save timezone directly to instaclaw_users (permanent, not pending)
     if (timezone && typeof timezone === "string") {
+      let validatedTz = "America/New_York";
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: timezone });
+        validatedTz = timezone;
+      } catch {
+        // Invalid IANA timezone string — fall back to default
+      }
       await supabase
         .from("instaclaw_users")
-        .update({ user_timezone: timezone })
+        .update({ user_timezone: validatedTz })
         .eq("id", session.user.id);
     }
 
