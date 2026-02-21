@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
+  ExternalLink,
   RefreshCw,
   Send,
   Activity,
@@ -708,6 +709,27 @@ export default function DashboardPage() {
               Quick Actions
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
+              {vm.controlUiUrl && (
+                <a
+                  href={vm.controlUiUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="glass rounded-xl p-4 flex items-center gap-3 transition-all hover:border-white/30"
+                  style={{ border: "1px solid var(--border)" }}
+                >
+                  <ExternalLink className="w-5 h-5" style={{ color: "#333334" }} />
+                  <div>
+                    <p className="text-sm font-semibold">Control Panel</p>
+                    <p
+                      className="text-xs"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      Open OpenClaw UI
+                    </p>
+                  </div>
+                </a>
+              )}
+
               {vm.telegramBotUsername && (
                 <a
                   href={`https://t.me/${vm.telegramBotUsername}`}
