@@ -419,7 +419,7 @@ function buildOpenClawConfig(
       port: GATEWAY_PORT,
       bind: "lan",
       auth: {
-        mode: "token",
+        mode: "none",
         token: gatewayToken,
       },
       trustedProxies: ["127.0.0.1", "::1"],
@@ -852,8 +852,9 @@ export async function configureOpenClaw(
       'try:',
       '  with open(af) as f: paired = json.load(f)',
       'except: paired = {}',
+      'ALL_SCOPES = ["operator.admin","operator.approvals","operator.pairing","operator.read","operator.write","operator.talk"]',
       'for rid, req in pending.items():',
-      '  paired[req["deviceId"]] = {"deviceId":req["deviceId"],"publicKey":req.get("publicKey",""),"role":req.get("role","operator"),"roles":req.get("roles",["operator"]),"scopes":req.get("scopes",[]),"approvedAt":req.get("ts",0),"platform":req.get("platform","linux")}',
+      '  paired[req["deviceId"]] = {"deviceId":req["deviceId"],"publicKey":req.get("publicKey",""),"role":"operator","roles":["operator"],"scopes":ALL_SCOPES,"approvedAt":req.get("ts",0),"platform":req.get("platform","linux")}',
       'with open(af, "w") as f: json.dump(paired, f)',
     ].join('\n');
     const pairingB64 = Buffer.from(pairingPython, 'utf-8').toString('base64');
