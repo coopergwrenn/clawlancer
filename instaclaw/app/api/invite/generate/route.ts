@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 // Characters that avoid 0/O, 1/I confusion
 const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 

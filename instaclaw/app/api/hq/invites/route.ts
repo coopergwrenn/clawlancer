@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   if (!(await verifyHQAuth())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

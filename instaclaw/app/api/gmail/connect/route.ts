@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const GMAIL_STATE_COOKIE = "ic_gmail_state";
 
 /**

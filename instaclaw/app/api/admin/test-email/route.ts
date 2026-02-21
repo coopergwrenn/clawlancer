@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { sendInviteEmail, buildInviteEmailHtml } from "@/lib/email";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!isAdmin(session?.user?.email)) {

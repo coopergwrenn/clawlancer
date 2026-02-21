@@ -3,6 +3,8 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { CLOUD_INIT_SENTINEL } from "@/lib/cloud-init";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**

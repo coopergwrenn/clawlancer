@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
 async function hogql(query: string, apiKey: string) {

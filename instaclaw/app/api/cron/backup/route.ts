@@ -3,6 +3,8 @@ import { getSupabase } from "@/lib/supabase";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {

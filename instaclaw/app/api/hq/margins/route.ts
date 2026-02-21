@@ -3,6 +3,9 @@ import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
 import { TIER_DISPLAY, type Tier, type ApiMode } from "@/lib/stripe";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const VM_MONTHLY_COST: Record<string, number> = {
   hetzner: 9,
   digitalocean: 24,

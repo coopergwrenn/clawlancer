@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
 export async function GET() {

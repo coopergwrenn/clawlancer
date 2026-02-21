@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const supabase = getSupabase();

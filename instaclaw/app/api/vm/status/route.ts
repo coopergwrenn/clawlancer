@@ -6,6 +6,8 @@ import { logger } from "@/lib/logger";
 
 // This endpoint is polled every 2s by the deploying page. Keep it fast —
 // Supabase queries only, NO external API calls (Stripe, Telegram, etc.).
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 export async function GET() {

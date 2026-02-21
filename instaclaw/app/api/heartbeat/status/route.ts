@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const HEARTBEAT_BUFFER = 200;
 
 export async function GET() {

@@ -5,6 +5,9 @@ import { encryptApiKey, decryptApiKey } from "@/lib/security";
 import { updateEnvVars } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const VAR_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
 const MAX_VARS_PER_USER = 50;
 const MAX_VALUE_LENGTH = 500;

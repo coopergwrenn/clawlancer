@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/library/saved-messages
  * Returns the set of chat message IDs that are already saved to the library.

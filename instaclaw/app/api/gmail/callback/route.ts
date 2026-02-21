@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const GMAIL_TOKEN_COOKIE = "ic_gmail_token";
 const GMAIL_STATE_COOKIE = "ic_gmail_state";
 const TOKEN_MAX_AGE_SECONDS = 300;

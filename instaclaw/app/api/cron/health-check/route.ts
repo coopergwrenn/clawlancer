@@ -4,6 +4,9 @@ import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGatewa
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
 const SSH_QUARANTINE_THRESHOLD = 3; // Auto-quarantine after 3 consecutive SSH failures
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment

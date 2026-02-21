@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

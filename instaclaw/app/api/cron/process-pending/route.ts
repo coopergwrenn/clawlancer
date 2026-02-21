@@ -4,6 +4,9 @@ import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 const MAX_CONFIGURE_ATTEMPTS = 3;
 
 export async function GET(req: NextRequest) {

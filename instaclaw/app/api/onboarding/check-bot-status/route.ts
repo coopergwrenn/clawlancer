@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { discoverTelegramChatId } from "@/lib/telegram";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) {

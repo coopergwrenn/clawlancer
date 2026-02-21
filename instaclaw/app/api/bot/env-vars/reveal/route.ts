@@ -4,6 +4,9 @@ import { getSupabase } from "@/lib/supabase";
 import { decryptApiKey } from "@/lib/security";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 // Simple in-memory rate limiter for reveal endpoint
 const revealCounts = new Map<string, { count: number; resetAt: number }>();
 

@@ -4,6 +4,9 @@ import { getSupabase } from "@/lib/supabase";
 import { manageCrontab } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
+// Prevent Vercel CDN from caching per-user responses
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const session = await auth();
