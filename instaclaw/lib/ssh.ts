@@ -419,7 +419,7 @@ function buildOpenClawConfig(
       port: GATEWAY_PORT,
       bind: "lan",
       auth: {
-        mode: "none",
+        mode: "token",
         token: gatewayToken,
       },
       trustedProxies: ["127.0.0.1", "::1"],
