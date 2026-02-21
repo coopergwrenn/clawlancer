@@ -303,6 +303,13 @@ export default function DashboardPage() {
   const usagePct = usage ? Math.min(100, (usage.today / usage.dailyLimit) * 100) : 0;
   const usageBarColor = usagePct >= 90 ? "#ef4444" : usagePct >= 70 ? "#f59e0b" : "var(--success)";
 
+  // Daily usage resets at midnight UTC — show user their local equivalent
+  const resetTimeLocal = (() => {
+    const nextMidnightUTC = new Date();
+    nextMidnightUTC.setUTCHours(24, 0, 0, 0);
+    return nextMidnightUTC.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  })();
+
   return (
     <div className="space-y-10">
       <div>
@@ -467,8 +474,8 @@ export default function DashboardPage() {
                 />
               </div>
 
-              {/* Week / Month stats */}
-              <div className="flex gap-6 mb-0">
+              {/* Week / Month stats + reset time */}
+              <div className="flex items-center gap-6 mb-0">
                 <div className="flex items-center gap-2">
                   <span className="text-xs" style={{ color: "var(--muted)" }}>7d</span>
                   <span className="text-sm font-semibold">{usage.week}</span>
@@ -476,6 +483,11 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-xs" style={{ color: "var(--muted)" }}>30d</span>
                   <span className="text-sm font-semibold">{usage.month}</span>
+                </div>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>
+                    Resets at {resetTimeLocal}
+                  </span>
                 </div>
               </div>
 
