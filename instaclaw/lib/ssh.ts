@@ -5,6 +5,7 @@ import {
   INTELLIGENCE_MARKER_START,
   SYSTEM_PROMPT_INTELLIGENCE_BLOCKS,
   WORKSPACE_CAPABILITIES_MD,
+  WORKSPACE_QUICK_REFERENCE_MD,
   WORKSPACE_TOOLS_MD_TEMPLATE,
   AGENTS_MD_PHILOSOPHY_SECTION,
   SOUL_MD_LEARNED_PREFERENCES,
@@ -237,8 +238,9 @@ If continuing an ongoing conversation, skip the greeting and just keep going.
 1. Check if \\\`BOOTSTRAP.md\\\` exists and hasn't been consumed — if so, follow it
 2. Read \\\`SOUL.md\\\` — this is who you are
 3. Read \\\`USER.md\\\` — this is who you're helping
-4. Read \\\`memory/YYYY-MM-DD.md\\\` (today + yesterday) for recent context
-5. If in main session (direct chat): also read \\\`MEMORY.md\\\`
+4. **Read \\\`CAPABILITIES.md\\\` — this is what you can do**
+5. Read \\\`memory/YYYY-MM-DD.md\\\` (today + yesterday) for recent context
+6. If in main session (direct chat): also read \\\`MEMORY.md\\\`
 
 Don't ask permission. Just do it.
 
@@ -258,6 +260,22 @@ Don't ask permission. Just do it.
 **Error handling:** Fix routine errors immediately. For security, data loss, or money — ask first.
 
 **Config safety:** Always back up files before modifying. For unfamiliar systems, read docs first.
+
+## Before Saying "I Can't"
+
+You are a resourceful, autonomous agent. Your default is "yes, let me figure that out."
+
+**Mandatory checklist before refusing any request:**
+
+1. Did I check CAPABILITIES.md?
+2. Did I check TOOLS.md?
+3. Did I run \\\`mcporter list\\\` to see available MCP tools?
+4. Did I try at least one approach?
+5. Did I check if this is a skill I should load and read?
+
+**Only after all 5 checks** can you say "I can't do this, here's why..."
+
+You have a full machine. Shell, browser, file system, MCP tools, web fetch, code execution. The answer is almost never "I can't" — it's "let me try."
 
 ## Vibe
 
@@ -931,6 +949,7 @@ export async function configureOpenClaw(
     // SOUL.md now includes identity section, operating principles, and learned preferences
     const soulB64 = Buffer.from(WORKSPACE_SOUL_MD, 'utf-8').toString('base64');
     const capabilitiesB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');
+    const quickRefB64 = Buffer.from(WORKSPACE_QUICK_REFERENCE_MD, 'utf-8').toString('base64');
     const toolsB64 = Buffer.from(WORKSPACE_TOOLS_MD_TEMPLATE, 'utf-8').toString('base64');
     const indexScriptB64 = Buffer.from(WORKSPACE_INDEX_SCRIPT, 'utf-8').toString('base64');
 
@@ -938,8 +957,9 @@ export async function configureOpenClaw(
       '# Write custom workspace files (SOUL.md — now includes identity + operating principles)',
       `echo '${soulB64}' | base64 -d > "${workspaceDir}/SOUL.md"`,
       '',
-      '# Write intelligence workspace files (CAPABILITIES.md, TOOLS.md, index script)',
+      '# Write intelligence workspace files (CAPABILITIES.md, QUICK-REFERENCE.md, TOOLS.md, index script)',
       `echo '${capabilitiesB64}' | base64 -d > "${workspaceDir}/CAPABILITIES.md"`,
+      `echo '${quickRefB64}' | base64 -d > "${workspaceDir}/QUICK-REFERENCE.md"`,
       `echo '${toolsB64}' | base64 -d > "${workspaceDir}/TOOLS.md"`,
       'mkdir -p "$HOME/.openclaw/scripts"',
       `echo '${indexScriptB64}' | base64 -d > "$HOME/.openclaw/scripts/generate_workspace_index.sh"`,
@@ -1489,6 +1509,10 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
       const idx = missingFiles.indexOf('CAPABILITIES.md');
       if (idx >= 0) missingFiles.splice(idx, 1);
     }
+
+    // 3a2. Write QUICK-REFERENCE.md (always overwrite — read-only lookup card)
+    const qrefB64 = Buffer.from(WORKSPACE_QUICK_REFERENCE_MD, 'utf-8').toString('base64');
+    await ssh.execCommand(`echo '${qrefB64}' | base64 -d > ${workspaceDir}/QUICK-REFERENCE.md`);
 
     // 3b. Write TOOLS.md only if missing (agent-editable, never overwrite)
     const toolsCheck = await ssh.execCommand(`test -f ${workspaceDir}/TOOLS.md && echo exists || echo missing`);
@@ -2694,6 +2718,9 @@ export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> 
       '',
       '# Write CAPABILITIES.md (read-only reference, always present after reset)',
       `echo '${resetCapB64}' | base64 -d > "$HOME/.openclaw/workspace/CAPABILITIES.md"`,
+      '',
+      '# Write QUICK-REFERENCE.md (read-only lookup card)',
+      `echo '${Buffer.from(WORKSPACE_QUICK_REFERENCE_MD, 'utf-8').toString('base64')}' | base64 -d > "$HOME/.openclaw/workspace/QUICK-REFERENCE.md"`,
       '',
       '# Restart gateway via systemd (Restart=always protects against future crashes)',
       'systemctl --user start openclaw-gateway',
