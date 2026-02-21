@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { botToken, discordToken, channels, apiMode, apiKey, tier, model } = await req.json();
+    const { botToken, discordToken, channels, apiMode, apiKey, tier, model, timezone } = await req.json();
 
     const supabase = getSupabase();
 
@@ -149,6 +149,14 @@ export async function POST(req: NextRequest) {
         { error: "Failed to save configuration" },
         { status: 500 }
       );
+    }
+
+    // Save timezone directly to instaclaw_users (permanent, not pending)
+    if (timezone && typeof timezone === "string") {
+      await supabase
+        .from("instaclaw_users")
+        .update({ user_timezone: timezone })
+        .eq("id", session.user.id);
     }
 
     return NextResponse.json({

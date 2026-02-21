@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     let gmailProfileSummary: string | undefined;
     const { data: userProfile } = await supabase
       .from("instaclaw_users")
-      .select("gmail_profile_summary, gmail_insights")
+      .select("gmail_profile_summary, gmail_insights, user_timezone")
       .eq("id", userId)
       .single();
 
@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
       .update({
         telegram_bot_username: pending?.telegram_bot_username ?? vm.telegram_bot_username ?? null,
         configure_attempts: 0,
+        user_timezone: userProfile?.user_timezone ?? vm.user_timezone ?? 'America/New_York',
       })
       .eq("id", vm.id);
 

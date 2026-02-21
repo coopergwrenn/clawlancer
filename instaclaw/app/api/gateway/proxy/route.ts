@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone")
       .eq("gateway_token", gatewayToken)
       .single();
 
@@ -233,8 +233,12 @@ export async function POST(req: NextRequest) {
       requestedModel = vm.default_model || "minimax-m2.5";
     }
 
-    // --- Global daily spend circuit breaker ---
+    // --- Global daily spend circuit breaker (always UTC) ---
     const todayStr = new Date().toISOString().split("T")[0];
+
+    // --- User's local date for per-user limit checks ---
+    const userTz = vm.user_timezone || "America/New_York";
+    const userTodayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTz });
     const { data: totalUsageRows } = await supabase
       .from("instaclaw_daily_usage")
       .select("message_count")
@@ -266,7 +270,7 @@ export async function POST(req: NextRequest) {
       }
 
       return friendlyAssistantResponse(
-        "Hey! The platform is at capacity for today. Service resets at midnight UTC. In the meantime, you can switch to Haiku for basic tasks — just ask me to \"use Haiku\" and I'll switch models.\n\nSorry about the wait!",
+        "Hey! The platform is at capacity for today. Service resets at midnight. In the meantime, you can switch to Haiku for basic tasks — just ask me to \"use Haiku\" and I'll switch models.\n\nSorry about the wait!",
         requestedModel,
         isStreaming
       );
@@ -319,7 +323,7 @@ export async function POST(req: NextRequest) {
     // Usage is NOT incremented here — only after a successful Anthropic response.
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_limit_only",
-      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat }
+      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz }
     );
 
     if (limitError) {
@@ -357,17 +361,17 @@ export async function POST(req: NextRequest) {
     // credits. Send the "daily limit" notification once, then silent.
     // Heartbeats never land here — they have their own budget path above.
     if (source === "buffer") {
-      const alreadyNotifiedToday = vm.limit_notified_date === todayStr;
+      const alreadyNotifiedToday = vm.limit_notified_date === userTodayStr;
 
       if (!alreadyNotifiedToday) {
         supabase
           .from("instaclaw_vms")
-          .update({ limit_notified_date: todayStr })
+          .update({ limit_notified_date: userTodayStr })
           .eq("id", vm.id)
           .then(() => {});
 
         return friendlyAssistantResponse(
-          `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight UTC.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
+          `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
           requestedModel,
           isStreaming
         );
@@ -505,6 +509,7 @@ export async function POST(req: NextRequest) {
         p_vm_id: vm.id,
         p_model: requestedModel,
         p_is_heartbeat: isHeartbeat,
+        p_timezone: userTz,
       })
       .then(({ error: incError }) => {
         if (incError) {

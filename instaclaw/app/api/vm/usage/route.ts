@@ -26,7 +26,7 @@ export async function GET() {
   const supabase = getSupabase();
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, tier, credit_balance")
+    .select("id, tier, credit_balance, user_timezone")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -41,18 +41,18 @@ export async function GET() {
   }
 
   try {
-    const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
+    const userTz = vm.user_timezone || "America/New_York";
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTz });
 
-    // 7 days ago
-    const weekAgo = new Date(now);
+    // 7 days ago (in user's timezone)
+    const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
-    const weekAgoStr = weekAgo.toISOString().split("T")[0];
+    const weekAgoStr = weekAgo.toLocaleDateString("en-CA", { timeZone: userTz });
 
-    // 30 days ago
-    const monthAgo = new Date(now);
+    // 30 days ago (in user's timezone)
+    const monthAgo = new Date();
     monthAgo.setDate(monthAgo.getDate() - 30);
-    const monthAgoStr = monthAgo.toISOString().split("T")[0];
+    const monthAgoStr = monthAgo.toLocaleDateString("en-CA", { timeZone: userTz });
 
     // Fetch all three ranges in parallel
     const [todayRes, weekRes, monthRes] = await Promise.all([

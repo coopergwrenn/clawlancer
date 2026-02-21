@@ -303,12 +303,8 @@ export default function DashboardPage() {
   const usagePct = usage ? Math.min(100, (usage.today / usage.dailyLimit) * 100) : 0;
   const usageBarColor = usagePct >= 90 ? "#ef4444" : usagePct >= 70 ? "#f59e0b" : "var(--success)";
 
-  // Daily usage resets at midnight UTC — show user their local equivalent
-  const resetTimeLocal = (() => {
-    const nextMidnightUTC = new Date();
-    nextMidnightUTC.setUTCHours(24, 0, 0, 0);
-    return nextMidnightUTC.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  })();
+  // Daily usage resets at the user's local midnight
+  const resetTimeLocal = "midnight";
 
   return (
     <div className="space-y-10">

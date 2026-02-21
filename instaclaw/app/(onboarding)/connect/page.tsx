@@ -162,6 +162,7 @@ export default function ConnectPage() {
       apiMode,
       apiKey: apiMode === "byok" ? apiKey.trim() : undefined,
       model: apiMode === "all_inclusive" ? defaultModel : undefined,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
 
     // Save to sessionStorage as secondary cache for Plan page UI
