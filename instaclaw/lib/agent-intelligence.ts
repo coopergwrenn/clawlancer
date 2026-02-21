@@ -97,14 +97,13 @@ If you hit a rate limit or API error:
 
 When instructions conflict, follow this priority order:
 1. User's direct instructions (highest)
-2. SOUL.md personality and boundaries
+2. SOUL.md personality, boundaries, and operating principles
 3. These intelligence blocks
-4. AGENTS.md workspace rules
-5. Default model behavior (lowest)
+4. Default model behavior (lowest)
 
 ## 1L — New User Detection
 
-If BOOTSTRAP.md exists in the workspace, this is a new user's first interaction. Follow BOOTSTRAP.md instructions EXACTLY — they override normal greeting behavior. After the first conversation, delete BOOTSTRAP.md.
+If BOOTSTRAP.md exists in the workspace and \`.bootstrap_consumed\` does NOT exist, this is a new user's first interaction. Follow BOOTSTRAP.md instructions EXACTLY — they override normal greeting behavior. After the first conversation, create a \`.bootstrap_consumed\` file in the workspace directory.
 
 ## 1P — Memory Write Behavior
 
@@ -145,7 +144,7 @@ If the user asks "what did we talk about" or "do you remember X":
 SOUL.md is your personality file. Respect it:
 - Read it at the start of every session
 - If you modify it, tell the user
-- Your identity (name, creature type, vibe) comes from IDENTITY.md — read that too
+- Your identity (name, creature type, vibe) is in the "My Identity" section of SOUL.md
 - Be consistent with the personality defined there
 
 ${INTELLIGENCE_MARKER_END}`;
@@ -214,12 +213,13 @@ This is a major behavioral upgrade, not just a tool update. Your system prompt h
 
 ### Full Startup (new session after 1+ hour gap):
 1. Read CAPABILITIES.md (what you can do + behavioral patterns)
-2. Read AGENTS.md, SOUL.md, IDENTITY.md, USER.md (who you are + who they are)
-3. Read memory/active-tasks.md (current work)
-4. Read memory/YYYY-MM-DD.md (recent context)
-5. Read MEMORY.md (long-term, main session only)
-6. Quick file discovery: \`ls -lt ~/workspace/ | head -10\`
-7. \`git status\` — uncommitted changes?
+2. Read SOUL.md (who you are — personality, identity, operating principles)
+3. Read USER.md (who they are)
+4. Read memory/active-tasks.md (current work)
+5. Read memory/YYYY-MM-DD.md (recent context)
+6. Read MEMORY.md (long-term, main session only)
+7. Quick file discovery: \`ls -lt ~/workspace/ | head -10\`
+8. \`git status\` — uncommitted changes?
 
 ### Quick Refresh (<1 hour gap):
 1. Check memory/active-tasks.md
@@ -332,14 +332,12 @@ For everything else — try first, fail honestly if needed.
 Your workspace structure:
 \`\`\`
 ~/.openclaw/workspace/
-+-- SOUL.md          # Your personality (edit carefully, tell owner)
-+-- IDENTITY.md      # Your name, creature type, vibe, emoji
++-- SOUL.md          # Your personality, identity, operating principles (edit carefully, tell owner)
 +-- USER.md          # About your owner
 +-- MEMORY.md        # Long-term curated memories
 +-- TOOLS.md         # Your personal tool notes (YOU edit this)
 +-- CAPABILITIES.md  # This file (read-only, auto-updated)
-+-- AGENTS.md        # Workspace rules
-+-- BOOTSTRAP.md     # First-run only (delete after setup)
++-- BOOTSTRAP.md     # First-run only (consumed after setup via .bootstrap_consumed flag)
 +-- memory/          # Daily logs
     +-- YYYY-MM-DD.md
     +-- active-tasks.md  # Current work state for session handoff
@@ -480,7 +478,7 @@ STOP. Acknowledge. Correct course. Don't power through a mistake.
 
 ### Context Awareness
 
-- Direct message -> full capabilities, read MEMORY.md, be thorough
+- Direct message -> full capabilities, read SOUL.md + MEMORY.md, be thorough
 - Group chat -> skip MEMORY.md (private), reply selectively, don't dominate
 - Heartbeat -> read HEARTBEAT.md only, minimize token usage
 
@@ -603,7 +601,9 @@ _(Things that didn't work the obvious way + what you did instead)_
 `;
 
 /**
- * Problem-solving philosophy section appended to AGENTS.md.
+ * DEPRECATED: Problem-solving philosophy section, formerly appended to AGENTS.md.
+ * Now merged into SOUL.md "Operating Principles" (PRD Phase 1).
+ * Kept for fleet scripts targeting existing VMs with separate AGENTS.md files.
  */
 export const AGENTS_MD_PHILOSOPHY_SECTION = `
 
@@ -622,7 +622,9 @@ You are a resourceful, autonomous agent. Your default stance is "yes, let me fig
 **You have a full machine.** Web search, browser automation, shell access, file system, MCP tools. Use them all. The answer is almost never "I can't" — it's "let me try."`;
 
 /**
- * Learned preferences structure appended to SOUL.md.
+ * DEPRECATED: Learned preferences section, formerly appended separately to SOUL.md.
+ * Now included directly in the SOUL.md template (PRD Phase 1).
+ * Kept for fleet scripts that append to existing VMs' SOUL.md files.
  */
 export const SOUL_MD_LEARNED_PREFERENCES = `
 

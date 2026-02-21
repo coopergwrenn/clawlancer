@@ -160,7 +160,7 @@ deploy_vm() {
       PM=true
     fi
 
-    grep -qF 'Problem-Solving Philosophy' \$W/AGENTS.md 2>/dev/null || echo '$PHIL_B64' | base64 -d >> \$W/AGENTS.md
+    test -f \$W/AGENTS.md && { grep -qF 'Problem-Solving Philosophy' \$W/AGENTS.md 2>/dev/null || echo '$PHIL_B64' | base64 -d >> \$W/AGENTS.md; } || true
 
     grep -qF 'Learned Preferences' \$W/SOUL.md 2>/dev/null || echo '$PREF_B64' | base64 -d >> \$W/SOUL.md
 
