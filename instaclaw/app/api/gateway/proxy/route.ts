@@ -344,40 +344,66 @@ export async function POST(req: NextRequest) {
     const currentCount = limitResult?.count ?? 0;
     const source: string | null = limitResult?.source ?? null;
 
-    // --- Heartbeat budget exhausted: silently drop ---
+    // --- Heartbeat budget exhausted: silently drop + log ---
     if (source === "heartbeat_exhausted") {
+      logger.info("Heartbeat skipped: daily limit reached", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        source,
+      });
       return silentEmptyResponse(requestedModel, isStreaming);
     }
 
     // --- Hard block: everything exhausted (RPC denied) ---
-    // User was already notified when they entered the buffer zone.
-    // Return silent empty response for all calls.
+    // User messages always get the upsell response — never silence.
+    // Heartbeats never reach here (handled by heartbeat_exhausted above).
     if (limitResult && !limitResult.allowed) {
-      return silentEmptyResponse(requestedModel, isStreaming);
-    }
-
-    // --- Buffer zone: safety margin, user messages blocked ---
-    // The RPC allowed the call (within internal limit) but there are no
-    // credits. Send the "daily limit" notification once, then silent.
-    // Heartbeats never land here — they have their own budget path above.
-    if (source === "buffer") {
-      const alreadyNotifiedToday = vm.limit_notified_date === userTodayStr;
-
-      if (!alreadyNotifiedToday) {
+      // Log once per day for monitoring
+      if (vm.limit_notified_date !== userTodayStr) {
         supabase
           .from("instaclaw_vms")
           .update({ limit_notified_date: userTodayStr })
           .eq("id", vm.id)
           .then(() => {});
-
-        return friendlyAssistantResponse(
-          `You've hit your daily limit (${displayLimit}/${displayLimit} units). Your limit resets at midnight.\n\nWant to keep going? Grab a credit pack — they kick in instantly:\n\nhttps://instaclaw.io/dashboard?buy=credits`,
-          requestedModel,
-          isStreaming
-        );
+        logger.info("User hit hard block — daily limit exhausted", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          displayLimit,
+          currentCount,
+        });
       }
 
-      return silentEmptyResponse(requestedModel, isStreaming);
+      return friendlyAssistantResponse(
+        `You've hit your daily message limit (${displayLimit}/${displayLimit}). Want to keep going? Grab more credits or upgrade your plan here:\n\nhttps://instaclaw.io/dashboard/billing`,
+        requestedModel,
+        isStreaming
+      );
+    }
+
+    // --- Buffer zone: over display limit, no credits, within internal limit ---
+    // User messages always get the upsell response — never silence.
+    // Heartbeats never land here — they have their own budget path above.
+    if (source === "buffer") {
+      // Log once per day for monitoring
+      if (vm.limit_notified_date !== userTodayStr) {
+        supabase
+          .from("instaclaw_vms")
+          .update({ limit_notified_date: userTodayStr })
+          .eq("id", vm.id)
+          .then(() => {});
+        logger.info("User hit buffer zone — daily limit reached", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          displayLimit,
+          currentCount,
+        });
+      }
+
+      return friendlyAssistantResponse(
+        `You've hit your daily message limit (${displayLimit}/${displayLimit}). Want to keep going? Grab more credits or upgrade your plan here:\n\nhttps://instaclaw.io/dashboard/billing`,
+        requestedModel,
+        isStreaming
+      );
     }
 
     // --- Normal zone or credits: forward to Anthropic ---
