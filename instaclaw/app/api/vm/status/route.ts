@@ -23,7 +23,7 @@ export async function GET() {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select(
-        "id, ip_address, gateway_url, control_ui_url, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled"
+        "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled"
       )
       .eq("assigned_to", session.user.id)
       .single();
@@ -89,6 +89,7 @@ export async function GET() {
           hasDiscord: !!vm.discord_bot_token,
           hasBraveSearch: !!vm.brave_api_key,
           agdpEnabled: vm.agdp_enabled ?? false,
+          gatewayToken: vm.gateway_token ?? null,
           worldIdVerified: userProfile?.world_id_verified ?? false,
           worldIdVerificationLevel: userProfile?.world_id_verification_level ?? null,
           worldIdVerifiedAt: userProfile?.world_id_verified_at ?? null,

@@ -15,6 +15,10 @@ import {
   Zap,
   Eraser,
   Wrench,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
@@ -49,6 +53,7 @@ interface VMStatus {
     hasDiscord: boolean;
     hasBraveSearch: boolean;
     agdpEnabled: boolean;
+    gatewayToken: string | null;
     gmailConnected: boolean;
     gmailPopupDismissed: boolean;
   };
@@ -85,6 +90,8 @@ export default function DashboardPage() {
   const [togglingAgdp, setTogglingAgdp] = useState(false);
   const [agdpConfirm, setAgdpConfirm] = useState<"enable" | "disable" | null>(null);
   const [showAgdpSetup, setShowAgdpSetup] = useState(false);
+  const [tokenRevealed, setTokenRevealed] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -795,6 +802,53 @@ export default function DashboardPage() {
                 </div>
               </button>
             </div>
+
+            {/* Gateway Token — for Control UI auth */}
+            {vm.gatewayToken && (
+              <div
+                className="mt-4 rounded-xl p-4"
+                style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold">Gateway Token</p>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setTokenRevealed((v) => !v)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg cursor-pointer transition-colors"
+                      style={{ color: "var(--muted)", background: "rgba(0,0,0,0.04)" }}
+                      title={tokenRevealed ? "Hide token" : "Reveal token"}
+                    >
+                      {tokenRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(vm.gatewayToken!);
+                        setTokenCopied(true);
+                        setTimeout(() => setTokenCopied(false), 2000);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all active:scale-95"
+                      style={{
+                        background: tokenCopied ? "rgba(22,163,74,0.1)" : "rgba(0,0,0,0.04)",
+                        color: tokenCopied ? "#16a34a" : "var(--muted)",
+                        border: tokenCopied ? "1px solid rgba(22,163,74,0.2)" : "1px solid var(--border)",
+                      }}
+                    >
+                      {tokenCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {tokenCopied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+                <p
+                  className="text-xs font-mono break-all select-all"
+                  style={{ color: "var(--muted)" }}
+                >
+                  {tokenRevealed ? vm.gatewayToken : "••••••••••••••••••••••••••••••••"}
+                </p>
+                <p className="text-xs mt-2" style={{ color: "var(--muted)", opacity: 0.7 }}>
+                  Paste this token in the Control UI settings to connect.
+                </p>
+              </div>
+            )}
 
             {/* Reset Agent Memory — destructive action */}
             <button
