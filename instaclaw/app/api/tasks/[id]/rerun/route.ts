@@ -135,16 +135,10 @@ async function executeRerun(
     const model = vm.default_model || "claude-haiku-4-5-20251001";
     const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
-    const requestBody = JSON.stringify({
-      model,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: [{ role: "user", content: description }],
-    });
-
     // ── Try gateway first, fall back to direct Anthropic ──────
 
     let upstreamRes: Response | null = null;
+    let usedGateway = false;
 
     if (canUseGateway) {
       try {
@@ -152,14 +146,24 @@ async function executeRerun(
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 
-        upstreamRes = await fetch(`${gatewayUrl}/v1/messages`, {
+        // Gateway uses OpenAI chat completions format (non-streaming for tasks)
+        const gatewayBody = JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: description },
+          ],
+          stream: false,
+        });
+
+        upstreamRes = await fetch(`${gatewayUrl}/v1/chat/completions`, {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-api-key": vm.gateway_token!,
-            "anthropic-version": "2023-06-01",
+            "authorization": `Bearer ${vm.gateway_token!}`,
           },
-          body: requestBody,
+          body: gatewayBody,
           signal: controller.signal,
         });
 
@@ -176,6 +180,7 @@ async function executeRerun(
           });
           upstreamRes = null;
         } else {
+          usedGateway = true;
           logger.info("Task rerun proxied through gateway", {
             route: "tasks/rerun",
             vmId: vm.id,
@@ -217,7 +222,12 @@ async function executeRerun(
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
-        body: requestBody,
+        body: JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          system: systemPrompt,
+          messages: [{ role: "user", content: description }],
+        }),
         signal: controller.signal,
       });
 
@@ -243,11 +253,14 @@ async function executeRerun(
     }
 
     const data = await upstreamRes.json();
-    const rawResponse =
-      data.content
-        ?.filter((b: { type: string }) => b.type === "text")
-        .map((b: { text: string }) => b.text)
-        .join("") || "";
+    // OpenAI format: choices[0].message.content
+    // Anthropic format: content[].text
+    const rawResponse = usedGateway
+      ? (data.choices?.[0]?.message?.content || "")
+      : (data.content
+          ?.filter((b: { type: string }) => b.type === "text")
+          .map((b: { text: string }) => b.text)
+          .join("") || "");
 
     if (!rawResponse) {
       await supabase

@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select(
-        "id, default_model, system_prompt, telegram_bot_token, telegram_chat_id"
+        "id, default_model, system_prompt, telegram_bot_token, telegram_chat_id, gateway_url, gateway_token, health_status"
       )
       .eq("assigned_to", task.user_id)
       .single();

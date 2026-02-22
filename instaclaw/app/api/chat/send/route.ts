@@ -188,17 +188,11 @@ export async function POST(req: NextRequest) {
   const wasEmpty = (convMeta?.message_count ?? 0) === 0;
 
   const model = vm.default_model || "claude-haiku-4-5-20251001";
-  const requestBody = JSON.stringify({
-    model,
-    max_tokens: MAX_TOKENS,
-    system: systemPrompt,
-    messages,
-    stream: true,
-  });
 
   // ── Try gateway first, fall back to direct Anthropic ──────────
 
   let upstreamRes: Response;
+  let isGatewayResponse = false;
 
   if (canUseGateway) {
     try {
@@ -206,14 +200,24 @@ export async function POST(req: NextRequest) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 
-      upstreamRes = await fetch(`${gatewayUrl}/v1/messages`, {
+      // Gateway uses OpenAI chat completions format
+      const gatewayBody = JSON.stringify({
+        model,
+        max_tokens: MAX_TOKENS,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages,
+        ],
+        stream: true,
+      });
+
+      upstreamRes = await fetch(`${gatewayUrl}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-api-key": vm.gateway_token!,
-          "anthropic-version": "2023-06-01",
+          "authorization": `Bearer ${vm.gateway_token!}`,
         },
-        body: requestBody,
+        body: gatewayBody,
         signal: controller.signal,
       });
 
@@ -231,6 +235,7 @@ export async function POST(req: NextRequest) {
         // Fall through to direct Anthropic below
         upstreamRes = null!;
       } else {
+        isGatewayResponse = true;
         logger.info("Chat proxied through gateway", {
           route: "chat/send",
           vmId: vm.id,
@@ -266,6 +271,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const anthropicBody = JSON.stringify({
+      model,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages,
+      stream: true,
+    });
+
     try {
       upstreamRes = await fetch(ANTHROPIC_API_URL, {
         method: "POST",
@@ -274,7 +287,7 @@ export async function POST(req: NextRequest) {
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
-        body: requestBody,
+        body: anthropicBody,
       });
 
       if (!upstreamRes.ok) {
@@ -326,6 +339,8 @@ export async function POST(req: NextRequest) {
           controller.enqueue(value);
 
           // Parse out text deltas for saving
+          // Gateway (OpenAI format): choices[0].delta.content
+          // Anthropic format: content_block_delta with delta.text
           const chunk = decoder.decode(value, { stream: true });
           for (const line of chunk.split("\n")) {
             if (!line.startsWith("data: ")) continue;
@@ -333,7 +348,12 @@ export async function POST(req: NextRequest) {
             if (data === "[DONE]") continue;
             try {
               const event = JSON.parse(data);
-              if (
+              // OpenAI SSE format (gateway)
+              if (event.choices?.[0]?.delta?.content) {
+                fullText += event.choices[0].delta.content;
+              }
+              // Anthropic SSE format (direct fallback)
+              else if (
                 event.type === "content_block_delta" &&
                 event.delta?.type === "text_delta"
               ) {

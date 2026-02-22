@@ -16,7 +16,7 @@ export async function GET() {
 
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, telegram_bot_token, telegram_bot_username, telegram_chat_id")
+    .select("id, telegram_bot_token, telegram_bot_username, telegram_chat_id, gateway_url, health_status")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -32,7 +32,20 @@ export async function GET() {
     });
   }
 
-  // Try to discover chat_id via getUpdates
+  // If gateway is running, do NOT call getUpdates — it conflicts with
+  // the gateway's own long-polling on the same bot token, causing
+  // "[telegram] getUpdates conflict" errors.
+  const gatewayActive = !!(vm.gateway_url && vm.health_status === "healthy");
+  if (gatewayActive) {
+    // Gateway is long-polling — assume bot is connected but we can't discover chat_id right now.
+    // It will be discovered when the user sends their first message via Telegram.
+    return NextResponse.json({
+      connected: true,
+      botUsername: vm.telegram_bot_username,
+    });
+  }
+
+  // Gateway is not active — safe to call getUpdates for chat_id discovery
   const chatId = await discoverTelegramChatId(vm.telegram_bot_token);
 
   if (chatId) {

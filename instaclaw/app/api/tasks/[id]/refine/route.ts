@@ -110,17 +110,11 @@ Please produce an updated version of the result that incorporates the user's req
 
 Return ONLY the updated result content. Do NOT include any TASK_META block — just the refined content.`;
 
-  const requestBody = JSON.stringify({
-    model,
-    max_tokens: MAX_TOKENS,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
   try {
     // ── Try gateway first, fall back to direct Anthropic ──────
 
     let upstreamRes: Response | null = null;
+    let usedGateway = false;
 
     if (canUseGateway) {
       try {
@@ -128,14 +122,24 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 
-        upstreamRes = await fetch(`${gatewayUrl}/v1/messages`, {
+        // Gateway uses OpenAI chat completions format (non-streaming for tasks)
+        const gatewayBody = JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          stream: false,
+        });
+
+        upstreamRes = await fetch(`${gatewayUrl}/v1/chat/completions`, {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-api-key": vm.gateway_token!,
-            "anthropic-version": "2023-06-01",
+            "authorization": `Bearer ${vm.gateway_token!}`,
           },
-          body: requestBody,
+          body: gatewayBody,
           signal: controller.signal,
         });
 
@@ -152,6 +156,7 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
           });
           upstreamRes = null;
         } else {
+          usedGateway = true;
           logger.info("Task refine proxied through gateway", {
             route: "tasks/refine",
             vmId: vm.id,
@@ -193,7 +198,12 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
-        body: requestBody,
+        body: JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userMessage }],
+        }),
         signal: controller.signal,
       });
 
@@ -215,11 +225,14 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
     }
 
     const data = await upstreamRes.json();
-    const newResult =
-      data.content
-        ?.filter((b: { type: string }) => b.type === "text")
-        .map((b: { text: string }) => b.text)
-        .join("") || "";
+    // OpenAI format: choices[0].message.content
+    // Anthropic format: content[].text
+    const newResult = usedGateway
+      ? (data.choices?.[0]?.message?.content || "")
+      : (data.content
+          ?.filter((b: { type: string }) => b.type === "text")
+          .map((b: { text: string }) => b.text)
+          .join("") || "");
 
     if (!newResult) {
       return NextResponse.json(

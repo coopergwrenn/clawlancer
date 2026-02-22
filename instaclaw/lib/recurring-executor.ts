@@ -50,6 +50,9 @@ export interface VmRecord {
   system_prompt: string | null;
   telegram_bot_token: string | null;
   telegram_chat_id: string | null;
+  gateway_url: string | null;
+  gateway_token: string | null;
+  health_status: string | null;
   [key: string]: any;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -108,65 +111,115 @@ Execute the task with the LATEST available information.
 Be thorough and provide current, actionable content.
 Return ONLY the result content — do NOT include any TASK_META block.`;
 
-  // Non-Anthropic models can't be called directly — use fallback
   const rawModel = vm.default_model || "claude-haiku-4-5-20251001";
-  const model = isAnthropicModel(rawModel) ? rawModel : FALLBACK_MODEL;
+  const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
-  // Call Anthropic
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let resultContent = "";
 
-  let resultContent: string;
+  // ── Try gateway first, fall back to direct Anthropic ──────
+  let usedGateway = false;
 
-  try {
-    const anthropicRes = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        system: systemPrompt,
-        messages: [{ role: "user", content: task.description }],
-      }),
-      signal: controller.signal,
-    });
+  if (canUseGateway) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    clearTimeout(timeout);
+    try {
+      const gatewayUrl = vm.gateway_url!.replace(/\/+$/, "");
+      const gatewayRes = await fetch(`${gatewayUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": `Bearer ${vm.gateway_token!}`,
+        },
+        body: JSON.stringify({
+          model: rawModel,
+          max_tokens: MAX_TOKENS,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: task.description },
+          ],
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
+      clearTimeout(timeout);
+
+      if (gatewayRes.ok) {
+        const data = await gatewayRes.json();
+        resultContent = data.choices?.[0]?.message?.content || "";
+        if (resultContent) {
+          usedGateway = true;
+          resultContent = sanitizeAgentResult(resultContent);
+        }
+      }
+    } catch {
+      clearTimeout(timeout);
+      // Gateway failed — fall through to direct Anthropic
+    }
+  }
+
+  // Fallback: direct Anthropic API
+  if (!usedGateway) {
+    // Non-Anthropic models can't be called directly — use fallback
+    const model = isAnthropicModel(rawModel) ? rawModel : FALLBACK_MODEL;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const anthropicRes = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          system: systemPrompt,
+          messages: [{ role: "user", content: task.description }],
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!anthropicRes.ok) {
+        const errText = await anthropicRes.text();
+        throw new Error(
+          `Anthropic API error ${anthropicRes.status}: ${errText.slice(0, 300)}`
+        );
+      }
+
+      const data = await anthropicRes.json();
+      resultContent =
+        data.content
+          ?.filter((b: { type: string }) => b.type === "text")
+          .map((b: { text: string }) => b.text)
+          .join("") || "";
+
+      if (!resultContent) {
+        throw new Error("Agent returned an empty response.");
+      }
+
+      resultContent = sanitizeAgentResult(resultContent);
+    } catch (err) {
+      clearTimeout(timeout);
+      const isTimeout = err instanceof Error && err.name === "AbortError";
       throw new Error(
-        `Anthropic API error ${anthropicRes.status}: ${errText.slice(0, 300)}`
+        isTimeout
+          ? "Task timed out during execution."
+          : err instanceof Error
+            ? err.message
+            : String(err)
       );
     }
+  }
 
-    const data = await anthropicRes.json();
-    resultContent =
-      data.content
-        ?.filter((b: { type: string }) => b.type === "text")
-        .map((b: { text: string }) => b.text)
-        .join("") || "";
-
-    if (!resultContent) {
-      throw new Error("Agent returned an empty response.");
-    }
-
-    // Strip any raw XML tool-use tags from the response
-    resultContent = sanitizeAgentResult(resultContent);
-  } catch (err) {
-    clearTimeout(timeout);
-    const isTimeout = err instanceof Error && err.name === "AbortError";
-    throw new Error(
-      isTimeout
-        ? "Task timed out during execution."
-        : err instanceof Error
-          ? err.message
-          : String(err)
-    );
+  if (!resultContent) {
+    throw new Error("Agent returned an empty response.");
   }
 
   // Calculate next_run_at with drift prevention
@@ -317,8 +370,14 @@ async function deliverToTelegram(
 
   let chatId = vm.telegram_chat_id;
 
-  // Lazy chat_id discovery
+  // Lazy chat_id discovery — but skip if gateway is active to avoid
+  // conflicting with the gateway's own long-polling on the same bot token
   if (!chatId) {
+    const gatewayActive = !!(vm.gateway_url && vm.health_status === "healthy");
+    if (gatewayActive) {
+      // Can't discover without conflicting — skip delivery
+      return "no_channel";
+    }
     chatId = await discoverTelegramChatId(vm.telegram_bot_token);
     if (chatId) {
       // Cache it for future deliveries
@@ -354,6 +413,9 @@ async function tryTelegramNotification(
 
   let chatId = vm.telegram_chat_id;
   if (!chatId) {
+    // Skip discovery if gateway is active to avoid getUpdates conflict
+    const gatewayActive = !!(vm.gateway_url && vm.health_status === "healthy");
+    if (gatewayActive) return;
     chatId = await discoverTelegramChatId(vm.telegram_bot_token);
     if (chatId) {
       await supabase
