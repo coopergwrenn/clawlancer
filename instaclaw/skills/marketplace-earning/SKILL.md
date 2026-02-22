@@ -64,443 +64,425 @@ Contra is the most promising external marketplace for agent-listed services, but
 
 **Bottom line:** Agent can do 80% of the prep work. Human spends 2-3 minutes per listing clicking "Publish" and handling payment. This is a realistic workflow, not a fully autonomous one.
 
-## Digital Product Catalog
+## Digital Product Catalog: What Agents Build & Sell
 
-These are products the agent can create end-to-end and list for sale on Gumroad, Contra, and Etsy.
+These are ranked by: effort to create, price point, likelihood of agent-native purchases, and ROI per hour of human time.
 
-### Product 1: Market Research Reports
+### Product #1: Remotion Video Template Kit
 
-```
-Format:         PDF (20-40 pages) + executive summary (2 pages)
-Pricing:        $29 (single industry) / $49 (comparative) / $99 (deep-dive + data)
-Delivery:       Instant download via Gumroad or Contra
-Turnaround:     4-6 hours to produce from scratch
-Data sources:   Brave Search API, web_fetch, public financial filings, industry databases
-Contents:       Market size, growth rate, key players, SWOT analysis, trend analysis,
-                competitive landscape, customer segments, 5-year outlook
-Refresh cycle:  Monthly updates increase perceived value (subscription model at $19/mo)
-```
+**Priority: BUILD FIRST -- 80% done from InstaClaw work**
 
-### Product 2: Brand Audit Documents
+- **What's in it:** 10 video templates + brand config system + animation library + docs
+- **Agent build time:** 40 hours (already 80% complete from InstaClaw video production)
+- **Human time:** 1 hour (review + publish)
+- **Price:** $99
+- **Sell on:** Contra digital products, Gumroad
+- **Agent-buyer appeal:** HIGH -- other AI agents building marketing content need this
+- **Est. monthly revenue:** $500-1,000 (5-10 sales)
+- **Human ROI:** $500-1,000 per hour of human time invested
 
-```
-Format:         PDF (15-30 pages) + brand-config.json + screenshot comparisons
-Pricing:        $49 (basic audit) / $99 (audit + recommendations) / $149 (audit + rebrand brief)
-Delivery:       24-48 hour turnaround (requires target brand URL)
-Components:     Typography analysis, color palette extraction, logo variant inventory,
-                competitor brand comparison, consistency score (1-10), accessibility check,
-                mobile vs desktop brand presentation, social media brand alignment
-Dependencies:   Brand Asset Extraction skill (Skill 8) feeds directly into this product
-```
+Why this is #1: Already mostly built. Proven through 4 iterations of InstaClaw videos. Solves a real problem (video creation from code is hard). $99 vs $500 for custom video work = clear value prop.
 
-### Product 3: Content Calendar Templates
+### Product #2: Kling AI Cinematic Prompt Library
 
-```
-Format:         Google Sheets template + PDF guide (10 pages)
-Pricing:        $19 (single platform) / $29 (multi-platform) / $49 (multi-platform + content ideas)
-Delivery:       Instant download
-Platforms:      Instagram, Twitter/X, LinkedIn, TikTok, YouTube, Newsletter
-Contents:       30-day posting schedule, content pillars framework, hashtag strategy,
-                optimal posting times by platform, content repurposing matrix,
-                engagement tracking template, monthly review checklist
-Dependencies:   Social Media Content Engine skill provides the content strategy knowledge
-```
+**Priority: BUILD SECOND**
 
-### Product 4: Competitive Analysis Packs
+- **What's in it:** 100 categorized ultra-realistic prompts + cinematography guide + style reference
+- **Agent build time:** 50 hours
+- **Human time:** 30 minutes (review + publish)
+- **Price:** $49
+- **Sell on:** Contra digital products, Gumroad
+- **Agent-buyer appeal:** VERY HIGH -- every agent wanting realistic video needs prompts, and this is pure data (no dependencies)
+- **Est. monthly revenue:** $400-800 (8-16 sales)
+- **Human ROI:** $800-1,600 per hour of human time invested
 
-```
-Format:         PDF (25-50 pages) + spreadsheet with raw data + executive brief (3 pages)
-Pricing:        $79 (3 competitors) / $149 (5 competitors) / $199 (10 competitors + quarterly updates)
-Delivery:       48-72 hour turnaround
-Depth levels:
-  Basic:        Pricing comparison, feature matrix, social presence
-  Standard:     + hiring signals, content strategy analysis, customer sentiment
-  Premium:      + market positioning map, strategic recommendations, quarterly refresh
-Data sources:   Brave Search API, Competitive Intelligence skill output, public data
-Dependencies:   Competitive Intelligence skill (Skill 4) provides the analysis engine
-```
+Why this is #2: Unique expertise (documentary realism style developed from InstaClaw launch video). Low price = impulse buy. Agents are the primary buyers, not humans. Easy to deliver (document download).
 
-### Product 5: Custom Data Dashboards
+### Product #3: Brand Asset Extraction Toolkit
 
-```
-Format:         Interactive HTML dashboard + PDF snapshot + raw CSV data
-Pricing:        $99 (single metric set) / $199 (multi-source) / $299 (custom + monthly refresh)
-Delivery:       72-hour turnaround for initial build, 24h for refreshes
-Data sources:   Public APIs, web scraping, user-provided data, financial feeds
-Contents:       KPI tracking, trend visualization, comparison charts, anomaly detection,
-                automated insights summary, export-ready tables
-Tech stack:     HTML/CSS/JS (Chart.js), runs in any browser, no server needed
-```
+**Priority: BUILD THIRD**
+
+- **What's in it:** Browser automation scripts + brand config template + extraction guide + troubleshooting
+- **Agent build time:** 30 hours
+- **Human time:** 30 minutes (review + publish)
+- **Price:** $69
+- **Sell on:** Contra digital products, Gumroad, GitHub
+- **Agent-buyer appeal:** HIGH -- agents doing any branded content work need this
+- **Est. monthly revenue:** $300-600 (4-9 sales)
+- **Human ROI:** $600-1,200 per hour of human time invested
+
+### Product #4: API Boilerplate Collection
+
+- **What's in it:** Node.js + Python API starters with auth, validation, deployment guides, Docker configs
+- **Agent build time:** 45 hours
+- **Human time:** 1.5 hours (technical review + publish)
+- **Price:** $89
+- **Sell on:** Contra digital products, Gumroad, GitHub
+- **Agent-buyer appeal:** MEDIUM-HIGH -- developer agents and devs need this
+- **Est. monthly revenue:** $300-500 (3-6 sales)
+
+### Product #5: Web Scraping Framework
+
+- **What's in it:** 20 pre-built scrapers + framework + anti-detection patterns + docs
+- **Agent build time:** 40 hours
+- **Human time:** 1 hour (test scripts + publish)
+- **Price:** $99
+- **Sell on:** Contra digital products, Gumroad
+- **Agent-buyer appeal:** MEDIUM -- some agents need scraping but many have web_fetch built-in
+- **Est. monthly revenue:** $200-400 (2-4 sales)
 
 ## Passive Income Build Schedule
 
-### Week 1: Foundation Setup
-
 ```
-Day 1-2:  Set up Gumroad account (human does KYC, agent builds profile page)
-Day 3:    Set up Contra profile (human verifies, agent writes bio + uploads portfolio)
-Day 4-5:  Agent creates first 2 digital products (Market Research Report template,
-          Content Calendar Template) using existing skill outputs
-Day 6:    Human reviews products, agent uploads to Gumroad
-Day 7:    Agent creates product landing page copy, social media announcement drafts
-```
+Week 1-3: Build Product #1 (Remotion Kit) -- 80% done already
+  Agent: Finishes template kit, writes docs, packages
+  Human: 1 hour review -> publish on Contra + Gumroad
+  Revenue starts: Week 4
 
-### Week 2: First Products Live
+Week 4-6: Build Product #2 (Kling Prompts)
+  Agent: Creates 100 prompts, writes cinematography guide
+  Human: 30 min review -> publish
+  Revenue starts: Week 7
 
-```
-Day 8-9:  Agent produces 2 more products (Brand Audit template, Competitive Analysis sample)
-Day 10:   Agent lists products on Contra digital products section
-Day 11:   Agent drafts 5 Fiverr gig descriptions for services (human creates account + publishes)
-Day 12:   Agent creates email sequences for product launch (Email Outreach skill)
-Day 13-14: Agent monitors first sales, collects feedback, adjusts pricing
-```
+Week 7-9: Build Product #3 (Brand Toolkit)
+  Agent: Packages extraction scripts, writes guide
+  Human: 30 min review -> publish
+  Revenue starts: Week 10
 
-### Week 3: Marketing Push
-
-```
-Day 15-16: Agent creates social media content promoting products (Social Media skill)
-Day 17:    Agent writes 3 blog posts / articles demonstrating expertise (SEO play)
-Day 18:    Agent produces free lead magnet (mini report) to capture emails
-Day 19:    Agent sets up automated email drip for lead magnet subscribers
-Day 20-21: Agent A/B tests product titles and descriptions, tracks conversion rates
-```
-
-### Week 4: Optimization & Scale
-
-```
-Day 22-23: Agent analyzes sales data, identifies best-performing product
-Day 24:    Agent creates 2 variants of best seller (different price points / bundles)
-Day 25:    Agent drafts Upwork proposals for 5 relevant projects
-Day 26:    Agent creates monthly subscription version of top product
-Day 27-28: Agent generates first monthly earnings report, identifies next growth lever
+Total human time investment: 2 hours over 9 weeks
+Total passive revenue (Month 6+): $1,200-2,400/month
+Human ROI: $600-1,200 per hour
 ```
 
 ## Contra Digital Products Workflow
 
-Step-by-step for listing a digital product via browser automation.
+**One-Time Setup (Human, 30 minutes):**
+1. Create Contra account at contra.com/sign-up
+2. Connect payout method (USDC via Coinbase recommended -- aligns with $INSTACLAW on Base)
+3. Set up profile (agent writes bio, human approves)
 
-```
-STEP 1: Navigate to Contra dashboard
-  browser.open({ profile: "openclaw", targetUrl: "https://contra.com/dashboard" })
-  Wait 3 seconds for page load
+**Per Product (Human, 10 minutes):**
+1. Agent builds the entire product (templates, docs, assets)
+2. Agent writes product listing (name, description, visuals, pricing, delivery content)
+3. Human goes to contra.com/products/new
+4. Human copies in agent's listing text, uploads visuals, sets price
+5. Human clicks publish
+6. Auto-delivery handles everything from there -- buyer pays, gets product instantly
+7. USDC flows to wallet
 
-STEP 2: Click "Create New" or "Add Product"
-  browser.click({ selector: '[data-testid="create-project"]' })  // selector may vary
-  If selector not found, use: browser.act({ request: "Click the button to create a new product" })
-
-STEP 3: Fill product details
-  Title:        [Product name from catalog above]
-  Description:  [Generated description, 200-500 words, benefit-focused]
-  Price:        [From pricing tier in catalog]
-  Category:     "Digital Products" or "Templates"
-  Tags:         [Relevant keywords, max 5]
-
-STEP 4: Upload product file
-  browser.upload({ selector: 'input[type="file"]', file: "/path/to/product.pdf" })
-
-STEP 5: Upload cover image
-  Agent generates a cover image description, human provides or agent uses placeholder
-  browser.upload({ selector: '[data-testid="cover-upload"]', file: "/path/to/cover.png" })
-
-STEP 6: Preview listing (DO NOT publish)
-  Take screenshot of preview
-  Save draft
-  Notify human: "Product listing ready for review. Please check draft and click Publish."
-
-STEP 7: Human publishes
-  Human reviews draft, clicks Publish
-  Agent confirms listing is live via page check
-```
-
-**Important:** Never auto-publish on Contra. Always save as draft and notify human. This protects against listing errors and maintains human oversight of public-facing content.
+**Per Service Project (Human, 5 minutes per delivery):**
+1. Client finds service listing on Contra, initiates project
+2. Agent does 100% of the work
+3. Agent self-QAs (quality score must be >8/10)
+4. Human reviews deliverable in evening QA session
+5. Human clicks deliver on Contra
+6. Payment processes automatically
 
 ## Agent Earning Autonomy Framework
 
-### Tier 1: Fully Autonomous
+### What Agents Do WITHOUT Human (Fully Autonomous)
+- Build digital products (templates, prompts, toolkits, code)
+- Self-QA deliverables against quality checklist
+- Execute work on awarded projects
+- Complete Clawlancer bounties end-to-end
+- Draft proposals, product listings, marketing copy
+- Track earnings and update revenue dashboard
+- Monitor Clawlancer for new bounties
 
-The agent handles everything without human involvement.
+### What Requires Human (Minimal Touch)
+- Publish product listings on Contra/Gumroad (~10 min per product, one-time)
+- Approve deliverables for Contra services (~5 min per project)
+- Create platform accounts (one-time setup)
+- Approve projects >$500 (quick yes/no)
 
+### What Agents Should NEVER Do Autonomously
+- Accept projects with legal/NDA components
+- Commit to deliverables the agent can't actually produce at quality >7/10
+- Undercut pricing without human approval
+- Communicate as the human (always transparent about being AI on agent-native platforms)
+
+## The 15-Minute/Day Earning Management System
+
+**Morning (5 min): Digest Review**
 ```
-Scope:          Clawlancer bounty board
-Actions:        Poll for new bounties every 15 minutes
-                Evaluate bounty requirements against agent capabilities
-                Claim bounties that match skill set (market research, content, analysis)
-                Produce deliverables using existing skills
-                Submit completed work
-                Track payment status
-Earnings:       Variable, depends on bounty availability
-Human effort:   Zero per transaction
-Guardrails:     Max 3 active bounties at once
-                Max $500 total outstanding (uncollected) at any time
-                Auto-reject bounties requiring skills not installed
-                Auto-reject bounties with turnaround < 2 hours (quality risk)
-```
+Overnight Earning Activity:
 
-### Tier 2: Semi-Autonomous
+PRODUCTS:
+- Remotion Kit: 1 sale ($99) -- auto-delivered
+- Kling Prompts: 2 sales ($98) -- auto-delivered
 
-Agent does the production work, human approves before it goes live.
+CONTRA SERVICES:
+- Brand extraction project -- COMPLETE, quality 9/10
+  [Approve Delivery] [Review First]
 
-```
-Scope:          Digital product creation + marketplace listings
-Actions:        Create product content (reports, templates, analyses)
-                Draft marketplace listings (title, description, pricing)
-                Prepare cover images and preview materials
-                Upload as draft to marketplace
-                Notify human for review and publish
-Earnings:       Passive income from product sales
-Human effort:   2-3 minutes per product review
-Guardrails:     Never publish without human approval
-                Never change pricing on live listings without approval
-                Never respond to customer messages without approval
-                Max 5 new product drafts per week (quality over quantity)
-```
+CLAWLANCER:
+- Completed 1 bounty (0.05 USDC)
+- Found 2 new bounties matching capabilities
 
-### Tier 3: Human-Led
+TOTAL OVERNIGHT: $197.05
 
-Agent assists but human drives the process.
-
-```
-Scope:          Custom client work, proposals, negotiations
-Actions:        Research potential clients and their needs
-                Draft proposals and cover letters
-                Prepare portfolio samples
-                Write deliverable outlines
-                Produce drafts of client deliverables
-Earnings:       Service-based income (highest per-project value)
-Human effort:   15-30 minutes per client interaction
-Guardrails:     Agent never sends proposals directly to clients
-                Agent never negotiates pricing or scope
-                Agent never makes commitments on timelines
-                All client communication goes through human
+[Approve All] [Review Individually]
 ```
 
-## 15-Min/Day Management System
-
-The human spends exactly 15 minutes per day managing the earning system.
-
-### Morning Check (5 minutes) -- 8:00 AM
-
+**Midday (5 min): Decision Points**
 ```
-1. Review overnight bounty completions        [1 min]
-   - Agent shows: bounties claimed, submitted, paid
-   - Human action: acknowledge or flag issues
+New Opportunity:
 
-2. Review new product orders                   [1 min]
-   - Agent shows: orders received, auto-fulfilled, pending
-   - Human action: confirm auto-fulfilled orders look correct
+Contra service request: "Build REST API for inventory system"
+Budget: $800 | Timeline: 5 days
+Confidence: 85% (can deliver)
+Quality estimate: 8/10
 
-3. Review marketplace notifications            [2 min]
-   - Agent shows: new messages, reviews, listing performance
-   - Human action: respond to any messages requiring personal touch
-
-4. Approve pending drafts                      [1 min]
-   - Agent shows: product drafts or proposals awaiting publish
-   - Human action: approve or request changes
+[Accept] [Decline] [Review Details]
 ```
 
-### Midday Production (5 minutes) -- 12:00 PM
-
+**Evening (5 min): Delivery QA**
 ```
-1. Check deliverable progress                  [2 min]
-   - Agent shows: active bounties and their completion status
-   - Human action: review any flagged quality concerns
+Ready to Ship:
 
-2. Review product creation queue               [2 min]
-   - Agent shows: products in progress, next in pipeline
-   - Human action: confirm priorities are correct
+1. Contra Project: API documentation
+   Quality: 8/10 | [View] [Deliver] [Hold]
 
-3. Quick earnings check                        [1 min]
-   - Agent shows: today's earnings vs target
-   - Human action: none (informational)
-```
+2. Product update: Added 5 new prompts to Kling library
+   [Approve Update] [Review]
 
-### Evening Wrap-Up (5 minutes) -- 6:00 PM
-
-```
-1. Update listings if needed                   [2 min]
-   - Agent shows: listing performance data, suggested price adjustments
-   - Human action: approve or reject price changes
-
-2. Reconcile daily earnings                    [2 min]
-   - Agent shows: total earned today, breakdown by source
-   - Human action: verify amounts match platform dashboards
-
-3. Tomorrow's plan                             [1 min]
-   - Agent shows: planned bounty targets, product pipeline, proposals to send
-   - Human action: adjust priorities if needed
+[Deliver All] [Review Each]
 ```
 
 ## Auto-Approve Rules
 
 ```yaml
+# Agent can act without human approval when:
 auto_approve:
   clawlancer_bounties:
-    claim:
-      max_value: 200            # Auto-claim bounties up to $200
-      required_skills: true     # Only if agent has all required skills
-      max_active: 3             # Never hold more than 3 active bounties
-    submit:
-      quality_check: true       # Agent runs quality checklist before submit
-      auto_submit: true         # Submit without human review
-    reject:
-      turnaround_under: 2h      # Reject bounties with < 2hr deadline
-      skills_missing: true      # Reject if missing required skills
+    max_value: 0.5 USDC
+    max_estimated_hours: 4
 
-  digital_products:
-    create_draft: true          # Agent can create product drafts freely
-    publish: false              # NEVER auto-publish -- human must approve
-    price_change: false         # NEVER auto-change prices
-    respond_to_customer: false  # NEVER auto-respond to customers
-    fulfill_order: true         # Auto-send digital files on purchase
-    refund: false               # NEVER auto-refund -- human decides
+  contra_services:
+    max_value: $300
+    min_confidence: 0.85
+    min_quality_score: 9
 
-  proposals:
-    draft: true                 # Agent can draft proposals freely
-    send: false                 # NEVER auto-send proposals
-    negotiate: false            # NEVER auto-negotiate
-    accept_project: false       # NEVER auto-accept projects
+  product_updates:
+    type: "content_addition"  # Adding prompts, templates, etc.
+    not_type: "price_change"  # Never auto-change pricing
 
-human_required:
-  - Publishing any marketplace listing
-  - Changing pricing on live products
-  - Responding to customer messages
-  - Accepting client projects
-  - Processing refunds
-  - Withdrawing funds
-  - Any action involving payment information
-  - Anything that creates a legal obligation
+  message_replies:
+    to: "existing_clients"    # Auto-reply to ongoing projects
+    not_to: "new_inquiries"   # Human handles new leads
+
+# Always require human approval for:
+require_approval:
+  - projects_over_500
+  - new_client_inquiries
+  - legal_or_nda_components
+  - scope_changes
+  - refund_requests
 ```
 
-## Revenue Projections
+## Honest Revenue Projections
 
-### 60-Day Ramp Table
+### 60-Day Projection (Starting from Zero)
 
-| Day | Milestone | Cumulative Revenue | Active Products | Active Bounties |
-|---|---|---|---|---|
-| 1-7 | Account setup, first product created | $0 | 0 | 0 |
-| 8-14 | First 2 products live, first bounty claimed | $25-75 | 2 | 1 |
-| 15-21 | Marketing push, 4 products live | $100-250 | 4 | 2 |
-| 22-28 | Optimization, best sellers identified | $200-500 | 5 | 2-3 |
-| 29-35 | Subscription products, repeat customers | $350-800 | 6 | 3 |
-| 36-42 | Proposals on Upwork/Fiverr generating leads | $500-1200 | 7 | 3 |
-| 43-49 | First client project completed | $750-1800 | 8 | 3 |
-| 50-56 | Referral and repeat business building | $1000-2500 | 9 | 3 |
-| 57-60 | System running at target velocity | $1200-3000 | 10 | 3 |
+| Period | Digital Products | Contra Services | Clawlancer | Total |
+|--------|-----------------|----------------|------------|-------|
+| Week 1-3 | $0 (building) | $0 | $50 | $50 |
+| Week 4-6 | $200-500 (first sales) | $0-200 | $50 | $250-750 |
+| Week 7-8 | $400-800 (2 products live) | $200-400 | $50 | $650-1,250 |
+| **60-Day Total** | | | | **$950-2,050** |
 
-### Monthly Projections (Steady State)
+### Monthly Run-Rate Progression
 
-| Month | Bounty Income | Product Sales | Service Income | Total Range |
-|---|---|---|---|---|
-| Month 1 | $50-150 | $50-150 | $100-200 | $200-500 |
-| Month 2 | $100-300 | $150-400 | $200-500 | $450-1200 |
-| Month 3 | $200-500 | $300-800 | $500-1200 | $1000-2500 |
-| Month 4 | $250-600 | $400-1000 | $600-1500 | $1250-3100 |
-| Month 5 | $300-700 | $500-1200 | $800-2000 | $1600-3900 |
-| Month 6 | $400-900 | $700-1600 | $1200-3000 | $2300-5500 |
-| Month 9 | $500-1000 | $1000-2500 | $1500-4000 | $3000-7500 |
+| Month | Products Revenue | Services Revenue | Clawlancer | Total Run-Rate |
+|-------|-----------------|-----------------|------------|----------------|
+| Month 1 | $0 (building) | $0 | $50 | $50 |
+| Month 2 | $300-600 | $200-400 | $75 | $575-1,075 |
+| Month 3 | $600-1,200 | $400-600 | $100 | $1,100-1,900 |
+| Month 6 | $1,200-2,400 | $600-1,000 | $200 | $2,000-3,600 |
 
-**Assumptions:** Agent is active 20+ hours/day, human spends 15 min/day managing, bounty board has consistent volume, 2-3% conversion rate on marketplace listings, average product price $49, average service project $350.
+**Human Time Investment:**
+- Setup: 2-3 hours (one-time, across all platforms)
+- Ongoing: 15 min/day (digest + approvals + QA)
+- Monthly total: ~8 hours
+- **ROI by Month 6: $250-450 per hour of human time**
 
-**Conservative vs Optimistic:** Low end assumes slow marketplace traction and limited bounty supply. High end assumes good product-market fit and growing bounty ecosystem.
+These numbers assume organic discovery only. Marketing effort (social media posts, community engagement) would increase sales but also increase human time.
 
-## Agent Service Catalog
+## Agent Service Catalog (What Agents Can Sell on Contra Services)
 
-### Tier 1: Fully Autonomous Delivery (6 Services)
+**Tier 1: High Confidence (Quality 8-10/10) -- List These First**
 
-These services the agent can deliver end-to-end without human intervention.
+| Service | Quality | Turnaround | Contra Price | Competitive Advantage |
+|---------|---------|-----------|-------------|----------------------|
+| Brand Asset Extraction | 9/10 | 4 hours | $100 | 12x faster than human, battle-tested |
+| Remotion Marketing Video (30s) | 8/10 | 48 hours | $350 | Code-based = infinitely editable |
+| Kling AI Prompt Pack (10 prompts) | 9/10 | 8 hours | $150 | Unique documentary realism expertise |
+| Data Visualization (5 charts) | 8/10 | 4 hours | $150 | McKinsey-quality, programmatic |
+| REST API Development | 8/10 | 3-5 days | $800 | Production-ready code + docs |
+| Technical Documentation | 8/10 | 1-2 days | $200 | Comprehensive, clear, consistent |
 
-| Service | Description | Delivery Time | Price Range |
-|---|---|---|---|
-| **Market Research** | Industry analysis, competitor mapping, trend reports | 4-8 hours | $29-99 |
-| **Content Writing** | Blog posts, articles, newsletters, website copy | 2-4 hours | $19-79 |
-| **Data Analysis** | Spreadsheet analysis, visualization, insight reports | 4-6 hours | $49-149 |
-| **Email Campaigns** | Sequence writing, subject line optimization, A/B variants | 3-5 hours | $29-99 |
-| **Social Media Content** | 30-day content calendars, post copy, hashtag strategy | 3-6 hours | $19-49 |
-| **Competitive Monitoring** | Weekly competitor digest, alert setup, trend tracking | Ongoing | $49-99/mo |
+**Tier 2: Medium Confidence (Quality 6-8/10) -- List After Reputation Built**
 
-### Tier 2: Human Oversight Required (4 Services)
+| Service | Quality | Turnaround | Contra Price | Caveat |
+|---------|---------|-----------|-------------|--------|
+| Web Scraping | 7/10 | 24 hours | $200 | ~30% of sites blocked by CAPTCHAs |
+| Competitor Analysis | 7/10 | 3 days | $300 | Limited by web search (improving with Brave API) |
+| Social Media Content Calendar | 7/10 | 2 days | $250 | Needs human polish on copy |
+| Email Automation | 8/10 | 2 days | $400 | Solid technical execution |
 
-Agent produces 80% of the deliverable, human reviews and finalizes.
-
-| Service | Description | Agent Role | Human Role | Price Range |
-|---|---|---|---|---|
-| **Website Development** | Landing pages, simple sites | Code generation, content | Design review, deployment | $199-999 |
-| **Graphic Design Assets** | Social templates, banners, presentations | Layout drafts, copy | Visual polish, brand approval | $49-199 |
-| **Video Production** | Short-form video, motion graphics | Script, Remotion template, editing | Creative direction, final cut | $99-499 |
-| **Ad Campaign Management** | Meta/Google ad copy, targeting suggestions | Copy variants, audience research | Budget approval, bid management | $149-499/mo |
-
-### Do NOT List (3 Services to Avoid)
-
-These services create legal, ethical, or safety risks. Never offer them.
-
-| Service | Why Not |
-|---|---|
-| **Legal Advice** | Unauthorized practice of law. Agent is not a licensed attorney. Even "legal templates" risk liability. |
-| **Financial Planning** | Regulated activity requiring licenses (Series 65, CFP). Market research is OK; personalized financial advice is not. |
-| **Medical Content** | Health claims require clinical expertise. Misinformation risk is too high. General wellness content is a gray area -- avoid. |
+**Do NOT list (Quality too low for paid work):**
+- Landing page copy (6/10 -- needs heavy human editing)
+- Logo design (5/10 -- hit or miss)
+- Strategic consulting (requires human judgment)
 
 ## Pricing Strategy vs Human Freelancers
 
-The agent's structural advantages are speed (24/7 availability) and zero marginal labor cost. This allows significant underpricing while maintaining margins.
+```
+Agent pricing = 50-70% of equivalent human freelancer rate
 
-| Service | Human Freelancer Price | Agent Price | Agent Discount | Agent Advantage |
-|---|---|---|---|---|
-| Market Research Report | $200-500 | $29-99 | 60-80% cheaper | 4-8hr delivery vs 5-10 days |
-| Blog Post (1500 words) | $100-300 | $19-49 | 75-85% cheaper | 2hr delivery vs 3-5 days |
-| Competitive Analysis | $500-2000 | $79-199 | 80-90% cheaper | 48hr delivery vs 2-4 weeks |
-| Content Calendar (30 day) | $200-500 | $19-49 | 85-90% cheaper | 3hr delivery vs 1 week |
-| Email Campaign (5 emails) | $250-750 | $29-99 | 85-90% cheaper | 4hr delivery vs 1-2 weeks |
-| Data Dashboard | $500-2000 | $99-299 | 75-85% cheaper | 72hr delivery vs 2-4 weeks |
+Justification:
+- 3-10x faster turnaround
+- Available 24/7, no timezone constraints
+- Instant revisions, no scheduling delays
+- Consistent quality (no bad days)
+- Always documents everything
 
-**Pricing philosophy:** Price at 40-60% below the cheapest human option. This makes the agent the obvious value choice while still generating meaningful revenue. Avoid pricing so low that buyers question quality (under $15 signals low effort).
+Example:
+  Human brand extraction: $200, 2 days
+  Agent brand extraction: $100, 4 hours
 
-**Race-to-bottom protection:** Bundle products (report + dashboard + monitoring = $199) rather than competing on individual item price. Subscriptions ($49/mo for weekly reports) create recurring revenue that isolated products cannot.
+  Human 30s video: $800, 1 week
+  Agent 30s video: $350, 48 hours
 
-## Quality Checklists
+Weaknesses (be honest in listings):
+- No video calls (text communication only)
+- No visual design from scratch (code-based graphics only)
+- Some sites blocked by CAPTCHAs
+- Creative copy needs human polish
+```
 
-### Products Quality Checklist
+## Quality Checklist for Sellable Products
 
-- [ ] Content is original and not copy-pasted from sources (rephrase all research)
-- [ ] All data points include source attribution with URLs
-- [ ] PDF formatting is clean: consistent fonts, proper headings, page numbers
-- [ ] Pricing tier is correctly set and matches product depth
-- [ ] Product description accurately represents contents (no over-promising)
-- [ ] Cover image is professional and matches brand style
-- [ ] File size is reasonable (under 10MB for PDFs, under 50MB for dashboards)
-- [ ] Test download works correctly on the target marketplace
+Before any digital product is published:
 
-### Services Quality Checklist
+- [ ] Product works out-of-box (buyer can use immediately, no setup debugging)
+- [ ] Documentation is complete (not "TODO" or placeholder sections)
+- [ ] All code compiles/runs without errors
+- [ ] At least 3 real examples included (not hypothetical)
+- [ ] Pricing is justified (clear value prop vs DIY or hiring human)
+- [ ] Product listing copy is compelling (benefits, not features)
+- [ ] Delivery mechanism tested (buyer gets files immediately after purchase)
+- [ ] At least one screenshot/preview showing the output quality
 
-- [ ] Deliverable matches the scope agreed in the proposal
-- [ ] Turnaround time commitment was met
-- [ ] All sources and research are cited
-- [ ] Output format matches client's stated preference
-- [ ] Spelling, grammar, and formatting are clean (run through review pass)
-- [ ] Deliverable has been compared against quality standard for the service tier
-- [ ] Client brief requirements are checked off one by one
-- [ ] Final file is in the correct format and opens without errors
+## Quality Checklist for Service Deliverables
 
-## Future Vision
+Before any service project is delivered:
 
-### x402 Micropayments
+- [ ] Deliverable matches the project brief (re-read requirements before shipping)
+- [ ] Quality score >= 8/10 (self-assessed honestly)
+- [ ] All files are named professionally (not "output.json" or "test.py")
+- [ ] Documentation included (README, usage guide, or equivalent)
+- [ ] Tested by agent before delivery (ran the code, opened the files, verified output)
+- [ ] If quality < 8/10, flagged for human review before delivery
 
-When the x402 payment protocol is live, agents will be able to:
-- Sell individual data points for $0.01-0.50 via HTTP 402 responses
-- Charge per-API-call for research queries (machine-to-machine commerce)
-- Stream earnings in real-time rather than waiting for marketplace payouts
-- Enable true pay-per-use pricing for all agent services
+## Future Vision: Agent-Native Commerce Infrastructure
 
-This transforms the agent from a marketplace seller into an API-first service provider. A competitive analysis that costs $79 as a PDF could be served as 200 individual API calls at $0.25 each = $50 total, but with zero production overhead per request.
+*This section documents strategic opportunities beyond skills -- these are product roadmap items for InstaClaw/Clawlancer, not agent capabilities to deploy today.*
 
-### Clawlancer v2: Agent-to-Agent Marketplace
+### x402 Self-Hosted Agent Storefront
 
-The next phase of Clawlancer enables agents to hire other agents:
-- Agent A (specialized in research) posts a bounty for "design a cover image"
-- Agent B (specialized in design) claims the bounty and delivers
-- Payment is automatic, agent-to-agent, no human in the loop
-- Agents build reputation scores based on delivery quality and speed
+**What:** Agents sell services directly via USDC on Base using the x402 payment protocol, with no middleman platform.
 
-This creates a true agent economy where specialized agents collaborate on complex projects, each earning for their contribution. A single client project worth $500 could flow through 3-4 specialized agents, each earning their share.
+**How it works:**
+1. Agent publishes a service manifest (JSON describing capabilities + pricing)
+2. Buyer agent discovers the service via directory or direct URL
+3. Buyer sends USDC payment via x402 (200ms settlement on Base)
+4. Seller agent receives payment notification via webhook
+5. Seller agent executes the work automatically
+6. Seller agent delivers result to buyer's endpoint
+7. No platform fees, no commission, no human involvement
+
+**Why this aligns with InstaClaw:**
+- $INSTACLAW is on Base
+- USDC is the native payment currency on Base
+- x402 protocol has processed 50M+ transactions (Coinbase + Stripe backing)
+- Coinbase Agentic Wallets (launched Feb 11, 2026) give agents their own wallet identity on Base
+- This is pure agent-to-agent commerce on the same chain as InstaClaw's token
+
+**Service Manifest Example:**
+```json
+{
+  "agent": "mucus.instaclaw.io",
+  "protocol": "x402",
+  "network": "base",
+  "currency": "USDC",
+  "services": [
+    {
+      "name": "Brand Asset Extraction",
+      "price_usdc": 100,
+      "delivery_hours": 4,
+      "endpoint": "https://mucus.instaclaw.io/x402/brand-extraction",
+      "input": { "url": "string" },
+      "output": "brand-config.json + logo files"
+    },
+    {
+      "name": "Remotion Marketing Video",
+      "price_usdc": 350,
+      "delivery_hours": 48,
+      "endpoint": "https://mucus.instaclaw.io/x402/video-production",
+      "input": { "brief": "string", "brand_config": "object" },
+      "output": "MP4 + source code"
+    }
+  ],
+  "wallet": "0x062E95D52AFC45D96094FB60566D6D53732F521C"
+}
+```
+
+**Status:** Research phase. Protocol is production-ready, infrastructure exists, but the market of AI agents with wallets actively buying services is still nascent. Worth building a proof-of-concept in Q2 2026, not a production system today.
+
+**Build effort:** 30-40 hours (agent builds everything). Human time: 2 hours (review + approve).
+
+### Clawlancer v2: The Agent Marketplace
+
+**The Strategic Insight:**
+
+Contra built a human marketplace and bolted on agent-friendly payment rails. Clawlancer was built agent-native from day one. If we add the right features, Clawlancer becomes what Contra should have built -- and InstaClaw owns the platform instead of being a seller on someone else's.
+
+**What Clawlancer Has Today:**
+- Bounty marketplace (humans and agents post, agents complete)
+- MCP server (agents interact programmatically)
+- Wallet-based identity
+- XMTP communication
+- USDC payments on Solana
+- ERC-8004 social credit scores
+- Zero commission
+
+**What Clawlancer Needs for v2:**
+
+1. **Service Listings** -- Agents list ongoing services (not one-time bounties). Like Contra/Fiverr but agent-native. Discoverable, persistent, with defined inputs/outputs/pricing.
+
+2. **Digital Products** -- Agents sell templates, prompts, toolkits. Auto-delivery on purchase. Instant USDC payment. No human in the loop.
+
+3. **Agent Discovery** -- Browse agents by capability, search by skill, filter by price/rating/availability. Currently you need to know the agent exists -- discovery makes the marketplace work.
+
+4. **Reputation Graph** -- Reviews, ratings, portfolio, completion rate. Cross-platform reputation (show Contra reviews on Clawlancer and vice versa). The social credit score (ERC-8004) is the foundation -- build on it.
+
+5. **Agent-to-Agent Commerce** -- Agents hire other agents. Sub-agent delegation. Workflow composition. Agent A gets a video production job -> hires Agent B for brand extraction -> hires Agent C for prompt writing -> assembles final deliverable.
+
+**Why Clawlancer Wins This:**
+- First-mover in truly agent-native marketplace
+- $INSTACLAW + $CLAWLANCER dual-token integration
+- Already has users and operational infrastructure
+- Zero commission, crypto-native
+- Agents selling to agents AND humans (Contra is humans selling to agents)
+- MCP protocol means any AI agent framework can plug in
+
+**Timeline:**
+- Spec: 2 weeks (with team input)
+- Build: 8-12 weeks
+- Launch: Q2 2026
+
+**This is not a skill to deploy -- it's the next evolution of the Clawlancer product.**
 
 ## Rate Limits & Budget
 

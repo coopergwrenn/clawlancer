@@ -399,6 +399,87 @@ ecommerce:
 5. **Generating labels for wrong addresses** — always validate address against order
 6. **Over-communicating with customers** — exactly 3 emails per return max: RMA approved, refund processed, rejection
 
+## Build Timeline
+
+```
+Phase 1: Core Integration (5 weeks) — MVP
+├── Week 1: Install existing MCP servers (Shopify, Amazon, eBay)
+├── Week 2: Build onboarding flow + credential storage
+├── Week 3-4: RMA workflow automation (killer feature)
+└── Week 5: Testing + polish
+
+Phase 2: Fulfillment (2 weeks)
+├── Week 6: Build ShipStation MCP server
+└── Week 7: Integrate with RMA workflow
+
+Phase 3: Advanced Features (4 weeks)
+├── Week 8-9: Multi-channel inventory sync
+├── Week 10: Competitive pricing engine
+└── Week 11: Analytics/reporting dashboards
+
+Phase 4: Walmart (3-4 weeks, optional)
+├── Week 12-14: Build Walmart MCP server + integration
+└── Week 15: Testing
+
+TOTAL: 11-15 weeks (3-4 months)
+MVP (RMA + orders): 5 weeks
+```
+
+**Launch order:** Shopify + ShipStation first (low friction) → Amazon (high impact) → eBay (round out top 3) → Walmart (if demand).
+
+**Platform Priority Ranking:**
+
+| Priority | Platform | Rating | Rationale |
+|---|---|---|---|
+| 1 | Shopify | 5/5 | Easiest setup, best API, largest market, official MCP exists |
+| 2 | Amazon | 5/5 | Largest marketplace, highest revenue/seller, complex setup but worth it |
+| 3 | ShipStation | 5/5 | CRITICAL for RMA workflow, most sellers use this, easy API |
+| 4 | eBay | 4/5 | Good API, 325-tool MCP exists, easier than Amazon |
+| 5 | Walmart | 2/5 | Smallest market, may need custom MCP, lower priority |
+
+**Other WMS/Fulfillment Options (Phase 3+):**
+- **ShipBob** (3PL): REST API — create fulfillment orders, receive inventory, track shipments, returns management
+- **SkuVault:** Has API — warehouse management
+- **Ordoro:** Has API — inventory + shipping
+- **Easyship:** Has API — international shipping
+- **Pirate Ship:** Has API — label generation (USPS/UPS discounts)
+- **Direct Carriers:** USPS, UPS, FedEx APIs for sellers without WMS
+
+**Recommended approach:** ShipStation first (covers 60%+ of multi-channel sellers) → direct carrier APIs → ShipBob/Ordoro on demand.
+
+## Market Opportunity
+
+```yaml
+addressable_market:
+  shopify_stores: 2,500,000+
+  amazon_sellers: 1,900,000+
+  ebay_sellers: 1,300,000+
+  total: 5,700,000+ (many sell multi-channel)
+
+target_segment:
+  description: "Multi-channel sellers, $50k-$5M/year, 5-50 orders/day"
+  estimated_count: 500,000-1,000,000
+
+current_spend:
+  virtual_assistant: $1,500-3,000/month
+  ecommerce_saas_tools: $200-500/month
+  shipstation: $29-159/month
+  total: $2,000-4,000/month
+
+instaclaw_pricing:
+  replaces: "VA + multiple SaaS tools"
+  price_point: $299-999/month
+  value_prop: "24/7 operation, faster than human, all platforms unified"
+
+revenue_projection:
+  conservative: "1,000 customers x $299/mo = $299K MRR -> $3.6M ARR"
+  realistic: "5,000 customers x $499/mo = $2.5M MRR -> $30M ARR"
+```
+
+## Marketing Pitch
+
+> "Your AI employee for e-commerce operations. InstaClaw agents manage your Shopify, Amazon, and eBay stores 24/7 — processing returns, syncing inventory, monitoring competitors, and generating daily P&L reports. The tedious work that takes you 2+ hours every day? Your agent does it in minutes while you sleep. No more copying RMA numbers between systems. No more overselling because inventory didn't sync. No more missing competitor price drops. Just wake up to a daily summary and approve what needs your attention. Setup takes 15 minutes. First month free."
+
 ## Scripts
 
 - `~/scripts/ecommerce-ops.py` — Main operations: orders, inventory, returns, reports

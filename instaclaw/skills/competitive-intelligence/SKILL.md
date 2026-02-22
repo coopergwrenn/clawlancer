@@ -229,9 +229,20 @@ For users with crypto/web3 interests (detected from USER.md):
 - Partnership announcements — 8/10
 - Conference appearances — 7/10
 
+**What needs specialized APIs (not search):**
+
+| Source | Feasibility | Better Tool |
+|---|---|---|
+| Token price movements | 5/10 | CoinGecko API (free) |
+| Whale wallet activity | 2/10 | Etherscan/Nansen API |
+| DEX volume changes | 4/10 | DexScreener API |
+| On-chain metrics | 3/10 | The Graph, Dune Analytics |
+
+**Recommended approach:** Hybrid — Brave Search for announcements/sentiment/content + crypto-specific APIs (CoinGecko, GitHub) for real-time data. Agent should have both capabilities.
+
 **Crypto sentiment keywords:**
-- Positive: "moon", "gem", "bullish", "buying", "accumulating", "undervalued"
-- Negative: "rug", "scam", "bearish", "selling", "dumping", "dead"
+- Positive: "moon", "gem", "bullish", "buying", "accumulating", "undervalued", "based"
+- Negative: "rug", "scam", "bearish", "selling", "dumping", "dead", "overvalued"
 
 ## Data Source Feasibility Matrix
 
@@ -262,6 +273,40 @@ For users with crypto/web3 interests (detected from USER.md):
 ```
 
 **Comparison logic:** Load today's snapshot vs last week's snapshot, compute deltas for pricing, social, content, hiring. Report percentage changes.
+
+### Phase 2: SQLite Database (If Scaling)
+
+When snapshot count exceeds 100 files, migrate to SQLite for efficient querying:
+
+```sql
+CREATE TABLE competitor_snapshots (
+  id INTEGER PRIMARY KEY,
+  date DATE,
+  competitor TEXT,
+  category TEXT,  -- pricing, social, hiring, features
+  data JSON,
+  created_at TIMESTAMP
+);
+
+CREATE TABLE price_changes (
+  id INTEGER PRIMARY KEY,
+  date DATE,
+  competitor TEXT,
+  tier TEXT,
+  old_price REAL,
+  new_price REAL,
+  change_pct REAL
+);
+
+-- "Show all CompetitorX price changes in Q1"
+SELECT * FROM price_changes WHERE competitor = 'CompetitorX' AND date >= '2026-01-01';
+
+-- "Average blog posts per month by competitor"
+SELECT competitor, AVG(json_extract(data, '$.blog_posts_30d'))
+FROM competitor_snapshots WHERE category = 'content' GROUP BY competitor;
+```
+
+**Migration path:** Start with JSON files → SQLite when data grows. Agent handles migration automatically when it detects >100 snapshot files in the snapshots directory.
 
 ## Rate Limiting & Budget
 

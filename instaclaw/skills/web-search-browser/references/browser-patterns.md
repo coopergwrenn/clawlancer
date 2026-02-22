@@ -117,6 +117,47 @@ browser → evaluate(script="JSON.stringify(performance.timing)")
 
 Returns: The serialized return value of the script.
 
+### snapshot
+
+Get an accessible tree of page elements with refs for targeting. Useful for understanding page structure without taking a full screenshot.
+
+```
+browser → snapshot(refs="aria")
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `refs` | string | No | Reference type: `"aria"` (accessibility refs) or `"role"` (role-based refs). Default: `"aria"` |
+
+Returns: An accessible tree of page elements. Each element has a ref (e.g., `"e12"`) that can be used for clicking, typing, etc. via CSS selector or ref-based targeting.
+
+**When to use snapshot:**
+- Understanding complex page layouts before interacting
+- Finding the right element to click/fill when CSS selectors are unreliable
+- Pages with dynamic IDs or deeply nested components
+- Accessibility audits
+
+### console
+
+Read browser console logs. Useful for debugging JavaScript errors, monitoring network activity, or capturing app-level logging.
+
+```
+browser → console(level="info")
+browser → console(level="error")
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `level` | string | No | Filter by log level: `"info"`, `"error"`, `"warning"`. Default: all levels |
+
+Returns: Array of console log entries with timestamp, level, and message.
+
+**When to use console:**
+- Debugging JavaScript errors on a page
+- Checking for failed API calls or network errors
+- Monitoring application state changes
+- Verifying that custom scripts executed correctly
+
 ## CDP (Chrome DevTools Protocol) Notes
 
 The browser tool communicates with Chromium via CDP under the hood. Key things to know:

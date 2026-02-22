@@ -64,7 +64,9 @@ python3 ~/scripts/social-content.py trends --industry "AI agents"
 | Content Type | Quality | Notes |
 |---|---|---|
 | Twitter/X thread (technical) | 7/10 | Good structure, needs personality injection |
+| Twitter/X engagement reply | 6/10 | Quick reactions, may lack nuance |
 | LinkedIn company update | 8/10 | Specific numbers, professional tone |
+| LinkedIn thought leadership | 6/10 | Insight-driven, needs human perspective layer |
 | Blog post / article draft | 8/10 | Specific examples, transparent |
 | Reddit post | 7/10 | Conversational, needs subreddit adaptation |
 | Newsletter copy | 7/10 | Punchy opening, clear CTA |
@@ -246,6 +248,31 @@ Here's what I've learned:
 #Hashtag1 #Hashtag2 #Hashtag3
 ```
 
+### Instagram Caption
+```
+[Opening hook — short, punchy, emoji optional]
+
+[2-3 sentences of value — tip, story, or insight]
+
+[Call to action — save, share, comment, or DM]
+
+.
+.
+.
+
+#Hashtag1 #Hashtag2 #Hashtag3 #Hashtag4 #Hashtag5
+[Use 5-15 niche hashtags, never generic #inspo #motivation]
+[First comment: additional hashtags if needed]
+```
+
+**Instagram-specific rules:**
+- Captions max 2,200 chars (aim for 150-300 for feed posts)
+- Line breaks via periods on empty lines (`.` trick)
+- First line is the hook — most users only see first 125 chars before "...more"
+- Hashtags in first comment perform equally to in-caption
+- Carousel posts: write caption that references each slide
+- Reels: short caption + trending audio reference
+
 ### Reddit Post
 ```
 Title: [Specific, descriptive, no clickbait]
@@ -303,4 +330,5 @@ Disclosure: [agent name] is an AI agent. This post was reviewed by a human.
 - [ ] Hashtags are niche-specific, not generic
 - [ ] Scheduled at optimal time for platform
 - [ ] Approval workflow triggered for high-risk content
+- [ ] Rate limits respected per platform
 - [ ] Content calendar updated after posting

@@ -139,6 +139,8 @@ Use the browser tool when:
 | `select`    | Choose an option from a `<select>` dropdown       |
 | `hover`     | Hover over an element by CSS selector             |
 | `evaluate`  | Execute arbitrary JavaScript in the page context  |
+| `snapshot`  | Get accessible tree of page elements with refs     |
+| `console`   | Read browser console logs (info, error, warning)   |
 
 ### Pattern 1: Navigate + Screenshot
 
@@ -531,13 +533,33 @@ RIGHT:  "The iPhone 16 Pro starts at $999 (source: https://apple.com/iphone-16-p
 ```
 Always include the URL and retrieval date. Web data changes constantly.
 
+## Priority Deployment Actions
+
+1. **CRITICAL: Deploy Brave Search API key to all VMs** — Single biggest capability unlock. Without it, agents cannot search the web. Cost: $5/month for Pro tier (10,000 queries). Shared key for All-Inclusive users.
+2. **Add web search to heartbeat cycle** — Once Brave Search is live, agents can search for mentions, news, and opportunities during heartbeat. This powers proactive work-finding.
+3. **Pre-build the brand asset extraction workflow** — Most common browser task (used by Remotion skill). Make it a callable sub-workflow that any skill can invoke.
+4. **Document the Cloudflare problem** — Agents need to know which sites they can't access and have a pre-written response for users: "This site has bot protection. You'll need to [alternative]."
+
 ## Quality Checklist
 
-- [ ] Used the lightest tool tier that accomplishes the task
-- [ ] All facts include source URLs
-- [ ] Data retrieval date noted in output
-- [ ] Multiple sources cross-referenced for important claims
-- [ ] Screenshots captured for visual tasks
-- [ ] No CAPTCHA bypass attempts
-- [ ] Browser session closed / not left hanging
-- [ ] Daily search budget tracked and within limits
+- [ ] Used web_search for discovery (didn't rely only on URLs user provided)
+- [ ] Tried web_fetch first for content (faster than browser)
+- [ ] Escalated to browser only when web_fetch couldn't handle JS-rendered content
+- [ ] Cited all sources with URLs
+- [ ] Took screenshots of key findings for visual evidence
+- [ ] Noted any sites that were blocked or inaccessible
+- [ ] Cross-referenced information across multiple sources
+- [ ] Flagged anything that seemed unreliable or outdated
+- [ ] Research is synthesis with insights, not just a list of links
+
+## Future Improvements (Roadmap)
+
+1. **Brave Search API fleet deployment** (CRITICAL — immediate)
+2. **CAPTCHA solving service** (2Captcha integration) — unlocks 50%+ more sites
+3. **Session persistence** (save/restore browser cookies) — enables authenticated workflows
+4. **Residential proxy network** — avoid bot detection
+5. **Parallel browser tabs** — faster data collection
+6. **Credential vault** — encrypted storage for platform credentials (not plaintext)
+7. **Platform connector library** — pre-built integrations for common platforms (GitHub, Stripe, etc.)
+8. **Screenshot annotations** — highlight elements, draw boxes for visual debugging
+9. **Rate limit handling** — exponential backoff, request queuing, per-domain tracking

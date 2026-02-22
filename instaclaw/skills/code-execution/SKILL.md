@@ -654,7 +654,7 @@ STEP 3: Verify
 | Images (PNG, JPG, SVG) | Yes (matplotlib, Pillow) | Yes (Pillow) |
 | Excel (XLSX) | Yes (openpyxl) | Yes (openpyxl, pandas) |
 | PDF | Yes (reportlab, weasyprint) | Yes (PyPDF2, pdfplumber) |
-| Audio/Video | No (no ffmpeg by default) | No |
+| Audio/Video | Yes (ffmpeg pre-installed on VM snapshot) | Yes (ffmpeg) |
 
 ## Rate Limits & Budget
 
@@ -691,6 +691,15 @@ top -bn1 | head -5
 3. **Starting a server on 127.0.0.1** -- If the user needs external access, bind to `0.0.0.0`, not localhost. Servers bound to 127.0.0.1 are only reachable from the VM itself.
 4. **Not saving PIDs for background processes** -- If you start something with `&` or `nohup`, save the PID. Otherwise you cannot reliably stop or monitor it later.
 5. **Loading entire large files into memory** -- With ~2 GB RAM, a 1 GB CSV will crash the process. Use chunked reading (`pd.read_csv(chunksize=10000)`) or streaming.
+
+## Future Improvements (Roadmap)
+
+1. **Credential vault** — Encrypted storage for API keys and secrets (not plaintext files)
+2. **Cloud deployment integration** — Ability to deploy to Vercel/Railway/Fly.io with user credentials
+3. **Persistent background workers** — Daemonized processes that survive session restart
+4. **Package caching** — Pre-install common packages on VM snapshot (pandas, plotly, etc.)
+5. **Code quality automation** — Auto-lint, auto-format before delivering code to user
+6. **Testing framework** — Auto-generate basic tests for code the agent writes
 
 ## Quality Checklist
 
