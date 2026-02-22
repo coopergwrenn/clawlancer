@@ -1167,6 +1167,56 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Financial Analysis skill ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // Deploys ALPHAVANTAGE_API_KEY for Alpha Vantage market data access.
+    try {
+      const financeSkillDir = path.join(process.cwd(), "skills", "financial-analysis");
+      const financeSkillMd = fs.readFileSync(path.join(financeSkillDir, "SKILL.md"), "utf-8");
+      const financeGuide = fs.readFileSync(path.join(financeSkillDir, "references", "finance-guide.md"), "utf-8");
+      const marketDataSh = fs.readFileSync(path.join(financeSkillDir, "assets", "market-data.sh"), "utf-8");
+      const marketAnalysisPy = fs.readFileSync(path.join(financeSkillDir, "assets", "market-analysis.py"), "utf-8");
+
+      const financeSkillB64 = Buffer.from(financeSkillMd, "utf-8").toString("base64");
+      const financeGuideB64 = Buffer.from(financeGuide, "utf-8").toString("base64");
+      const marketDataB64 = Buffer.from(marketDataSh, "utf-8").toString("base64");
+      const marketAnalysisB64 = Buffer.from(marketAnalysisPy, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Financial Analysis skill',
+        'FINANCE_SKILL_DIR="$HOME/.openclaw/skills/financial-analysis"',
+        'mkdir -p "$FINANCE_SKILL_DIR/references" "$FINANCE_SKILL_DIR/assets" "$HOME/scripts"',
+        'mkdir -p "$HOME/.openclaw/cache/alphavantage"',
+        `echo '${financeSkillB64}' | base64 -d > "$FINANCE_SKILL_DIR/SKILL.md"`,
+        `echo '${financeGuideB64}' | base64 -d > "$FINANCE_SKILL_DIR/references/finance-guide.md"`,
+        `echo '${marketDataB64}' | base64 -d > "$HOME/scripts/market-data.sh"`,
+        `echo '${marketAnalysisB64}' | base64 -d > "$HOME/scripts/market-analysis.py"`,
+        'chmod +x "$HOME/scripts/market-data.sh" "$HOME/scripts/market-analysis.py"',
+        ''
+      );
+
+      // Deploy ALPHAVANTAGE_API_KEY to VM .env
+      const alphaVantageKey = process.env.ALPHAVANTAGE_API_KEY;
+      if (alphaVantageKey) {
+        const avKeyB64 = Buffer.from(alphaVantageKey, "utf-8").toString("base64");
+        scriptParts.push(
+          '# Write Alpha Vantage API key to agent .env',
+          'touch "$HOME/.openclaw/.env"',
+          `AV_KEY=$(echo '${avKeyB64}' | base64 -d)`,
+          'grep -q "^ALPHAVANTAGE_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && sed -i "s/^ALPHAVANTAGE_API_KEY=.*/ALPHAVANTAGE_API_KEY=$AV_KEY/" "$HOME/.openclaw/.env" || echo "ALPHAVANTAGE_API_KEY=$AV_KEY" >> "$HOME/.openclaw/.env"',
+          ''
+        );
+      }
+
+      logger.info("Finance skill deployment prepared", { route: "lib/ssh" });
+    } catch (financeSkillErr) {
+      // Finance skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Finance skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(financeSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [

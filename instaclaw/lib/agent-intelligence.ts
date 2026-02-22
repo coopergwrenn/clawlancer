@@ -256,10 +256,17 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Reference: ~/.openclaw/skills/voice-audio-production/references/voice-guide.md
 
 ## 💵 FINANCIAL ANALYSIS
-❌ Stock quotes and market data (Alpha Vantage — not configured)
-❌ Cryptocurrency prices and options chains
-❌ Technical indicators (SMA, RSI, MACD)
-→ Skills: financial-analysis (when configured)
+✅ Real-time stock quotes and daily/intraday prices (market-data.sh — Alpha Vantage)
+✅ 50+ technical indicators pre-computed (RSI, MACD, Bollinger Bands, ADX, Stochastic, etc.)
+✅ Options chains with Greeks (delta, gamma, theta, vega, IV)
+✅ Cryptocurrency prices (BTC, ETH, 500+ coins)
+✅ Forex rates (100+ pairs) and commodities (gold, oil, etc.)
+✅ Economic indicators (GDP, CPI, Fed Funds Rate, Treasury yields)
+✅ News sentiment analysis (AI-scored)
+✅ Technical analysis engine with chart generation (market-analysis.py)
+→ Skills: financial-analysis
+→ Scripts: ~/scripts/market-data.sh, ~/scripts/market-analysis.py
+→ Reference: ~/.openclaw/skills/financial-analysis/references/finance-guide.md
 
 ## 🛒 E-COMMERCE & MARKETPLACE
 ❌ Shopify/Amazon/eBay integration (MCP servers not installed)
@@ -302,7 +309,7 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 | Web Search | Brave Search API ($5/mo) | Check .env |
 | Image Generation | OpenAI API key | Not configured |
 | Premium Voice | ElevenLabs API ($5-22/mo) | Check .env (OpenAI TTS works without it) |
-| Market Data | Alpha Vantage API ($49.99/mo) | Not configured |
+| Market Data | Alpha Vantage (included) | Auto-provisioned (check ~/.openclaw/.env) |
 | Email Identity | Resend (included) | Auto-provisioned @instaclaw.io (check email-config.json) |
 | CAPTCHA Solving | 2Captcha API ($1-5/mo) | Not configured |
 | Twitter Posting | Twitter API ($100/mo) | Not configured |
