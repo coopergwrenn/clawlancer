@@ -1423,6 +1423,115 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Web Search & Browser Automation skill ──
+    // Doc-only skill — no executable scripts. Browser and web_search are built-in tools.
+    try {
+      const webSkillDir = path.join(process.cwd(), "skills", "web-search-browser");
+      const webSkillMd = fs.readFileSync(path.join(webSkillDir, "SKILL.md"), "utf-8");
+      const webBrowserPatterns = fs.readFileSync(path.join(webSkillDir, "references", "browser-patterns.md"), "utf-8");
+
+      const webSkillB64 = Buffer.from(webSkillMd, "utf-8").toString("base64");
+      const webPatternsB64 = Buffer.from(webBrowserPatterns, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Web Search & Browser Automation skill (doc-only — no API keys)',
+        'WEB_SKILL_DIR="$HOME/.openclaw/skills/web-search-browser"',
+        'mkdir -p "$WEB_SKILL_DIR/references"',
+        `echo '${webSkillB64}' | base64 -d > "$WEB_SKILL_DIR/SKILL.md"`,
+        `echo '${webPatternsB64}' | base64 -d > "$WEB_SKILL_DIR/references/browser-patterns.md"`,
+        ''
+      );
+
+      logger.info("Web search skill deployment prepared", { route: "lib/ssh" });
+    } catch (webSkillErr) {
+      // Web skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Web search skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(webSkillErr),
+      });
+    }
+
+    // ── Deploy Code Execution & Backend Development skill ──
+    // Doc-only skill — runtimes (Python, Node.js, SQLite) are pre-installed on VMs.
+    try {
+      const codeSkillDir = path.join(process.cwd(), "skills", "code-execution");
+      const codeSkillMd = fs.readFileSync(path.join(codeSkillDir, "SKILL.md"), "utf-8");
+      const codePatterns = fs.readFileSync(path.join(codeSkillDir, "references", "code-patterns.md"), "utf-8");
+
+      const codeSkillB64 = Buffer.from(codeSkillMd, "utf-8").toString("base64");
+      const codePatternsB64 = Buffer.from(codePatterns, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Code Execution & Backend Development skill (doc-only — runtimes pre-installed)',
+        'CODE_SKILL_DIR="$HOME/.openclaw/skills/code-execution"',
+        'mkdir -p "$CODE_SKILL_DIR/references"',
+        `echo '${codeSkillB64}' | base64 -d > "$CODE_SKILL_DIR/SKILL.md"`,
+        `echo '${codePatternsB64}' | base64 -d > "$CODE_SKILL_DIR/references/code-patterns.md"`,
+        ''
+      );
+
+      logger.info("Code execution skill deployment prepared", { route: "lib/ssh" });
+    } catch (codeSkillErr) {
+      // Code skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Code execution skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(codeSkillErr),
+      });
+    }
+
+    // ── Deploy Kling AI Cinematic Video Prompting skill ──
+    // Doc-only skill — prompt engineering guide for Kling AI cinematic video.
+    try {
+      const klingSkillDir = path.join(process.cwd(), "skills", "kling-ai-video");
+      const klingSkillMd = fs.readFileSync(path.join(klingSkillDir, "SKILL.md"), "utf-8");
+      const klingCinematography = fs.readFileSync(path.join(klingSkillDir, "references", "cinematography-specs.md"), "utf-8");
+
+      const klingSkillB64 = Buffer.from(klingSkillMd, "utf-8").toString("base64");
+      const klingCinemaB64 = Buffer.from(klingCinematography, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Kling AI Cinematic Video Prompting skill (doc-only — no API keys)',
+        'KLING_SKILL_DIR="$HOME/.openclaw/skills/kling-ai-video"',
+        'mkdir -p "$KLING_SKILL_DIR/references"',
+        `echo '${klingSkillB64}' | base64 -d > "$KLING_SKILL_DIR/SKILL.md"`,
+        `echo '${klingCinemaB64}' | base64 -d > "$KLING_SKILL_DIR/references/cinematography-specs.md"`,
+        ''
+      );
+
+      logger.info("Kling AI video skill deployment prepared", { route: "lib/ssh" });
+    } catch (klingSkillErr) {
+      // Kling skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Kling AI video skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(klingSkillErr),
+      });
+    }
+
+    // ── Deploy Marketplace Earning & Digital Product skill ──
+    // Doc-only skill — single SKILL.md, no references directory.
+    try {
+      const marketSkillDir = path.join(process.cwd(), "skills", "marketplace-earning");
+      const marketSkillMd = fs.readFileSync(path.join(marketSkillDir, "SKILL.md"), "utf-8");
+
+      const marketSkillB64 = Buffer.from(marketSkillMd, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Marketplace Earning & Digital Product skill (doc-only)',
+        'MARKET_SKILL_DIR="$HOME/.openclaw/skills/marketplace-earning"',
+        'mkdir -p "$MARKET_SKILL_DIR"',
+        `echo '${marketSkillB64}' | base64 -d > "$MARKET_SKILL_DIR/SKILL.md"`,
+        ''
+      );
+
+      logger.info("Marketplace earning skill deployment prepared", { route: "lib/ssh" });
+    } catch (marketSkillErr) {
+      // Marketplace skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Marketplace earning skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(marketSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [

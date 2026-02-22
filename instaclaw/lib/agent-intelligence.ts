@@ -197,25 +197,37 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 
 ---
 
-## 🌐 WEB & RESEARCH
-✅ Fetch web pages (web_fetch tool)
-✅ Browser automation (headless Chromium on your VM)
-✅ Take screenshots, fill forms, click buttons
-✅ Extract structured data (scraping)
-⚠️ Web search: Requires Brave Search API key (check .env)
+## 🌐 WEB SEARCH & BROWSER AUTOMATION
+✅ Brave Search — instant factual queries, news, real-time data (web_search tool)
+✅ Web Fetch — read specific URLs, extract page content (web_fetch tool)
+✅ Browser Automation — headless Chromium: navigate, screenshot, click, fill forms, scrape (browser tool)
+✅ Take screenshots of any page or element for visual analysis
+✅ Multi-page navigation, form submission, login flows
+✅ Structured data extraction (table scraping, JSON extraction)
 ⚠️ CAPTCHA: Blocked without 2Captcha integration
-→ Tools: browser, web_search (if configured)
+⚠️ Anti-bot: Some platforms (LinkedIn, Twitter) may block automated access
+→ Skills: web-search-browser
+→ Tools: web_search, web_fetch, browser
+→ Reference: ~/.openclaw/skills/web-search-browser/references/browser-patterns.md
 
 **Browser note:** Your browser runs on YOUR server, not the user's computer. There is no "OpenClaw Chrome extension" — it does not exist. Never tell users to install anything. You browse independently; take screenshots to show them what you see.
 
-## 💻 DEVELOPMENT & AUTOMATION
-✅ Write/edit code (Python, JS, TypeScript, etc.)
-✅ Run shell commands
-✅ Install npm/pip packages (local scope)
-✅ Create APIs and servers
-✅ Set up cron jobs and scheduled automations
-✅ Use MCP servers (mcporter CLI)
+## 💻 CODE EXECUTION & BACKEND DEVELOPMENT
+✅ Python 3.11+ — pandas, matplotlib, requests, beautifulsoup4, pillow pre-installed
+✅ Node.js 22 — npm, TypeScript, Express, Remotion available
+✅ Bash/Shell scripting — full Linux userspace utilities
+✅ SQLite databases — create, query, analyze
+✅ API server creation — Express.js or FastAPI with automatic port management
+✅ MCP server development — create and register custom tool servers
+✅ Background processes — nohup, screen, systemd user services for long-running tasks
+✅ Git operations — clone, commit, push, branch management
+✅ Data analysis pipelines — CSV/Excel/JSON processing with visualization
+⚠️ No sudo/root access — userspace only
+⚠️ No Docker — install packages via pip/npm directly
+⚠️ Limited RAM (~2GB) — process large files in chunks
+→ Skills: code-execution
 → Tools: shell, file tools, mcporter
+→ Reference: ~/.openclaw/skills/code-execution/references/code-patterns.md
 
 ## 💰 FREELANCE & EARNING
 ✅ Claim bounties on Clawlancer (auto-polling every 2 min)
@@ -223,6 +235,17 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 ✅ Check wallet balance (CDP wallet on Base)
 ✅ Send XMTP messages to other agents
 → Tools: mcporter call clawlancer.<tool>
+
+## 🏪 MARKETPLACE EARNING & DIGITAL PRODUCTS
+✅ Clawlancer bounty system — autonomous polling, claiming, and delivery
+✅ Digital product creation — market research reports, brand audits, content calendars, competitive analysis packs
+✅ Service catalog — 6 autonomous services (research, writing, analysis, email, social, monitoring)
+✅ Revenue tracking and 15-min/day management system
+✅ Pricing strategy engine — agent undercuts human freelancers by 40-60%
+✅ 3-tier autonomy framework (fully autonomous, semi-autonomous, human-led)
+⚠️ External marketplace listings (Contra, Gumroad) — agent drafts, human approves
+⚠️ Direct sales require human oversight for transactions >$50
+→ Skills: marketplace-earning
 
 ## 📊 DATA & ANALYSIS
 ✅ Generate charts (matplotlib, plotly)
@@ -241,16 +264,25 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Scripts: ~/scripts/email-client.sh, ~/scripts/email-safety-check.py, ~/scripts/email-digest.py
 → Config: ~/.openclaw/email-config.json
 
-## 🎬 VIDEO PRODUCTION
+## 🎬 VIDEO PRODUCTION (REMOTION)
 ✅ Remotion video production — React-based motion graphics (template-basic included)
 ✅ 4-scene marketing video template (Hook → Problem → Solution → CTA)
 ✅ Spring physics animations, staggered reveals, opacity+transform combos
 ✅ Brand asset extraction for videos (fonts, colors, logos via browser tool)
 ✅ Draft and production rendering pipeline (15s @ 1080p, 1-3MB output)
-⚠️ AI video prompting (Kling AI — requires separate API, not pre-installed)
 → Skills: remotion-video-production
 → Template: ~/.openclaw/skills/video-production/assets/template-basic/
 → Reference: ~/.openclaw/skills/video-production/references/advanced-patterns.md
+
+## 🎥 KLING AI CINEMATIC VIDEO PROMPTING
+✅ Photorealistic video prompt engineering for Kling AI
+✅ 6-element prompt structure (Subject, Camera System, Movement, Lighting, Color, Atmosphere)
+✅ Cinematic vocabulary — real camera systems (ARRI, RED), lens specs, film stocks
+✅ 4 aesthetic styles (Documentary, Commercial, Cinematic, Music Video)
+✅ Full cinematography reference (camera systems, lenses, movements, lighting, color science)
+⚠️ Kling AI generation requires separate API/credits (not pre-installed — agent writes prompts only)
+→ Skills: kling-ai-video
+→ Reference: ~/.openclaw/skills/kling-ai-video/references/cinematography-specs.md
 
 ## 🎙️ VOICE & AUDIO PRODUCTION
 ✅ Text-to-speech via OpenAI TTS (tts-openai.sh — always available)
@@ -429,7 +461,13 @@ export const WORKSPACE_QUICK_REFERENCE_MD = `# Quick Reference — Common Tasks
 | "Write a tweet" | Social Media (Skill 9) | Generate content (posting may be blocked) |
 | "Stock price of X" | Financial (Skill 7) | Alpha Vantage API |
 | "Extract brand assets" | Brand (Skill 5) | Load brand-extraction skill |
-| "Search the web" | Web Search (Skill 2) | Brave Search API (check if configured) |
+| "Search the web" | Web Search (Skill 2) | Brave Search / browser automation |
+| "Browse this page" | Web Browser (Skill 2) | Headless Chromium screenshot/scrape |
+| "Run this code" | Code Execution (Skill 3) | Python/Node.js on your VM |
+| "Build an API" | Code Execution (Skill 3) | Express or FastAPI scaffold |
+| "Write a Kling prompt" | Kling AI (Skill 4) | Cinematic video prompt engineering |
+| "How do I earn money?" | Marketplace (Skill 6) | Clawlancer + digital products |
+| "Create a product" | Marketplace (Skill 6) | Digital product creation workflow |
 | "What can you do?" | Meta | Read CAPABILITIES.md |
 `;
 
