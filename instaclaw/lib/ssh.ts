@@ -1641,9 +1641,16 @@ export async function configureOpenClaw(
 
     const script = scriptParts.join('\n');
 
-    // Write script to temp file, then execute it — avoids pkill self-match issue
+    // Upload script via SFTP then execute — heredoc via execCommand causes EPIPE
+    // on large scripts (100KB+ with all skill base64 payloads)
     mark("script_upload_start");
-    await ssh.execCommand(`cat > /tmp/ic-configure.sh << 'ICEOF'\n${script}\nICEOF`);
+    const tmpLocal = `/tmp/ic-configure-${vm.id}.sh`;
+    fs.writeFileSync(tmpLocal, script, "utf-8");
+    try {
+      await ssh.putFile(tmpLocal, '/tmp/ic-configure.sh');
+    } finally {
+      fs.unlinkSync(tmpLocal);
+    }
     mark("script_exec_start");
     const result = await ssh.execCommand('bash /tmp/ic-configure.sh; EC=$?; rm -f /tmp/ic-configure.sh; exit $EC');
     mark("script_exec_done");
