@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { buildSystemPrompt, TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { saveToLibrary } from "@/lib/library";
 import { sanitizeAgentResult } from "@/lib/sanitize-result";
+import { isAnthropicModel } from "@/lib/models";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -194,6 +195,18 @@ async function executeRerun(
 
     // Fallback: direct Anthropic
     if (!upstreamRes) {
+      if (!isAnthropicModel(model)) {
+        logger.warn("Non-Anthropic model requires gateway for rerun", { model, taskId, userId });
+        await supabase
+          .from("instaclaw_tasks")
+          .update({
+            status: "failed",
+            error_message: `${model} requires your agent to be online. Check your dashboard for status.`,
+          })
+          .eq("id", taskId);
+        return;
+      }
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 

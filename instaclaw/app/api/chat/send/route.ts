@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { buildSystemPrompt } from "@/lib/system-prompt";
+import { isAnthropicModel, FALLBACK_MODEL } from "@/lib/models";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_HISTORY = 40; // messages to include for context
@@ -252,6 +253,19 @@ export async function POST(req: NextRequest) {
 
   // Fallback: direct Anthropic API (no tools)
   if (!upstreamRes) {
+    // Non-Anthropic models (e.g. MiniMax) can only run through the gateway
+    if (!isAnthropicModel(model)) {
+      logger.warn("Non-Anthropic model requires gateway", {
+        model,
+        route: "chat/send",
+        userId: session.user.id,
+      });
+      return NextResponse.json(
+        { error: `${model} requires your agent to be online. Check your dashboard for status.` },
+        { status: 502 }
+      );
+    }
+
     try {
       upstreamRes = await fetch(ANTHROPIC_API_URL, {
         method: "POST",

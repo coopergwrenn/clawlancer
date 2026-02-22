@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { buildSystemPrompt } from "@/lib/system-prompt";
+import { isAnthropicModel } from "@/lib/models";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -170,6 +171,18 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
 
     // Fallback: direct Anthropic
     if (!upstreamRes) {
+      if (!isAnthropicModel(model)) {
+        logger.warn("Non-Anthropic model requires gateway for refine", {
+          model,
+          taskId: id,
+          userId: session.user.id,
+        });
+        return NextResponse.json(
+          { error: `${model} requires your agent to be online. Check your dashboard for status.` },
+          { status: 502 }
+        );
+      }
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 

@@ -12,6 +12,7 @@ import {
   discoverTelegramChatId,
 } from "@/lib/telegram";
 import { sanitizeAgentResult } from "@/lib/sanitize-result";
+import { isAnthropicModel, FALLBACK_MODEL } from "@/lib/models";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -107,7 +108,9 @@ Execute the task with the LATEST available information.
 Be thorough and provide current, actionable content.
 Return ONLY the result content — do NOT include any TASK_META block.`;
 
-  const model = vm.default_model || "claude-haiku-4-5-20251001";
+  // Non-Anthropic models can't be called directly — use fallback
+  const rawModel = vm.default_model || "claude-haiku-4-5-20251001";
+  const model = isAnthropicModel(rawModel) ? rawModel : FALLBACK_MODEL;
 
   // Call Anthropic
   const controller = new AbortController();
