@@ -1304,6 +1304,45 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy E-Commerce & Marketplace skill ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // BYOK — no platform-level API keys. Users configure their own credentials.
+    try {
+      const ecomSkillDir = path.join(process.cwd(), "skills", "ecommerce-marketplace");
+      const ecomSkillMd = fs.readFileSync(path.join(ecomSkillDir, "SKILL.md"), "utf-8");
+      const ecomGuide = fs.readFileSync(path.join(ecomSkillDir, "references", "ecommerce-guide.md"), "utf-8");
+      const ecomOpsPy = fs.readFileSync(path.join(ecomSkillDir, "assets", "ecommerce-ops.py"), "utf-8");
+      const ecomSetupSh = fs.readFileSync(path.join(ecomSkillDir, "assets", "ecommerce-setup.sh"), "utf-8");
+
+      const ecomSkillB64 = Buffer.from(ecomSkillMd, "utf-8").toString("base64");
+      const ecomGuideB64 = Buffer.from(ecomGuide, "utf-8").toString("base64");
+      const ecomOpsB64 = Buffer.from(ecomOpsPy, "utf-8").toString("base64");
+      const ecomSetupB64 = Buffer.from(ecomSetupSh, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy E-Commerce & Marketplace skill (BYOK — no platform keys)',
+        'ECOM_SKILL_DIR="$HOME/.openclaw/skills/ecommerce-marketplace"',
+        'mkdir -p "$ECOM_SKILL_DIR/references" "$ECOM_SKILL_DIR/assets" "$HOME/scripts"',
+        'mkdir -p "$HOME/.openclaw/workspace/ecommerce/reports"',
+        'mkdir -p "$HOME/.openclaw/config"',
+        `echo '${ecomSkillB64}' | base64 -d > "$ECOM_SKILL_DIR/SKILL.md"`,
+        `echo '${ecomGuideB64}' | base64 -d > "$ECOM_SKILL_DIR/references/ecommerce-guide.md"`,
+        `echo '${ecomOpsB64}' | base64 -d > "$HOME/scripts/ecommerce-ops.py"`,
+        `echo '${ecomSetupB64}' | base64 -d > "$HOME/scripts/ecommerce-setup.sh"`,
+        'chmod +x "$HOME/scripts/ecommerce-ops.py"',
+        'chmod +x "$HOME/scripts/ecommerce-setup.sh"',
+        ''
+      );
+
+      logger.info("E-commerce skill deployment prepared", { route: "lib/ssh" });
+    } catch (ecomSkillErr) {
+      // E-commerce skill deployment is non-critical — don't block VM provisioning
+      logger.warn("E-commerce skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(ecomSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [

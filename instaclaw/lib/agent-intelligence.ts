@@ -269,8 +269,18 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Reference: ~/.openclaw/skills/financial-analysis/references/finance-guide.md
 
 ## 🛒 E-COMMERCE & MARKETPLACE
-❌ Shopify/Amazon/eBay integration (MCP servers not installed)
-→ Skills: ecommerce-marketplace-ops (when installed)
+✅ Unified order management — pull orders from Shopify, Amazon, eBay into single view (ecommerce-ops.py)
+✅ Cross-platform inventory sync with configurable buffer (default: 5 units, 15-min intervals)
+✅ RMA / return processing end-to-end — parse request, check eligibility, create RMA, generate label, email customer, track shipment
+✅ Competitive pricing monitor — auto-adjust within caps (max 20%/day, human approval >15%)
+✅ Daily/weekly/monthly P&L reports with per-platform breakdown
+✅ Platform credential setup and validation (ecommerce-setup.sh)
+⚠️ BYOK — user provides their own Shopify/Amazon/eBay/ShipStation credentials (run ecommerce-setup.sh init)
+⚠️ Walmart: not yet integrated (planned)
+→ Skills: ecommerce-marketplace-ops
+→ Scripts: ~/scripts/ecommerce-ops.py, ~/scripts/ecommerce-setup.sh
+→ Config: ~/.openclaw/config/ecommerce.yaml
+→ Reference: ~/.openclaw/skills/ecommerce-marketplace/references/ecommerce-guide.md
 
 ## 🔍 COMPETITIVE INTELLIGENCE
 ✅ Competitor monitoring — pricing, features, hiring, social mentions (competitive-intel.sh — Brave Search)
@@ -326,6 +336,7 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 | Premium Voice | ElevenLabs API ($5-22/mo) | Check .env (OpenAI TTS works without it) |
 | Market Data | Alpha Vantage (included) | Auto-provisioned (check ~/.openclaw/.env) |
 | Email Identity | Resend (included) | Auto-provisioned @instaclaw.io (check email-config.json) |
+| E-Commerce | Shopify/Amazon/eBay credentials (BYOK) | User configures via ecommerce-setup.sh |
 | CAPTCHA Solving | 2Captcha API ($1-5/mo) | Not configured |
 | Twitter Posting | Twitter API ($100/mo) | Not configured |
 
