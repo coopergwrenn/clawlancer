@@ -34,10 +34,25 @@ if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
   exit 1
 fi
 
+# Load SSH key
+SSH_ENV_FILE="$PROJECT_ROOT/.env.ssh-key"
+SSH_PRIVATE_KEY_B64=""
+if [ -f "$SSH_ENV_FILE" ]; then
+  SSH_PRIVATE_KEY_B64=$(grep "^SSH_PRIVATE_KEY_B64=" "$SSH_ENV_FILE" 2>/dev/null | head -1 | sed 's/^[^=]*=//' | tr -d '"' | tr -d "'" | tr -d '\n')
+fi
+if [ -z "$SSH_PRIVATE_KEY_B64" ]; then
+  echo "ERROR: SSH_PRIVATE_KEY_B64 not found in .env.ssh-key" >&2
+  exit 1
+fi
+SSH_KEY_FILE=$(mktemp)
+echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$SSH_KEY_FILE"
+chmod 600 "$SSH_KEY_FILE"
+trap 'rm -f "$SSH_KEY_FILE"' EXIT
+
 MODE="${1:---help}"
 
 fetch_vms() {
-  curl -s "${SUPABASE_URL}/rest/v1/virtual_machines?status=eq.active&select=id,ip_address,ssh_user" \
+  curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?assigned_to=not.is.null&select=id,ip_address,ssh_user,name" \
     -H "apikey: $SUPABASE_KEY" \
     -H "Authorization: Bearer $SUPABASE_KEY"
 }
@@ -53,7 +68,7 @@ deploy_to_vm() {
   ops_b64=$(base64 < "$SKILL_DIR/assets/ecommerce-ops.py")
   setup_b64=$(base64 < "$SKILL_DIR/assets/ecommerce-setup.sh")
 
-  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${user}@${ip}" bash -s <<REMOTE_SCRIPT
+  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
 
 SKILL_DIR="\$HOME/.openclaw/skills/ecommerce-marketplace"
@@ -107,13 +122,25 @@ case "$MODE" in
   --canary)
     echo "=== CANARY: Deploying to first VM only ==="
     VMS=$(fetch_vms)
-    FIRST=$(echo "$VMS" | python3 -c "
+
+    if [ -n "${CANARY_IP:-}" ]; then
+      FIRST=$(echo "$VMS" | python3 -c "
+import json, sys
+vms = json.load(sys.stdin)
+for v in vms:
+    if v['ip_address'] == '${CANARY_IP}':
+        print(f\"{v['ip_address']} {v.get('ssh_user','agent')} {v['id']}\")
+        break
+" 2>/dev/null)
+    else
+      FIRST=$(echo "$VMS" | python3 -c "
 import json, sys
 vms = json.load(sys.stdin)
 if vms:
     v = vms[0]
     print(f\"{v['ip_address']} {v.get('ssh_user','agent')} {v['id']}\")
 " 2>/dev/null)
+    fi
 
     if [ -z "$FIRST" ]; then
       echo "No active VMs found" >&2
