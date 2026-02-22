@@ -284,8 +284,16 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Reference: ~/.openclaw/skills/competitive-intelligence/references/intel-guide.md
 
 ## 📱 SOCIAL MEDIA
-❌ Social media posting (no API keys configured)
-→ Skills: social-media-content (when configured)
+✅ Platform-native content generation — Twitter threads, LinkedIn posts, Reddit posts, Instagram captions (social-content.py)
+✅ Anti-ChatGPT humanization filter (banned AI phrases, forced contractions, specifics-over-generics)
+✅ Content calendar management with scheduling and approval workflows
+✅ Trend detection and trend-jacking (with Brave Search)
+✅ Voice profile learning from user's past content
+⚠️ Reddit posting (works now — requires disclosure)
+⚠️ Twitter/LinkedIn posting (needs API keys — content generated, queued for manual post)
+→ Skills: social-media-content
+→ Scripts: ~/scripts/social-content.py
+→ Reference: ~/.openclaw/skills/social-media-content/references/social-guide.md
 
 ## 🎨 BRAND & DESIGN
 ❌ Image generation (DALL-E — not configured)

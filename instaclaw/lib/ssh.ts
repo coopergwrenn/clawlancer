@@ -1270,6 +1270,40 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Social Media Content skill ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // No external API keys required — content generation is local.
+    try {
+      const socialSkillDir = path.join(process.cwd(), "skills", "social-media-content");
+      const socialSkillMd = fs.readFileSync(path.join(socialSkillDir, "SKILL.md"), "utf-8");
+      const socialGuide = fs.readFileSync(path.join(socialSkillDir, "references", "social-guide.md"), "utf-8");
+      const socialContentPy = fs.readFileSync(path.join(socialSkillDir, "assets", "social-content.py"), "utf-8");
+
+      const socialSkillB64 = Buffer.from(socialSkillMd, "utf-8").toString("base64");
+      const socialGuideB64 = Buffer.from(socialGuide, "utf-8").toString("base64");
+      const socialContentB64 = Buffer.from(socialContentPy, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Social Media Content skill',
+        'SOCIAL_SKILL_DIR="$HOME/.openclaw/skills/social-media-content"',
+        'mkdir -p "$SOCIAL_SKILL_DIR/references" "$SOCIAL_SKILL_DIR/assets" "$HOME/scripts"',
+        'mkdir -p "$HOME/.openclaw/workspace/social-content"',
+        `echo '${socialSkillB64}' | base64 -d > "$SOCIAL_SKILL_DIR/SKILL.md"`,
+        `echo '${socialGuideB64}' | base64 -d > "$SOCIAL_SKILL_DIR/references/social-guide.md"`,
+        `echo '${socialContentB64}' | base64 -d > "$HOME/scripts/social-content.py"`,
+        'chmod +x "$HOME/scripts/social-content.py"',
+        ''
+      );
+
+      logger.info("Social content skill deployment prepared", { route: "lib/ssh" });
+    } catch (socialSkillErr) {
+      // Social skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Social content skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(socialSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [
