@@ -1343,6 +1343,86 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Video Production skill (Remotion) ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // No external API keys required — Remotion is open-source.
+    try {
+      const videoSkillDir = path.join(process.cwd(), "skills", "video-production");
+      const videoSkillMd = fs.readFileSync(path.join(videoSkillDir, "SKILL.md"), "utf-8");
+      const videoAdvanced = fs.readFileSync(path.join(videoSkillDir, "references", "advanced-patterns.md"), "utf-8");
+      const videoChecklist = fs.readFileSync(path.join(videoSkillDir, "references", "brand-assets-checklist.md"), "utf-8");
+      const videoPkgJson = fs.readFileSync(path.join(videoSkillDir, "assets", "template-basic", "package.json"), "utf-8");
+      const videoTsconfig = fs.readFileSync(path.join(videoSkillDir, "assets", "template-basic", "tsconfig.json"), "utf-8");
+      const videoRemotionCfg = fs.readFileSync(path.join(videoSkillDir, "assets", "template-basic", "remotion.config.ts"), "utf-8");
+      const videoIndex = fs.readFileSync(path.join(videoSkillDir, "assets", "template-basic", "src", "index.ts"), "utf-8");
+      const videoRoot = fs.readFileSync(path.join(videoSkillDir, "assets", "template-basic", "src", "Root.tsx"), "utf-8");
+      const videoMyVideo = fs.readFileSync(path.join(videoSkillDir, "assets", "template-basic", "src", "MyVideo.tsx"), "utf-8");
+
+      const videoSkillB64 = Buffer.from(videoSkillMd, "utf-8").toString("base64");
+      const videoAdvB64 = Buffer.from(videoAdvanced, "utf-8").toString("base64");
+      const videoCheckB64 = Buffer.from(videoChecklist, "utf-8").toString("base64");
+      const videoPkgB64 = Buffer.from(videoPkgJson, "utf-8").toString("base64");
+      const videoTscfgB64 = Buffer.from(videoTsconfig, "utf-8").toString("base64");
+      const videoRemCfgB64 = Buffer.from(videoRemotionCfg, "utf-8").toString("base64");
+      const videoIdxB64 = Buffer.from(videoIndex, "utf-8").toString("base64");
+      const videoRootB64 = Buffer.from(videoRoot, "utf-8").toString("base64");
+      const videoMvB64 = Buffer.from(videoMyVideo, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Video Production skill (Remotion — no API keys)',
+        'VIDEO_SKILL_DIR="$HOME/.openclaw/skills/video-production"',
+        'VIDEO_TMPL_DIR="$VIDEO_SKILL_DIR/assets/template-basic/src"',
+        'mkdir -p "$VIDEO_SKILL_DIR/references" "$VIDEO_TMPL_DIR"',
+        `echo '${videoSkillB64}' | base64 -d > "$VIDEO_SKILL_DIR/SKILL.md"`,
+        `echo '${videoAdvB64}' | base64 -d > "$VIDEO_SKILL_DIR/references/advanced-patterns.md"`,
+        `echo '${videoCheckB64}' | base64 -d > "$VIDEO_SKILL_DIR/references/brand-assets-checklist.md"`,
+        `echo '${videoPkgB64}' | base64 -d > "$VIDEO_SKILL_DIR/assets/template-basic/package.json"`,
+        `echo '${videoTscfgB64}' | base64 -d > "$VIDEO_SKILL_DIR/assets/template-basic/tsconfig.json"`,
+        `echo '${videoRemCfgB64}' | base64 -d > "$VIDEO_SKILL_DIR/assets/template-basic/remotion.config.ts"`,
+        `echo '${videoIdxB64}' | base64 -d > "$VIDEO_TMPL_DIR/index.ts"`,
+        `echo '${videoRootB64}' | base64 -d > "$VIDEO_TMPL_DIR/Root.tsx"`,
+        `echo '${videoMvB64}' | base64 -d > "$VIDEO_TMPL_DIR/MyVideo.tsx"`,
+        ''
+      );
+
+      logger.info("Video production skill deployment prepared", { route: "lib/ssh" });
+    } catch (videoSkillErr) {
+      // Video skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Video production skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(videoSkillErr),
+      });
+    }
+
+    // ── Deploy Brand Asset Extraction skill ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // No external API keys required — uses browser automation (pre-installed).
+    try {
+      const brandSkillDir = path.join(process.cwd(), "skills", "brand-design");
+      const brandSkillMd = fs.readFileSync(path.join(brandSkillDir, "SKILL.md"), "utf-8");
+      const brandGuide = fs.readFileSync(path.join(brandSkillDir, "references", "brand-extraction-guide.md"), "utf-8");
+
+      const brandSkillB64 = Buffer.from(brandSkillMd, "utf-8").toString("base64");
+      const brandGuideB64 = Buffer.from(brandGuide, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Brand Asset Extraction skill (no API keys)',
+        'BRAND_SKILL_DIR="$HOME/.openclaw/skills/brand-design"',
+        'mkdir -p "$BRAND_SKILL_DIR/references"',
+        `echo '${brandSkillB64}' | base64 -d > "$BRAND_SKILL_DIR/SKILL.md"`,
+        `echo '${brandGuideB64}' | base64 -d > "$BRAND_SKILL_DIR/references/brand-extraction-guide.md"`,
+        ''
+      );
+
+      logger.info("Brand extraction skill deployment prepared", { route: "lib/ssh" });
+    } catch (brandSkillErr) {
+      // Brand skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Brand extraction skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(brandSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [

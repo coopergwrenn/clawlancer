@@ -242,9 +242,15 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Config: ~/.openclaw/email-config.json
 
 ## 🎬 VIDEO PRODUCTION
-❌ Video production (Remotion — not yet installed)
-❌ AI video prompting (Kling AI — not yet integrated)
-→ Skills: remotion-video-production (when installed)
+✅ Remotion video production — React-based motion graphics (template-basic included)
+✅ 4-scene marketing video template (Hook → Problem → Solution → CTA)
+✅ Spring physics animations, staggered reveals, opacity+transform combos
+✅ Brand asset extraction for videos (fonts, colors, logos via browser tool)
+✅ Draft and production rendering pipeline (15s @ 1080p, 1-3MB output)
+⚠️ AI video prompting (Kling AI — requires separate API, not pre-installed)
+→ Skills: remotion-video-production
+→ Template: ~/.openclaw/skills/video-production/assets/template-basic/
+→ Reference: ~/.openclaw/skills/video-production/references/advanced-patterns.md
 
 ## 🎙️ VOICE & AUDIO PRODUCTION
 ✅ Text-to-speech via OpenAI TTS (tts-openai.sh — always available)
@@ -306,9 +312,13 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Reference: ~/.openclaw/skills/social-media-content/references/social-guide.md
 
 ## 🎨 BRAND & DESIGN
-❌ Image generation (DALL-E — not configured)
-❌ Brand asset extraction (skill not installed)
-→ Skills: brand-asset-extraction (when installed)
+✅ Brand asset extraction from any URL — fonts, colors, logos via browser automation
+✅ RGB→Hex color conversion, font weight hierarchy, logo variant discovery
+✅ Brand config JSON generation (single source of truth for all branded content)
+✅ Logo contrast validation (white vs dark variant selection)
+⚠️ Image generation (DALL-E — requires OpenAI API key, not pre-installed)
+→ Skills: brand-asset-extraction
+→ Reference: ~/.openclaw/skills/brand-design/references/brand-extraction-guide.md
 
 ---
 
@@ -332,6 +342,8 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 | Capability | Requirement | Status |
 |---|---|---|
 | Web Search | Brave Search (included) | Auto-provisioned (check ~/.openclaw/.env) |
+| Video Production | Remotion (included) | Template pre-deployed |
+| Brand Extraction | Browser (included) | Pre-deployed (no API key needed) |
 | Image Generation | OpenAI API key | Not configured |
 | Premium Voice | ElevenLabs API ($5-22/mo) | Check .env (OpenAI TTS works without it) |
 | Market Data | Alpha Vantage (included) | Auto-provisioned (check ~/.openclaw/.env) |
