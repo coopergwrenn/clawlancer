@@ -718,7 +718,7 @@ export default function DashboardPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               {vm.controlUiUrl && (
                 <a
-                  href={vm.controlUiUrl}
+                  href={vm.gatewayToken ? `${vm.controlUiUrl}${vm.controlUiUrl.includes('?') ? '&' : '?'}token=${vm.gatewayToken}` : vm.controlUiUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="glass rounded-xl p-4 flex items-center gap-3 transition-all hover:border-white/30"

@@ -65,10 +65,13 @@ export const CONFIG_SPEC = {
   } as Record<string, string>,
   // Files that must exist in ~/.openclaw/workspace/
   requiredWorkspaceFiles: ["SOUL.md", "CAPABILITIES.md", "MEMORY.md"],
-  // Max session file size in bytes before auto-rotate (1MB)
-  // Sessions approaching this size get rotated (preserved but inactive).
-  // With thinking blocks stripped, sessions grow ~5x slower.
-  maxSessionBytes: 1 * 1024 * 1024,
+  // Max session file size in bytes before auto-rotate (512KB)
+  // Sessions approaching this size get rotated (archived, not deleted).
+  // Lowered from 1MB after Ladio incident — large sessions with thinking
+  // blocks can corrupt before reaching 1MB.
+  maxSessionBytes: 512 * 1024,
+  // Alert threshold — notify admin when any session exceeds this (256KB)
+  sessionAlertBytes: 256 * 1024,
 };
 
 // ── Thinking block stripping script ──
@@ -83,75 +86,100 @@ const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
 Prevents 'Invalid signature in thinking block' errors by removing
 thinking blocks after each API response. The model still thinks on
 the current turn -- we only strip from saved history.
-After stripping, restarts the gateway if it's been running >60min
-so OpenClaw reloads the clean files from disk."""
-import json, os, time, glob, subprocess
+
+CRITICAL FIX (2026-02-22): Removed SKIP_IF_MODIFIED_WITHIN check.
+The old logic skipped files modified within 10 seconds, but active
+users (especially those with automated bot crons) kept files
+perpetually "recently modified" — so thinking blocks were NEVER
+stripped. This caused the Ladio/Yudansa corruption incident.
+
+Now uses atomic write (write to .tmp then os.replace) which is safe
+even if the gateway is actively appending to the file — the gateway
+will simply re-open the new inode on the next write."""
+import json, os, glob, subprocess, fcntl, time
 
 SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
-SKIP_IF_MODIFIED_WITHIN = 10  # seconds -- avoid race with active writes
+LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
+MAX_SESSION_BYTES = ${512 * 1024}  # 512KB — alert threshold for size
 
 total_stripped = 0
+oversized_files = []
 
-for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
-    mtime = os.path.getmtime(jsonl_file)
-    if time.time() - mtime < SKIP_IF_MODIFIED_WITHIN:
-        continue
+# Acquire exclusive lock to prevent concurrent runs
+try:
+    lock_fd = open(LOCK_FILE, "w")
+    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except (IOError, OSError):
+    exit(0)  # another instance is running
 
-    modified = False
-    cleaned_lines = []
+try:
+    for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+        file_size = os.path.getsize(jsonl_file)
+        if file_size > MAX_SESSION_BYTES:
+            oversized_files.append((jsonl_file, file_size))
 
+        modified = False
+        cleaned_lines = []
+
+        try:
+            with open(jsonl_file) as f:
+                for line in f:
+                    try:
+                        d = json.loads(line)
+                        msg = d.get("message", {})
+                        if msg and msg.get("role") == "assistant":
+                            content = msg.get("content", [])
+                            if isinstance(content, list):
+                                new_content = [b for b in content
+                                               if not (isinstance(b, dict) and b.get("type") == "thinking")]
+                                if len(new_content) != len(content):
+                                    d["message"]["content"] = new_content
+                                    total_stripped += len(content) - len(new_content)
+                                    modified = True
+                        cleaned_lines.append(json.dumps(d, ensure_ascii=False))
+                    except json.JSONDecodeError:
+                        cleaned_lines.append(line.rstrip("\\n"))
+
+            if modified:
+                tmp = jsonl_file + ".tmp"
+                with open(tmp, "w") as f:
+                    for cl in cleaned_lines:
+                        f.write(cl + "\\n")
+                os.replace(tmp, jsonl_file)
+        except Exception:
+            pass  # never crash the cron
+
+    if total_stripped > 0:
+        print(f"Stripped {total_stripped} thinking blocks")
+        # Restart gateway so OpenClaw reloads clean session files from disk.
+        try:
+            r = subprocess.run(
+                ["systemctl", "--user", "show", "openclaw-gateway", "--property=ActiveEnterTimestamp"],
+                capture_output=True, text=True, timeout=5
+            )
+            ts_str = r.stdout.strip().split("=", 1)[-1]
+            if ts_str and ts_str != "n/a":
+                from datetime import datetime, timezone
+                ts = datetime.strptime(ts_str, "%a %Y-%m-%d %H:%M:%S %Z").replace(tzinfo=timezone.utc)
+                uptime_mins = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+                if uptime_mins > 60:
+                    print(f"Gateway uptime {uptime_mins:.0f}min > 60min, restarting to reload clean sessions")
+                    subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
+                else:
+                    print(f"Gateway uptime {uptime_mins:.0f}min < 60min, skipping restart")
+        except Exception as e:
+            print(f"Restart check failed: {e}")
+
+    if oversized_files:
+        for f, sz in oversized_files:
+            print(f"WARNING: oversized session {os.path.basename(f)} = {sz} bytes")
+finally:
     try:
-        with open(jsonl_file) as f:
-            for line in f:
-                try:
-                    d = json.loads(line)
-                    msg = d.get("message", {})
-                    if msg and msg.get("role") == "assistant":
-                        content = msg.get("content", [])
-                        if isinstance(content, list):
-                            new_content = [b for b in content
-                                           if not (isinstance(b, dict) and b.get("type") == "thinking")]
-                            if len(new_content) != len(content):
-                                d["message"]["content"] = new_content
-                                total_stripped += len(content) - len(new_content)
-                                modified = True
-                    cleaned_lines.append(json.dumps(d, ensure_ascii=False))
-                except json.JSONDecodeError:
-                    cleaned_lines.append(line.rstrip("\\n"))
-
-        if modified:
-            tmp = jsonl_file + ".tmp"
-            with open(tmp, "w") as f:
-                for cl in cleaned_lines:
-                    f.write(cl + "\\n")
-            os.replace(tmp, jsonl_file)
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+        os.unlink(LOCK_FILE)
     except Exception:
-        pass  # never crash the cron
-
-if total_stripped > 0:
-    print(f"Stripped {total_stripped} thinking blocks")
-    # Restart gateway so OpenClaw reloads clean session files from disk.
-    # Only restart if the gateway has been running >60 minutes (avoid restart
-    # loops on freshly started gateways where stripping is still catching up).
-    try:
-        r = subprocess.run(
-            ["systemctl", "--user", "show", "openclaw-gateway", "--property=ActiveEnterTimestamp"],
-            capture_output=True, text=True, timeout=5
-        )
-        # Parse timestamp like "ActiveEnterTimestamp=Thu 2026-02-20 04:10:54 UTC"
-        ts_str = r.stdout.strip().split("=", 1)[-1]
-        if ts_str and ts_str != "n/a":
-            from datetime import datetime, timezone
-            # Parse the systemd timestamp
-            ts = datetime.strptime(ts_str, "%a %Y-%m-%d %H:%M:%S %Z").replace(tzinfo=timezone.utc)
-            uptime_mins = (datetime.now(timezone.utc) - ts).total_seconds() / 60
-            if uptime_mins > 60:
-                print(f"Gateway uptime {uptime_mins:.0f}min > 60min, restarting to reload clean sessions")
-                subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
-            else:
-                print(f"Gateway uptime {uptime_mins:.0f}min < 60min, skipping restart")
-    except Exception as e:
-        print(f"Restart check failed: {e}")
+        pass
 `;
 
 // Strict input validation to prevent shell injection
@@ -2243,6 +2271,7 @@ export async function rotateOversizedSession(vm: VMRecord): Promise<{ rotated: b
     const ssh = await connectSSH(vm);
     try {
       const sessDir = '~/.openclaw/agents/main/sessions';
+      const archiveDir = '~/.openclaw/agents/main/sessions-archive';
 
       // Find the largest .jsonl file and its size
       const findResult = await ssh.execCommand(
@@ -2262,8 +2291,13 @@ export async function rotateOversizedSession(vm: VMRecord): Promise<{ rotated: b
 
       // Extract session ID from filename
       const sessionId = filePath.split('/').pop()?.replace('.jsonl', '') ?? '';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-      // Rename to .archived (preserved but never replayed)
+      // Create archive directory and backup the session before removing
+      await ssh.execCommand(`mkdir -p ${archiveDir}`);
+      await ssh.execCommand(`cp "${filePath}" "${archiveDir}/${sessionId}.${timestamp}.jsonl"`);
+
+      // Rename to .archived (preserved but never replayed by the gateway)
       await ssh.execCommand(`mv "${filePath}" "${filePath}.archived"`);
 
       // Remove entry from sessions.json
@@ -2283,12 +2317,58 @@ except Exception:
 " 2>/dev/null || true`
       );
 
+      // Prune old archives (keep last 5 per VM to avoid disk bloat)
+      await ssh.execCommand(
+        `ls -t ${archiveDir}/*.jsonl 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true`
+      );
+
       return { rotated: true, file: filePath, sizeBytes };
     } finally {
       ssh.dispose();
     }
   } catch {
     return { rotated: false, file: null, sizeBytes: 0 };
+  }
+}
+
+/**
+ * Standalone session health check that can be called on ANY VM regardless
+ * of its health/assignment status. Returns session sizes without requiring
+ * the gateway to be healthy.
+ */
+export async function checkSessionHealth(vm: VMRecord): Promise<{
+  reachable: boolean;
+  largestSessionBytes: number;
+  totalSessionBytes: number;
+  sessionCount: number;
+}> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const result = await ssh.execCommand(
+        'du -b ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | sort -rn'
+      );
+
+      let largestSessionBytes = 0;
+      let totalSessionBytes = 0;
+      let sessionCount = 0;
+
+      for (const line of result.stdout.split('\n')) {
+        const sizeStr = line.trim().split(/\s+/)[0];
+        if (!sizeStr) continue;
+        const size = parseInt(sizeStr, 10);
+        if (isNaN(size)) continue;
+        sessionCount++;
+        totalSessionBytes += size;
+        if (size > largestSessionBytes) largestSessionBytes = size;
+      }
+
+      return { reachable: true, largestSessionBytes, totalSessionBytes, sessionCount };
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return { reachable: false, largestSessionBytes: 0, totalSessionBytes: 0, sessionCount: 0 };
   }
 }
 

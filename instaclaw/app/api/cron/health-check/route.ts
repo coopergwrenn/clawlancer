@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, CONFIG_SPEC } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, checkSessionHealth, CONFIG_SPEC } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
   let alerted = 0;
   let restarted = 0;
   let sessionsCleared = 0;
+  let sessionsAlerted = 0;
   let browsersKilled = 0;
   let sshChecked = 0;
   let sshFailed = 0;
@@ -140,40 +141,65 @@ export async function GET(req: NextRequest) {
     const result = await checkHealthExtended(vm, vm.gateway_token ?? undefined);
     const currentFailCount = vm.health_fail_count ?? 0;
 
+    // ── Session health check (runs for ALL VMs regardless of gateway health) ──
+    // This MUST be outside the healthy-only block. The Ladio incident happened
+    // because session rotation only ran on healthy VMs — an unhealthy/failed VM
+    // had its sessions grow to 1.9MB unchecked until they corrupted.
+    if (result.largestSessionBytes > CONFIG_SPEC.maxSessionBytes) {
+      logger.warn("Session overflow detected, rotating", {
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+        largestSessionBytes: result.largestSessionBytes,
+        maxSessionBytes: CONFIG_SPEC.maxSessionBytes,
+      });
+
+      try {
+        const rotateResult = await rotateOversizedSession(vm);
+        if (rotateResult.rotated) {
+          sessionsCleared++;
+          logger.info("Oversized session rotated (archived, not deleted)", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            file: rotateResult.file,
+            sizeBytes: rotateResult.sizeBytes,
+          });
+        }
+      } catch (err) {
+        logger.error("Failed to rotate session", {
+          error: String(err),
+          route: "cron/health-check",
+          vmId: vm.id,
+        });
+      }
+    } else if (result.largestSessionBytes > CONFIG_SPEC.sessionAlertBytes) {
+      // Alert threshold — session is growing but not yet critical
+      sessionsAlerted++;
+      logger.warn("Session approaching size limit", {
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+        largestSessionBytes: result.largestSessionBytes,
+        alertThreshold: CONFIG_SPEC.sessionAlertBytes,
+        rotateThreshold: CONFIG_SPEC.maxSessionBytes,
+      });
+
+      if (ADMIN_EMAIL) {
+        try {
+          await sendAdminAlertEmail(
+            "Session Size Warning",
+            `VM ${vm.name ?? vm.id} (${vm.ip_address}) has a session file at ${Math.round(result.largestSessionBytes / 1024)}KB.\n\nAlert threshold: ${Math.round(CONFIG_SPEC.sessionAlertBytes / 1024)}KB\nAuto-rotate threshold: ${Math.round(CONFIG_SPEC.maxSessionBytes / 1024)}KB\n\nThe session will be auto-rotated if it exceeds ${Math.round(CONFIG_SPEC.maxSessionBytes / 1024)}KB. No action needed yet — this is an early warning.`
+          );
+        } catch {
+          // Non-fatal
+        }
+      }
+    }
+
     if (result.healthy) {
       healthy++;
       healthyVmIds.add(vm.id);
-
-      // Check for session overflow — rotate instead of deleting
-      if (result.largestSessionBytes > CONFIG_SPEC.maxSessionBytes) {
-        logger.warn("Session overflow detected, rotating", {
-          route: "cron/health-check",
-          vmId: vm.id,
-          vmName: vm.name,
-          largestSessionBytes: result.largestSessionBytes,
-          maxSessionBytes: CONFIG_SPEC.maxSessionBytes,
-        });
-
-        try {
-          const rotateResult = await rotateOversizedSession(vm);
-          if (rotateResult.rotated) {
-            sessionsCleared++;
-            logger.info("Oversized session rotated (archived, not deleted)", {
-              route: "cron/health-check",
-              vmId: vm.id,
-              vmName: vm.name,
-              file: rotateResult.file,
-              sizeBytes: rotateResult.sizeBytes,
-            });
-          }
-        } catch (err) {
-          logger.error("Failed to rotate session", {
-            error: String(err),
-            route: "cron/health-check",
-            vmId: vm.id,
-          });
-        }
-      }
 
       // Ephemeral browser: kill Chrome if stale (>30min) or memory-heavy (>40% RAM)
       try {
@@ -648,6 +674,7 @@ export async function GET(req: NextRequest) {
     webhooksFixed,
     suspended,
     sessionsCleared,
+    sessionsAlerted,
     browsersKilled,
     configsAudited,
     configsFixed,

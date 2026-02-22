@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
+import { resetAgentMemory, restartGateway } from "@/lib/ssh";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -63,6 +64,62 @@ export async function POST(req: NextRequest) {
       );
 
       return NextResponse.json({ success: configRes.ok });
+    }
+
+    case "reset_agent": {
+      // Clear corrupted session files + restart gateway
+      const { data: resetVm } = await supabase
+        .from("instaclaw_vms")
+        .select("*")
+        .eq("id", vmId)
+        .single();
+
+      if (!resetVm) {
+        return NextResponse.json({ error: "VM not found" }, { status: 404 });
+      }
+
+      const resetResult = await resetAgentMemory(resetVm);
+
+      if (resetResult.success) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            status: "assigned",
+            health_status: "unknown",
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", vmId);
+      }
+
+      return NextResponse.json(resetResult);
+    }
+
+    case "restart_gateway": {
+      // Just restart the gateway (clears in-memory state)
+      const { data: restartVm } = await supabase
+        .from("instaclaw_vms")
+        .select("*")
+        .eq("id", vmId)
+        .single();
+
+      if (!restartVm) {
+        return NextResponse.json({ error: "VM not found" }, { status: 404 });
+      }
+
+      const restarted = await restartGateway(restartVm);
+
+      if (restarted) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            status: "assigned",
+            health_status: "unknown",
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", vmId);
+      }
+
+      return NextResponse.json({ success: restarted });
     }
 
     case "cancel_subscription": {
