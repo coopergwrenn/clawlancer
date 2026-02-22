@@ -4,6 +4,9 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["node-ssh", "ssh2"],
+  outputFileTracingIncludes: {
+    "/api/**": ["./skills/**/*"],
+  },
   turbopack: {
     root: path.resolve(__dirname, ".."),
   },

@@ -11,6 +11,8 @@ import {
   SOUL_MD_LEARNED_PREFERENCES,
   WORKSPACE_INDEX_SCRIPT,
 } from "./agent-intelligence";
+import * as fs from "fs";
+import * as path from "path";
 
 export interface VMRecord {
   id: string;
@@ -30,6 +32,7 @@ interface UserConfig {
   channels?: string[];
   braveApiKey?: string;
   gmailProfileSummary?: string;
+  elevenlabsApiKey?: string;
 }
 
 // NVM preamble required before any `openclaw` CLI call on the VM.
@@ -1019,6 +1022,150 @@ export async function configureOpenClaw(
       `mkdir -p "${workspaceDir}/memory"`,
       ''
     );
+
+    // ── Deploy Voice & Audio Production skill ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // Non-blocking: if skill files are missing, VM provisioning still succeeds.
+    try {
+      const skillBaseDir = path.join(process.cwd(), "skills", "voice-audio-production");
+      const voiceSkillMd = fs.readFileSync(path.join(skillBaseDir, "SKILL.md"), "utf-8");
+      const voiceGuide = fs.readFileSync(path.join(skillBaseDir, "references", "voice-guide.md"), "utf-8");
+      const ttsOpenaiSh = fs.readFileSync(path.join(skillBaseDir, "assets", "tts-openai.sh"), "utf-8");
+      const ttsElevenlabsSh = fs.readFileSync(path.join(skillBaseDir, "assets", "tts-elevenlabs.sh"), "utf-8");
+      const audioToolkitSh = fs.readFileSync(path.join(skillBaseDir, "assets", "audio-toolkit.sh"), "utf-8");
+      const audioUsageTrackerPy = fs.readFileSync(path.join(skillBaseDir, "assets", "audio-usage-tracker.py"), "utf-8");
+
+      const voiceSkillB64 = Buffer.from(voiceSkillMd, "utf-8").toString("base64");
+      const voiceGuideB64 = Buffer.from(voiceGuide, "utf-8").toString("base64");
+      const ttsOpenaiB64 = Buffer.from(ttsOpenaiSh, "utf-8").toString("base64");
+      const ttsElevenlabsB64 = Buffer.from(ttsElevenlabsSh, "utf-8").toString("base64");
+      const audioToolkitB64 = Buffer.from(audioToolkitSh, "utf-8").toString("base64");
+      const audioUsageTrackerB64 = Buffer.from(audioUsageTrackerPy, "utf-8").toString("base64");
+
+      // Build audio-config.json based on user tier
+      const tierLimits: Record<string, { monthly_chars: number; daily_max_requests: number; max_single_request: number; primary_provider: string }> = {
+        free_starter: { monthly_chars: 450000, daily_max_requests: 10, max_single_request: 5000, primary_provider: "openai" },
+        pro: { monthly_chars: 1800000, daily_max_requests: 50, max_single_request: 15000, primary_provider: "elevenlabs" },
+        power: { monthly_chars: 7200000, daily_max_requests: 200, max_single_request: 50000, primary_provider: "elevenlabs" },
+        byok: { monthly_chars: 999999999, daily_max_requests: 999999, max_single_request: 999999, primary_provider: "user_choice" },
+      };
+      const tierKey = (config.tier || "free_starter").toLowerCase().replace(/\s+/g, "_");
+      const limits = tierLimits[tierKey] || tierLimits.free_starter;
+      const audioConfig = {
+        tier: tierKey,
+        ...limits,
+        fallback_provider: "openai",
+        alert_at_percent: 80,
+        overage_action: "fallback_to_openai",
+      };
+      const audioConfigB64 = Buffer.from(JSON.stringify(audioConfig, null, 2), "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Voice & Audio Production skill',
+        'VOICE_SKILL_DIR="$HOME/.openclaw/skills/voice-audio-production"',
+        'mkdir -p "$VOICE_SKILL_DIR/references" "$VOICE_SKILL_DIR/assets" "$HOME/scripts"',
+        `echo '${voiceSkillB64}' | base64 -d > "$VOICE_SKILL_DIR/SKILL.md"`,
+        `echo '${voiceGuideB64}' | base64 -d > "$VOICE_SKILL_DIR/references/voice-guide.md"`,
+        `echo '${ttsOpenaiB64}' | base64 -d > "$HOME/scripts/tts-openai.sh"`,
+        `echo '${ttsElevenlabsB64}' | base64 -d > "$HOME/scripts/tts-elevenlabs.sh"`,
+        `echo '${audioToolkitB64}' | base64 -d > "$HOME/scripts/audio-toolkit.sh"`,
+        `echo '${audioUsageTrackerB64}' | base64 -d > "$HOME/scripts/audio-usage-tracker.py"`,
+        'chmod +x "$HOME/scripts/tts-openai.sh" "$HOME/scripts/tts-elevenlabs.sh" "$HOME/scripts/audio-toolkit.sh" "$HOME/scripts/audio-usage-tracker.py"',
+        '',
+        '# Write audio-config.json (tier-based TTS limits)',
+        `echo '${audioConfigB64}' | base64 -d > "$HOME/.openclaw/audio-config.json"`,
+        ''
+      );
+
+      // Deploy ElevenLabs API key to VM .env if available
+      const elevenlabsKey = config.elevenlabsApiKey || (config.apiMode === "all_inclusive" ? process.env.ELEVENLABS_API_KEY : undefined);
+      if (elevenlabsKey) {
+        // Use base64 to avoid shell injection from special characters in the key
+        const elevenlabsKeyB64 = Buffer.from(elevenlabsKey, "utf-8").toString("base64");
+        scriptParts.push(
+          '# Write ElevenLabs API key to agent .env (via base64 for safe transport)',
+          'touch "$HOME/.openclaw/.env"',
+          `EL_KEY=$(echo '${elevenlabsKeyB64}' | base64 -d)`,
+          'grep -q "^ELEVENLABS_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && sed -i "s/^ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=$EL_KEY/" "$HOME/.openclaw/.env" || echo "ELEVENLABS_API_KEY=$EL_KEY" >> "$HOME/.openclaw/.env"',
+          ''
+        );
+      }
+
+      logger.info("Voice skill deployment prepared", { route: "lib/ssh", tier: tierKey, hasElevenlabsKey: !!elevenlabsKey });
+    } catch (skillErr) {
+      // Voice skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Voice skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(skillErr),
+      });
+    }
+
+    // ── Deploy Email & Outreach skill ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // Sends via Resend (@instaclaw.io) by default. Users can optionally add
+    // their own AgentMail API key in dashboard settings for a dedicated inbox.
+    try {
+      const emailSkillDir = path.join(process.cwd(), "skills", "email-outreach");
+      const emailSkillMd = fs.readFileSync(path.join(emailSkillDir, "SKILL.md"), "utf-8");
+      const emailGuide = fs.readFileSync(path.join(emailSkillDir, "references", "email-guide.md"), "utf-8");
+      const emailClientSh = fs.readFileSync(path.join(emailSkillDir, "assets", "email-client.sh"), "utf-8");
+      const emailSafetyPy = fs.readFileSync(path.join(emailSkillDir, "assets", "email-safety-check.py"), "utf-8");
+      const emailDigestPy = fs.readFileSync(path.join(emailSkillDir, "assets", "email-digest.py"), "utf-8");
+
+      const emailSkillB64 = Buffer.from(emailSkillMd, "utf-8").toString("base64");
+      const emailGuideB64 = Buffer.from(emailGuide, "utf-8").toString("base64");
+      const emailClientB64 = Buffer.from(emailClientSh, "utf-8").toString("base64");
+      const emailSafetyB64 = Buffer.from(emailSafetyPy, "utf-8").toString("base64");
+      const emailDigestB64 = Buffer.from(emailDigestPy, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Email & Outreach skill',
+        'EMAIL_SKILL_DIR="$HOME/.openclaw/skills/email-outreach"',
+        'mkdir -p "$EMAIL_SKILL_DIR/references" "$EMAIL_SKILL_DIR/assets" "$HOME/scripts"',
+        `echo '${emailSkillB64}' | base64 -d > "$EMAIL_SKILL_DIR/SKILL.md"`,
+        `echo '${emailGuideB64}' | base64 -d > "$EMAIL_SKILL_DIR/references/email-guide.md"`,
+        `echo '${emailClientB64}' | base64 -d > "$HOME/scripts/email-client.sh"`,
+        `echo '${emailSafetyB64}' | base64 -d > "$HOME/scripts/email-safety-check.py"`,
+        `echo '${emailDigestB64}' | base64 -d > "$HOME/scripts/email-digest.py"`,
+        'chmod +x "$HOME/scripts/email-client.sh" "$HOME/scripts/email-safety-check.py" "$HOME/scripts/email-digest.py"',
+        ''
+      );
+
+      // Write email-config.json with Resend as default provider
+      const emailConfig = {
+        from_address: "agent@instaclaw.io",
+        provider: "resend",
+        created_at: new Date().toISOString(),
+      };
+      const emailConfigB64 = Buffer.from(JSON.stringify(emailConfig, null, 2), "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Write email config (Resend default — user can add AgentMail BYOK in settings)',
+        `echo '${emailConfigB64}' | base64 -d > "$HOME/.openclaw/email-config.json"`,
+        ''
+      );
+
+      // Deploy RESEND_API_KEY to VM .env for agent email sending
+      const resendKey = process.env.RESEND_API_KEY;
+      if (resendKey) {
+        const resendKeyB64 = Buffer.from(resendKey, "utf-8").toString("base64");
+        scriptParts.push(
+          '# Write Resend API key to agent .env',
+          'touch "$HOME/.openclaw/.env"',
+          `RESEND_KEY=$(echo '${resendKeyB64}' | base64 -d)`,
+          'grep -q "^RESEND_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && sed -i "s/^RESEND_API_KEY=.*/RESEND_API_KEY=$RESEND_KEY/" "$HOME/.openclaw/.env" || echo "RESEND_API_KEY=$RESEND_KEY" >> "$HOME/.openclaw/.env"',
+          ''
+        );
+      }
+
+      logger.info("Email skill deployment prepared", { route: "lib/ssh" });
+    } catch (emailSkillErr) {
+      // Email skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Email skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(emailSkillErr),
+      });
+    }
 
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).

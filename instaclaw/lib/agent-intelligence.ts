@@ -232,15 +232,28 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Tools: shell, browser
 
 ## 📧 EMAIL & COMMUNICATION
+✅ Send email from your @instaclaw.io address (email-client.sh — Resend)
+✅ Pre-send safety checks (email-safety-check.py — credential leak detection, rate limits)
+✅ Daily email digest generation (email-digest.py — priority classification)
+✅ OTP extraction from verification emails
 ⚠️ Gmail monitoring (read, draft replies — only if connected by user)
-❌ Send/receive email autonomously (AgentMail not yet configured)
-→ Skills: email-outreach (when configured)
+→ Skills: email-outreach
+→ Scripts: ~/scripts/email-client.sh, ~/scripts/email-safety-check.py, ~/scripts/email-digest.py
+→ Config: ~/.openclaw/email-config.json
 
-## 🎬 VIDEO & MEDIA PRODUCTION
+## 🎬 VIDEO PRODUCTION
 ❌ Video production (Remotion — not yet installed)
 ❌ AI video prompting (Kling AI — not yet integrated)
-❌ Voice/audio production (ElevenLabs — not yet configured)
-→ Skills: remotion-video-production, voice-audio-production (when installed)
+→ Skills: remotion-video-production (when installed)
+
+## 🎙️ VOICE & AUDIO PRODUCTION
+✅ Text-to-speech via OpenAI TTS (tts-openai.sh — always available)
+✅ Audio processing toolkit (audio-toolkit.sh — FFmpeg normalize, mix, trim, convert, concat)
+✅ Usage tracking (audio-usage-tracker.py — budget checks, monthly limits)
+⚠️ Premium TTS via ElevenLabs (tts-elevenlabs.sh — requires ELEVENLABS_API_KEY in .env)
+→ Skills: voice-audio-production
+→ Scripts: ~/scripts/tts-openai.sh, ~/scripts/tts-elevenlabs.sh, ~/scripts/audio-toolkit.sh, ~/scripts/audio-usage-tracker.py
+→ Reference: ~/.openclaw/skills/voice-audio-production/references/voice-guide.md
 
 ## 💵 FINANCIAL ANALYSIS
 ❌ Stock quotes and market data (Alpha Vantage — not configured)
@@ -288,9 +301,9 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 |---|---|---|
 | Web Search | Brave Search API ($5/mo) | Check .env |
 | Image Generation | OpenAI API key | Not configured |
-| Premium Voice | ElevenLabs API ($5-22/mo) | Not configured |
+| Premium Voice | ElevenLabs API ($5-22/mo) | Check .env (OpenAI TTS works without it) |
 | Market Data | Alpha Vantage API ($49.99/mo) | Not configured |
-| Email Identity | AgentMail setup | Not configured |
+| Email Identity | Resend (included) | Auto-provisioned @instaclaw.io (check email-config.json) |
 | CAPTCHA Solving | 2Captcha API ($1-5/mo) | Not configured |
 | Twitter Posting | Twitter API ($100/mo) | Not configured |
 
@@ -360,7 +373,7 @@ export const WORKSPACE_QUICK_REFERENCE_MD = `# Quick Reference — Common Tasks
 
 | User Says | Skill/Tool | Action |
 |---|---|---|
-| "Send an email" | Email (Skill 8) | AgentMail send via API |
+| "Send an email" | Email (Skill 8) | Resend from @instaclaw.io |
 | "Create a video" | Remotion (Skill 1) | Load remotion skill, generate |
 | "Add voiceover" | Voice (Skill 11) | ElevenLabs/OpenAI TTS → Remotion |
 | "Check competitors" | Competitive Intel (Skill 10) | Brave Search + web_fetch |
