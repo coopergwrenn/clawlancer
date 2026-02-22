@@ -273,8 +273,15 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Skills: ecommerce-marketplace-ops (when installed)
 
 ## 🔍 COMPETITIVE INTELLIGENCE
-❌ Competitor monitoring (requires Brave Search API)
-→ Skills: competitive-intelligence (when configured)
+✅ Competitor monitoring — pricing, features, hiring, social mentions (competitive-intel.sh — Brave Search)
+✅ Daily competitive digests with sentiment analysis (competitive-intel.py)
+✅ Weekly deep-dive reports with strategic recommendations
+✅ Real-time alerts for critical changes (funding, launches, price changes >10%)
+✅ Historical snapshot comparison (pricing pages, content frequency)
+✅ Crypto-specific intelligence (project mentions, CT sentiment)
+→ Skills: competitive-intelligence
+→ Scripts: ~/scripts/competitive-intel.sh, ~/scripts/competitive-intel.py
+→ Reference: ~/.openclaw/skills/competitive-intelligence/references/intel-guide.md
 
 ## 📱 SOCIAL MEDIA
 ❌ Social media posting (no API keys configured)
@@ -306,7 +313,7 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 ## 🔧 CAPABILITIES THAT NEED SETUP
 | Capability | Requirement | Status |
 |---|---|---|
-| Web Search | Brave Search API ($5/mo) | Check .env |
+| Web Search | Brave Search (included) | Auto-provisioned (check ~/.openclaw/.env) |
 | Image Generation | OpenAI API key | Not configured |
 | Premium Voice | ElevenLabs API ($5-22/mo) | Check .env (OpenAI TTS works without it) |
 | Market Data | Alpha Vantage (included) | Auto-provisioned (check ~/.openclaw/.env) |

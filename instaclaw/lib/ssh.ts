@@ -1217,6 +1217,59 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Competitive Intelligence skill ──
+    // Reads skill files from the repo, base64-encodes, and deploys to the VM.
+    // Deploys BRAVE_SEARCH_API_KEY for Brave Search API access.
+    try {
+      const intelSkillDir = path.join(process.cwd(), "skills", "competitive-intelligence");
+      const intelSkillMd = fs.readFileSync(path.join(intelSkillDir, "SKILL.md"), "utf-8");
+      const intelGuide = fs.readFileSync(path.join(intelSkillDir, "references", "intel-guide.md"), "utf-8");
+      const intelClientSh = fs.readFileSync(path.join(intelSkillDir, "assets", "competitive-intel.sh"), "utf-8");
+      const intelAnalysisPy = fs.readFileSync(path.join(intelSkillDir, "assets", "competitive-intel.py"), "utf-8");
+
+      const intelSkillB64 = Buffer.from(intelSkillMd, "utf-8").toString("base64");
+      const intelGuideB64 = Buffer.from(intelGuide, "utf-8").toString("base64");
+      const intelClientB64 = Buffer.from(intelClientSh, "utf-8").toString("base64");
+      const intelAnalysisB64 = Buffer.from(intelAnalysisPy, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Competitive Intelligence skill',
+        'INTEL_SKILL_DIR="$HOME/.openclaw/skills/competitive-intelligence"',
+        'mkdir -p "$INTEL_SKILL_DIR/references" "$INTEL_SKILL_DIR/assets" "$HOME/scripts"',
+        'mkdir -p "$HOME/.openclaw/workspace/competitive-intel/snapshots"',
+        'mkdir -p "$HOME/.openclaw/workspace/competitive-intel/reports/daily"',
+        'mkdir -p "$HOME/.openclaw/workspace/competitive-intel/reports/weekly"',
+        'mkdir -p "$HOME/.openclaw/cache/brave-search"',
+        `echo '${intelSkillB64}' | base64 -d > "$INTEL_SKILL_DIR/SKILL.md"`,
+        `echo '${intelGuideB64}' | base64 -d > "$INTEL_SKILL_DIR/references/intel-guide.md"`,
+        `echo '${intelClientB64}' | base64 -d > "$HOME/scripts/competitive-intel.sh"`,
+        `echo '${intelAnalysisB64}' | base64 -d > "$HOME/scripts/competitive-intel.py"`,
+        'chmod +x "$HOME/scripts/competitive-intel.sh" "$HOME/scripts/competitive-intel.py"',
+        ''
+      );
+
+      // Deploy BRAVE_SEARCH_API_KEY to VM .env
+      const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+      if (braveKey) {
+        const braveKeyB64 = Buffer.from(braveKey, "utf-8").toString("base64");
+        scriptParts.push(
+          '# Write Brave Search API key to agent .env',
+          'touch "$HOME/.openclaw/.env"',
+          `BV_KEY=$(echo '${braveKeyB64}' | base64 -d)`,
+          'grep -q "^BRAVE_SEARCH_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && sed -i "s/^BRAVE_SEARCH_API_KEY=.*/BRAVE_SEARCH_API_KEY=$BV_KEY/" "$HOME/.openclaw/.env" || echo "BRAVE_SEARCH_API_KEY=$BV_KEY" >> "$HOME/.openclaw/.env"',
+          ''
+        );
+      }
+
+      logger.info("Intel skill deployment prepared", { route: "lib/ssh" });
+    } catch (intelSkillErr) {
+      // Intel skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Intel skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(intelSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [
