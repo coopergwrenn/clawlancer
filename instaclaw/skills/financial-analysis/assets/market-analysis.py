@@ -144,6 +144,167 @@ def get_indicator(symbol: str, function: str, api_key: str,
     return result
 
 
+CRYPTO_SYMBOLS = {
+    "BTC", "ETH", "SOL", "ADA", "DOT", "AVAX", "MATIC", "LINK", "UNI", "AAVE",
+    "DOGE", "SHIB", "XRP", "BNB", "LTC", "ATOM", "NEAR", "FTM", "ARB", "OP",
+}
+
+
+def is_crypto(symbol: str) -> bool:
+    """Detect if a symbol is a cryptocurrency."""
+    sym = symbol.upper().replace("-USD", "").replace("/USD", "").replace("USDT", "")
+    return sym in CRYPTO_SYMBOLS or symbol.upper().endswith("-USD") or symbol.upper().endswith("/USD")
+
+
+def analyze_options(symbol: str, api_key: str, as_json: bool = False):
+    """Analyze options chain for a symbol — max pain, put/call ratio, OI, IV rank, Greeks."""
+    check_rate_limit()
+
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%b %d, %Y %H:%M UTC")
+
+    # Fetch options chain (uses Alpha Vantage HISTORICAL_OPTIONS endpoint)
+    data = api_call({
+        "function": "HISTORICAL_OPTIONS",
+        "symbol": symbol,
+    }, api_key)
+
+    options = data.get("data", [])
+    if not options:
+        print(f"Error: No options data for {symbol}. Options may not be available.", file=sys.stderr)
+        print("Note: Alpha Vantage options data requires a premium key for some symbols.", file=sys.stderr)
+        return
+
+    # Separate calls and puts
+    calls = [o for o in options if o.get("type", "").lower() == "call"]
+    puts = [o for o in options if o.get("type", "").lower() == "put"]
+
+    # Get current price for context
+    quote = get_quote(symbol, api_key)
+    price = quote.get("price", 0) if quote else 0
+
+    # Calculate put/call ratio
+    total_call_oi = sum(int(o.get("open_interest", 0)) for o in calls)
+    total_put_oi = sum(int(o.get("open_interest", 0)) for o in puts)
+    total_call_vol = sum(int(o.get("volume", 0)) for o in calls)
+    total_put_vol = sum(int(o.get("volume", 0)) for o in puts)
+
+    pc_ratio_oi = total_put_oi / total_call_oi if total_call_oi > 0 else 0
+    pc_ratio_vol = total_put_vol / total_call_vol if total_call_vol > 0 else 0
+
+    # Calculate max pain (strike with lowest total $ value of ITM options)
+    strikes = sorted(set(float(o.get("strike", 0)) for o in options))
+    min_pain = float("inf")
+    max_pain_strike = 0
+
+    for strike in strikes:
+        pain = 0
+        for o in calls:
+            s = float(o.get("strike", 0))
+            oi = int(o.get("open_interest", 0))
+            if strike > s:
+                pain += (strike - s) * oi * 100
+        for o in puts:
+            s = float(o.get("strike", 0))
+            oi = int(o.get("open_interest", 0))
+            if strike < s:
+                pain += (s - strike) * oi * 100
+        if pain < min_pain:
+            min_pain = pain
+            max_pain_strike = strike
+
+    # IV rank approximation (compare current avg IV to range)
+    ivs = [float(o.get("implied_volatility", 0)) for o in options if float(o.get("implied_volatility", 0)) > 0]
+    avg_iv = sum(ivs) / len(ivs) if ivs else 0
+    iv_min = min(ivs) if ivs else 0
+    iv_max = max(ivs) if ivs else 0
+    iv_rank = ((avg_iv - iv_min) / (iv_max - iv_min) * 100) if (iv_max - iv_min) > 0 else 50
+
+    # Find nearest expiry options for Greeks display
+    expirations = sorted(set(o.get("expiration_date", "") for o in options))
+    nearest_exp = expirations[0] if expirations else ""
+    nearest_calls = [o for o in calls if o.get("expiration_date") == nearest_exp]
+    nearest_puts = [o for o in puts if o.get("expiration_date") == nearest_exp]
+
+    # Find ATM options
+    atm_call = min(nearest_calls, key=lambda o: abs(float(o.get("strike", 0)) - price), default=None) if nearest_calls else None
+    atm_put = min(nearest_puts, key=lambda o: abs(float(o.get("strike", 0)) - price), default=None) if nearest_puts else None
+
+    if as_json:
+        print(json.dumps({
+            "symbol": symbol,
+            "timestamp": timestamp,
+            "price": price,
+            "max_pain": max_pain_strike,
+            "put_call_ratio_oi": round(pc_ratio_oi, 3),
+            "put_call_ratio_volume": round(pc_ratio_vol, 3),
+            "total_call_oi": total_call_oi,
+            "total_put_oi": total_put_oi,
+            "iv_rank": round(iv_rank, 1),
+            "avg_iv": round(avg_iv, 4),
+            "expirations": expirations[:5],
+            "atm_call_greeks": {
+                "strike": atm_call.get("strike"),
+                "delta": atm_call.get("delta"),
+                "gamma": atm_call.get("gamma"),
+                "theta": atm_call.get("theta"),
+                "vega": atm_call.get("vega"),
+                "iv": atm_call.get("implied_volatility"),
+            } if atm_call else None,
+            "atm_put_greeks": {
+                "strike": atm_put.get("strike"),
+                "delta": atm_put.get("delta"),
+                "gamma": atm_put.get("gamma"),
+                "theta": atm_put.get("theta"),
+                "vega": atm_put.get("vega"),
+                "iv": atm_put.get("implied_volatility"),
+            } if atm_put else None,
+        }, indent=2))
+        return
+
+    # Format as text
+    lines = [
+        f"Options Analysis: {symbol} — {timestamp}",
+        f"Price: ${price:.2f}" if price else "",
+        "",
+        f"MAX PAIN: ${max_pain_strike:.2f}" + (f" (price ${price - max_pain_strike:+.2f} from max pain)" if price else ""),
+        "",
+        "PUT/CALL RATIO:",
+        f"  By Open Interest: {pc_ratio_oi:.3f}" + (" — bearish bias" if pc_ratio_oi > 1 else " — bullish bias" if pc_ratio_oi < 0.7 else " — neutral"),
+        f"  By Volume:        {pc_ratio_vol:.3f}" + (" — bearish bias" if pc_ratio_vol > 1 else " — bullish bias" if pc_ratio_vol < 0.7 else " — neutral"),
+        "",
+        "OPEN INTEREST DISTRIBUTION:",
+        f"  Calls: {total_call_oi:,} ({total_call_vol:,} volume today)",
+        f"  Puts:  {total_put_oi:,} ({total_put_vol:,} volume today)",
+        "",
+        f"IMPLIED VOLATILITY:",
+        f"  Average IV: {avg_iv*100:.1f}%",
+        f"  IV Rank:    {iv_rank:.0f}/100" + (" — HIGH (options expensive)" if iv_rank > 70 else " — LOW (options cheap)" if iv_rank < 30 else ""),
+        "",
+    ]
+
+    if atm_call and nearest_exp:
+        lines.extend([
+            f"ATM GREEKS (nearest expiry: {nearest_exp}):",
+            f"  Call ${atm_call.get('strike', '?')}:",
+            f"    Delta: {atm_call.get('delta', 'N/A')} | Gamma: {atm_call.get('gamma', 'N/A')} | Theta: {atm_call.get('theta', 'N/A')} | Vega: {atm_call.get('vega', 'N/A')}",
+        ])
+    if atm_put:
+        lines.extend([
+            f"  Put  ${atm_put.get('strike', '?')}:",
+            f"    Delta: {atm_put.get('delta', 'N/A')} | Gamma: {atm_put.get('gamma', 'N/A')} | Theta: {atm_put.get('theta', 'N/A')} | Vega: {atm_put.get('vega', 'N/A')}",
+        ])
+
+    lines.extend([
+        "",
+        "RISK DISCLAIMER:",
+        "Options involve significant risk of loss. This is data analysis, not trading advice.",
+        "Past performance does not predict future results. Consult a licensed financial advisor.",
+    ])
+
+    print("\n".join(lines))
+
+
 def analyze_symbol(symbol: str, api_key: str, as_json: bool = False):
     """Run full technical analysis on a symbol."""
     check_rate_limit()
@@ -157,14 +318,39 @@ def analyze_symbol(symbol: str, api_key: str, as_json: bool = False):
         print(f"Error: Could not fetch data for {symbol}", file=sys.stderr)
         return
 
+    # Detect crypto and adjust parameters
+    crypto_mode = is_crypto(symbol)
+    # Crypto uses wider Bollinger Bands (2.5 std dev vs 2.0) due to higher volatility
+    bb_time_period = 20
+    # Alpha Vantage uses standard deviation of 2 by default; for crypto context we note the wider range
+
     # Get indicators (each is a separate API call)
     rsi_data = get_indicator(symbol, "RSI", api_key, time_period=14)
     macd_data = get_indicator(symbol, "MACD", api_key)
-    bbands_data = get_indicator(symbol, "BBANDS", api_key, time_period=20)
+    bbands_data = get_indicator(symbol, "BBANDS", api_key, time_period=bb_time_period)
     sma50_data = get_indicator(symbol, "SMA", api_key, time_period=50)
     sma200_data = get_indicator(symbol, "SMA", api_key, time_period=200)
     adx_data = get_indicator(symbol, "ADX", api_key, time_period=14)
     stoch_data = get_indicator(symbol, "STOCH", api_key, time_period=14)
+
+    # Crypto: Fetch BTC dominance and DXY context
+    btc_context = None
+    dxy_context = None
+    if crypto_mode and symbol.upper() not in ("BTC", "BTC-USD"):
+        btc_quote = get_quote("BTC", api_key) if symbol.upper() not in ("BTC", "BTC-USD") else None
+        if btc_quote and btc_quote.get("price"):
+            btc_context = {
+                "price": btc_quote["price"],
+                "change_pct": btc_quote["change_pct"],
+            }
+    if crypto_mode:
+        # DXY (US Dollar Index) as macro context
+        dxy_quote = get_quote("DX-Y.NYB", api_key)
+        if dxy_quote and dxy_quote.get("price"):
+            dxy_context = {
+                "price": dxy_quote["price"],
+                "change_pct": dxy_quote["change_pct"],
+            }
 
     # Extract latest values
     rsi = rsi_data[0].get("rsi", 0) if rsi_data else None
@@ -320,6 +506,19 @@ def analyze_symbol(symbol: str, api_key: str, as_json: bool = False):
         lines.append(f"  SMA 200: ${sma200:.2f} (price {above_below})")
     if bb_upper and bb_lower:
         lines.append(f"  Bollinger: ${bb_lower:.2f} — ${bb_middle:.2f} — ${bb_upper:.2f}")
+
+    # Crypto-specific context
+    if crypto_mode:
+        lines.append("")
+        lines.append("CRYPTO CONTEXT:")
+        if btc_context:
+            lines.append(f"  BTC: ${btc_context['price']:.2f} ({btc_context['change_pct']})")
+        if dxy_context:
+            dxy_price = dxy_context["price"]
+            dxy_note = "strong dollar (headwind)" if dxy_price > 105 else "weak dollar (tailwind)" if dxy_price < 100 else "neutral"
+            lines.append(f"  DXY: {dxy_price:.2f} ({dxy_context['change_pct']}) — {dxy_note}")
+        lines.append(f"  Note: Crypto markets trade 24/7. Daily close is UTC 00:00.")
+        lines.append(f"  Bollinger Bands may appear tighter than traditional markets — crypto volatility is inherently higher.")
 
     lines.append("")
     lines.append("This is data analysis, not financial advice. All trading decisions are yours.")
@@ -487,6 +686,11 @@ def main():
     p_analyze.add_argument("--symbol", required=True)
     p_analyze.add_argument("--json", action="store_true")
 
+    # options
+    p_options = subparsers.add_parser("options")
+    p_options.add_argument("--symbol", required=True)
+    p_options.add_argument("--json", action="store_true")
+
     # chart
     p_chart = subparsers.add_parser("chart")
     p_chart.add_argument("--symbol", required=True)
@@ -512,7 +716,9 @@ def main():
         sys.exit(1)
 
     if args.command == "analyze":
-        analyze_symbol(args.symbol, api_key, as_json=args.json)
+        analyze_symbol(args.symbol, api_key, as_json=getattr(args, "json", False))
+    elif args.command == "options":
+        analyze_options(args.symbol, api_key, as_json=getattr(args, "json", False))
     elif args.command == "chart":
         chart_symbol(args.symbol, api_key, args.output)
     elif args.command == "watchlist":
