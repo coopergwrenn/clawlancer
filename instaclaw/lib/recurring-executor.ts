@@ -12,7 +12,7 @@ import {
   discoverTelegramChatId,
 } from "@/lib/telegram";
 import { sanitizeAgentResult } from "@/lib/sanitize-result";
-import { isAnthropicModel, FALLBACK_MODEL } from "@/lib/models";
+import { isAnthropicModel } from "@/lib/models";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -161,8 +161,16 @@ Return ONLY the result content — do NOT include any TASK_META block.`;
 
   // Fallback: direct Anthropic API
   if (!usedGateway) {
-    // Non-Anthropic models can't be called directly — use fallback
-    const model = isAnthropicModel(rawModel) ? rawModel : FALLBACK_MODEL;
+    // Non-Anthropic models (e.g. MiniMax) require the gateway — never silently
+    // substitute a different model. Throwing here lets handleRecurringTaskFailure
+    // schedule a retry in 15 minutes when the gateway may be back.
+    if (!isAnthropicModel(rawModel)) {
+      throw new Error(
+        `Your agent's model (${rawModel}) requires the gateway to be online. ` +
+        `We'll retry automatically when the gateway recovers.`
+      );
+    }
+    const model = rawModel;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);

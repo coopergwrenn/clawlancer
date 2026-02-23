@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { buildSystemPrompt } from "@/lib/system-prompt";
-import { isAnthropicModel, FALLBACK_MODEL } from "@/lib/models";
+import { isAnthropicModel } from "@/lib/models";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_HISTORY = 40; // messages to include for context
