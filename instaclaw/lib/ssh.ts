@@ -1647,12 +1647,38 @@ export async function configureOpenClaw(
     const script = scriptParts.join('\n');
 
     // Upload script via SFTP then execute — heredoc via execCommand causes EPIPE
-    // on large scripts (100KB+ with all skill base64 payloads)
+    // on large scripts (100KB+ with all skill base64 payloads).
+    // Retry up to 3 times with exponential backoff for transient network failures.
     mark("script_upload_start");
     const tmpLocal = `/tmp/ic-configure-${vm.id}.sh`;
     fs.writeFileSync(tmpLocal, script, "utf-8");
     try {
-      await ssh.putFile(tmpLocal, '/tmp/ic-configure.sh');
+      let uploaded = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await Promise.race([
+            ssh.putFile(tmpLocal, '/tmp/ic-configure.sh'),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("SFTP upload timeout after 60s")), 60000)
+            ),
+          ]);
+          uploaded = true;
+          break;
+        } catch (err) {
+          logger.warn("SFTP upload failed, retrying", {
+            route: "lib/ssh",
+            vmId: vm.id,
+            attempt,
+            error: String(err),
+          });
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+          }
+        }
+      }
+      if (!uploaded) {
+        throw new Error("SFTP upload failed after 3 attempts");
+      }
     } finally {
       fs.unlinkSync(tmpLocal);
     }
@@ -2129,8 +2155,15 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
     await ssh.execCommand(`mkdir -p ~/.openclaw/scripts && echo '${idxB64}' | base64 -d > ~/.openclaw/scripts/generate_workspace_index.sh && chmod +x ~/.openclaw/scripts/generate_workspace_index.sh`);
 
     // 3c2. Deploy thinking block stripping script + cron
-    const stripB64 = Buffer.from(STRIP_THINKING_SCRIPT, 'utf-8').toString('base64');
-    await ssh.execCommand(`echo '${stripB64}' | base64 -d > ~/.openclaw/scripts/strip-thinking.py && chmod +x ~/.openclaw/scripts/strip-thinking.py`);
+    // Use SFTP instead of echo|base64 pipe to avoid EPIPE on large scripts (~40KB+)
+    const stripTmpLocal = `/tmp/ic-strip-thinking-${vm.id}.py`;
+    fs.writeFileSync(stripTmpLocal, STRIP_THINKING_SCRIPT, "utf-8");
+    try {
+      await ssh.putFile(stripTmpLocal, '/home/openclaw/.openclaw/scripts/strip-thinking.py');
+    } finally {
+      fs.unlinkSync(stripTmpLocal);
+    }
+    await ssh.execCommand('chmod +x ~/.openclaw/scripts/strip-thinking.py');
     // Ensure cron job exists (runs every minute)
     const cronCheck = await ssh.execCommand('crontab -l 2>/dev/null | grep -qF "strip-thinking.py" && echo PRESENT || echo ABSENT');
     if (cronCheck.stdout.trim() === 'ABSENT') {
@@ -2145,8 +2178,15 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
       `grep -qF "${INTELLIGENCE_MARKER_START}" ${agentDir}/system-prompt.md 2>/dev/null && echo PRESENT || echo ABSENT`
     );
     if (markerCheck.stdout.trim() === 'ABSENT') {
-      const intelB64 = Buffer.from(SYSTEM_PROMPT_INTELLIGENCE_BLOCKS, 'utf-8').toString('base64');
-      await ssh.execCommand(`echo '${intelB64}' | base64 -d >> ${agentDir}/system-prompt.md`);
+      // Use SFTP + append instead of echo|base64 pipe to avoid EPIPE on large content (~27KB+)
+      const intelTmpLocal = `/tmp/ic-intelligence-${vm.id}.md`;
+      fs.writeFileSync(intelTmpLocal, SYSTEM_PROMPT_INTELLIGENCE_BLOCKS, "utf-8");
+      try {
+        await ssh.putFile(intelTmpLocal, '/tmp/ic-intelligence-append.md');
+      } finally {
+        fs.unlinkSync(intelTmpLocal);
+      }
+      await ssh.execCommand(`cat /tmp/ic-intelligence-append.md >> ${agentDir}/system-prompt.md && rm -f /tmp/ic-intelligence-append.md`);
       fixed.push('system-prompt.md (intelligence blocks)');
       systemPromptModified = true;
     }
