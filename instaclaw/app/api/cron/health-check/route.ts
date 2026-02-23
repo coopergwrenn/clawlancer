@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
-const SSH_QUARANTINE_THRESHOLD = 3; // Auto-quarantine after 3 consecutive SSH failures
+const SSH_QUARANTINE_THRESHOLD = 6; // Auto-quarantine after 6 consecutive SSH failures (raised from 3 to reduce false positives)
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment
 const CONFIG_AUDIT_BATCH_SIZE = 3; // Max VMs to audit per cycle (staggered)
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
@@ -87,37 +87,69 @@ export async function GET(req: NextRequest) {
     });
 
     if (newSshFailCount >= SSH_QUARANTINE_THRESHOLD) {
-      // Auto-quarantine: mark VM as failed
-      sshQuarantined++;
+      // Before quarantining, try gateway HTTP health as fallback
+      let gatewayAlive = false;
+      try {
+        const gwRes = await fetch(`http://${vm.ip_address}:18789/health`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        gatewayAlive = gwRes.ok;
+      } catch {
+        // Gateway unreachable — proceed with quarantine
+      }
 
-      await supabase
-        .from("instaclaw_vms")
-        .update({
-          status: "failed" as const,
-          health_status: "unhealthy",
-          ssh_fail_count: newSshFailCount,
-          last_health_check: new Date().toISOString(),
-        })
-        .eq("id", vm.id);
+      if (gatewayAlive) {
+        // Gateway is alive despite SSH failure — false positive, skip quarantine
+        logger.info("SSH failed but gateway HTTP health OK — skipping quarantine", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          ipAddress: vm.ip_address,
+          sshFailCount: newSshFailCount,
+          assignedTo: vm.assigned_to,
+        });
 
-      logger.error("VM auto-quarantined: SSH unreachable", {
-        route: "cron/health-check",
-        vmId: vm.id,
-        vmName: vm.name,
-        ipAddress: vm.ip_address,
-        sshFailCount: newSshFailCount,
-        assignedTo: vm.assigned_to,
-      });
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            ssh_fail_count: 0,
+            health_status: "healthy",
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", vm.id);
+      } else {
+        // Both SSH and HTTP failed — quarantine
+        sshQuarantined++;
 
-      // Alert admin
-      if (ADMIN_EMAIL) {
-        try {
-          await sendAdminAlertEmail(
-            "VM Auto-Quarantined: SSH Dead",
-            `VM ${vm.name ?? vm.id} (${vm.ip_address}) has failed ${newSshFailCount} consecutive SSH connectivity checks and has been auto-quarantined.\n\nAssigned to user: ${vm.assigned_to ?? "none"}\n\nThe VM status has been set to "failed". If a user was assigned, they will need to be moved to a new VM.`
-          );
-        } catch {
-          // Non-fatal
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            status: "failed" as const,
+            health_status: "unhealthy",
+            ssh_fail_count: newSshFailCount,
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", vm.id);
+
+        logger.error("VM auto-quarantined: SSH unreachable", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          ipAddress: vm.ip_address,
+          sshFailCount: newSshFailCount,
+          assignedTo: vm.assigned_to,
+        });
+
+        // Alert admin
+        if (ADMIN_EMAIL) {
+          try {
+            await sendAdminAlertEmail(
+              "VM Auto-Quarantined: SSH Dead",
+              `VM ${vm.name ?? vm.id} (${vm.ip_address}) has failed ${newSshFailCount} consecutive SSH connectivity checks and has been auto-quarantined.\n\nAssigned to user: ${vm.assigned_to ?? "none"}\n\nThe VM status has been set to "failed". If a user was assigned, they will need to be moved to a new VM.`
+            );
+          } catch {
+            // Non-fatal
+          }
         }
       }
     } else {
@@ -616,32 +648,60 @@ export async function GET(req: NextRequest) {
       const newCount = (rvm.ssh_fail_count ?? 0) + 1;
 
       if (newCount >= SSH_QUARANTINE_THRESHOLD) {
-        poolSshQuarantined++;
-        await supabase
-          .from("instaclaw_vms")
-          .update({
-            status: "failed" as const,
-            health_status: "unhealthy",
-            ssh_fail_count: newCount,
-          })
-          .eq("id", rvm.id);
+        // Before quarantining, try gateway HTTP health as fallback
+        let gatewayAlive = false;
+        try {
+          const gwRes = await fetch(`http://${rvm.ip_address}:18789/health`, {
+            signal: AbortSignal.timeout(10000),
+          });
+          gatewayAlive = gwRes.ok;
+        } catch {
+          // Gateway unreachable — proceed with quarantine
+        }
 
-        logger.error("Ready VM auto-quarantined: SSH unreachable", {
-          route: "cron/health-check",
-          vmId: rvm.id,
-          vmName: rvm.name,
-          ipAddress: rvm.ip_address,
-          sshFailCount: newCount,
-        });
+        if (gatewayAlive) {
+          // Gateway is alive despite SSH failure — false positive, skip quarantine
+          logger.info("Pool VM: SSH failed but gateway HTTP health OK — skipping quarantine", {
+            route: "cron/health-check",
+            vmId: rvm.id,
+            vmName: rvm.name,
+            ipAddress: rvm.ip_address,
+            sshFailCount: newCount,
+          });
 
-        if (ADMIN_EMAIL) {
-          try {
-            await sendAdminAlertEmail(
-              "Pool VM Auto-Quarantined: SSH Dead",
-              `Ready pool VM ${rvm.name ?? rvm.id} (${rvm.ip_address}) has failed ${newCount} consecutive SSH checks and has been removed from the pool.\n\nThis VM was never assigned to a user.`
-            );
-          } catch {
-            // Non-fatal
+          await supabase
+            .from("instaclaw_vms")
+            .update({ ssh_fail_count: 0 })
+            .eq("id", rvm.id);
+        } else {
+          // Both SSH and HTTP failed — quarantine
+          poolSshQuarantined++;
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              status: "failed" as const,
+              health_status: "unhealthy",
+              ssh_fail_count: newCount,
+            })
+            .eq("id", rvm.id);
+
+          logger.error("Ready VM auto-quarantined: SSH unreachable", {
+            route: "cron/health-check",
+            vmId: rvm.id,
+            vmName: rvm.name,
+            ipAddress: rvm.ip_address,
+            sshFailCount: newCount,
+          });
+
+          if (ADMIN_EMAIL) {
+            try {
+              await sendAdminAlertEmail(
+                "Pool VM Auto-Quarantined: SSH Dead",
+                `Ready pool VM ${rvm.name ?? rvm.id} (${rvm.ip_address}) has failed ${newCount} consecutive SSH checks and has been removed from the pool.\n\nThis VM was never assigned to a user.`
+              );
+            } catch {
+              // Non-fatal
+            }
           }
         }
       } else {
@@ -660,6 +720,68 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ========================================================================
+  // Auto-recovery pass: Un-quarantine VMs whose gateways are actually healthy
+  // Catches false positives like Renata's VM-24 incident (Feb 20, 2026)
+  // ========================================================================
+  let recovered = 0;
+
+  const { data: quarantinedVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, ip_address, name, assigned_to, ssh_fail_count")
+    .eq("status", "failed")
+    .not("ip_address", "is", null);
+
+  if (quarantinedVms?.length) {
+    for (const qvm of quarantinedVms) {
+      try {
+        const gwRes = await fetch(`http://${qvm.ip_address}:18789/health`, {
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (gwRes.ok) {
+          // Gateway is healthy — this was a false positive quarantine
+          const newStatus = qvm.assigned_to ? "assigned" : "ready";
+
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              status: newStatus as "assigned" | "ready",
+              health_status: "healthy",
+              ssh_fail_count: 0,
+              last_health_check: new Date().toISOString(),
+            })
+            .eq("id", qvm.id);
+
+          recovered++;
+
+          logger.info("VM auto-recovered: gateway HTTP health OK", {
+            route: "cron/health-check",
+            vmId: qvm.id,
+            vmName: qvm.name,
+            ipAddress: qvm.ip_address,
+            newStatus,
+            assignedTo: qvm.assigned_to,
+            previousSshFailCount: qvm.ssh_fail_count,
+          });
+
+          if (ADMIN_EMAIL) {
+            try {
+              await sendAdminAlertEmail(
+                "VM Auto-Recovered from Quarantine",
+                `VM ${qvm.name ?? qvm.id} (${qvm.ip_address}) was quarantined but its gateway HTTP health check is now responding OK.\n\nThe VM has been restored to status: "${newStatus}".\nAssigned to: ${qvm.assigned_to ?? "none (pool VM)"}\nPrevious ssh_fail_count: ${qvm.ssh_fail_count}`
+              );
+            } catch {
+              // Non-fatal
+            }
+          }
+        }
+      } catch {
+        // Gateway still unreachable — leave quarantined
+      }
+    }
+  }
+
   return NextResponse.json({
     checked: vms.length,
     sshChecked,
@@ -667,6 +789,7 @@ export async function GET(req: NextRequest) {
     sshQuarantined,
     poolSshChecked,
     poolSshQuarantined,
+    recovered,
     healthy,
     unhealthy,
     restarted,
