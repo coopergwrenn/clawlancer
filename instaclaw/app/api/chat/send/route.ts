@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
   // Get VM info (model, system_prompt, gateway details)
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -320,6 +320,8 @@ export async function POST(req: NextRequest) {
 
   const userId = session.user.id;
   const convId = conversationId;
+  const vmId = vm.id;
+  const vmTimezone = vm.user_timezone || "America/New_York";
   const reader = upstreamRes.body?.getReader();
   if (!reader) {
     return NextResponse.json({ error: "No response stream" }, { status: 502 });
@@ -386,6 +388,26 @@ export async function POST(req: NextRequest) {
                 });
               }
             });
+
+          // Track usage for direct Anthropic fallback (gateway proxied calls
+          // are tracked by the proxy route — this covers the bypass path)
+          if (!isGatewayResponse) {
+            db.rpc("instaclaw_increment_usage", {
+              p_vm_id: vmId,
+              p_model: model,
+              p_is_heartbeat: false,
+              p_timezone: vmTimezone,
+            }).then(({ error: incErr }) => {
+              if (incErr) {
+                logger.error("Failed to track usage for direct Anthropic fallback", {
+                  error: String(incErr),
+                  route: "chat/send",
+                  userId,
+                  vmId,
+                });
+              }
+            });
+          }
 
           // Update conversation metadata
           const preview = fullText.slice(0, 100);
