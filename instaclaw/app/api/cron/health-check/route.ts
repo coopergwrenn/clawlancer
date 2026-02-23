@@ -277,16 +277,54 @@ export async function GET(req: NextRequest) {
 
       // After ALERT_THRESHOLD consecutive failures, take action
       if (newFailCount === ALERT_THRESHOLD) {
-        // Auto-restart gateway
+        // Before restarting, verify the gateway is truly down via direct HTTP.
+        // The SSH-based localhost curl can fail transiently (loopback issues,
+        // curl oddities) while the gateway is actually serving fine publicly.
+        let gatewayActuallyHealthy = false;
         try {
-          await restartGateway(vm);
-          restarted++;
-        } catch (err) {
-          logger.error("Failed to restart gateway", { error: String(err), route: "cron/health-check", vmId: vm.id });
+          const httpCheck = await fetch(`http://${vm.ip_address}:18789/health`, {
+            signal: AbortSignal.timeout(10000),
+          });
+          gatewayActuallyHealthy = httpCheck.ok;
+        } catch {
+          // HTTP unreachable — gateway is truly down, proceed with restart
         }
 
-        // Send alert email to user
-        if (vm.assigned_to) {
+        if (gatewayActuallyHealthy) {
+          // Gateway is healthy via HTTP — SSH-based check was a false positive
+          logger.info("Gateway health check failed via SSH but HTTP OK — skipping restart", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            failCount: newFailCount,
+          });
+
+          // Reset fail count since the gateway is actually fine
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              health_status: "healthy",
+              health_fail_count: 0,
+              last_health_check: new Date().toISOString(),
+            })
+            .eq("id", vm.id);
+
+          // Correct the counters — this VM is actually healthy
+          unhealthy--;
+          healthy++;
+          healthyVmIds.add(vm.id);
+        } else {
+          // Both SSH-based check and direct HTTP failed — restart
+          try {
+            await restartGateway(vm);
+            restarted++;
+          } catch (err) {
+            logger.error("Failed to restart gateway", { error: String(err), route: "cron/health-check", vmId: vm.id });
+          }
+        }
+
+        // Send alert email to user (only if we actually restarted)
+        if (!gatewayActuallyHealthy && vm.assigned_to) {
           const { data: user } = await supabase
             .from("instaclaw_users")
             .select("email")
@@ -304,7 +342,7 @@ export async function GET(req: NextRequest) {
         }
 
         // Also alert admin
-        if (ADMIN_EMAIL) {
+        if (!gatewayActuallyHealthy && ADMIN_EMAIL) {
           try {
             await sendHealthAlertEmail(
               ADMIN_EMAIL,
