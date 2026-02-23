@@ -2323,8 +2323,29 @@ export async function auditVMConfig(vm: VMRecord & { gateway_token?: string; api
     // Use systemd so Restart=always protects against future crashes
     if (systemPromptModified || authProfileFixed) {
       await ssh.execCommand('systemctl --user restart openclaw-gateway 2>/dev/null || (pkill -9 -f "openclaw-gateway" 2>/dev/null; sleep 2; systemctl --user start openclaw-gateway) || true');
-      await new Promise((r) => setTimeout(r, 5000));
-      fixed.push('gateway restarted');
+
+      // Verify gateway comes back healthy (up to 30s, per CLAUDE.md rule #5)
+      let gatewayHealthy = false;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const healthCheck = await ssh.execCommand('curl -sf http://localhost:18789/health 2>/dev/null');
+        if (healthCheck.code === 0) {
+          gatewayHealthy = true;
+          break;
+        }
+      }
+
+      if (gatewayHealthy) {
+        fixed.push('gateway restarted (verified healthy)');
+      } else {
+        logger.error("Gateway not healthy after audit restart — health cron will handle recovery", {
+          route: "auditVMConfig",
+          vmId: vm.id,
+          systemPromptModified,
+          authProfileFixed,
+        });
+        fixed.push('gateway restarted (WARNING: health check failed post-restart)');
+      }
     }
 
     return { fixed, alreadyCorrect, missingFiles };
