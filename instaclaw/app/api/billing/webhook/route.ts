@@ -390,7 +390,7 @@ async function processEvent(event: any) {
       // Clear past_due status and timestamp on successful payment
       const { data: sub } = await supabase
         .from("instaclaw_subscriptions")
-        .select("user_id, payment_status")
+        .select("user_id, payment_status, status")
         .eq("stripe_customer_id", customerId)
         .single();
 
@@ -403,8 +403,9 @@ async function processEvent(event: any) {
           })
           .eq("stripe_customer_id", customerId);
 
-        // If they were past_due, restart their VM if suspended
-        if (sub.payment_status === "past_due") {
+        // If they were past_due AND subscription is still active, restart their VM if suspended.
+        // A canceled subscription can still have a final invoice payment — don't restart in that case.
+        if (sub.payment_status === "past_due" && sub.status === "active") {
           const { data: vm } = await supabase
             .from("instaclaw_vms")
             .select("id, health_status")
