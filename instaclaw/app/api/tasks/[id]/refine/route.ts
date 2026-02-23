@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { buildSystemPrompt } from "@/lib/system-prompt";
 import { isAnthropicModel } from "@/lib/models";
+import { sanitizeAgentResult } from "@/lib/sanitize-result";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -241,10 +242,13 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
       );
     }
 
+    // Sanitize agent output (strip tool-use XML, etc.)
+    const sanitizedResult = sanitizeAgentResult(newResult);
+
     // Update the task result — do NOT overwrite title, status, recurring, etc.
     const { data: updated, error: updateError } = await supabase
       .from("instaclaw_tasks")
-      .update({ result: newResult })
+      .update({ result: sanitizedResult })
       .eq("id", id)
       .select()
       .single();
