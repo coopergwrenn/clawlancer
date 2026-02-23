@@ -68,7 +68,7 @@ export async function POST(
   // Get VM with gateway details
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -112,10 +112,12 @@ async function executeRerun(
     gateway_url: string | null;
     gateway_token: string | null;
     health_status: string | null;
+    user_timezone: string | null;
   },
   apiKey: string
 ) {
   const supabase = getSupabase();
+  const vmTimezone = vm.user_timezone || "America/New_York";
 
   try {
     const { data: user } = await supabase
@@ -302,6 +304,27 @@ async function executeRerun(
           : {}),
       })
       .eq("id", taskId);
+
+    // Track usage for direct Anthropic fallback
+    if (!usedGateway) {
+      supabase
+        .rpc("instaclaw_increment_usage", {
+          p_vm_id: vm.id,
+          p_model: model,
+          p_is_heartbeat: false,
+          p_timezone: vmTimezone,
+        })
+        .then(({ error: incErr }) => {
+          if (incErr) {
+            logger.error("Failed to track usage for direct Anthropic task fallback", {
+              error: String(incErr),
+              route: "tasks/rerun",
+              userId,
+              vmId: vm.id,
+            });
+          }
+        });
+    }
 
     // Auto-save to library (non-blocking)
     if (parsed.result) {

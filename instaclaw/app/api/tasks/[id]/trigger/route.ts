@@ -78,7 +78,7 @@ export async function POST(
   const { data: vm } = await supabase
     .from("instaclaw_vms")
     .select(
-      "id, default_model, system_prompt, telegram_bot_token, telegram_chat_id, gateway_url, gateway_token, health_status"
+      "id, default_model, system_prompt, telegram_bot_token, telegram_chat_id, gateway_url, gateway_token, health_status, user_timezone"
     )
     .eq("assigned_to", session.user.id)
     .single();

@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   // Check user has a VM — fetch gateway details too
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -113,10 +113,12 @@ async function executeTask(
     gateway_url: string | null;
     gateway_token: string | null;
     health_status: string | null;
+    user_timezone: string | null;
   },
   apiKey: string
 ) {
   const supabase = getSupabase();
+  const vmTimezone = vm.user_timezone || "America/New_York";
 
   try {
     // Get user profile for personalization
@@ -303,6 +305,28 @@ async function executeTask(
           : {}),
       })
       .eq("id", taskId);
+
+    // Track usage for direct Anthropic fallback (gateway-proxied calls
+    // are tracked by the proxy route — this covers the bypass path)
+    if (!usedGateway) {
+      supabase
+        .rpc("instaclaw_increment_usage", {
+          p_vm_id: vm.id,
+          p_model: model,
+          p_is_heartbeat: false,
+          p_timezone: vmTimezone,
+        })
+        .then(({ error: incErr }) => {
+          if (incErr) {
+            logger.error("Failed to track usage for direct Anthropic task fallback", {
+              error: String(incErr),
+              route: "tasks/create",
+              userId,
+              vmId: vm.id,
+            });
+          }
+        });
+    }
 
     // Auto-save to library (non-blocking, failure won't affect task)
     if (parsed.result) {

@@ -71,7 +71,7 @@ export async function POST(
   // Get VM with gateway details + user profile
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -254,6 +254,28 @@ Return ONLY the updated result content. Do NOT include any TASK_META block — j
         { error: "Failed to save refined result." },
         { status: 500 }
       );
+    }
+
+    // Track usage for direct Anthropic fallback
+    if (!usedGateway) {
+      const vmTimezone = vm.user_timezone || "America/New_York";
+      supabase
+        .rpc("instaclaw_increment_usage", {
+          p_vm_id: vm.id,
+          p_model: model,
+          p_is_heartbeat: false,
+          p_timezone: vmTimezone,
+        })
+        .then(({ error: incErr }) => {
+          if (incErr) {
+            logger.error("Failed to track usage for direct Anthropic task fallback", {
+              error: String(incErr),
+              route: "tasks/refine",
+              userId: session.user.id,
+              vmId: vm.id,
+            });
+          }
+        });
     }
 
     return NextResponse.json({ task: updated });

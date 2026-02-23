@@ -230,6 +230,30 @@ Return ONLY the result content — do NOT include any TASK_META block.`;
     throw new Error("Agent returned an empty response.");
   }
 
+  // Track usage for direct Anthropic fallback
+  if (!usedGateway) {
+    const vmTimezone = vm.user_timezone || task.user_timezone || "America/New_York";
+    supabase
+      .rpc("instaclaw_increment_usage", {
+        p_vm_id: vm.id,
+        p_model: rawModel,
+        p_is_heartbeat: false,
+        p_timezone: vmTimezone,
+      })
+      .then(({ error: incErr }) => {
+        if (incErr) {
+          console.error(
+            JSON.stringify({
+              event: "usage_tracking_error",
+              error: String(incErr),
+              taskId: task.id,
+              vmId: vm.id,
+            })
+          );
+        }
+      });
+  }
+
   // Calculate next_run_at with drift prevention
   const nextRunAt = computeNextRunWithDriftPrevention(task);
 
