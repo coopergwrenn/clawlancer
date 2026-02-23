@@ -71,7 +71,7 @@ export default function ConnectPage() {
     "all_inclusive"
   );
   const [apiKey, setApiKey] = useState("");
-  const [defaultModel, setDefaultModel] = useState("minimax-m2.5");
+  const [defaultModel, setDefaultModel] = useState("claude-haiku-4-5-20251001");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
