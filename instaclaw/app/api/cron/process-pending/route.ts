@@ -137,6 +137,59 @@ export async function GET(req: NextRequest) {
   }
 
   // -----------------------------------------------------------------
+  // Pass 2b: Retry VMs that were assigned + configured but gateway never
+  // came up (gateway_url is null). This catches the case where configure
+  // ran but the gateway didn't start — our new gateway verification logic
+  // sets gateway_url to null in that case.
+  // -----------------------------------------------------------------
+  let gatewayRetried = 0;
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  const { data: noGatewayVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, assigned_to, configure_attempts")
+    .not("assigned_to", "is", null)
+    .is("gateway_url", null)
+    .gt("configure_attempts", 0)
+    .lt("configure_attempts", MAX_CONFIGURE_ATTEMPTS)
+    .lt("last_health_check", fiveMinutesAgo)
+    .limit(5);
+
+  if (noGatewayVms?.length) {
+    for (const vm of noGatewayVms) {
+      try {
+        const configRes = await fetch(
+          `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+            },
+            body: JSON.stringify({ userId: vm.assigned_to }),
+          }
+        );
+
+        if (configRes.ok) {
+          gatewayRetried++;
+          logger.info("Retried configure for VM with no gateway_url", {
+            route: "cron/process-pending",
+            vmId: vm.id,
+            userId: vm.assigned_to,
+            attempt: vm.configure_attempts + 1,
+          });
+        }
+      } catch (err) {
+        logger.error("Failed to retry configure for no-gateway VM", {
+          error: String(err),
+          route: "cron/process-pending",
+          vmId: vm.id,
+        });
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------
   // Pass 3: Auto-configure orphaned VMs (assigned but never configured)
   // Users who paid but never completed the onboarding wizard end up with
   // a VM assigned but configure_attempts = 0 and no pending config.
@@ -260,6 +313,7 @@ export async function GET(req: NextRequest) {
     pending: pending?.length ?? 0,
     assigned,
     retried,
+    gatewayRetried,
     autoConfigured,
     cleaned,
   });

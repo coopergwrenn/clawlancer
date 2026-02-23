@@ -140,23 +140,50 @@ async function processEvent(event: any) {
       const vm = await assignVMWithSSHCheck(userId);
 
       if (vm) {
-        // VM assigned — trigger configuration. We await the fetch to
-        // guarantee the HTTP request reaches the configure endpoint.
+        // VM assigned — trigger configuration with retry.
         // This runs inside after() so the Stripe response is already sent.
-        try {
-          await fetch(
-            `${process.env.NEXTAUTH_URL}/api/vm/configure`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-              },
-              body: JSON.stringify({ userId }),
+        // Retry up to 2 times (3 attempts total) with 5s backoff to handle
+        // transient fetch failures that would otherwise leave the user stuck.
+        let configured = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const configRes = await fetch(
+              `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+                },
+                body: JSON.stringify({ userId }),
+              }
+            );
+            if (configRes.ok) {
+              configured = true;
+              break;
             }
-          );
-        } catch (err) {
-          logger.error("VM configure call failed", { error: String(err), route: "billing/webhook", userId });
+            logger.warn("VM configure returned non-OK, retrying", {
+              route: "billing/webhook",
+              userId,
+              attempt,
+              status: configRes.status,
+            });
+          } catch (err) {
+            logger.error("VM configure call failed", {
+              error: String(err),
+              route: "billing/webhook",
+              userId,
+              attempt,
+            });
+          }
+          if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
+        }
+        if (!configured) {
+          logger.error("VM configure failed after 3 attempts — process-pending cron will retry", {
+            route: "billing/webhook",
+            userId,
+            vmId: vm.id,
+          });
         }
       }
       // If no VM available, send pending email

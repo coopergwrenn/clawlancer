@@ -117,21 +117,34 @@ export async function POST(req: NextRequest) {
     // request survives past the response. A bare non-awaited fetch() can
     // be aborted when Vercel freezes the function after sending the response.
     after(async () => {
-      try {
-        await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-          },
-          body: JSON.stringify({ userId }),
-        });
-      } catch (err) {
-        logger.error("VM configure after() failed", {
-          error: String(err),
-          route: "checkout/verify",
-          userId,
-        });
+      // Retry up to 2 times (3 attempts total) with 5s backoff.
+      // If all attempts fail, process-pending cron will pick it up.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const configRes = await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+            },
+            body: JSON.stringify({ userId }),
+          });
+          if (configRes.ok) break;
+          logger.warn("VM configure returned non-OK, retrying", {
+            route: "checkout/verify",
+            userId,
+            attempt,
+            status: configRes.status,
+          });
+        } catch (err) {
+          logger.error("VM configure after() failed", {
+            error: String(err),
+            route: "checkout/verify",
+            userId,
+            attempt,
+          });
+        }
+        if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
       }
     });
 
