@@ -40,6 +40,24 @@ export async function GET(req: NextRequest) {
 
       if (existingVm) continue;
 
+      // BILLING CHECK: Never assign a VM without a valid subscription.
+      // Without this, anyone who completes the onboarding wizard (creating a
+      // pending_users row) but skips Stripe checkout gets a free VM.
+      const { data: sub } = await supabase
+        .from("instaclaw_subscriptions")
+        .select("status")
+        .eq("user_id", p.user_id)
+        .single();
+
+      if (!sub || !["active", "trialing"].includes(sub.status)) {
+        logger.warn("Skipping VM assignment — no active subscription", {
+          route: "cron/process-pending",
+          userId: p.user_id,
+          subscriptionStatus: sub?.status ?? "none",
+        });
+        continue;
+      }
+
       // Try to assign a VM (with SSH pre-check to avoid dead VMs)
       const vm = await assignVMWithSSHCheck(p.user_id);
 
