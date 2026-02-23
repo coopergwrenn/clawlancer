@@ -2051,7 +2051,7 @@ export interface AuditResult {
   missingFiles: string[];
 }
 
-export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
+export async function auditVMConfig(vm: VMRecord & { gateway_token?: string; api_mode?: string }): Promise<AuditResult> {
   const ssh = await connectSSH(vm);
   try {
     const fixed: string[] = [];
@@ -2231,9 +2231,97 @@ export async function auditVMConfig(vm: VMRecord): Promise<AuditResult> {
       }
     }
 
-    // 3g. Restart gateway ONLY if system-prompt.md was modified
+    // 4. Validate auth-profiles.json for all-inclusive and BYOK VMs
+    let authProfileFixed = false;
+    const expectedProxyBaseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway";
+
+    if (vm.api_mode && vm.gateway_token) {
+      const authReadResult = await ssh.execCommand(
+        'cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null'
+      );
+
+      let needsFix = false;
+      let fixReason = '';
+
+      if (authReadResult.code !== 0 || !authReadResult.stdout.trim()) {
+        needsFix = true;
+        fixReason = 'missing file';
+      } else {
+        try {
+          const authData = JSON.parse(authReadResult.stdout);
+          const profile = authData?.profiles?.["anthropic:default"];
+
+          if (!profile) {
+            needsFix = true;
+            fixReason = 'missing anthropic:default profile';
+          } else if (vm.api_mode === "all_inclusive") {
+            // All-inclusive: must have proxy baseUrl + gateway_token as key
+            if (profile.baseUrl !== expectedProxyBaseUrl) {
+              needsFix = true;
+              fixReason = `wrong baseUrl: ${profile.baseUrl ?? 'null'} (expected ${expectedProxyBaseUrl})`;
+            } else if (profile.key !== vm.gateway_token) {
+              needsFix = true;
+              fixReason = 'key does not match gateway_token';
+            }
+          } else if (vm.api_mode === "byok") {
+            // BYOK: must NOT have proxy baseUrl (routes direct to Anthropic)
+            if (profile.baseUrl === expectedProxyBaseUrl) {
+              needsFix = true;
+              fixReason = 'BYOK VM has proxy baseUrl set — should route direct to Anthropic';
+            }
+          }
+        } catch {
+          needsFix = true;
+          fixReason = 'invalid JSON';
+        }
+      }
+
+      if (needsFix) {
+        logger.warn("auth-profiles.json misconfigured, auto-fixing", {
+          route: "auditVMConfig",
+          vmId: vm.id,
+          apiMode: vm.api_mode,
+          reason: fixReason,
+        });
+
+        // Rebuild auth-profiles.json matching configureOpenClaw() logic
+        const authProfileData: Record<string, unknown> = {
+          type: "api_key",
+          provider: "anthropic",
+          key: vm.gateway_token,
+        };
+        if (vm.api_mode === "all_inclusive") {
+          authProfileData.baseUrl = expectedProxyBaseUrl;
+        }
+        // For BYOK: we can't recover the user's API key from here (it's encrypted
+        // in the DB and not available on VMRecord). We can only fix all-inclusive VMs.
+        // For BYOK with wrong baseUrl, we'd need a full reconfigure — log and skip.
+        if (vm.api_mode === "byok") {
+          logger.error("BYOK auth-profiles.json needs reconfigure — cannot auto-fix without decrypted API key", {
+            route: "auditVMConfig",
+            vmId: vm.id,
+            reason: fixReason,
+          });
+          fixed.push(`auth-profiles.json (BYOK — needs manual reconfigure: ${fixReason})`);
+        } else {
+          const authProfile = JSON.stringify({
+            profiles: { "anthropic:default": authProfileData },
+          });
+          const authB64 = Buffer.from(authProfile).toString("base64");
+          await ssh.execCommand(
+            `mkdir -p ~/.openclaw/agents/main/agent && echo '${authB64}' | base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json`
+          );
+          authProfileFixed = true;
+          fixed.push(`auth-profiles.json (${fixReason})`);
+        }
+      } else {
+        alreadyCorrect.push('auth-profiles.json');
+      }
+    }
+
+    // 5. Restart gateway if system-prompt.md or auth-profiles.json was modified
     // Use systemd so Restart=always protects against future crashes
-    if (systemPromptModified) {
+    if (systemPromptModified || authProfileFixed) {
       await ssh.execCommand('systemctl --user restart openclaw-gateway 2>/dev/null || (pkill -9 -f "openclaw-gateway" 2>/dev/null; sleep 2; systemctl --user start openclaw-gateway) || true');
       await new Promise((r) => setTimeout(r, 5000));
       fixed.push('gateway restarted');
