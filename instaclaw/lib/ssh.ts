@@ -1667,29 +1667,60 @@ export async function configureOpenClaw(
 
     // Check if gateway is actually alive (verified by localhost curl inside VM)
     const gatewayVerified = result.stdout.includes("GATEWAY_VERIFIED");
-    const healthStatus = gatewayVerified ? "healthy" : "unhealthy";
 
+    // If gateway didn't respond to curl, try one more time via SSH before giving up.
+    // This catches slow-start gateways that need a few extra seconds.
+    let healthStatus: "healthy" | "unhealthy" = gatewayVerified ? "healthy" : "unhealthy";
     if (!gatewayVerified) {
-      logger.error("Gateway not responding after configure", {
+      logger.warn("Gateway not responding after configure script, retrying via SSH", {
         route: "lib/ssh",
         vmId: vm.id,
-        stdout: result.stdout.slice(-500),
         timeline,
       });
+
+      // Retry: check systemctl + one more curl, up to 15s
+      for (let retry = 0; retry < 3; retry++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const retryResult = await ssh.execCommand(
+          `systemctl --user is-active openclaw-gateway 2>&1 && curl -s -m 5 http://localhost:${GATEWAY_PORT}/health > /dev/null 2>&1 && echo "RETRY_HEALTH_OK"`
+        );
+        if (retryResult.stdout.includes("RETRY_HEALTH_OK")) {
+          healthStatus = "healthy";
+          logger.info("Gateway came alive on retry", {
+            route: "lib/ssh",
+            vmId: vm.id,
+            retryAttempt: retry + 1,
+          });
+          break;
+        }
+      }
+
+      if (healthStatus === "unhealthy") {
+        logger.error("Gateway not responding after configure + retries", {
+          route: "lib/ssh",
+          vmId: vm.id,
+          stdout: result.stdout.slice(-500),
+          timeline,
+        });
+      }
     }
 
-    // Update VM record in Supabase with HTTP URLs in ONE atomic write.
-    // health_status is set based on whether the gateway actually responded.
-    // If healthy: user sees immediate success. If unhealthy: deploy page shows
-    // the issue and the health-check cron will retry.
+    // Only write gateway_url if the gateway is confirmed running.
+    // If unhealthy, set gateway_url to null so the deploy page doesn't
+    // redirect the user to a dead gateway. The process-pending cron
+    // will retry configuration for VMs missing gateway_url.
     mark("db_write_start");
     const supabase = getSupabase();
+    const gatewayUrl = healthStatus === "healthy"
+      ? `http://${vm.ip_address}:${GATEWAY_PORT}`
+      : null;
+
     const { error: vmError } = await supabase
       .from("instaclaw_vms")
       .update({
-        gateway_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
+        gateway_url: gatewayUrl,
         gateway_token: gatewayToken,
-        control_ui_url: `http://${vm.ip_address}:${GATEWAY_PORT}`,
+        control_ui_url: gatewayUrl,
         health_status: healthStatus,
         last_health_check: new Date().toISOString(),
         ssh_fail_count: 0,
@@ -1726,10 +1757,10 @@ export async function configureOpenClaw(
     });
 
     return {
-      gatewayUrl: `http://${vm.ip_address}:${GATEWAY_PORT}`,
+      gatewayUrl: gatewayUrl ?? `http://${vm.ip_address}:${GATEWAY_PORT}`,
       gatewayToken,
-      controlUiUrl: `http://${vm.ip_address}:${GATEWAY_PORT}`,
-      gatewayVerified,
+      controlUiUrl: gatewayUrl ?? `http://${vm.ip_address}:${GATEWAY_PORT}`,
+      gatewayVerified: healthStatus === "healthy",
     };
   } finally {
     ssh.dispose();
