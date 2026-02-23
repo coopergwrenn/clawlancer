@@ -136,6 +136,27 @@ async function processEvent(event: any) {
         break;
       }
 
+      // Check deployment lock — the verify endpoint may already be handling assignment.
+      // This prevents the race condition where both verify and webhook try to assign
+      // a VM simultaneously.
+      const { data: userLockCheck } = await supabase
+        .from("instaclaw_users")
+        .select("deployment_lock_at")
+        .eq("id", userId)
+        .single();
+
+      if (userLockCheck?.deployment_lock_at) {
+        const lockAge = Date.now() - new Date(userLockCheck.deployment_lock_at).getTime();
+        if (lockAge < 5 * 60 * 1000) {
+          logger.info("Deployment lock active (verify endpoint handling), skipping webhook assignment", {
+            route: "billing/webhook",
+            userId,
+            lockAge: `${Math.round(lockAge / 1000)}s`,
+          });
+          break;
+        }
+      }
+
       // Try to assign a VM (with SSH pre-check to avoid dead VMs)
       const vm = await assignVMWithSSHCheck(userId);
 
@@ -184,6 +205,11 @@ async function processEvent(event: any) {
             userId,
             vmId: vm.id,
           });
+          // Alert admin so they can investigate
+          sendAdminAlertEmail(
+            "VM Configure Failed After Checkout",
+            `VM ${vm.id} (user: ${userId}) failed to configure after 3 webhook attempts.\n\nThe process-pending cron will retry automatically, but this may indicate an infrastructure issue.`
+          ).catch(() => {});
         }
       }
       // If no VM available, send pending email

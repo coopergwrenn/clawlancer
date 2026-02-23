@@ -97,6 +97,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Acquire deployment lock to prevent verify/webhook race condition.
+    // If the webhook is already handling assignment, this will be a no-op
+    // since the webhook checks this lock before assigning.
+    await supabase
+      .from("instaclaw_users")
+      .update({ deployment_lock_at: new Date().toISOString() })
+      .eq("id", userId);
+
     // Try to assign a VM (with SSH pre-check to avoid dead VMs)
     const vm = await assignVMWithSSHCheck(userId);
 
