@@ -216,7 +216,7 @@ async function executeTask(
           .from("instaclaw_tasks")
           .update({
             status: "failed",
-            error_message: `${model} requires your agent to be online. Check your dashboard for status.`,
+            error_message: `${model} can only run when your agent is online (non-Anthropic models don't support direct API fallback). Check your dashboard for agent status, or switch to an Anthropic model for offline fallback.`,
           })
           .eq("id", taskId);
         return;

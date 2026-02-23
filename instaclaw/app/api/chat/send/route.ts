@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
         userId: session.user.id,
       });
       return NextResponse.json(
-        { error: `${model} requires your agent to be online. Check your dashboard for status.` },
+        { error: `${model} can only run when your agent is online (non-Anthropic models don't support direct API fallback). Check your dashboard for agent status, or switch to an Anthropic model for offline fallback.` },
         { status: 502 }
       );
     }
