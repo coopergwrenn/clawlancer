@@ -393,6 +393,34 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* No active subscription banner */}
+      {vmStatus?.status === "assigned" && (!billing || billing.status === "canceled") && (
+        <div
+          className="rounded-xl p-5 flex items-center gap-4 transition-snappy"
+          style={{
+            background: "rgba(249,115,22,0.08)",
+            border: "1px solid rgba(249,115,22,0.2)",
+          }}
+        >
+          <AlertTriangle className="w-5 h-5 shrink-0" style={{ color: "#f97316" }} />
+          <div className="flex-1">
+            <p className="text-sm font-semibold" style={{ color: "#f97316" }}>
+              No Active Subscription
+            </p>
+            <p className="text-xs" style={{ color: "rgba(249,115,22,0.7)" }}>
+              Subscribe to keep your agent running.
+            </p>
+          </div>
+          <Link
+            href="/billing"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium shrink-0"
+            style={{ background: "#f97316", color: "#fff" }}
+          >
+            Subscribe
+          </Link>
+        </div>
+      )}
+
       {/* Trial banner */}
       {trialDaysLeft !== null && billing?.status === "trialing" && (
         <div
