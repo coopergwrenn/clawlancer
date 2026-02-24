@@ -84,7 +84,9 @@ echo '$monitoring_b64' | base64 -d > "\$SKILL_DIR/references/monitoring.md"
 echo '$wallet_script_b64' | base64 -d > "\$HOME/scripts/setup-polymarket-wallet.sh"
 chmod +x "\$HOME/scripts/setup-polymarket-wallet.sh"
 
-pip3 install --quiet --break-system-packages py-clob-client eth-account websockets 2>/dev/null || true
+# Bootstrap pip if missing (common on minimal Ubuntu VMs)
+python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true
+python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets 2>/dev/null || true
 
 echo "  Polymarket prediction markets skill deployed successfully (Phase 1-3)"
 REMOTE_SCRIPT
