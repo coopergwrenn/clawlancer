@@ -28,10 +28,29 @@ export interface RoutingDecision {
 
 /* ── Regex patterns for content classification ─────────────── */
 
-const OPUS_SIGNALS = /\b(important|critical|be thorough|think deeply|synthesize|cross-reference)\b/i;
+// Opus keyword signals
+const OPUS_SIGNALS =
+  /\b(important|critical|be thorough|think deeply|synthesize|cross-reference|from scratch|full[- ]?stack|end[- ]?to[- ]?end|redesign|architect|architecture)\b/i;
 
+// Opus: multi-agent / subagent references
+const OPUS_MULTI_AGENT =
+  /\b(subagent|sub[- ]?agent|multi[- ]?agent)\b|\bcoordinate with .+agents?\b|\bother agents?\b/i;
+
+// Opus: smart contract + deploy combination
+const OPUS_SMART_CONTRACT_DEPLOY =
+  /\bsmart contract\b[\s\S]*\bdeploy\b|\bdeploy\b[\s\S]*\bsmart contract\b/i;
+
+// Action verbs for multi-action heuristic (3+ distinct = Opus)
+const ACTION_VERB_PATTERN =
+  /\b(build|create|write|implement|deploy|test|design|integrate|configure|migrate|optimize|develop|monitor|analyze|audit|refactor|rewrite|generate|establish|install|connect|debug|coordinate|research|set up)\b/gi;
+
+// Building/creating verbs for complex build heuristic
+const BUILD_VERB_PATTERN =
+  /\b(build|create|develop|implement|set up|configure|deploy|architect|design)\b/i;
+
+// Sonnet keyword signals (expanded)
 const SONNET_SIGNALS =
-  /\b(write code|implement|debug|refactor|build a|create a script|analyze|evaluate|financial|competitive|audit|draft an email|write a response|write a report|compare|contrast|step[- ]?by[- ]?step)\b/i;
+  /\b(write code|write (?:a|me a) \w+|implement|debug|refactor|build (?:a|me a|me) \w+|create a \w+|analyze|evaluate|financial|competitive|audit|draft an email|compare|contrast|step[- ]?by[- ]?step|research|design|plan|rewrite|optimize|migrate|generate|develop|set up|configure)\b/i;
 
 const MULTI_STEP_PATTERN = /\b(first\b.*\bthen\b|step \d|1\.|1\))/i;
 
@@ -42,10 +61,44 @@ const EXPLICIT_SONNET_PATTERN = /\buse sonnet\b/i;
 const EXPLICIT_HAIKU_PATTERN = /\buse haiku\b/i;
 
 /**
+ * Count distinct action verbs in a message.
+ * Used for multi-action complexity detection (3+ = Opus-worthy).
+ */
+function countDistinctActionVerbs(msg: string): number {
+  const matches = msg.match(ACTION_VERB_PATTERN);
+  if (!matches) return 0;
+  const unique = new Set(matches.map((m) => m.toLowerCase()));
+  return unique.size;
+}
+
+/**
+ * Detect complex build requests: a building verb + 3+ listed components.
+ * "Build me a dashboard with auth, DB, and notifications" → true
+ */
+function hasComplexBuild(msg: string): boolean {
+  if (!BUILD_VERB_PATTERN.test(msg)) return false;
+  const commaCount = (msg.match(/,/g) || []).length;
+  return commaCount >= 2 && msg.length > 80;
+}
+
+/**
+ * Build an Opus routing decision with budget-aware degradation.
+ */
+function opusDecision(ctx: RoutingContext, reason: string): RoutingDecision {
+  if (ctx.tierBudget.opusRemaining > 0) {
+    return { model: TIER_MODELS[3], tier: 3, reason };
+  }
+  if (ctx.tierBudget.sonnetRemaining > 0) {
+    return { model: TIER_MODELS[2], tier: 2, reason: `${reason} but opus budget exhausted, downgraded to sonnet` };
+  }
+  return { model: TIER_MODELS[1], tier: 1, reason: `${reason} but all budgets exhausted` };
+}
+
+/**
  * Deterministic model routing — no LLM calls, no network.
  *
  * Layer 1: Static overrides (heartbeat, recurring, toggles, explicit requests, budget)
- * Layer 2: Content classification (regex/keyword on last user message)
+ * Layer 2: Content classification (regex/keyword + heuristics on last user message)
  * Default: Haiku (tier 1)
  */
 export function routeModel(ctx: RoutingContext): RoutingDecision {
@@ -53,22 +106,18 @@ export function routeModel(ctx: RoutingContext): RoutingDecision {
 
   // ── Layer 1: Static overrides ──────────────────────────────
 
-  // Heartbeats always use MiniMax (keep existing behavior)
   if (ctx.isHeartbeat) {
     return { model: "minimax-m2.5", tier: 1, reason: "heartbeat" };
   }
 
-  // Recurring tasks are cost-sensitive and repeatable
   if (ctx.isRecurringTask) {
     return { model: TIER_MODELS[1], tier: 1, reason: "recurring task" };
   }
 
-  // Explicit user model request in message text
   if (EXPLICIT_OPUS_PATTERN.test(msg)) {
     if (ctx.tierBudget.opusRemaining > 0) {
       return { model: TIER_MODELS[3], tier: 3, reason: "explicit opus request" };
     }
-    // Budget exhausted — downgrade
     if (ctx.tierBudget.sonnetRemaining > 0) {
       return { model: TIER_MODELS[2], tier: 2, reason: "opus requested but budget exhausted, downgraded to sonnet" };
     }
@@ -86,12 +135,10 @@ export function routeModel(ctx: RoutingContext): RoutingDecision {
     return { model: TIER_MODELS[1], tier: 1, reason: "explicit haiku request" };
   }
 
-  // If user/config set a specific model, respect it
   if (ctx.explicitModelRequest) {
     return respectExplicitModel(ctx);
   }
 
-  // Deep Research toggle → Sonnet
   if (ctx.toggles.deepResearch) {
     if (ctx.tierBudget.sonnetRemaining > 0) {
       return {
@@ -104,7 +151,6 @@ export function routeModel(ctx: RoutingContext): RoutingDecision {
     return { model: TIER_MODELS[1], tier: 1, reason: "deep research toggle but sonnet budget exhausted" };
   }
 
-  // Task execution → Sonnet (tasks are multi-step by nature)
   if (ctx.isTaskExecution) {
     if (ctx.tierBudget.sonnetRemaining > 0) {
       return {
@@ -119,18 +165,32 @@ export function routeModel(ctx: RoutingContext): RoutingDecision {
 
   // ── Layer 2: Content classification ────────────────────────
 
-  // Opus signals
+  // Opus: keyword signals
   if (OPUS_SIGNALS.test(msg)) {
-    if (ctx.tierBudget.opusRemaining > 0) {
-      return { model: TIER_MODELS[3], tier: 3, reason: "opus content signal" };
-    }
-    if (ctx.tierBudget.sonnetRemaining > 0) {
-      return { model: TIER_MODELS[2], tier: 2, reason: "opus signal but budget exhausted, downgraded to sonnet" };
-    }
-    return { model: TIER_MODELS[1], tier: 1, reason: "opus signal but all budgets exhausted" };
+    return opusDecision(ctx, "opus content signal");
   }
 
-  // Sonnet signals: code keywords, analysis, email drafting
+  // Opus: multi-agent / subagent references
+  if (OPUS_MULTI_AGENT.test(msg)) {
+    return opusDecision(ctx, "multi-agent signal");
+  }
+
+  // Opus: smart contract + deploy combination
+  if (OPUS_SMART_CONTRACT_DEPLOY.test(msg)) {
+    return opusDecision(ctx, "smart contract + deploy");
+  }
+
+  // Opus: 3+ distinct action verbs (complex multi-step task)
+  if (countDistinctActionVerbs(msg) >= 3) {
+    return opusDecision(ctx, "multi-action complexity (3+ verbs)");
+  }
+
+  // Opus: building verb + 3+ listed components
+  if (hasComplexBuild(msg)) {
+    return opusDecision(ctx, "complex build (3+ components)");
+  }
+
+  // Sonnet signals: code keywords, analysis, email drafting, research
   if (SONNET_SIGNALS.test(msg) || MULTI_STEP_PATTERN.test(msg) || CODE_BLOCK_PATTERN.test(msg)) {
     if (ctx.tierBudget.sonnetRemaining > 0) {
       return {
@@ -184,7 +244,6 @@ function respectExplicitModel(ctx: RoutingContext): RoutingDecision {
     return { model: TIER_MODELS[1], tier: 1, reason: "explicit sonnet config but budget exhausted" };
   }
 
-  // Haiku, MiniMax, or unknown — pass through at tier 1
   return { model: ctx.explicitModelRequest!, tier: 1, reason: "explicit config model (tier 1)" };
 }
 
