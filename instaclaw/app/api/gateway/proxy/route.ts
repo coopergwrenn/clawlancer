@@ -10,8 +10,14 @@ import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
 
-/** Estimated cost per message unit in dollars (haiku-equivalent). */
+/**
+ * Estimated cost per message unit in dollars (haiku-equivalent).
+ * With intelligent routing, some units cost 3.75x (Sonnet) or 18.75x (Opus)
+ * more than Haiku. The safety factor compensates for the actual model mix
+ * so the circuit breaker doesn't underestimate real API spend.
+ */
 const COST_PER_UNIT = 0.004;
+const COST_SAFETY_FACTOR = 2.5;
 
 /**
  * The RPC returns a 'source' field that tells the proxy how to handle
@@ -250,7 +256,7 @@ export async function POST(req: NextRequest) {
       (sum: number, row: { message_count: number }) => sum + row.message_count,
       0
     );
-    const estimatedSpend = totalUnitsToday * COST_PER_UNIT;
+    const estimatedSpend = totalUnitsToday * COST_PER_UNIT * COST_SAFETY_FACTOR;
 
     if (estimatedSpend >= DAILY_SPEND_CAP && tier !== "starter") {
       logger.error("Circuit breaker tripped — daily spend cap exceeded", {
