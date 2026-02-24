@@ -1019,11 +1019,15 @@ function buildOpenClawConfig(
   }
 
   // Configure Brave web search
+  // Schema path is tools.web.search (NOT tools.webSearch — verified against
+  // OpenClaw dist resolveSearchConfig() which reads cfg?.tools?.web?.search)
   if (braveKey) {
     ocConfig.tools = {
-      webSearch: {
-        provider: "brave",
-        apiKey: braveKey,
+      web: {
+        search: {
+          provider: "brave",
+          apiKey: braveKey,
+        },
       },
     };
   }
