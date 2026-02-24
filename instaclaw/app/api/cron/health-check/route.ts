@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, checkSessionHealth, CONFIG_SPEC } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count")
+    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at")
     .eq("status", "assigned")
     .not("gateway_url", "is", null);
 
@@ -586,7 +586,96 @@ export async function GET(req: NextRequest) {
   }
 
   // ========================================================================
-  // Sixth pass: Proxy round-trip validation for healthy all_inclusive VMs
+  // Sixth pass: Memory health monitoring
+  // Check MEMORY.md size and staleness on healthy VMs.
+  // MEMORY_EMPTY: <=200 bytes, assigned 48h+, session > 10KB → admin alert
+  // MEMORY_STALE: not modified 72h+, active sessions → log warning
+  // Batch of 5 VMs per cycle (same pattern as MEMORY.md ensure pass)
+  // ========================================================================
+  let memoryEmptyAlerts = 0;
+  let memoryStaleWarnings = 0;
+  const MEMORY_EMPTY_THRESHOLD = 200;   // bytes — effectively empty
+  const MEMORY_STALE_HOURS = 72;        // hours without update
+  const MEMORY_MIN_SESSION_BYTES = 10 * 1024; // 10KB — VM must have meaningful session
+  const MEMORY_ASSIGNED_HOURS = 48;     // VM must be assigned 48h+ for empty alert
+
+  const memoryHealthBatch = vms
+    .filter((vm) => healthyVmIds.has(vm.id))
+    .slice(0, 5);
+
+  for (const vm of memoryHealthBatch) {
+    try {
+      const memHealth = await checkMemoryHealth(vm);
+      if (!memHealth.reachable) continue;
+
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const hoursSinceMemUpdate = memHealth.memMtimeEpoch > 0
+        ? (nowEpoch - memHealth.memMtimeEpoch) / 3600
+        : Infinity;
+
+      // Get session info to check if VM has meaningful activity
+      const sessionHealth = await checkSessionHealth(vm);
+      const hasActiveSessions = sessionHealth.largestSessionBytes > MEMORY_MIN_SESSION_BYTES;
+
+      // Check assignment duration
+      const assignedAt = (vm as Record<string, unknown>).assigned_at as string | undefined;
+      const hoursSinceAssigned = assignedAt
+        ? (Date.now() - new Date(assignedAt).getTime()) / (1000 * 3600)
+        : Infinity;
+
+      // MEMORY_EMPTY: tiny MEMORY.md on a VM that's been assigned 48h+ with active sessions
+      if (memHealth.memSizeBytes <= MEMORY_EMPTY_THRESHOLD
+        && hoursSinceAssigned >= MEMORY_ASSIGNED_HOURS
+        && hasActiveSessions
+      ) {
+        memoryEmptyAlerts++;
+        logger.error("Memory empty on active VM", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          memSizeBytes: memHealth.memSizeBytes,
+          hoursSinceAssigned: Math.round(hoursSinceAssigned),
+          largestSessionBytes: sessionHealth.largestSessionBytes,
+          assignedTo: vm.assigned_to,
+        });
+
+        if (ADMIN_EMAIL) {
+          try {
+            await sendAdminAlertEmail(
+              "Memory Empty Alert",
+              `VM ${vm.name ?? vm.id} (${vm.ip_address}) has an empty or near-empty MEMORY.md (${memHealth.memSizeBytes} bytes) despite being assigned for ${Math.round(hoursSinceAssigned)} hours with active sessions (largest: ${Math.round(sessionHealth.largestSessionBytes / 1024)}KB).\n\nAssigned to: ${vm.assigned_to ?? "unknown"}\nActive tasks file: ${memHealth.activeTasksExists ? "exists" : "MISSING"}\n\nThis means the agent is not persisting any long-term memory. The user will lose all context on session rotation.`
+            );
+          } catch {
+            // Non-fatal
+          }
+        }
+      }
+
+      // MEMORY_STALE: MEMORY.md not updated in 72h+ with active sessions
+      if (hoursSinceMemUpdate > MEMORY_STALE_HOURS && hasActiveSessions) {
+        memoryStaleWarnings++;
+        logger.warn("Memory stale on active VM", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          memSizeBytes: memHealth.memSizeBytes,
+          hoursSinceMemUpdate: Math.round(hoursSinceMemUpdate),
+          largestSessionBytes: sessionHealth.largestSessionBytes,
+          assignedTo: vm.assigned_to,
+        });
+      }
+    } catch (err) {
+      logger.error("Memory health check failed", {
+        error: String(err),
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+      });
+    }
+  }
+
+  // ========================================================================
+  // Eighth pass: Proxy round-trip validation for healthy all_inclusive VMs
   // Catches VMs that pass local health check but have broken proxy auth
   // (the EuroPartShop scenario). Limit to 3 per cycle to control cost/time.
   // ========================================================================
@@ -840,6 +929,8 @@ export async function GET(req: NextRequest) {
     configsAudited,
     configsFixed,
     memoryFilesCreated,
+    memoryEmptyAlerts,
+    memoryStaleWarnings,
     proxyChecked,
     proxyFailed,
   });
