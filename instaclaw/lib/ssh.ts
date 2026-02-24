@@ -1942,6 +1942,37 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Polymarket Prediction Markets skill ──
+    // Doc-only skill — read-only Gamma API, no wallet/trading. No API keys required.
+    try {
+      const polySkillDir = path.join(process.cwd(), "skills", "polymarket");
+      const polySkillMd = fs.readFileSync(path.join(polySkillDir, "SKILL.md"), "utf-8");
+      const polyGammaApi = fs.readFileSync(path.join(polySkillDir, "references", "gamma-api.md"), "utf-8");
+      const polyAnalysis = fs.readFileSync(path.join(polySkillDir, "references", "analysis.md"), "utf-8");
+
+      const polySkillB64 = Buffer.from(polySkillMd, "utf-8").toString("base64");
+      const polyGammaB64 = Buffer.from(polyGammaApi, "utf-8").toString("base64");
+      const polyAnalysisB64 = Buffer.from(polyAnalysis, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Polymarket Prediction Markets skill (read-only, no API keys)',
+        'POLY_SKILL_DIR="$HOME/.openclaw/skills/polymarket"',
+        'mkdir -p "$POLY_SKILL_DIR/references"',
+        `echo '${polySkillB64}' | base64 -d > "$POLY_SKILL_DIR/SKILL.md"`,
+        `echo '${polyGammaB64}' | base64 -d > "$POLY_SKILL_DIR/references/gamma-api.md"`,
+        `echo '${polyAnalysisB64}' | base64 -d > "$POLY_SKILL_DIR/references/analysis.md"`,
+        ''
+      );
+
+      logger.info("Polymarket prediction markets skill deployment prepared", { route: "lib/ssh" });
+    } catch (polySkillErr) {
+      // Polymarket skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Polymarket skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(polySkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [

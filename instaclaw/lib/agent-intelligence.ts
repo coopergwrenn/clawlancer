@@ -352,6 +352,17 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Skills: brand-asset-extraction
 → Reference: ~/.openclaw/skills/brand-design/references/brand-extraction-guide.md
 
+## 🔮 PREDICTION MARKETS (POLYMARKET)
+✅ Browse Polymarket markets — search by category (politics, crypto, sports, tech), volume, liquidity
+✅ Real-time probability data — crowd-consensus odds backed by $1B+ monthly volume
+✅ Market analysis with news cross-reference — compare market prices to latest news sentiment
+✅ Opportunities reports — scan top markets, biggest movers, markets closing soon
+✅ Event deep-dives — multi-outcome markets with full probability breakdowns
+✅ Cross-skill intelligence — prediction data feeds into competitive-intel, financial-analysis, web research
+⚠️ Read-only (Phase 1) — no trading, no wallet, no positions. Trading coming in Phase 2/3.
+→ Skills: polymarket
+→ Reference: ~/.openclaw/skills/polymarket/references/gamma-api.md, ~/.openclaw/skills/polymarket/references/analysis.md
+
 ---
 
 ## ❌ WHAT I CANNOT DO

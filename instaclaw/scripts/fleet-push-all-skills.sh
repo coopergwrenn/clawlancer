@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# fleet-push-all-skills.sh — Master fleet push: deploy ALL 12 skills to fleet
+# fleet-push-all-skills.sh — Master fleet push: deploy ALL 13 skills to fleet
 #
 # Runs each skill push script in sequence. Supports:
 #   --dry-run   Preview all deployments (ALWAYS run first)
 #   --canary    Deploy all skills to 1 VM, pause for approval
 #   --all       Deploy all skills to all active VMs
 #
-# Order: Voice → Web → Code → Kling → Email → Marketplace → Finance → Intel → Social → E-Commerce → Video → Brand
+# Order: Voice → Web → Code → Kling → Email → Marketplace → Finance → Intel → Social → E-Commerce → Video → Brand → Polymarket
 #
 # MANDATORY: Always run --dry-run first, per CLAUDE.md rules.
 #
@@ -32,6 +32,7 @@ SKILLS=(
   "fleet-push-ecommerce-skill.sh"
   "fleet-push-video-skill.sh"
   "fleet-push-brand-skill.sh"
+  "fleet-push-polymarket-skill.sh"
 )
 
 LABELS=(
@@ -47,6 +48,7 @@ LABELS=(
   "E-Commerce & Marketplace"
   "Video Production (Remotion)"
   "Brand Asset Extraction"
+  "Prediction Markets (Polymarket)"
 )
 
 TOTAL_SKILLS=${#SKILLS[@]}
