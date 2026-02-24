@@ -17,11 +17,35 @@ const UNSUB_HEADERS = {
 };
 
 /**
+ * Sanitize NEXTAUTH_URL to prevent broken email links.
+ * Strips stray whitespace, control chars, backslashes, trailing slashes,
+ * and falls back to the production URL if the env var is missing/malformed.
+ */
+function getBaseUrl(): string {
+  const FALLBACK = "https://instaclaw.io";
+  const raw = process.env.NEXTAUTH_URL;
+  if (!raw) return FALLBACK;
+  // Strip quotes, whitespace, control characters, and backslashes
+  const cleaned = raw
+    .replace(/^["'\s]+|["'\s]+$/g, "")     // leading/trailing quotes & whitespace
+    .replace(/[\x00-\x1f\x7f\\]/g, "")     // control chars + backslash
+    .replace(/\/+$/, "");                    // trailing slashes
+  // Validate it's a proper URL
+  try {
+    const url = new URL(cleaned);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return FALLBACK;
+    return url.origin;
+  } catch {
+    return FALLBACK;
+  }
+}
+
+/**
  * Build the invite email HTML. Exported separately so test endpoints can
  * preview the template without actually sending.
  */
 export function buildInviteEmailHtml(inviteCode: string): string {
-  const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
+  const signupUrl = `${getBaseUrl()}/signup`;
   const font = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
   const mono = `'Courier New', Courier, monospace`;
 
@@ -136,7 +160,7 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 }
 
 export function buildInviteEmailText(inviteCode: string): string {
-  const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
+  const signupUrl = `${getBaseUrl()}/signup`;
   return `You just got superpowers.
 
 We're giving you something that didn't exist a year ago — your own AI employee running on a dedicated server, working for you 24/7.
@@ -241,7 +265,7 @@ export async function sendPendingEmail(email: string): Promise<void> {
 
 export async function sendPaymentFailedEmail(email: string): Promise<void> {
   const resend = getResend();
-  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
+  const billingUrl = `${getBaseUrl()}/billing`;
   await resend.emails.send({
     from: FROM,
     replyTo: REPLY_TO,
@@ -271,7 +295,7 @@ export async function sendHealthAlertEmail(
   vmName: string
 ): Promise<void> {
   const resend = getResend();
-  const dashboardUrl = `${process.env.NEXTAUTH_URL}/dashboard`;
+  const dashboardUrl = `${getBaseUrl()}/dashboard`;
   await resend.emails.send({
     from: FROM,
     replyTo: REPLY_TO,
@@ -298,7 +322,7 @@ export async function sendTrialEndingEmail(
   daysLeft: number
 ): Promise<void> {
   const resend = getResend();
-  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
+  const billingUrl = `${getBaseUrl()}/billing`;
   const plural = daysLeft !== 1 ? "s" : "";
   await resend.emails.send({
     from: FROM,
@@ -329,7 +353,7 @@ export async function sendWelcomeEmail(
   name: string
 ): Promise<void> {
   const resend = getResend();
-  const connectUrl = `${process.env.NEXTAUTH_URL}/connect`;
+  const connectUrl = `${getBaseUrl()}/connect`;
   const displayName = name || "there";
   await resend.emails.send({
     from: FROM,
@@ -384,7 +408,7 @@ export async function sendAdminAlertEmail(
 
 export async function sendCanceledEmail(email: string): Promise<void> {
   const resend = getResend();
-  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
+  const billingUrl = `${getBaseUrl()}/billing`;
   await resend.emails.send({
     from: FROM,
     replyTo: REPLY_TO,
@@ -454,7 +478,7 @@ export { getResend, FROM, REPLY_TO, UNSUB_HEADERS };
 
 export async function sendAutoMigratedEmail(email: string): Promise<void> {
   const resend = getResend();
-  const dashboardUrl = `${process.env.NEXTAUTH_URL}/dashboard`;
+  const dashboardUrl = `${getBaseUrl()}/dashboard`;
   await resend.emails.send({
     from: FROM,
     replyTo: REPLY_TO,
@@ -481,7 +505,7 @@ export async function sendAutoMigratedEmail(email: string): Promise<void> {
 
 export async function sendSuspendedEmail(email: string): Promise<void> {
   const resend = getResend();
-  const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
+  const billingUrl = `${getBaseUrl()}/billing`;
   await resend.emails.send({
     from: FROM,
     replyTo: REPLY_TO,
