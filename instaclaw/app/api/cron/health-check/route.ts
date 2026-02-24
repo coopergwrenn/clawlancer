@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC } from "@/lib/ssh";
-import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail } from "@/lib/email";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
+import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
 
+// Auto-migration can trigger up to 3 VM configures (~120s each)
+export const maxDuration = 600;
+
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
 const SSH_QUARANTINE_THRESHOLD = 6; // Auto-quarantine after 6 consecutive SSH failures (raised from 3 to reduce false positives)
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment
 const CONFIG_AUDIT_BATCH_SIZE = 3; // Max VMs to audit per cycle (staggered)
+const AUTO_MIGRATE_BATCH_SIZE = 3; // Max auto-migrations per cron cycle to prevent storms
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
 
 export async function GET(req: NextRequest) {
@@ -909,6 +913,196 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ========================================================================
+  // Auto-migration pass: Move paying users off dead VMs to fresh ones.
+  // Only triggers for quarantined VMs (status="failed") that:
+  //   1. Have a user assigned (assigned_to is not null)
+  //   2. That user has an active/trialing subscription
+  //   3. Gateway is still unreachable (not recovered above)
+  // Limited to AUTO_MIGRATE_BATCH_SIZE per cycle to prevent storms.
+  // ========================================================================
+  let autoMigrated = 0;
+
+  // Re-query quarantined VMs that still have users (auto-recovery may have fixed some)
+  const { data: deadAssignedVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, ip_address, name, assigned_to, tier, ssh_port, ssh_user")
+    .eq("status", "failed")
+    .not("assigned_to", "is", null)
+    .not("ip_address", "is", null);
+
+  if (deadAssignedVms?.length) {
+    // Check which users have active subscriptions — only migrate paying users
+    const userIds = deadAssignedVms.map((v) => v.assigned_to!);
+    const { data: activeSubs } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("user_id, status, tier")
+      .in("user_id", userIds)
+      .in("status", ["active", "trialing"]);
+
+    const payingUserIds = new Set((activeSubs ?? []).map((s) => s.user_id));
+
+    const migratable = deadAssignedVms.filter((v) => payingUserIds.has(v.assigned_to!));
+
+    for (const deadVm of migratable.slice(0, AUTO_MIGRATE_BATCH_SIZE)) {
+      const userId = deadVm.assigned_to!;
+
+      try {
+        // Double-check gateway is still dead (may have recovered since query)
+        let stillDead = true;
+        try {
+          const gwCheck = await fetch(`http://${deadVm.ip_address}:18789/health`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (gwCheck.ok) stillDead = false;
+        } catch {
+          // Dead confirmed
+        }
+
+        if (!stillDead) {
+          logger.info("Auto-migration skipped: gateway recovered", {
+            route: "cron/health-check",
+            vmId: deadVm.id,
+            vmName: deadVm.name,
+            userId,
+          });
+          // Un-quarantine it
+          await supabase
+            .from("instaclaw_vms")
+            .update({ status: "assigned" as const, health_status: "healthy", ssh_fail_count: 0, last_health_check: new Date().toISOString() })
+            .eq("id", deadVm.id);
+          recovered++;
+          continue;
+        }
+
+        logger.info("Auto-migration starting", {
+          route: "cron/health-check",
+          deadVmId: deadVm.id,
+          deadVmName: deadVm.name,
+          deadVmIp: deadVm.ip_address,
+          userId,
+        });
+
+        // Step 1: Unassign user from dead VM
+        await supabase
+          .from("instaclaw_vms")
+          .update({ assigned_to: null })
+          .eq("id", deadVm.id);
+
+        // Step 2: Assign fresh VM (Linode-only, SSH pre-checked)
+        const newVm = await assignVMWithSSHCheck(userId);
+        if (!newVm) {
+          // No healthy VMs available — roll back
+          logger.error("Auto-migration failed: no healthy VMs in pool", {
+            route: "cron/health-check",
+            deadVmId: deadVm.id,
+            userId,
+          });
+          await supabase
+            .from("instaclaw_vms")
+            .update({ assigned_to: userId })
+            .eq("id", deadVm.id);
+          continue;
+        }
+
+        // Step 3: Trigger configure via internal API call
+        const configureUrl = `${process.env.NEXTAUTH_URL}/api/vm/configure`;
+        const configRes = await fetch(configureUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+          },
+          body: JSON.stringify({ userId }),
+          signal: AbortSignal.timeout(180_000),
+        });
+
+        const configResult = await configRes.json().catch(() => ({}));
+
+        // Step 4: Verify gateway health on new VM
+        let newVmHealthy = false;
+        for (let i = 0; i < 3; i++) {
+          try {
+            const healthRes = await fetch(`http://${newVm.ip_address}:18789/health`, {
+              signal: AbortSignal.timeout(5000),
+            });
+            if (healthRes.ok) { newVmHealthy = true; break; }
+          } catch { /* retry */ }
+          await new Promise((r) => setTimeout(r, 5000));
+        }
+
+        if (!newVmHealthy) {
+          logger.error("Auto-migration: new VM failed health check", {
+            route: "cron/health-check",
+            deadVmId: deadVm.id,
+            newVmId: newVm.id,
+            userId,
+            configResult,
+          });
+          // Don't roll back — the configure route already wrote the new VM's state.
+          // The next health check cycle will catch it.
+        }
+
+        autoMigrated++;
+
+        logger.info("Auto-migration completed", {
+          route: "cron/health-check",
+          deadVmId: deadVm.id,
+          deadVmName: deadVm.name,
+          newVmId: newVm.id,
+          newVmIp: newVm.ip_address,
+          userId,
+          newVmHealthy,
+          configResult,
+        });
+
+        // Step 5: Email user
+        const { data: migratedUser } = await supabase
+          .from("instaclaw_users")
+          .select("email")
+          .eq("id", userId)
+          .single();
+
+        if (migratedUser?.email) {
+          try {
+            await sendAutoMigratedEmail(migratedUser.email);
+          } catch {
+            // Non-fatal
+          }
+        }
+
+        // Step 6: Email admin
+        if (ADMIN_EMAIL) {
+          try {
+            await sendAdminAlertEmail(
+              "Auto-Migration Completed",
+              `User ${userId} (${migratedUser?.email ?? "unknown"}) was auto-migrated from dead VM ${deadVm.name ?? deadVm.id} (${deadVm.ip_address}) to ${newVm.id} (${newVm.ip_address}).\n\nNew VM healthy: ${newVmHealthy}\nConfigure result: ${JSON.stringify(configResult)}`
+            );
+          } catch {
+            // Non-fatal
+          }
+        }
+      } catch (migErr) {
+        logger.error("Auto-migration failed", {
+          route: "cron/health-check",
+          deadVmId: deadVm.id,
+          userId,
+          error: String(migErr),
+        });
+
+        // Best-effort: re-assign user to dead VM so they're not orphaned
+        try {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ assigned_to: userId })
+            .eq("id", deadVm.id);
+        } catch {
+          // Can't recover — admin will see the error log
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     checked: vms.length,
     sshChecked,
@@ -933,5 +1127,6 @@ export async function GET(req: NextRequest) {
     memoryStaleWarnings,
     proxyChecked,
     proxyFailed,
+    autoMigrated,
   });
 }

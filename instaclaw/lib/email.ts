@@ -452,6 +452,33 @@ export async function sendWaitlistUpdateEmail(
 
 export { getResend, FROM, REPLY_TO, UNSUB_HEADERS };
 
+export async function sendAutoMigratedEmail(email: string): Promise<void> {
+  const resend = getResend();
+  const dashboardUrl = `${process.env.NEXTAUTH_URL}/dashboard`;
+  await resend.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: email,
+    subject: "Your Agent Has Been Automatically Restored",
+    html: `
+      <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #000; color: #fff;">
+        <h1 style="font-size: 24px; margin-bottom: 16px;">Agent Restored</h1>
+        <p style="color: #888; line-height: 1.6;">
+          Your agent experienced a brief infrastructure interruption and has been automatically moved to a new server. It's back online and ready to go.
+        </p>
+        <p style="color: #888; line-height: 1.6; margin-top: 12px;">
+          Your agent's memory and personality have been preserved. If anything seems off, you can use the Repair button on your dashboard.
+        </p>
+        <a href="${dashboardUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
+          Check Dashboard
+        </a>
+      </div>
+    `,
+    text: `Agent Restored\n\nYour agent experienced a brief infrastructure interruption and has been automatically moved to a new server. It's back online and ready to go.\n\nYour agent's memory and personality have been preserved. If anything seems off, you can use the Repair button on your dashboard.\n\nCheck Dashboard: ${dashboardUrl}\n\n— InstaClaw`,
+    headers: UNSUB_HEADERS,
+  });
+}
+
 export async function sendSuspendedEmail(email: string): Promise<void> {
   const resend = getResend();
   const billingUrl = `${process.env.NEXTAUTH_URL}/billing`;
