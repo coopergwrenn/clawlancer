@@ -3,7 +3,7 @@
 # fleet-push-heartbeat-md.sh — Push proactive HEARTBEAT.md to all assigned VMs
 #
 # Overwrites ~/.openclaw/agents/main/agent/HEARTBEAT.md on every assigned VM
-# with the 5-phase proactive work cycle (SCAN/EVALUATE/PREPARE/PRESENT/EXECUTE).
+# with the 6-phase proactive work cycle (MEMORY/SCAN/EVALUATE/PREPARE/PRESENT/EXECUTE).
 # No gateway restart needed — workspace files don't require it.
 #
 # Usage:
@@ -71,7 +71,7 @@ echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$SSH_KEY_FILE"
 chmod 600 "$SSH_KEY_FILE"
 trap 'rm -f "$SSH_KEY_FILE"' EXIT
 
-# The new 5-phase proactive HEARTBEAT.md content (PRD Phase 1)
+# The new 6-phase proactive HEARTBEAT.md content (with Phase 0: Memory Maintenance)
 HEARTBEAT_MD='# HEARTBEAT.md — Proactive Work Cycle
 
 ## How This Works
@@ -80,7 +80,14 @@ HEARTBEAT_MD='# HEARTBEAT.md — Proactive Work Cycle
 - **Trigger:** Automatic timer-based wake-up when no active conversation
 - **Budget:** ~10 API calls per cycle. Keep it fast.
 
-## The 5-Phase Cycle
+## The 6-Phase Cycle
+
+### Phase 0: MEMORY MAINTENANCE (MANDATORY — before anything else)
+- Check when MEMORY.md was last updated (look at the latest date heading)
+- If it has been more than 24 hours since the last entry, write a structured update NOW
+- Include: active project statuses, recent conversation summaries, user preferences learned
+- Also update memory/active-tasks.md if any tasks are in progress
+- This is NOT optional — memory loss affects your ability to serve the user
 
 ### Phase 1: SCAN (first 2-3 min)
 - Check for unread messages across all channels
@@ -140,7 +147,7 @@ HEARTBEAT_MD='# HEARTBEAT.md — Proactive Work Cycle
 HEARTBEAT_B64=$(echo "$HEARTBEAT_MD" | base64)
 
 # Fetch VMs
-echo "=== Fleet Push: Proactive HEARTBEAT.md (5-phase cycle) ==="
+echo "=== Fleet Push: Proactive HEARTBEAT.md (6-phase cycle) ==="
 echo ""
 
 if [ -n "$CANARY_IP" ]; then
@@ -171,7 +178,7 @@ for vm in json.load(sys.stdin):
     print(f\"{vm['id']}|{vm['ip_address']}|{vm.get('ssh_port',22)}|{vm.get('ssh_user','openclaw')}|{vm.get('name','unknown')}\")
 " | while IFS='|' read -r VM_ID VM_IP VM_PORT VM_USER VM_NAME; do
   if [ "$DRY_RUN" = true ]; then
-    echo "[$VM_NAME] $VM_IP — [DRY RUN] would overwrite HEARTBEAT.md with 5-phase cycle"
+    echo "[$VM_NAME] $VM_IP — [DRY RUN] would overwrite HEARTBEAT.md with 6-phase cycle"
     continue
   fi
 
