@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { buildSystemPrompt } from "@/lib/system-prompt";
 import { isAnthropicModel } from "@/lib/models";
+import { routeModel, computeTierBudget, type RoutingContext } from "@/lib/model-router";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_HISTORY = 40; // messages to include for context
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
   // Get VM info (model, system_prompt, gateway details)
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone, tier")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -187,7 +188,7 @@ export async function POST(req: NextRequest) {
 
   const wasEmpty = (convMeta?.message_count ?? 0) === 0;
 
-  const model = vm.default_model || "claude-haiku-4-5-20251001";
+  let model = vm.default_model || "claude-haiku-4-5-20251001";
 
   // ── Try gateway first, fall back to direct Anthropic ──────────
 
@@ -258,6 +259,50 @@ export async function POST(req: NextRequest) {
 
   // Fallback: direct Anthropic API (no tools)
   if (!upstreamRes) {
+    // Route model for direct Anthropic fallback path
+    try {
+      const vmTier = vm.tier || "starter";
+      const vmTz = vm.user_timezone || "America/New_York";
+      const { data: tierBudgetResult } = await supabase.rpc(
+        "instaclaw_check_tier_budget",
+        { p_vm_id: vm.id, p_tier: vmTier, p_timezone: vmTz }
+      );
+      const tierBudget = computeTierBudget(vmTier, tierBudgetResult ? {
+        tier_2_calls: tierBudgetResult.tier_2_calls ?? 0,
+        tier_3_calls: tierBudgetResult.tier_3_calls ?? 0,
+      } : null);
+
+      const routingCtx: RoutingContext = {
+        userMessage: message,
+        messageCount: messages.length,
+        systemPrompt,
+        isHeartbeat: false,
+        isTaskExecution: false,
+        isRecurringTask: false,
+        toggles: { deepResearch: toggles.deepResearch, webSearch: toggles.webSearch },
+        tierBudget,
+      };
+
+      const decision = routeModel(routingCtx);
+      if (decision.model !== model) {
+        logger.info("Model routed (chat/send fallback)", {
+          route: "chat/send",
+          vmId: vm.id,
+          userId: session.user.id,
+          requestedModel: model,
+          routedModel: decision.model,
+          tier: decision.tier,
+          reason: decision.reason,
+        });
+        model = decision.model;
+      }
+    } catch (routeErr) {
+      logger.warn("Model routing failed in chat/send, using default", {
+        route: "chat/send",
+        error: String(routeErr),
+      });
+    }
+
     // Non-Anthropic models (e.g. MiniMax) can only run through the gateway
     if (!isAnthropicModel(model)) {
       logger.warn("Non-Anthropic model requires gateway", {

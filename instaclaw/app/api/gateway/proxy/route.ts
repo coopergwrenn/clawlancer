@@ -4,6 +4,8 @@ import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
+import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
+import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
@@ -318,6 +320,71 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- Intelligent model routing ---
+    // Route the request to the optimal model tier based on content analysis,
+    // toggles, and per-tier budget. Advisory only — if routing throws, we
+    // proceed with the original model.
+    let routingDecision: RoutingDecision | null = null;
+    if (!isHeartbeat) {
+      try {
+        // Fetch tier budget for routing decisions
+        const { data: tierBudgetResult } = await supabase.rpc(
+          "instaclaw_check_tier_budget",
+          { p_vm_id: vm.id, p_tier: tier, p_timezone: userTz }
+        );
+        const tierBudget = computeTierBudget(tier, tierBudgetResult ? {
+          tier_2_calls: tierBudgetResult.tier_2_calls ?? 0,
+          tier_3_calls: tierBudgetResult.tier_3_calls ?? 0,
+        } : null);
+
+        // Extract routing signals from the request body
+        const messages = (parsedBody?.messages as Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>) ?? [];
+        const systemPrompt = typeof parsedBody?.system === "string" ? parsedBody.system as string : "";
+        const userMessage = extractLastUserMessage(messages);
+        const isTaskExecution = systemPrompt.includes("TASK EXECUTION MODE");
+        const isRecurringTask = systemPrompt.includes("RECURRING TASK");
+        const hasDeepResearch = systemPrompt.includes("DEEP RESEARCH");
+        const hasWebSearch = systemPrompt.includes("WEB SEARCH");
+
+        const routingCtx: RoutingContext = {
+          userMessage,
+          messageCount: messages.length,
+          systemPrompt,
+          isHeartbeat: false,
+          isTaskExecution,
+          isRecurringTask,
+          toggles: { deepResearch: hasDeepResearch, webSearch: hasWebSearch },
+          tierBudget,
+        };
+
+        routingDecision = routeModel(routingCtx);
+
+        // Apply the routing decision
+        if (routingDecision.model !== requestedModel) {
+          logger.info("Model routed", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            requestedModel,
+            routedModel: routingDecision.model,
+            tier: routingDecision.tier,
+            reason: routingDecision.reason,
+          });
+          requestedModel = routingDecision.model;
+          if (parsedBody) {
+            parsedBody.model = routingDecision.model;
+          }
+        }
+      } catch (routeErr) {
+        // Router is advisory — never block a request
+        logger.warn("Model routing failed, using original model", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          error: String(routeErr),
+          model: requestedModel,
+        });
+      }
+    }
+
     // --- Check daily usage limit (read-only, no increment) ---
     // The RPC returns source: 'daily_limit' | 'credits' | 'buffer' | 'heartbeat' | null
     // Usage is NOT incremented here — only after a successful Anthropic response.
@@ -468,7 +535,8 @@ export async function POST(req: NextRequest) {
         "x-api-key": apiKey,
         "anthropic-version": req.headers.get("anthropic-version") || "2023-06-01",
       };
-      providerBody = body;
+      // Use parsedBody if model was rewritten by the router
+      providerBody = parsedBody ? JSON.stringify(parsedBody) : body;
     }
 
     const providerRes = await fetch(providerUrl, {
@@ -478,28 +546,132 @@ export async function POST(req: NextRequest) {
     });
 
     // --- On provider error (4xx/5xx): DON'T increment usage, log and return ---
-    if (providerRes.status >= 400) {
+    // But first: try Sonnet→Opus auto-retry if the router suggested it.
+    let finalProviderRes = providerRes;
+    let finalModel = requestedModel;
+
+    if (providerRes.status >= 400 && routingDecision?.retryOnFailure && !isMinimax) {
       const errBody = await providerRes.text();
+      const retryModel = routingDecision.retryOnFailure;
+
+      // Only retry on server errors (5xx) or overloaded (529), not client errors
+      if (providerRes.status >= 500 || providerRes.status === 529) {
+        logger.warn("Model auto-retry: escalating to higher tier", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          originalModel: requestedModel,
+          retryModel,
+          originalStatus: providerRes.status,
+        });
+
+        // Rewrite model in body for retry
+        if (parsedBody) {
+          parsedBody.model = retryModel;
+        }
+        const retryBody = parsedBody ? JSON.stringify(parsedBody) : body;
+
+        try {
+          const retryRes = await fetch(providerUrl, {
+            method: "POST",
+            headers: providerHeaders,
+            body: retryBody,
+          });
+
+          if (retryRes.ok) {
+            // Retry succeeded — use this response instead
+            finalProviderRes = retryRes;
+            finalModel = retryModel;
+            // Update routingDecision tier for usage tracking
+            routingDecision = { ...routingDecision, model: retryModel, tier: 3, reason: "auto-retry escalation" };
+          } else {
+            // Retry also failed — return original error
+            logger.error("Auto-retry also failed", {
+              route: "gateway/proxy",
+              vmId: vm.id,
+              retryModel,
+              retryStatus: retryRes.status,
+            });
+            return new NextResponse(errBody, {
+              status: providerRes.status,
+              headers: {
+                "content-type": providerRes.headers.get("content-type") || "application/json",
+              },
+            });
+          }
+        } catch (retryErr) {
+          logger.error("Auto-retry fetch error", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            error: String(retryErr),
+          });
+          return new NextResponse(errBody, {
+            status: providerRes.status,
+            headers: {
+              "content-type": providerRes.headers.get("content-type") || "application/json",
+            },
+          });
+        }
+      } else {
+        // Client error (4xx other than 529) — no retry, handle normally
+        // Re-assign errBody since we already consumed it
+        logger.error("Provider API error — usage NOT incremented", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          provider: isMinimax ? "minimax" : "anthropic",
+          status: providerRes.status,
+          response: errBody.slice(0, 500),
+          model: requestedModel,
+        });
+
+        if (errBody.includes("Invalid signature in thinking block")) {
+          logger.warn("Corrupted thinking block detected — repairing session", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+          });
+          repairCorruptedSession(vm as VMRecord).then((ok) => {
+            if (ok) {
+              logger.info("Corrupted session removed (other sessions preserved)", {
+                route: "gateway/proxy",
+                vmId: vm.id,
+              });
+            } else {
+              logger.error("Failed to repair corrupted session", {
+                route: "gateway/proxy",
+                vmId: vm.id,
+              });
+            }
+          }).catch(() => {});
+          return friendlyAssistantResponse(
+            "I ran into a conversation error and had to reset. Let's start fresh — what can I help you with?",
+            requestedModel,
+            isStreaming
+          );
+        }
+
+        return new NextResponse(errBody, {
+          status: providerRes.status,
+          headers: {
+            "content-type": providerRes.headers.get("content-type") || "application/json",
+          },
+        });
+      }
+    } else if (finalProviderRes.status >= 400) {
+      const errBody = await finalProviderRes.text();
       logger.error("Provider API error — usage NOT incremented", {
         route: "gateway/proxy",
         vmId: vm.id,
         provider: isMinimax ? "minimax" : "anthropic",
-        status: providerRes.status,
+        status: finalProviderRes.status,
         response: errBody.slice(0, 500),
         model: requestedModel,
       });
 
       // --- Auto-recover from corrupted thinking block signatures ---
-      // This error means the conversation history contains a thinking block
-      // whose signature is invalid. The only fix is to clear the session
-      // and restart the gateway. Without this, EVERY subsequent message
-      // from the user hits the same error in an infinite loop.
       if (errBody.includes("Invalid signature in thinking block")) {
         logger.warn("Corrupted thinking block detected — repairing session", {
           route: "gateway/proxy",
           vmId: vm.id,
         });
-        // Fire-and-forget: remove only the corrupted session + restart gateway
         repairCorruptedSession(vm as VMRecord).then((ok) => {
           if (ok) {
             logger.info("Corrupted session removed (other sessions preserved)", {
@@ -513,7 +685,6 @@ export async function POST(req: NextRequest) {
             });
           }
         }).catch(() => {});
-        // Return a friendly message instead of the raw API error
         return friendlyAssistantResponse(
           "I ran into a conversation error and had to reset. Let's start fresh — what can I help you with?",
           requestedModel,
@@ -522,9 +693,9 @@ export async function POST(req: NextRequest) {
       }
 
       return new NextResponse(errBody, {
-        status: providerRes.status,
+        status: finalProviderRes.status,
         headers: {
-          "content-type": providerRes.headers.get("content-type") || "application/json",
+          "content-type": finalProviderRes.headers.get("content-type") || "application/json",
         },
       });
     }
@@ -533,7 +704,7 @@ export async function POST(req: NextRequest) {
     supabase
       .rpc("instaclaw_increment_usage", {
         p_vm_id: vm.id,
-        p_model: requestedModel,
+        p_model: finalModel,
         p_is_heartbeat: isHeartbeat,
         p_timezone: userTz,
       })
@@ -547,6 +718,28 @@ export async function POST(req: NextRequest) {
           });
         }
       });
+
+    // --- Increment tier usage (fire-and-forget) ---
+    if (routingDecision && !isHeartbeat) {
+      const costWeight = routingDecision.tier === 1 ? 1 : routingDecision.tier === 2 ? 4 : 19;
+      supabase
+        .rpc("instaclaw_increment_tier_usage", {
+          p_vm_id: vm.id,
+          p_tier_level: routingDecision.tier,
+          p_cost_weight: costWeight,
+          p_timezone: userTz,
+        })
+        .then(({ error: tierErr }) => {
+          if (tierErr) {
+            logger.error("Failed to increment tier usage", {
+              route: "gateway/proxy",
+              vmId: vm.id,
+              error: String(tierErr),
+              tier: routingDecision!.tier,
+            });
+          }
+        });
+    }
 
     // Update heartbeat timing + cycle counter (fire-and-forget)
     if (isHeartbeat) {
@@ -581,16 +774,16 @@ export async function POST(req: NextRequest) {
     // try to buffer/modify them — that was causing "request ended without sending
     // any chunks" when the buffered SSE was returned as a single JSON blob.
     if (isStreaming || !usageWarning) {
-      return new NextResponse(providerRes.body, {
-        status: providerRes.status,
+      return new NextResponse(finalProviderRes.body, {
+        status: finalProviderRes.status,
         headers: {
-          "content-type": providerRes.headers.get("content-type") || "application/json",
+          "content-type": finalProviderRes.headers.get("content-type") || "application/json",
         },
       });
     }
 
     // Non-streaming: append usage warning to the AI response
-    const resText = await providerRes.text();
+    const resText = await finalProviderRes.text();
     try {
       const resBody = JSON.parse(resText);
       if (resBody.content && Array.isArray(resBody.content)) {
@@ -603,14 +796,14 @@ export async function POST(req: NextRequest) {
         }
       }
       return NextResponse.json(resBody, {
-        status: providerRes.status,
+        status: finalProviderRes.status,
       });
     } catch {
       // If parsing fails, return original response without warning
       return new NextResponse(resText, {
-        status: providerRes.status,
+        status: finalProviderRes.status,
         headers: {
-          "content-type": providerRes.headers.get("content-type") || "application/json",
+          "content-type": finalProviderRes.headers.get("content-type") || "application/json",
         },
       });
     }

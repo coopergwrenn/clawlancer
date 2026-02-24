@@ -670,6 +670,7 @@ function buildOpenClawConfig(
       defaults: {
         model: {
           primary: openclawModel,
+          fallbacks: ["anthropic/claude-haiku-4-5"],
         },
         heartbeat: {
           every: "3h",

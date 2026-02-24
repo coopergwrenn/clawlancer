@@ -13,6 +13,7 @@ import {
 } from "@/lib/telegram";
 import { sanitizeAgentResult } from "@/lib/sanitize-result";
 import { isAnthropicModel } from "@/lib/models";
+import { routeModel, computeTierBudget, type RoutingContext } from "@/lib/model-router";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -111,7 +112,7 @@ Execute the task with the LATEST available information.
 Be thorough and provide current, actionable content.
 Return ONLY the result content — do NOT include any TASK_META block.`;
 
-  const rawModel = vm.default_model || "claude-haiku-4-5-20251001";
+  let rawModel = vm.default_model || "claude-haiku-4-5-20251001";
   const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
   let resultContent = "";
@@ -161,6 +162,48 @@ Return ONLY the result content — do NOT include any TASK_META block.`;
 
   // Fallback: direct Anthropic API
   if (!usedGateway) {
+    // Route model for direct Anthropic fallback
+    try {
+      const vmTier = vm.tier || "starter";
+      const vmTz = vm.user_timezone || task.user_timezone || "America/New_York";
+      const { data: tierBudgetResult } = await supabase.rpc(
+        "instaclaw_check_tier_budget",
+        { p_vm_id: vm.id, p_tier: vmTier, p_timezone: vmTz }
+      );
+      const tierBudget = computeTierBudget(vmTier, tierBudgetResult ? {
+        tier_2_calls: tierBudgetResult.tier_2_calls ?? 0,
+        tier_3_calls: tierBudgetResult.tier_3_calls ?? 0,
+      } : null);
+
+      const routingCtx: RoutingContext = {
+        userMessage: task.description,
+        messageCount: 1,
+        systemPrompt,
+        isHeartbeat: false,
+        isTaskExecution: false,
+        isRecurringTask: true,
+        toggles: {},
+        tierBudget,
+      };
+
+      const decision = routeModel(routingCtx);
+      if (decision.model !== rawModel) {
+        console.log(JSON.stringify({
+          event: "model_routed",
+          route: "recurring-executor",
+          vmId: vm.id,
+          taskId: task.id,
+          requestedModel: rawModel,
+          routedModel: decision.model,
+          tier: decision.tier,
+          reason: decision.reason,
+        }));
+        rawModel = decision.model;
+      }
+    } catch {
+      // Router is advisory — proceed with default model
+    }
+
     // Non-Anthropic models (e.g. MiniMax) require the gateway — never silently
     // substitute a different model. Throwing here lets handleRecurringTaskFailure
     // schedule a retry in 15 minutes when the gateway may be back.

@@ -6,6 +6,7 @@ import { buildSystemPrompt, TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { saveToLibrary } from "@/lib/library";
 import { sanitizeAgentResult } from "@/lib/sanitize-result";
 import { isAnthropicModel } from "@/lib/models";
+import { routeModel, computeTierBudget, type RoutingContext } from "@/lib/model-router";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS = 4096;
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
   // Check user has a VM — fetch gateway details too
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone")
+    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone, tier")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -114,6 +115,7 @@ async function executeTask(
     gateway_token: string | null;
     health_status: string | null;
     user_timezone: string | null;
+    tier: string | null;
   },
   apiKey: string
 ) {
@@ -137,7 +139,7 @@ async function executeTask(
         user?.gmail_insights
       ) + TASK_EXECUTION_SUFFIX;
 
-    const model = vm.default_model || "claude-haiku-4-5-20251001";
+    let model = vm.default_model || "claude-haiku-4-5-20251001";
     const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
     // ── Try gateway first, fall back to direct Anthropic ──────
@@ -209,6 +211,48 @@ async function executeTask(
 
     // Fallback: direct Anthropic API (no tools)
     if (!upstreamRes) {
+      // Route model for direct Anthropic fallback
+      try {
+        const vmTier = vm.tier || "starter";
+        const { data: tierBudgetResult } = await supabase.rpc(
+          "instaclaw_check_tier_budget",
+          { p_vm_id: vm.id, p_tier: vmTier, p_timezone: vmTimezone }
+        );
+        const tierBudget = computeTierBudget(vmTier, tierBudgetResult ? {
+          tier_2_calls: tierBudgetResult.tier_2_calls ?? 0,
+          tier_3_calls: tierBudgetResult.tier_3_calls ?? 0,
+        } : null);
+
+        const routingCtx: RoutingContext = {
+          userMessage: description,
+          messageCount: 1,
+          systemPrompt,
+          isHeartbeat: false,
+          isTaskExecution: true,
+          isRecurringTask: false,
+          toggles: {},
+          tierBudget,
+        };
+
+        const decision = routeModel(routingCtx);
+        if (decision.model !== model) {
+          logger.info("Model routed (tasks/create fallback)", {
+            route: "tasks/create",
+            vmId: vm.id,
+            requestedModel: model,
+            routedModel: decision.model,
+            tier: decision.tier,
+            reason: decision.reason,
+          });
+          model = decision.model;
+        }
+      } catch (routeErr) {
+        logger.warn("Model routing failed in tasks/create, using default", {
+          route: "tasks/create",
+          error: String(routeErr),
+        });
+      }
+
       // Non-Anthropic models can only run through the gateway
       if (!isAnthropicModel(model)) {
         logger.warn("Non-Anthropic model requires gateway for task", { model, taskId, userId });
