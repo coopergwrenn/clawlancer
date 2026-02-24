@@ -10,6 +10,11 @@ import {
   BarChart3,
   Globe,
   ChevronDown,
+  Zap,
+  Clock,
+  ArrowRight,
+  MessageSquare,
+  CheckCircle2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PolymarketPanel from "@/components/dashboard/polymarket-panel";
@@ -33,89 +38,95 @@ interface VMStatus {
 interface EarningChannel {
   id: string;
   name: string;
-  category: "marketplace" | "trading" | "ecommerce" | "freelance";
+  headline: string;
   description: string;
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  status: "active" | "available" | "setup-required";
+  status: "active" | "one-click" | "setup-needed";
+  effort: "Automatic" | "One-time setup" | "Bring your own accounts";
   tags: string[];
 }
 
 const CHANNELS: EarningChannel[] = [
   {
     id: "clawlancer",
-    name: "Clawlancer",
-    category: "marketplace",
-    description: "Your primary marketplace. Autonomous bounties — poll, claim, deliver, earn.",
+    name: "Clawlancer Bounties",
+    headline: "Your agent picks up freelance work and gets paid automatically",
+    description: "Your agent monitors the Clawlancer marketplace 24/7, claims jobs it can handle, does the work, and earns money — all without you lifting a finger.",
     icon: Store,
     status: "active",
-    tags: ["bounties", "autonomous", "primary", "marketplace"],
+    effort: "Automatic",
+    tags: ["bounties", "autonomous", "primary", "marketplace", "freelance", "earn"],
   },
   {
     id: "virtuals",
-    name: "Virtuals Protocol (ACP)",
-    category: "marketplace",
-    description: "Agent Commerce marketplace — earn from AI jobs on the Virtuals network.",
+    name: "Virtuals Protocol",
+    headline: "Earn from AI agent jobs on the Virtuals marketplace",
+    description: "A second marketplace for your agent. When there are no Clawlancer jobs available, your agent picks up work from Virtuals Protocol instead.",
     icon: Globe,
-    status: "available",
-    tags: ["marketplace", "agent commerce", "virtuals", "acp", "secondary"],
+    status: "one-click",
+    effort: "One-time setup",
+    tags: ["marketplace", "agent commerce", "virtuals", "acp", "secondary", "ai jobs"],
   },
   {
     id: "polymarket",
-    name: "Polymarket Trading",
-    category: "trading",
-    description: "Prediction market intelligence, portfolio monitoring, and autonomous trading.",
+    name: "Prediction Markets",
+    headline: "Track event odds and trade on real-world outcomes",
+    description: "Your agent can monitor prediction markets (like Polymarket), watch for price changes, and even place trades for you with safety limits you control.",
     icon: TrendingUp,
-    status: "available",
-    tags: ["prediction market", "trading", "polymarket", "betting", "odds", "probabilities"],
+    status: "one-click",
+    effort: "One-time setup",
+    tags: ["prediction market", "trading", "polymarket", "betting", "odds", "probabilities", "invest"],
   },
   {
     id: "ecommerce",
-    name: "E-Commerce Operations",
-    category: "ecommerce",
-    description: "Shopify, Amazon, eBay — inventory sync, order management, competitor pricing.",
+    name: "E-Commerce Manager",
+    headline: "Manage your Shopify, Amazon, or eBay store",
+    description: "Connect your online store and your agent handles inventory tracking, order processing, returns, competitor price monitoring, and daily sales reports.",
     icon: ShoppingBag,
-    status: "setup-required",
-    tags: ["shopify", "amazon", "ebay", "ecommerce", "inventory", "orders", "shipping"],
+    status: "setup-needed",
+    effort: "Bring your own accounts",
+    tags: ["shopify", "amazon", "ebay", "ecommerce", "inventory", "orders", "shipping", "store"],
   },
   {
     id: "freelance",
     name: "Freelance & Digital Products",
-    category: "freelance",
-    description: "Create and sell on Contra, Gumroad, Fiverr, Upwork — digital products and services.",
+    headline: "Sell services and digital products on popular platforms",
+    description: "Your agent creates listings, proposals, and digital products on platforms like Gumroad, Fiverr, and Upwork. You approve everything before it goes live.",
     icon: BarChart3,
-    status: "available",
-    tags: ["contra", "gumroad", "fiverr", "upwork", "freelance", "digital products", "passive income"],
+    status: "one-click",
+    effort: "One-time setup",
+    tags: ["contra", "gumroad", "fiverr", "upwork", "freelance", "digital products", "passive income", "sell"],
   },
 ];
 
-// ── Category labels ─────────────────────────────────
-
-const CATEGORY_LABELS: Record<string, string> = {
-  marketplace: "Marketplaces",
-  trading: "Trading & Prediction Markets",
-  ecommerce: "E-Commerce",
-  freelance: "Freelance & Products",
-};
-
-const STATUS_STYLES: Record<string, { bg: string; color: string; border: string; label: string }> = {
+const STATUS_CONFIG: Record<string, { bg: string; color: string; border: string; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = {
   active: {
     bg: "rgba(34,197,94,0.1)",
     color: "rgb(34,197,94)",
     border: "1px solid rgba(34,197,94,0.2)",
-    label: "Active",
+    label: "Running",
+    icon: CheckCircle2,
   },
-  available: {
+  "one-click": {
     bg: "rgba(59,130,246,0.1)",
     color: "rgb(59,130,246)",
     border: "1px solid rgba(59,130,246,0.2)",
-    label: "Available",
+    label: "Ready to enable",
+    icon: Zap,
   },
-  "setup-required": {
+  "setup-needed": {
     bg: "rgba(249,115,22,0.1)",
     color: "rgb(249,115,22)",
     border: "1px solid rgba(249,115,22,0.2)",
-    label: "Setup Required",
+    label: "Needs your accounts",
+    icon: ArrowRight,
   },
+};
+
+const EFFORT_STYLES: Record<string, { color: string }> = {
+  "Automatic": { color: "rgb(34,197,94)" },
+  "One-time setup": { color: "rgb(59,130,246)" },
+  "Bring your own accounts": { color: "rgb(249,115,22)" },
 };
 
 // ── Main Page ───────────────────────────────────────
@@ -184,21 +195,11 @@ export default function EarnPage() {
     return channels.filter(
       (ch) =>
         ch.name.toLowerCase().includes(q) ||
+        ch.headline.toLowerCase().includes(q) ||
         ch.description.toLowerCase().includes(q) ||
-        ch.tags.some((t) => t.includes(q)) ||
-        ch.category.includes(q)
+        ch.tags.some((t) => t.includes(q))
     );
   }, [channels, search]);
-
-  // Group by category
-  const grouped = useMemo(() => {
-    const groups: Record<string, typeof filteredChannels> = {};
-    for (const ch of filteredChannels) {
-      if (!groups[ch.category]) groups[ch.category] = [];
-      groups[ch.category].push(ch);
-    }
-    return groups;
-  }, [filteredChannels]);
 
   const vm = vmStatus?.vm;
 
@@ -206,14 +207,11 @@ export default function EarnPage() {
     return (
       <div className="space-y-10">
         <div>
-          <h1
-            className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
+          <h1 className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]" style={{ fontFamily: "var(--font-serif)" }}>
             Earn
           </h1>
           <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
-            Configure how your agent earns money.
+            Set up the ways your agent makes money for you.
           </p>
         </div>
         <div className="glass rounded-xl p-8 text-center" style={{ border: "1px solid var(--border)" }}>
@@ -227,7 +225,7 @@ export default function EarnPage() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -248,28 +246,22 @@ export default function EarnPage() {
 
       {/* Header */}
       <div>
-        <h1
-          className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
-          style={{ fontFamily: "var(--font-serif)" }}
-        >
+        <h1 className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]" style={{ fontFamily: "var(--font-serif)" }}>
           Earn
         </h1>
         <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
-          Configure how your agent earns money for you.
+          Your agent can earn money through multiple channels. Turn them on below.
         </p>
       </div>
 
-      {/* Search */}
+      {/* Search — only show if useful */}
       <div className="relative">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-          style={{ color: "var(--muted)" }}
-        />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--muted)" }} />
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search channels... (Shopify, Polymarket, Virtuals, freelance...)"
+          placeholder="Search (e.g. Shopify, prediction markets, freelance...)"
           className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none"
           style={{
             background: "var(--card)",
@@ -297,34 +289,22 @@ export default function EarnPage() {
         </div>
       )}
 
-      {/* Channel groups */}
-      {Object.entries(grouped).map(([category, chs]) => (
-        <div key={category}>
-          <h2
-            className="text-2xl font-normal tracking-[-0.5px] mb-5"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            {CATEGORY_LABELS[category] ?? category}
-          </h2>
-          <div className="space-y-3">
-            {chs.map((ch) => (
-              <ChannelCard
-                key={ch.id}
-                channel={ch}
-                vm={vm}
-                expanded={expandedChannel === ch.id}
-                onToggle={() =>
-                  setExpandedChannel(expandedChannel === ch.id ? null : ch.id)
-                }
-                togglingAgdp={togglingAgdp}
-                agdpConfirm={agdpConfirm}
-                setAgdpConfirm={setAgdpConfirm}
-                handleToggleAgdp={handleToggleAgdp}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* Channel list — flat, ordered by ease */}
+      <div className="space-y-3">
+        {filteredChannels.map((ch) => (
+          <ChannelCard
+            key={ch.id}
+            channel={ch}
+            vm={vm}
+            expanded={expandedChannel === ch.id}
+            onToggle={() => setExpandedChannel(expandedChannel === ch.id ? null : ch.id)}
+            togglingAgdp={togglingAgdp}
+            agdpConfirm={agdpConfirm}
+            setAgdpConfirm={setAgdpConfirm}
+            handleToggleAgdp={handleToggleAgdp}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -351,62 +331,49 @@ function ChannelCard({
   handleToggleAgdp: (enabled: boolean) => void;
 }) {
   const Icon = channel.icon;
-  const style = STATUS_STYLES[channel.status];
+  const status = STATUS_CONFIG[channel.status];
+  const StatusIcon = status.icon;
+  const effort = EFFORT_STYLES[channel.effort];
 
   return (
-    <div
-      className="glass rounded-xl overflow-hidden"
-      style={{ border: "1px solid var(--border)" }}
-    >
+    <div className="glass rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
       {/* Header row */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between p-5 cursor-pointer text-left"
-      >
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-            style={{
-              background: channel.status === "active"
-                ? "rgba(34,197,94,0.08)"
-                : "rgba(0,0,0,0.04)",
-              border: channel.status === "active"
-                ? "1px solid rgba(34,197,94,0.15)"
-                : "1px solid var(--border)",
-            }}
-          >
-            <Icon
-              className="w-5 h-5"
-              style={{
-                color: channel.status === "active" ? "rgb(34,197,94)" : "var(--muted)",
-              }}
-            />
+      <button onClick={onToggle} className="w-full flex items-center gap-4 p-5 cursor-pointer text-left">
+        <div
+          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+          style={{
+            background: channel.status === "active" ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.04)",
+            border: channel.status === "active" ? "1px solid rgba(34,197,94,0.15)" : "1px solid var(--border)",
+          }}
+        >
+          <Icon className="w-5 h-5" style={{ color: channel.status === "active" ? "rgb(34,197,94)" : "var(--muted)" }} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-sm font-semibold">{channel.name}</h3>
+            <span
+              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
+              style={{ background: status.bg, color: status.color, border: status.border }}
+            >
+              <StatusIcon className="w-3 h-3" />
+              {status.label}
+            </span>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <h3 className="text-sm font-semibold">{channel.name}</h3>
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                style={{
-                  background: style.bg,
-                  color: style.color,
-                  border: style.border,
-                }}
-              >
-                {style.label}
-              </span>
-            </div>
-            <p className="text-xs truncate" style={{ color: "var(--muted)" }}>
-              {channel.description}
-            </p>
+          <p className="text-xs" style={{ color: "var(--muted)" }}>
+            {channel.headline}
+          </p>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <Clock className="w-3 h-3" style={{ color: effort.color }} />
+            <span className="text-[11px] font-medium" style={{ color: effort.color }}>
+              {channel.effort}
+            </span>
           </div>
         </div>
+
         <ChevronDown
-          className="w-4 h-4 shrink-0 ml-3 transition-transform"
-          style={{
-            color: "var(--muted)",
-            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-          }}
+          className="w-4 h-4 shrink-0 ml-1 transition-transform"
+          style={{ color: "var(--muted)", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
         />
       </button>
 
@@ -422,6 +389,11 @@ function ChannelCard({
           >
             <div className="px-5 pb-5" style={{ borderTop: "1px solid var(--border)" }}>
               <div className="pt-4">
+                {/* Description visible for all channels */}
+                <p className="text-sm mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                  {channel.description}
+                </p>
+
                 {channel.id === "clawlancer" && <ClawlancerSection />}
                 {channel.id === "virtuals" && (
                   <VirtualsSection
@@ -433,8 +405,8 @@ function ChannelCard({
                   />
                 )}
                 {channel.id === "polymarket" && <PolymarketPanel />}
-                {channel.id === "ecommerce" && <EcommerceSection />}
-                {channel.id === "freelance" && <FreelanceSection />}
+                {channel.id === "ecommerce" && <EcommerceSection botUsername={vm?.telegramBotUsername} />}
+                {channel.id === "freelance" && <FreelanceSection botUsername={vm?.telegramBotUsername} />}
               </div>
             </div>
           </motion.div>
@@ -444,33 +416,62 @@ function ChannelCard({
   );
 }
 
+// ── Helper: copy-able bot message ───────────────────
+
+function BotMessage({ message, botUsername }: { message: string; botUsername?: string | null }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div
+      className="rounded-lg p-4 mt-3"
+      style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.12)" }}
+    >
+      <div className="flex items-start gap-2.5">
+        <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium mb-1.5" style={{ color: "rgb(59,130,246)" }}>
+            Message your bot{botUsername ? ` @${botUsername}` : ""}:
+          </p>
+          <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
+            &ldquo;{message}&rdquo;
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(message);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all shrink-0"
+          style={{
+            background: copied ? "rgba(34,197,94,0.1)" : "rgba(59,130,246,0.1)",
+            color: copied ? "rgb(34,197,94)" : "rgb(59,130,246)",
+            border: copied ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(59,130,246,0.2)",
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Clawlancer Section ──────────────────────────────
 
 function ClawlancerSection() {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full" style={{ background: "var(--success)" }} />
-        <span className="text-sm font-medium">Always Active</span>
+    <div
+      className="rounded-lg p-4"
+      style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.12)" }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle2 className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+        <span className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>Already running</span>
       </div>
-      <p className="text-xs" style={{ color: "var(--muted)" }}>
-        Clawlancer is your primary marketplace. Your agent automatically polls for bounties,
-        claims work it can handle, delivers results, and gets paid. No configuration needed.
+      <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+        This is always on. Your agent checks the Clawlancer job board automatically,
+        picks up work it&apos;s qualified for, completes it, and gets paid.
+        No action needed from you.
       </p>
-      <div className="grid gap-2 text-xs" style={{ color: "var(--muted)" }}>
-        <div className="flex justify-between">
-          <span>Priority</span>
-          <span className="font-semibold" style={{ color: "var(--foreground)" }}>Primary (always first)</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Mode</span>
-          <span>Fully autonomous</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Setup</span>
-          <span>None required</span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -494,15 +495,19 @@ function VirtualsSection({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">
-            {enabled ? "Virtuals Protocol is enabled" : "Enable Virtuals Protocol"}
+      {/* Main toggle */}
+      <div
+        className="flex items-center justify-between rounded-lg p-4"
+        style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+      >
+        <div className="mr-4">
+          <p className="text-sm font-semibold">
+            {enabled ? "Virtuals Protocol is on" : "Turn on Virtuals Protocol"}
           </p>
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
+          <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
             {enabled
-              ? "Your bot accepts jobs from the Virtuals marketplace as a secondary income source."
-              : "Connect to earn from AI jobs on the Virtuals Protocol marketplace."}
+              ? "Your agent picks up Virtuals jobs when Clawlancer work isn't available."
+              : "One click to enable. Your Clawlancer jobs always come first."}
           </p>
         </div>
         <button
@@ -537,37 +542,32 @@ function VirtualsSection({
       {togglingAgdp && (
         <div className="flex items-center gap-2 text-xs" style={{ color: "var(--muted)" }}>
           <RefreshCw className="w-3 h-3 animate-spin" />
-          {enabled ? "Disabling" : "Enabling"} Virtuals Protocol...
+          {enabled ? "Turning off" : "Turning on"} Virtuals Protocol...
         </div>
       )}
 
       {/* Confirmation dialog */}
       {agdpConfirm && (
         <div
-          className="rounded-2xl p-5"
+          className="rounded-xl p-5"
           style={{
-            background: "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
-            border: agdpConfirm === "enable"
-              ? "1px solid rgba(249,115,22,0.2)"
-              : "1px solid rgba(239,68,68,0.2)",
+            border: agdpConfirm === "enable" ? "1px solid rgba(249,115,22,0.2)" : "1px solid rgba(239,68,68,0.2)",
+            background: agdpConfirm === "enable" ? "rgba(249,115,22,0.04)" : "rgba(239,68,68,0.04)",
           }}
         >
-          <p className="text-sm font-medium mb-1">
-            {agdpConfirm === "enable" ? "Enable Virtuals Protocol?" : "Disable Virtuals Protocol?"}
+          <p className="text-sm font-semibold mb-1">
+            {agdpConfirm === "enable" ? "Turn on Virtuals Protocol?" : "Turn off Virtuals Protocol?"}
           </p>
-          <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+          <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
             {agdpConfirm === "enable"
-              ? "This will install the Virtuals Protocol Agent Commerce skill on your VM. After enabling, message your bot to complete authentication."
-              : "This will remove the Agent Commerce skill. Your agent will no longer accept Virtuals jobs."}
+              ? "This adds a new skill to your agent. After turning it on, you'll need to message your bot once to finish setup."
+              : "Your agent will stop accepting Virtuals jobs. You can turn it back on anytime."}
           </p>
           <div className="flex gap-2">
             <button
               onClick={() => setAgdpConfirm(null)}
               className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
-              style={{
-                background: "rgba(0,0,0,0.06)",
-                color: "var(--foreground)",
-              }}
+              style={{ background: "rgba(0,0,0,0.06)", color: "var(--foreground)" }}
             >
               Cancel
             </button>
@@ -582,24 +582,18 @@ function VirtualsSection({
                 color: "#fff",
               }}
             >
-              {agdpConfirm === "enable" ? "Enable" : "Disable"}
+              {agdpConfirm === "enable" ? "Turn On" : "Turn Off"}
             </button>
           </div>
         </div>
       )}
 
-      {enabled && !togglingAgdp && !agdpConfirm && (
-        <>
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Clawlancer bounties are prioritized first. Virtuals jobs are only picked up when no Clawlancer work is available.
-          </p>
-          {vm?.telegramBotUsername && (
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
-              If you haven&apos;t completed Virtuals authentication yet, message your bot:
-              <strong style={{ color: "var(--foreground)" }}> &quot;Set up Virtuals marketplace&quot;</strong>
-            </p>
-          )}
-        </>
+      {/* Post-enable next step */}
+      {enabled && !togglingAgdp && !agdpConfirm && vm?.telegramBotUsername && (
+        <BotMessage
+          message="Set up Virtuals marketplace"
+          botUsername={vm.telegramBotUsername}
+        />
       )}
     </div>
   );
@@ -607,19 +601,15 @@ function VirtualsSection({
 
 // ── E-Commerce Section ──────────────────────────────
 
-function EcommerceSection() {
+function EcommerceSection({ botUsername }: { botUsername?: string | null }) {
   return (
     <div className="space-y-4">
-      <p className="text-xs" style={{ color: "var(--muted)" }}>
-        Connect your Shopify, Amazon, or eBay stores. Your agent will manage inventory sync,
-        process orders, handle returns, monitor competitor pricing, and generate daily sales reports.
-      </p>
-
+      {/* Platform cards */}
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          { name: "Shopify", desc: "Store management, orders, inventory" },
-          { name: "Amazon", desc: "Seller Central, FBA, listing optimization" },
-          { name: "eBay", desc: "Listings, orders, messaging" },
+          { name: "Shopify", desc: "Manage your store, orders, and inventory", example: "Connect my Shopify store at mystore.myshopify.com" },
+          { name: "Amazon", desc: "Seller Central, FBA, listing optimization", example: "Set up my Amazon seller account" },
+          { name: "eBay", desc: "Listings, orders, and buyer messaging", example: "Connect my eBay store" },
         ].map((platform) => (
           <div
             key={platform.name}
@@ -628,65 +618,46 @@ function EcommerceSection() {
           >
             <p className="text-sm font-semibold mb-1">{platform.name}</p>
             <p className="text-xs" style={{ color: "var(--muted)" }}>{platform.desc}</p>
-            <span
-              className="inline-block mt-2 text-[10px] px-2 py-0.5 rounded-full"
-              style={{
-                background: "rgba(249,115,22,0.1)",
-                color: "#ea580c",
-                border: "1px solid rgba(249,115,22,0.2)",
-              }}
-            >
-              BYOK — Provide your credentials
-            </span>
           </div>
         ))}
       </div>
 
       <div
         className="rounded-lg p-4"
-        style={{
-          background: "rgba(59,130,246,0.05)",
-          border: "1px solid rgba(59,130,246,0.15)",
-        }}
+        style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.12)" }}
       >
-        <p className="text-xs" style={{ color: "var(--muted)" }}>
-          <strong style={{ color: "var(--foreground)" }}>To get started:</strong> Message your
-          agent with your platform credentials. For example:
-        </p>
-        <p className="text-xs mt-1 font-mono" style={{ color: "var(--muted)" }}>
-          &quot;Set up my Shopify store. My store URL is mystore.myshopify.com and my API key is...&quot;
+        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          <strong style={{ color: "var(--foreground)" }}>You&apos;ll need:</strong> Your own account on the platform you want to connect.
+          Your agent will ask you for your store URL and API credentials when you set it up.
         </p>
       </div>
+
+      <BotMessage
+        message="Set up my Shopify store"
+        botUsername={botUsername}
+      />
     </div>
   );
 }
 
 // ── Freelance & Digital Products Section ─────────────
 
-function FreelanceSection() {
+function FreelanceSection({ botUsername }: { botUsername?: string | null }) {
   return (
     <div className="space-y-4">
-      <p className="text-xs" style={{ color: "var(--muted)" }}>
-        Your agent can create digital products, service listings, and proposals on freelance
-        platforms. You review and approve — the agent does the work.
-      </p>
-
       <div className="grid gap-3 sm:grid-cols-2">
         {[
-          { name: "Contra", desc: "Freelance services & project proposals", mode: "Semi-autonomous" },
-          { name: "Gumroad", desc: "Digital products, templates, guides", mode: "Semi-autonomous" },
-          { name: "Fiverr", desc: "Service gigs and deliverables", mode: "Semi-autonomous" },
-          { name: "Upwork", desc: "Freelance proposals and project bids", mode: "Semi-autonomous" },
+          { name: "Gumroad", desc: "Sell digital products, templates, and guides" },
+          { name: "Fiverr", desc: "List services and complete gig orders" },
+          { name: "Contra", desc: "Take on freelance projects and proposals" },
+          { name: "Upwork", desc: "Bid on freelance jobs and deliver work" },
         ].map((platform) => (
           <div
             key={platform.name}
             className="rounded-lg p-4"
             style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
           >
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-sm font-semibold">{platform.name}</p>
-              <span className="text-[10px]" style={{ color: "var(--muted)" }}>{platform.mode}</span>
-            </div>
+            <p className="text-sm font-semibold mb-0.5">{platform.name}</p>
             <p className="text-xs" style={{ color: "var(--muted)" }}>{platform.desc}</p>
           </div>
         ))}
@@ -694,17 +665,18 @@ function FreelanceSection() {
 
       <div
         className="rounded-lg p-4"
-        style={{
-          background: "rgba(59,130,246,0.05)",
-          border: "1px solid rgba(59,130,246,0.15)",
-        }}
+        style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.12)" }}
       >
-        <p className="text-xs" style={{ color: "var(--muted)" }}>
-          <strong style={{ color: "var(--foreground)" }}>How it works:</strong> Tell your agent
-          what products or services you want to offer. It creates the listings using browser automation.
-          You approve before anything goes live.
+        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          <strong style={{ color: "var(--foreground)" }}>How it works:</strong> Tell your agent what products or services you want to offer.
+          It drafts listings and proposals for you. Nothing goes live until you approve it.
         </p>
       </div>
+
+      <BotMessage
+        message="Create a Gumroad product — a PDF guide about productivity tips"
+        botUsername={botUsername}
+      />
     </div>
   );
 }

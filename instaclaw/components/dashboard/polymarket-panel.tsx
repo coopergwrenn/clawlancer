@@ -11,6 +11,9 @@ import {
   ScrollText,
   RefreshCw,
   AlertTriangle,
+  MessageSquare,
+  CheckCircle2,
+  Info,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────
@@ -85,17 +88,58 @@ function truncateAddr(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
+// ── Copyable Bot Message (same pattern as earn page) ──
+
+function BotMessage({ message }: { message: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div
+      className="rounded-lg p-4 mt-3"
+      style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.12)" }}
+    >
+      <div className="flex items-start gap-2.5">
+        <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium mb-1.5" style={{ color: "rgb(59,130,246)" }}>
+            Try messaging your bot:
+          </p>
+          <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
+            &ldquo;{message}&rdquo;
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(message);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all shrink-0"
+          style={{
+            background: copied ? "rgba(34,197,94,0.1)" : "rgba(59,130,246,0.1)",
+            color: copied ? "rgb(34,197,94)" : "rgb(59,130,246)",
+            border: copied ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(59,130,246,0.2)",
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Section Wrapper ─────────────────────────────────
 
 function Section({
   icon: Icon,
   title,
+  subtitle,
   defaultOpen = false,
   badge,
   children,
 }: {
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   title: string;
+  subtitle?: string;
   defaultOpen?: boolean;
   badge?: string;
   children: React.ReactNode;
@@ -111,24 +155,31 @@ function Section({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between p-4 cursor-pointer text-left"
       >
-        <div className="flex items-center gap-3">
-          <Icon className="w-4 h-4" style={{ color: "var(--muted)" }} />
-          <span className="text-sm font-semibold">{title}</span>
-          {badge && (
-            <span
-              className="px-2 py-0.5 rounded-full text-xs"
-              style={{
-                background: "rgba(249,115,22,0.1)",
-                color: "#ea580c",
-                border: "1px solid rgba(249,115,22,0.2)",
-              }}
-            >
-              {badge}
-            </span>
-          )}
+        <div className="flex items-center gap-3 min-w-0">
+          <Icon className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">{title}</span>
+              {badge && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-xs shrink-0"
+                  style={{
+                    background: "rgba(249,115,22,0.1)",
+                    color: "#ea580c",
+                    border: "1px solid rgba(249,115,22,0.2)",
+                  }}
+                >
+                  {badge}
+                </span>
+              )}
+            </div>
+            {subtitle && (
+              <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{subtitle}</p>
+            )}
+          </div>
         </div>
         <ChevronDown
-          className="w-4 h-4 transition-transform"
+          className="w-4 h-4 shrink-0 ml-2 transition-transform"
           style={{
             color: "var(--muted)",
             transform: open ? "rotate(180deg)" : "rotate(0deg)",
@@ -214,13 +265,13 @@ export default function PolymarketPanel() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(`Wallet created: ${data.address ?? "success"}`, "success");
+        showToast("Trading account created!", "success");
         fetchAll();
       } else {
-        showToast(data.error || "Wallet setup failed", "error");
+        showToast(data.error || "Setup failed — try again", "error");
       }
     } catch {
-      showToast("Network error", "error");
+      showToast("Network error — check your connection", "error");
     } finally {
       setSettingUpWallet(false);
     }
@@ -240,13 +291,13 @@ export default function PolymarketPanel() {
       });
       if (res.ok) {
         setRiskConfig(riskDraft);
-        showToast("Risk settings saved", "success");
+        showToast("Safety limits saved!", "success");
       } else {
         const data = await res.json();
         showToast(data.error || "Failed to save", "error");
       }
     } catch {
-      showToast("Network error", "error");
+      showToast("Network error — check your connection", "error");
     } finally {
       setSavingRisk(false);
     }
@@ -259,7 +310,7 @@ export default function PolymarketPanel() {
         style={{ border: "1px solid var(--border)" }}
       >
         <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: "var(--muted)" }} />
-        <p className="text-sm" style={{ color: "var(--muted)" }}>Loading Polymarket data...</p>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>Loading prediction market data...</p>
       </div>
     );
   }
@@ -300,38 +351,55 @@ export default function PolymarketPanel() {
         </button>
       </div>
 
-      {/* ── 1. Wallet Setup ── */}
-      <Section icon={Wallet} title="Wallet" defaultOpen badge={wallet ? truncateAddr(wallet.address) : undefined}>
+      {/* ── 1. Trading Account ── */}
+      <Section
+        icon={Wallet}
+        title="Trading Account"
+        subtitle="Required before your agent can place any bets"
+        defaultOpen
+        badge={wallet ? truncateAddr(wallet.address) : undefined}
+      >
         {wallet ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{ background: "var(--success)" }} />
-              <span className="text-sm font-medium">Connected</span>
+              <CheckCircle2 className="w-4 h-4" style={{ color: "var(--success)" }} />
+              <span className="text-sm font-medium" style={{ color: "var(--success)" }}>Account ready</span>
             </div>
             <div className="grid gap-2 text-xs" style={{ color: "var(--muted)" }}>
               <div className="flex justify-between">
-                <span>Address</span>
+                <span>Wallet address</span>
                 <span className="font-mono">{wallet.address}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Chain</span>
-                <span>Polygon (137)</span>
               </div>
               <div className="flex justify-between">
                 <span>Created</span>
                 <span>{new Date(wallet.created_at).toLocaleDateString()}</span>
               </div>
             </div>
+            <div
+              className="rounded-lg p-3 flex items-start gap-2"
+              style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.1)" }}
+            >
+              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
+              <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
+                To start trading, you&apos;ll need to add funds. Ask your bot how to deposit.
+              </p>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{ background: "#f59e0b" }} />
-              <span className="text-sm" style={{ color: "var(--muted)" }}>Not configured</span>
-            </div>
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
-              Generate a Polygon wallet to enable watchlist tracking and trading.
+            <p className="text-sm" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+              Your agent needs a trading account to place bets on prediction markets.
+              This creates a secure wallet that only your agent can access.
             </p>
+            <div
+              className="rounded-lg p-3 flex items-start gap-2"
+              style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+            >
+              <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--muted)" }} />
+              <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
+                No money is spent until you fund the account and turn on trading below.
+              </p>
+            </div>
             <button
               onClick={handleSetupWallet}
               disabled={settingUpWallet}
@@ -342,23 +410,28 @@ export default function PolymarketPanel() {
                 boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)",
               }}
             >
-              {settingUpWallet ? "Setting up..." : "Setup Wallet"}
+              {settingUpWallet ? "Creating account..." : "Create Trading Account"}
             </button>
           </div>
         )}
       </Section>
 
-      {/* ── 2. Market Watchlist ── */}
-      <Section icon={Eye} title="Market Watchlist" badge={watchlist?.markets.length ? `${watchlist.markets.length}` : undefined}>
+      {/* ── 2. Markets You're Watching ── */}
+      <Section
+        icon={Eye}
+        title="Markets You're Watching"
+        subtitle="Your agent tracks these and alerts you when odds change"
+        badge={watchlist?.markets.length ? `${watchlist.markets.length}` : undefined}
+      >
         {watchlist?.markets.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ color: "var(--muted)" }}>
-                  <th className="text-left pb-2 font-medium">Market</th>
-                  <th className="text-right pb-2 font-medium">Price</th>
-                  <th className="text-right pb-2 font-medium">Alert</th>
-                  <th className="text-right pb-2 font-medium">Checked</th>
+                  <th className="text-left pb-2 font-medium">Question</th>
+                  <th className="text-right pb-2 font-medium">Odds</th>
+                  <th className="text-right pb-2 font-medium">Alert at</th>
+                  <th className="text-right pb-2 font-medium">Last checked</th>
                 </tr>
               </thead>
               <tbody>
@@ -371,11 +444,11 @@ export default function PolymarketPanel() {
                     <td className="py-2 pr-3 max-w-[200px] truncate">
                       {m.question}
                     </td>
-                    <td className="py-2 text-right font-mono">
+                    <td className="py-2 text-right font-mono font-semibold">
                       {(m.lastPrice * 100).toFixed(0)}%
                     </td>
                     <td className="py-2 text-right" style={{ color: "var(--muted)" }}>
-                      {(m.alertThreshold * 100).toFixed(0)}%
+                      {m.alertThreshold ? `${(m.alertThreshold * 100).toFixed(0)}% change` : "—"}
                     </td>
                     <td className="py-2 text-right" style={{ color: "var(--muted)" }}>
                       {m.lastChecked ? timeAgo(m.lastChecked) : "—"}
@@ -386,28 +459,35 @@ export default function PolymarketPanel() {
             </table>
           </div>
         ) : (
-          <div className="text-center py-4">
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
-              No markets being watched. Tell your agent to watch a market.
+          <div className="space-y-1">
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              You&apos;re not watching any markets yet. Ask your bot to find interesting
+              predictions to track.
             </p>
+            <BotMessage message="What are the hottest prediction markets right now?" />
           </div>
         )}
       </Section>
 
-      {/* ── 3. Positions ── */}
+      {/* ── 3. Your Active Bets ── */}
       {(positions.length > 0 || riskConfig?.enabled) && (
-        <Section icon={BarChart3} title="Positions" badge={positions.length ? `${positions.length}` : undefined}>
+        <Section
+          icon={BarChart3}
+          title="Your Active Bets"
+          subtitle="Positions your agent is currently holding"
+          badge={positions.length ? `${positions.length}` : undefined}
+        >
           {positions.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr style={{ color: "var(--muted)" }}>
                     <th className="text-left pb-2 font-medium">Market</th>
-                    <th className="text-right pb-2 font-medium">Side</th>
+                    <th className="text-right pb-2 font-medium">Bet on</th>
                     <th className="text-right pb-2 font-medium">Shares</th>
-                    <th className="text-right pb-2 font-medium">Entry</th>
+                    <th className="text-right pb-2 font-medium">Bought at</th>
                     <th className="text-right pb-2 font-medium">Now</th>
-                    <th className="text-right pb-2 font-medium">P&L</th>
+                    <th className="text-right pb-2 font-medium">Profit/Loss</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -444,23 +524,35 @@ export default function PolymarketPanel() {
               </table>
             </div>
           ) : (
-            <div className="text-center py-4">
-              <p className="text-xs" style={{ color: "var(--muted)" }}>No open positions.</p>
+            <div className="space-y-1">
+              <p className="text-sm" style={{ color: "var(--muted)" }}>
+                No active bets. Once you turn on trading and fund your account, your agent
+                can start placing bets for you.
+              </p>
+              <BotMessage message="What predictions do you think are good bets right now?" />
             </div>
           )}
         </Section>
       )}
 
-      {/* ── 4. Risk Settings ── */}
-      <Section icon={Shield} title="Risk Settings">
+      {/* ── 4. Safety Limits ── */}
+      <Section
+        icon={Shield}
+        title="Safety Limits"
+        subtitle="Control how much your agent can spend"
+      >
         {riskDraft ? (
           <div className="space-y-4">
             {/* Trading toggle */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Trading Enabled</p>
+                <p className="text-sm font-medium">
+                  {riskDraft.enabled ? "Trading is turned on" : "Let my agent place bets"}
+                </p>
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  {riskDraft.enabled ? "Agent can place trades within limits" : "Trading is disabled"}
+                  {riskDraft.enabled
+                    ? "Your agent can bet within the limits you set below."
+                    : "Flip this on to allow your agent to trade. You control all the limits."}
                 </p>
               </div>
               <button
@@ -499,41 +591,68 @@ export default function PolymarketPanel() {
                 >
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#ea580c" }} />
                   <p className="text-xs" style={{ color: "#ea580c" }}>
-                    Trading is enabled. Your agent can place orders within the limits below.
-                    Trades above the confirmation threshold will require your approval.
+                    Trading is on. Your agent will respect the limits below. Any bet larger
+                    than your confirmation amount will need your approval first.
                   </p>
                 </div>
 
-                {/* Number inputs */}
+                {/* Settings with plain English labels */}
                 <div className="grid gap-3 sm:grid-cols-2">
                   {[
-                    { key: "dailySpendCapUSDC" as const, label: "Daily Spend Cap", unit: "USDC" },
-                    { key: "confirmationThresholdUSDC" as const, label: "Confirm Threshold", unit: "USDC" },
-                    { key: "dailyLossLimitUSDC" as const, label: "Daily Loss Limit", unit: "USDC" },
-                    { key: "maxPositionSizeUSDC" as const, label: "Max Position Size", unit: "USDC" },
-                  ].map(({ key, label, unit }) => (
+                    {
+                      key: "dailySpendCapUSDC" as const,
+                      label: "Max daily spending",
+                      help: "Your agent won't spend more than this per day",
+                    },
+                    {
+                      key: "confirmationThresholdUSDC" as const,
+                      label: "Ask me before spending over",
+                      help: "Bets above this amount need your OK first",
+                    },
+                    {
+                      key: "dailyLossLimitUSDC" as const,
+                      label: "Stop if I lose more than",
+                      help: "Trading pauses for the day if losses hit this",
+                    },
+                    {
+                      key: "maxPositionSizeUSDC" as const,
+                      label: "Biggest single bet",
+                      help: "The most your agent can put on one outcome",
+                    },
+                  ].map(({ key, label, help }) => (
                     <div key={key}>
-                      <label className="text-xs font-medium block mb-1" style={{ color: "var(--muted)" }}>
-                        {label} ({unit})
+                      <label className="text-xs font-medium block mb-0.5">
+                        {label}
                       </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={500}
-                        value={riskDraft[key]}
-                        onChange={(e) =>
-                          setRiskDraft({
-                            ...riskDraft,
-                            [key]: Math.min(500, Math.max(1, Number(e.target.value) || 1)),
-                          })
-                        }
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{
-                          background: "var(--card)",
-                          border: "1px solid var(--border)",
-                          color: "var(--foreground)",
-                        }}
-                      />
+                      <p className="text-[11px] mb-1.5" style={{ color: "var(--muted)" }}>
+                        {help}
+                      </p>
+                      <div className="relative">
+                        <span
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-sm"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          $
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          value={riskDraft[key]}
+                          onChange={(e) =>
+                            setRiskDraft({
+                              ...riskDraft,
+                              [key]: Math.min(500, Math.max(1, Number(e.target.value) || 1)),
+                            })
+                          }
+                          className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none"
+                          style={{
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            color: "var(--foreground)",
+                          }}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -551,20 +670,25 @@ export default function PolymarketPanel() {
                 boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
               }}
             >
-              {savingRisk ? "Saving..." : "Save Risk Settings"}
+              {savingRisk ? "Saving..." : "Save Limits"}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
-              No risk configuration found. Set up a wallet first, then configure trading limits here.
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              Create a trading account first, then you can set spending limits here.
             </p>
           </div>
         )}
       </Section>
 
-      {/* ── 5. Trade Log ── */}
-      <Section icon={ScrollText} title="Trade Log" badge={trades.length ? `${trades.length}` : undefined}>
+      {/* ── 5. Trade History ── */}
+      <Section
+        icon={ScrollText}
+        title="Trade History"
+        subtitle="Every bet your agent has placed, with its reasoning"
+        badge={trades.length ? `${trades.length}` : undefined}
+      >
         {trades.length ? (
           <div className="space-y-2">
             {[...trades].reverse().slice(0, 20).map((t) => (
@@ -580,16 +704,16 @@ export default function PolymarketPanel() {
                     color: t.side === "BUY" ? "#16a34a" : "#ef4444",
                   }}
                 >
-                  {t.side}
+                  {t.side === "BUY" ? "BET" : "SOLD"}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate">{t.question}</p>
                   <p className="text-xs" style={{ color: "var(--muted)" }}>
-                    {t.outcome} &middot; {t.shares.toFixed(1)} @ ${t.price.toFixed(2)} &middot; ${t.totalUSDC.toFixed(2)}
+                    {t.outcome} &middot; {t.shares.toFixed(1)} shares @ ${t.price.toFixed(2)} &middot; ${t.totalUSDC.toFixed(2)} total
                   </p>
                   {t.reasoning && (
                     <p className="text-xs mt-1 truncate" style={{ color: "var(--muted)", opacity: 0.7 }}>
-                      {t.reasoning}
+                      Why: {t.reasoning}
                     </p>
                   )}
                 </div>
@@ -600,8 +724,11 @@ export default function PolymarketPanel() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-4">
-            <p className="text-xs" style={{ color: "var(--muted)" }}>No trades yet.</p>
+          <div className="space-y-1">
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              No trades yet. Once trading is on, every bet your agent places will show up
+              here with the reasoning behind it.
+            </p>
           </div>
         )}
       </Section>
