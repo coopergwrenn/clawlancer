@@ -4,7 +4,7 @@ name: polymarket
 version: 1.0.0
 updated: 2026-02-24
 author: InstaClaw
-phase: 1  # Read-only intelligence. Trading capabilities coming in Phase 2/3.
+phase: 3  # Full stack: read-only intelligence (Tier 1), portfolio monitoring (Tier 2), autonomous trading (Tier 3)
 triggers:
   keywords: [prediction market, polymarket, odds, probability, chances, bet on, betting, forecast, market odds, implied probability, wager, betting odds, market intelligence, event probability, market scan, prediction odds]
   phrases: ["what are the chances of", "what are the odds", "prediction market", "polymarket", "will X happen", "probability of", "browse markets", "top prediction markets", "hottest markets", "market analysis", "is X likely", "market scan", "what will happen", "prediction odds"]
@@ -19,9 +19,9 @@ You have access to Polymarket, the world's largest prediction market (~$1B+ mont
 
 **Why this matters:** Prediction market data is crowdsourced intelligence backed by real money. Unlike polls or pundit opinions, market participants have financial skin in the game. This makes Polymarket data uniquely reliable for forecasting.
 
-**Current phase:** Read-only intelligence. No wallet, no API keys, no trading. The agent uses the public Gamma API (no auth required) via `curl` to fetch market data, then enriches it with web search and analysis.
+**Current phase:** Full stack — Tier 1 (read-only intelligence), Tier 2 (wallet, watchlist, monitoring, alerts), Tier 3 (autonomous trading via CLOB API with risk management).
 
-> Trading capabilities coming soon. Currently read-only.
+> See Tier 2 and Tier 3 sections below for portfolio monitoring and trading capabilities.
 
 ## When to Use This Skill
 
@@ -350,17 +350,206 @@ Use 3-5 API calls total. Don't fetch individually — use `limit=20` and filter 
 
 ## Safety Rules
 
-- **Read-only** — This skill does not place trades, manage wallets, or handle money
 - **No financial advice** — Always frame as "market analysis" with the disclaimer
-- **Respect rate limits** — Max 1 req/sec, batch where possible
+- **Respect rate limits** — Max 1 req/sec for Gamma API, 1 order/sec for CLOB
 - **No hallucinated data** — If you can't reach the API, say so. Never invent prices.
 - **Source attribution** — Always link to `https://polymarket.com/event/[event_slug]/[market_slug]` (get event slug from `market.events[0].slug`)
 - **Price = probability** — Always explain that $0.65 = 65% implied probability
+- **Private key security** — NEVER log, display, or include the private key in any output, memory file, or chat message
+- **Risk config required** — Check `risk-config.json` before every trade. If `enabled !== true`, refuse the trade.
+- **User opt-in** — Trading must be explicitly enabled by the user. Never auto-enable.
+- **Trade logging** — Every trade must be logged with full details and reasoning
 
-## Future Roadmap
+## Tier 2: Portfolio & Monitoring
 
-> Phase 2 (coming): Portfolio monitoring — dedicated Polygon wallet, position tracking, watchlists, automated alerts, WebSocket price streams
-> Phase 3 (coming): Autonomous trading — manual trades, thesis-driven trades, risk management, trade logging. Will require explicit user opt-in with safety guardrails.
+### Wallet Setup
+
+Your agent has a dedicated Polygon wallet for Polymarket trading. To set it up:
+
+```bash
+bash ~/scripts/setup-polymarket-wallet.sh
+```
+
+This generates a Polygon EOA wallet and stores it at `~/.openclaw/polymarket/wallet.json` with `0o600` permissions (owner-read-only).
+
+**Important chain details:**
+- **Chain: Polygon (chain ID 137)** — NOT Base, NOT Ethereum mainnet
+- **Gas token:** MATIC (needed for transaction fees)
+- **Trading token:** USDC.e (bridged USDC on Polygon — this is what Polymarket uses)
+- Fund wallet with MATIC (gas) + USDC.e (trading) via any Polygon bridge or exchange withdrawal
+
+**Wallet commands:**
+```bash
+# Check wallet status
+bash ~/scripts/setup-polymarket-wallet.sh status
+
+# Show wallet address (for funding)
+bash ~/scripts/setup-polymarket-wallet.sh address
+```
+
+### Market Watchlist
+
+The watchlist file at `~/memory/polymarket-watchlist.json` tracks markets the user wants to monitor:
+
+```json
+{
+  "version": 1,
+  "markets": [
+    {
+      "id": "654415",
+      "question": "Will Bitcoin hit $200k by June 2026?",
+      "alertThreshold": 0.05,
+      "lastPrice": 0.41,
+      "lastChecked": "2026-02-24T10:00:00Z",
+      "notes": "User is bullish, watching for entry",
+      "alerts": [
+        { "type": "price_above", "value": 0.50, "triggered": false },
+        { "type": "price_below", "value": 0.30, "triggered": false }
+      ],
+      "positionRef": null
+    }
+  ]
+}
+```
+
+**To add a market to the watchlist:** "Watch the Bitcoin 200k market and alert me if it goes above 50%"
+
+**To remove:** "Stop watching the Bitcoin market"
+
+### Recurring Monitoring
+
+Monitoring integrates with the heartbeat/cron system for automated checks:
+
+**4-Hour Market Check:**
+- Fetch all watched markets via Gamma API
+- Compare current price to `lastPrice`
+- If price changed by more than `alertThreshold`, trigger alert
+- Update `lastPrice` and `lastChecked` in watchlist JSON
+
+**Daily Summary (9am user-local time):**
+- Compile all watched markets with current prices and 24h changes
+- Include any open positions with unrealized P&L
+- Note any markets approaching resolution deadline
+
+**Weekly P&L Report (Sunday):**
+- Aggregate all trading activity for the week
+- Calculate realized P&L from closed positions
+- Calculate unrealized P&L from open positions
+- Compare performance to simple hold strategies
+
+### Alert System
+
+Supported alert types:
+| Type | Description | Example |
+|------|-------------|---------|
+| `price_above` | Triggers when YES price exceeds value | "Alert me if Bitcoin 200k goes above 60%" |
+| `price_below` | Triggers when YES price drops below value | "Alert me if Fed rate cut drops below 50%" |
+| `resolution` | Triggers when market resolves | "Tell me when the election market resolves" |
+| `volume_spike` | Triggers when 24h volume increases by >2x | "Alert me if there's unusual activity" |
+
+Alerts are delivered via the user's primary channel (Telegram, Discord, etc.) through the normal message flow.
+
+### WebSocket Price Streams
+
+For real-time monitoring, connect to:
+```
+wss://ws-subscriptions-clob.polymarket.com/ws/market
+```
+
+Subscribe to specific markets for live price updates. See `references/monitoring.md` for connection details and callback patterns.
+
+---
+
+## Tier 3: Autonomous Trading (Opt-In Required)
+
+### Safety First
+
+**NEVER auto-trade without explicit user opt-in.** Before every trade, the agent checks `~/.openclaw/polymarket/risk-config.json`:
+
+```json
+{
+  "enabled": false,
+  "dailySpendCapUSDC": 50,
+  "confirmationThresholdUSDC": 25,
+  "dailyLossLimitUSDC": 100,
+  "maxPositionSizeUSDC": 100,
+  "updatedAt": "2026-02-24T10:00:00Z"
+}
+```
+
+- **enabled** — `false` by default. Must be explicitly set to `true` by the user.
+- **dailySpendCapUSDC** — Maximum total spending per day. Agent refuses trades that would exceed this.
+- **confirmationThresholdUSDC** — Trades above this amount require explicit user confirmation before execution.
+- **dailyLossLimitUSDC** — If realized + unrealized losses for the day exceed this, trading halts automatically.
+- **maxPositionSizeUSDC** — Maximum size for any single position.
+
+### Trade Execution Flow
+
+1. **Opportunity analysis** — Agent identifies a trading opportunity (user request or thesis-driven)
+2. **Risk check** — Verify `enabled === true`, check daily spend/loss limits, position size limits
+3. **Confirmation** — If trade amount > `confirmationThresholdUSDC`, ask user for explicit approval
+4. **Execute** — Place order via `py-clob-client` (CLOB API)
+5. **Log** — Record trade to `~/.openclaw/polymarket/trade-log.json` AND append to MEMORY.md with reasoning
+
+### Manual Trades
+
+User commands:
+```
+"Bet $10 on YES for Will Bitcoin hit $200k by June?"
+"Buy 50 YES shares of the Fed rate cut market at $0.68"
+"Sell my position in the election market"
+```
+
+The agent will:
+1. Look up the market on Gamma API to get token IDs
+2. Create a limit order via py-clob-client
+3. Sign with the wallet private key
+4. Post to the CLOB API
+5. Confirm execution with transaction details
+
+### Thesis-Driven Trades
+
+For research-backed trades:
+```
+"Research the Fed rate decision market and place a trade if you find an edge"
+```
+
+The agent will:
+1. Fetch market data from Gamma API
+2. Run web searches for relevant news and data
+3. Form a thesis (e.g., "Market prices 72% cut, but CPI data suggests only 60%")
+4. If thesis suggests >=5% edge, propose the trade with reasoning
+5. Wait for user approval (always, for thesis trades)
+6. Execute and log with full reasoning chain
+
+### Token IDs
+
+Token IDs for trading come from the Gamma API `clobTokenIds` field:
+- **Index 0** = YES token
+- **Index 1** = NO token
+
+For multi-outcome markets, each outcome has its own token ID pair. See `references/trading.md` for full details.
+
+### Compliance Note
+
+- **United States:** Polymarket is CFTC-regulated. US users can trade legally on the platform.
+- **Non-US:** Check local restrictions. Some jurisdictions restrict prediction market trading.
+- The agent does not provide legal or financial advice. All trades are at the user's risk.
+
+---
+
+## File Paths Reference
+
+| File | Purpose |
+|------|---------|
+| `~/.openclaw/polymarket/wallet.json` | Polygon EOA wallet (private key + address) |
+| `~/.openclaw/polymarket/risk-config.json` | Trading risk parameters (enabled, limits) |
+| `~/.openclaw/polymarket/positions.json` | Open position tracking |
+| `~/.openclaw/polymarket/trade-log.json` | Trade history with reasoning |
+| `~/memory/polymarket-watchlist.json` | Market watchlist with alert thresholds |
+| `~/scripts/setup-polymarket-wallet.sh` | Wallet generation script |
+
+---
 
 ## Quality Checklist
 
@@ -373,3 +562,8 @@ Use 3-5 API calls total. Don't fetch individually — use `limit=20` and filter 
 - [ ] Null/missing fields handled with `.get()` defaults (bestBid, oneDayPriceChange, etc.)
 - [ ] Source link to Polymarket included for every market referenced (use event_slug/market_slug format)
 - [ ] Rate limits respected (1 req/sec max, 3-5 calls per scan)
+- [ ] Wallet private key NEVER logged, NEVER in MEMORY.md, NEVER in chat messages
+- [ ] Risk config validated before every trade — `enabled` must be `true`
+- [ ] Every trade logged to trade-log.json with timestamp, amount, reasoning
+- [ ] Trades above confirmation threshold require explicit user approval
+- [ ] Opt-in verification — agent confirms user has explicitly enabled trading before first trade

@@ -359,9 +359,25 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 ✅ Opportunities reports — scan top markets, biggest movers, markets closing soon
 ✅ Event deep-dives — multi-outcome markets with full probability breakdowns
 ✅ Cross-skill intelligence — prediction data feeds into competitive-intelligence, financial-analysis, web research
-⚠️ Read-only (Phase 1) — no trading, no wallet, no positions. Trading coming in Phase 2/3.
+⚠️ Read-only intelligence always available — no auth needed for Gamma API market data
+
+-- Tier 2: Portfolio & Monitoring --
+✅ Dedicated Polygon wallet — setup-polymarket-wallet.sh creates EOA on chain 137
+✅ Market watchlist — ~/memory/polymarket-watchlist.json with alert thresholds
+✅ Recurring monitoring — 4h price checks, daily summaries via heartbeat integration
+✅ Price alerts — threshold-based notifications on watched markets
+⚠️ Wallet must be set up first — run ~/scripts/setup-polymarket-wallet.sh
+
+-- Tier 3: Autonomous Trading (Opt-In Required) --
+✅ Manual trades via py-clob-client — buy/sell orders on Polymarket CLOB
+✅ Risk management — daily spend cap, confirmation threshold, loss limits
+✅ Trade logging — every trade logged to trade-log.json AND MEMORY.md with reasoning
+⚠️ Trading DISABLED by default — user must explicitly enable
+⚠️ US: CFTC-regulated, legal. Non-US: check local restrictions.
+
 → Skills: polymarket
-→ Reference: ~/.openclaw/skills/polymarket/references/gamma-api.md, ~/.openclaw/skills/polymarket/references/analysis.md
+→ Reference: ~/.openclaw/skills/polymarket/references/gamma-api.md, ~/.openclaw/skills/polymarket/references/analysis.md, ~/.openclaw/skills/polymarket/references/trading.md, ~/.openclaw/skills/polymarket/references/monitoring.md
+→ Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json
 
 ---
 

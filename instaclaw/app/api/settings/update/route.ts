@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { encryptApiKey } from "@/lib/security";
-import { updateSystemPrompt, updateApiKey, updateChannelToken, installAgdpSkill, uninstallAgdpSkill } from "@/lib/ssh";
+import { updateSystemPrompt, updateApiKey, updateChannelToken, installAgdpSkill, uninstallAgdpSkill, connectSSH } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -284,6 +284,93 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({ updated: true, timezone: validatedTz });
+      }
+
+      case "update_polymarket_risk": {
+        const { riskConfig: rc } = body;
+        if (!rc || typeof rc !== "object") {
+          return NextResponse.json({ error: "riskConfig object is required" }, { status: 400 });
+        }
+
+        // Validate fields
+        if (typeof rc.enabled !== "boolean") {
+          return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
+        }
+        const numFields = ["dailySpendCapUSDC", "confirmationThresholdUSDC", "dailyLossLimitUSDC", "maxPositionSizeUSDC"] as const;
+        for (const field of numFields) {
+          if (typeof rc[field] !== "number" || rc[field] < 1) {
+            return NextResponse.json({ error: `${field} must be a positive number` }, { status: 400 });
+          }
+        }
+
+        // Enforce hard limits
+        const sanitized = {
+          enabled: rc.enabled,
+          dailySpendCapUSDC: Math.min(500, rc.dailySpendCapUSDC),
+          confirmationThresholdUSDC: Math.min(500, rc.confirmationThresholdUSDC),
+          dailyLossLimitUSDC: Math.min(500, rc.dailyLossLimitUSDC),
+          maxPositionSizeUSDC: Math.min(500, rc.maxPositionSizeUSDC),
+          updatedAt: new Date().toISOString(),
+        };
+
+        // Write to VM via SSH
+        const riskSsh = await connectSSH(vm);
+        try {
+          const riskB64 = Buffer.from(JSON.stringify(sanitized, null, 2), "utf-8").toString("base64");
+          await riskSsh.execCommand(
+            `mkdir -p "$HOME/.openclaw/polymarket" && echo '${riskB64}' | base64 -d > "$HOME/.openclaw/polymarket/risk-config.json" && chmod 600 "$HOME/.openclaw/polymarket/risk-config.json"`
+          );
+        } finally {
+          riskSsh.dispose();
+        }
+
+        logger.info("Polymarket risk config updated", {
+          route: "settings/update",
+          userId: session.user.id,
+          enabled: sanitized.enabled,
+        });
+
+        return NextResponse.json({ updated: true, riskConfig: sanitized });
+      }
+
+      case "setup_polymarket_wallet": {
+        const walletSsh = await connectSSH(vm);
+        try {
+          const result = await walletSsh.execCommand(
+            'bash "$HOME/scripts/setup-polymarket-wallet.sh" 2>&1'
+          );
+          if (result.code !== 0) {
+            // Check if wallet already exists (not an error, just already set up)
+            if (result.stdout?.includes("already exists") || result.stderr?.includes("already exists")) {
+              const addrResult = await walletSsh.execCommand(
+                'bash "$HOME/scripts/setup-polymarket-wallet.sh" address 2>&1'
+              );
+              return NextResponse.json({
+                updated: true,
+                address: addrResult.stdout?.trim(),
+                message: "Wallet already exists",
+              });
+            }
+            return NextResponse.json(
+              { error: result.stderr || result.stdout || "Wallet setup failed" },
+              { status: 500 }
+            );
+          }
+
+          // Extract address from output
+          const addressMatch = result.stdout?.match(/Wallet created: (0x[a-fA-F0-9]+)/);
+          const address = addressMatch?.[1] ?? null;
+
+          logger.info("Polymarket wallet created", {
+            route: "settings/update",
+            userId: session.user.id,
+            address,
+          });
+
+          return NextResponse.json({ updated: true, address });
+        } finally {
+          walletSsh.dispose();
+        }
       }
 
       case "toggle_agdp": {

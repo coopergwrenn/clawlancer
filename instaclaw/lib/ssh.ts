@@ -1040,7 +1040,7 @@ function buildOpenClawConfig(
 }
 
 // Dynamic import to avoid Turbopack bundling issues with ssh2's native crypto
-async function connectSSH(vm: VMRecord) {
+export async function connectSSH(vm: VMRecord) {
   if (!process.env.SSH_PRIVATE_KEY_B64) {
     throw new Error("SSH_PRIVATE_KEY_B64 not set");
   }
@@ -1957,29 +1957,40 @@ export async function configureOpenClaw(
       });
     }
 
-    // ── Deploy Polymarket Prediction Markets skill ──
-    // Doc-only skill — read-only Gamma API, no wallet/trading. No API keys required.
+    // ── Deploy Polymarket Prediction Markets skill (Phase 1-3) ──
+    // Phase 1: read-only Gamma API. Phase 2: wallet + monitoring. Phase 3: trading via CLOB.
     try {
       const polySkillDir = path.join(process.cwd(), "skills", "polymarket");
       const polySkillMd = fs.readFileSync(path.join(polySkillDir, "SKILL.md"), "utf-8");
       const polyGammaApi = fs.readFileSync(path.join(polySkillDir, "references", "gamma-api.md"), "utf-8");
       const polyAnalysis = fs.readFileSync(path.join(polySkillDir, "references", "analysis.md"), "utf-8");
+      const polyTrading = fs.readFileSync(path.join(polySkillDir, "references", "trading.md"), "utf-8");
+      const polyMonitoring = fs.readFileSync(path.join(polySkillDir, "references", "monitoring.md"), "utf-8");
+      const polyWalletScript = fs.readFileSync(path.join(polySkillDir, "scripts", "setup-polymarket-wallet.sh"), "utf-8");
 
       const polySkillB64 = Buffer.from(polySkillMd, "utf-8").toString("base64");
       const polyGammaB64 = Buffer.from(polyGammaApi, "utf-8").toString("base64");
       const polyAnalysisB64 = Buffer.from(polyAnalysis, "utf-8").toString("base64");
+      const polyTradingB64 = Buffer.from(polyTrading, "utf-8").toString("base64");
+      const polyMonitoringB64 = Buffer.from(polyMonitoring, "utf-8").toString("base64");
+      const polyWalletB64 = Buffer.from(polyWalletScript, "utf-8").toString("base64");
 
       scriptParts.push(
-        '# Deploy Polymarket Prediction Markets skill (read-only, no API keys)',
+        '# Deploy Polymarket Prediction Markets skill (Phase 1-3)',
         'POLY_SKILL_DIR="$HOME/.openclaw/skills/polymarket"',
-        'mkdir -p "$POLY_SKILL_DIR/references"',
+        'mkdir -p "$POLY_SKILL_DIR/references" "$POLY_SKILL_DIR/scripts" "$HOME/scripts" "$HOME/.openclaw/polymarket" "$HOME/memory"',
         `echo '${polySkillB64}' | base64 -d > "$POLY_SKILL_DIR/SKILL.md"`,
         `echo '${polyGammaB64}' | base64 -d > "$POLY_SKILL_DIR/references/gamma-api.md"`,
         `echo '${polyAnalysisB64}' | base64 -d > "$POLY_SKILL_DIR/references/analysis.md"`,
+        `echo '${polyTradingB64}' | base64 -d > "$POLY_SKILL_DIR/references/trading.md"`,
+        `echo '${polyMonitoringB64}' | base64 -d > "$POLY_SKILL_DIR/references/monitoring.md"`,
+        `echo '${polyWalletB64}' | base64 -d > "$HOME/scripts/setup-polymarket-wallet.sh"`,
+        'chmod +x "$HOME/scripts/setup-polymarket-wallet.sh"',
+        'pip3 install --quiet --break-system-packages py-clob-client eth-account websockets 2>/dev/null || true',
         ''
       );
 
-      logger.info("Polymarket prediction markets skill deployment prepared", { route: "lib/ssh" });
+      logger.info("Polymarket prediction markets skill deployment prepared (Phase 1-3)", { route: "lib/ssh" });
     } catch (polySkillErr) {
       // Polymarket skill deployment is non-critical — don't block VM provisioning
       logger.warn("Polymarket skill files not found, skipping deployment", {

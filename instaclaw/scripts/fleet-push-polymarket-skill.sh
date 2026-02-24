@@ -62,22 +62,31 @@ deploy_to_vm() {
 
   echo "  Deploying to $vm_id ($user@$ip)..."
 
-  local skill_md_b64 gamma_api_b64 analysis_b64
+  local skill_md_b64 gamma_api_b64 analysis_b64 trading_b64 monitoring_b64 wallet_script_b64
   skill_md_b64=$(base64 < "$SKILL_DIR/SKILL.md")
   gamma_api_b64=$(base64 < "$SKILL_DIR/references/gamma-api.md")
   analysis_b64=$(base64 < "$SKILL_DIR/references/analysis.md")
+  trading_b64=$(base64 < "$SKILL_DIR/references/trading.md")
+  monitoring_b64=$(base64 < "$SKILL_DIR/references/monitoring.md")
+  wallet_script_b64=$(base64 < "$SKILL_DIR/scripts/setup-polymarket-wallet.sh")
 
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
 
 SKILL_DIR="\$HOME/.openclaw/skills/polymarket"
-mkdir -p "\$SKILL_DIR/references"
+mkdir -p "\$SKILL_DIR/references" "\$SKILL_DIR/scripts" "\$HOME/scripts" "\$HOME/.openclaw/polymarket" "\$HOME/memory"
 
 echo '$skill_md_b64' | base64 -d > "\$SKILL_DIR/SKILL.md"
 echo '$gamma_api_b64' | base64 -d > "\$SKILL_DIR/references/gamma-api.md"
 echo '$analysis_b64' | base64 -d > "\$SKILL_DIR/references/analysis.md"
+echo '$trading_b64' | base64 -d > "\$SKILL_DIR/references/trading.md"
+echo '$monitoring_b64' | base64 -d > "\$SKILL_DIR/references/monitoring.md"
+echo '$wallet_script_b64' | base64 -d > "\$HOME/scripts/setup-polymarket-wallet.sh"
+chmod +x "\$HOME/scripts/setup-polymarket-wallet.sh"
 
-echo "  Polymarket prediction markets skill deployed successfully"
+pip3 install --quiet --break-system-packages py-clob-client eth-account websockets 2>/dev/null || true
+
+echo "  Polymarket prediction markets skill deployed successfully (Phase 1-3)"
 REMOTE_SCRIPT
 
   echo "  done: $vm_id"
@@ -85,14 +94,25 @@ REMOTE_SCRIPT
 
 case "$MODE" in
   --dry-run)
-    echo "=== DRY RUN: Polymarket Prediction Markets Skill Deployment ==="
+    echo "=== DRY RUN: Polymarket Prediction Markets Skill Deployment (Phase 1-3) ==="
     echo ""
     echo "Files to deploy:"
-    echo "  SKILL.md         -> ~/.openclaw/skills/polymarket/SKILL.md"
-    echo "  gamma-api.md     -> ~/.openclaw/skills/polymarket/references/gamma-api.md"
-    echo "  analysis.md      -> ~/.openclaw/skills/polymarket/references/analysis.md"
+    echo "  SKILL.md                       -> ~/.openclaw/skills/polymarket/SKILL.md"
+    echo "  references/gamma-api.md        -> ~/.openclaw/skills/polymarket/references/gamma-api.md"
+    echo "  references/analysis.md         -> ~/.openclaw/skills/polymarket/references/analysis.md"
+    echo "  references/trading.md          -> ~/.openclaw/skills/polymarket/references/trading.md"
+    echo "  references/monitoring.md       -> ~/.openclaw/skills/polymarket/references/monitoring.md"
+    echo "  scripts/setup-polymarket-wallet.sh -> ~/scripts/setup-polymarket-wallet.sh"
     echo ""
-    echo "No API keys required — Gamma API is public, no auth needed."
+    echo "Directories created:"
+    echo "  ~/.openclaw/skills/polymarket/scripts"
+    echo "  ~/scripts"
+    echo "  ~/.openclaw/polymarket"
+    echo "  ~/memory"
+    echo ""
+    echo "pip dependencies: py-clob-client, eth-account, websockets"
+    echo ""
+    echo "No API keys required — Gamma API is public, wallet generated locally."
     echo ""
 
     VMS=$(fetch_vms)
