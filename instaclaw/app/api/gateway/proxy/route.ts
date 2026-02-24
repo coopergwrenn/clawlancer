@@ -326,74 +326,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // --- Intelligent model routing ---
-    // Route the request to the optimal model tier based on content analysis,
-    // toggles, and per-tier budget. Advisory only — if routing throws, we
-    // proceed with the original model.
-    let routingDecision: RoutingDecision | null = null;
-    if (!isHeartbeat) {
-      try {
-        // Fetch tier budget for routing decisions
-        const { data: tierBudgetResult } = await supabase.rpc(
-          "instaclaw_check_tier_budget",
-          { p_vm_id: vm.id, p_tier: tier, p_timezone: userTz }
-        );
-        const tierBudget = computeTierBudget(tier, tierBudgetResult ? {
-          tier_2_calls: tierBudgetResult.tier_2_calls ?? 0,
-          tier_3_calls: tierBudgetResult.tier_3_calls ?? 0,
-        } : null);
-
-        // Extract routing signals from the request body
-        const messages = (parsedBody?.messages as Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>) ?? [];
-        const systemPrompt = typeof parsedBody?.system === "string" ? parsedBody.system as string : "";
-        const userMessage = extractLastUserMessage(messages);
-        const isTaskExecution = systemPrompt.includes("TASK EXECUTION MODE");
-        const isRecurringTask = systemPrompt.includes("RECURRING TASK");
-        const hasDeepResearch = systemPrompt.includes("DEEP RESEARCH");
-        const hasWebSearch = systemPrompt.includes("WEB SEARCH");
-
-        const routingCtx: RoutingContext = {
-          userMessage,
-          messageCount: messages.length,
-          systemPrompt,
-          isHeartbeat: false,
-          isTaskExecution,
-          isRecurringTask,
-          toggles: { deepResearch: hasDeepResearch, webSearch: hasWebSearch },
-          tierBudget,
-        };
-
-        routingDecision = routeModel(routingCtx);
-
-        // Apply the routing decision
-        if (routingDecision.model !== requestedModel) {
-          logger.info("Model routed", {
-            route: "gateway/proxy",
-            vmId: vm.id,
-            requestedModel,
-            routedModel: routingDecision.model,
-            tier: routingDecision.tier,
-            reason: routingDecision.reason,
-          });
-          requestedModel = routingDecision.model;
-          if (parsedBody) {
-            parsedBody.model = routingDecision.model;
-          }
-        }
-      } catch (routeErr) {
-        // Router is advisory — never block a request
-        logger.warn("Model routing failed, using original model", {
-          route: "gateway/proxy",
-          vmId: vm.id,
-          error: String(routeErr),
-          model: requestedModel,
-        });
-      }
-    }
-
     // --- Check daily usage limit (read-only, no increment) ---
-    // The RPC returns source: 'daily_limit' | 'credits' | 'buffer' | 'heartbeat' | null
-    // Usage is NOT incremented here — only after a successful Anthropic response.
+    // The merged RPC also returns tier budget (tier_2_calls, tier_3_calls,
+    // sonnet_remaining, opus_remaining) for non-heartbeat calls, eliminating
+    // the need for a separate instaclaw_check_tier_budget call.
+    // Uses the original model for cost weight — routing may change it, but
+    // the 200-unit buffer absorbs any weight difference. The increment RPC
+    // always uses the final routed model for correct cost tracking.
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_limit_only",
       { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz }
@@ -492,6 +431,67 @@ export async function POST(req: NextRequest) {
         usageWarning = `\n\n---\n⚠️ You've used ${displayCount} of ${displayLimit} daily units. Running low — credit packs available at instaclaw.io/dashboard?buy=credits`;
       } else if (usagePct >= 80) {
         usageWarning = `\n\n---\n⚡ You've used ${displayCount} of ${displayLimit} daily units.`;
+      }
+    }
+
+    // --- Intelligent model routing ---
+    // Route the request to the optimal model tier based on content analysis,
+    // toggles, and per-tier budget (returned by the merged limit check RPC).
+    // Advisory only — if routing throws, we proceed with the original model.
+    let routingDecision: RoutingDecision | null = null;
+    if (!isHeartbeat) {
+      try {
+        // Read tier budget from the merged limit check result
+        const tierBudget = computeTierBudget(tier, limitResult ? {
+          tier_2_calls: limitResult.tier_2_calls ?? 0,
+          tier_3_calls: limitResult.tier_3_calls ?? 0,
+        } : null);
+
+        // Extract routing signals from the request body
+        const messages = (parsedBody?.messages as Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>) ?? [];
+        const systemPrompt = typeof parsedBody?.system === "string" ? parsedBody.system as string : "";
+        const userMessage = extractLastUserMessage(messages);
+        const isTaskExecution = systemPrompt.includes("TASK EXECUTION MODE");
+        const isRecurringTask = systemPrompt.includes("RECURRING TASK");
+        const hasDeepResearch = systemPrompt.includes("DEEP RESEARCH");
+        const hasWebSearch = systemPrompt.includes("WEB SEARCH");
+
+        const routingCtx: RoutingContext = {
+          userMessage,
+          messageCount: messages.length,
+          systemPrompt,
+          isHeartbeat: false,
+          isTaskExecution,
+          isRecurringTask,
+          toggles: { deepResearch: hasDeepResearch, webSearch: hasWebSearch },
+          tierBudget,
+        };
+
+        routingDecision = routeModel(routingCtx);
+
+        // Apply the routing decision
+        if (routingDecision.model !== requestedModel) {
+          logger.info("Model routed", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            requestedModel,
+            routedModel: routingDecision.model,
+            tier: routingDecision.tier,
+            reason: routingDecision.reason,
+          });
+          requestedModel = routingDecision.model;
+          if (parsedBody) {
+            parsedBody.model = routingDecision.model;
+          }
+        }
+      } catch (routeErr) {
+        // Router is advisory — never block a request
+        logger.warn("Model routing failed, using original model", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          error: String(routeErr),
+          model: requestedModel,
+        });
       }
     }
 
