@@ -88,6 +88,20 @@ export default function DashboardLayout({
     }
   }, [status, router]);
 
+  // Auto-detect browser timezone and sync to backend if it differs.
+  // This catches pre-feature users (before Feb 21) who defaulted to America/New_York,
+  // and keeps timezone current if a user travels or changes system settings.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!browserTz) return;
+    fetch("/api/settings/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "sync_timezone", timezone: browserTz }),
+    }).catch(() => {}); // Silent — never block UI
+  }, [status]);
+
   // Poll heartbeat health for nav dot
   useEffect(() => {
     if (status !== "authenticated") return;

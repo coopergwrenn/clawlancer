@@ -230,6 +230,62 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ updated: true });
       }
 
+      case "sync_timezone": {
+        const { timezone } = body;
+        if (!timezone || typeof timezone !== "string") {
+          return NextResponse.json(
+            { error: "timezone is required" },
+            { status: 400 }
+          );
+        }
+
+        // Validate IANA timezone string
+        let validatedTz: string;
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: timezone });
+          validatedTz = timezone;
+        } catch {
+          return NextResponse.json(
+            { error: "Invalid timezone" },
+            { status: 400 }
+          );
+        }
+
+        // Skip if already correct on both user and VM
+        const { data: currentUser } = await supabase
+          .from("instaclaw_users")
+          .select("user_timezone")
+          .eq("id", session.user.id)
+          .single();
+
+        if (currentUser?.user_timezone === validatedTz && vm.user_timezone === validatedTz) {
+          return NextResponse.json({ updated: false, reason: "already_correct" });
+        }
+
+        // Update user record
+        await supabase
+          .from("instaclaw_users")
+          .update({ user_timezone: validatedTz })
+          .eq("id", session.user.id);
+
+        // Update VM record
+        await supabase
+          .from("instaclaw_vms")
+          .update({ user_timezone: validatedTz })
+          .eq("id", vm.id);
+
+        logger.info("Timezone synced from browser", {
+          route: "settings/update",
+          userId: session.user.id,
+          vmId: vm.id,
+          oldUserTz: currentUser?.user_timezone,
+          oldVmTz: vm.user_timezone,
+          newTz: validatedTz,
+        });
+
+        return NextResponse.json({ updated: true, timezone: validatedTz });
+      }
+
       case "toggle_agdp": {
         const { enabled } = body;
         if (typeof enabled !== "boolean") {
