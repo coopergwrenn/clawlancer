@@ -46,7 +46,15 @@ Very low liquidity markets may have stale or unreliable prices.
 - `liquidityNum` > $1,000,000 → High confidence in price accuracy
 
 ### 4. Resolution Criteria Ambiguity
-Sometimes markets have vague resolution criteria. Check the `description` field carefully — ambiguous resolution can create pricing uncertainty.
+Sometimes markets have vague resolution criteria. Always read the `description` field before analyzing — a market might resolve differently than the question implies.
+
+**What to look for:**
+- **"At the sole discretion of..."** — means a committee or individual decides, introducing subjective risk. Prices may embed a discount for this uncertainty.
+- **Date-dependent language** — "by March 2026" vs "before April 1, 2026" can differ by a day. Check whether the resolution date includes or excludes the boundary.
+- **Ambiguous definitions** — "Will X launch Product Y?" — what counts as "launch"? A beta? A press release? Full public availability? The `description` field usually specifies, but if it doesn't, the market carries resolution risk.
+- **Compound conditions** — "Will X happen AND Y happen?" — both conditions must be true. Markets on compound events tend to be cheaper than they should be because people overestimate the probability of conjunctions.
+
+**Example:** A market asks "Will the US ban TikTok?" but the resolution criteria says "Resolves YES if legislation is signed into law requiring ByteDance to divest." This is narrower than a "ban" — a executive order blocking TikTok might NOT trigger resolution. The 5-10% gap between "ban" probability and "specific legislation" probability is where ambiguity lives.
 
 ---
 
@@ -142,7 +150,7 @@ Use this structure for any market analysis the user requests:
 
 ```markdown
 **Market Analysis: [Market Question]**
-https://polymarket.com/event/[slug]
+https://polymarket.com/event/[event_slug]/[market_slug]
 
 **Current Market Pricing:**
 | Outcome | Price | Implied Probability |

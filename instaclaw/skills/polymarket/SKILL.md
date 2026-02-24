@@ -6,8 +6,8 @@ updated: 2026-02-24
 author: InstaClaw
 phase: 1  # Read-only intelligence. Trading capabilities coming in Phase 2/3.
 triggers:
-  keywords: [prediction market, polymarket, odds, probability, chances, bet on, betting, forecast, market odds, implied probability]
-  phrases: ["what are the chances of", "what are the odds", "prediction market", "polymarket", "will X happen", "probability of", "browse markets", "top prediction markets", "hottest markets", "market analysis", "is X likely"]
+  keywords: [prediction market, polymarket, odds, probability, chances, bet on, betting, forecast, market odds, implied probability, wager, betting odds, market intelligence, event probability, market scan, prediction odds]
+  phrases: ["what are the chances of", "what are the odds", "prediction market", "polymarket", "will X happen", "probability of", "browse markets", "top prediction markets", "hottest markets", "market analysis", "is X likely", "market scan", "what will happen", "prediction odds"]
   NOT: [stock market, stock price, financial analysis, crypto price, token price]
 ```
 
@@ -31,7 +31,7 @@ You have access to Polymarket, the world's largest prediction market (~$1B+ mont
 - User asks to browse or search Polymarket
 - User asks for an "opportunities report" or "market scan"
 - User wants to compare market probability to recent news
-- Another skill (competitive-intel, financial-analysis) needs probability data on an event
+- Another skill (competitive-intelligence, financial-analysis) needs probability data on an event
 
 **Do NOT use this skill for:**
 - Stock prices or financial instrument quotes (use financial-analysis skill)
@@ -56,11 +56,10 @@ curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&order=vo
 | `limit` | int | Number of results (default 100, max 100) |
 | `offset` | int | Pagination offset |
 | `closed` | bool | `false` = open markets only |
-| `active` | bool | `true` = active markets |
 | `order` | string | Sort field: `volume24hr`, `volumeNum`, `liquidityNum`, `endDate` |
 | `ascending` | bool | Sort direction (`false` = highest first) |
-| `tag` | string | Category filter: `Politics`, `Crypto`, `Sports`, `Tech`, `Pop Culture` |
-| `slug_contains` | string | Text search on market slug |
+
+**Searching/filtering by topic:** The Gamma API does NOT support server-side text search or category filtering. To find markets on a specific topic, fetch a large batch (`limit=100`) and filter client-side by keyword matching on the `question` field. See the "Searching for Markets" section below.
 
 ### Get Market Details
 
@@ -74,7 +73,7 @@ curl -s "https://gamma-api.polymarket.com/markets/{id}"
 curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=volume&ascending=false"
 ```
 
-Events group related markets (e.g., "2026 Midterms" contains multiple candidate markets). Same parameters as `/markets`.
+Events group related markets (e.g., "2028 Democratic Nominee" contains 128+ candidate markets). Supports `limit`, `offset`, `closed`, `order` (use `volume`, `volume24hr`, `endDate`, `createdAt`), `ascending`.
 
 ### Get Event Details
 
@@ -89,20 +88,26 @@ Returns the event with all associated markets in the `markets` array.
 ```
 id              — Market ID (use for /markets/{id})
 question        — The prediction question (e.g., "Will Bitcoin hit $200k by June?")
-outcomes        — JSON string: ["Yes", "No"] or multi-outcome
-outcomePrices   — JSON string: ["0.65", "0.35"] (prices = implied probabilities)
+outcomes        — JSON string: ["Yes", "No"] or multi-outcome (MUST parse with json.loads)
+outcomePrices   — JSON string: ["0.65", "0.35"] (prices = implied probabilities, MUST parse)
 volumeNum       — Total all-time trading volume (USD)
 volume24hr      — 24-hour trading volume (USD)
 liquidityNum    — Current market liquidity (USD)
 endDate         — Resolution deadline (ISO 8601)
+endDateIso      — Short date format (e.g., "2026-03-18") — sometimes missing
 description     — Full market description with resolution criteria
 closed          — Whether market has closed
-bestBid         — Best bid price
 bestAsk         — Best ask price
-oneDayPriceChange  — 24h price change
-oneWeekPriceChange — 7d price change
+lastTradePrice  — Most recent trade price
 slug            — URL-friendly market identifier
+events          — Array of associated event objects (use events[0].slug for URLs)
 ```
+
+**Sometimes-missing fields** (use `.get()` with defaults, never assume present):
+- `bestBid` — missing on ~15% of markets
+- `oneDayPriceChange` — missing on ~30% of markets
+- `oneWeekPriceChange` — missing on ~25% of markets
+- `endDateIso` — missing on ~5% of markets
 
 ### Rate Limits
 
@@ -126,7 +131,7 @@ When presenting market data, always use this structure:
 ### Single Market Report
 ```
 **[Market Question]**
-https://polymarket.com/event/[slug]
+https://polymarket.com/event/[event_slug]/[market_slug]
 
 | Outcome | Price | Implied Probability |
 |---------|-------|-------------------|
@@ -181,8 +186,17 @@ When a user asks for analysis on a market (not just prices), follow this process
 
 ### Step 1: Get Market Data
 ```bash
-# Fetch the specific market or search for it
-curl -s "https://gamma-api.polymarket.com/markets?slug_contains=bitcoin&closed=false&limit=5"
+# Fetch top markets and filter client-side for the topic
+curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
+  python3 -c "
+import json, sys
+markets = json.load(sys.stdin)
+# Filter by keyword (adjust search terms for the topic)
+matches = [m for m in markets if 'fed' in m['question'].lower() or 'rate' in m['question'].lower()]
+for m in matches[:5]:
+    prices = json.loads(m['outcomePrices'])
+    print(f\"{m['question']} — Yes: {float(prices[0])*100:.0f}%\")
+"
 ```
 
 ### Step 2: Cross-Reference with News
@@ -228,26 +242,45 @@ ALWAYS include at the end of any analysis:
 
 ```bash
 # Top markets by 24h volume (most active right now)
-curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&order=volume24hr&ascending=false"
-
-# Politics markets
-curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&tag=Politics&order=volumeNum&ascending=false"
-
-# Crypto markets
-curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&tag=Crypto&order=volumeNum&ascending=false"
-
-# Sports markets
-curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&tag=Sports&order=volume24hr&ascending=false"
-
-# Search for specific topic
-curl -s "https://gamma-api.polymarket.com/markets?slug_contains=bitcoin&closed=false&limit=10"
+curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=volume24hr&ascending=false"
 
 # Biggest events (grouped markets)
 curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=volume&ascending=false"
 
 # Markets closing soon (next 7 days)
 curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=endDate&ascending=true"
+
+# Single market by ID
+curl -s "https://gamma-api.polymarket.com/markets/654415"
+
+# Single event by ID (with all associated markets)
+curl -s "https://gamma-api.polymarket.com/events/30829"
 ```
+
+## Searching for Markets
+
+The Gamma API has **no server-side text search or category filter**. To find markets on a specific topic, fetch a batch and filter client-side:
+
+```bash
+# Search by keyword in the question field
+curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
+  python3 -c "
+import json, sys
+markets = json.load(sys.stdin)
+# Change the keywords for your topic
+keywords = ['bitcoin', 'btc', 'crypto']
+matches = [m for m in markets if any(kw in m['question'].lower() for kw in keywords)]
+for m in matches[:10]:
+    prices = json.loads(m['outcomePrices'])
+    print(f\"{m['question'][:60]} — Yes: {float(prices[0])*100:.0f}% — Vol: \${m.get('volume24hr',0):,.0f}\")
+"
+```
+
+**Common keyword sets for filtering:**
+- Politics: `['trump', 'biden', 'election', 'president', 'congress', 'senate', 'fed ', 'supreme court']`
+- Crypto: `['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'token', 'defi']`
+- Sports: `['win the', 'nba', 'nfl', 'premier league', 'champions league', 'super bowl', 'world cup']`
+- Tech: `['apple', 'google', 'openai', 'ai ', 'launch', 'release']`
 
 ## Parsing API Responses
 
@@ -288,29 +321,20 @@ for m in markets:
 
 ## Cross-Skill Integration
 
-### With competitive-intel
-When researching a competitor or industry event, check if there's a related prediction market:
-```bash
-# "What do prediction markets say about the TikTok ban?"
-curl -s "https://gamma-api.polymarket.com/markets?slug_contains=tiktok&closed=false&limit=5"
-```
-Include market probabilities in competitive intelligence reports for quantitative forecasting.
+### With competitive-intelligence
+When researching a competitor or industry event, check if there's a related prediction market. Fetch top markets and filter client-side for relevant keywords. Include market probabilities in competitive intelligence reports for quantitative forecasting.
 
 ### With financial-analysis
-When analyzing stocks or crypto, check related prediction markets for event risk:
-```bash
-# "What's the probability of a Fed rate cut?" → affects stock outlook
-curl -s "https://gamma-api.polymarket.com/markets?slug_contains=fed&closed=false&limit=10&order=volumeNum&ascending=false"
-```
+When analyzing stocks or crypto, check related prediction markets for event risk. For example, Fed rate decision markets directly impact stock/bond outlooks. Fetch top markets, filter for "fed" or "rate" keywords.
 
 ### With web-search-browser
 Every market analysis should include a web search step. The analysis framework above shows this pattern. Never present market prices without context.
 
-### With recurring-tasks
-For monitoring use cases, the agent can set up a recurring task:
+### With recurring tasks (heartbeat system)
+For monitoring use cases, the agent can set up a recurring task via the heartbeat/cron system:
 ```
 "Check the Bitcoin $200k market every morning and alert me if probability changes by >5%"
-→ Recurring task: curl the market, compare to saved price, alert via message if delta > 5%
+→ Recurring task: curl the market by ID, compare to saved price, alert via message if delta > 5%
 ```
 
 ## Opportunities Report
@@ -330,7 +354,7 @@ Use 3-5 API calls total. Don't fetch individually — use `limit=20` and filter 
 - **No financial advice** — Always frame as "market analysis" with the disclaimer
 - **Respect rate limits** — Max 1 req/sec, batch where possible
 - **No hallucinated data** — If you can't reach the API, say so. Never invent prices.
-- **Source attribution** — Always link to `https://polymarket.com/event/[slug]`
+- **Source attribution** — Always link to `https://polymarket.com/event/[event_slug]/[market_slug]` (get event slug from `market.events[0].slug`)
 - **Price = probability** — Always explain that $0.65 = 65% implied probability
 
 ## Future Roadmap
@@ -346,5 +370,6 @@ Use 3-5 API calls total. Don't fetch individually — use `limit=20` and filter 
 - [ ] Multi-outcome markets show all outcomes (not just top 2)
 - [ ] Disclaimer included on all analysis outputs
 - [ ] API errors handled gracefully (no crashes, no hallucinated data)
-- [ ] Source link to Polymarket included for every market referenced
+- [ ] Null/missing fields handled with `.get()` defaults (bestBid, oneDayPriceChange, etc.)
+- [ ] Source link to Polymarket included for every market referenced (use event_slug/market_slug format)
 - [ ] Rate limits respected (1 req/sec max, 3-5 calls per scan)

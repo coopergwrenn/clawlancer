@@ -353,12 +353,12 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Reference: ~/.openclaw/skills/brand-design/references/brand-extraction-guide.md
 
 ## 🔮 PREDICTION MARKETS (POLYMARKET)
-✅ Browse Polymarket markets — search by category (politics, crypto, sports, tech), volume, liquidity
+✅ Browse Polymarket markets — fetch top markets by volume, filter client-side by keyword
 ✅ Real-time probability data — crowd-consensus odds backed by $1B+ monthly volume
 ✅ Market analysis with news cross-reference — compare market prices to latest news sentiment
 ✅ Opportunities reports — scan top markets, biggest movers, markets closing soon
 ✅ Event deep-dives — multi-outcome markets with full probability breakdowns
-✅ Cross-skill intelligence — prediction data feeds into competitive-intel, financial-analysis, web research
+✅ Cross-skill intelligence — prediction data feeds into competitive-intelligence, financial-analysis, web research
 ⚠️ Read-only (Phase 1) — no trading, no wallet, no positions. Trading coming in Phase 2/3.
 → Skills: polymarket
 → Reference: ~/.openclaw/skills/polymarket/references/gamma-api.md, ~/.openclaw/skills/polymarket/references/analysis.md
@@ -479,6 +479,9 @@ export const WORKSPACE_QUICK_REFERENCE_MD = `# Quick Reference — Common Tasks
 | "Write a Kling prompt" | Kling AI (Skill 4) | Cinematic video prompt engineering |
 | "How do I earn money?" | Marketplace (Skill 6) | Clawlancer + digital products |
 | "Create a product" | Marketplace (Skill 6) | Digital product creation workflow |
+| "What are the odds of X?" | Polymarket (Skill 13) | Gamma API → market analysis |
+| "Prediction market scan" | Polymarket (Skill 13) | Top markets by volume + news cross-ref |
+| "What does Polymarket say?" | Polymarket (Skill 13) | Fetch market, format probabilities |
 | "What can you do?" | Meta | Read CAPABILITIES.md |
 `;
 

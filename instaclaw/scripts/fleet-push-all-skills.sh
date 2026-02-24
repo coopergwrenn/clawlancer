@@ -228,12 +228,12 @@ case "$MODE" in
     ;;
 
   --help|*)
-    echo "fleet-push-all-skills.sh — Deploy ALL 12 agent skills to fleet"
+    echo "fleet-push-all-skills.sh — Deploy ALL 13 agent skills to fleet"
     echo ""
     echo "Usage:"
     echo "  $0 --dry-run   — Preview all deployments (ALWAYS run first)"
-    echo "  $0 --canary <IP> — Deploy all 8 skills to 1 VM, verify"
-    echo "  $0 --all       — Deploy all 8 skills to all active VMs"
+    echo "  $0 --canary <IP> — Deploy all 13 skills to 1 VM, verify"
+    echo "  $0 --all       — Deploy all 13 skills to all active VMs"
     echo ""
     echo "Skills deployed (in order):"
     for i in "${!LABELS[@]}"; do
@@ -250,6 +250,6 @@ case "$MODE" in
     echo "  - E-Commerce (Shopify/Amazon/eBay/ShipStation)"
     echo ""
     echo "No API keys needed (doc-only or built-in tools):"
-    echo "  - Web Search, Code Execution, Kling AI, Marketplace, Social Media, Video Production, Brand Extraction"
+    echo "  - Web Search, Code Execution, Kling AI, Marketplace, Social Media, Video Production, Brand Extraction, Polymarket"
     ;;
 esac

@@ -16,13 +16,12 @@ List and search prediction markets.
 |-----------|------|---------|-------------|
 | `limit` | integer | 100 | Number of results to return (max 100) |
 | `offset` | integer | 0 | Pagination offset (skip N results) |
-| `active` | boolean | — | Filter by active status |
 | `closed` | boolean | — | `false` = open markets only, `true` = resolved/closed only |
 | `order` | string | — | Sort field (see table below) |
 | `ascending` | boolean | true | Sort direction. `false` = descending (highest first) |
-| `tag` | string | — | Category filter: `Politics`, `Crypto`, `Sports`, `Tech`, `Pop Culture` |
-| `slug_contains` | string | — | Text search on market slug (URL-friendly title) |
 | `id` | string | — | Fetch specific market(s) by ID (comma-separated for multiple) |
+
+**No server-side search:** The Gamma API does NOT support text search or category filtering. Parameters like `tag`, `slug_contains`, `active`, `_q`, and `search` are accepted but **silently ignored**. To find markets on a specific topic, fetch `limit=100` and filter client-side by keyword on the `question` field.
 
 ### Sortable Fields
 
@@ -40,16 +39,33 @@ List and search prediction markets.
 curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&order=volume24hr&ascending=false"
 ```
 
-### Example: Search for Bitcoin Markets
+### Example: Search for Bitcoin Markets (client-side filter)
 
 ```bash
-curl -s "https://gamma-api.polymarket.com/markets?slug_contains=bitcoin&closed=false&limit=10&order=volumeNum&ascending=false"
+curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
+  python3 -c "
+import json, sys
+markets = json.load(sys.stdin)
+matches = [m for m in markets if any(kw in m['question'].lower() for kw in ['bitcoin', 'btc'])]
+for m in matches[:10]:
+    prices = json.loads(m['outcomePrices'])
+    print(f\"{m['question'][:60]} — Yes: {float(prices[0])*100:.0f}%\")
+"
 ```
 
-### Example: Politics Markets by Total Volume
+### Example: Politics Markets (client-side filter)
 
 ```bash
-curl -s "https://gamma-api.polymarket.com/markets?tag=Politics&closed=false&limit=10&order=volumeNum&ascending=false"
+curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
+  python3 -c "
+import json, sys
+markets = json.load(sys.stdin)
+keywords = ['trump', 'biden', 'election', 'president', 'congress', 'senate', 'fed ', 'supreme court']
+matches = [m for m in markets if any(kw in m['question'].lower() for kw in keywords)]
+for m in matches[:10]:
+    prices = json.loads(m['outcomePrices'])
+    print(f\"{m['question'][:60]} — Yes: {float(prices[0])*100:.0f}% — Vol: \${m.get('volume24hr',0):,.0f}\")
+"
 ```
 
 ### Example: Markets Closing Within a Week
@@ -88,10 +104,8 @@ curl -s "https://gamma-api.polymarket.com/markets?limit=20&offset=20&closed=fals
   "liquidityNum": 1720416,
   "endDate": "2026-03-18T00:00:00Z",
   "endDateIso": "2026-03-18",
-  "category": "Politics",
   "active": true,
   "closed": false,
-  "bestBid": 0.006,
   "bestAsk": 0.007,
   "lastTradePrice": 0.0065,
   "oneDayPriceChange": -0.002,
@@ -110,18 +124,23 @@ curl -s "https://gamma-api.polymarket.com/markets?limit=20&offset=20&closed=fals
 |-------|------|-------|
 | `id` | string | Unique market identifier. Use in `/markets/{id}` |
 | `question` | string | The prediction question displayed to users |
-| `slug` | string | URL-friendly identifier. Use for Polymarket links: `polymarket.com/event/{slug}` |
-| `outcomes` | JSON string | **Must parse with `JSON.parse()` or `jq fromjson`**. Usually `["Yes", "No"]` but can be multi-outcome |
+| `slug` | string | URL-friendly identifier. Use with event slug for URLs. |
+| `outcomes` | JSON string | **Must parse with `json.loads()` or `jq fromjson`**. Usually `["Yes", "No"]` but can be multi-outcome |
 | `outcomePrices` | JSON string | **Must parse**. Prices in range [0, 1]. $0.65 = 65% implied probability |
 | `volumeNum` | number | Total all-time volume in USD |
 | `volume24hr` | number | Last 24h volume in USD. Best measure of current activity |
 | `liquidityNum` | number | Current liquidity in USD. Higher = more reliable prices |
 | `endDate` | string | ISO 8601 resolution deadline |
+| `endDateIso` | string | Short date (e.g., "2026-03-18"). Sometimes missing (~5%) |
 | `closed` | boolean | `true` = market resolved, trading stopped |
-| `bestBid` / `bestAsk` | number | Current orderbook best bid/ask prices |
-| `oneDayPriceChange` | number | Absolute price change in last 24h (e.g., -0.03 = dropped 3 cents) |
+| `bestAsk` | number | Best ask price (always present) |
+| `lastTradePrice` | number | Most recent trade price |
+| `bestBid` | number | Best bid price. **Sometimes missing (~15%)** — use `.get('bestBid', 0)` |
+| `oneDayPriceChange` | number | 24h price change. **Sometimes missing (~30%)** — use `.get('oneDayPriceChange', 0)` |
+| `oneWeekPriceChange` | number | 7d price change. **Sometimes missing (~25%)** — use `.get()` |
 | `description` | string | Full description including resolution criteria |
-| `clobTokenIds` | JSON string | Token IDs for the CLOB orderbook (used in trading, not needed for Phase 1) |
+| `events` | array | Associated event objects. Use `events[0].slug` to construct Polymarket URLs |
+| `clobTokenIds` | JSON string | Token IDs for the CLOB orderbook (Phase 2/3 only) |
 
 **Important:** `outcomes` and `outcomePrices` are JSON strings, not arrays. Always parse them:
 ```bash
@@ -155,7 +174,9 @@ List events. Events group related markets (e.g., "2028 Democratic Primary" conta
 
 ### Parameters
 
-Same as `/markets`: `limit`, `offset`, `active`, `closed`, `order`, `ascending`, `tag`, `slug_contains`.
+Supports: `limit`, `offset`, `closed`, `order`, `ascending`. Valid `order` values for events: `volume`, `volume24hr`, `endDate`, `createdAt`. (`volumeNum` and `liquidityNum` do NOT work on events.)
+
+**No server-side search:** Same limitation as `/markets` — no text search or category filtering. Fetch a batch and filter client-side.
 
 ### Example: Biggest Events by Volume
 
@@ -167,14 +188,13 @@ curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=vol
 
 ```json
 {
-  "id": "4690",
-  "ticker": "2028-democratic-presidential-nominee",
-  "slug": "2028-democratic-presidential-nominee",
+  "id": "30829",
+  "ticker": "democratic-presidential-nominee-2028",
+  "slug": "democratic-presidential-nominee-2028",
   "title": "Democratic Presidential Nominee 2028",
   "description": "Who will be the 2028 Democratic nominee?",
   "startDate": "2025-01-20T00:00:00Z",
   "endDate": "2028-08-30T00:00:00Z",
-  "category": "Politics",
   "active": true,
   "closed": false,
   "volume": 707262531,
@@ -192,9 +212,9 @@ curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=vol
 |-------|------|-------|
 | `id` | string | Unique event identifier |
 | `title` | string | Event title |
+| `slug` | string | URL slug — use for `polymarket.com/event/{slug}` |
 | `volume` | number | Total volume across all markets in this event |
-| `markets` | array | All markets belonging to this event (full market objects) |
-| `category` | string | Event category |
+| `markets` | array | All markets belonging to this event. **Note:** some placeholder markets may lack `outcomePrices` — always use `.get()` |
 
 ---
 
@@ -205,7 +225,7 @@ Get details for a single event, including all associated markets.
 ### Example
 
 ```bash
-curl -s "https://gamma-api.polymarket.com/events/4690"
+curl -s "https://gamma-api.polymarket.com/events/30829"
 ```
 
 ---
@@ -220,27 +240,46 @@ curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&order=vo
 
 ### Pattern 2: "All crypto prediction markets"
 ```bash
-curl -s "https://gamma-api.polymarket.com/markets?tag=Crypto&closed=false&limit=20&order=volumeNum&ascending=false"
+# Fetch large batch, filter client-side by keyword
+curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
+  python3 -c "
+import json, sys
+markets = json.load(sys.stdin)
+crypto_kw = ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'token', 'defi', 'solana', 'nft']
+matches = [m for m in markets if any(kw in m['question'].lower() for kw in crypto_kw)]
+for m in matches[:20]:
+    prices = json.loads(m['outcomePrices'])
+    print(f\"{m['question'][:60]} — Yes: {float(prices[0])*100:.0f}% — Vol: \${m.get('volume24hr',0):,.0f}\")
+"
 ```
 
 ### Pattern 3: "Markets about a specific topic"
 ```bash
-# Search by slug (URL-friendly text)
-curl -s "https://gamma-api.polymarket.com/markets?slug_contains=fed-rate&closed=false&limit=10"
+# Client-side keyword filter (replace keywords for your topic)
+curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
+  python3 -c "
+import json, sys
+markets = json.load(sys.stdin)
+matches = [m for m in markets if 'fed' in m['question'].lower() or 'rate' in m['question'].lower()]
+for m in matches[:10]:
+    prices = json.loads(m['outcomePrices'])
+    print(f\"{m['question'][:60]} — Yes: {float(prices[0])*100:.0f}%\")
+"
 ```
 
 ### Pattern 4: "What's the probability of X?"
 ```bash
-# Search, then extract the specific market's outcomePrices
-curl -s "https://gamma-api.polymarket.com/markets?slug_contains=bitcoin-200k&closed=false&limit=5" | \
+# Fetch markets, find the specific one, extract probabilities
+curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
   python3 -c "
 import json, sys
 for m in json.load(sys.stdin):
-    prices = json.loads(m['outcomePrices'])
-    outcomes = json.loads(m['outcomes'])
-    print(f\"{m['question']}\")
-    for o, p in zip(outcomes, prices):
-        print(f\"  {o}: {float(p)*100:.1f}%\")
+    if 'bitcoin' in m['question'].lower() and '200k' in m['question'].lower():
+        prices = json.loads(m['outcomePrices'])
+        outcomes = json.loads(m['outcomes'])
+        print(f\"{m['question']}\")
+        for o, p in zip(outcomes, prices):
+            print(f\"  {o}: {float(p)*100:.1f}%\")
 "
 ```
 
@@ -276,15 +315,17 @@ for m in markets:
 
 ### Pattern 7: "Event deep-dive (multi-outcome)"
 ```bash
-# Fetch event with all markets
-curl -s "https://gamma-api.polymarket.com/events/4690" | \
+# Fetch event with all markets (note: some placeholder markets may lack outcomePrices)
+curl -s "https://gamma-api.polymarket.com/events/30829" | \
   python3 -c "
 import json, sys
 event = json.load(sys.stdin)
 print(f\"Event: {event['title']}\")
 print(f\"Volume: \${event['volume']:,.0f}\")
 print()
-for m in sorted(event.get('markets', []), key=lambda x: -float(json.loads(x['outcomePrices'])[0])):
+# Filter to markets that have prices (skip placeholders)
+priced = [m for m in event.get('markets', []) if m.get('outcomePrices')]
+for m in sorted(priced, key=lambda x: -float(json.loads(x['outcomePrices'])[0]))[:20]:
     prices = json.loads(m['outcomePrices'])
     print(f\"  {float(prices[0])*100:.1f}% — {m['question'][:60]}\")
 "
@@ -318,14 +359,25 @@ The Gamma API is public and doesn't enforce strict rate limits, but be a good ci
 
 ## Constructing Polymarket URLs
 
-To link users to a market on Polymarket's website:
+To link users to a specific market on Polymarket's website, you need BOTH the event slug and the market slug:
+```
+https://polymarket.com/event/{event_slug}/{market_slug}
+```
+
+Get the event slug from `market.events[0].slug` (embedded in every market response).
+
+**Example:**
+```python
+market_slug = market['slug']  # "will-tottenham-win-the-202526-english-premier-league"
+event_slug = market['events'][0]['slug']  # "english-premier-league-winner"
+url = f"https://polymarket.com/event/{event_slug}/{market_slug}"
+# → https://polymarket.com/event/english-premier-league-winner/will-tottenham-win-the-202526-english-premier-league
+```
+
+For event-level links (showing all markets in an event):
 ```
 https://polymarket.com/event/{event_slug}
 ```
-
-The `slug` field from the market or event response is the URL path. Example:
-- Market slug: `will-the-fed-increase-interest-rates-march-2026`
-- URL: `https://polymarket.com/event/will-the-fed-increase-interest-rates-march-2026`
 
 ---
 
@@ -333,17 +385,40 @@ The `slug` field from the market or event response is the URL path. Example:
 
 ```bash
 # Robust fetch with error handling
-RESPONSE=$(curl -s --max-time 10 "https://gamma-api.polymarket.com/markets?limit=10&closed=false&order=volume24hr&ascending=false")
+RESPONSE=$(curl -s --max-time 10 -w "\n%{http_code}" "https://gamma-api.polymarket.com/markets?limit=10&closed=false&order=volume24hr&ascending=false")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
 
-if [ -z "$RESPONSE" ] || [ "$RESPONSE" = "[]" ]; then
+# Check HTTP status
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "Polymarket API returned HTTP $HTTP_CODE. Data temporarily unavailable."
+  exit 0
+fi
+
+# Check for empty or error response
+if [ -z "$BODY" ] || [ "$BODY" = "[]" ]; then
   echo "Polymarket data is temporarily unavailable."
   exit 0
 fi
 
-# Validate JSON
-echo "$RESPONSE" | python3 -c "import json, sys; json.load(sys.stdin)" 2>/dev/null
+# Check for JSON error response (API sometimes returns {"type":"validation error",...})
+echo "$BODY" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if isinstance(data, dict) and 'error' in data:
+    print(f'Polymarket API error: {data[\"error\"]}')
+    sys.exit(1)
+" 2>/dev/null
 if [ $? -ne 0 ]; then
-  echo "Polymarket API returned invalid data."
+  echo "Polymarket API returned an error."
   exit 0
 fi
+```
+
+**Handling null fields in Python:**
+```python
+# Always use .get() with defaults for sometimes-missing fields
+change = m.get('oneDayPriceChange', 0) or 0  # handles both missing and None
+bid = m.get('bestBid', 0) or 0
+end_date = m.get('endDateIso', m.get('endDate', 'N/A')[:10])
 ```
