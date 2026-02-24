@@ -483,6 +483,15 @@ export async function POST(req: NextRequest) {
           if (parsedBody) {
             parsedBody.model = routingDecision.model;
           }
+        } else {
+          // Log confirmations at debug level for routing distribution visibility
+          logger.debug("Model routing confirmed", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            model: requestedModel,
+            tier: routingDecision.tier,
+            reason: routingDecision.reason,
+          });
         }
       } catch (routeErr) {
         // Router is advisory — never block a request
