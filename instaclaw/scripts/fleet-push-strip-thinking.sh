@@ -109,7 +109,7 @@ STALE_FLAG = os.path.join(SESSIONS_DIR, ".memory-stale-notified")
 # Timing constants
 MEMORY_FLAG_TTL = 300    # 5 minutes before giving up on memory write
 STALE_HOURS = 24         # Memory considered stale after this many hours
-STALE_MIN_SESSION_KB = 50  # Minimum session size (KB) to trigger staleness check
+STALE_MIN_SESSION_KB = 10  # Minimum session size (KB) to trigger staleness check
 
 # MEMORY.md injection markers
 MEM_URGENT_START = "<!-- INSTACLAW:MEMORY_WRITE_URGENT:START -->"
@@ -258,6 +258,13 @@ try:
             except Exception:
                 pass
 
+            # If the session skipped the 400-512KB warning window (grew too fast),
+            # inject the urgent prompt into MEMORY.md anyway. The agent won't see it
+            # in the archived session, but it'll be there when the fresh session starts.
+            if not flag_existed:
+                inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
+                print(f"WARNING: Session {session_id} skipped memory warning window ({file_size} bytes, no prior flag). Injected memory prompt for next session.")
+
             os.remove(jsonl_file)
             archived_sessions.append(session_id)
 
@@ -280,7 +287,11 @@ try:
                         os.remove(flag)
                 except Exception:
                     pass
-            remove_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END)
+            # Only remove the urgent section if the flag existed (normal flow).
+            # If the session skipped the warning window, we just injected it above
+            # and want it to persist for the next session.
+            if flag_existed:
+                remove_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END)
             remove_memory_section(MEMORY_MD, MEM_STALE_START, MEM_STALE_END)
             continue
 
