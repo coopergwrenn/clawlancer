@@ -2177,24 +2177,36 @@ export async function configureOpenClaw(
       ? `http://${vm.ip_address}:${GATEWAY_PORT}`
       : null;
 
+    // Build update payload — NEVER overwrite existing channel tokens with null.
+    // The health check reconfigure path may not have the token in its input,
+    // but the token may still be valid on disk and in the DB.
+    const vmUpdate: Record<string, unknown> = {
+      gateway_url: gatewayUrl,
+      gateway_token: gatewayToken,
+      control_ui_url: gatewayUrl,
+      health_status: healthStatus,
+      last_health_check: new Date().toISOString(),
+      ssh_fail_count: 0,
+      health_fail_count: 0,
+      config_version: 1,
+      default_model: config.model || "claude-sonnet-4-5-20250929",
+      api_mode: config.apiMode,
+      tier: config.tier,
+      channels_enabled: config.channels ?? [],
+    };
+    // Only write channel tokens if they are explicitly provided (non-null/undefined).
+    // This prevents reconfigure from wiping tokens that exist in the DB but
+    // weren't passed through the configure input.
+    if (config.telegramBotToken) {
+      vmUpdate.telegram_bot_token = config.telegramBotToken;
+    }
+    if (config.discordBotToken) {
+      vmUpdate.discord_bot_token = config.discordBotToken;
+    }
+
     const { error: vmError } = await supabase
       .from("instaclaw_vms")
-      .update({
-        gateway_url: gatewayUrl,
-        gateway_token: gatewayToken,
-        control_ui_url: gatewayUrl,
-        health_status: healthStatus,
-        last_health_check: new Date().toISOString(),
-        ssh_fail_count: 0,
-        health_fail_count: 0,
-        config_version: 1,
-        default_model: config.model || "claude-sonnet-4-5-20250929",
-        api_mode: config.apiMode,
-        tier: config.tier,
-        telegram_bot_token: config.telegramBotToken ?? null,
-        discord_bot_token: config.discordBotToken ?? null,
-        channels_enabled: config.channels ?? [],
-      })
+      .update(vmUpdate)
       .eq("id", vm.id);
     mark("db_write_done");
 
