@@ -82,28 +82,31 @@ export const CONFIG_SPEC = {
 // The model still gets thinking on the CURRENT turn — we only strip
 // thinking from SAVED history so it's never replayed to the API.
 const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
-"""Strip thinking blocks from OpenClaw session files.
-Prevents 'Invalid signature in thinking block' errors by removing
-thinking blocks after each API response. The model still thinks on
-the current turn -- we only strip from saved history.
+"""Strip thinking blocks, truncate tool results, and cap session sizes.
 
-CRITICAL FIX (2026-02-22): Removed SKIP_IF_MODIFIED_WITHIN check.
-The old logic skipped files modified within 10 seconds, but active
-users (especially those with automated bot crons) kept files
-perpetually "recently modified" — so thinking blocks were NEVER
-stripped. This caused the Ladio/Yudansa corruption incident.
+1. Strips thinking blocks from assistant messages (prevents "Invalid signature" errors)
+2. Truncates individual tool results larger than MAX_TOOL_RESULT_CHARS
+3. Archives sessions exceeding MAX_SESSION_BYTES (prevents context overflow)
 
-Now uses atomic write (write to .tmp then os.replace) which is safe
-even if the gateway is actively appending to the file — the gateway
-will simply re-open the new inode on the next write."""
-import json, os, glob, subprocess, fcntl, time
+CRITICAL FIX (2026-02-23): Added session size enforcement. Previously only
+warned about oversized sessions but never cleaned them. This caused Renata's
+bot to hit "Context overflow: prompt too large for the model" when a session
+grew to 4.4MB (97% tool results) with 0 compactions.
+
+Uses atomic write (write to .tmp then os.replace) which is safe even if the
+gateway is actively appending to the file."""
+import json, os, glob, subprocess, fcntl, time, shutil
 
 SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
+SESSIONS_JSON = os.path.join(SESSIONS_DIR, "sessions.json")
+ARCHIVE_DIR = os.path.join(SESSIONS_DIR, "archive")
 LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
-MAX_SESSION_BYTES = ${512 * 1024}  # 512KB — alert threshold for size
+MAX_SESSION_BYTES = ${512 * 1024}  # 512KB — archive sessions larger than this
+MAX_TOOL_RESULT_CHARS = 8000       # Truncate individual tool results over this
 
 total_stripped = 0
-oversized_files = []
+total_truncated = 0
+archived_sessions = []
 
 # Acquire exclusive lock to prevent concurrent runs
 try:
@@ -115,8 +118,28 @@ except (IOError, OSError):
 try:
     for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
         file_size = os.path.getsize(jsonl_file)
+
+        # Archive oversized sessions — prevents context overflow
         if file_size > MAX_SESSION_BYTES:
-            oversized_files.append((jsonl_file, file_size))
+            session_id = os.path.basename(jsonl_file).replace(".jsonl", "")
+            os.makedirs(ARCHIVE_DIR, exist_ok=True)
+            archive_name = f"{session_id}-overflow-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+            shutil.copy2(jsonl_file, os.path.join(ARCHIVE_DIR, archive_name))
+            os.remove(jsonl_file)
+            archived_sessions.append(session_id)
+
+            # Remove from sessions.json so gateway starts fresh
+            try:
+                with open(SESSIONS_JSON) as f:
+                    sj = json.load(f)
+                for key in list(sj.keys()):
+                    if sj[key].get("sessionId") == session_id:
+                        del sj[key]
+                with open(SESSIONS_JSON, "w") as f:
+                    json.dump(sj, f, indent=2)
+            except Exception:
+                pass
+            continue
 
         modified = False
         cleaned_lines = []
@@ -127,6 +150,8 @@ try:
                     try:
                         d = json.loads(line)
                         msg = d.get("message", {})
+
+                        # Strip thinking blocks from assistant messages
                         if msg and msg.get("role") == "assistant":
                             content = msg.get("content", [])
                             if isinstance(content, list):
@@ -136,6 +161,23 @@ try:
                                     d["message"]["content"] = new_content
                                     total_stripped += len(content) - len(new_content)
                                     modified = True
+
+                        # Truncate oversized tool results
+                        if msg and msg.get("role") == "tool":
+                            content = msg.get("content", [])
+                            if isinstance(content, list):
+                                for block in content:
+                                    if isinstance(block, dict) and block.get("type") == "text":
+                                        text = block.get("text", "")
+                                        if len(text) > MAX_TOOL_RESULT_CHARS:
+                                            block["text"] = text[:MAX_TOOL_RESULT_CHARS] + "\\n... [truncated by session manager]"
+                                            total_truncated += 1
+                                            modified = True
+                            elif isinstance(content, str) and len(content) > MAX_TOOL_RESULT_CHARS:
+                                d["message"]["content"] = content[:MAX_TOOL_RESULT_CHARS] + "\\n... [truncated by session manager]"
+                                total_truncated += 1
+                                modified = True
+
                         cleaned_lines.append(json.dumps(d, ensure_ascii=False))
                     except json.JSONDecodeError:
                         cleaned_lines.append(line.rstrip("\\n"))
@@ -149,9 +191,17 @@ try:
         except Exception:
             pass  # never crash the cron
 
-    if total_stripped > 0:
-        print(f"Stripped {total_stripped} thinking blocks")
-        # Restart gateway so OpenClaw reloads clean session files from disk.
+    # Restart gateway if we archived sessions (forces fresh session)
+    if archived_sessions:
+        print(f"Archived {len(archived_sessions)} oversized session(s): {archived_sessions}")
+        try:
+            subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
+            print("Gateway restarted after session archive")
+        except Exception as e:
+            print(f"Gateway restart failed: {e}")
+    elif total_stripped > 0 or total_truncated > 0:
+        print(f"Stripped {total_stripped} thinking blocks, truncated {total_truncated} tool results")
+        # Only restart for thinking strip if gateway has been up >60min
         try:
             r = subprocess.run(
                 ["systemctl", "--user", "show", "openclaw-gateway", "--property=ActiveEnterTimestamp"],
@@ -170,9 +220,13 @@ try:
         except Exception as e:
             print(f"Restart check failed: {e}")
 
-    if oversized_files:
-        for f, sz in oversized_files:
-            print(f"WARNING: oversized session {os.path.basename(f)} = {sz} bytes")
+    # Clean up archives older than 7 days
+    try:
+        for f in glob.glob(os.path.join(ARCHIVE_DIR, "*.jsonl")):
+            if time.time() - os.path.getmtime(f) > 7 * 86400:
+                os.remove(f)
+    except Exception:
+        pass
 finally:
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
