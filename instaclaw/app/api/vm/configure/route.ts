@@ -149,13 +149,21 @@ export async function POST(req: NextRequest) {
     // configureOpenClaw's atomic update already wrote: gateway_url, gateway_token,
     // health_status "healthy", telegram_bot_token, discord_bot_token, channels_enabled,
     // default_model, api_mode, tier. We only add fields not covered there.
+    // Only write user-configured fields when a real value exists — never null-overwrite.
+    const supplementalUpdate: Record<string, unknown> = {
+      configure_attempts: 0,
+    };
+    const effectiveUsername = pending?.telegram_bot_username ?? vm.telegram_bot_username;
+    if (effectiveUsername) {
+      supplementalUpdate.telegram_bot_username = effectiveUsername;
+    }
+    const effectiveTimezone = userProfile?.user_timezone ?? vm.user_timezone;
+    if (effectiveTimezone) {
+      supplementalUpdate.user_timezone = effectiveTimezone;
+    }
     await supabase
       .from("instaclaw_vms")
-      .update({
-        telegram_bot_username: pending?.telegram_bot_username ?? vm.telegram_bot_username ?? null,
-        configure_attempts: 0,
-        user_timezone: userProfile?.user_timezone ?? vm.user_timezone ?? 'America/New_York',
-      })
+      .update(supplementalUpdate)
       .eq("id", vm.id);
 
     // Mark user as onboarding complete + clean up pending record + clear deployment lock.

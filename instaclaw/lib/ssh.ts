@@ -2202,9 +2202,10 @@ export async function configureOpenClaw(
       ? `http://${vm.ip_address}:${GATEWAY_PORT}`
       : null;
 
-    // Build update payload — NEVER overwrite existing channel tokens with null.
-    // The health check reconfigure path may not have the token in its input,
-    // but the token may still be valid on disk and in the DB.
+    // Build update payload — NEVER overwrite existing user-configured values with null.
+    // The health check reconfigure path may not have user config in its input,
+    // but those values may still be valid in the DB. Only operational fields
+    // (gateway URL, health status, counters) are written unconditionally.
     const vmUpdate: Record<string, unknown> = {
       gateway_url: gatewayUrl,
       gateway_token: gatewayToken,
@@ -2214,14 +2215,22 @@ export async function configureOpenClaw(
       ssh_fail_count: 0,
       health_fail_count: 0,
       config_version: 1,
-      default_model: config.model || "claude-sonnet-4-5-20250929",
-      api_mode: config.apiMode,
-      tier: config.tier,
-      channels_enabled: config.channels ?? [],
     };
-    // Only write channel tokens if they are explicitly provided (non-null/undefined).
-    // This prevents reconfigure from wiping tokens that exist in the DB but
-    // weren't passed through the configure input.
+    // Only write user-configured fields when explicitly provided (non-null/undefined).
+    // This prevents reconfigure from wiping values that exist in the DB but
+    // weren't passed through the configure input (e.g. health check path).
+    if (config.model) {
+      vmUpdate.default_model = config.model;
+    }
+    if (config.apiMode) {
+      vmUpdate.api_mode = config.apiMode;
+    }
+    if (config.tier) {
+      vmUpdate.tier = config.tier;
+    }
+    if (config.channels) {
+      vmUpdate.channels_enabled = config.channels;
+    }
     if (config.telegramBotToken) {
       vmUpdate.telegram_bot_token = config.telegramBotToken;
     }
