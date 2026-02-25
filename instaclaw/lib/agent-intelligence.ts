@@ -247,12 +247,19 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 ⚠️ Direct sales require human oversight for transactions >$50
 → Skills: marketplace-earning
 
-## 📊 DATA & ANALYSIS
-✅ Generate charts (matplotlib, plotly)
-✅ Process CSV/Excel files (pandas)
-✅ SQL databases (SQLite)
-✅ Web scraping (Beautiful Soup, Puppeteer)
-→ Tools: shell, browser
+## 📊 DATA VISUALIZATION & CHARTING
+✅ McKinsey-quality charts and graphs — professional data visualization for any dataset
+✅ Financial charts — price charts with technical indicators (SMA, Bollinger Bands, RSI overlays)
+✅ Business charts — bar, line, pie, scatter, heatmaps, waterfall, stacked area, treemaps
+✅ Dark-themed professional styling — 150 DPI, print-ready, presentation-grade output
+✅ Data processing pipeline — CSV/Excel/JSON → pandas transformation → matplotlib chart → PNG/PDF
+✅ Multi-series charts — overlay multiple datasets, indicators, and trend lines on one chart
+✅ SQL databases (SQLite) for data storage and querying before visualization
+✅ Web scraping (Beautiful Soup, Puppeteer) to gather data for charts
+⚠️ Charts output as static images (PNG/PDF) — no interactive web dashboards yet
+→ Tools: shell (matplotlib, pandas, plotly pre-installed), browser
+→ Scripts: ~/scripts/market-analysis.py (financial charting engine)
+→ Use when: user asks for charts, graphs, visualizations, data plots, dashboards, reports with visuals, "graph this", "chart that", "visualize my data"
 
 ## 📧 EMAIL & COMMUNICATION
 ✅ Send email from your @instaclaw.io address (email-client.sh — Resend)
