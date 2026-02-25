@@ -160,9 +160,86 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ========================================================================
+  // Recycle expired invites: reset waitlist entries so they get re-invited
+  // in the next batch. Without this, users whose 7-day invite expired
+  // sit in limbo — marked as "invited" but with a dead code.
+  // ========================================================================
+  let recycled = 0;
+  try {
+    const now = new Date().toISOString();
+
+    // Find all expired, unused invites
+    const { data: expiredInvites } = await supabase
+      .from("instaclaw_invites")
+      .select("code, email, expires_at")
+      .eq("times_used", 0)
+      .eq("is_active", true)
+      .lt("expires_at", now);
+
+    if (expiredInvites?.length) {
+      for (const inv of expiredInvites) {
+        // Skip if they already signed up
+        const { data: user } = await supabase
+          .from("instaclaw_users")
+          .select("id")
+          .ilike("email", inv.email)
+          .limit(1);
+        if (user?.length) continue;
+
+        // Skip if they have a different active invite
+        const { data: activeInv } = await supabase
+          .from("instaclaw_invites")
+          .select("code")
+          .eq("email", inv.email)
+          .eq("is_active", true)
+          .gt("expires_at", now)
+          .neq("code", inv.code)
+          .limit(1);
+        if (activeInv?.length) continue;
+
+        // Reset their waitlist entry so batch script picks them up again
+        const { data: wl } = await supabase
+          .from("instaclaw_waitlist")
+          .select("id, invite_sent_at")
+          .ilike("email", inv.email)
+          .not("invite_sent_at", "is", null)
+          .limit(1);
+
+        if (wl?.length) {
+          await supabase
+            .from("instaclaw_waitlist")
+            .update({ invite_sent_at: null, invite_code: null })
+            .eq("id", wl[0].id);
+          recycled++;
+        }
+
+        // Deactivate the expired invite
+        await supabase
+          .from("instaclaw_invites")
+          .update({ is_active: false })
+          .eq("code", inv.code);
+      }
+    }
+
+    if (recycled > 0) {
+      logger.info("Recycled expired invite waitlist entries", {
+        route: "cron/backup",
+        recycled,
+        totalExpired: expiredInvites?.length ?? 0,
+      });
+    }
+  } catch (err) {
+    logger.error("Expired invite recycling failed", {
+      route: "cron/backup",
+      error: String(err),
+    });
+  }
+
   return NextResponse.json({
     backed_up,
     total: vms.length,
     errors: errors.length ? errors : undefined,
+    recycled_expired_invites: recycled,
   });
 }

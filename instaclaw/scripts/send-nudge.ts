@@ -34,8 +34,15 @@ const UNSUB_HEADERS = {
   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
 };
 
+function getBaseUrl(): string {
+  const raw = process.env.NEXTAUTH_URL;
+  if (!raw) return "https://instaclaw.io";
+  const cleaned = raw.replace(/^["'\s]+|["'\s]+$/g, "").replace(/[\x00-\x1f\x7f\\]/g, "").replace(/\/+$/, "");
+  try { const url = new URL(cleaned); return url.origin; } catch { return "https://instaclaw.io"; }
+}
+
 function buildNudgeText(inviteCode: string, expiresAt: string): string {
-  const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
+  const signupUrl = `${getBaseUrl()}/signup`;
   const expiresDate = new Date(expiresAt);
   const daysLeft = Math.max(0, Math.ceil((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 
@@ -60,7 +67,7 @@ instaclaw.io | @instaclaws`;
 }
 
 function buildNudgeHtml(inviteCode: string, expiresAt: string): string {
-  const signupUrl = `${process.env.NEXTAUTH_URL}/signup`;
+  const signupUrl = `${getBaseUrl()}/signup`;
   const font = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
   const mono = `'Courier New', Courier, monospace`;
 
