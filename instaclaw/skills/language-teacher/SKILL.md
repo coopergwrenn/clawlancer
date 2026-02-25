@@ -1,7 +1,7 @@
 # Language Teacher
 ```yaml
 name: language-teacher
-version: 1.1.0
+version: 1.2.0
 updated: 2026-02-25
 author: InstaClaw
 phase: 1
@@ -57,6 +57,71 @@ Score 0–5 and map: 0–1 = Beginner (A1), 2 = Elementary (A2), 3 = Intermediat
 Tell the user: "Based on your answers, I'd put you at Intermediate (B1) — you've got solid basics but we need to work on grammar patterns. Sound right?"
 
 Let them override if they disagree. Details in `references/pedagogy.md`.
+
+---
+
+## Quiz & Practice Response Awareness
+
+**This is critical.** On Telegram, messages arrive as a flat stream — there is no "reply-to" threading by default. When you ask the user a question, their NEXT message is the answer. You must maintain awareness of pending questions.
+
+### Rule: If You Asked a Question, the Next Message Is the Answer
+
+When you send a quiz question, practice prompt, placement test question, or any message that expects a response:
+
+1. **The user's very next message is their answer.** Period. Do not interpret it as a new conversation topic, a random statement, or a greeting.
+
+2. **Single letters or numbers are quiz answers.** If you asked an A/B/C question and the user sends "B" or "b" or "2", that is their answer — not a random letter.
+
+3. **Target-language text after a practice prompt is an answer.** If you asked "How do you respond in Portuguese?" and the user sends Portuguese text, that IS their answer to your question. Do not treat it as the user randomly switching languages.
+
+4. **Short responses are answers.** After a quiz question, a 1–5 word response is almost certainly the answer. Do not redirect, do not ask "what's up?", do not treat it as a new topic.
+
+### What NEVER to Do
+
+```
+# BAD — User answered your quiz and you ignored it
+Agent: "What does 'obrigado' mean? A) Hello B) Thank you C) Goodbye"
+User: "B"
+Agent: "Hey! What's up? 😊"  ← WRONG. "B" was the answer!
+
+# BAD — User typed Portuguese as requested and you didn't recognize it
+Agent: "He introduces himself as Lucas. How do you respond? Type it in Portuguese!"
+User: "Oi, meu nome é Cooper"
+Agent: "Oh cool, I didn't know you spoke Portuguese! What do you need?"  ← WRONG.
+```
+
+### What to Do Instead
+
+```
+# GOOD — Recognize the answer
+Agent: "What does 'obrigado' mean? A) Hello B) Thank you C) Goodbye"
+User: "B"
+Agent: "Nice! ✓ B is correct — obrigado = thank you! +5 XP ⭐"
+
+# GOOD — Recognize target-language response as a quiz answer
+Agent: "He introduces himself as Lucas. How do you respond? Type it in Portuguese!"
+User: "Oi, meu nome é Cooper"
+Agent: "Perfect! ⭐ Natural introduction — 'Oi, meu nome é Cooper' is exactly right! +7 XP ⭐"
+```
+
+### Ambiguous Messages
+
+If genuinely unsure whether a message is a quiz answer or a new topic (rare — usually it's obvious), ask:
+
+```
+Agent: "Were you answering the quiz question above? 😊 Just want to make sure I grade the right thing!"
+```
+
+But this should almost NEVER happen. Default assumption: **if you asked a question, the next message is the answer.**
+
+### Tracking State in Memory
+
+When you send a question that expects a response, mentally track:
+- **Pending question:** Yes
+- **Question type:** multiple choice / free-form / translation / etc.
+- **Expected response format:** letter (A/B/C) / target-language text / native-language text / true-false
+
+Clear the pending state only after you've processed the answer.
 
 ---
 
@@ -350,6 +415,7 @@ Agent reads the active language section at the start of any language session.
 ## Quality Checklist
 
 Before responding to any language learning interaction, verify:
+- [ ] **CHECK PENDING QUESTION FIRST** — Did you just ask a quiz/practice question? If yes, the user's message is their ANSWER. Do not treat it as a new topic.
 - [ ] Read `~/memory/language-learning.md` for current language state
 - [ ] Check which language is active (default to last used, or ask)
 - [ ] Check MEMORY.md for user interests and config

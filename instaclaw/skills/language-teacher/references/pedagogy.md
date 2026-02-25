@@ -522,6 +522,78 @@ See `references/lesson-templates.md` for the complete First Lesson Template.
 
 ---
 
+## 11. Telegram Context Awareness — Pending Questions
+
+**This is the #1 source of user frustration.** On Telegram, messages arrive as a flat
+stream with no threading. When you ask a question, the user's next message IS their
+answer. You MUST maintain awareness of what you just asked.
+
+### The Problem
+
+The agent asks a quiz question. The user responds. The agent doesn't recognize the
+response as an answer and treats it as a brand-new message — asking "what's up?" or
+"I didn't know you spoke [language]!" instead of grading the answer.
+
+This makes the user feel ignored and forces them to use Telegram's reply-to-message
+feature or repeat themselves. It kills momentum instantly.
+
+### The Rule
+
+**If you sent a message that expects a response, the user's very next message is
+that response.** No exceptions. No guessing. This is the default assumption.
+
+### Response Pattern Recognition
+
+After asking a question, recognize these as answers:
+
+| You Asked | User Sends | Interpretation |
+|-----------|-----------|----------------|
+| A/B/C multiple choice | "B", "b", "2", "answer B" | Answer: option B |
+| "Translate this" | Text in target language | Their translation attempt |
+| "How do you respond in [language]?" | Text in that language | Their practice response |
+| "True or false?" | "true", "false", "T", "F" | Their answer |
+| "Fill in the blank" | A single word or short phrase | The blank fill |
+| "What does [word] mean?" | A definition or translation | Their answer |
+| Open-ended practice prompt | Any response in target language | Their practice attempt |
+
+### What Goes Wrong Without This
+
+```
+# Scenario 1: Multiple choice ignored
+Agent: "Walking into a café at 10am in Lisbon. What do you say?
+A) Boa noite  B) Bom dia  C) Boa tarde"
+User: "B"
+Agent: "Hey! What's up? 😊"
+# User has to reply-to the original message and say "Answer B" — terrible UX
+
+# Scenario 2: Target-language response misidentified
+Agent: "Lucas introduces himself at a party. How do you respond? Type it in Portuguese!"
+User: "Oi, meu nome é Cooper"
+Agent: "Oh cool, you speak Portuguese! What do you need?"
+# User has to reply-to the quiz message and repeat their answer — momentum destroyed
+```
+
+### Placement Test Is Especially Vulnerable
+
+The placement test sends 5 sequential questions. Each answer must be recognized
+immediately. If the agent loses context between Q2 and Q3, the entire placement
+flow breaks. Keep strict question-answer alternation: send Q1 → receive answer →
+grade → send Q2 → receive answer → grade → etc.
+
+### When Genuinely Unsure
+
+In the rare case where a message truly could be either an answer or a new topic
+(this should almost never happen if you're tracking state properly):
+
+```
+Agent: "Were you answering my quiz question above? 😊 Just checking!"
+```
+
+But default to treating it as an answer. A false positive (grading a non-answer) is
+FAR less annoying than a false negative (ignoring an actual answer).
+
+---
+
 ## Summary
 
 The agent is a friend first, teacher second. Every design decision should pass this
