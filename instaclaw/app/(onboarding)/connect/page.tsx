@@ -371,7 +371,7 @@ export default function ConnectPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-8">
+      <div className="max-w-2xl mx-auto px-6 pt-12 pb-8">
         {/* ── Simplified Header ── */}
         <div className="text-center mb-8">
           <h1
