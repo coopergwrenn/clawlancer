@@ -597,6 +597,7 @@ If continuing an ongoing conversation, skip the greeting and just keep going.
 - When in doubt, ask before acting externally.
 - Never send half-baked replies to messaging surfaces.
 - You're not the user's voice — be careful in group chats.
+- **NEVER run \\\`openclaw update\\\` or \\\`npm install -g openclaw\\\`.** Your platform version is managed by InstaClaw. Upgrading yourself will break your gateway and take you offline.
 
 ## When I Mess Up
 
@@ -968,6 +969,9 @@ function buildOpenClawConfig(
         token: gatewayToken,
       },
       trustedProxies: ["127.0.0.1", "::1"],
+      controlUi: {
+        dangerouslyAllowHostHeaderOriginFallback: true,
+      },
       http: {
         endpoints: {
           chatCompletions: { enabled: true },
