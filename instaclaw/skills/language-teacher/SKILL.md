@@ -189,9 +189,9 @@ Track correct/wrong streaks within each session:
 
 ## Micro-Reward System
 
-**After EVERY correct answer**, show a random celebration. NEVER repeat the same one back-to-back. Bank of 25+:
+**After EVERY correct answer**, show a random celebration. NEVER repeat the same one back-to-back. Use the canonical 28-phrase tiered bank in `references/gamification.md` (section 7) — 3 tiers: mild (simple answers), medium (notable wins), high-energy (achievements, milestones). Match intensity to the difficulty of what was answered.
 
-"Nailed it! 🎯", "Perfect! ⭐", "You're getting so good! 🔥", "That's exactly right! ✨", "Boom! 💥", "Flawless! 💎", "You're crushing it! 🏆", "Spot on! 🎪", "Nice one! 👏", "Look at you go! 🚀", "Chef's kiss! 🤌", "100%! 💯", "Absolutely! ✅", "Brilliant! 🧠", "You remembered! 🐘", "Smooth! 🎵", "On fire today! 🔥🔥", "Pro move! 🎮", "Getting fluent! 🌊", "Yes yes yes! 🎉", "That was fast! ⚡", "Level up energy! 📈", "So close to perfect... wait, it IS perfect! 😄", "Natural! Like a native speaker! 🗣️", "Your brain is flexing! 💪"
+Quick-reference sample: "Nailed it! 🎯", "Perfect! ⭐", "You're getting so good! 🔥", "Boom! 💥", "Flawless! 💎", "You're crushing it! 🏆", "Spot on! 🎪", "Nice one! 👏", "Look at you go! 🚀", "Chef's kiss! 🤌", "100%! 💯", "Brilliant! 🧠", "You remembered! 🐘", "On fire today! 🔥🔥", "Pro move! 🎮", "Getting fluent! 🌊", "That was fast! ⚡", "Natural! Like a native speaker! 🗣️", "Your brain is flexing! 💪"
 
 **After EVERY interaction**, show progress inline:
 ```
@@ -204,8 +204,8 @@ Track correct/wrong streaks within each session:
 
 ## Achievements
 
-Announce the MOMENT they're earned. Full list in `references/gamification.md`:
-- 🗣️ First Conversation, 📚 Word Collector (10/50/100), 🧠 Memory Master, 🔥 On Fire (7 days), 🔥🔥 Unstoppable (30 days), ⚡ Speed Demon, 🌍 Culture Club, 💬 Chatterbox, 🎯 Perfect Quiz, 📖 Storyteller, 🦸 Phrasal Verb Hero, 🎓 Grammar Guru
+Announce the MOMENT they're earned. Full list with trigger conditions and announcement templates in `references/gamification.md`:
+- 🌱 First Steps (first lesson completed), 🗣️ First Conversation, 📚 Word Collector (10/50/100), 🧠 Memory Master, 🔥 On Fire (7 days), 🔥🔥 Unstoppable (30 days), ⚡ Speed Demon, 🌍 Culture Club, 💬 Chatterbox, 🎯 Perfect Quiz, 📖 Storyteller, 🦸 Phrasal Verb Hero, 🎓 Grammar Guru, 🌅 Early Bird
 
 ---
 

@@ -33,7 +33,7 @@ Agent: "Almost! la tienda (feminine noun) 😊 What did you buy?"
 
 ```
 User: "Je suis alle au cinema."
-Agent: "Tiny fix — allé needs an accent: allé -> allé ! 🎬 What movie did you see?"
+Agent: "Tiny fix — alle -> allé (needs the accent!) 🎬 What movie did you see?"
 ```
 
 ```

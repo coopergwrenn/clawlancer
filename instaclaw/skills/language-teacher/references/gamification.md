@@ -53,65 +53,69 @@ This file defines all XP values, levels, achievements, streak logic, reminders, 
 
 ## 3. Achievements
 
-15 achievements. Each awards +50 XP on unlock. Achievements can only be earned once.
+16 achievements. Each awards +50 XP on unlock. Achievements can only be earned once.
 
-### 3.1 🗣️ First Conversation
+### 3.1 🌱 First Steps
+- **Trigger:** Complete the very first lesson after setup (any language).
+- **Announcement:** "🌱 ACHIEVEMENT UNLOCKED: First Steps! Your language learning journey begins NOW! This is where it all starts! +50 XP!"
+
+### 3.2 🗣️ First Conversation
 - **Trigger:** Complete first 5+ minute conversation practice session.
 - **Announcement:** "🗣️ ACHIEVEMENT UNLOCKED: First Conversation! You just had your first real conversation practice — this is where the magic happens! +50 XP!"
 
-### 3.2 📚 Word Collector (10)
+### 3.3 📚 Word Collector (10)
 - **Trigger:** Add 10 words to vocabulary tracker.
 - **Announcement:** "📚 ACHIEVEMENT UNLOCKED: Word Collector! 10 words in your collection — your vocabulary is growing! +50 XP!"
 
-### 3.3 📚 Word Collector (50)
+### 3.4 📚 Word Collector (50)
 - **Trigger:** Add 50 words to vocabulary tracker.
 - **Announcement:** "📚📚 ACHIEVEMENT UNLOCKED: Word Collector II! 50 words! You're building a serious vocabulary arsenal! +50 XP!"
 
-### 3.4 📚 Word Collector (100)
+### 3.5 📚 Word Collector (100)
 - **Trigger:** Add 100 words to vocabulary tracker.
 - **Announcement:** "📚📚📚 ACHIEVEMENT UNLOCKED: Word Collector III! 100 WORDS! That's a whole dictionary in your head! +50 XP!"
 
-### 3.5 🧠 Memory Master
+### 3.6 🧠 Memory Master
 - **Trigger:** Get 10 previously-struggled words correct without hints.
 - **Announcement:** "🧠 ACHIEVEMENT UNLOCKED: Memory Master! You nailed 10 words that used to trip you up — your brain is leveling up! +50 XP!"
 
-### 3.6 🔥 On Fire (7-day streak)
+### 3.7 🔥 On Fire (7-day streak)
 - **Trigger:** Maintain a 7-day practice streak.
 - **Announcement:** "🔥 ACHIEVEMENT UNLOCKED: On Fire! 7 days in a row! You're building a real habit — this is how fluency happens! +50 XP!"
 
-### 3.7 🔥🔥 Unstoppable (30-day streak)
+### 3.8 🔥🔥 Unstoppable (30-day streak)
 - **Trigger:** Maintain a 30-day practice streak.
 - **Announcement:** "🔥🔥 ACHIEVEMENT UNLOCKED: Unstoppable! 30 DAYS STRAIGHT! You are absolutely relentless — most people never get here! +50 XP!"
 
-### 3.8 ⚡ Speed Demon
+### 3.9 ⚡ Speed Demon
 - **Trigger:** Score 10/10 on a speed round.
 - **Announcement:** "⚡ ACHIEVEMENT UNLOCKED: Speed Demon! Perfect score on a speed round! Your reflexes in this language are getting scary fast! +50 XP!"
 
-### 3.9 🌍 Culture Club
+### 3.10 🌍 Culture Club
 - **Trigger:** Complete 5 cultural lessons.
 - **Announcement:** "🌍 ACHIEVEMENT UNLOCKED: Culture Club! 5 cultural deep-dives — you're not just learning words, you're understanding a whole world! +50 XP!"
 
-### 3.10 💬 Chatterbox
+### 3.11 💬 Chatterbox
 - **Trigger:** Accumulate 30+ minutes of total conversation practice.
 - **Announcement:** "💬 ACHIEVEMENT UNLOCKED: Chatterbox! Over 30 minutes of conversation practice! Talking is the fastest path to fluency and you're crushing it! +50 XP!"
 
-### 3.11 🎯 Perfect Quiz
+### 3.12 🎯 Perfect Quiz
 - **Trigger:** Score 100% on a quiz with 5 or more questions.
 - **Announcement:** "🎯 ACHIEVEMENT UNLOCKED: Perfect Quiz! 100% with 5+ questions — not a single mistake! Your accuracy is incredible! +50 XP!"
 
-### 3.12 📖 Storyteller
+### 3.13 📖 Storyteller
 - **Trigger:** Complete 3 story mode sessions.
 - **Announcement:** "📖 ACHIEVEMENT UNLOCKED: Storyteller! 3 stories completed — you're learning through narrative like a natural! +50 XP!"
 
-### 3.13 🦸 Phrasal Verb Hero
+### 3.14 🦸 Phrasal Verb Hero
 - **Trigger:** Use 10 different phrasal verbs correctly in conversation or quizzes.
 - **Announcement:** "🦸 ACHIEVEMENT UNLOCKED: Phrasal Verb Hero! 10 phrasal verbs used correctly — these trip up even advanced learners and you're owning them! +50 XP!"
 
-### 3.14 🎓 Grammar Guru
+### 3.15 🎓 Grammar Guru
 - **Trigger:** Receive 20 grammar corrections and subsequently use the correct form in later sessions.
 - **Announcement:** "🎓 ACHIEVEMENT UNLOCKED: Grammar Guru! 20 grammar corrections all learned and applied — you don't just hear feedback, you absorb it! +50 XP!"
 
-### 3.15 🌅 Early Bird
+### 3.16 🌅 Early Bird
 - **Trigger:** Practice before 7:00 AM local time on 5 separate days.
 - **Announcement:** "🌅 ACHIEVEMENT UNLOCKED: Early Bird! 5 sunrise study sessions — the dedication is real! Morning practice = supercharged retention! +50 XP!"
 

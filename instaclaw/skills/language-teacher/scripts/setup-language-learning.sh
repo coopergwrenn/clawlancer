@@ -2,7 +2,8 @@
 #
 # setup-language-learning.sh — Initialize language learning memory file
 #
-# Creates ~/memory/language-learning.md with multi-language template.
+# Creates ~/memory/language-learning.md with a minimal Global section.
+# The agent adds per-language sections (## English, ## Spanish, etc.) dynamically.
 # Safe to re-run — will NOT overwrite existing file.
 #
 # Usage:
@@ -51,46 +52,8 @@ cat > "$LEARN_FILE" << 'TEMPLATE'
 - Interests: (not set)
 - Daily time: (not set)
 - Reminders: off
-
-## English
-### Configuration
-- Level: (not set)
-- Goal: (not set)
-- Placement score: (not set)
-- Setup date: (not set)
-
-### Progress
-- Total XP: 0
-- Level: 1 (Seedling 🌱)
-- Current streak: 0 days
-- Longest streak: 0 days
-- Streak last activity: (none)
-- Words learned: 0
-- Words mastered: 0
-- Total conversation time: 0 min
-- Quizzes completed: 0
-- Lessons completed: 0
-- Stories completed: 0
-- Speed round personal best: 0/10
-
-### Session History (last 5)
-(none)
-
-### Interrupted Lesson
-(none)
-
-### Vocabulary Bank
-| Word | Translation | EF | Interval | Reps | Next Review | Score History | Examples | Tags |
-|------|-------------|-----|----------|------|-------------|---------------|----------|------|
-
-### Struggle Areas
-(none yet)
-
-### Achievement Log
-| Achievement | Date Unlocked |
-|-------------|---------------|
 TEMPLATE
 
 chmod 644 "$LEARN_FILE"
 echo "Created language learning template at $LEARN_FILE"
-echo "The agent will add new language sections (## Spanish, ## French, etc.) as needed."
+echo "The agent will add language sections (## English, ## Spanish, etc.) during setup."
