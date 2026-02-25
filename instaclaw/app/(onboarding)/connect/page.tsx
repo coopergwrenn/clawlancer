@@ -384,7 +384,7 @@ export default function ConnectPage() {
           >
             Connect Your Bot
           </h1>
-          <p className="text-sm" style={{ color: "#999" }}>
+          <p className="text-sm" style={{ color: "#999", textWrap: "balance" }}>
             Paste your Telegram bot token to connect your agent.
           </p>
         </div>
