@@ -85,6 +85,31 @@ export default function ConnectPage() {
     setChannels([channel]);
   }
 
+  // Hydrate from DB if user already has a pending record (handles back-navigation / refresh)
+  useEffect(() => {
+    fetch("/api/onboarding/wizard-status")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.pending?.telegram_bot_token && !botToken) {
+          setBotToken(data.pending.telegram_bot_token);
+          if (data.pending.telegram_bot_username) {
+            setBotUsername(data.pending.telegram_bot_username);
+            setVerified(true);
+          }
+          if (data.pending.default_model) {
+            setDefaultModel(data.pending.default_model);
+          }
+          if (data.pending.api_mode) {
+            setApiMode(data.pending.api_mode);
+          }
+          if (data.pending.discord_bot_token) {
+            setDiscordToken(data.pending.discord_bot_token);
+          }
+        }
+      })
+      .catch(() => { /* ignore — not critical */ });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-verify token when pasted/entered
   const verifyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastVerifiedToken = useRef<string>("");

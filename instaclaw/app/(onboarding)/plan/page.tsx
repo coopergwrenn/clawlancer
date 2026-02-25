@@ -88,14 +88,39 @@ export default function PlanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [hydrated, setHydrated] = useState(false);
+
   useEffect(() => {
     const stored = sessionStorage.getItem("instaclaw_onboarding");
-    if (!stored) {
-      router.push("/connect");
+    if (stored) {
+      const data = JSON.parse(stored);
+      setApiMode(data.apiMode ?? "all_inclusive");
+      setHydrated(true);
       return;
     }
-    const data = JSON.parse(stored);
-    setApiMode(data.apiMode ?? "all_inclusive");
+
+    // No sessionStorage — try to restore from DB (handles refresh / new tab)
+    fetch("/api/onboarding/wizard-status")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.pending) {
+          // Rebuild sessionStorage from saved pending record
+          const restored = {
+            botToken: data.pending.telegram_bot_token ?? "",
+            channels: data.pending.telegram_bot_token ? ["telegram"] : data.pending.discord_bot_token ? ["discord"] : [],
+            apiMode: data.pending.api_mode ?? "all_inclusive",
+            model: data.pending.default_model ?? "claude-haiku-4-5-20251001",
+          };
+          sessionStorage.setItem("instaclaw_onboarding", JSON.stringify(restored));
+          setApiMode(restored.apiMode as "all_inclusive" | "byok");
+          setHydrated(true);
+        } else {
+          router.push("/connect");
+        }
+      })
+      .catch(() => {
+        router.push("/connect");
+      });
   }, [router]);
 
   function handleToggleApiMode() {

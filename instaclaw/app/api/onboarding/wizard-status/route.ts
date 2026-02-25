@@ -31,6 +31,13 @@ export async function GET() {
     return NextResponse.json({ shouldShow: false });
   }
 
+  // Check for pending onboarding record (pre-checkout)
+  const { data: pending } = await supabase
+    .from("instaclaw_pending_users")
+    .select("telegram_bot_token, telegram_bot_username, discord_bot_token, api_mode, tier, default_model")
+    .eq("user_id", session.user.id)
+    .single();
+
   // Get VM info for bot username and chat_id
   const { data: vm } = await supabase
     .from("instaclaw_vms")
@@ -40,7 +47,7 @@ export async function GET() {
 
   // No VM assigned yet — don't show wizard (still in deploy flow)
   if (!vm) {
-    return NextResponse.json({ shouldShow: false });
+    return NextResponse.json({ shouldShow: false, pending: pending ?? undefined });
   }
 
   return NextResponse.json({
@@ -50,5 +57,6 @@ export async function GET() {
     botConnected: !!vm.telegram_chat_id,
     gmailPopupDismissed: user.gmail_popup_dismissed ?? false,
     gmailConnected: !!user.gmail_connected,
+    pending: pending ?? undefined,
   });
 }
