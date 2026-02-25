@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# fleet-push-all-skills.sh — Master fleet push: deploy ALL 13 skills to fleet
+# fleet-push-all-skills.sh — Master fleet push: deploy ALL 14 skills to fleet
 #
 # Runs each skill push script in sequence. Supports:
 #   --dry-run   Preview all deployments (ALWAYS run first)
 #   --canary    Deploy all skills to 1 VM, pause for approval
 #   --all       Deploy all skills to all active VMs
 #
-# Order: Voice → Web → Code → Kling → Email → Marketplace → Finance → Intel → Social → E-Commerce → Video → Brand → Polymarket
+# Order: Voice → Web → Code → Kling → Email → Marketplace → Finance → Intel → Social → E-Commerce → Video → Brand → Polymarket → Language Teacher
 #
 # MANDATORY: Always run --dry-run first, per CLAUDE.md rules.
 #
@@ -33,6 +33,7 @@ SKILLS=(
   "fleet-push-video-skill.sh"
   "fleet-push-brand-skill.sh"
   "fleet-push-polymarket-skill.sh"
+  "fleet-push-language-teacher-skill.sh"
 )
 
 LABELS=(
@@ -49,6 +50,7 @@ LABELS=(
   "Video Production (Remotion)"
   "Brand Asset Extraction"
   "Prediction Markets (Polymarket)"
+  "Language Teacher"
 )
 
 TOTAL_SKILLS=${#SKILLS[@]}
@@ -228,12 +230,12 @@ case "$MODE" in
     ;;
 
   --help|*)
-    echo "fleet-push-all-skills.sh — Deploy ALL 13 agent skills to fleet"
+    echo "fleet-push-all-skills.sh — Deploy ALL 14 agent skills to fleet"
     echo ""
     echo "Usage:"
     echo "  $0 --dry-run   — Preview all deployments (ALWAYS run first)"
-    echo "  $0 --canary <IP> — Deploy all 13 skills to 1 VM, verify"
-    echo "  $0 --all       — Deploy all 13 skills to all active VMs"
+    echo "  $0 --canary <IP> — Deploy all 14 skills to 1 VM, verify"
+    echo "  $0 --all       — Deploy all 14 skills to all active VMs"
     echo ""
     echo "Skills deployed (in order):"
     for i in "${!LABELS[@]}"; do
@@ -250,6 +252,6 @@ case "$MODE" in
     echo "  - E-Commerce (Shopify/Amazon/eBay/ShipStation)"
     echo ""
     echo "No API keys needed (doc-only or built-in tools):"
-    echo "  - Web Search, Code Execution, Kling AI, Marketplace, Social Media, Video Production, Brand Extraction, Polymarket"
+    echo "  - Web Search, Code Execution, Kling AI, Marketplace, Social Media, Video Production, Brand Extraction, Polymarket, Language Teacher"
     ;;
 esac

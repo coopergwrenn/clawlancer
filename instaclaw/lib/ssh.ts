@@ -2026,6 +2026,54 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Language Teacher skill (Skill 14) ──
+    try {
+      const langSkillDir = path.join(process.cwd(), "skills", "language-teacher");
+      const langSkillMd = fs.readFileSync(path.join(langSkillDir, "SKILL.md"), "utf-8");
+      const langPedagogy = fs.readFileSync(path.join(langSkillDir, "references", "pedagogy.md"), "utf-8");
+      const langSpacedRep = fs.readFileSync(path.join(langSkillDir, "references", "spaced-repetition.md"), "utf-8");
+      const langGamification = fs.readFileSync(path.join(langSkillDir, "references", "gamification.md"), "utf-8");
+      const langLessonTemplates = fs.readFileSync(path.join(langSkillDir, "references", "lesson-templates.md"), "utf-8");
+      const langMistakesPtEn = fs.readFileSync(path.join(langSkillDir, "references", "languages", "common-mistakes-pt-en.md"), "utf-8");
+      const langMistakesEsEn = fs.readFileSync(path.join(langSkillDir, "references", "languages", "common-mistakes-es-en.md"), "utf-8");
+      const langMistakesEnPt = fs.readFileSync(path.join(langSkillDir, "references", "languages", "common-mistakes-en-pt.md"), "utf-8");
+      const langSetupScript = fs.readFileSync(path.join(langSkillDir, "scripts", "setup-language-learning.sh"), "utf-8");
+
+      const langSkillB64 = Buffer.from(langSkillMd, "utf-8").toString("base64");
+      const langPedagogyB64 = Buffer.from(langPedagogy, "utf-8").toString("base64");
+      const langSpacedRepB64 = Buffer.from(langSpacedRep, "utf-8").toString("base64");
+      const langGamificationB64 = Buffer.from(langGamification, "utf-8").toString("base64");
+      const langLessonTemplatesB64 = Buffer.from(langLessonTemplates, "utf-8").toString("base64");
+      const langMistakesPtEnB64 = Buffer.from(langMistakesPtEn, "utf-8").toString("base64");
+      const langMistakesEsEnB64 = Buffer.from(langMistakesEsEn, "utf-8").toString("base64");
+      const langMistakesEnPtB64 = Buffer.from(langMistakesEnPt, "utf-8").toString("base64");
+      const langSetupB64 = Buffer.from(langSetupScript, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Language Teacher skill (Skill 14)',
+        'LANG_SKILL_DIR="$HOME/.openclaw/skills/language-teacher"',
+        'mkdir -p "$LANG_SKILL_DIR/references/languages" "$LANG_SKILL_DIR/scripts" "$HOME/scripts" "$HOME/memory"',
+        `echo '${langSkillB64}' | base64 -d > "$LANG_SKILL_DIR/SKILL.md"`,
+        `echo '${langPedagogyB64}' | base64 -d > "$LANG_SKILL_DIR/references/pedagogy.md"`,
+        `echo '${langSpacedRepB64}' | base64 -d > "$LANG_SKILL_DIR/references/spaced-repetition.md"`,
+        `echo '${langGamificationB64}' | base64 -d > "$LANG_SKILL_DIR/references/gamification.md"`,
+        `echo '${langLessonTemplatesB64}' | base64 -d > "$LANG_SKILL_DIR/references/lesson-templates.md"`,
+        `echo '${langMistakesPtEnB64}' | base64 -d > "$LANG_SKILL_DIR/references/languages/common-mistakes-pt-en.md"`,
+        `echo '${langMistakesEsEnB64}' | base64 -d > "$LANG_SKILL_DIR/references/languages/common-mistakes-es-en.md"`,
+        `echo '${langMistakesEnPtB64}' | base64 -d > "$LANG_SKILL_DIR/references/languages/common-mistakes-en-pt.md"`,
+        `echo '${langSetupB64}' | base64 -d > "$HOME/scripts/setup-language-learning.sh"`,
+        'chmod +x "$HOME/scripts/setup-language-learning.sh"',
+        ''
+      );
+
+      logger.info("Language Teacher skill deployment prepared (Skill 14)", { route: "lib/ssh" });
+    } catch (langSkillErr) {
+      logger.warn("Language Teacher skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(langSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [

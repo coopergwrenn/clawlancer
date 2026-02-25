@@ -379,6 +379,21 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Reference: ~/.openclaw/skills/polymarket/references/gamma-api.md, ~/.openclaw/skills/polymarket/references/analysis.md, ~/.openclaw/skills/polymarket/references/trading.md, ~/.openclaw/skills/polymarket/references/monitoring.md
 → Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json
 
+## 🗣️ LANGUAGE TEACHER (Skill 14)
+✅ Learn any language — personalized lessons, quizzes, conversation practice, stories
+✅ 8 lesson types — daily lesson, conversation, quick quiz (7 formats), story mode, speed round, immersive content, cultural lessons, pronunciation
+✅ Spaced repetition vocabulary — SM-2 algorithm tracks what you struggle with, reviews words naturally
+✅ Streaks, XP, levels, achievements — gamification to keep you motivated daily
+✅ Dynamic difficulty — adjusts within sessions based on your performance
+✅ Personalized to your interests — uses MEMORY.md to make lessons about things you care about
+✅ Micro-rewards on every correct answer — 25+ celebration phrases, never repetitive
+✅ Common mistake guides — specialized for PT→EN, ES→EN, EN→PT (works for any language pair without them)
+⚠️ Setup required — say "teach me [language]" to configure native/target language, level, goals
+
+→ Skills: language-teacher
+→ Reference: ~/.openclaw/skills/language-teacher/references/pedagogy.md, spaced-repetition.md, gamification.md, lesson-templates.md, languages/common-mistakes-*.md
+→ Data: ~/memory/language-learning.md (vocabulary bank, progress, achievements, lesson history)
+
 ---
 
 ## ❌ WHAT I CANNOT DO
