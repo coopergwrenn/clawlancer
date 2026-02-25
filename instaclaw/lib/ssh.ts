@@ -1215,6 +1215,31 @@ export async function configureOpenClaw(
       '#!/bin/bash',
       NVM_PREAMBLE,
       '',
+      '# ── Pre-reconfigure workspace backup ──',
+      '# Snapshot agent-editable files BEFORE any config changes so we can',
+      '# restore if the reconfigure wipes or corrupts workspace data.',
+      'BACKUP_TS=$(date -u +%Y%m%dT%H%M%SZ)',
+      'BACKUP_DIR="$HOME/.openclaw/backups/${BACKUP_TS}"',
+      'WORKSPACE="$HOME/.openclaw/workspace"',
+      'if [ -d "$WORKSPACE" ]; then',
+      '  mkdir -p "$BACKUP_DIR"',
+      '  cp "$WORKSPACE/MEMORY.md" "$BACKUP_DIR/MEMORY.md" 2>/dev/null || true',
+      '  cp "$WORKSPACE/USER.md" "$BACKUP_DIR/USER.md" 2>/dev/null || true',
+      '  cp "$WORKSPACE/IDENTITY.md" "$BACKUP_DIR/IDENTITY.md" 2>/dev/null || true',
+      '  cp "$WORKSPACE/SOUL.md" "$BACKUP_DIR/SOUL.md" 2>/dev/null || true',
+      '  cp "$WORKSPACE/TOOLS.md" "$BACKUP_DIR/TOOLS.md" 2>/dev/null || true',
+      '  cp -r "$WORKSPACE/memory" "$BACKUP_DIR/memory" 2>/dev/null || true',
+      '  # Also back up session files (conversation history)',
+      '  if [ -d "$HOME/.openclaw/agents/main/sessions" ]; then',
+      '    mkdir -p "$BACKUP_DIR/sessions"',
+      '    cp "$HOME/.openclaw/agents/main/sessions/"*.jsonl "$BACKUP_DIR/sessions/" 2>/dev/null || true',
+      '    cp "$HOME/.openclaw/agents/main/sessions/sessions.json" "$BACKUP_DIR/sessions/" 2>/dev/null || true',
+      '  fi',
+      '  echo "BACKUP_DIR=$BACKUP_DIR" # logged for audit trail',
+      'fi',
+      '# Prune backups older than 7 days',
+      'find "$HOME/.openclaw/backups" -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \\; 2>/dev/null || true',
+      '',
       '# Ensure loginctl linger is enabled so gateway survives SSH disconnect',
       'sudo loginctl enable-linger $(whoami) 2>/dev/null || true',
       '',
@@ -2505,6 +2530,28 @@ export async function auditVMConfig(vm: VMRecord & { gateway_token?: string; api
     const fixed: string[] = [];
     const alreadyCorrect: string[] = [];
     const missingFiles: string[] = [];
+
+    // 0. Pre-audit workspace backup — snapshot agent-editable files before touching anything
+    await ssh.execCommand([
+      'BACKUP_TS=$(date -u +%Y%m%dT%H%M%SZ)',
+      'BACKUP_DIR="$HOME/.openclaw/backups/${BACKUP_TS}"',
+      'WS="$HOME/.openclaw/workspace"',
+      'if [ -d "$WS" ]; then',
+      '  mkdir -p "$BACKUP_DIR"',
+      '  cp "$WS/MEMORY.md" "$BACKUP_DIR/MEMORY.md" 2>/dev/null || true',
+      '  cp "$WS/USER.md" "$BACKUP_DIR/USER.md" 2>/dev/null || true',
+      '  cp "$WS/IDENTITY.md" "$BACKUP_DIR/IDENTITY.md" 2>/dev/null || true',
+      '  cp "$WS/SOUL.md" "$BACKUP_DIR/SOUL.md" 2>/dev/null || true',
+      '  cp "$WS/TOOLS.md" "$BACKUP_DIR/TOOLS.md" 2>/dev/null || true',
+      '  cp -r "$WS/memory" "$BACKUP_DIR/memory" 2>/dev/null || true',
+      '  if [ -d "$HOME/.openclaw/agents/main/sessions" ]; then',
+      '    mkdir -p "$BACKUP_DIR/sessions"',
+      '    cp "$HOME/.openclaw/agents/main/sessions/"*.jsonl "$BACKUP_DIR/sessions/" 2>/dev/null || true',
+      '    cp "$HOME/.openclaw/agents/main/sessions/sessions.json" "$BACKUP_DIR/sessions/" 2>/dev/null || true',
+      '  fi',
+      'fi',
+      'find "$HOME/.openclaw/backups" -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \\; 2>/dev/null || true',
+    ].join(' && '));
 
     // 1. Check all spec settings in a single SSH command
     const getCommands = Object.keys(CONFIG_SPEC.settings)
