@@ -969,9 +969,6 @@ function buildOpenClawConfig(
         token: gatewayToken,
       },
       trustedProxies: ["127.0.0.1", "::1"],
-      controlUi: {
-        dangerouslyAllowHostHeaderOriginFallback: true,
-      },
       http: {
         endpoints: {
           chatCompletions: { enabled: true },
