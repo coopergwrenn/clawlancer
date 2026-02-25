@@ -166,37 +166,45 @@ print('AUTH_PATCHED')
     continue
   fi
 
-  # Check if both were already configured
+  # Step 3: Restart gateway if key was newly deployed (skip if already configured)
+  ALREADY_CONFIGURED=false
   if echo "$ENV_RESULT" | grep -q "ENV_ALREADY" && echo "$AUTH_RESULT" | grep -q "AUTH_ALREADY"; then
-    echo "OK (already configured)"
-    ((ALREADY++)) || true
-    ((SUCCESS++)) || true
-    continue
+    ALREADY_CONFIGURED=true
   fi
 
-  # Step 3: Restart gateway to pick up new config
-  RESTART=$(ssh $SSH_OPTS "openclaw@${IP}" "
-    systemctl --user restart openclaw-gateway 2>&1
-    sleep 8
-    systemctl --user is-active openclaw-gateway 2>&1
-  " 2>&1 || echo "RESTART_FAIL")
+  if ! $ALREADY_CONFIGURED; then
+    RESTART=$(ssh $SSH_OPTS "openclaw@${IP}" "
+      systemctl --user restart openclaw-gateway 2>&1
+      sleep 8
+      systemctl --user is-active openclaw-gateway 2>&1
+    " 2>&1 || echo "RESTART_FAIL")
 
-  if ! echo "$RESTART" | grep -q "active"; then
-    echo "WARN (key deployed but gateway restart issue: $RESTART)"
-    ((FAIL++)) || true
-    continue
+    if ! echo "$RESTART" | grep -q "active"; then
+      echo "WARN (key deployed but gateway restart issue: $RESTART)"
+      ((FAIL++)) || true
+      continue
+    fi
   fi
 
-  # Step 4: Verify with openclaw doctor
-  DOCTOR=$(ssh $SSH_OPTS "openclaw@${IP}" "
+  # Step 4: Build memory search index (required for embeddings to work)
+  INDEX_RESULT=$(ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=6 $SSH_OPTS "openclaw@${IP}" "
     export PATH=\"\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:\$PATH\" 2>/dev/null
-    openclaw doctor 2>&1 | grep -iE 'memory|embedding|openai' || echo 'NO_MATCH'
-  " 2>&1 || echo "DOCTOR_FAIL")
+    openclaw memory index 2>&1 | tail -3
+  " 2>&1 || echo "INDEX_FAIL")
+
+  # Step 5: Verify with openclaw memory status
+  STATUS=$(ssh $SSH_OPTS "openclaw@${IP}" "
+    export PATH=\"\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:\$PATH\" 2>/dev/null
+    openclaw memory status 2>&1 | grep -E 'Provider:|Indexed:' || echo 'STATUS_FAIL'
+  " 2>&1 || echo "STATUS_FAIL")
 
   ENV_STATUS=$(echo "$ENV_RESULT" | grep -oE 'ENV_[A-Z]+' | tail -1)
   AUTH_STATUS=$(echo "$AUTH_RESULT" | grep -oE 'AUTH_[A-Z]+' | tail -1)
-  echo "OK (env:${ENV_STATUS}, auth:${AUTH_STATUS}, gateway:active)"
-  echo "  doctor: $(echo "$DOCTOR" | head -3)"
+  if $ALREADY_CONFIGURED; then
+    ((ALREADY++)) || true
+  fi
+  echo "OK (env:${ENV_STATUS}, auth:${AUTH_STATUS})"
+  echo "  $(echo "$STATUS" | tr '\n' ' ')"
   ((SUCCESS++)) || true
 
 done
