@@ -2,7 +2,7 @@
 #
 # setup-language-learning.sh — Initialize language learning memory file
 #
-# Creates ~/memory/language-learning.md with empty template.
+# Creates ~/memory/language-learning.md with multi-language template.
 # Safe to re-run — will NOT overwrite existing file.
 #
 # Usage:
@@ -46,17 +46,20 @@ mkdir -p "$MEMORY_DIR"
 cat > "$LEARN_FILE" << 'TEMPLATE'
 # Language Learning Progress
 
-## Configuration
+## Global
 - Native language: (not set)
-- Target language: (not set)
+- Interests: (not set)
+- Daily time: (not set)
+- Reminders: off
+
+## English
+### Configuration
 - Level: (not set)
 - Goal: (not set)
-- Daily time: (not set)
-- Interests: (not set)
-- Reminders: off
+- Placement score: (not set)
 - Setup date: (not set)
 
-## Progress
+### Progress
 - Total XP: 0
 - Level: 1 (Seedling 🌱)
 - Current streak: 0 days
@@ -68,28 +71,26 @@ cat > "$LEARN_FILE" << 'TEMPLATE'
 - Quizzes completed: 0
 - Lessons completed: 0
 - Stories completed: 0
-- Cultural lessons completed: 0
-- Speed rounds completed: 0
 - Speed round personal best: 0/10
 
-## Struggle Areas
-(none yet)
+### Session History (last 5)
+(none)
 
-## Vocabulary Bank
+### Interrupted Lesson
+(none)
+
+### Vocabulary Bank
 | Word | Translation | EF | Interval | Reps | Next Review | Score History | Examples | Tags |
 |------|-------------|-----|----------|------|-------------|---------------|----------|------|
 
-## Achievement Log
+### Struggle Areas
+(none yet)
+
+### Achievement Log
 | Achievement | Date Unlocked |
 |-------------|---------------|
-
-## Lesson History
-| Date | Type | Duration | XP Earned | Notes |
-|------|------|----------|-----------|-------|
-
-## Weekly Reports
-(generated every Sunday)
 TEMPLATE
 
 chmod 644 "$LEARN_FILE"
 echo "Created language learning template at $LEARN_FILE"
+echo "The agent will add new language sections (## Spanish, ## French, etc.) as needed."

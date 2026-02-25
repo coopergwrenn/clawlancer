@@ -2006,3 +2006,131 @@ Want to try again, or move to the next challenge? 🎙️
 7. **Telegram-native format.** Keep messages punchy. Use line breaks, emoji, and formatting. Never send walls of text. Split long lessons into multiple messages if needed.
 
 8. **Log everything.** After each session, update `~/memory/language-learning.md` with new words, XP earned, lesson type, and any error patterns observed.
+
+---
+
+## 9. First Lesson Template
+
+**This template is for the VERY FIRST lesson after setup.** It must be short (3 min), easy, personal, and end on a high. The user must walk away thinking "that was fun, I want to do more."
+
+Adapt the example below for any language pair. The pattern stays the same.
+
+---
+
+### First Lesson Example: Portuguese Speaker Learning English
+
+**Prerequisites:** User completed setup. From MEMORY.md/setup: likes soccer, learning for work, placed at B1.
+
+**Agent sends (opening — personal hook):**
+```
+🎉 Let's do your very first lesson!
+
+Since you like soccer, I'm going to teach you 4 phrases that'll make you sound like you actually watch the Premier League. Ready? ⚽
+
+(This will take about 3 minutes!)
+```
+
+**Agent sends (phrase 1):**
+```
+1️⃣ "What a goal!"
+
+When someone scores an amazing goal, this is what you shout.
+🇧🇷 "Que golaço!"
+🇺🇸 "What a goal!"
+
+Easy one to start — say it with energy! 🗣️
+```
+
+**Agent sends (phrase 2):**
+```
+2️⃣ "Did you catch the game last night?"
+
+This is how you ask someone if they watched the match. Perfect for office small talk!
+🇧🇷 "Você viu o jogo ontem à noite?"
+🇺🇸 "Did you catch the game last night?"
+
+💡 "Catch" here doesn't mean "pegar" — it means "assistir/ver." Fun, right?
+```
+
+**Agent sends (phrase 3):**
+```
+3️⃣ "We got robbed!"
+
+When the ref makes a terrible call against your team 😤
+🇧🇷 "Fomos roubados!"
+🇺🇸 "We got robbed!"
+
+This one always gets a laugh from native speakers. 😄
+```
+
+**Agent sends (phrase 4 — the impressive one):**
+```
+4️⃣ "That was a proper banger."
+
+British slang for an incredible goal. Say this and people will think you've lived in London. 🇬🇧
+🇧🇷 "Foi um golaço daqueles."
+🇺🇸 "That was a proper banger."
+
+💡 "Proper" = de verdade / legítimo | "Banger" = coisa incrível (slang)
+```
+
+**Agent sends (quick practice):**
+```
+🧠 Quick check! Fill in:
+
+Your team just scored from 30 meters out. You turn to your friend and say:
+
+"___ ___ ___!"
+
+(Hint: 3 words, starts with "What")
+```
+
+**User responds:** "What a goal!"
+
+**Agent sends:**
+```
+Nailed it! 🎯 You're already talking like a fan!
+
+Let's try one more — your coworker walks in Monday morning. You want to ask about the weekend match. What do you say?
+```
+
+**User responds:** "Did you catch the game last night?"
+
+**Agent sends (session end — the big finish):**
+```
+Perfect! ⭐ Two for two!
+
+📋 YOUR FIRST LESSON — Complete! ⚽
+
+Phrases learned:
+✅ "What a goal!" — Que golaço!
+✅ "Did you catch the game?" — Viu o jogo?
+✅ "We got robbed!" — Fomos roubados!
+✅ "That was a proper banger." — Foi um golaço daqueles.
+
+🏆 ACHIEVEMENT UNLOCKED: First Steps! 🌱
+Your language learning journey begins NOW!
+
++20 XP ⭐ | 🔥 Day 1 | Level 1 🌱 | Words: 4
+
+Tomorrow we'll learn how to talk about your job in English — super useful for work! 💼
+
+See you tomorrow? 😊
+```
+
+---
+
+### First Lesson Adaptation Guide
+
+When generating a first lesson for ANY language pair:
+
+1. **Pick a topic from MEMORY.md interests** — soccer, travel, tech, cooking, music, whatever they care about
+2. **Teach exactly 4 phrases:**
+   - 1 easy/obvious one (builds confidence)
+   - 1 practical one (they'll actually use it)
+   - 1 emotional/fun one (makes them laugh or feel something)
+   - 1 impressive one (slang or cultural phrase that makes them feel like an insider)
+3. **Ask 2 practice questions** — both should be easy wins
+4. **End with:** achievement + XP + streak + tomorrow's teaser + invitation
+5. **Total time:** 3 minutes or less
+6. **Tone:** High energy, lots of emoji, short messages, zero grammar explanations

@@ -427,6 +427,101 @@ pick right back up, or call it a great session."
 
 ---
 
+## 9. Placement Test
+
+**Purpose:** Determine the user's actual level through 5 quick questions instead of self-reported levels (which are almost always wrong).
+
+### Administration
+
+Deliver all 5 questions sequentially. Keep it fast and light — this is NOT an exam, it's a quick vibe check.
+
+**Opening line:** "Let me figure out your level — answer these 5 quick questions in [language]!"
+
+### The 5 Questions (Calibrated to CEFR)
+
+| # | Level | Type | Example |
+|---|-------|------|---------|
+| Q1 | A1 | Basic vocabulary | "How do you say 'hello' and 'thank you'?" |
+| Q2 | A2 | Simple sentence | "Translate: 'I went to the store yesterday'" |
+| Q3 | B1 | Grammar fill-in | "She ___ working here for 5 years. (has been / is / was)" |
+| Q4 | B2 | Idiom comprehension | "What does 'break the ice' mean?" |
+| Q5 | C1 | Complex rephrase | "Rephrase: 'Had I known about the delay, I would have taken a different route'" |
+
+### Scoring
+
+Count correct answers (0–5) and map to level:
+
+| Score | Level | CEFR |
+|-------|-------|------|
+| 0–1 | Beginner | A1 |
+| 2 | Elementary | A2 |
+| 3 | Intermediate | B1 |
+| 4 | Upper Intermediate | B2 |
+| 5 | Advanced | C1 |
+
+### Delivering the Result
+
+Always frame positively and invite override:
+
+```
+Agent: "Based on your answers, I'd put you at Intermediate (B1) — you've got solid
+basics but we need to work on grammar patterns. Sound right? If you think you're
+higher or lower, just tell me and I'll adjust!"
+```
+
+**If user overrides:** Accept without question. Say "Got it! We'll start at [level]."
+Revisit after 3 sessions — if performance doesn't match, gently suggest adjusting.
+
+### Adapting Questions Per Language
+
+The examples above are English-centric. For other target languages, adapt:
+- Q1: Always basic greetings/vocabulary
+- Q2: Always a simple past-tense sentence
+- Q3: Always a grammar point that distinguishes A2 from B1
+- Q4: Always an idiom or cultural expression
+- Q5: Always requires complex restructuring
+
+---
+
+## 10. First Session Magic
+
+**This is non-negotiable.** The first lesson after setup determines whether the user comes back. It must be INCREDIBLE.
+
+### Design Principles
+
+1. **Use something personal immediately.** Pull from MEMORY.md or setup answers. If they said they like soccer, the first lesson includes a soccer word. If they're learning for work, include a work phrase.
+
+2. **Keep it SHORT.** 3 minutes maximum. The user must finish feeling "that was quick and fun" — not "that was a lot."
+
+3. **Keep it EASY.** The user must feel successful. 3–4 useful phrases they can use immediately. Zero grammar lectures. Zero overwhelming vocabulary dumps.
+
+4. **Teach survival phrases.** Things they'll actually use today or tomorrow:
+   - A greeting
+   - "Thank you" / "Please"
+   - One phrase related to their goal (travel: "Where is...?", work: "Nice to meet you", friends: "What's up?")
+   - One fun/impressive phrase (a slang term, a compliment, something that'll make a native speaker smile)
+
+5. **End with a bang.** The session must end with ALL of these:
+   - Achievement unlocked: "First Steps! 🌱"
+   - XP earned (generous — make them feel good)
+   - Streak started: "🔥 Day 1!"
+   - A teaser: "Tomorrow we'll learn [something exciting]"
+   - An invitation: "See you tomorrow? 😊"
+
+6. **The test:** After the first session, the user should think: "That was actually fun. I want to do that again." If they don't think that, the session failed.
+
+### What NOT to Do in the First Session
+
+- Don't teach grammar rules
+- Don't give more than 4 new words/phrases
+- Don't use metalanguage ("subjunctive", "conjugation", "declension")
+- Don't make them feel tested — it's a warm-up, not an exam
+- Don't send walls of text — keep messages short and punchy
+
+See `references/lesson-templates.md` for the complete First Lesson Template.
+
+---
+
 ## Summary
 
 The agent is a friend first, teacher second. Every design decision should pass this
