@@ -1286,9 +1286,19 @@ export async function configureOpenClaw(
       if (proxyBaseUrl) {
         authProfileData.baseUrl = proxyBaseUrl;
       }
-      const authProfile = JSON.stringify({
-        profiles: { "anthropic:default": authProfileData },
-      });
+      const profiles: Record<string, unknown> = {
+        "anthropic:default": authProfileData,
+      };
+      // Add OpenAI profile for memory search embeddings
+      const openaiKey = process.env.OPENAI_API_KEY;
+      if (openaiKey) {
+        profiles["openai:default"] = {
+          type: "api_key",
+          provider: "openai",
+          key: openaiKey,
+        };
+      }
+      const authProfile = JSON.stringify({ profiles });
       const authB64 = Buffer.from(authProfile, "utf-8").toString("base64");
       scriptParts.push(
         '# Write auth profile (API key for Anthropic)',
@@ -1718,6 +1728,19 @@ export async function configureOpenClaw(
         route: "lib/ssh",
         error: String(intelSkillErr),
       });
+    }
+
+    // Deploy OPENAI_API_KEY to VM .env (for memory search embeddings)
+    const openaiEnvKey = process.env.OPENAI_API_KEY;
+    if (openaiEnvKey) {
+      const openaiKeyB64 = Buffer.from(openaiEnvKey, "utf-8").toString("base64");
+      scriptParts.push(
+        '# Write OpenAI API key to agent .env (for memory search embeddings)',
+        'touch "$HOME/.openclaw/.env"',
+        `OAI_KEY=$(echo '${openaiKeyB64}' | base64 -d)`,
+        'grep -q "^OPENAI_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && sed -i "s/^OPENAI_API_KEY=.*/OPENAI_API_KEY=$OAI_KEY/" "$HOME/.openclaw/.env" || echo "OPENAI_API_KEY=$OAI_KEY" >> "$HOME/.openclaw/.env"',
+        ''
+      );
     }
 
     // ── Deploy Social Media Content skill ──
