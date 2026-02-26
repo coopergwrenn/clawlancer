@@ -4695,7 +4695,7 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       `  git clone ${AGDP_REPO} "${AGDP_DIR}"`,
       'fi',
       'echo "STEP:repo_cloned"',
-      `cd "${AGDP_DIR}" && npm install --production 2>&1 | tail -3`,
+      `cd "${AGDP_DIR}" && HUSKY=0 npm install --production 2>&1 | tail -3`,
       'echo "STEP:npm_installed"',
       '',
       '# Create pre-built seller offering template',
