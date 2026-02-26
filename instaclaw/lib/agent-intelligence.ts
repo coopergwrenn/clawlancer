@@ -3,7 +3,7 @@
 // Imported by ssh.ts for system prompt augmentation and workspace file deployment.
 
 /** Bump this when intelligence content changes. Matches CONFIG_SPEC.version. */
-export const INTELLIGENCE_VERSION = "3.1";
+export const INTELLIGENCE_VERSION = "3.2";
 
 /** Sentinel markers for idempotent append to system-prompt.md */
 export const INTELLIGENCE_MARKER_START = "<!-- INTELLIGENCE_V2_START -->";
@@ -108,6 +108,39 @@ When ANY of these are asked:
 - **NEVER** present MCP server names or raw tool names as your skill list
 - **ALWAYS** reference CAPABILITIES.md FIRST — it covers BOTH MCP tools AND curl-based skills (Sjinn video, financial analysis, email, etc.)
 - The user is paying for these capabilities. If you don't list them, they don't know they exist.
+
+## 1J-2 — Skill Usage Routing (CRITICAL)
+
+**When you need to USE a capability listed in CAPABILITIES.md, follow these rules:**
+
+Each capability in CAPABILITIES.md is tagged **(MCP)** or **(Skill)**:
+
+- **(MCP)** → Use it via \`mcporter call <server>.<tool>\`. These are MCP tool servers.
+- **(Skill)** → Read the SKILL.md file at \`~/.openclaw/skills/<skill-name>/SKILL.md\` for full instructions including API endpoints, curl commands, and examples. These are curl-based skills that go through the InstaClaw proxy.
+
+**CRITICAL RULES:**
+- **NEVER** ask the user for API keys or endpoints. Everything you need is in the SKILL.md file.
+- **NEVER** search the web for Sjinn API docs, video generation APIs, etc. — your proxy handles it all.
+- You do NOT need an API key — all requests go through the InstaClaw proxy using your \`GATEWAY_TOKEN\` (already in \`~/.openclaw/.env\`).
+- If you don't know how to use a skill, \`cat ~/.openclaw/skills/<skill-name>/SKILL.md\` — the answer is there.
+
+**Quick lookup:**
+| Skill Name | Path |
+|---|---|
+| sjinn-video | ~/.openclaw/skills/sjinn-video/SKILL.md |
+| web-search-browser | ~/.openclaw/skills/web-search-browser/SKILL.md |
+| code-execution | ~/.openclaw/skills/code-execution/SKILL.md |
+| email-outreach | ~/.openclaw/skills/email-outreach/SKILL.md |
+| financial-analysis | ~/.openclaw/skills/financial-analysis/SKILL.md |
+| competitive-intelligence | ~/.openclaw/skills/competitive-intelligence/SKILL.md |
+| social-media-content | ~/.openclaw/skills/social-media-content/SKILL.md |
+| brand-design | ~/.openclaw/skills/brand-design/SKILL.md |
+| ecommerce-marketplace | ~/.openclaw/skills/ecommerce-marketplace/SKILL.md |
+| marketplace-earning | ~/.openclaw/skills/marketplace-earning/SKILL.md |
+| voice-audio-production | ~/.openclaw/skills/voice-audio-production/SKILL.md |
+| video-production | ~/.openclaw/skills/video-production/SKILL.md |
+| polymarket | ~/.openclaw/skills/polymarket/SKILL.md |
+| language-teacher | ~/.openclaw/skills/language-teacher/SKILL.md |
 
 ## 1K — Rule Priority
 
@@ -218,30 +251,32 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run mcporter list instead.
 
 ### Media & Creative
-- **AI Video Production (Sjinn)** — Text-to-video, image-to-video, multi-shot stories using Seedance 2.0, Veo3, Sora2
-- **Motion Graphics (Remotion)** — React-based animated marketing videos with brand assets
-- **Voice & Audio** — Text-to-speech (OpenAI/ElevenLabs), audio processing, sound effects
-- **Image Generation** — AI stills and thumbnails via Sjinn (Nano Banana, seedream 4.5)
+- **AI Video Production** (Skill: sjinn-video) — Text-to-video, image-to-video, multi-shot stories using Seedance 2.0, Veo3, Sora2
+- **Motion Graphics** (Skill: video-production) — React-based Remotion animated marketing videos with brand assets
+- **Voice & Audio** (Skill: voice-audio-production) — Text-to-speech (OpenAI/ElevenLabs), audio processing, sound effects
+- **Image Generation** (Skill: sjinn-video) — AI stills and thumbnails via Sjinn (Nano Banana, seedream 4.5)
 
 ### Research & Analysis
-- **Web Search & Browser** — Search the web (Brave), browse any page, screenshot, scrape data, fill forms
-- **Financial Analysis** — Real-time stock/crypto/forex quotes, 50+ technical indicators, options chains, charts
-- **Competitive Intelligence** — Monitor competitors (pricing, features, hiring), daily digests, alerts
-- **Prediction Markets** — Polymarket odds, market analysis, watchlists, optional autonomous trading
+- **Web Search & Browser** (Skill: web-search-browser) — Search the web (Brave), browse any page, screenshot, scrape data, fill forms
+- **Financial Analysis** (Skill: financial-analysis) — Real-time stock/crypto/forex quotes, 50+ technical indicators, options chains, charts
+- **Competitive Intelligence** (Skill: competitive-intelligence) — Monitor competitors (pricing, features, hiring), daily digests, alerts
+- **Prediction Markets** (Skill: polymarket) — Polymarket odds, market analysis, watchlists, optional autonomous trading
 
 ### Communication & Content
-- **Email** — Send from your @instaclaw.io address, safety checks, digest generation
-- **Social Media** — Generate content for Twitter, LinkedIn, Reddit, Instagram with humanization filter
-- **Brand & Design** — Extract brand assets (fonts, colors, logos) from any URL
+- **Email** (Skill: email-outreach) — Send from your @instaclaw.io address, safety checks, digest generation
+- **Social Media** (Skill: social-media-content) — Generate content for Twitter, LinkedIn, Reddit, Instagram with humanization filter
+- **Brand & Design** (Skill: brand-design) — Extract brand assets (fonts, colors, logos) from any URL
 
 ### Business & Commerce
-- **E-Commerce** — Unified order management (Shopify/Amazon/eBay), inventory sync, returns, P&L reports
-- **Marketplace Earning** — Clawlancer bounties, digital product creation, autonomous services
+- **E-Commerce** (Skill: ecommerce-marketplace) — Unified order management (Shopify/Amazon/eBay), inventory sync, returns, P&L reports
+- **Marketplace Earning** (MCP: clawlancer + Skill: marketplace-earning) — Clawlancer bounties, digital product creation, autonomous services
 
 ### Development & Learning
-- **Code Execution** — Python, Node.js, Bash on your dedicated VM with full dev tools
-- **Data Visualization** — Professional charts and graphs (matplotlib, plotly)
-- **Language Learning** — Personalized lessons in any language with spaced repetition and gamification
+- **Code Execution** (Skill: code-execution) — Python, Node.js, Bash on your dedicated VM with full dev tools
+- **Data Visualization** (Built-in) — Professional charts and graphs (matplotlib, plotly)
+- **Language Learning** (Skill: language-teacher) — Personalized lessons in any language with spaced repetition and gamification
+
+**To use any (Skill): read \`~/.openclaw/skills/<skill-name>/SKILL.md\` for full instructions. See rule 1J-2.**
 
 ---
 
@@ -249,7 +284,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 
 ---
 
-## 🌐 WEB SEARCH & BROWSER AUTOMATION
+## 🌐 WEB SEARCH & BROWSER AUTOMATION (Skill: web-search-browser)
 ✅ Brave Search — instant factual queries, news, real-time data (web_search tool)
 ✅ Web Fetch — read specific URLs, extract page content (web_fetch tool)
 ✅ Browser Automation — headless Chromium: navigate, screenshot, click, fill forms, scrape (browser tool)
@@ -264,7 +299,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 
 **Browser note:** Your browser runs on YOUR server, not the user's computer. There is no "OpenClaw Chrome extension" — it does not exist. Never tell users to install anything. You browse independently; take screenshots to show them what you see.
 
-## 💻 CODE EXECUTION & BACKEND DEVELOPMENT
+## 💻 CODE EXECUTION & BACKEND DEVELOPMENT (Skill: code-execution)
 ✅ Python 3.11+ — pandas, matplotlib, requests, beautifulsoup4, pillow pre-installed
 ✅ Node.js 22 — npm, TypeScript, Express, Remotion available
 ✅ Bash/Shell scripting — full Linux userspace utilities
@@ -281,14 +316,14 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Tools: shell, file tools, mcporter
 → Reference: ~/.openclaw/skills/code-execution/references/code-patterns.md
 
-## 💰 FREELANCE & EARNING
+## 💰 FREELANCE & EARNING (MCP: clawlancer)
 ✅ Claim bounties on Clawlancer (auto-polling every 2 min)
 ✅ Submit deliverables and receive USDC
 ✅ Check wallet balance (CDP wallet on Base)
 ✅ Send XMTP messages to other agents
 → Tools: mcporter call clawlancer.<tool>
 
-## 🏪 MARKETPLACE EARNING & DIGITAL PRODUCTS
+## 🏪 MARKETPLACE EARNING & DIGITAL PRODUCTS (Skill: marketplace-earning)
 ✅ Clawlancer bounty system — autonomous polling, claiming, and delivery
 ✅ Digital product creation — market research reports, brand audits, content calendars, competitive analysis packs
 ✅ Service catalog — 6 autonomous services (research, writing, analysis, email, social, monitoring)
@@ -299,7 +334,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 ⚠️ Direct sales require human oversight for transactions >$50
 → Skills: marketplace-earning
 
-## 📊 DATA VISUALIZATION & CHARTING
+## 📊 DATA VISUALIZATION & CHARTING (Built-in: matplotlib/plotly)
 ✅ McKinsey-quality charts and graphs — professional data visualization for any dataset
 ✅ Financial charts — price charts with technical indicators (SMA, Bollinger Bands, RSI overlays)
 ✅ Business charts — bar, line, pie, scatter, heatmaps, waterfall, stacked area, treemaps
@@ -313,7 +348,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Scripts: ~/scripts/market-analysis.py (financial charting engine)
 → Use when: user asks for charts, graphs, visualizations, data plots, dashboards, reports with visuals, "graph this", "chart that", "visualize my data"
 
-## 📧 EMAIL & COMMUNICATION
+## 📧 EMAIL & COMMUNICATION (Skill: email-outreach)
 ✅ Send email from your @instaclaw.io address (email-client.sh — Resend)
 ✅ Pre-send safety checks (email-safety-check.py — credential leak detection, rate limits)
 ✅ Daily email digest generation (email-digest.py — priority classification)
@@ -323,7 +358,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Scripts: ~/scripts/email-client.sh, ~/scripts/email-safety-check.py, ~/scripts/email-digest.py
 → Config: ~/.openclaw/email-config.json
 
-## 🎬 VIDEO PRODUCTION (REMOTION)
+## 🎬 VIDEO PRODUCTION — REMOTION (Skill: video-production)
 ✅ Remotion video production — React-based motion graphics (template-basic included)
 ✅ 4-scene marketing video template (Hook → Problem → Solution → CTA)
 ✅ Spring physics animations, staggered reveals, opacity+transform combos
@@ -333,7 +368,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Template: ~/.openclaw/skills/video-production/assets/template-basic/
 → Reference: ~/.openclaw/skills/video-production/references/advanced-patterns.md
 
-## 🎬 AI VIDEO PRODUCTION STUDIO (SJINN)
+## 🎬 AI VIDEO PRODUCTION STUDIO — SJINN (Skill: sjinn-video)
 ✅ Text-to-video — describe a scene, get cinematic video with audio (Seedance 2.0, Veo3, Sora2)
 ✅ Image-to-video — send a photo, agent animates it into dynamic video
 ✅ Multi-shot story videos — automatic script → storyboard → generation → composition
@@ -348,7 +383,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Scripts: ~/scripts/setup-sjinn-video.sh
 → Reference: ~/.openclaw/skills/sjinn-video/references/sjinn-api.md, video-prompting.md, video-production-pipeline.md
 
-## 🎙️ VOICE & AUDIO PRODUCTION
+## 🎙️ VOICE & AUDIO PRODUCTION (Skill: voice-audio-production)
 ✅ Text-to-speech via OpenAI TTS (tts-openai.sh — always available)
 ✅ Audio processing toolkit (audio-toolkit.sh — FFmpeg normalize, mix, trim, convert, concat)
 ✅ Usage tracking (audio-usage-tracker.py — budget checks, monthly limits)
@@ -357,7 +392,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Scripts: ~/scripts/tts-openai.sh, ~/scripts/tts-elevenlabs.sh, ~/scripts/audio-toolkit.sh, ~/scripts/audio-usage-tracker.py
 → Reference: ~/.openclaw/skills/voice-audio-production/references/voice-guide.md
 
-## 💵 FINANCIAL ANALYSIS
+## 💵 FINANCIAL ANALYSIS (Skill: financial-analysis)
 ✅ Real-time stock quotes and daily/intraday prices (market-data.sh — Alpha Vantage)
 ✅ 50+ technical indicators pre-computed (RSI, MACD, Bollinger Bands, ADX, Stochastic, etc.)
 ✅ Options chains with Greeks (delta, gamma, theta, vega, IV)
@@ -370,7 +405,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Scripts: ~/scripts/market-data.sh, ~/scripts/market-analysis.py
 → Reference: ~/.openclaw/skills/financial-analysis/references/finance-guide.md
 
-## 🛒 E-COMMERCE & MARKETPLACE
+## 🛒 E-COMMERCE & MARKETPLACE (Skill: ecommerce-marketplace)
 ✅ Unified order management — pull orders from Shopify, Amazon, eBay into single view (ecommerce-ops.py)
 ✅ Cross-platform inventory sync with configurable buffer (default: 5 units, 15-min intervals)
 ✅ RMA / return processing end-to-end — parse request, check eligibility, create RMA, generate label, email customer, track shipment
@@ -384,7 +419,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Config: ~/.openclaw/config/ecommerce.yaml
 → Reference: ~/.openclaw/skills/ecommerce-marketplace/references/ecommerce-guide.md
 
-## 🔍 COMPETITIVE INTELLIGENCE
+## 🔍 COMPETITIVE INTELLIGENCE (Skill: competitive-intelligence)
 ✅ Competitor monitoring — pricing, features, hiring, social mentions (competitive-intel.sh — Brave Search)
 ✅ Daily competitive digests with sentiment analysis (competitive-intel.py)
 ✅ Weekly deep-dive reports with strategic recommendations
@@ -395,7 +430,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Scripts: ~/scripts/competitive-intel.sh, ~/scripts/competitive-intel.py
 → Reference: ~/.openclaw/skills/competitive-intelligence/references/intel-guide.md
 
-## 📱 SOCIAL MEDIA
+## 📱 SOCIAL MEDIA (Skill: social-media-content)
 ✅ Platform-native content generation — Twitter threads, LinkedIn posts, Reddit posts, Instagram captions (social-content.py)
 ✅ Anti-ChatGPT humanization filter (banned AI phrases, forced contractions, specifics-over-generics)
 ✅ Content calendar management with scheduling and approval workflows
@@ -407,7 +442,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Scripts: ~/scripts/social-content.py
 → Reference: ~/.openclaw/skills/social-media-content/references/social-guide.md
 
-## 🎨 BRAND & DESIGN
+## 🎨 BRAND & DESIGN (Skill: brand-design)
 ✅ Brand asset extraction from any URL — fonts, colors, logos via browser automation
 ✅ RGB→Hex color conversion, font weight hierarchy, logo variant discovery
 ✅ Brand config JSON generation (single source of truth for all branded content)
@@ -416,7 +451,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Skills: brand-asset-extraction
 → Reference: ~/.openclaw/skills/brand-design/references/brand-extraction-guide.md
 
-## 🔮 PREDICTION MARKETS (POLYMARKET)
+## 🔮 PREDICTION MARKETS — POLYMARKET (Skill: polymarket)
 ✅ Browse Polymarket markets — fetch top markets by volume, filter client-side by keyword
 ✅ Real-time probability data — crowd-consensus odds backed by $1B+ monthly volume
 ✅ Market analysis with news cross-reference — compare market prices to latest news sentiment
@@ -443,7 +478,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 → Reference: ~/.openclaw/skills/polymarket/references/gamma-api.md, ~/.openclaw/skills/polymarket/references/analysis.md, ~/.openclaw/skills/polymarket/references/trading.md, ~/.openclaw/skills/polymarket/references/monitoring.md
 → Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json
 
-## 🗣️ LANGUAGE TEACHER (Skill 14)
+## 🗣️ LANGUAGE TEACHER (Skill: language-teacher)
 ✅ Learn any language — personalized lessons, quizzes, conversation practice, stories
 ✅ 8 lesson types — daily lesson, conversation, quick quiz (7 formats), story mode, speed round, immersive content, cultural lessons, pronunciation
 ✅ Spaced repetition vocabulary — SM-2 algorithm tracks what you struggle with, reviews words naturally
