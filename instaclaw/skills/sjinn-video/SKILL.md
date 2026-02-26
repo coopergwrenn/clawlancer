@@ -302,7 +302,7 @@ If pending tasks exist, query their status and retrieve completed results. Updat
 
 | Tier | Videos/day | Images+Audio/day |
 |------|-----------|-----------------|
-| Starter | 3 | 10 |
+| Starter | 5 | 10 |
 | Pro | 10 | 30 |
 | Power | 30 | 100 |
 | BYOK | 5 | 15 |
