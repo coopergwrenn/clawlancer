@@ -71,12 +71,23 @@ deploy_to_vm() {
   echo "  Deploying to $vm_id ($user@$ip)..."
 
   # Read and base64-encode skill files
-  local skill_md_b64 api_ref_b64 prompting_b64 pipeline_b64 setup_b64
+  local skill_md_b64 api_ref_b64 prompting_b64 pipeline_b64 setup_b64 cap_b64 qr_b64
   skill_md_b64=$(base64 < "$SKILL_DIR/SKILL.md")
   api_ref_b64=$(base64 < "$SKILL_DIR/references/sjinn-api.md")
   prompting_b64=$(base64 < "$SKILL_DIR/references/video-prompting.md")
   pipeline_b64=$(base64 < "$SKILL_DIR/references/video-production-pipeline.md")
   setup_b64=$(base64 < "$SKILL_DIR/scripts/setup-sjinn-video.sh")
+
+  # Generate fresh CAPABILITIES.md and QUICK-REFERENCE.md from source
+  # These tell the agent about Sjinn (replacing old Kling references)
+  cap_b64=$(cd "$PROJECT_ROOT" && npx tsx -e "
+import { WORKSPACE_CAPABILITIES_MD } from './lib/agent-intelligence';
+process.stdout.write(WORKSPACE_CAPABILITIES_MD);
+" 2>/dev/null | base64)
+  qr_b64=$(cd "$PROJECT_ROOT" && npx tsx -e "
+import { WORKSPACE_QUICK_REFERENCE_MD } from './lib/agent-intelligence';
+process.stdout.write(WORKSPACE_QUICK_REFERENCE_MD);
+" 2>/dev/null | base64)
 
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
@@ -102,6 +113,18 @@ bash "\$HOME/scripts/setup-sjinn-video.sh" 2>/dev/null || true
 
 # Clean up old Kling skill if it exists
 rm -rf "\$HOME/.openclaw/skills/kling-ai-video" 2>/dev/null || true
+
+# Update CAPABILITIES.md and QUICK-REFERENCE.md (agent reads these to learn skills)
+if [ -n '$cap_b64' ]; then
+  echo '$cap_b64' | base64 -d > "\$HOME/.openclaw/workspace/CAPABILITIES.md"
+fi
+if [ -n '$qr_b64' ]; then
+  echo '$qr_b64' | base64 -d > "\$HOME/.openclaw/workspace/QUICK-REFERENCE.md"
+fi
+
+# Restart gateway so agent picks up updated workspace files
+systemctl --user restart openclaw-gateway 2>/dev/null || \
+  (pkill -9 -f "openclaw-gateway" 2>/dev/null; sleep 2; systemctl --user start openclaw-gateway) || true
 
 # Update Caddy config to add /tmp-media/ handler if Caddy is running
 if command -v caddy &>/dev/null && [ -f /etc/caddy/Caddyfile ]; then
@@ -133,6 +156,9 @@ case "$MODE" in
     echo "Actions:"
     echo "  - Removes SJINN_API_KEY from VM .env (now server-side only via proxy)"
     echo "  - Remove old kling-ai-video skill directory"
+    echo "  - Update CAPABILITIES.md (adds Sjinn, removes Kling)"
+    echo "  - Update QUICK-REFERENCE.md (Sjinn video references)"
+    echo "  - Restart gateway so agent picks up new capabilities"
     echo "  - Update Caddy config with /tmp-media/ static file handler"
     echo "  - Run setup script (creates dirs, cron jobs, video-history.json)"
     echo ""
@@ -182,6 +208,8 @@ if vms:
     echo "  ssh ${USER}@${IP} 'cat ~/.openclaw/skills/sjinn-video/SKILL.md | head -5'"
     echo "  ssh ${USER}@${IP} 'grep GATEWAY_TOKEN ~/.openclaw/.env'"
     echo "  ssh ${USER}@${IP} 'grep SJINN_API_KEY ~/.openclaw/.env'  # should be empty"
+    echo "  ssh ${USER}@${IP} 'grep SJINN ~/.openclaw/workspace/CAPABILITIES.md'  # should show Sjinn section"
+    echo "  ssh ${USER}@${IP} 'systemctl --user is-active openclaw-gateway'  # should be active"
     echo ""
     echo "If healthy, run: $0 --all"
     ;;
