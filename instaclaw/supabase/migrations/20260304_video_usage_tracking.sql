@@ -66,10 +66,10 @@ BEGIN
     -- All-inclusive: tier-based limits
     IF p_generation_type = 'video' THEN
       CASE COALESCE(v_tier, 'starter')
-        WHEN 'starter' THEN v_daily_limit := 3;
+        WHEN 'starter' THEN v_daily_limit := 5;
         WHEN 'pro'     THEN v_daily_limit := 10;
         WHEN 'power'   THEN v_daily_limit := 30;
-        ELSE v_daily_limit := 3;
+        ELSE v_daily_limit := 5;
       END CASE;
     ELSE
       -- image + audio limits
