@@ -2377,6 +2377,189 @@ export async function configureOpenClaw(
 }
 
 /**
+ * Lightweight gateway token resync — updates ONLY the gateway token on the VM
+ * without touching agent personality, workspace, system prompt, or any other config.
+ *
+ * Use this instead of full configureOpenClaw when the only issue is a token mismatch.
+ *
+ * Updates three files on the VM:
+ *   1. ~/.openclaw/openclaw.json → gateway.auth.token
+ *   2. ~/.openclaw/.env → GATEWAY_TOKEN=...
+ *   3. ~/.openclaw/agents/main/agent/auth-profiles.json → profiles.anthropic:default.key
+ * Then restarts the gateway and updates the DB.
+ */
+export async function resyncGatewayToken(
+  vm: VMRecord
+): Promise<{ gatewayToken: string; healthy: boolean }> {
+  const ssh = await connectSSH(vm);
+  try {
+    const newToken = generateGatewayToken();
+    assertSafeShellArg(newToken, "gatewayToken");
+
+    const proxyBaseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway";
+
+    // Python script to patch ONLY the gateway token in openclaw.json (preserves everything else)
+    const patchTokenPy = `
+import json, os
+p = os.path.expanduser("~/.openclaw/openclaw.json")
+with open(p) as f: c = json.load(f)
+g = c.setdefault("gateway", {})
+a = g.setdefault("auth", {})
+a["token"] = "${newToken}"
+with open(p, "w") as f: json.dump(c, f, indent=2)
+print("OK openclaw.json token updated")
+`.trim();
+
+    // Python script to patch ONLY the key in auth-profiles.json (preserves everything else)
+    const patchAuthPy = `
+import json, os
+p = os.path.expanduser("~/.openclaw/agents/main/agent/auth-profiles.json")
+if not os.path.exists(p):
+    print("SKIP no auth-profiles.json")
+else:
+    with open(p) as f: c = json.load(f)
+    prof = c.get("profiles", {}).get("anthropic:default", {})
+    prof["key"] = "${newToken}"
+    prof["baseUrl"] = "${proxyBaseUrl}"
+    c.setdefault("profiles", {})["anthropic:default"] = prof
+    with open(p, "w") as f: json.dump(c, f, indent=2)
+    print("OK auth-profiles.json key updated")
+`.trim();
+
+    const patchTokenB64 = Buffer.from(patchTokenPy).toString("base64");
+    const patchAuthB64 = Buffer.from(patchAuthPy).toString("base64");
+
+    const script = [
+      '#!/bin/bash',
+      NVM_PREAMBLE,
+      '',
+      '# 1. Patch openclaw.json token',
+      `echo '${patchTokenB64}' | base64 -d | python3`,
+      '',
+      '# 2. Patch .env GATEWAY_TOKEN',
+      'touch "$HOME/.openclaw/.env"',
+      `GT_KEY="${newToken}"`,
+      'grep -q "^GATEWAY_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\',
+      '  sed -i "s/^GATEWAY_TOKEN=.*/GATEWAY_TOKEN=$GT_KEY/" "$HOME/.openclaw/.env" || \\',
+      '  echo "GATEWAY_TOKEN=$GT_KEY" >> "$HOME/.openclaw/.env"',
+      'echo "OK .env GATEWAY_TOKEN updated"',
+      '',
+      '# 3. Patch auth-profiles.json key',
+      `echo '${patchAuthB64}' | base64 -d | python3`,
+      '',
+      '# 4. Restart gateway',
+      'systemctl --user restart openclaw-gateway 2>/dev/null || (openclaw gateway stop 2>/dev/null; sleep 1; openclaw gateway start 2>/dev/null)',
+      'echo "OK gateway restarted"',
+    ].join('\n');
+
+    const result = await ssh.execCommand(script);
+    logger.info("resyncGatewayToken SSH result", {
+      stdout: result.stdout,
+      stderr: result.stderr?.slice(0, 500),
+      code: result.code,
+      vmId: vm.id,
+    });
+
+    // Update DB with new token
+    const supabase = getSupabase();
+    await supabase
+      .from("instaclaw_vms")
+      .update({
+        gateway_token: newToken,
+        proxy_401_count: 0,
+      })
+      .eq("id", vm.id);
+
+    // Wait for gateway health
+    let healthy = false;
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const healthResult = await ssh.execCommand(
+          `${NVM_PREAMBLE} && (openclaw gateway health 2>/dev/null || openclaw health 2>/dev/null)`
+        );
+        if (healthResult.code === 0) {
+          healthy = true;
+          break;
+        }
+      } catch { /* not ready yet */ }
+    }
+
+    return { gatewayToken: newToken, healthy };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Restore workspace files from the most recent backup on a VM.
+ * Used after a configure accidentally overwrites agent personality/memory.
+ */
+export async function restoreWorkspaceFromBackup(
+  vm: VMRecord
+): Promise<{ restored: boolean; backupDir?: string; files?: string[] }> {
+  const ssh = await connectSSH(vm);
+  try {
+    // Find most recent backup
+    const findResult = await ssh.execCommand(
+      'ls -1dt "$HOME/.openclaw/backups/"* 2>/dev/null | head -1'
+    );
+    const backupDir = findResult.stdout?.trim();
+    if (!backupDir) {
+      return { restored: false };
+    }
+
+    // List what's in the backup
+    const lsResult = await ssh.execCommand(`ls -1 "${backupDir}" 2>/dev/null`);
+    const files = lsResult.stdout?.trim().split('\n').filter(Boolean) || [];
+
+    // Restore workspace files from backup
+    const restoreScript = [
+      '#!/bin/bash',
+      `BACKUP="${backupDir}"`,
+      'WS="$HOME/.openclaw/workspace"',
+      'mkdir -p "$WS" "$WS/memory"',
+      '',
+      '# Restore workspace files',
+      'for f in MEMORY.md USER.md IDENTITY.md SOUL.md TOOLS.md; do',
+      '  if [ -f "$BACKUP/$f" ]; then',
+      '    cp "$BACKUP/$f" "$WS/$f"',
+      '    echo "RESTORED $f"',
+      '  fi',
+      'done',
+      '',
+      '# Restore memory subdirectory',
+      'if [ -d "$BACKUP/memory" ]; then',
+      '  cp -r "$BACKUP/memory/"* "$WS/memory/" 2>/dev/null && echo "RESTORED memory/" || true',
+      'fi',
+      '',
+      '# Restore session files',
+      'if [ -d "$BACKUP/sessions" ]; then',
+      '  SESSIONS="$HOME/.openclaw/agents/main/sessions"',
+      '  mkdir -p "$SESSIONS"',
+      '  cp "$BACKUP/sessions/"*.jsonl "$SESSIONS/" 2>/dev/null && echo "RESTORED sessions/*.jsonl" || true',
+      '  cp "$BACKUP/sessions/sessions.json" "$SESSIONS/" 2>/dev/null && echo "RESTORED sessions.json" || true',
+      'fi',
+    ].join('\n');
+
+    const result = await ssh.execCommand(restoreScript);
+    logger.info("restoreWorkspaceFromBackup result", {
+      stdout: result.stdout,
+      vmId: vm.id,
+      backupDir,
+    });
+
+    const restoredFiles = result.stdout?.split('\n')
+      .filter((l: string) => l.startsWith('RESTORED'))
+      .map((l: string) => l.replace('RESTORED ', '')) || [];
+
+    return { restored: true, backupDir, files: restoredFiles };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
  * Test the full proxy round-trip: VM gateway token → instaclaw.io proxy → Anthropic → response.
  * Used after configure to verify proxy auth works end-to-end (catches token mismatch issues).
  */
