@@ -1172,6 +1172,7 @@ export async function GET(req: NextRequest) {
     memoryStaleWarnings,
     proxyChecked,
     proxyFailed,
+    proxyResynced,
     autoMigrated,
   });
 }
