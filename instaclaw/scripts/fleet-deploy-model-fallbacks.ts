@@ -172,7 +172,7 @@ async function main() {
     .from("instaclaw_vms")
     .select("id, ip_address, ssh_port, ssh_user, health_status, tier, default_model")
     .eq("status", "assigned")
-    .not("assigned_to", "is", null)
+    .not("gateway_token", "is", null)
     .order("ip_address");
 
   if (error || !allVms?.length) {

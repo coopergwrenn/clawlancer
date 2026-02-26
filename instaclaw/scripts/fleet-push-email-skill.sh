@@ -99,7 +99,7 @@ if [ -n "$CANARY_IP" ]; then
     -H "Authorization: Bearer ${SUPABASE_KEY}")
 else
   echo "Mode: FLEET (all assigned VMs)"
-  VMS=$(curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?assigned_to=not.is.null&select=id,ip_address,ssh_port,ssh_user,name" \
+  VMS=$(curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?gateway_token=not.is.null&select=id,ip_address,ssh_port,ssh_user,name" \
     -H "apikey: ${SUPABASE_KEY}" \
     -H "Authorization: Bearer ${SUPABASE_KEY}")
 fi

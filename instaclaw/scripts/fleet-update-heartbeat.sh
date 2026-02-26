@@ -44,7 +44,7 @@ NVM_PREAMBLE='export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:
 
 # Fetch all assigned VMs
 echo "=== Fetching assigned VMs ==="
-VMS=$(curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?assigned_to=not.is.null&select=id,ip_address,ssh_port,ssh_user,name" \
+VMS=$(curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?gateway_token=not.is.null&select=id,ip_address,ssh_port,ssh_user,name" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}")
 

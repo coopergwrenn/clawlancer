@@ -63,7 +63,7 @@ trap 'rm -f "$SSH_KEY_FILE"' EXIT
 MODE="${1:---help}"
 
 fetch_vms() {
-  curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?assigned_to=not.is.null&select=id,ip_address,ssh_user,name" \
+  curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?gateway_token=not.is.null&select=id,ip_address,ssh_user,name" \
     -H "apikey: $SUPABASE_KEY" \
     -H "Authorization: Bearer $SUPABASE_KEY"
 }

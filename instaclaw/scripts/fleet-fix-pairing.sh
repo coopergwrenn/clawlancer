@@ -68,7 +68,7 @@ if [[ -n "$CANARY_IP" ]]; then
   echo "=== Canary mode: $CANARY_IP ==="
 else
   echo "=== Fetching assigned VMs ==="
-  VM_IPS_RAW=$(curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?assigned_to=not.is.null&select=ip_address&health_status=neq.configure_failed" \
+  VM_IPS_RAW=$(curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?gateway_token=not.is.null&select=ip_address&health_status=neq.configure_failed" \
     -H "apikey: ${SUPABASE_KEY}" \
     -H "Authorization: Bearer ${SUPABASE_KEY}" \
     | python3 -c "import sys,json; [print(v['ip_address']) for v in json.load(sys.stdin)]" 2>/dev/null)

@@ -3,7 +3,7 @@
 // Imported by ssh.ts for system prompt augmentation and workspace file deployment.
 
 /** Bump this when intelligence content changes. Matches CONFIG_SPEC.version. */
-export const INTELLIGENCE_VERSION = "3.0";
+export const INTELLIGENCE_VERSION = "3.1";
 
 /** Sentinel markers for idempotent append to system-prompt.md */
 export const INTELLIGENCE_MARKER_START = "<!-- INTELLIGENCE_V2_START -->";
@@ -92,6 +92,22 @@ If you hit a rate limit or API error:
 2. If it fails again, tell the user and suggest trying again in a few minutes
 3. Never enter a retry loop — two attempts maximum
 4. Log the error in your daily memory file for debugging
+
+## 1J — Capability Enumeration (CRITICAL)
+
+**Trigger phrases:** "what can you do", "what are your skills", "list your capabilities", "what are you capable of", "help", "what features do you have", "show me your skills"
+
+When ANY of these are asked:
+
+1. **Read CAPABILITIES.md** from ~/.openclaw/workspace/ — this is the COMPLETE, AUTHORITATIVE list of everything you can do
+2. Summarize ALL major capability categories with human-friendly descriptions and 1-2 concrete examples each
+3. Format as a clean categorized list of what you can help with
+
+**CRITICAL RULES:**
+- **NEVER** run \`mcporter list\` as your answer to "what can you do" — MCP tools are a SUBSET of your total capabilities. Running \`mcporter list\` and presenting that output misses 14+ curl-based skills.
+- **NEVER** present MCP server names or raw tool names as your skill list
+- **ALWAYS** reference CAPABILITIES.md FIRST — it covers BOTH MCP tools AND curl-based skills (Sjinn video, financial analysis, email, etc.)
+- The user is paying for these capabilities. If you don't list them, they don't know they exist.
 
 ## 1K — Rule Priority
 
@@ -189,11 +205,47 @@ ${INTELLIGENCE_MARKER_END}`;
  */
 export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 # Version: ${INTELLIGENCE_VERSION}
-# Last updated: 2026-02-21
+# Last updated: 2026-02-26
 # READ-ONLY — Auto-generated. Personal tool notes go in TOOLS.md.
 #
 # Regenerated when skills or tools change.
 # If something listed here doesn't work, check .env for API keys and run mcporter list.
+
+---
+
+## ⚡ TL;DR — Your Complete Skill Set
+
+When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run mcporter list instead.
+
+### Media & Creative
+- **AI Video Production (Sjinn)** — Text-to-video, image-to-video, multi-shot stories using Seedance 2.0, Veo3, Sora2
+- **Motion Graphics (Remotion)** — React-based animated marketing videos with brand assets
+- **Voice & Audio** — Text-to-speech (OpenAI/ElevenLabs), audio processing, sound effects
+- **Image Generation** — AI stills and thumbnails via Sjinn (Nano Banana, seedream 4.5)
+
+### Research & Analysis
+- **Web Search & Browser** — Search the web (Brave), browse any page, screenshot, scrape data, fill forms
+- **Financial Analysis** — Real-time stock/crypto/forex quotes, 50+ technical indicators, options chains, charts
+- **Competitive Intelligence** — Monitor competitors (pricing, features, hiring), daily digests, alerts
+- **Prediction Markets** — Polymarket odds, market analysis, watchlists, optional autonomous trading
+
+### Communication & Content
+- **Email** — Send from your @instaclaw.io address, safety checks, digest generation
+- **Social Media** — Generate content for Twitter, LinkedIn, Reddit, Instagram with humanization filter
+- **Brand & Design** — Extract brand assets (fonts, colors, logos) from any URL
+
+### Business & Commerce
+- **E-Commerce** — Unified order management (Shopify/Amazon/eBay), inventory sync, returns, P&L reports
+- **Marketplace Earning** — Clawlancer bounties, digital product creation, autonomous services
+
+### Development & Learning
+- **Code Execution** — Python, Node.js, Bash on your dedicated VM with full dev tools
+- **Data Visualization** — Professional charts and graphs (matplotlib, plotly)
+- **Language Learning** — Personalized lessons in any language with spaced repetition and gamification
+
+---
+
+## DETAILED REFERENCE (each section below expands on the TL;DR above)
 
 ---
 
@@ -526,7 +578,8 @@ export const WORKSPACE_QUICK_REFERENCE_MD = `# Quick Reference — Common Tasks
 | "What are the odds of X?" | Polymarket (Skill 13) | Gamma API → market analysis |
 | "Prediction market scan" | Polymarket (Skill 13) | Top markets by volume + news cross-ref |
 | "What does Polymarket say?" | Polymarket (Skill 13) | Fetch market, format probabilities |
-| "What can you do?" | Meta | Read CAPABILITIES.md |
+| "What can you do?" | Meta | Read CAPABILITIES.md, summarize categories with examples (see 1J) |
+| "List your skills" | Meta | Read CAPABILITIES.md, summarize categories with examples (see 1J) |
 `;
 
 /**
