@@ -385,6 +385,18 @@ export async function POST(req: NextRequest) {
     const currentCount = limitResult?.count ?? 0;
     const source: string | null = limitResult?.source ?? null;
 
+    // Diagnostic: log limit check results for debugging
+    logger.info("Limit check result", {
+      route: "gateway/proxy",
+      vmId: vm.id,
+      tier,
+      displayLimit,
+      currentCount,
+      source,
+      allowed: limitResult?.allowed,
+      rpcRaw: JSON.stringify(limitResult),
+    });
+
     // --- Heartbeat budget exhausted: silently drop + log ---
     if (source === "heartbeat_exhausted") {
       logger.info("Heartbeat skipped: daily limit reached", {
@@ -838,6 +850,11 @@ export async function POST(req: NextRequest) {
         status: finalProviderRes.status,
         headers: {
           "content-type": finalProviderRes.headers.get("content-type") || "application/json",
+          "x-ic-tier": tier,
+          "x-ic-display-limit": String(displayLimit),
+          "x-ic-count": String(currentCount),
+          "x-ic-source": source ?? "null",
+          "x-ic-allowed": String(limitResult?.allowed ?? "null"),
         },
       });
     }
