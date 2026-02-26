@@ -7,6 +7,13 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+/** Per-tier daily Virtuals credit limits. */
+const VIRTUALS_LIMITS: Record<string, number> = {
+  starter: 100,
+  pro: 300,
+  power: 1000,
+};
+
 export async function GET() {
   try {
     const session = await auth();
@@ -18,7 +25,7 @@ export async function GET() {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, agdp_enabled")
+      .select("id, ip_address, ssh_port, ssh_user, agdp_enabled, tier, user_timezone")
       .eq("assigned_to", session.user.id)
       .single();
 
@@ -33,18 +40,36 @@ export async function GET() {
       });
     }
 
+    // Get today's Virtuals usage from daily_usage table
+    const tier = vm.tier || "starter";
+    const userTz = vm.user_timezone || "America/New_York";
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: userTz });
+    const virtualsLimit = VIRTUALS_LIMITS[tier] ?? 100;
+
+    const { data: usageRow } = await supabase
+      .from("instaclaw_daily_usage")
+      .select("virtuals_count")
+      .eq("vm_id", vm.id)
+      .eq("usage_date", today)
+      .single();
+
+    const virtualsUsageToday = Number(usageRow?.virtuals_count ?? 0);
+
     // SSH to VM and check ACP status
     try {
-      const status = await checkAcpStatus(vm as VMRecord);
+      const status = await checkAcpStatus(vm as VMRecord & { tier?: string });
 
       return NextResponse.json({
         enabled: true,
         vmId: vm.id,
         authenticated: status.authenticated,
         serving: status.serving,
-        agentId: status.agentId,
+        walletAddress: status.walletAddress,
+        agentName: status.agentName,
+        offeringCount: status.offeringCount,
         authUrl: status.authUrl,
-        jobsCompleted: status.jobsCompleted,
+        virtualsUsageToday,
+        virtualsLimit,
       });
     } catch (sshErr) {
       logger.warn("Virtuals status: SSH failed", {
@@ -56,6 +81,8 @@ export async function GET() {
         vmId: vm.id,
         authenticated: false,
         serving: false,
+        virtualsUsageToday,
+        virtualsLimit,
         error: "Could not connect to your agent instance. Try again in a moment.",
       });
     }

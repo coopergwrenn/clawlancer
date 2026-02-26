@@ -284,6 +284,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // --- Detect Virtuals ACP calls (separate credit budget) ---
+    const isVirtuals = req.headers.get("x-source") === "virtuals-acp";
+
     // --- Detect heartbeat vs user call ---
     // Heartbeats fire on a schedule and produce a burst of API calls.
     // If a heartbeat is due (next_at in the past) or recently fired (last_at
@@ -335,7 +338,7 @@ export async function POST(req: NextRequest) {
     // always uses the final routed model for correct cost tracking.
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_limit_only",
-      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz }
+      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz, p_is_virtuals: isVirtuals }
     );
 
     if (limitError) {
@@ -364,6 +367,21 @@ export async function POST(req: NextRequest) {
         source,
       });
       return silentEmptyResponse(requestedModel, isStreaming);
+    }
+
+    // --- Virtuals budget exhausted: return 429 so handler returns polite message ---
+    if (source === "virtuals_exhausted") {
+      logger.info("Virtuals job rejected: daily virtuals limit reached", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        virtualsCount: limitResult?.virtuals_count ?? 0,
+        virtualsLimit: limitResult?.virtuals_limit ?? 0,
+      });
+      return friendlyAssistantResponse(
+        "This agent has reached its daily Virtuals Protocol capacity. Please try again tomorrow.",
+        requestedModel,
+        isStreaming
+      );
     }
 
     // --- Hard block: everything exhausted (RPC denied) ---
@@ -439,7 +457,7 @@ export async function POST(req: NextRequest) {
     // toggles, and per-tier budget (returned by the merged limit check RPC).
     // Advisory only — if routing throws, we proceed with the original model.
     let routingDecision: RoutingDecision | null = null;
-    if (!isHeartbeat) {
+    if (!isHeartbeat && !isVirtuals) {
       try {
         // Read tier budget from the merged limit check result
         const tierBudget = computeTierBudget(tier, limitResult ? {
@@ -722,6 +740,7 @@ export async function POST(req: NextRequest) {
         p_model: finalModel,
         p_is_heartbeat: isHeartbeat,
         p_timezone: userTz,
+        p_is_virtuals: isVirtuals,
       })
       .then(({ error: incError }) => {
         if (incError) {

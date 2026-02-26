@@ -905,9 +905,12 @@ interface VirtualsStatus {
   vmId?: string;
   authenticated?: boolean;
   serving?: boolean;
-  agentId?: string | null;
+  walletAddress?: string | null;
+  agentName?: string | null;
+  offeringCount?: number;
   authUrl?: string | null;
-  jobsCompleted?: number;
+  virtualsUsageToday?: number;
+  virtualsLimit?: number;
   error?: string;
 }
 
@@ -1203,9 +1206,9 @@ function VirtualsSection({
                     {status.serving ? "Accepting jobs" : "Authenticated but not serving"}
                   </span>
                 </div>
-                {status.agentId && (
+                {status.walletAddress && (
                   <span className="text-[10px] font-mono" style={{ color: "var(--muted)" }}>
-                    {status.agentId.slice(0, 8)}...
+                    {status.walletAddress.slice(0, 6)}...{status.walletAddress.slice(-4)}
                   </span>
                 )}
               </div>
@@ -1235,6 +1238,41 @@ function VirtualsSection({
                 </button>
               )}
 
+              {/* Virtuals credit usage */}
+              {(status.virtualsLimit ?? 0) > 0 && (
+                <div
+                  className="rounded-lg px-4 py-3"
+                  style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold">Virtuals Credits Today</p>
+                    <span className="text-xs font-medium tabular-nums" style={{ color: "var(--muted)" }}>
+                      {Math.round(status.virtualsUsageToday ?? 0)}/{status.virtualsLimit}
+                    </span>
+                  </div>
+                  <div
+                    className="w-full h-2 rounded-full overflow-hidden"
+                    style={{ background: "rgba(0,0,0,0.06)" }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, ((status.virtualsUsageToday ?? 0) / (status.virtualsLimit ?? 1)) * 100)}%`,
+                        background:
+                          ((status.virtualsUsageToday ?? 0) / (status.virtualsLimit ?? 1)) >= 0.9
+                            ? "rgb(239,68,68)"
+                            : ((status.virtualsUsageToday ?? 0) / (status.virtualsLimit ?? 1)) >= 0.7
+                              ? "rgb(249,115,22)"
+                              : "rgb(34,197,94)",
+                      }}
+                    />
+                  </div>
+                  <p className="text-[10px] mt-1.5" style={{ color: "var(--muted)" }}>
+                    Separate from your chat credits. Resets daily.
+                  </p>
+                </div>
+              )}
+
               {/* Stats */}
               <div className="grid grid-cols-2 gap-3">
                 <div
@@ -1242,8 +1280,8 @@ function VirtualsSection({
                   style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: "rgb(168,85,247)" }} />
-                  <p className="text-lg font-bold">{status.jobsCompleted ?? 0}</p>
-                  <p className="text-[10px]" style={{ color: "var(--muted)" }}>Jobs Completed</p>
+                  <p className="text-lg font-bold">{status.offeringCount ?? 0}</p>
+                  <p className="text-[10px]" style={{ color: "var(--muted)" }}>Offerings</p>
                 </div>
                 <div
                   className="rounded-lg p-3 text-center"
@@ -1256,18 +1294,18 @@ function VirtualsSection({
               </div>
 
               {/* How it works */}
-              {(status.jobsCompleted ?? 0) === 0 && (
-                <div
-                  className="rounded-lg p-5 text-center"
-                  style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
-                >
-                  <Store className="w-5 h-5 mx-auto mb-2" style={{ color: "var(--muted)" }} />
-                  <p className="text-xs font-medium mb-1">Waiting for jobs</p>
-                  <p className="text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-                    Your agent is listed on the Virtuals Protocol ACP marketplace. When other agents or users send task requests, your agent completes them automatically and earns fees.
-                  </p>
-                </div>
-              )}
+              <div
+                className="rounded-lg p-5 text-center"
+                style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+              >
+                <Store className="w-5 h-5 mx-auto mb-2" style={{ color: "var(--muted)" }} />
+                <p className="text-xs font-medium mb-1">
+                  {status.serving ? "Listening for jobs" : "Ready to accept jobs"}
+                </p>
+                <p className="text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                  Your agent is listed on the Virtuals Protocol ACP marketplace. When other agents or users send task requests, your agent completes them automatically and earns fees.
+                </p>
+              </div>
 
               {activateResult === "success" && (
                 <div className="flex items-center gap-2 text-xs" style={{ color: "rgb(34,197,94)" }}>
