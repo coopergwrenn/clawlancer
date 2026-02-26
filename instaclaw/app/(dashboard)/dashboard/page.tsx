@@ -93,6 +93,8 @@ export default function DashboardPage() {
   const [tokenRevealed, setTokenRevealed] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [repairing, setRepairing] = useState(false);
+  const [repairPhase, setRepairPhase] = useState<"idle" | "resync" | "resync_done" | "needs_deep" | "deep" | "deep_done">("idle");
+  const [showDeepRepairConfirm, setShowDeepRepairConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetToast, setResetToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -176,20 +178,81 @@ export default function DashboardPage() {
 
   async function handleRepair() {
     setRepairing(true);
+    setRepairPhase("resync");
     try {
+      // Phase 1: lightweight token resync (non-destructive)
       const res = await fetch("/api/vm/repair", { method: "POST" });
       const data = await res.json();
-      if (res.ok) {
-        setResetToast({ message: "Repair started — your agent will be back online in ~60 seconds", type: "success" });
-      } else {
-        setResetToast({ message: data.error || "Repair failed", type: "error" });
+
+      if (res.status === 429) {
+        setResetToast({ message: data.error || "Please wait before repairing again", type: "error" });
+        setRepairing(false);
+        setRepairPhase("idle");
+        setTimeout(() => setResetToast(null), 4000);
+        return;
       }
-      setTimeout(fetchStatus, 5000);
+
+      if (res.ok && data.repaired) {
+        // Resync fixed it
+        setRepairPhase("resync_done");
+        setResetToast({ message: "Quick repair succeeded — your agent is back online", type: "success" });
+        setTimeout(fetchStatus, 3000);
+        setTimeout(() => { setRepairing(false); setRepairPhase("idle"); }, 3000);
+        setTimeout(() => setResetToast(null), 5000);
+        return;
+      }
+
+      if (data.needsDeepRepair) {
+        // Resync wasn't enough — prompt user for deep repair
+        setRepairPhase("needs_deep");
+        setShowDeepRepairConfirm(true);
+        setRepairing(false);
+        return;
+      }
+
+      // Unknown response
+      setResetToast({ message: data.error || "Repair failed", type: "error" });
+      setRepairing(false);
+      setRepairPhase("idle");
+      setTimeout(() => setResetToast(null), 4000);
+    } catch {
+      setResetToast({ message: "Network error — could not reach server", type: "error" });
+      setRepairing(false);
+      setRepairPhase("idle");
+      setTimeout(() => setResetToast(null), 4000);
+    }
+  }
+
+  async function handleDeepRepair() {
+    setShowDeepRepairConfirm(false);
+    setRepairing(true);
+    setRepairPhase("deep");
+    try {
+      const res = await fetch("/api/vm/repair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deep: true }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.repaired) {
+        setRepairPhase("deep_done");
+        const restoredMsg = data.restored
+          ? ` Memory and personality restored (${data.restoredFiles?.length ?? 0} files).`
+          : "";
+        setResetToast({
+          message: `Deep repair complete — your agent is back online.${restoredMsg}`,
+          type: "success",
+        });
+        setTimeout(fetchStatus, 3000);
+      } else {
+        setResetToast({ message: data.error || "Deep repair failed", type: "error" });
+      }
     } catch {
       setResetToast({ message: "Network error — could not reach server", type: "error" });
     } finally {
-      setRepairing(false);
-      setTimeout(() => setResetToast(null), 4000);
+      setTimeout(() => { setRepairing(false); setRepairPhase("idle"); }, 3000);
+      setTimeout(() => setResetToast(null), 6000);
     }
   }
 
@@ -809,7 +872,7 @@ export default function DashboardPage() {
 
               <button
                 onClick={handleRepair}
-                disabled={repairing}
+                disabled={repairing || repairPhase === "needs_deep"}
                 className="glass rounded-xl p-4 flex items-center gap-3 transition-all hover:border-white/30 cursor-pointer disabled:opacity-50 text-left"
                 style={{ border: "1px solid var(--border)" }}
               >
@@ -819,13 +882,18 @@ export default function DashboardPage() {
                 />
                 <div>
                   <p className="text-sm font-semibold">
-                    {repairing ? "Repairing..." : "Repair Agent"}
+                    {repairPhase === "resync" ? "Resyncing token..." :
+                     repairPhase === "deep" ? "Deep repairing..." :
+                     repairPhase === "resync_done" || repairPhase === "deep_done" ? "Repair complete" :
+                     "Repair Agent"}
                   </p>
                   <p
                     className="text-xs"
                     style={{ color: "var(--muted)" }}
                   >
-                    Full reconfigure — fixes broken proxy, tokens, config
+                    {repairPhase === "resync" ? "Quick fix — resyncing gateway token (non-destructive)" :
+                     repairPhase === "deep" ? "Full reconfigure in progress — restoring memory after" :
+                     "Fixes broken proxy, tokens, and config issues"}
                   </p>
                 </div>
               </button>
@@ -1225,6 +1293,63 @@ export default function DashboardPage() {
                   style={{ background: "#ef4444", color: "#fff" }}
                 >
                   Yes, Reset Everything
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Deep repair confirmation modal */}
+      <AnimatePresence>
+        {showDeepRepairConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+            onClick={() => { setShowDeepRepairConfirm(false); setRepairPhase("idle"); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className="rounded-2xl p-6 w-full max-w-sm"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-center mb-4">
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(249,115,22,0.1)" }}
+                >
+                  <AlertTriangle className="w-6 h-6" style={{ color: "#f97316" }} />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-center mb-2">Deep Repair Needed</h3>
+              <p className="text-sm text-center mb-2" style={{ color: "var(--muted)" }}>
+                Quick repair couldn&apos;t fix the issue. A full reconfigure is needed.
+              </p>
+              <p className="text-sm text-center mb-6" style={{ color: "var(--muted)" }}>
+                This will temporarily reset your agent&apos;s personality and memory, but we&apos;ll
+                automatically restore them from backup afterward.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowDeepRepairConfirm(false); setRepairPhase("idle"); }}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer"
+                  style={{ background: "rgba(0,0,0,0.06)", color: "var(--foreground)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeepRepair}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer"
+                  style={{ background: "#f97316", color: "#fff" }}
+                >
+                  Yes, Deep Repair
                 </button>
               </div>
             </motion.div>
