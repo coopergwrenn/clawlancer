@@ -49,6 +49,7 @@ export default auth((req) => {
     "/api/billing/webhook",
     "/api/cron",
     "/api/vm/configure",
+    "/api/vm/resync-token",
     "/api/admin/provision",
     "/api/admin/pool-audit",
     "/api/gateway",
