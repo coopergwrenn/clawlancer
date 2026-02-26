@@ -15,6 +15,8 @@ import {
   ArrowRight,
   MessageSquare,
   CheckCircle2,
+  Wallet,
+  AlertCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import PolymarketPanel from "@/components/dashboard/polymarket-panel";
@@ -457,21 +459,441 @@ function BotMessage({ message, botUsername }: { message: string; botUsername?: s
 
 // ── Clawlancer Section ──────────────────────────────
 
-function ClawlancerSection() {
+interface ClawlancerStatus {
+  registered: boolean;
+  vmId?: string;
+  agentName?: string;
+  agentId?: string;
+  walletAddress?: string | null;
+  reputationTier?: string;
+  transactionCount?: number;
+  totalEarnedUsdc?: string;
+  monthlyEarnedUsdc?: string;
+  balanceUsdc?: string;
+  recentTransactions?: {
+    id: string;
+    state: string;
+    description: string;
+    amount: string;
+    createdAt: string;
+    deliveredAt?: string;
+    completedAt?: string;
+    buyer?: string | null;
+    seller?: string | null;
+  }[];
+  botUsername?: string | null;
+  preferences?: {
+    autoClaim: boolean;
+    approvalThreshold: number;
+  };
+  error?: string;
+}
+
+const TX_STATE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  FUNDED: { label: "Claimed", color: "rgb(59,130,246)", bg: "rgba(59,130,246,0.08)" },
+  DELIVERED: { label: "Delivered", color: "rgb(168,85,247)", bg: "rgba(168,85,247,0.08)" },
+  RELEASED: { label: "Paid", color: "rgb(34,197,94)", bg: "rgba(34,197,94,0.08)" },
+  DISPUTED: { label: "Disputed", color: "rgb(239,68,68)", bg: "rgba(239,68,68,0.08)" },
+  REFUNDED: { label: "Refunded", color: "rgb(249,115,22)", bg: "rgba(249,115,22,0.08)" },
+};
+
+// Skeleton loader for the earnings display
+function EarningsSkeleton() {
   return (
-    <div
-      className="rounded-lg p-4"
-      style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.12)" }}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <CheckCircle2 className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
-        <span className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>Already running</span>
+    <div className="space-y-5 animate-pulse">
+      {/* Big number skeleton */}
+      <div className="text-center py-4">
+        <div className="h-3 w-20 rounded bg-current opacity-[0.06] mx-auto mb-3" />
+        <div className="h-10 w-36 rounded bg-current opacity-[0.08] mx-auto mb-2" />
+        <div className="h-3 w-32 rounded bg-current opacity-[0.05] mx-auto" />
       </div>
-      <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-        This is always on. Your agent checks the Clawlancer job board automatically,
-        picks up work it&apos;s qualified for, completes it, and gets paid.
-        No action needed from you.
-      </p>
+      {/* Stats row skeleton */}
+      <div className="grid grid-cols-3 gap-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-lg p-3" style={{ border: "1px solid var(--border)" }}>
+            <div className="h-2.5 w-12 rounded bg-current opacity-[0.06] mb-2" />
+            <div className="h-5 w-16 rounded bg-current opacity-[0.08]" />
+          </div>
+        ))}
+      </div>
+      {/* Activity skeleton */}
+      <div className="space-y-2">
+        <div className="h-3 w-24 rounded bg-current opacity-[0.06] mb-3" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-lg px-4 py-3 flex justify-between" style={{ border: "1px solid var(--border)" }}>
+            <div>
+              <div className="h-3 w-32 rounded bg-current opacity-[0.07] mb-1.5" />
+              <div className="h-2.5 w-20 rounded bg-current opacity-[0.05]" />
+            </div>
+            <div className="h-4 w-12 rounded bg-current opacity-[0.07]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClawlancerSection() {
+  const [status, setStatus] = useState<ClawlancerStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [autoClaim, setAutoClaim] = useState(true);
+  const [threshold, setThreshold] = useState("50");
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [prefsSaved, setPrefsSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/clawlancer/status")
+      .then((r) => r.json())
+      .then((data) => {
+        setStatus(data);
+        if (data.error && !data.registered && !data.vmId) setError(data.error);
+        if (data.preferences) {
+          setAutoClaim(data.preferences.autoClaim);
+          setThreshold(String(data.preferences.approvalThreshold));
+        }
+      })
+      .catch(() => setError("Failed to load Clawlancer data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function savePreferences(newAutoClaim: boolean, newThreshold?: string) {
+    setSavingPrefs(true);
+    setPrefsSaved(false);
+    try {
+      const body: Record<string, unknown> = { autoClaim: newAutoClaim };
+      if (newThreshold !== undefined) {
+        body.approvalThreshold = Number(newThreshold);
+      }
+      const res = await fetch("/api/clawlancer/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) setPrefsSaved(true);
+    } catch {
+      // silent
+    } finally {
+      setSavingPrefs(false);
+      setTimeout(() => setPrefsSaved(false), 2000);
+    }
+  }
+
+  // Loading state — skeleton
+  if (loading) return <EarningsSkeleton />;
+
+  // Hard error — no VM, network failure
+  if (error && !status) {
+    return (
+      <div
+        className="rounded-lg p-5"
+        style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.12)" }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <AlertCircle className="w-4 h-4" style={{ color: "rgb(239,68,68)" }} />
+          <span className="text-sm font-semibold" style={{ color: "rgb(239,68,68)" }}>
+            Connection issue
+          </span>
+        </div>
+        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          {error}
+        </p>
+      </div>
+    );
+  }
+
+  // Not registered — setup wizard
+  if (!status?.registered) {
+    return (
+      <div className="space-y-5">
+        {/* Step indicator */}
+        <div className="flex items-center gap-3">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+            style={{
+              background: status?.walletAddress
+                ? "rgba(34,197,94,0.1)"
+                : "rgba(249,115,22,0.1)",
+              color: status?.walletAddress
+                ? "rgb(34,197,94)"
+                : "rgb(249,115,22)",
+              border: status?.walletAddress
+                ? "1px solid rgba(34,197,94,0.2)"
+                : "1px solid rgba(249,115,22,0.2)",
+            }}
+          >
+            1
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Register on Clawlancer</p>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Your agent needs a marketplace account to claim bounties and earn USDC
+            </p>
+          </div>
+        </div>
+
+        {/* What happens */}
+        <div
+          className="rounded-lg p-4"
+          style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.12)" }}
+        >
+          <p className="text-xs font-semibold mb-2" style={{ color: "rgb(59,130,246)" }}>
+            What happens when you register:
+          </p>
+          <ul className="space-y-1.5 text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+            <li className="flex items-start gap-2">
+              <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(59,130,246)" }} />
+              Your agent creates a Base wallet for receiving USDC payments
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(59,130,246)" }} />
+              Registers on the Clawlancer marketplace with its skills
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(59,130,246)" }} />
+              Starts checking for bounties every 3 hours automatically
+            </li>
+          </ul>
+        </div>
+
+        {/* CTA */}
+        <BotMessage
+          message="Register on Clawlancer and start picking up bounties"
+          botUsername={status?.botUsername}
+        />
+
+        {status?.error && (
+          <p className="text-[11px]" style={{ color: "var(--muted)" }}>
+            {status.error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Registered — Full Earnings Dashboard ──
+  const totalEarned = Number(status.totalEarnedUsdc ?? "0");
+  const monthlyEarned = Number(status.monthlyEarnedUsdc ?? "0");
+  const balance = Number(status.balanceUsdc ?? "0");
+  const txCount = status.transactionCount ?? 0;
+  const tier = status.reputationTier ?? "NEW";
+  const txs = status.recentTransactions ?? [];
+
+  return (
+    <div className="space-y-5">
+      {/* ── Hero: Total Earned (Robinhood-style) ── */}
+      <div className="text-center py-2">
+        <p className="text-[11px] font-medium tracking-wide uppercase" style={{ color: "var(--muted)" }}>
+          Total Earned
+        </p>
+        <p
+          className="text-4xl sm:text-5xl font-bold tracking-tight mt-1"
+          style={{ color: "rgb(34,197,94)", fontVariantNumeric: "tabular-nums" }}
+        >
+          ${totalEarned.toFixed(2)}
+        </p>
+        <p className="text-xs mt-1.5" style={{ color: "var(--muted)" }}>
+          ${monthlyEarned.toFixed(2)} this month
+        </p>
+      </div>
+
+      {/* ── Stats Grid ── */}
+      <div className="grid grid-cols-3 gap-3">
+        <div
+          className="rounded-lg p-3 text-center"
+          style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+        >
+          <Wallet className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: "rgb(59,130,246)" }} />
+          <p className="text-lg font-bold" style={{ fontVariantNumeric: "tabular-nums" }}>
+            ${balance.toFixed(2)}
+          </p>
+          <p className="text-[10px]" style={{ color: "var(--muted)" }}>USDC Balance</p>
+        </div>
+        <div
+          className="rounded-lg p-3 text-center"
+          style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: "rgb(168,85,247)" }} />
+          <p className="text-lg font-bold">{txCount}</p>
+          <p className="text-[10px]" style={{ color: "var(--muted)" }}>Bounties</p>
+        </div>
+        <div
+          className="rounded-lg p-3 text-center"
+          style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+        >
+          <TrendingUp className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: "rgb(249,115,22)" }} />
+          <p className="text-lg font-bold">{tier}</p>
+          <p className="text-[10px]" style={{ color: "var(--muted)" }}>Reputation</p>
+        </div>
+      </div>
+
+      {/* ── Agent & Wallet Info ── */}
+      <div
+        className="flex items-center justify-between rounded-lg px-4 py-3"
+        style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.12)" }}
+      >
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "rgb(34,197,94)" }} />
+          <span className="text-xs font-medium" style={{ color: "rgb(34,197,94)" }}>
+            {status.agentName}
+          </span>
+        </div>
+        {status.walletAddress && (
+          <span className="text-[10px] font-mono" style={{ color: "var(--muted)" }}>
+            {status.walletAddress.slice(0, 6)}...{status.walletAddress.slice(-4)}
+          </span>
+        )}
+      </div>
+
+      {/* ── Activity Feed ── */}
+      <div>
+        <p className="text-xs font-semibold mb-3">Activity</p>
+        {txs.length > 0 ? (
+          <div className="space-y-2">
+            {txs.map((tx) => {
+              const stateInfo = TX_STATE_LABELS[tx.state] ?? {
+                label: tx.state,
+                color: "var(--muted)",
+                bg: "rgba(0,0,0,0.04)",
+              };
+              const date = tx.completedAt || tx.deliveredAt || tx.createdAt;
+              return (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between rounded-lg px-4 py-3"
+                  style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+                >
+                  <div className="flex-1 min-w-0 mr-3">
+                    <p className="text-xs font-medium truncate">{tx.description}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                        style={{ background: stateInfo.bg, color: stateInfo.color }}
+                      >
+                        {stateInfo.label}
+                      </span>
+                      <span className="text-[10px]" style={{ color: "var(--muted)" }}>
+                        {new Date(date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                      {tx.buyer && (
+                        <span className="text-[10px]" style={{ color: "var(--muted)" }}>
+                          from {tx.buyer}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className="text-sm font-bold shrink-0 tabular-nums"
+                    style={{ color: tx.state === "RELEASED" ? "rgb(34,197,94)" : "var(--foreground)" }}
+                  >
+                    ${tx.amount}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            className="rounded-lg p-5 text-center"
+            style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+          >
+            <Store className="w-5 h-5 mx-auto mb-2" style={{ color: "var(--muted)" }} />
+            <p className="text-xs font-medium mb-1">No bounties yet</p>
+            <p className="text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+              Your agent checks the bounty board every 3 hours. Bounties will appear here as your agent claims and completes work.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Safety Controls ── */}
+      <div>
+        <p className="text-xs font-semibold mb-3">Safety Controls</p>
+        <div className="space-y-3">
+          {/* Auto-claim toggle */}
+          <div
+            className="flex items-center justify-between rounded-lg px-4 py-3"
+            style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+          >
+            <div className="mr-3">
+              <p className="text-xs font-semibold">Auto-claim bounties</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--muted)" }}>
+                {autoClaim
+                  ? "Agent claims matching bounties automatically"
+                  : "Agent asks you before claiming any bounty"}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={savingPrefs}
+              onClick={() => {
+                const next = !autoClaim;
+                setAutoClaim(next);
+                savePreferences(next, threshold);
+              }}
+              className="relative w-11 h-6 rounded-full transition-all cursor-pointer shrink-0 disabled:opacity-50"
+              style={{
+                background: autoClaim
+                  ? "linear-gradient(135deg, rgba(22,22,22,0.7), rgba(40,40,40,0.8))"
+                  : "rgba(0,0,0,0.08)",
+                boxShadow: autoClaim
+                  ? "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)"
+                  : "0 0 0 1px rgba(0,0,0,0.08)",
+              }}
+            >
+              <span
+                className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+                style={{
+                  left: autoClaim ? "22px" : "2px",
+                  background: "white",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                  transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
+                }}
+              />
+            </button>
+          </div>
+
+          {/* Approval threshold */}
+          {autoClaim && (
+            <div
+              className="rounded-lg px-4 py-3"
+              style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+            >
+              <p className="text-xs font-semibold mb-0.5">Approval threshold</p>
+              <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>
+                Bounties over this amount require your approval before claiming
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>$</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  onBlur={() => savePreferences(autoClaim, threshold)}
+                  className="w-24 px-3 py-1.5 rounded-lg text-sm font-medium outline-none"
+                  style={{
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    color: "var(--foreground)",
+                  }}
+                />
+                <span className="text-[11px]" style={{ color: "var(--muted)" }}>USDC</span>
+                {savingPrefs && (
+                  <RefreshCw className="w-3 h-3 animate-spin" style={{ color: "var(--muted)" }} />
+                )}
+                {prefsSaved && (
+                  <CheckCircle2 className="w-3 h-3" style={{ color: "rgb(34,197,94)" }} />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
