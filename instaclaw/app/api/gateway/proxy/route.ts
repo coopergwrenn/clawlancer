@@ -241,6 +241,32 @@ export async function POST(req: NextRequest) {
       requestedModel = vm.default_model || "minimax-m2.5";
     }
 
+    // --- Strip thinking blocks from conversation history ---
+    // OpenClaw's promoteThinkingTagsToBlocks() converts MiniMax reasoning
+    // tags into type:"thinking" blocks without valid Anthropic signatures.
+    // When these get replayed, the API rejects with "Invalid signature in
+    // thinking block". Strip them at the proxy level to prevent this permanently.
+    if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
+      let thinkingStripped = false;
+      for (const msg of parsedBody.messages as Array<{ role?: string; content?: unknown }>) {
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+          const filtered = (msg.content as Array<{ type?: string }>).filter(
+            (block) => block.type !== "thinking"
+          );
+          if (filtered.length !== (msg.content as Array<unknown>).length) {
+            msg.content = filtered.length > 0 ? filtered : [{ type: "text", text: "" }];
+            thinkingStripped = true;
+          }
+        }
+      }
+      if (thinkingStripped) {
+        logger.info("Stripped thinking blocks from conversation history", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+        });
+      }
+    }
+
     // --- Global daily spend circuit breaker (always UTC) ---
     const todayStr = new Date().toISOString().split("T")[0];
 
