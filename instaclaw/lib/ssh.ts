@@ -1313,6 +1313,17 @@ export async function configureOpenClaw(
       );
     }
 
+    // Deploy GATEWAY_TOKEN to .env so agent can call proxy endpoints (Sjinn, etc.)
+    scriptParts.push(
+      '# Deploy GATEWAY_TOKEN for proxy authentication',
+      'touch "$HOME/.openclaw/.env"',
+      `GT_KEY="${gatewayToken}"`,
+      'grep -q "^GATEWAY_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\',
+      '  sed -i "s/^GATEWAY_TOKEN=.*/GATEWAY_TOKEN=$GT_KEY/" "$HOME/.openclaw/.env" || \\',
+      '  echo "GATEWAY_TOKEN=$GT_KEY" >> "$HOME/.openclaw/.env"',
+      ''
+    );
+
     // Install Clawlancer MCP tools via mcporter
     // mcporter is pre-installed globally on all VMs. Here we:
     // 1. Configure the clawlancer MCP server (API key will be empty until agent registers)
@@ -1972,10 +1983,6 @@ export async function configureOpenClaw(
       const sjinnPipelineB64 = Buffer.from(sjinnPipeline, "utf-8").toString("base64");
       const sjinnSetupB64 = Buffer.from(sjinnSetup, "utf-8").toString("base64");
 
-      // Deploy SJINN_API_KEY from env
-      const sjinnApiKey = process.env.SJINN_API_KEY || "";
-      const sjinnKeyB64 = sjinnApiKey ? Buffer.from(sjinnApiKey, "utf-8").toString("base64") : "";
-
       scriptParts.push(
         '# Deploy Sjinn AI Video Production Studio skill',
         'SJINN_SKILL_DIR="$HOME/.openclaw/skills/sjinn-video"',
@@ -1990,19 +1997,9 @@ export async function configureOpenClaw(
         'bash "$HOME/scripts/setup-sjinn-video.sh" 2>/dev/null || true',
         '# Clean up old Kling skill if it exists',
         'rm -rf "$HOME/.openclaw/skills/kling-ai-video" 2>/dev/null || true',
+        '# Remove old SJINN_API_KEY (now server-side only via proxy)',
+        'sed -i "/^SJINN_API_KEY=/d" "$HOME/.openclaw/.env" 2>/dev/null || true',
       );
-
-      // Deploy API key if available
-      if (sjinnKeyB64) {
-        scriptParts.push(
-          '# Deploy SJINN_API_KEY',
-          'touch "$HOME/.openclaw/.env"',
-          `SJINN_KEY=$(echo '${sjinnKeyB64}' | base64 -d)`,
-          'grep -q "^SJINN_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && \\',
-          '  sed -i "s/^SJINN_API_KEY=.*/SJINN_API_KEY=$SJINN_KEY/" "$HOME/.openclaw/.env" || \\',
-          '  echo "SJINN_API_KEY=$SJINN_KEY" >> "$HOME/.openclaw/.env"',
-        );
-      }
 
       scriptParts.push('');
       logger.info("Sjinn video skill deployment prepared", { route: "lib/ssh" });

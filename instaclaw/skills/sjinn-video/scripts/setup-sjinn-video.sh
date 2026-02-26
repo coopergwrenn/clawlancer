@@ -29,15 +29,11 @@ else
   echo "  [OK] ~/memory/video-history.json already exists, preserving"
 fi
 
-# Verify SJINN_API_KEY in .env
-if [ -f ~/.openclaw/.env ]; then
-  if grep -q "^SJINN_API_KEY=" ~/.openclaw/.env 2>/dev/null; then
-    echo "  [OK] SJINN_API_KEY found in ~/.openclaw/.env"
-  else
-    echo "  [WARN] SJINN_API_KEY not found in ~/.openclaw/.env — video generation will not work until key is deployed"
-  fi
+# Verify GATEWAY_TOKEN in .env (used for proxy authentication)
+if grep -q "^GATEWAY_TOKEN=" ~/.openclaw/.env 2>/dev/null; then
+  echo "  [OK] GATEWAY_TOKEN found in ~/.openclaw/.env"
 else
-  echo "  [WARN] ~/.openclaw/.env not found — video generation will not work until key is deployed"
+  echo "  [WARN] GATEWAY_TOKEN not found — video generation will not work"
 fi
 
 # Set up auto-cleanup cron for videos (7-day retention)
@@ -69,4 +65,4 @@ echo "=== Sjinn Video Setup Complete ==="
 echo "  Videos:      ~/workspace/videos/ (7-day retention)"
 echo "  Tmp media:   ~/workspace/tmp-media/ (1-hour retention)"
 echo "  History:     ~/memory/video-history.json"
-echo "  API key:     ~/.openclaw/.env (SJINN_API_KEY)"
+echo "  Auth:        ~/.openclaw/.env (GATEWAY_TOKEN)"

@@ -1,7 +1,9 @@
 # Sjinn API Reference
 
-Base URL: `https://sjinn.ai/api/un-api/`
-Auth: `Authorization: Bearer SJINN_API_KEY`
+All Sjinn calls are proxied through the InstaClaw server. The agent never calls Sjinn directly.
+
+Proxy URL: `https://instaclaw.io/api/gateway/sjinn`
+Auth: `Authorization: Bearer GATEWAY_TOKEN`
 Content-Type: `application/json`
 
 ---
@@ -13,10 +15,11 @@ Best for: multi-shot stories, Seedance 2.0 (only accessible here), complex produ
 ### Create Agent Task
 
 ```
-POST /api/un-api/create_agent_task
+POST https://instaclaw.io/api/gateway/sjinn?action=create
 
 Body:
 {
+  "api": "agent",
   "message": "string — cinematic prompt describing the video",
   "template_id": "string — optional, from template table below",
   "quality": "quality" | "cheap"
@@ -35,10 +38,11 @@ Response:
 ### Query Agent Task Status
 
 ```
-POST /api/un-api/query_agent_task_status
+POST https://instaclaw.io/api/gateway/sjinn?action=query
 
 Body:
 {
+  "api": "agent",
   "chat_id": "uuid — from create response",
   "tool_names": ["ffmpeg_full_compose"]  // optional — filter for specific tool results
 }
@@ -73,10 +77,11 @@ Best for: deterministic single operations, specific model control, image-to-vide
 ### Create Tool Task
 
 ```
-POST /api/un-api/create_tool_task
+POST https://instaclaw.io/api/gateway/sjinn?action=create
 
 Body:
 {
+  "api": "tool",
   "tool_type": "string — from tool_types table below",
   "input": {
     "prompt": "string",
@@ -100,10 +105,11 @@ Response:
 ### Query Tool Task Status
 
 ```
-POST /api/un-api/query_tool_task_status
+POST https://instaclaw.io/api/gateway/sjinn?action=query
 
 Body:
 {
+  "api": "tool",
   "task_id": "uuid — from create response"
 }
 
@@ -159,10 +165,10 @@ Response:
 
 | Code | Meaning | Handle |
 |------|---------|--------|
-| 0 | Success | Proceed normally |
-| 100 | Insufficient Sjinn balance | "Service at capacity" — never expose billing |
-| 101 | Membership required | "Service temporarily unavailable" |
-| 401 | Invalid or missing API key | "Video unavailable, notifying team" |
+| 200 | Success | Proceed normally |
+| 429 | Daily limit reached | "You've hit your daily video limit. Resets at midnight." |
+| 503 | Service at capacity | "Video generation is temporarily at capacity. Try again later." |
+| 401 | Invalid gateway token | "Video unavailable, notifying team" |
 | 403 | Unauthorized | "Video unavailable" |
 | 404 | Resource not found | Retry or re-submit |
 | 500 | Internal server error | Retry once, then report |
@@ -206,14 +212,14 @@ User request
 
 ```bash
 #!/bin/bash
-# Text-to-video via Agent API
-SJINN_API_KEY=$(grep SJINN_API_KEY ~/.openclaw/.env | cut -d= -f2)
+# Text-to-video via Agent API (proxied through InstaClaw)
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
 
 # 1. Submit
-RESPONSE=$(curl -s -X POST "https://sjinn.ai/api/un-api/create_agent_task" \
-  -H "Authorization: Bearer $SJINN_API_KEY" \
+RESPONSE=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=create" \
+  -H "Authorization: Bearer $GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"message": "Cinematic aerial drone shot descending over tropical coastline at golden hour. Sun melts into ocean, sky painted amber and violet. Gentle waves catch warm light. Camera pushes toward sun. 16:9 widescreen.", "quality": "quality"}')
+  -d '{"api": "agent", "message": "Cinematic aerial drone shot descending over tropical coastline at golden hour. Sun melts into ocean, sky painted amber and violet. Gentle waves catch warm light. Camera pushes toward sun. 16:9 widescreen.", "quality": "quality"}')
 
 CHAT_ID=$(echo "$RESPONSE" | jq -r '.data.chat_id')
 echo "Submitted. chat_id: $CHAT_ID"
@@ -221,10 +227,10 @@ echo "Submitted. chat_id: $CHAT_ID"
 # 2. Poll (15s intervals, 10min timeout)
 ELAPSED=0
 while [ $ELAPSED -lt 600 ]; do
-  RESULT=$(curl -s -X POST "https://sjinn.ai/api/un-api/query_agent_task_status" \
-    -H "Authorization: Bearer $SJINN_API_KEY" \
+  RESULT=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=query" \
+    -H "Authorization: Bearer $GATEWAY_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"chat_id\": \"$CHAT_ID\"}")
+    -d "{\"api\": \"agent\", \"chat_id\": \"$CHAT_ID\"}")
   STATUS=$(echo "$RESULT" | jq -r '.data.status')
   if [ "$STATUS" = "1" ]; then
     echo "Completed!"
@@ -243,16 +249,16 @@ curl -sL "$VIDEO_URL" -o ~/workspace/videos/sunset_$(date +%Y-%m-%d_%H-%M).mp4
 
 ```bash
 #!/bin/bash
-# Image-to-video via Tool API (Veo3)
-SJINN_API_KEY=$(grep SJINN_API_KEY ~/.openclaw/.env | cut -d= -f2)
+# Image-to-video via Tool API (Veo3, proxied through InstaClaw)
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
 
 IMAGE_URL="https://your-hostname.instaclaw.io/tmp-media/abc123.jpg"
 
 # 1. Submit
-RESPONSE=$(curl -s -X POST "https://sjinn.ai/api/un-api/create_tool_task" \
-  -H "Authorization: Bearer $SJINN_API_KEY" \
+RESPONSE=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=create" \
+  -H "Authorization: Bearer $GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"tool_type\": \"veo3-image-to-video-fast-api\", \"input\": {\"prompt\": \"Smooth dolly shot orbiting the product. Soft studio lighting with reflections. Camera pushes in to reveal detail.\", \"image_url\": \"$IMAGE_URL\", \"aspect_ratio\": \"16:9\"}}")
+  -d "{\"api\": \"tool\", \"tool_type\": \"veo3-image-to-video-fast-api\", \"input\": {\"prompt\": \"Smooth dolly shot orbiting the product. Soft studio lighting with reflections. Camera pushes in to reveal detail.\", \"image_url\": \"$IMAGE_URL\", \"aspect_ratio\": \"16:9\"}}")
 
 TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id')
 echo "Submitted. task_id: $TASK_ID"
@@ -260,10 +266,10 @@ echo "Submitted. task_id: $TASK_ID"
 # 2. Poll (15s intervals, 10min timeout)
 ELAPSED=0
 while [ $ELAPSED -lt 600 ]; do
-  RESULT=$(curl -s -X POST "https://sjinn.ai/api/un-api/query_tool_task_status" \
-    -H "Authorization: Bearer $SJINN_API_KEY" \
+  RESULT=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=query" \
+    -H "Authorization: Bearer $GATEWAY_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"task_id\": \"$TASK_ID\"}")
+    -d "{\"api\": \"tool\", \"task_id\": \"$TASK_ID\"}")
   STATUS=$(echo "$RESULT" | jq -r '.data.status')
   if [ "$STATUS" = "1" ]; then
     echo "Completed!"

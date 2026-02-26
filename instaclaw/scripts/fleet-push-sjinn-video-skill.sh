@@ -3,7 +3,7 @@
 # fleet-push-sjinn-video-skill.sh — Deploy Sjinn AI Video Production skill to existing VMs
 #
 # Pushes: SKILL.md, sjinn-api.md, video-prompting.md, video-production-pipeline.md,
-#          setup-sjinn-video.sh, SJINN_API_KEY to all active VMs.
+#          setup-sjinn-video.sh to all active VMs. Removes old SJINN_API_KEY (now server-side only).
 #
 # Usage:
 #   fleet-push-sjinn-video-skill.sh --dry-run          — Preview what would be deployed
@@ -12,7 +12,6 @@
 #
 # Requires:
 #   - SUPABASE_SERVICE_ROLE_KEY in .env.local
-#   - SJINN_API_KEY in .env.local
 #   - SSH access to VMs (keys in ~/.ssh/)
 #
 # MANDATORY: Always run --dry-run first, per CLAUDE.md rules.
@@ -33,15 +32,9 @@ fi
 
 SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-}"
 SUPABASE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}"
-SJINN_KEY="${SJINN_API_KEY:-}"
 
 if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
   echo "ERROR: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" >&2
-  exit 1
-fi
-
-if [ -z "$SJINN_KEY" ]; then
-  echo "ERROR: Missing SJINN_API_KEY in .env.local" >&2
   exit 1
 fi
 
@@ -85,10 +78,6 @@ deploy_to_vm() {
   pipeline_b64=$(base64 < "$SKILL_DIR/references/video-production-pipeline.md")
   setup_b64=$(base64 < "$SKILL_DIR/scripts/setup-sjinn-video.sh")
 
-  # Base64-encode API key for safe transport
-  local key_b64
-  key_b64=$(echo -n "$SJINN_KEY" | base64)
-
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
 
@@ -105,12 +94,8 @@ echo '$pipeline_b64' | base64 -d > "\$SKILL_DIR/references/video-production-pipe
 echo '$setup_b64' | base64 -d > "\$HOME/scripts/setup-sjinn-video.sh"
 chmod +x "\$HOME/scripts/setup-sjinn-video.sh"
 
-# Deploy API key
-touch "\$HOME/.openclaw/.env"
-SJINN_KEY_VAL=\$(echo '$key_b64' | base64 -d)
-grep -q "^SJINN_API_KEY=" "\$HOME/.openclaw/.env" 2>/dev/null && \
-  sed -i "s/^SJINN_API_KEY=.*/SJINN_API_KEY=\$SJINN_KEY_VAL/" "\$HOME/.openclaw/.env" || \
-  echo "SJINN_API_KEY=\$SJINN_KEY_VAL" >> "\$HOME/.openclaw/.env"
+# Remove old SJINN_API_KEY (now server-side only via proxy)
+sed -i '/^SJINN_API_KEY=/d' "\$HOME/.openclaw/.env" 2>/dev/null || true
 
 # Run setup script
 bash "\$HOME/scripts/setup-sjinn-video.sh" 2>/dev/null || true
@@ -144,9 +129,9 @@ case "$MODE" in
     echo "  video-prompting.md              → ~/.openclaw/skills/sjinn-video/references/video-prompting.md"
     echo "  video-production-pipeline.md    → ~/.openclaw/skills/sjinn-video/references/video-production-pipeline.md"
     echo "  setup-sjinn-video.sh            → ~/scripts/setup-sjinn-video.sh"
-    echo "  SJINN_API_KEY                   → ~/.openclaw/.env"
     echo ""
     echo "Actions:"
+    echo "  - Removes SJINN_API_KEY from VM .env (now server-side only via proxy)"
     echo "  - Remove old kling-ai-video skill directory"
     echo "  - Update Caddy config with /tmp-media/ static file handler"
     echo "  - Run setup script (creates dirs, cron jobs, video-history.json)"
@@ -195,7 +180,8 @@ if vms:
     echo "=== CANARY COMPLETE ==="
     echo "Verify on $VM_ID:"
     echo "  ssh ${USER}@${IP} 'cat ~/.openclaw/skills/sjinn-video/SKILL.md | head -5'"
-    echo "  ssh ${USER}@${IP} 'grep SJINN_API_KEY ~/.openclaw/.env'"
+    echo "  ssh ${USER}@${IP} 'grep GATEWAY_TOKEN ~/.openclaw/.env'"
+    echo "  ssh ${USER}@${IP} 'grep SJINN_API_KEY ~/.openclaw/.env'  # should be empty"
     echo ""
     echo "If healthy, run: $0 --all"
     ;;

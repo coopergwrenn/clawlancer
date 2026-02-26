@@ -2,7 +2,7 @@
 
 ```yaml
 name: sjinn-video
-version: 1.0.0
+version: 1.1.0
 triggers:
   - video
   - animate
@@ -23,7 +23,7 @@ triggers:
   - add subtitles
 dependencies:
   env:
-    - SJINN_API_KEY
+    - GATEWAY_TOKEN
   tools:
     - curl
     - jq
@@ -36,13 +36,13 @@ Sjinn is an AI video production platform providing access to **Seedance 2.0**, *
 - **Agent API** — Submit a prompt, Sjinn's AI agent handles model selection, multi-shot composition, audio, and post-production automatically. Best for complex productions and when you want Sjinn to decide.
 - **Tool API** — Direct access to specific models/tools for deterministic, single operations. Best when the user requests a specific model (Veo3, Sora2) or you need precise control.
 
-**Billing:** Platform key — the user does NOT need their own API key. SJINN_API_KEY is pre-deployed.
+**Billing:** All calls are proxied through the InstaClaw server. The agent never calls Sjinn directly — use the proxy endpoint with GATEWAY_TOKEN for authentication.
 
 ## Dependencies
 
-- `SJINN_API_KEY` in `~/.openclaw/.env` (pre-deployed, platform-level)
+- `GATEWAY_TOKEN` in `~/.openclaw/.env` (pre-deployed, platform-level)
 - `curl` and `jq` (pre-installed on all VMs)
-- No user setup required. If SJINN_API_KEY is missing: "Video generation isn't configured on your agent yet. Contact support to enable it."
+- No user setup required. If GATEWAY_TOKEN is missing: "Video generation isn't configured on your agent yet. Contact support to enable it."
 
 ---
 
@@ -62,19 +62,21 @@ Sjinn is an AI video production platform providing access to **Seedance 2.0**, *
 
 **Agent API (default):**
 ```bash
-RESPONSE=$(curl -s -X POST "https://sjinn.ai/api/un-api/create_agent_task" \
-  -H "Authorization: Bearer $SJINN_API_KEY" \
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
+RESPONSE=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=create" \
+  -H "Authorization: Bearer $GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"message\": \"$ENHANCED_PROMPT\", \"quality\": \"quality\"}")
+  -d "{\"api\": \"agent\", \"message\": \"$ENHANCED_PROMPT\", \"quality\": \"quality\"}")
 CHAT_ID=$(echo "$RESPONSE" | jq -r '.data.chat_id')
 ```
 
 **Tool API (when specific model requested):**
 ```bash
-RESPONSE=$(curl -s -X POST "https://sjinn.ai/api/un-api/create_tool_task" \
-  -H "Authorization: Bearer $SJINN_API_KEY" \
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
+RESPONSE=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=create" \
+  -H "Authorization: Bearer $GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"tool_type\": \"veo3-text-to-video-fast-api\", \"input\": {\"prompt\": \"$ENHANCED_PROMPT\", \"aspect_ratio\": \"16:9\"}}")
+  -d "{\"api\": \"tool\", \"tool_type\": \"veo3-text-to-video-fast-api\", \"input\": {\"prompt\": \"$ENHANCED_PROMPT\", \"aspect_ratio\": \"16:9\"}}")
 TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id')
 ```
 
@@ -98,10 +100,11 @@ TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id')
 3. Serve via Caddy: `https://{hostname}/tmp-media/${UUID}.${EXT}`
 4. Submit to Tool API (image-to-video requires Tool API):
    ```bash
-   curl -s -X POST "https://sjinn.ai/api/un-api/create_tool_task" \
-     -H "Authorization: Bearer $SJINN_API_KEY" \
+   GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
+   curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=create" \
+     -H "Authorization: Bearer $GATEWAY_TOKEN" \
      -H "Content-Type: application/json" \
-     -d "{\"tool_type\": \"veo3-image-to-video-fast-api\", \"input\": {\"prompt\": \"$PROMPT\", \"image_url\": \"https://${HOSTNAME}/tmp-media/${UUID}.${EXT}\"}}"
+     -d "{\"api\": \"tool\", \"tool_type\": \"veo3-image-to-video-fast-api\", \"input\": {\"prompt\": \"$PROMPT\", \"image_url\": \"https://${HOSTNAME}/tmp-media/${UUID}.${EXT}\"}}"
    ```
 5. If Caddy not available: fallback to `curl -F "file=@image.jpg" https://transfer.sh/image.jpg` for temporary hosting
 6. Poll, download, and send as with text-to-video
@@ -137,10 +140,11 @@ TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id')
 Via **Agent API** with templates. User describes a story → Sjinn automatically scripts, storyboards, generates shots, and composes with transitions + audio.
 
 ```bash
-curl -s -X POST "https://sjinn.ai/api/un-api/create_agent_task" \
-  -H "Authorization: Bearer $SJINN_API_KEY" \
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
+curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=create" \
+  -H "Authorization: Bearer $GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"message\": \"$STORY_PROMPT\", \"template_id\": \"$TEMPLATE_ID\", \"quality\": \"quality\"}"
+  -d "{\"api\": \"agent\", \"message\": \"$STORY_PROMPT\", \"template_id\": \"$TEMPLATE_ID\", \"quality\": \"quality\"}"
 ```
 
 ### Template IDs
@@ -196,11 +200,12 @@ Video generation takes 1-10+ minutes. This is NOT synchronous.
 
 **Agent API:**
 ```bash
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
 while true; do
-  RESULT=$(curl -s -X POST "https://sjinn.ai/api/un-api/query_agent_task_status" \
-    -H "Authorization: Bearer $SJINN_API_KEY" \
+  RESULT=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=query" \
+    -H "Authorization: Bearer $GATEWAY_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"chat_id\": \"$CHAT_ID\"}")
+    -d "{\"api\": \"agent\", \"chat_id\": \"$CHAT_ID\"}")
   STATUS=$(echo "$RESULT" | jq -r '.data.status')
   if [ "$STATUS" = "1" ]; then break; fi  # 1 = completed
   sleep 15
@@ -210,11 +215,12 @@ VIDEO_URL=$(echo "$RESULT" | jq -r '.data.tool_results[-1].result[0]')
 
 **Tool API:**
 ```bash
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
 while true; do
-  RESULT=$(curl -s -X POST "https://sjinn.ai/api/un-api/query_tool_task_status" \
-    -H "Authorization: Bearer $SJINN_API_KEY" \
+  RESULT=$(curl -s -X POST "https://instaclaw.io/api/gateway/sjinn?action=query" \
+    -H "Authorization: Bearer $GATEWAY_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"task_id\": \"$TASK_ID\"}")
+    -d "{\"api\": \"tool\", \"task_id\": \"$TASK_ID\"}")
   STATUS=$(echo "$RESULT" | jq -r '.data.status')
   if [ "$STATUS" = "1" ]; then break; fi   # 1 = completed
   if [ "$STATUS" = "-1" ]; then echo "FAILED"; break; fi  # -1 = failed
@@ -292,25 +298,23 @@ If pending tasks exist, query their status and retrieve completed results. Updat
 
 ## Credit Integration
 
-### Unit Costs
+### Daily Limits (enforced by proxy)
 
-| Operation | InstaClaw Units | Notes |
-|-----------|----------------|-------|
-| Quick video (cheap mode) | 30 | ~30 Haiku messages equivalent |
-| Standard video (quality mode) | 60 | ~15 Sonnet messages equivalent |
-| Premium video (Veo3/Sora2 specified) | 100 | Specific model request |
-| Multi-shot story video | 150 | Complex multi-clip production |
-| Image generation only | 10 | Quick image gen |
-| Audio/music generation only | 15 | Background music, TTS |
+| Tier | Videos/day | Images+Audio/day |
+|------|-----------|-----------------|
+| Starter | 3 | 10 |
+| Pro | 10 | 30 |
+| Power | 30 | 100 |
+| BYOK | 5 | 15 |
+
+The proxy enforces these limits automatically. If you hit the limit, the proxy returns a 429 error with `video_limit_reached`.
 
 ### Budget Guardrails
 
 **Before every generation:**
-1. Check user's remaining daily units
-2. Calculate cost for requested operation
-3. Warn user: "This will use approximately X units from your daily budget. You have Y remaining. Proceed?"
-4. If user has < required units → suggest cheap mode or waiting until tomorrow
-5. NEVER generate without budget check
+1. The proxy checks daily limits automatically
+2. If the proxy returns 429 (`video_limit_reached`), tell the user: "You've hit your daily video limit. Resets at midnight."
+3. If user is close to limit → suggest cheap mode proactively
 
 ---
 
@@ -318,9 +322,9 @@ If pending tasks exist, query their status and retrieve completed results. Updat
 
 | Error Code | Meaning | User-Facing Response |
 |------------|---------|---------------------|
-| 100 | Insufficient Sjinn balance | "Our video generation service is temporarily at capacity. Please try again later." |
-| 101 | Membership required | "Video generation is temporarily unavailable. Please try again later." |
-| 401 | Invalid API key | "Video generation is temporarily unavailable. I'll let the team know." |
+| 429 (video_limit_reached) | Daily limit hit | "You've hit your daily video limit. Resets at midnight." |
+| 503 (service_unavailable) | Sjinn at capacity | "Video generation is temporarily at capacity. Please try again later." |
+| 401 | Invalid gateway token | "Video generation is temporarily unavailable. I'll let the team know." |
 | 403 | Unauthorized | "Video generation is temporarily unavailable." |
 | 404 | Resource not found | "That video task wasn't found. Let me try generating it again." |
 | 500 | Internal server error | "The video service hit an error. Let me retry." |
@@ -329,8 +333,6 @@ If pending tasks exist, query their status and retrieve completed results. Updat
 | Video 20-50MB | Large but sendable | Send with note: "Large file, may take a moment to load." |
 | Network error | Download failed | Retry download 3 times with 10s delay |
 
-**NEVER expose internal billing (error 100/101) to the user.** Always frame as temporary service issue.
-
 ---
 
 ## Quality Checklist
@@ -338,15 +340,14 @@ If pending tasks exist, query their status and retrieve completed results. Updat
 Before delivering any video, verify:
 
 1. Prompt was enhanced with cinematic vocabulary (camera, lighting, atmosphere)
-2. Credit/budget check performed and user warned
-3. Correct API chosen (Agent vs Tool) based on user request
-4. Async poll loop running with correct intervals (15s video, 10s image/audio)
-5. Progress updates sent at 2min, 5min milestones
-6. Timeout handled at 10min (video) or 5min (image/audio)
-7. Video downloaded to ~/workspace/videos/ with descriptive filename
-8. Video size checked before Telegram delivery (20MB/50MB thresholds)
-9. Result logged to ~/memory/video-history.json
-10. Pending task removed from pending array after completion
+2. Correct API chosen (Agent vs Tool) based on user request
+3. Async poll loop running with correct intervals (15s video, 10s image/audio)
+4. Progress updates sent at 2min, 5min milestones
+5. Timeout handled at 10min (video) or 5min (image/audio)
+6. Video downloaded to ~/workspace/videos/ with descriptive filename
+7. Video size checked before Telegram delivery (20MB/50MB thresholds)
+8. Result logged to ~/memory/video-history.json
+9. Pending task removed from pending array after completion
 
 ---
 
