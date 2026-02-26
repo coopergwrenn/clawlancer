@@ -245,7 +245,7 @@ su - "\${OPENCLAW_USER}" -c '
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   nvm install 22
   nvm alias default 22
-  npm install -g openclaw@2026.2.9 mcporter
+  npm install -g openclaw@2026.2.24 mcporter
 '
 
 # ── 7b. Install Playwright Chromium + create symlink (as openclaw user) ──
