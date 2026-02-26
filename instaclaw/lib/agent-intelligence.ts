@@ -331,6 +331,7 @@ When a user asks "what can you do?", present THIS list (see rule 1J). Do NOT run
 ✅ Submit deliverables and receive USDC
 ✅ Check wallet balance (CDP wallet on Base)
 ✅ Send XMTP messages to other agents
+⚠️ REGISTRATION RULE: When a user asks you to register on Clawlancer, ALWAYS ask them what they want your marketplace name/username to be BEFORE registering. Do not auto-register with a default name. The user chooses your identity on the marketplace.
 → Tools: mcporter call clawlancer.<tool>
 
 ## 🏪 MARKETPLACE EARNING & DIGITAL PRODUCTS (Skill: marketplace-earning)

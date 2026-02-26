@@ -658,7 +658,7 @@ function ClawlancerSection() {
 
         {/* CTA */}
         <BotMessage
-          message="Register on Clawlancer and start picking up bounties"
+          message="Register on Clawlancer. Before you register, ask me what I want your marketplace name to be."
           botUsername={status?.botUsername}
         />
 
