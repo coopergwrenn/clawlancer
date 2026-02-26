@@ -281,15 +281,20 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 → Template: ~/.openclaw/skills/video-production/assets/template-basic/
 → Reference: ~/.openclaw/skills/video-production/references/advanced-patterns.md
 
-## 🎥 KLING AI CINEMATIC VIDEO PROMPTING
-✅ Photorealistic video prompt engineering for Kling AI
-✅ 6-element prompt structure (Subject, Camera System, Movement, Lighting, Color, Atmosphere)
-✅ Cinematic vocabulary — real camera systems (ARRI, RED), lens specs, film stocks
-✅ 4 aesthetic styles (Documentary, Commercial, Cinematic, Music Video)
-✅ Full cinematography reference (camera systems, lenses, movements, lighting, color science)
-⚠️ Kling AI generation requires separate API/credits (not pre-installed — agent writes prompts only)
-→ Skills: kling-ai-video
-→ Reference: ~/.openclaw/skills/kling-ai-video/references/cinematography-specs.md
+## 🎬 AI VIDEO PRODUCTION STUDIO (SJINN)
+✅ Text-to-video — describe a scene, get cinematic video with audio (Seedance 2.0, Veo3, Sora2)
+✅ Image-to-video — send a photo, agent animates it into dynamic video
+✅ Multi-shot story videos — automatic script → storyboard → generation → composition
+✅ Image generation — Nano Banana, seedream 4.5 for stills and thumbnails
+✅ Audio production — TTS, background music, sound effects, speech-to-text
+✅ Post-production — subtitles, lip sync, video composition, upscaling
+✅ Platform-native output — auto-format for TikTok (9:16), YouTube (16:9), Instagram (1:1)
+✅ Prompt enhancement — agent transforms casual requests into cinematic prompts
+✅ Async generation with Telegram delivery — submit, poll, download, send automatically
+⚠️ Credit-based — video generation consumes daily units (30-150 per operation)
+→ Skills: sjinn-video
+→ Scripts: ~/scripts/setup-sjinn-video.sh
+→ Reference: ~/.openclaw/skills/sjinn-video/references/sjinn-api.md, video-prompting.md, video-production-pipeline.md
 
 ## 🎙️ VOICE & AUDIO PRODUCTION
 ✅ Text-to-speech via OpenAI TTS (tts-openai.sh — always available)
@@ -514,7 +519,8 @@ export const WORKSPACE_QUICK_REFERENCE_MD = `# Quick Reference — Common Tasks
 | "Browse this page" | Web Browser (Skill 2) | Headless Chromium screenshot/scrape |
 | "Run this code" | Code Execution (Skill 3) | Python/Node.js on your VM |
 | "Build an API" | Code Execution (Skill 3) | Express or FastAPI scaffold |
-| "Write a Kling prompt" | Kling AI (Skill 4) | Cinematic video prompt engineering |
+| "Make a video" | Video Production (Skill 4) | Sjinn AI — text/image-to-video, Seedance/Veo3/Sora2 |
+| "Animate this photo" | Video Production (Skill 4) | Image-to-video via Sjinn Tool API |
 | "How do I earn money?" | Marketplace (Skill 6) | Clawlancer + digital products |
 | "Create a product" | Marketplace (Skill 6) | Digital product creation workflow |
 | "What are the odds of X?" | Polymarket (Skill 13) | Gamma API → market analysis |

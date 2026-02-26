@@ -1953,31 +1953,60 @@ export async function configureOpenClaw(
       });
     }
 
-    // ── Deploy Kling AI Cinematic Video Prompting skill ──
-    // Doc-only skill — prompt engineering guide for Kling AI cinematic video.
+    // ── Deploy Sjinn AI Video Production Studio skill ──
+    // Full video production — Seedance 2.0, Veo3, Sora2 via Sjinn API
     try {
-      const klingSkillDir = path.join(process.cwd(), "skills", "kling-ai-video");
-      const klingSkillMd = fs.readFileSync(path.join(klingSkillDir, "SKILL.md"), "utf-8");
-      const klingCinematography = fs.readFileSync(path.join(klingSkillDir, "references", "cinematography-specs.md"), "utf-8");
+      const sjinnSkillDir = path.join(process.cwd(), "skills", "sjinn-video");
+      const sjinnSkillMd = fs.readFileSync(path.join(sjinnSkillDir, "SKILL.md"), "utf-8");
+      const sjinnApiRef = fs.readFileSync(path.join(sjinnSkillDir, "references", "sjinn-api.md"), "utf-8");
+      const sjinnPrompting = fs.readFileSync(path.join(sjinnSkillDir, "references", "video-prompting.md"), "utf-8");
+      const sjinnPipeline = fs.readFileSync(path.join(sjinnSkillDir, "references", "video-production-pipeline.md"), "utf-8");
+      const sjinnSetup = fs.readFileSync(path.join(sjinnSkillDir, "scripts", "setup-sjinn-video.sh"), "utf-8");
 
-      const klingSkillB64 = Buffer.from(klingSkillMd, "utf-8").toString("base64");
-      const klingCinemaB64 = Buffer.from(klingCinematography, "utf-8").toString("base64");
+      const sjinnSkillB64 = Buffer.from(sjinnSkillMd, "utf-8").toString("base64");
+      const sjinnApiB64 = Buffer.from(sjinnApiRef, "utf-8").toString("base64");
+      const sjinnPromptB64 = Buffer.from(sjinnPrompting, "utf-8").toString("base64");
+      const sjinnPipelineB64 = Buffer.from(sjinnPipeline, "utf-8").toString("base64");
+      const sjinnSetupB64 = Buffer.from(sjinnSetup, "utf-8").toString("base64");
+
+      // Deploy SJINN_API_KEY from env
+      const sjinnApiKey = process.env.SJINN_API_KEY || "";
+      const sjinnKeyB64 = sjinnApiKey ? Buffer.from(sjinnApiKey, "utf-8").toString("base64") : "";
 
       scriptParts.push(
-        '# Deploy Kling AI Cinematic Video Prompting skill (doc-only — no API keys)',
-        'KLING_SKILL_DIR="$HOME/.openclaw/skills/kling-ai-video"',
-        'mkdir -p "$KLING_SKILL_DIR/references"',
-        `echo '${klingSkillB64}' | base64 -d > "$KLING_SKILL_DIR/SKILL.md"`,
-        `echo '${klingCinemaB64}' | base64 -d > "$KLING_SKILL_DIR/references/cinematography-specs.md"`,
-        ''
+        '# Deploy Sjinn AI Video Production Studio skill',
+        'SJINN_SKILL_DIR="$HOME/.openclaw/skills/sjinn-video"',
+        'mkdir -p "$SJINN_SKILL_DIR/references" "$SJINN_SKILL_DIR/scripts" "$HOME/scripts" "$HOME/workspace/videos" "$HOME/workspace/tmp-media" "$HOME/memory"',
+        `echo '${sjinnSkillB64}' | base64 -d > "$SJINN_SKILL_DIR/SKILL.md"`,
+        `echo '${sjinnApiB64}' | base64 -d > "$SJINN_SKILL_DIR/references/sjinn-api.md"`,
+        `echo '${sjinnPromptB64}' | base64 -d > "$SJINN_SKILL_DIR/references/video-prompting.md"`,
+        `echo '${sjinnPipelineB64}' | base64 -d > "$SJINN_SKILL_DIR/references/video-production-pipeline.md"`,
+        `echo '${sjinnSetupB64}' | base64 -d > "$HOME/scripts/setup-sjinn-video.sh"`,
+        'chmod +x "$HOME/scripts/setup-sjinn-video.sh"',
+        '# Run setup script',
+        'bash "$HOME/scripts/setup-sjinn-video.sh" 2>/dev/null || true',
+        '# Clean up old Kling skill if it exists',
+        'rm -rf "$HOME/.openclaw/skills/kling-ai-video" 2>/dev/null || true',
       );
 
-      logger.info("Kling AI video skill deployment prepared", { route: "lib/ssh" });
-    } catch (klingSkillErr) {
-      // Kling skill deployment is non-critical — don't block VM provisioning
-      logger.warn("Kling AI video skill files not found, skipping deployment", {
+      // Deploy API key if available
+      if (sjinnKeyB64) {
+        scriptParts.push(
+          '# Deploy SJINN_API_KEY',
+          'touch "$HOME/.openclaw/.env"',
+          `SJINN_KEY=$(echo '${sjinnKeyB64}' | base64 -d)`,
+          'grep -q "^SJINN_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && \\',
+          '  sed -i "s/^SJINN_API_KEY=.*/SJINN_API_KEY=$SJINN_KEY/" "$HOME/.openclaw/.env" || \\',
+          '  echo "SJINN_API_KEY=$SJINN_KEY" >> "$HOME/.openclaw/.env"',
+        );
+      }
+
+      scriptParts.push('');
+      logger.info("Sjinn video skill deployment prepared", { route: "lib/ssh" });
+    } catch (sjinnSkillErr) {
+      logger.warn("Sjinn video skill files not found, skipping deployment", {
         route: "lib/ssh",
-        error: String(klingSkillErr),
+        error: String(sjinnSkillErr),
       });
     }
 
@@ -3968,7 +3997,7 @@ export async function setupTLS(
   const ssh = await connectSSH(vm);
   try {
     // Base64 encode the Caddyfile content to avoid heredoc injection
-    const caddyfile = `${hostname} {\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
+    const caddyfile = `${hostname} {\n  handle /tmp-media/* {\n    root * /home/openclaw/workspace\n    file_server\n  }\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
     const b64Caddy = Buffer.from(caddyfile, "utf-8").toString("base64");
 
     const script = [

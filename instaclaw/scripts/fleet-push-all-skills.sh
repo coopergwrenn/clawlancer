@@ -7,7 +7,7 @@
 #   --canary    Deploy all skills to 1 VM, pause for approval
 #   --all       Deploy all skills to all active VMs
 #
-# Order: Voice → Web → Code → Kling → Email → Marketplace → Finance → Intel → Social → E-Commerce → Video → Brand → Polymarket → Language Teacher
+# Order: Voice → Web → Code → Sjinn Video → Email → Marketplace → Finance → Intel → Social → E-Commerce → Video → Brand → Polymarket → Language Teacher
 #
 # MANDATORY: Always run --dry-run first, per CLAUDE.md rules.
 #
@@ -23,7 +23,7 @@ SKILLS=(
   "fleet-push-voice-skill.sh"
   "fleet-push-web-skill.sh"
   "fleet-push-code-skill.sh"
-  "fleet-push-kling-skill.sh"
+  "fleet-push-sjinn-video-skill.sh"
   "fleet-push-email-skill.sh"
   "fleet-push-marketplace-skill.sh"
   "fleet-push-finance-skill.sh"
@@ -40,7 +40,7 @@ LABELS=(
   "Voice & Audio Production"
   "Web Search & Browser Automation"
   "Code Execution & Backend Development"
-  "Kling AI Cinematic Video Prompting"
+  "AI Video Production (Sjinn)"
   "Email & Outreach"
   "Marketplace Earning & Digital Products"
   "Financial Analysis"
@@ -251,7 +251,9 @@ case "$MODE" in
     echo "BYOK (user provides own credentials):"
     echo "  - E-Commerce (Shopify/Amazon/eBay/ShipStation)"
     echo ""
+    echo "  - SJINN_API_KEY (Video Production)"
+    echo ""
     echo "No API keys needed (doc-only or built-in tools):"
-    echo "  - Web Search, Code Execution, Kling AI, Marketplace, Social Media, Video Production, Brand Extraction, Polymarket, Language Teacher"
+    echo "  - Web Search, Code Execution, Marketplace, Social Media, Video Production, Brand Extraction, Polymarket, Language Teacher"
     ;;
 esac
