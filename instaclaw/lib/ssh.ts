@@ -33,6 +33,8 @@ interface UserConfig {
   braveApiKey?: string;
   gmailProfileSummary?: string;
   elevenlabsApiKey?: string;
+  /** Force generation of a new gateway token even if one exists in the DB. */
+  forceNewToken?: boolean;
 }
 
 // NVM preamble required before any `openclaw` CLI call on the VM.
@@ -1179,7 +1181,35 @@ export async function configureOpenClaw(
   mark("ssh_connected");
 
   try {
-    const gatewayToken = generateGatewayToken();
+    // Preserve existing gateway token from DB to prevent token mismatch on reconfigure.
+    // Only generate a new token if none exists or forceNewToken is explicitly requested.
+    let gatewayToken: string;
+    if (!config.forceNewToken) {
+      const supabaseForToken = getSupabase();
+      const { data: existingVm } = await supabaseForToken
+        .from("instaclaw_vms")
+        .select("gateway_token")
+        .eq("id", vm.id)
+        .single();
+
+      if (existingVm?.gateway_token) {
+        gatewayToken = existingVm.gateway_token;
+        logger.info("Reusing existing gateway token for VM", {
+          vmId: vm.id,
+          tokenPrefix: gatewayToken.slice(0, 8) + "...",
+        });
+      } else {
+        gatewayToken = generateGatewayToken();
+        logger.info("Generating new gateway token (no existing token in DB)", {
+          vmId: vm.id,
+        });
+      }
+    } else {
+      gatewayToken = generateGatewayToken();
+      logger.info("Generating new gateway token (forceNewToken requested)", {
+        vmId: vm.id,
+      });
+    }
 
     // Validate all inputs before building the shell command
     if (config.telegramBotToken) {
