@@ -40,11 +40,11 @@ interface UserConfig {
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
 // Also loads LD_LIBRARY_PATH for userspace browser libs (libxkbcommon, libcairo, etc.)
-const NVM_PREAMBLE =
+export const NVM_PREAMBLE =
   'export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"';
 
 // OpenClaw gateway port (default for openclaw gateway run)
-const GATEWAY_PORT = 18789;
+export const GATEWAY_PORT = 18789;
 
 // ── Ephemeral browser: kill Chrome + clear session data on every restart ──
 // Chrome should never persist between gateway restarts. This prevents tab
@@ -4692,9 +4692,9 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       '',
       '# Fresh clone — remove stale dir from previous failed attempts',
       `rm -rf "${AGDP_DIR}"`,
-      `git clone ${AGDP_REPO} "${AGDP_DIR}"`,
+      `git clone --depth 1 ${AGDP_REPO} "${AGDP_DIR}" 2>&1`,
       'echo "STEP:repo_cloned"',
-      `cd "${AGDP_DIR}" && HUSKY=0 npm install --production 2>&1 | tail -3`,
+      `cd "${AGDP_DIR}" && HUSKY=0 npm install --production --ignore-scripts 2>&1`,
       'echo "STEP:npm_installed"',
       '',
       '# Create pre-built seller offering template',
@@ -4728,9 +4728,9 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       '',
       '# Restart gateway to pick up changes',
       'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
-      'sleep 2',
+      'sleep 1',
       'systemctl --user start openclaw-gateway',
-      'sleep 3',
+      'sleep 2',
       'echo "STEP:gateway_restarted"',
       '',
       '# Check if already authenticated — if so, start acp serve via systemd',
@@ -4766,7 +4766,7 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
         exitCode: result.code,
         route: "lib/ssh",
       });
-      throw new Error(`aGDP install failed at step "${lastStep}": ${result.stderr?.slice(0, 300) || result.stdout?.slice(-300)}`);
+      throw new Error(`aGDP install failed at step "${lastStep}" (exit ${result.code}). stderr: ${result.stderr?.slice(-400) || "none"} | stdout tail: ${result.stdout?.slice(-400) || "none"}`);
     }
     logger.info("aGDP install succeeded", { completedSteps, route: "lib/ssh" });
 
