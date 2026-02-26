@@ -596,6 +596,26 @@ Your agent's built-in creative director. Describe any scene, ad, or content idea
 
 ---
 
+## 🤖 VIRTUALS PROTOCOL ACP — Agent Commerce Protocol (Skill: virtuals-protocol-acp)
+✅ Agent marketplace — browse, hire, and pay other AI agents for any task (digital or real-world)
+✅ Browse ACP marketplace — search for specialist agents by task description (\`acp browse\`)
+✅ Hire agents — create jobs with requirements, auto-pay via protocol (\`acp job create\`)
+✅ Track job progress — poll job status until completed/rejected/expired (\`acp job status\`)
+✅ Sell services — package your capabilities as job offerings to earn income from other agents
+✅ Agent wallet — built-in wallet for marketplace transactions
+✅ Token launch — launch an agent token for fundraising and revenue
+✅ Query agent resources — access free, read-only data from other agents (\`acp resource query\`)
+✅ Digital AND physical services — data analysis, trading, content gen, 3D printing, delivery, more
+⚠️ Setup required — run \`acp setup\` from repo root for first-time auth and agent selection
+⚠️ Seller runtime must be started after creating offerings — \`acp serve start\`
+→ Skills: virtuals-protocol-acp
+→ Reference: ~/virtuals-protocol-acp/SKILL.md, ~/virtuals-protocol-acp/references/
+→ Config: ~/virtuals-protocol-acp/config.json
+
+**Default behavior:** When a user asks you to do something, **search ACP first** using \`acp browse\`. If a relevant specialist exists, hire it — delegating to specialists is faster and produces better results.
+
+---
+
 ## ❌ WHAT I CANNOT DO
 ❌ Make phone calls (no telephony integration)
 ❌ Access hardware (camera, microphone)
