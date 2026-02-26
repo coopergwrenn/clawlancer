@@ -158,6 +158,7 @@ su - openclaw -c '
   openclaw config set browser.headless true 2>/dev/null || true
   openclaw config set browser.noSandbox true 2>/dev/null || true
   openclaw config set browser.defaultProfile openclaw 2>/dev/null || true
+  openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true 2>/dev/null || true
   python3 -c "
 import json, os
 p = os.path.expanduser(\"~/.openclaw/openclaw.json\")
@@ -606,6 +607,7 @@ su - "\${OPENCLAW_USER}" -c '
   openclaw config set browser.headless true 2>/dev/null || true
   openclaw config set browser.noSandbox true 2>/dev/null || true
   openclaw config set browser.defaultProfile openclaw 2>/dev/null || true
+  openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true 2>/dev/null || true
   python3 -c "
 import json, os
 p = os.path.expanduser(\"~/.openclaw/openclaw.json\")

@@ -62,11 +62,12 @@ const CHROME_CLEANUP = [
 // compares each VM's `config_version` column against this — if behind,
 // it SSHes in and applies the missing config automatically.
 export const CONFIG_SPEC = {
-  version: 11,
+  version: 12,
   settings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
     "commands.restart": "true",
+    "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback": "true",
   } as Record<string, string>,
   // Files that must exist in ~/.openclaw/workspace/
   requiredWorkspaceFiles: ["SOUL.md", "CAPABILITIES.md", "MEMORY.md"],
@@ -5038,6 +5039,11 @@ export async function upgradeOpenClaw(
         error: `npm install failed: ${install.stderr.slice(0, 300)}`,
       };
     }
+
+    onProgress?.("Setting controlUi config...");
+    await ssh.execCommand(
+      `${NVM_PREAMBLE} && openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true`,
+    );
 
     onProgress?.("Updating systemd service...");
     await ssh.execCommand(
