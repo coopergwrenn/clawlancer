@@ -1,15 +1,15 @@
-# Sjinn AI Video Production Studio
+# The Director — AI Creative Studio
 
 ```yaml
 name: sjinn-video
-version: 1.1.0
+version: 1.2.0
 triggers:
   - video
   - animate
   - seedance
   - veo3
   - sora2
-  - sjinn
+  - the director
   - tiktok video
   - youtube video
   - reel
@@ -21,6 +21,8 @@ triggers:
   - turn this into a video
   - upscale video
   - add subtitles
+  - create content
+  - produce a video
 dependencies:
   env:
     - GATEWAY_TOKEN
@@ -29,14 +31,16 @@ dependencies:
     - jq
 ```
 
+> **IMPORTANT:** When talking to users, call this capability "The Director." Never mention the internal provider name (Sjinn) — it is confidential. Model names (Seedance 2.0, Veo3, Sora2) are fine.
+
 ## Overview
 
-Sjinn is an AI video production platform providing access to **Seedance 2.0**, **Veo3**, **Sora2**, and a full creative pipeline. It uses a **dual API architecture**:
+The Director is your built-in AI creative studio providing access to **Seedance 2.0**, **Veo3**, **Sora2**, and a full creative pipeline. It uses a **dual API architecture**:
 
-- **Agent API** — Submit a prompt, Sjinn's AI agent handles model selection, multi-shot composition, audio, and post-production automatically. Best for complex productions and when you want Sjinn to decide.
+- **Agent API** — Submit a prompt, the backend AI handles model selection, multi-shot composition, audio, and post-production automatically. Best for complex productions and auto model selection.
 - **Tool API** — Direct access to specific models/tools for deterministic, single operations. Best when the user requests a specific model (Veo3, Sora2) or you need precise control.
 
-**Billing:** All calls are proxied through the InstaClaw server. The agent never calls Sjinn directly — use the proxy endpoint with GATEWAY_TOKEN for authentication.
+**Billing:** All calls are proxied through the InstaClaw server. Use the proxy endpoint with GATEWAY_TOKEN for authentication.
 
 ## Dependencies
 
@@ -57,7 +61,7 @@ Sjinn is an AI video production platform providing access to **Seedance 2.0**, *
 3. **Confirm with user** — Show enhanced prompt + settings: "Here's my enhanced version — should I generate this?" (skip if user said "just do it")
 4. **Choose API:**
    - If user specified a model (Veo3/Sora2) → **Tool API** with the matching tool_type
-   - Otherwise → **Agent API** (lets Sjinn auto-select Seedance/best model)
+   - Otherwise → **Agent API** (auto-selects Seedance 2.0 or best model)
 5. **Submit:**
 
 **Agent API (default):**
@@ -137,7 +141,7 @@ TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id')
 
 ### Multi-Shot Story Videos
 
-Via **Agent API** with templates. User describes a story → Sjinn automatically scripts, storyboards, generates shots, and composes with transitions + audio.
+Via **Agent API** with templates. User describes a story → The Director automatically scripts, storyboards, generates shots, and composes with transitions + audio.
 
 ```bash
 GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
@@ -177,9 +181,9 @@ Auto-detect platform from user request ("make me a TikTok" → 9:16 vertical).
 
 ## Tier 3: Full Production Pipeline
 
-Advanced tools available through Sjinn. See `references/video-production-pipeline.md` for complete details.
+Advanced tools available through The Director. See `references/video-production-pipeline.md` for complete details.
 
-- **Image Generation** — Nano Banana, Nano Banana Pro, seedream 4.5, SJinn Image Edit
+- **Image Generation** — Nano Banana, Nano Banana Pro, seedream 4.5, AI Image Edit
 - **Audio Production** — TTS, background music, SFX, speech-to-text
 - **Post-Production** — ffmpeg_full_compose (multi-clip), subtitles, lip sync, video upscaling, frame extraction, trimming
 
@@ -283,7 +287,7 @@ If pending tasks exist, query their status and retrieve completed results. Updat
     {
       "chat_id": "uuid",
       "prompt": "enhanced prompt",
-      "result_url": "https://cdn.sjinn.ai/...",
+      "result_url": "https://cdn.example.com/...",
       "local_path": "~/workspace/videos/sunset_2026-02-25_14-30.mp4",
       "submitted_at": "ISO",
       "completed_at": "ISO",
@@ -323,7 +327,7 @@ The proxy enforces these limits automatically. If you hit the limit, the proxy r
 | Error Code | Meaning | User-Facing Response |
 |------------|---------|---------------------|
 | 429 (video_limit_reached) | Daily limit hit | "You've hit your daily video limit. Resets at midnight." |
-| 503 (service_unavailable) | Sjinn at capacity | "Video generation is temporarily at capacity. Please try again later." |
+| 503 (service_unavailable) | Backend at capacity | "Video generation is temporarily at capacity. Please try again later." |
 | 401 | Invalid gateway token | "Video generation is temporarily unavailable. I'll let the team know." |
 | 403 | Unauthorized | "Video generation is temporarily unavailable." |
 | 404 | Resource not found | "That video task wasn't found. Let me try generating it again." |
