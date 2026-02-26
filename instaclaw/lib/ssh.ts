@@ -4685,7 +4685,7 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
 
     const script = [
       '#!/bin/bash',
-      'set -eo pipefail',
+      'set -o pipefail',
       NVM_PREAMBLE,
       '',
       'echo "STEP:nvm_loaded"',
