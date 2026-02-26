@@ -9,12 +9,13 @@ export const maxDuration = 30;
 
 const CLAWLANCER_BASE = "https://clawlancer.ai";
 
-interface ClawlancerConfig {
-  api_key: string;
-  base_url: string;
-  agent_id: string;
-  agent_name: string;
-}
+// Possible locations for Clawlancer API key on the VM, checked in order:
+// 1. ~/.openclaw/.env  (CLAWLANCER_API_KEY=...)  — current standard
+// 2. ~/.clawdbot/skills/clawlancer/config.json   — legacy shell-script path
+const CLAWLANCER_KEY_CMD = [
+  'grep "^CLAWLANCER_API_KEY=" ~/.openclaw/.env 2>/dev/null | head -1 | sed "s/^CLAWLANCER_API_KEY=//"',
+  'cat ~/.clawdbot/skills/clawlancer/config.json 2>/dev/null | grep -o \'"api_key":"[^"]*"\' | head -1 | sed \'s/"api_key":"//;s/"//g\'',
+].join(" || ");
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -27,27 +28,11 @@ export async function GET() {
 
     const supabase = getSupabase();
 
-    // Fetch VM + preferences in parallel
-    const [vmResult, prefsResult] = await Promise.all([
-      supabase
-        .from("instaclaw_vms")
-        .select("id, ip_address, ssh_port, ssh_user, telegram_bot_username")
-        .eq("assigned_to", session.user.id)
-        .single(),
-      // Preferences may not exist yet — that's fine
-      supabase
-        .from("instaclaw_clawlancer_preferences")
-        .select("auto_claim, approval_threshold_usdc")
-        .eq(
-          "vm_id",
-          // We need the vm_id but don't have it yet — we'll query after
-          // For now just attempt with a subquery approach
-          session.user.id
-        )
-        .limit(0), // placeholder, we'll query properly below
-    ]);
-
-    const vm = vmResult.data;
+    const { data: vm } = await supabase
+      .from("instaclaw_vms")
+      .select("id, ip_address, ssh_port, ssh_user, telegram_bot_username")
+      .eq("assigned_to", session.user.id)
+      .single();
     if (!vm) {
       return NextResponse.json({ registered: false, error: "No VM assigned" });
     }
@@ -59,18 +44,13 @@ export async function GET() {
       .eq("vm_id", vm.id)
       .single();
 
-    // SSH to VM and read Clawlancer config
-    let config: ClawlancerConfig | null = null;
+    // SSH to VM and read Clawlancer API key from env file
+    let apiKey = "";
     try {
       const ssh = await connectSSH(vm as VMRecord);
-      const result = await ssh.execCommand(
-        "cat ~/.clawdbot/skills/clawlancer/config.json 2>/dev/null"
-      );
+      const result = await ssh.execCommand(CLAWLANCER_KEY_CMD);
       ssh.dispose();
-
-      if (result.stdout && result.stdout.trim()) {
-        config = JSON.parse(result.stdout.trim());
-      }
+      apiKey = (result.stdout ?? "").trim();
     } catch (sshErr) {
       logger.warn("Clawlancer status: SSH failed", {
         vmId: vm.id,
@@ -88,7 +68,7 @@ export async function GET() {
       });
     }
 
-    if (!config?.api_key || !config?.agent_id) {
+    if (!apiKey) {
       return NextResponse.json({
         registered: false,
         vmId: vm.id,
@@ -100,26 +80,28 @@ export async function GET() {
       });
     }
 
-    // Fetch profile + wallet balance + transactions in parallel
-    const headers = { Authorization: `Bearer ${config.api_key}` };
+    // Fetch profile first (we need agent_id for balance/transactions)
+    const headers = { Authorization: `Bearer ${apiKey}` };
 
-    const [profileRes, balanceRes, transactionsRes] = await Promise.allSettled([
-      fetch(`${CLAWLANCER_BASE}/api/agents/me`, { headers }),
-      fetch(
-        `${CLAWLANCER_BASE}/api/wallet/balance?agent_id=${config.agent_id}`,
-        { headers }
-      ),
-      fetch(
-        `${CLAWLANCER_BASE}/api/transactions?agent_id=${config.agent_id}`,
-        { headers }
-      ),
-    ]);
-
-    // Parse profile
     let profile: any = null;
-    if (profileRes.status === "fulfilled" && profileRes.value.ok) {
-      profile = await profileRes.value.json();
+    try {
+      const profileRes = await fetch(`${CLAWLANCER_BASE}/api/agents/me`, { headers });
+      if (profileRes.ok) profile = await profileRes.json();
+    } catch {
+      // Clawlancer API may be down — continue with what we have
     }
+
+    const agentId = profile?.id ?? null;
+
+    // Fetch balance + transactions in parallel (need agent_id)
+    const [balanceRes, transactionsRes] = await Promise.allSettled([
+      agentId
+        ? fetch(`${CLAWLANCER_BASE}/api/wallet/balance?agent_id=${agentId}`, { headers })
+        : Promise.reject("no agent_id"),
+      agentId
+        ? fetch(`${CLAWLANCER_BASE}/api/transactions?agent_id=${agentId}`, { headers })
+        : Promise.reject("no agent_id"),
+    ]);
 
     // Parse balance
     let balance: any = null;
@@ -175,8 +157,8 @@ export async function GET() {
     return NextResponse.json({
       registered: true,
       vmId: vm.id,
-      agentName: profile?.name ?? config.agent_name,
-      agentId: config.agent_id,
+      agentName: profile?.name ?? "Agent",
+      agentId: agentId,
       walletAddress:
         profile?.wallet_address ?? balance?.wallet_address ?? null,
       reputationTier: profile?.reputation_tier ?? "NEW",
