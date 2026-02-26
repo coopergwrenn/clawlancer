@@ -5,6 +5,7 @@ import { encryptApiKey } from "@/lib/security";
 import { updateSystemPrompt, updateApiKey, updateChannelToken, installAgdpSkill, uninstallAgdpSkill, connectSSH } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
@@ -384,24 +385,41 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        if (enabled) {
-          const result = await installAgdpSkill(vm);
-          await supabase
-            .from("instaclaw_vms")
-            .update({ agdp_enabled: enabled })
-            .eq("id", vm.id);
-          return NextResponse.json({
-            updated: true,
-            authUrl: result.authUrl,
-            serving: result.serving,
+        logger.info("toggle_agdp: starting", { vmId: vm.id, enabled, route: "settings/update" });
+
+        try {
+          if (enabled) {
+            const result = await installAgdpSkill(vm);
+            logger.info("toggle_agdp: install complete", { vmId: vm.id, authUrl: !!result.authUrl, serving: result.serving, route: "settings/update" });
+            await supabase
+              .from("instaclaw_vms")
+              .update({ agdp_enabled: enabled })
+              .eq("id", vm.id);
+            return NextResponse.json({
+              updated: true,
+              authUrl: result.authUrl,
+              serving: result.serving,
+            });
+          } else {
+            await uninstallAgdpSkill(vm);
+            logger.info("toggle_agdp: uninstall complete", { vmId: vm.id, route: "settings/update" });
+            await supabase
+              .from("instaclaw_vms")
+              .update({ agdp_enabled: enabled })
+              .eq("id", vm.id);
+            return NextResponse.json({ updated: true });
+          }
+        } catch (agdpErr) {
+          logger.error("toggle_agdp: failed", {
+            vmId: vm.id,
+            enabled,
+            error: String(agdpErr),
+            route: "settings/update",
           });
-        } else {
-          await uninstallAgdpSkill(vm);
-          await supabase
-            .from("instaclaw_vms")
-            .update({ agdp_enabled: enabled })
-            .eq("id", vm.id);
-          return NextResponse.json({ updated: true });
+          return NextResponse.json(
+            { error: `Virtuals toggle failed: ${String(agdpErr).slice(0, 200)}` },
+            { status: 500 }
+          );
         }
       }
 

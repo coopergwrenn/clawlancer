@@ -4688,16 +4688,21 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       'set -eo pipefail',
       NVM_PREAMBLE,
       '',
+      'echo "STEP:nvm_loaded"',
+      '',
       '# Clone aGDP repo if not already present',
       `if [ ! -d "${AGDP_DIR}" ]; then`,
       `  git clone ${AGDP_REPO} "${AGDP_DIR}"`,
       'fi',
-      `cd "${AGDP_DIR}" && npm install --production`,
+      'echo "STEP:repo_cloned"',
+      `cd "${AGDP_DIR}" && npm install --production 2>&1 | tail -3`,
+      'echo "STEP:npm_installed"',
       '',
       '# Create pre-built seller offering template',
       `mkdir -p "${AGDP_DIR}/offerings/${AGDP_OFFERING.name}"`,
       `echo '${offeringB64}' | base64 -d > "${AGDP_DIR}/offerings/${AGDP_OFFERING.name}/offering.json"`,
       `echo '${handlersB64}' | base64 -d > "${AGDP_DIR}/offerings/${AGDP_OFFERING.name}/handlers.ts"`,
+      'echo "STEP:offering_written"',
       '',
       '# Install systemd service for acp-serve (auto-restart on crash)',
       `echo '${wrapperB64}' | base64 -d > "${AGDP_DIR}/acp-serve.sh"`,
@@ -4706,9 +4711,11 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       `echo '${serviceB64}' | base64 -d > ~/.config/systemd/user/acp-serve.service`,
       'systemctl --user daemon-reload',
       'systemctl --user enable acp-serve.service 2>/dev/null || true',
+      'echo "STEP:systemd_configured"',
       '',
-      '# Register aGDP skill directory with OpenClaw',
-      `openclaw config set skills.load.extraDirs '["${AGDP_DIR}"]'`,
+      '# Register aGDP skill directory with OpenClaw (skip if openclaw CLI not found)',
+      `openclaw config set skills.load.extraDirs '["'"${AGDP_DIR}"'"]' 2>&1 || echo "WARN:openclaw_config_set_failed"`,
+      'echo "STEP:config_updated"',
       '',
       '# Append aGDP instructions to system prompt',
       'PROMPT_DIR="$HOME/.openclaw/agents/main/agent"',
@@ -4718,12 +4725,14 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       'if ! grep -qF "AGDP_START" "$PROMPT_FILE" 2>/dev/null; then',
       `  echo '${priorityB64}' | base64 -d >> "$PROMPT_FILE"`,
       'fi',
+      'echo "STEP:prompt_updated"',
       '',
       '# Restart gateway to pick up changes',
       'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
       'systemctl --user start openclaw-gateway',
       'sleep 3',
+      'echo "STEP:gateway_restarted"',
       '',
       '# Check if already authenticated — if so, start acp serve via systemd',
       `if [ -f "${AGDP_DIR}/config.json" ]; then`,
@@ -4737,6 +4746,7 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       '  AUTH_URL=$(echo "$SETUP_OUT" | grep -oE "https://[^ ]+" | head -1)',
       '  echo "ACP_AUTH_URL=$AUTH_URL"',
       'fi',
+      'echo "STEP:acp_setup_done"',
       '',
       'echo "AGDP_INSTALL_DONE"',
     ].join('\n');
@@ -4744,10 +4754,22 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
     await ssh.execCommand(`cat > /tmp/ic-agdp-install.sh << 'ICEOF'\n${script}\nICEOF`);
     const result = await ssh.execCommand('bash /tmp/ic-agdp-install.sh; EC=$?; rm -f /tmp/ic-agdp-install.sh; exit $EC');
 
+    // Extract completed steps for diagnostics
+    const completedSteps = (result.stdout.match(/STEP:\w+/g) || []).map((s: string) => s.replace("STEP:", ""));
+    const lastStep = completedSteps[completedSteps.length - 1] || "none";
+
     if (result.code !== 0 || !result.stdout.includes("AGDP_INSTALL_DONE")) {
-      logger.error("aGDP install failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
-      throw new Error(`aGDP install failed: ${result.stderr || result.stdout}`);
+      logger.error("aGDP install failed", {
+        error: result.stderr,
+        stdout: result.stdout.slice(-500),
+        lastStep,
+        completedSteps,
+        exitCode: result.code,
+        route: "lib/ssh",
+      });
+      throw new Error(`aGDP install failed at step "${lastStep}": ${result.stderr?.slice(0, 300) || result.stdout?.slice(-300)}`);
     }
+    logger.info("aGDP install succeeded", { completedSteps, route: "lib/ssh" });
 
     // Parse auth URL and serving status from output
     const serving = result.stdout.includes("ACP_SERVING=true");
