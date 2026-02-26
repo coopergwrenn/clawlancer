@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, health_status, last_health_check, gateway_token")
+      .select("id, ip_address, ssh_port, ssh_user, health_status, last_health_check, gateway_token, api_mode")
       .eq("assigned_to", session.user.id)
       .single();
 
@@ -118,9 +118,9 @@ export async function POST(req: NextRequest) {
     });
 
     try {
-      const { gatewayToken, healthy } = await resyncGatewayToken(vm);
+      const { gatewayToken, healthy } = await resyncGatewayToken(vm, { apiMode: vm.api_mode ?? undefined });
 
-      // Test proxy round-trip
+      // Test proxy round-trip (only meaningful for all-inclusive VMs)
       let proxyOk = false;
       try {
         const proxyResult = await testProxyRoundTrip(gatewayToken);

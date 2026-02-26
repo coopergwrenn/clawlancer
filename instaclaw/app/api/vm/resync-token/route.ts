@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, name, assigned_to, gateway_token")
+      .select("id, ip_address, ssh_port, ssh_user, name, assigned_to, gateway_token, api_mode")
       .eq("id", vmId)
       .single();
 
@@ -45,8 +45,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "VM has no IP address" }, { status: 400 });
     }
 
-    // Resync the token
-    const { gatewayToken, healthy } = await resyncGatewayToken(vm);
+    // Resync the token (BYOK-safe: skips auth-profiles.json for BYOK VMs)
+    const { gatewayToken, healthy } = await resyncGatewayToken(vm, { apiMode: vm.api_mode ?? undefined });
 
     // Optionally restore workspace from backup
     let restoreResult = null;

@@ -688,6 +688,7 @@ export async function GET(req: NextRequest) {
   let proxyChecked = 0;
   let proxyFailed = 0;
   let proxyResynced = 0;
+  let proxyQuarantined = 0;
   const PROXY_CHECK_BATCH_SIZE = 5;
   const PROXY_401_THRESHOLD = 3;
 
@@ -696,7 +697,9 @@ export async function GET(req: NextRequest) {
       (vm) =>
         healthyVmIds.has(vm.id) &&
         vm.api_mode === "all_inclusive" &&
-        vm.gateway_token
+        vm.gateway_token &&
+        // Skip VMs already proxy-quarantined — require manual review
+        vm.health_status !== "proxy_quarantined"
     )
     .slice(0, PROXY_CHECK_BATCH_SIZE);
 
@@ -706,17 +709,51 @@ export async function GET(req: NextRequest) {
       proxyChecked++;
 
       if (!result.success) {
+        const currentCount = vm.proxy_401_count ?? 0;
+
+        // If already at threshold, quarantine immediately — don't keep resyncing
+        if (currentCount >= PROXY_401_THRESHOLD) {
+          proxyQuarantined++;
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              health_status: "proxy_quarantined",
+              proxy_401_count: currentCount + 1,
+              last_health_check: new Date().toISOString(),
+            })
+            .eq("id", vm.id);
+
+          logger.error("VM proxy-quarantined: repeated proxy auth failures after resync", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            proxy401Count: currentCount + 1,
+            assignedTo: vm.assigned_to,
+          });
+
+          if (ADMIN_EMAIL) {
+            try {
+              await sendAdminAlertEmail(
+                "VM Proxy-Quarantined: Auth Chain Broken",
+                `VM ${vm.name ?? vm.id} (${vm.ip_address}, user: ${vm.assigned_to}) has been quarantined after ${currentCount + 1} consecutive proxy auth failures.\n\nAuto-resync was attempted but did not fix the issue.\n\nACTION REQUIRED: Manual review needed. Run full reconfigure or investigate the proxy auth chain.\n\nTo un-quarantine: update health_status back to "healthy" and reset proxy_401_count to 0 after fixing.`
+              );
+            } catch { /* non-fatal */ }
+          }
+          continue;
+        }
+
         logger.warn("Proxy round-trip failed — attempting auto-resync", {
           route: "cron/health-check",
           vmId: vm.id,
           vmName: vm.name,
           error: result.error,
+          proxy401Count: currentCount,
         });
 
         // Auto-resync: patch the gateway token on the VM to match DB
         let resyncFixed = false;
         try {
-          const resyncResult = await resyncGatewayToken(vm);
+          const resyncResult = await resyncGatewayToken(vm, { apiMode: vm.api_mode ?? undefined });
           if (resyncResult.healthy) {
             // Re-test proxy with the (potentially refreshed) token
             const retest = await testProxyRoundTrip(resyncResult.gatewayToken, 1);
@@ -748,7 +785,7 @@ export async function GET(req: NextRequest) {
         if (!resyncFixed) {
           // Resync didn't fix it — increment failure counter
           proxyFailed++;
-          const newCount = (vm.proxy_401_count ?? 0) + 1;
+          const newCount = currentCount + 1;
 
           await supabase
             .from("instaclaw_vms")
@@ -763,11 +800,16 @@ export async function GET(req: NextRequest) {
             proxy401Count: newCount,
           });
 
+          // Alert admin at threshold (quarantine happens next cycle)
           if (newCount >= PROXY_401_THRESHOLD) {
-            await sendAdminAlertEmail(
-              "Cron: Proxy Auth Failure (Resync Failed)",
-              `VM ${vm.id} (${vm.name ?? "unnamed"}, user: ${vm.assigned_to}) has failed ${newCount} consecutive proxy round-trip tests. Auto-resync did NOT fix the issue.\n\nLatest error: ${result.error}\n\nThis VM likely needs a full reconfigure.`
-            );
+            if (ADMIN_EMAIL) {
+              try {
+                await sendAdminAlertEmail(
+                  "Cron: Proxy Auth Failure — Quarantine Pending",
+                  `VM ${vm.id} (${vm.name ?? "unnamed"}, user: ${vm.assigned_to}) has failed ${newCount} consecutive proxy round-trip tests. Auto-resync did NOT fix the issue.\n\nLatest error: ${result.error}\n\nThe VM will be proxy-quarantined on the next health check cycle unless the issue resolves.`
+                );
+              } catch { /* non-fatal */ }
+            }
           }
         }
       } else {
@@ -1173,6 +1215,7 @@ export async function GET(req: NextRequest) {
     proxyChecked,
     proxyFailed,
     proxyResynced,
+    proxyQuarantined,
     autoMigrated,
   });
 }

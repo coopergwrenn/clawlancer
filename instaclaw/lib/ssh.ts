@@ -2347,6 +2347,15 @@ export async function configureOpenClaw(
       health_fail_count: 0,
       config_version: 1,
     };
+
+    // TOKEN_AUDIT: log every token write to DB + VM for debugging future mismatches
+    logger.info("TOKEN_AUDIT: configureOpenClaw writing token", {
+      operation: "configureOpenClaw",
+      vmId: vm.id,
+      tokenPrefix: gatewayToken.slice(0, 8),
+      writtenTo: ["db", "openclaw.json", ".env", "auth-profiles.json"],
+      forceNewToken: !!config.forceNewToken,
+    });
     // Only write user-configured fields when explicitly provided (non-null/undefined).
     // This prevents reconfigure from wiping values that exist in the DB but
     // weren't passed through the configure input (e.g. health check path).
@@ -2419,7 +2428,8 @@ export async function configureOpenClaw(
  * Then restarts the gateway and updates the DB.
  */
 export async function resyncGatewayToken(
-  vm: VMRecord
+  vm: VMRecord,
+  options?: { apiMode?: string }
 ): Promise<{ gatewayToken: string; healthy: boolean }> {
   const ssh = await connectSSH(vm);
   try {
@@ -2441,7 +2451,9 @@ print("OK openclaw.json token updated")
 `.trim();
 
     // Python script to patch ONLY the key in auth-profiles.json (preserves everything else)
-    const patchAuthPy = `
+    // BYOK VMs use the user's own API key in auth-profiles.json — do NOT overwrite it.
+    const isBYOK = options?.apiMode === "byok";
+    const patchAuthPy = isBYOK ? null : `
 import json, os
 p = os.path.expanduser("~/.openclaw/agents/main/agent/auth-profiles.json")
 if not os.path.exists(p):
@@ -2457,9 +2469,9 @@ else:
 `.trim();
 
     const patchTokenB64 = Buffer.from(patchTokenPy).toString("base64");
-    const patchAuthB64 = Buffer.from(patchAuthPy).toString("base64");
+    const patchAuthB64 = patchAuthPy ? Buffer.from(patchAuthPy).toString("base64") : null;
 
-    const script = [
+    const scriptParts = [
       '#!/bin/bash',
       NVM_PREAMBLE,
       '',
@@ -2473,14 +2485,30 @@ else:
       '  sed -i "s/^GATEWAY_TOKEN=.*/GATEWAY_TOKEN=$GT_KEY/" "$HOME/.openclaw/.env" || \\',
       '  echo "GATEWAY_TOKEN=$GT_KEY" >> "$HOME/.openclaw/.env"',
       'echo "OK .env GATEWAY_TOKEN updated"',
-      '',
-      '# 3. Patch auth-profiles.json key',
-      `echo '${patchAuthB64}' | base64 -d | python3`,
+    ];
+
+    if (patchAuthB64) {
+      scriptParts.push(
+        '',
+        '# 3. Patch auth-profiles.json key (all-inclusive only)',
+        `echo '${patchAuthB64}' | base64 -d | python3`,
+      );
+    } else {
+      scriptParts.push(
+        '',
+        '# 3. SKIP auth-profiles.json — BYOK VM uses user API key directly',
+        'echo "SKIP auth-profiles.json (BYOK mode)"',
+      );
+    }
+
+    scriptParts.push(
       '',
       '# 4. Restart gateway',
       'systemctl --user restart openclaw-gateway 2>/dev/null || (openclaw gateway stop 2>/dev/null; sleep 1; openclaw gateway start 2>/dev/null)',
       'echo "OK gateway restarted"',
-    ].join('\n');
+    );
+
+    const script = scriptParts.join('\n');
 
     const result = await ssh.execCommand(script);
     logger.info("resyncGatewayToken SSH result", {
@@ -2488,6 +2516,38 @@ else:
       stderr: result.stderr?.slice(0, 500),
       code: result.code,
       vmId: vm.id,
+    });
+
+    // Verify SSH writes succeeded before updating DB (prevents partial mismatch)
+    const stdout = result.stdout ?? "";
+    const openclawOk = stdout.includes("OK openclaw.json token updated");
+    const envOk = stdout.includes("OK .env GATEWAY_TOKEN updated");
+    if (!openclawOk || !envOk) {
+      logger.error("TOKEN_AUDIT: resyncGatewayToken partial SSH failure — aborting DB write", {
+        operation: "resyncGatewayToken",
+        vmId: vm.id,
+        tokenPrefix: newToken.slice(0, 8),
+        openclawOk,
+        envOk,
+        stdout: stdout.slice(0, 500),
+      });
+      throw new Error(`Resync SSH writes incomplete: openclaw.json=${openclawOk}, .env=${envOk}`);
+    }
+
+    // TOKEN_AUDIT: log every token write for debugging future mismatches
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existingToken = (vm as any).gateway_token as string | undefined;
+    const oldTokenPrefix = existingToken ? existingToken.slice(0, 8) : "null";
+    const writtenFiles = isBYOK
+      ? ["db", "openclaw.json", ".env"]
+      : ["db", "openclaw.json", ".env", "auth-profiles.json"];
+    logger.info("TOKEN_AUDIT: resyncGatewayToken writing token", {
+      operation: "resyncGatewayToken",
+      vmId: vm.id,
+      oldTokenPrefix,
+      newTokenPrefix: newToken.slice(0, 8),
+      writtenTo: writtenFiles,
+      isBYOK,
     });
 
     // Update DB with new token
@@ -3150,6 +3210,13 @@ export async function auditVMConfig(vm: VMRecord & { gateway_token?: string; api
           );
           authProfileFixed = true;
           fixed.push(`auth-profiles.json (${fixReason})`);
+          logger.info("TOKEN_AUDIT: auditVMConfig rewrote auth-profiles.json", {
+            operation: "auditVMConfig",
+            vmId: vm.id,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            tokenPrefix: (vm as any).gateway_token ? ((vm as any).gateway_token as string).slice(0, 8) : "null",
+            fixReason,
+          });
         }
       } else {
         alreadyCorrect.push('auth-profiles.json');
@@ -4476,6 +4543,11 @@ const AGDP_OFFERING = {
     'interface AuthProfile { key: string; baseUrl?: string; }',
     'interface AuthProfiles { profiles: { "anthropic:default"?: AuthProfile } }',
     '',
+    '// --- Rate limiter: max 5 jobs per minute per agent ---',
+    'const RATE_LIMIT_WINDOW_MS = 60_000;',
+    'const RATE_LIMIT_MAX = 5;',
+    'const jobTimestamps: number[] = [];',
+    '',
     'function getProxyConfig(): { url: string; key: string } {',
     '  const authPath = join(homedir(), ".openclaw", "agents", "main", "agent", "auth-profiles.json");',
     '  const data: AuthProfiles = JSON.parse(readFileSync(authPath, "utf-8"));',
@@ -4488,6 +4560,22 @@ const AGDP_OFFERING = {
     '}',
     '',
     'export async function executeJob({ request }: { request: { task: string } }) {',
+    '  // Rate limit: max 5 jobs per minute',
+    '  const now = Date.now();',
+    '  while (jobTimestamps.length > 0 && jobTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {',
+    '    jobTimestamps.shift();',
+    '  }',
+    '  if (jobTimestamps.length >= RATE_LIMIT_MAX) {',
+    '    return { deliverable: "This agent is at capacity (max 5 jobs/minute). Please try again in a moment." };',
+    '  }',
+    '  jobTimestamps.push(now);',
+    '',
+    '  // Truncate task input to 10000 chars to prevent abuse',
+    '  const task = (request.task ?? "").slice(0, 10000);',
+    '  if (!task.trim()) {',
+    '    return { deliverable: "No task description provided." };',
+    '  }',
+    '',
     '  const { url, key } = getProxyConfig();',
     '',
     '  const res = await fetch(url, {',
@@ -4496,17 +4584,21 @@ const AGDP_OFFERING = {
     '      "content-type": "application/json",',
     '      "x-api-key": key,',
     '      "anthropic-version": "2023-06-01",',
+    '      "x-source": "virtuals-acp",',
     '    },',
     '    body: JSON.stringify({',
     '      model: "claude-haiku-4-5-20251001",',
     '      max_tokens: 4096,',
     '      system: "You are an AI agent completing a task from the Virtuals Protocol ACP marketplace. Complete the task thoroughly and return a clear, well-formatted deliverable. Be concise but comprehensive.",',
-    '      messages: [{ role: "user", content: request.task }],',
+    '      messages: [{ role: "user", content: task }],',
     '    }),',
     '  });',
     '',
     '  if (!res.ok) {',
     '    const err = await res.text();',
+    '    if (res.status === 429 || err.includes("virtuals") || err.includes("capacity")) {',
+    '      return { deliverable: "This agent has reached its daily Virtuals Protocol capacity. Please try again tomorrow." };',
+    '    }',
     '    throw new Error(`Claude API failed (${res.status}): ${err.slice(0, 300)}`);',
     '  }',
     '',
@@ -4561,6 +4653,8 @@ const ACP_SERVE_SERVICE = [
   '[Unit]',
   'Description=Virtuals Protocol ACP Serve',
   'After=openclaw-gateway.service',
+  'StartLimitBurst=5',
+  'StartLimitIntervalSec=300',
   '',
   '[Service]',
   'Type=simple',
@@ -4723,12 +4817,18 @@ export async function uninstallAgdpSkill(vm: VMRecord): Promise<void> {
 export interface AcpStatus {
   authenticated: boolean;
   serving: boolean;
-  agentId: string | null;
+  /** Wallet address — the agent's identity on ACP (no traditional "agent ID" exists). */
+  walletAddress: string | null;
+  agentName: string | null;
+  /** Number of service offerings registered (from whoami.jobs array). */
+  offeringCount: number;
   authUrl: string | null;
-  jobsCompleted: number;
+  /** Virtuals credits used today and the daily limit. */
+  virtualsUsageToday: number;
+  virtualsLimit: number;
 }
 
-export async function checkAcpStatus(vm: VMRecord): Promise<AcpStatus> {
+export async function checkAcpStatus(vm: VMRecord & { tier?: string }): Promise<AcpStatus> {
   const ssh = await connectSSH(vm);
   try {
     // Check if authenticated (config.json exists)
@@ -4739,15 +4839,19 @@ export async function checkAcpStatus(vm: VMRecord): Promise<AcpStatus> {
     const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
     const serving = svcCheck.stdout.trim() === "active";
 
-    // Get agent ID from whoami if authenticated
-    let agentId: string | null = null;
-    let jobsCompleted = 0;
+    // Get agent info from whoami if authenticated
+    // Real fields from `npx acp whoami --json`: name, description, walletAddress,
+    // tokenAddress, token {name, symbol}, jobs[] (offerings), agentCount
+    let walletAddress: string | null = null;
+    let agentName: string | null = null;
+    let offeringCount = 0;
     if (authenticated) {
       const whoamiResult = await ssh.execCommand(`cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && npx acp whoami --json 2>/dev/null || true`);
       try {
         const whoami = JSON.parse(whoamiResult.stdout);
-        agentId = whoami?.id ?? whoami?.agent_id ?? null;
-        jobsCompleted = whoami?.jobs_completed ?? whoami?.total_jobs ?? 0;
+        walletAddress = whoami?.walletAddress ?? null;
+        agentName = whoami?.name ?? null;
+        offeringCount = Array.isArray(whoami?.jobs) ? whoami.jobs.length : 0;
       } catch {
         // whoami failed or returned non-JSON — not critical
       }
@@ -4761,7 +4865,7 @@ export async function checkAcpStatus(vm: VMRecord): Promise<AcpStatus> {
       authUrl = urlMatch?.[0] ?? null;
     }
 
-    return { authenticated, serving, agentId, authUrl, jobsCompleted };
+    return { authenticated, serving, walletAddress, agentName, offeringCount, authUrl, virtualsUsageToday: 0, virtualsLimit: 0 };
   } finally {
     ssh.dispose();
   }
@@ -4795,9 +4899,10 @@ export async function startAcpServe(vm: VMRecord): Promise<{ success: boolean; e
     const running = svcCheck.stdout.trim() === "active";
 
     if (!running) {
-      // Fallback: try starting directly
+      // Fallback: try starting directly — but tell the user this is degraded
       await ssh.execCommand(`cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 &`);
-      return { success: true, error: "Started via fallback (systemd service may need fixing)" };
+      logger.warn("ACP serve: systemd failed, fell back to nohup", { vmId: vm.id });
+      return { success: false, error: "Started in fallback mode — the process won't auto-restart if it crashes. Try toggling Virtuals off and on to reinstall the service." };
     }
 
     return { success: true };
