@@ -4306,9 +4306,9 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
       '# Start via systemd so Restart=always protects against future crashes',
       'systemctl --user start openclaw-gateway',
       'sleep 5',
-      '# Auto-start acp serve if aGDP is installed and authenticated',
+      '# Auto-start acp serve via systemd if aGDP is installed and authenticated',
       `if [ -d "${AGDP_DIR}" ] && [ -f "${AGDP_DIR}/config.json" ]; then`,
-      `  cd "${AGDP_DIR}" && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 &`,
+      '  systemctl --user start acp-serve.service 2>/dev/null || true',
       'fi',
     ].join('\n');
 
@@ -4383,9 +4383,9 @@ export async function resetAgentMemory(vm: VMRecord): Promise<ResetAgentResult> 
       '# Restart gateway via systemd (Restart=always protects against future crashes)',
       'systemctl --user start openclaw-gateway',
       'sleep 5',
-      '# Auto-start acp serve if aGDP is installed and authenticated',
+      '# Auto-start acp serve via systemd if aGDP is installed and authenticated',
       `if [ -d "${AGDP_DIR}" ] && [ -f "${AGDP_DIR}/config.json" ]; then`,
-      `  cd "${AGDP_DIR}" && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 &`,
+      '  systemctl --user start acp-serve.service 2>/dev/null || true',
       'fi',
       '',
       'echo "RESET_DONE:$COUNT"',
@@ -4434,9 +4434,9 @@ export async function startGateway(vm: VMRecord): Promise<boolean> {
       '# Start via systemd so Restart=always protects against future crashes',
       'systemctl --user start openclaw-gateway',
       'sleep 5',
-      '# Auto-start acp serve if aGDP is installed and authenticated',
+      '# Auto-start acp serve via systemd if aGDP is installed and authenticated',
       `if [ -d "${AGDP_DIR}" ] && [ -f "${AGDP_DIR}/config.json" ]; then`,
-      `  cd "${AGDP_DIR}" && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 &`,
+      '  systemctl --user start acp-serve.service 2>/dev/null || true',
       'fi',
     ].join('\n');
 
@@ -4469,10 +4469,52 @@ const AGDP_OFFERING = {
     },
   },
   handlers: [
-    'export async function executeJob({ request }: { request: { task: string } }) {',
+    'import { readFileSync } from "node:fs";',
+    'import { join } from "node:path";',
+    'import { homedir } from "node:os";',
+    '',
+    'interface AuthProfile { key: string; baseUrl?: string; }',
+    'interface AuthProfiles { profiles: { "anthropic:default"?: AuthProfile } }',
+    '',
+    'function getProxyConfig(): { url: string; key: string } {',
+    '  const authPath = join(homedir(), ".openclaw", "agents", "main", "agent", "auth-profiles.json");',
+    '  const data: AuthProfiles = JSON.parse(readFileSync(authPath, "utf-8"));',
+    '  const profile = data?.profiles?.["anthropic:default"];',
+    '  if (!profile?.key) throw new Error("OpenClaw auth not configured");',
     '  return {',
-    '    deliverable: `Task received and being processed: ${request.task}`',
+    '    url: profile.baseUrl ? `${profile.baseUrl}/proxy` : "https://api.anthropic.com/v1/messages",',
+    '    key: profile.key,',
     '  };',
+    '}',
+    '',
+    'export async function executeJob({ request }: { request: { task: string } }) {',
+    '  const { url, key } = getProxyConfig();',
+    '',
+    '  const res = await fetch(url, {',
+    '    method: "POST",',
+    '    headers: {',
+    '      "content-type": "application/json",',
+    '      "x-api-key": key,',
+    '      "anthropic-version": "2023-06-01",',
+    '    },',
+    '    body: JSON.stringify({',
+    '      model: "claude-haiku-4-5-20251001",',
+    '      max_tokens: 4096,',
+    '      system: "You are an AI agent completing a task from the Virtuals Protocol ACP marketplace. Complete the task thoroughly and return a clear, well-formatted deliverable. Be concise but comprehensive.",',
+    '      messages: [{ role: "user", content: request.task }],',
+    '    }),',
+    '  });',
+    '',
+    '  if (!res.ok) {',
+    '    const err = await res.text();',
+    '    throw new Error(`Claude API failed (${res.status}): ${err.slice(0, 300)}`);',
+    '  }',
+    '',
+    '  const data = await res.json() as { content?: Array<{ type: string; text?: string }> };',
+    '  const text = data.content?.find((b: { type: string }) => b.type === "text")?.text',
+    '    ?? "Task completed but no text response was generated.";',
+    '',
+    '  return { deliverable: text };',
     '}',
   ].join('\n'),
 };
@@ -4504,12 +4546,48 @@ IMPORTANT: When you detect that aGDP/Virtuals was recently enabled (e.g., the us
 When \`acp serve\` is running, incoming job requests are processed automatically. The seller runtime handles payment collection and delivery. If the serve process is not running, start it with \`cd ~/virtuals-protocol-acp && npx acp serve start\`. You can browse other agents' services with \`cd ~/virtuals-protocol-acp && npx acp browse "<query>" --json\`.
 <!-- AGDP_END -->`;
 
-export async function installAgdpSkill(vm: VMRecord): Promise<void> {
+/** ACP serve wrapper script (installed on VM for systemd to exec). */
+const ACP_SERVE_WRAPPER = [
+  '#!/bin/bash',
+  'export NVM_DIR="$HOME/.nvm"',
+  '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"',
+  'export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"',
+  'cd ~/virtuals-protocol-acp',
+  'exec npx acp serve start',
+].join('\n');
+
+/** Systemd user service for acp-serve (auto-restart on crash). */
+const ACP_SERVE_SERVICE = [
+  '[Unit]',
+  'Description=Virtuals Protocol ACP Serve',
+  'After=openclaw-gateway.service',
+  '',
+  '[Service]',
+  'Type=simple',
+  'ExecStart=%h/virtuals-protocol-acp/acp-serve.sh',
+  'Restart=on-failure',
+  'RestartSec=15',
+  'Environment=HOME=%h',
+  '',
+  '[Install]',
+  'WantedBy=default.target',
+].join('\n');
+
+export interface AgdpInstallResult {
+  /** URL the user must open to authenticate with Virtuals Protocol. Null if already authenticated. */
+  authUrl: string | null;
+  /** Whether ACP serve is already running (auth was already complete). */
+  serving: boolean;
+}
+
+export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult> {
   const ssh = await connectSSH(vm);
   try {
     const priorityB64 = Buffer.from(CLAWLANCER_PRIORITY_RULE, "utf-8").toString("base64");
     const offeringB64 = Buffer.from(JSON.stringify(AGDP_OFFERING.json, null, 2), "utf-8").toString("base64");
     const handlersB64 = Buffer.from(AGDP_OFFERING.handlers, "utf-8").toString("base64");
+    const wrapperB64 = Buffer.from(ACP_SERVE_WRAPPER, "utf-8").toString("base64");
+    const serviceB64 = Buffer.from(ACP_SERVE_SERVICE, "utf-8").toString("base64");
 
     const script = [
       '#!/bin/bash',
@@ -4526,6 +4604,14 @@ export async function installAgdpSkill(vm: VMRecord): Promise<void> {
       `mkdir -p "${AGDP_DIR}/offerings/${AGDP_OFFERING.name}"`,
       `echo '${offeringB64}' | base64 -d > "${AGDP_DIR}/offerings/${AGDP_OFFERING.name}/offering.json"`,
       `echo '${handlersB64}' | base64 -d > "${AGDP_DIR}/offerings/${AGDP_OFFERING.name}/handlers.ts"`,
+      '',
+      '# Install systemd service for acp-serve (auto-restart on crash)',
+      `echo '${wrapperB64}' | base64 -d > "${AGDP_DIR}/acp-serve.sh"`,
+      `chmod +x "${AGDP_DIR}/acp-serve.sh"`,
+      'mkdir -p ~/.config/systemd/user',
+      `echo '${serviceB64}' | base64 -d > ~/.config/systemd/user/acp-serve.service`,
+      'systemctl --user daemon-reload',
+      'systemctl --user enable acp-serve.service 2>/dev/null || true',
       '',
       '# Register aGDP skill directory with OpenClaw',
       `openclaw config set skills.load.extraDirs '["${AGDP_DIR}"]'`,
@@ -4545,8 +4631,18 @@ export async function installAgdpSkill(vm: VMRecord): Promise<void> {
       'systemctl --user start openclaw-gateway',
       'sleep 3',
       '',
-      '# Start acp serve if auth is already complete (fails silently otherwise)',
-      `cd "${AGDP_DIR}" && [ -f config.json ] && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 & true`,
+      '# Check if already authenticated — if so, start acp serve via systemd',
+      `if [ -f "${AGDP_DIR}/config.json" ]; then`,
+      '  systemctl --user start acp-serve.service 2>/dev/null || true',
+      '  echo "ACP_SERVING=true"',
+      'else',
+      '  # Run acp setup to get the auth URL',
+      `  cd "${AGDP_DIR}"`,
+      '  SETUP_OUT=$(npx acp setup 2>&1 || true)',
+      '  # Extract URL from output (usually https://...)' ,
+      '  AUTH_URL=$(echo "$SETUP_OUT" | grep -oE "https://[^ ]+" | head -1)',
+      '  echo "ACP_AUTH_URL=$AUTH_URL"',
+      'fi',
       '',
       'echo "AGDP_INSTALL_DONE"',
     ].join('\n');
@@ -4558,6 +4654,13 @@ export async function installAgdpSkill(vm: VMRecord): Promise<void> {
       logger.error("aGDP install failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
       throw new Error(`aGDP install failed: ${result.stderr || result.stdout}`);
     }
+
+    // Parse auth URL and serving status from output
+    const serving = result.stdout.includes("ACP_SERVING=true");
+    const authUrlMatch = result.stdout.match(/ACP_AUTH_URL=(https?:\/\/\S+)/);
+    const authUrl = authUrlMatch?.[1] ?? null;
+
+    return { authUrl, serving };
   } finally {
     ssh.dispose();
   }
@@ -4570,6 +4673,15 @@ export async function uninstallAgdpSkill(vm: VMRecord): Promise<void> {
       '#!/bin/bash',
       'set -eo pipefail',
       NVM_PREAMBLE,
+      '',
+      '# Stop and disable acp-serve systemd service',
+      'systemctl --user stop acp-serve.service 2>/dev/null || true',
+      'systemctl --user disable acp-serve.service 2>/dev/null || true',
+      'rm -f ~/.config/systemd/user/acp-serve.service',
+      'systemctl --user daemon-reload',
+      '',
+      '# Kill any lingering acp processes',
+      'pkill -f "acp serve" 2>/dev/null || true',
       '',
       '# Remove aGDP repo directory',
       `rm -rf "${AGDP_DIR}"`,
@@ -4599,6 +4711,96 @@ export async function uninstallAgdpSkill(vm: VMRecord): Promise<void> {
       logger.error("aGDP uninstall failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
       throw new Error(`aGDP uninstall failed: ${result.stderr || result.stdout}`);
     }
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Check Virtuals Protocol ACP status on a VM.
+ * Returns auth status, serving status, and any available earnings data.
+ */
+export interface AcpStatus {
+  authenticated: boolean;
+  serving: boolean;
+  agentId: string | null;
+  authUrl: string | null;
+  jobsCompleted: number;
+}
+
+export async function checkAcpStatus(vm: VMRecord): Promise<AcpStatus> {
+  const ssh = await connectSSH(vm);
+  try {
+    // Check if authenticated (config.json exists)
+    const authCheck = await ssh.execCommand(`[ -f "${AGDP_DIR}/config.json" ] && echo "AUTH_OK" || echo "AUTH_MISSING"`);
+    const authenticated = authCheck.stdout.includes("AUTH_OK");
+
+    // Check if acp-serve is running via systemd
+    const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
+    const serving = svcCheck.stdout.trim() === "active";
+
+    // Get agent ID from whoami if authenticated
+    let agentId: string | null = null;
+    let jobsCompleted = 0;
+    if (authenticated) {
+      const whoamiResult = await ssh.execCommand(`cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && npx acp whoami --json 2>/dev/null || true`);
+      try {
+        const whoami = JSON.parse(whoamiResult.stdout);
+        agentId = whoami?.id ?? whoami?.agent_id ?? null;
+        jobsCompleted = whoami?.jobs_completed ?? whoami?.total_jobs ?? 0;
+      } catch {
+        // whoami failed or returned non-JSON — not critical
+      }
+    }
+
+    // Get auth URL if not authenticated
+    let authUrl: string | null = null;
+    if (!authenticated) {
+      const setupResult = await ssh.execCommand(`cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && npx acp setup 2>&1 || true`);
+      const urlMatch = setupResult.stdout.match(/https?:\/\/\S+/);
+      authUrl = urlMatch?.[0] ?? null;
+    }
+
+    return { authenticated, serving, agentId, authUrl, jobsCompleted };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Verify ACP auth is complete and start the serve process via systemd.
+ * Call this after the user completes the auth URL flow.
+ */
+export async function startAcpServe(vm: VMRecord): Promise<{ success: boolean; error?: string }> {
+  const ssh = await connectSSH(vm);
+  try {
+    // Verify auth is complete
+    const authCheck = await ssh.execCommand(`[ -f "${AGDP_DIR}/config.json" ] && echo "AUTH_OK" || echo "AUTH_MISSING"`);
+    if (!authCheck.stdout.includes("AUTH_OK")) {
+      return { success: false, error: "Authentication not completed yet. Please open the auth URL and sign in." };
+    }
+
+    // Create the seller offering if not already done
+    const createResult = await ssh.execCommand(
+      `cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && npx acp sell create "${AGDP_OFFERING.name}" --json 2>&1 || true`
+    );
+    logger.info("ACP sell create result", { vmId: vm.id, stdout: createResult.stdout.slice(0, 200) });
+
+    // Start the systemd service
+    await ssh.execCommand('systemctl --user start acp-serve.service 2>/dev/null || true');
+
+    // Verify it's running
+    await new Promise((r) => setTimeout(r, 3000));
+    const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
+    const running = svcCheck.stdout.trim() === "active";
+
+    if (!running) {
+      // Fallback: try starting directly
+      await ssh.execCommand(`cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && nohup npx acp serve start > /tmp/acp-serve.log 2>&1 &`);
+      return { success: true, error: "Started via fallback (systemd service may need fixing)" };
+    }
+
+    return { success: true };
   } finally {
     ssh.dispose();
   }

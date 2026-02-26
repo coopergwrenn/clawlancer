@@ -383,17 +383,24 @@ export async function POST(req: NextRequest) {
         }
 
         if (enabled) {
-          await installAgdpSkill(vm);
+          const result = await installAgdpSkill(vm);
+          await supabase
+            .from("instaclaw_vms")
+            .update({ agdp_enabled: enabled })
+            .eq("id", vm.id);
+          return NextResponse.json({
+            updated: true,
+            authUrl: result.authUrl,
+            serving: result.serving,
+          });
         } else {
           await uninstallAgdpSkill(vm);
+          await supabase
+            .from("instaclaw_vms")
+            .update({ agdp_enabled: enabled })
+            .eq("id", vm.id);
+          return NextResponse.json({ updated: true });
         }
-
-        await supabase
-          .from("instaclaw_vms")
-          .update({ agdp_enabled: enabled })
-          .eq("id", vm.id);
-
-        return NextResponse.json({ updated: true });
       }
 
       default:

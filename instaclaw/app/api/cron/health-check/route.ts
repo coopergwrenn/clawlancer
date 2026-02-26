@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, resyncGatewayToken, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -679,13 +679,16 @@ export async function GET(req: NextRequest) {
   }
 
   // ========================================================================
-  // Eighth pass: Proxy round-trip validation for healthy all_inclusive VMs
+  // Eighth pass: Proxy round-trip + token verification for healthy VMs
   // Catches VMs that pass local health check but have broken proxy auth
-  // (the EuroPartShop scenario). Limit to 3 per cycle to control cost/time.
+  // (the EuroPartShop / VM-058 scenarios).
+  // On failure: auto-resync token, re-test, only count failure if resync
+  // didn't fix it. Escalate admin alert after PROXY_401_THRESHOLD.
   // ========================================================================
   let proxyChecked = 0;
   let proxyFailed = 0;
-  const PROXY_CHECK_BATCH_SIZE = 3;
+  let proxyResynced = 0;
+  const PROXY_CHECK_BATCH_SIZE = 5;
   const PROXY_401_THRESHOLD = 3;
 
   const proxyCheckBatch = vms
@@ -703,27 +706,69 @@ export async function GET(req: NextRequest) {
       proxyChecked++;
 
       if (!result.success) {
-        proxyFailed++;
-        const newCount = (vm.proxy_401_count ?? 0) + 1;
-
-        await supabase
-          .from("instaclaw_vms")
-          .update({ proxy_401_count: newCount })
-          .eq("id", vm.id);
-
-        logger.warn("Proxy round-trip failed for healthy VM", {
+        logger.warn("Proxy round-trip failed — attempting auto-resync", {
           route: "cron/health-check",
           vmId: vm.id,
           vmName: vm.name,
           error: result.error,
-          proxy401Count: newCount,
         });
 
-        if (newCount >= PROXY_401_THRESHOLD) {
-          await sendAdminAlertEmail(
-            "Cron: Proxy Round-Trip Failure",
-            `VM ${vm.id} (${vm.name ?? "unnamed"}, user: ${vm.assigned_to}) passes local health check but has failed ${newCount} consecutive proxy round-trip tests.\n\nLatest error: ${result.error}\n\nThis VM needs a reconfigure to fix the proxy auth chain.`
-          );
+        // Auto-resync: patch the gateway token on the VM to match DB
+        let resyncFixed = false;
+        try {
+          const resyncResult = await resyncGatewayToken(vm);
+          if (resyncResult.healthy) {
+            // Re-test proxy with the (potentially refreshed) token
+            const retest = await testProxyRoundTrip(resyncResult.gatewayToken, 1);
+            if (retest.success) {
+              resyncFixed = true;
+              proxyResynced++;
+
+              logger.info("Auto-resync fixed proxy auth", {
+                route: "cron/health-check",
+                vmId: vm.id,
+                vmName: vm.name,
+              });
+
+              // Reset failure counter
+              await supabase
+                .from("instaclaw_vms")
+                .update({ proxy_401_count: 0 })
+                .eq("id", vm.id);
+            }
+          }
+        } catch (resyncErr) {
+          logger.error("Auto-resync failed during proxy check", {
+            error: String(resyncErr),
+            route: "cron/health-check",
+            vmId: vm.id,
+          });
+        }
+
+        if (!resyncFixed) {
+          // Resync didn't fix it — increment failure counter
+          proxyFailed++;
+          const newCount = (vm.proxy_401_count ?? 0) + 1;
+
+          await supabase
+            .from("instaclaw_vms")
+            .update({ proxy_401_count: newCount })
+            .eq("id", vm.id);
+
+          logger.warn("Proxy still failing after auto-resync", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            error: result.error,
+            proxy401Count: newCount,
+          });
+
+          if (newCount >= PROXY_401_THRESHOLD) {
+            await sendAdminAlertEmail(
+              "Cron: Proxy Auth Failure (Resync Failed)",
+              `VM ${vm.id} (${vm.name ?? "unnamed"}, user: ${vm.assigned_to}) has failed ${newCount} consecutive proxy round-trip tests. Auto-resync did NOT fix the issue.\n\nLatest error: ${result.error}\n\nThis VM likely needs a full reconfigure.`
+            );
+          }
         }
       } else {
         // Proxy OK — reset counter if it was previously non-zero

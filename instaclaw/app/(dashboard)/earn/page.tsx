@@ -900,6 +900,17 @@ function ClawlancerSection() {
 
 // ── Virtuals Protocol Section ───────────────────────
 
+interface VirtualsStatus {
+  enabled: boolean;
+  vmId?: string;
+  authenticated?: boolean;
+  serving?: boolean;
+  agentId?: string | null;
+  authUrl?: string | null;
+  jobsCompleted?: number;
+  error?: string;
+}
+
 function VirtualsSection({
   vm,
   togglingAgdp,
@@ -914,6 +925,46 @@ function VirtualsSection({
   handleToggleAgdp: (enabled: boolean) => void;
 }) {
   const enabled = vm?.agdpEnabled ?? false;
+  const [status, setStatus] = useState<VirtualsStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activateResult, setActivateResult] = useState<string | null>(null);
+
+  // Fetch Virtuals status when enabled
+  useEffect(() => {
+    if (!enabled) {
+      setStatus(null);
+      return;
+    }
+    setLoadingStatus(true);
+    fetch("/api/virtuals/status")
+      .then((r) => r.json())
+      .then((data) => setStatus(data))
+      .catch(() => setStatus({ enabled: true, error: "Failed to check status" }))
+      .finally(() => setLoadingStatus(false));
+  }, [enabled]);
+
+  async function handleActivate() {
+    setActivating(true);
+    setActivateResult(null);
+    try {
+      const res = await fetch("/api/virtuals/activate", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setActivateResult("success");
+        // Refresh status
+        const statusRes = await fetch("/api/virtuals/status");
+        const statusData = await statusRes.json();
+        setStatus(statusData);
+      } else {
+        setActivateResult(data.error || "Activation failed");
+      }
+    } catch {
+      setActivateResult("Network error");
+    } finally {
+      setActivating(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -982,7 +1033,7 @@ function VirtualsSection({
           </p>
           <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
             {agdpConfirm === "enable"
-              ? "This adds a new skill to your agent. After turning it on, you'll need to message your bot once to finish setup."
+              ? "This installs the Virtuals Protocol skill on your agent and sets up a marketplace listing."
               : "Your agent will stop accepting Virtuals jobs. You can turn it back on anytime."}
           </p>
           <div className="flex gap-2">
@@ -1010,12 +1061,223 @@ function VirtualsSection({
         </div>
       )}
 
-      {/* Post-enable next step */}
-      {enabled && !togglingAgdp && !agdpConfirm && vm?.telegramBotUsername && (
-        <BotMessage
-          message="Set up Virtuals marketplace"
-          botUsername={vm.telegramBotUsername}
-        />
+      {/* ── Enabled: Status Dashboard ── */}
+      {enabled && !togglingAgdp && !agdpConfirm && (
+        <>
+          {/* Loading state */}
+          {loadingStatus && (
+            <div className="flex items-center gap-2 text-xs py-4" style={{ color: "var(--muted)" }}>
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Checking Virtuals Protocol status...
+            </div>
+          )}
+
+          {/* Error state */}
+          {status?.error && !loadingStatus && (
+            <div
+              className="rounded-lg p-4"
+              style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.12)" }}
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" style={{ color: "rgb(239,68,68)" }} />
+                <span className="text-xs" style={{ color: "rgb(239,68,68)" }}>{status.error}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Not authenticated — show auth URL */}
+          {status && !status.authenticated && !status.error && !loadingStatus && (
+            <div className="space-y-4">
+              {/* Step 1: Authenticate */}
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: "rgba(249,115,22,0.1)",
+                    color: "rgb(249,115,22)",
+                    border: "1px solid rgba(249,115,22,0.2)",
+                  }}
+                >
+                  1
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Authenticate with Virtuals Protocol</p>
+                  <p className="text-xs" style={{ color: "var(--muted)" }}>
+                    Open the link below to connect your agent to the Virtuals marketplace
+                  </p>
+                </div>
+              </div>
+
+              {status.authUrl ? (
+                <a
+                  href={status.authUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                    color: "#fff",
+                  }}
+                >
+                  <Globe className="w-4 h-4" />
+                  Open Virtuals Authentication
+                  <ArrowRight className="w-4 h-4" />
+                </a>
+              ) : (
+                <BotMessage
+                  message="Set up Virtuals Protocol authentication"
+                  botUsername={vm?.telegramBotUsername}
+                />
+              )}
+
+              {/* Step 2: Verify & Start */}
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: "rgba(0,0,0,0.04)",
+                    color: "var(--muted)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  2
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Verify & Start Earning</p>
+                  <p className="text-xs" style={{ color: "var(--muted)" }}>
+                    After authenticating, click below to start accepting jobs
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleActivate}
+                disabled={activating}
+                className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                style={{
+                  background: "rgba(0,0,0,0.06)",
+                  color: "var(--foreground)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {activating ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Verify Authentication & Start
+                  </>
+                )}
+              </button>
+
+              {activateResult && activateResult !== "success" && (
+                <p className="text-xs" style={{ color: "rgb(239,68,68)" }}>{activateResult}</p>
+              )}
+            </div>
+          )}
+
+          {/* Authenticated & serving — active dashboard */}
+          {status?.authenticated && !loadingStatus && (
+            <div className="space-y-4">
+              {/* Status indicator */}
+              <div
+                className="flex items-center justify-between rounded-lg px-4 py-3"
+                style={{
+                  background: status.serving ? "rgba(34,197,94,0.04)" : "rgba(249,115,22,0.04)",
+                  border: status.serving ? "1px solid rgba(34,197,94,0.12)" : "1px solid rgba(249,115,22,0.12)",
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  {status.serving ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "rgb(34,197,94)" }} />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5" style={{ color: "rgb(249,115,22)" }} />
+                  )}
+                  <span
+                    className="text-xs font-medium"
+                    style={{ color: status.serving ? "rgb(34,197,94)" : "rgb(249,115,22)" }}
+                  >
+                    {status.serving ? "Accepting jobs" : "Authenticated but not serving"}
+                  </span>
+                </div>
+                {status.agentId && (
+                  <span className="text-[10px] font-mono" style={{ color: "var(--muted)" }}>
+                    {status.agentId.slice(0, 8)}...
+                  </span>
+                )}
+              </div>
+
+              {/* Start serving button if not running */}
+              {!status.serving && (
+                <button
+                  onClick={handleActivate}
+                  disabled={activating}
+                  className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                    color: "#fff",
+                  }}
+                >
+                  {activating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      Start Accepting Jobs
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div
+                  className="rounded-lg p-3 text-center"
+                  style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: "rgb(168,85,247)" }} />
+                  <p className="text-lg font-bold">{status.jobsCompleted ?? 0}</p>
+                  <p className="text-[10px]" style={{ color: "var(--muted)" }}>Jobs Completed</p>
+                </div>
+                <div
+                  className="rounded-lg p-3 text-center"
+                  style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+                >
+                  <Globe className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: "rgb(249,115,22)" }} />
+                  <p className="text-lg font-bold">ACP</p>
+                  <p className="text-[10px]" style={{ color: "var(--muted)" }}>Marketplace</p>
+                </div>
+              </div>
+
+              {/* How it works */}
+              {(status.jobsCompleted ?? 0) === 0 && (
+                <div
+                  className="rounded-lg p-5 text-center"
+                  style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+                >
+                  <Store className="w-5 h-5 mx-auto mb-2" style={{ color: "var(--muted)" }} />
+                  <p className="text-xs font-medium mb-1">Waiting for jobs</p>
+                  <p className="text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                    Your agent is listed on the Virtuals Protocol ACP marketplace. When other agents or users send task requests, your agent completes them automatically and earns fees.
+                  </p>
+                </div>
+              )}
+
+              {activateResult === "success" && (
+                <div className="flex items-center gap-2 text-xs" style={{ color: "rgb(34,197,94)" }}>
+                  <CheckCircle2 className="w-3 h-3" />
+                  ACP serve started successfully
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
