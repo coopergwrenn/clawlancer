@@ -5,6 +5,8 @@ import { encryptApiKey } from "@/lib/security";
 import { updateSystemPrompt, updateApiKey, updateChannelToken, installAgdpSkill, uninstallAgdpSkill, connectSSH } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
+export const maxDuration = 120;
+
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
