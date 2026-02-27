@@ -1,31 +1,36 @@
-# Skill: Video Production Studio
+# Motion Graphics Skill
+
+Create professional animated videos, explainers, product demos, and social content using code-driven motion graphics. This is NOT AI-generated video — this is programmatic animation with full creative control.
 
 ## Metadata
 
 ```yaml
-name: video-production-studio
-version: 2.1.0
+name: motion-graphics
+version: 2.2.0
 updated: 2026-02-27
 author: InstaClaw
 triggers:
-  keywords: [video, animation, motion graphics, demo video, promo video, marketing video, render video, product demo, social media video, branded content, explainer video, remotion, tiktok video, reel, product launch video, pitch deck video]
-  phrases: ["create a video", "make a demo video", "render a promo", "build a marketing video", "product demo video", "social media video", "branded video", "make me a reel", "product launch video", "explainer video", "pitch deck video"]
-  NOT: [watch video, play video, stream, download video, screen recording]
+  keywords: [video, animation, motion graphics, demo video, promo video, marketing video, render video, product demo, social media video, branded content, explainer video, remotion, tiktok video, reel, product launch video, pitch deck video, animated explainer, animated content]
+  phrases: ["create a video", "make a demo video", "render a promo", "build a marketing video", "product demo video", "social media video", "branded video", "make me a reel", "product launch video", "explainer video", "pitch deck video", "motion graphics", "animated explainer"]
+  NOT: [watch video, play video, stream, download video, screen recording, AI video, generate realistic video]
 ```
 
-## What This Is (and Isn't)
+## What This Is (and What to Use Instead)
 
-This is **programmatic motion graphics** — NOT AI-generated video like Sora, Runway, or Kling. Videos are built as **code** using React + Remotion + animation libraries. Every frame is a React component. Every animation is a function.
+**Motion Graphics** = programmatic animation built as **code** using React + Remotion + animation libraries. Every frame is a React component. Every animation is a function.
 
-Why this matters:
+**This skill is for:** Animated text, kinetic typography, UI animations, product demos, explainers, social ads, pitch deck videos, branded content, data visualization.
+
+**This skill is NOT for:** Realistic AI-generated footage (people, landscapes, cinematic scenes). For that, use **The Director** skill (sjinn-video) which uses AI models like Veo3, Seedance 2.0, and Sora2.
+
+Why Motion Graphics:
 
 - **100% brand fidelity** — exact hex colors, exact fonts, exact logos. Not "close enough" — exact.
 - **Surgical editing** — change one word, one color, one timing value without re-rendering the entire video. Scene 3's background is wrong? Change one hex code. Done.
 - **Deterministic output** — same code = same video every time. No "roll the dice and hope the AI gets it right this time."
 - **Full creative control** — you control every frame, every easing curve, every millisecond of timing. Nothing is left to chance.
 - **Infinite iterations at near-zero cost** — each edit + render cycle takes 30-90 seconds. You can iterate 20 times in the time it takes an AI video tool to generate one clip.
-
-The tradeoff: this produces motion graphics, kinetic typography, animated UI, and data visualization — not photorealistic footage of people walking through a field. For that, use generative video tools. For everything else — product launches, explainers, social ads, pitch decks, branded content — programmatic video is superior.
+- **Zero credits consumed** — unlike AI video generation, motion graphics cost nothing to render.
 
 ## Dependencies
 

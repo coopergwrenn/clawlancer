@@ -162,6 +162,31 @@ Each capability in CAPABILITIES.md is tagged **(MCP)** or **(Skill)**:
 | polymarket | ~/.openclaw/skills/polymarket/SKILL.md |
 | language-teacher | ~/.openclaw/skills/language-teacher/SKILL.md |
 
+## 1J-3 — Motion Graphics vs The Director (Video Routing)
+
+When a user asks for video content, route to the correct skill:
+
+**Motion Graphics** (Skill: video-production) — Use for:
+- Promo videos, product demos, animated explainers, social media ads
+- Kinetic typography, text animations, UI animations
+- Pitch deck videos, website hero loops
+- Anything where you need exact brand colors, fonts, logos
+- Anything where the user will iterate on timing, copy, or design
+
+This skill uses Remotion with React animation libraries (Framer Motion, GSAP, React Spring) to produce premium animated videos from code. Zero credits consumed. Read \`~/.openclaw/skills/video-production/SKILL.md\` for the full toolkit.
+
+**DO NOT use raw FFmpeg for animated content.** FFmpeg is only for encoding, format conversion, trimming, and concatenation. For actual motion graphics with transitions, text effects, and animation — always use the Motion Graphics skill.
+
+**The Director** (Skill: sjinn-video) — Use for:
+- AI-generated realistic footage (people, landscapes, cinematic scenes)
+- Image-to-video animation (photo comes to life)
+- Multi-shot story videos with AI-generated visuals
+- Anything requiring photorealistic content that can't be built with code
+
+This skill uses AI video models (Seedance 2.0, Veo3, Sora2). Consumes daily credits.
+
+**Quick decision:** Can it be built with animated text, shapes, screenshots, and transitions? → Motion Graphics. Does it need realistic AI-generated footage? → The Director.
+
 ## 1K — Rule Priority
 
 When instructions conflict, follow this priority order:
@@ -347,7 +372,7 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 
 ### Media & Creative
 - **The Director — AI Creative Studio** (Skill: sjinn-video) — Your built-in creative director. Describe any scene, ad, or content idea in plain English and get professional video, images, music, and audio. Powered by Seedance 2.0, Sora2, Veo3, and more.
-- **Motion Graphics** (Skill: video-production) — React-based Remotion animated marketing videos with brand assets
+- **Motion Graphics** (Skill: video-production) — Programmatic animated videos (Remotion + Framer Motion + GSAP + React Spring). Product demos, explainers, social ads, pitch decks. Full brand fidelity, surgical editing, zero credits.
 - **Voice & Audio** (Skill: voice-audio-production) — Text-to-speech (OpenAI/ElevenLabs), audio processing, sound effects
 - **Image Generation** (Skill: sjinn-video) — AI stills and thumbnails (Nano Banana, seedream 4.5) via The Director
 
@@ -454,13 +479,18 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 → Scripts: ~/scripts/email-client.sh, ~/scripts/email-safety-check.py, ~/scripts/email-digest.py
 → Config: ~/.openclaw/email-config.json
 
-## 🎬 VIDEO PRODUCTION — REMOTION (Skill: video-production)
-✅ Remotion video production — React-based motion graphics (template-basic included)
-✅ 4-scene marketing video template (Hook → Problem → Solution → CTA)
-✅ Spring physics animations, staggered reveals, opacity+transform combos
-✅ Brand asset extraction for videos (fonts, colors, logos via browser tool)
-✅ Draft and production rendering pipeline (15s @ 1080p, 1-3MB output)
-→ Skills: remotion-video-production
+## 🎬 MOTION GRAPHICS (Skill: video-production)
+✅ Programmatic animated videos — Remotion + Framer Motion + GSAP + React Spring
+✅ Prompt enhancement: vague requests → detailed scene-by-scene technical specs
+✅ Storyboard templates for product launches, explainers, TikTok/Reels, pitch decks, website heroes
+✅ Premium animation library: spring physics, kinetic typography, staggered reveals, glass UI, particles
+✅ Brand asset extraction (fonts, colors, logos from any website)
+✅ Deterministic rendering (Chrome --deterministic-mode for frame-perfect output)
+✅ Audio sync with ElevenLabs voiceover (word-level timestamp alignment)
+✅ Premium FFmpeg encoding (-preset veryslow, -movflags +faststart, -pix_fmt yuv420p)
+✅ Zero credits consumed — render as many iterations as needed
+⚠️ This is for ANIMATED content (text, UI, graphics). For AI-generated realistic video → use The Director (sjinn-video)
+→ Skills: motion-graphics
 → Template: ~/.openclaw/skills/video-production/assets/template-basic/
 → Reference: ~/.openclaw/skills/video-production/references/advanced-patterns.md
 

@@ -57,6 +57,9 @@ export async function reconcileVM(
     // ── Step 2: Files ──
     await stepFiles(ssh, vm, manifest, result, dryRun);
 
+    // ── Step 2b: Bootstrap safety ──
+    await stepBootstrapConsumed(ssh, result, dryRun);
+
     // ── Step 3: Skills ──
     await stepSkills(ssh, vm, manifest, result, dryRun);
 
@@ -334,6 +337,52 @@ async function deployFileEntry(
       break;
     }
   }
+}
+
+/**
+ * Step 2b: Ensure .bootstrap_consumed exists on VMs that have already bootstrapped.
+ *
+ * The agent is supposed to create this file after the first conversation, but
+ * it's unreliable — if missing, every /reset re-triggers the full "first moment
+ * awake" intro. We detect already-bootstrapped VMs by checking for session files
+ * (any .jsonl in the sessions directory = agent has been used).
+ */
+async function stepBootstrapConsumed(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const workspace = '~/.openclaw/workspace';
+  const flag = `${workspace}/.bootstrap_consumed`;
+
+  // Check if BOOTSTRAP.md exists but .bootstrap_consumed doesn't
+  const check = await ssh.execCommand(
+    `test -f ${workspace}/BOOTSTRAP.md && ! test -f ${flag} && echo NEEDS_FIX || echo OK`
+  );
+
+  if (check.stdout.trim() !== 'NEEDS_FIX') {
+    result.alreadyCorrect.push('.bootstrap_consumed');
+    return;
+  }
+
+  // Verify the agent has already been used (session files exist)
+  const sessionCheck = await ssh.execCommand(
+    `ls ~/.openclaw/agents/main/agent/sessions/*.jsonl 2>/dev/null | head -1 | grep -q . && echo HAS_SESSIONS || echo NO_SESSIONS`
+  );
+
+  if (sessionCheck.stdout.trim() !== 'HAS_SESSIONS') {
+    // New VM — agent hasn't been used yet, don't create the flag
+    result.alreadyCorrect.push('.bootstrap_consumed (new VM, skip)');
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push('[dry-run] create .bootstrap_consumed (agent already bootstrapped)');
+    return;
+  }
+
+  await ssh.execCommand(`touch ${flag}`);
+  result.fixed.push('.bootstrap_consumed (safety: agent already bootstrapped)');
 }
 
 async function stepSkills(
