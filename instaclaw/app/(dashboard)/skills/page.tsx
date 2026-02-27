@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RotateCw, Loader2, Search, Download, Plus, Star, TrendingUp, Users } from "lucide-react";
+import { RotateCw, Loader2, Search, Download, Plus, Star, TrendingUp, Users, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import { getSkillIconPath } from "@/lib/skill-icons";
+import { SkillOrb } from "@/components/skill-orb";
+import { resolveSkillOrb, CATEGORY_COLORS } from "@/lib/skill-orb-mapping";
 
 // ── Types ────────────────────────────────────────────
 
@@ -433,7 +435,7 @@ export default function SkillsPage() {
 
       {/* ── Marketplace tab ── */}
       {!loading && activeTab === "marketplace" && (
-        <MarketplaceShell />
+        <MarketplaceShell showToast={showToast} />
       )}
 
       {/* ── Shopify API key modal ── */}
@@ -866,7 +868,7 @@ function IntegrationCard({
   );
 }
 
-// ── Marketplace Shell (Coming Soon) ──────────────────
+// ── Marketplace Shell ─────────────────────────────────
 
 const MARKETPLACE_CATEGORIES = [
   "All",
@@ -878,8 +880,7 @@ const MARKETPLACE_CATEGORIES = [
   "Automation",
 ] as const;
 
-interface PlaceholderSkill {
-  icon: string;
+interface MarketplaceSkillDisplay {
   name: string;
   author: string;
   description: string;
@@ -887,11 +888,11 @@ interface PlaceholderSkill {
   rating: number;
   category: string;
   featured?: boolean;
+  isPlaceholder?: boolean;
 }
 
-const FEATURED_SKILLS: PlaceholderSkill[] = [
+const FEATURED_SKILLS: MarketplaceSkillDisplay[] = [
   {
-    icon: "🎵",
     name: "Music Producer",
     author: "instaclaw",
     description:
@@ -900,9 +901,9 @@ const FEATURED_SKILLS: PlaceholderSkill[] = [
     rating: 4.9,
     category: "Creative",
     featured: true,
+    isPlaceholder: true,
   },
   {
-    icon: "📈",
     name: "SEO Optimizer",
     author: "growthlab",
     description:
@@ -911,9 +912,9 @@ const FEATURED_SKILLS: PlaceholderSkill[] = [
     rating: 4.8,
     category: "Productivity",
     featured: true,
+    isPlaceholder: true,
   },
   {
-    icon: "🤖",
     name: "Discord Bot Manager",
     author: "serverkit",
     description:
@@ -922,9 +923,9 @@ const FEATURED_SKILLS: PlaceholderSkill[] = [
     rating: 4.7,
     category: "Social",
     featured: true,
+    isPlaceholder: true,
   },
   {
-    icon: "⚡",
     name: "Zapier Bridge",
     author: "automate.io",
     description:
@@ -933,96 +934,160 @@ const FEATURED_SKILLS: PlaceholderSkill[] = [
     rating: 4.9,
     category: "Automation",
     featured: true,
+    isPlaceholder: true,
   },
 ];
 
-const COMMUNITY_SKILLS: PlaceholderSkill[] = [
+const PLACEHOLDER_COMMUNITY: MarketplaceSkillDisplay[] = [
   {
-    icon: "📊",
     name: "Google Analytics Reporter",
     author: "dataviz",
     description: "Pull analytics data and generate weekly traffic reports",
     installs: "892",
     rating: 4.6,
     category: "Productivity",
+    isPlaceholder: true,
   },
   {
-    icon: "🎮",
     name: "Game Asset Creator",
     author: "pixelcraft",
     description: "Generate sprites, textures, and UI elements for games",
     installs: "1.1k",
     rating: 4.5,
     category: "Creative",
+    isPlaceholder: true,
   },
   {
-    icon: "📦",
     name: "Inventory Tracker",
     author: "stockwise",
     description: "Monitor stock levels across warehouses and trigger reorders",
     installs: "634",
     rating: 4.4,
     category: "Commerce",
+    isPlaceholder: true,
   },
   {
-    icon: "🔐",
     name: "Security Auditor",
     author: "securestack",
     description: "Scan codebases for vulnerabilities and generate fix reports",
     installs: "1.5k",
     rating: 4.8,
     category: "Developer",
+    isPlaceholder: true,
   },
   {
-    icon: "✍️",
     name: "Blog Writer",
     author: "contentmill",
     description: "Research topics, write long-form posts, and format for CMS",
     installs: "2.1k",
     rating: 4.3,
     category: "Creative",
+    isPlaceholder: true,
   },
   {
-    icon: "🗓️",
     name: "Meeting Scheduler",
     author: "calflow",
     description: "Coordinate availability, book meetings, and send reminders",
     installs: "987",
     rating: 4.6,
     category: "Productivity",
+    isPlaceholder: true,
   },
   {
-    icon: "🐦",
     name: "Twitter Thread Writer",
     author: "viralkit",
     description: "Craft engaging threads, schedule posts, and track engagement",
     installs: "1.7k",
     rating: 4.5,
     category: "Social",
+    isPlaceholder: true,
   },
   {
-    icon: "🧪",
     name: "A/B Test Runner",
     author: "splitlab",
     description: "Design experiments, track variants, and report significance",
     installs: "445",
     rating: 4.7,
     category: "Developer",
+    isPlaceholder: true,
   },
 ];
 
-function MarketplaceShell() {
+interface CommunitySkillFromAPI {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  installs: number;
+  rating: number;
+  featured: boolean;
+  author_name: string;
+  submitted_at: string;
+}
+
+function MarketplaceShell({ showToast }: { showToast: (message: string, type: "success" | "error") => void }) {
   const [marketplaceCategory, setMarketplaceCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [communitySkills, setCommunitySkills] = useState<CommunitySkillFromAPI[]>([]);
+  const [loadingSkills, setLoadingSkills] = useState(true);
 
-  const filteredFeatured =
-    marketplaceCategory === "All"
-      ? FEATURED_SKILLS
-      : FEATURED_SKILLS.filter((s) => s.category === marketplaceCategory);
+  useEffect(() => {
+    async function fetchCommunitySkills() {
+      try {
+        const res = await fetch("/api/marketplace/skills");
+        if (res.ok) {
+          const data = await res.json();
+          setCommunitySkills(data.skills || []);
+        }
+      } catch {
+        // silent
+      } finally {
+        setLoadingSkills(false);
+      }
+    }
+    fetchCommunitySkills();
+  }, []);
 
-  const filteredCommunity =
-    marketplaceCategory === "All"
-      ? COMMUNITY_SKILLS
-      : COMMUNITY_SKILLS.filter((s) => s.category === marketplaceCategory);
+  // Convert API skills to display format
+  const realCommunityDisplay: MarketplaceSkillDisplay[] = communitySkills.map((s) => ({
+    name: s.name,
+    author: s.author_name,
+    description: s.description,
+    installs: s.installs >= 1000 ? `${(s.installs / 1000).toFixed(1)}k` : String(s.installs),
+    rating: s.rating,
+    category: s.category.charAt(0).toUpperCase() + s.category.slice(1),
+    featured: s.featured,
+    isPlaceholder: false,
+  }));
+
+  // All community = real + placeholders
+  const allCommunity = [...realCommunityDisplay, ...PLACEHOLDER_COMMUNITY];
+
+  // Search filter
+  function matchesSearch(skill: MarketplaceSkillDisplay) {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      skill.name.toLowerCase().includes(q) ||
+      skill.description.toLowerCase().includes(q)
+    );
+  }
+
+  // Category filter
+  function matchesCategory(skill: MarketplaceSkillDisplay) {
+    return marketplaceCategory === "All" || skill.category === marketplaceCategory;
+  }
+
+  const filteredFeatured = FEATURED_SKILLS.filter(
+    (s) => matchesSearch(s) && matchesCategory(s)
+  );
+  const filteredCommunity = allCommunity.filter(
+    (s) => matchesSearch(s) && matchesCategory(s)
+  );
+
+  // Recently Added — 4 most recent real community skills
+  const recentlyAdded = realCommunityDisplay.slice(0, 4);
 
   return (
     <div className="space-y-8">
@@ -1033,7 +1098,6 @@ function MarketplaceShell() {
         transition={{ duration: 0.4 }}
         className="glass rounded-2xl p-8 sm:p-10 text-center relative overflow-hidden"
       >
-        {/* Subtle gradient shimmer */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -1042,19 +1106,6 @@ function MarketplaceShell() {
           }}
         />
         <div className="relative z-10">
-          <span
-            className="inline-block px-3.5 py-1 rounded-full text-[11px] font-semibold mb-4"
-            style={{
-              background: "rgba(59,130,246,0.08)",
-              backdropFilter: "blur(12px)",
-              WebkitBackdropFilter: "blur(12px)",
-              color: "rgb(96,165,250)",
-              boxShadow:
-                "0 0 0 1px rgba(59,130,246,0.18), 0 1px 3px rgba(59,130,246,0.06), inset 0 1px 0 rgba(255,255,255,0.25)",
-            }}
-          >
-            Coming Soon
-          </span>
           <h2
             className="text-2xl sm:text-3xl font-normal tracking-[-0.5px] mb-2"
             style={{ fontFamily: "var(--font-serif)" }}
@@ -1085,44 +1136,31 @@ function MarketplaceShell() {
           />
           <input
             type="text"
-            disabled
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search community skills..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none disabled:cursor-not-allowed"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none"
             style={{
               background: "rgba(0,0,0,0.03)",
               border: "1px solid var(--border)",
-              color: "var(--muted)",
-              opacity: 0.6,
+              color: "var(--foreground)",
             }}
           />
         </div>
-        <div className="relative group">
-          <button
-            disabled
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium disabled:cursor-not-allowed"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(22,22,22,0.6), rgba(40,40,40,0.7))",
-              color: "rgba(255,255,255,0.5)",
-              boxShadow:
-                "0 0 0 1px rgba(255,255,255,0.06), 0 2px 6px rgba(0,0,0,0.1)",
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Submit a Skill</span>
-          </button>
-          {/* Tooltip */}
-          <div
-            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-[11px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-            style={{
-              background: "rgba(0,0,0,0.85)",
-              color: "#fff",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-            }}
-          >
-            Coming Soon — create and share your own skills
-          </div>
-        </div>
+        <button
+          onClick={() => setSubmitModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all active:scale-95"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
+            color: "#fff",
+            boxShadow:
+              "0 0 0 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+          }}
+        >
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">Submit a Skill</span>
+        </button>
       </motion.div>
 
       {/* Category filter tabs */}
@@ -1161,8 +1199,16 @@ function MarketplaceShell() {
         })}
       </motion.div>
 
+      {/* Loading community skills */}
+      {loadingSkills && (
+        <div className="glass rounded-xl p-8 text-center" style={{ border: "1px solid var(--border)" }}>
+          <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" style={{ color: "var(--muted)" }} />
+          <p className="text-sm" style={{ color: "var(--muted)" }}>Loading marketplace...</p>
+        </div>
+      )}
+
       {/* Featured Skills */}
-      {filteredFeatured.length > 0 && (
+      {!loadingSkills && filteredFeatured.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1196,7 +1242,7 @@ function MarketplaceShell() {
       )}
 
       {/* Community Skills */}
-      {filteredCommunity.length > 0 && (
+      {!loadingSkills && filteredCommunity.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1214,7 +1260,7 @@ function MarketplaceShell() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredCommunity.map((skill, i) => (
               <motion.div
-                key={skill.name}
+                key={skill.name + skill.author}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 + i * 0.04, duration: 0.25 }}
@@ -1227,7 +1273,7 @@ function MarketplaceShell() {
       )}
 
       {/* Empty filter state */}
-      {filteredFeatured.length === 0 && filteredCommunity.length === 0 && (
+      {!loadingSkills && filteredFeatured.length === 0 && filteredCommunity.length === 0 && (
         <div
           className="glass rounded-xl p-8 text-center"
           style={{ border: "1px solid var(--border)" }}
@@ -1238,63 +1284,103 @@ function MarketplaceShell() {
         </div>
       )}
 
-      {/* Recently Added — empty state */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5, duration: 0.3 }}
-      >
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-4 h-4" style={{ color: "var(--muted)" }} />
-          <h3
-            className="text-lg font-normal tracking-[-0.3px]"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            Recently Added
-          </h3>
-        </div>
-        <div
-          className="glass rounded-xl p-8 text-center"
-          style={{ border: "1px solid var(--border)" }}
+      {/* Recently Added */}
+      {!loadingSkills && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5, duration: 0.3 }}
         >
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Skills from the community will appear here.
-          </p>
-        </div>
-      </motion.div>
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4" style={{ color: "var(--muted)" }} />
+            <h3
+              className="text-lg font-normal tracking-[-0.3px]"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Recently Added
+            </h3>
+          </div>
+          {recentlyAdded.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {recentlyAdded.map((skill, i) => (
+                <motion.div
+                  key={skill.name + skill.author}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.55 + i * 0.04, duration: 0.25 }}
+                >
+                  <MarketplaceCard skill={skill} />
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <div
+              className="glass rounded-xl p-8 text-center"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <p className="text-sm" style={{ color: "var(--muted)" }}>
+                Skills from the community will appear here.
+              </p>
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Submit Skill Modal */}
+      <AnimatePresence>
+        {submitModalOpen && (
+          <SubmitSkillModal
+            onClose={() => setSubmitModalOpen(false)}
+            onSuccess={() => {
+              showToast("Skill submitted for review", "success");
+              setSubmitModalOpen(false);
+              // Refresh community skills
+              fetch("/api/marketplace/skills")
+                .then((r) => r.json())
+                .then((d) => setCommunitySkills(d.skills || []))
+                .catch(() => {});
+            }}
+            showToast={showToast}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // ── MarketplaceCard ──────────────────────────────────
 
-function MarketplaceCard({ skill }: { skill: PlaceholderSkill }) {
+function MarketplaceCard({ skill }: { skill: MarketplaceSkillDisplay }) {
+  const { color, icon } = resolveSkillOrb(skill.name, skill.category.toLowerCase());
+
   return (
     <div
       className="glass rounded-xl p-5 relative overflow-hidden group"
       style={{ border: "1px solid var(--border)" }}
     >
-      {/* Coming Soon overlay on hover */}
-      <div
-        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 rounded-xl"
-        style={{
-          background: "rgba(0,0,0,0.5)",
-          backdropFilter: "blur(2px)",
-        }}
-      >
-        <span
-          className="px-4 py-1.5 rounded-full text-xs font-semibold"
+      {/* Coming Soon overlay on hover — only for placeholder skills */}
+      {skill.isPlaceholder && (
+        <div
+          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 rounded-xl"
           style={{
-            background:
-              "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.95))",
-            color: "#fff",
-            boxShadow:
-              "0 0 0 1px rgba(59,130,246,0.3), 0 4px 16px rgba(59,130,246,0.3)",
+            background: "rgba(0,0,0,0.5)",
+            backdropFilter: "blur(2px)",
           }}
         >
-          Coming Soon
-        </span>
-      </div>
+          <span
+            className="px-4 py-1.5 rounded-full text-xs font-semibold"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.95))",
+              color: "#fff",
+              boxShadow:
+                "0 0 0 1px rgba(59,130,246,0.3), 0 4px 16px rgba(59,130,246,0.3)",
+            }}
+          >
+            Coming Soon
+          </span>
+        </div>
+      )}
 
       {/* Featured shimmer accent */}
       {skill.featured && (
@@ -1308,7 +1394,7 @@ function MarketplaceCard({ skill }: { skill: PlaceholderSkill }) {
       )}
 
       <div className="flex items-start gap-3.5">
-        <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
+        <SkillOrb color={color} icon={icon} size="sm" className="mt-0.5" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <h4 className="text-sm font-medium truncate">{skill.name}</h4>
@@ -1340,13 +1426,15 @@ function MarketplaceCard({ skill }: { skill: PlaceholderSkill }) {
               <Download className="w-3 h-3" />
               {skill.installs}
             </span>
-            <span className="flex items-center gap-1">
-              <Star
-                className="w-3 h-3"
-                style={{ color: "rgb(250,204,21)", fill: "rgb(250,204,21)" }}
-              />
-              {skill.rating}
-            </span>
+            {skill.rating > 0 && (
+              <span className="flex items-center gap-1">
+                <Star
+                  className="w-3 h-3"
+                  style={{ color: "rgb(250,204,21)", fill: "rgb(250,204,21)" }}
+                />
+                {skill.rating}
+              </span>
+            )}
             <span
               className="px-2 py-0.5 rounded-full text-[10px]"
               style={{
@@ -1360,5 +1448,284 @@ function MarketplaceCard({ skill }: { skill: PlaceholderSkill }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Submit Skill Modal ───────────────────────────────
+
+const SUBMIT_CATEGORIES = [
+  "creative",
+  "productivity",
+  "commerce",
+  "social",
+  "developer",
+  "automation",
+  "communication",
+] as const;
+
+const SUBMIT_CATEGORY_LABELS: Record<string, string> = {
+  creative: "Creative",
+  productivity: "Productivity",
+  commerce: "Commerce",
+  social: "Social",
+  developer: "Developer",
+  automation: "Automation",
+  communication: "Communication",
+};
+
+function SubmitSkillModal({
+  onClose,
+  onSuccess,
+  showToast,
+}: {
+  onClose: () => void;
+  onSuccess: () => void;
+  showToast: (message: string, type: "success" | "error") => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const { color: previewColor, icon: previewIcon } = resolveSkillOrb(
+    name || "New Skill",
+    category || "creative"
+  );
+
+  const canSubmit =
+    name.trim().length >= 3 &&
+    description.trim().length >= 20 &&
+    category !== "" &&
+    !submitting;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/marketplace/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim(),
+          category,
+        }),
+      });
+      if (res.ok) {
+        onSuccess();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to submit skill");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        className="glass rounded-2xl p-6 w-full max-w-md space-y-5"
+        style={{
+          border: "1px solid var(--border)",
+          background: "var(--card)",
+          boxShadow: "0 16px 64px rgba(0,0,0,0.2)",
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h3
+              className="text-lg font-normal tracking-[-0.3px]"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Submit a Skill
+            </h3>
+            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+              Share your skill with the InstaClaw community.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg transition-colors cursor-pointer hover:bg-black/5"
+          >
+            <X className="w-4 h-4" style={{ color: "var(--muted)" }} />
+          </button>
+        </div>
+
+        {/* Live orb preview */}
+        <div className="flex items-center justify-center py-2">
+          <div className="flex flex-col items-center gap-2">
+            <SkillOrb color={previewColor} icon={previewIcon} size="lg" />
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              {name.trim() || "Your Skill"}
+            </p>
+          </div>
+        </div>
+
+        {/* Form */}
+        <div className="space-y-3">
+          {/* Name */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                className="text-xs font-medium"
+                style={{ color: "var(--muted)" }}
+              >
+                Skill name
+              </label>
+              <span
+                className="text-[10px]"
+                style={{ color: name.length > 50 ? "rgb(239,68,68)" : "var(--muted)", opacity: 0.6 }}
+              >
+                {name.length}/50
+              </span>
+            </div>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value.slice(0, 50))}
+              placeholder="e.g. Music Producer"
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                background: "rgba(0,0,0,0.04)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                className="text-xs font-medium"
+                style={{ color: "var(--muted)" }}
+              >
+                Description
+              </label>
+              <span
+                className="text-[10px]"
+                style={{ color: description.length > 500 ? "rgb(239,68,68)" : "var(--muted)", opacity: 0.6 }}
+              >
+                {description.length}/500
+              </span>
+            </div>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value.slice(0, 500))}
+              placeholder="What does this skill do? (at least 20 characters)"
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+              style={{
+                background: "rgba(0,0,0,0.04)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label
+              className="text-xs font-medium block mb-2"
+              style={{ color: "var(--muted)" }}
+            >
+              Category
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {SUBMIT_CATEGORIES.map((cat) => {
+                const isSelected = category === cat;
+                const catColor = CATEGORY_COLORS[cat];
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategory(cat)}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer"
+                    style={
+                      isSelected
+                        ? {
+                            background: `${catColor}22`,
+                            color: catColor,
+                            boxShadow: `0 0 0 1px ${catColor}44`,
+                          }
+                        : {
+                            background: "rgba(0,0,0,0.04)",
+                            color: "var(--muted)",
+                            boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
+                          }
+                    }
+                  >
+                    {SUBMIT_CATEGORY_LABELS[cat]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <p className="text-xs" style={{ color: "rgb(239,68,68)" }}>
+            {error}
+          </p>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+              color: "#000",
+              boxShadow:
+                "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
+              color: "#fff",
+              boxShadow:
+                "0 0 0 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+            }}
+          >
+            {submitting ? (
+              <span className="flex items-center gap-1.5">
+                <RotateCw className="w-3 h-3 animate-spin" />
+                Submitting...
+              </span>
+            ) : (
+              "Submit"
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
