@@ -2745,6 +2745,67 @@ export async function restoreWorkspaceFromBackup(
 }
 
 /**
+ * Check if a VM's auth-profiles.json token matches the DB gateway_token.
+ * Returns { drifted: true, vmToken, dbToken } if mismatch detected.
+ * Used by the health cron to catch silent token drift (the Mucus scenario).
+ *
+ * This is lightweight — one SSH command to cat auth-profiles.json, one JSON parse.
+ * Does NOT fix the drift — caller should invoke resyncGatewayToken() if drifted.
+ */
+export async function checkVMTokenDrift(
+  vm: VMRecord & { gateway_token?: string; api_mode?: string },
+): Promise<{ drifted: boolean; vmToken?: string; dbToken?: string; reason?: string }> {
+  if (!vm.gateway_token || vm.api_mode === "byok") {
+    return { drifted: false };
+  }
+
+  const ssh = await connectSSH(vm);
+  try {
+    const authRead = await ssh.execCommand(
+      'cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null',
+    );
+
+    if (authRead.code !== 0 || !authRead.stdout.trim()) {
+      return { drifted: true, dbToken: vm.gateway_token, reason: 'auth-profiles.json missing or empty' };
+    }
+
+    try {
+      const authData = JSON.parse(authRead.stdout);
+      const profile = authData?.profiles?.["anthropic:default"];
+
+      if (!profile) {
+        return { drifted: true, dbToken: vm.gateway_token, reason: 'missing anthropic:default profile' };
+      }
+
+      if (profile.key !== vm.gateway_token) {
+        return {
+          drifted: true,
+          vmToken: (profile.key as string)?.slice(0, 8) + '...',
+          dbToken: vm.gateway_token.slice(0, 8) + '...',
+          reason: 'token mismatch',
+        };
+      }
+
+      const expectedBaseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway";
+      if (profile.baseUrl !== expectedBaseUrl) {
+        return {
+          drifted: true,
+          vmToken: profile.key ? (profile.key as string).slice(0, 8) + '...' : 'null',
+          dbToken: vm.gateway_token.slice(0, 8) + '...',
+          reason: `wrong baseUrl: ${profile.baseUrl ?? 'null'}`,
+        };
+      }
+
+      return { drifted: false };
+    } catch {
+      return { drifted: true, dbToken: vm.gateway_token, reason: 'invalid JSON in auth-profiles.json' };
+    }
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
  * Test the full proxy round-trip: VM gateway token → instaclaw.io proxy → Anthropic → response.
  * Used after configure to verify proxy auth works end-to-end (catches token mismatch issues).
  */

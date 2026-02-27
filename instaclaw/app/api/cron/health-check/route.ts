@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, resyncGatewayToken, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -679,7 +679,81 @@ export async function GET(req: NextRequest) {
   }
 
   // ========================================================================
-  // Eighth pass: Proxy round-trip + token verification for healthy VMs
+  // VM-side token drift detection (runs every cycle for ALL healthy VMs)
+  // SSHes into the VM, reads auth-profiles.json, compares token against DB.
+  // Catches the Mucus scenario: DB token changed but VM still has old token.
+  // The proxy round-trip pass (below) can't catch this because it tests with
+  // the DB token, which always matches itself. This check verifies the VM side.
+  // ========================================================================
+  let tokenDriftChecked = 0;
+  let tokenDriftFixed = 0;
+  const TOKEN_DRIFT_BATCH_SIZE = 10;
+
+  const tokenDriftBatch = vms
+    .filter(
+      (vm) =>
+        healthyVmIds.has(vm.id) &&
+        vm.api_mode === "all_inclusive" &&
+        vm.gateway_token &&
+        vm.health_status !== "proxy_quarantined"
+    )
+    .slice(0, TOKEN_DRIFT_BATCH_SIZE);
+
+  for (const vm of tokenDriftBatch) {
+    try {
+      const driftResult = await checkVMTokenDrift(vm as Parameters<typeof checkVMTokenDrift>[0]);
+      tokenDriftChecked++;
+
+      if (driftResult.drifted) {
+        logger.warn("TOKEN_AUDIT: VM-side token drift detected by health cron", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          vmToken: driftResult.vmToken ?? "unknown",
+          dbToken: driftResult.dbToken ?? "unknown",
+          reason: driftResult.reason,
+        });
+
+        // Auto-fix: resync all 4 token locations immediately
+        try {
+          const resyncResult = await resyncGatewayToken(vm as Parameters<typeof resyncGatewayToken>[0], { apiMode: vm.api_mode ?? undefined });
+
+          if (resyncResult.healthy) {
+            tokenDriftFixed++;
+            logger.info("TOKEN_AUDIT: VM-side token drift auto-fixed", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+              newTokenPrefix: resyncResult.gatewayToken.slice(0, 8),
+              healthy: resyncResult.healthy,
+            });
+          } else {
+            logger.error("TOKEN_AUDIT: resync completed but gateway not healthy", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+            });
+          }
+        } catch (resyncErr) {
+          logger.error("TOKEN_AUDIT: auto-resync failed for drifted token", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            error: String(resyncErr),
+          });
+        }
+      }
+    } catch (err) {
+      logger.error("Token drift check failed", {
+        error: String(err),
+        route: "cron/health-check",
+        vmId: vm.id,
+      });
+    }
+  }
+
+  // ========================================================================
+  // Proxy round-trip + token verification for healthy VMs
   // Catches VMs that pass local health check but have broken proxy auth
   // (the EuroPartShop / VM-058 scenarios).
   // On failure: auto-resync token, re-test, only count failure if resync
@@ -1212,6 +1286,8 @@ export async function GET(req: NextRequest) {
     memoryFilesCreated,
     memoryEmptyAlerts,
     memoryStaleWarnings,
+    tokenDriftChecked,
+    tokenDriftFixed,
     proxyChecked,
     proxyFailed,
     proxyResynced,
