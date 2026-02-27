@@ -135,6 +135,34 @@ const STATUS_CONFIG: Record<string, { bg: string; color: string; border: string;
     label: "Needs your accounts",
     icon: ArrowRight,
   },
+  not_set_up: {
+    bg: "rgba(0,0,0,0.05)",
+    color: "var(--muted)",
+    border: "1px solid var(--border)",
+    label: "Not set up",
+    icon: AlertCircle,
+  },
+  setting_up: {
+    bg: "rgba(59,130,246,0.1)",
+    color: "rgb(59,130,246)",
+    border: "1px solid rgba(59,130,246,0.2)",
+    label: "Setting up",
+    icon: Zap,
+  },
+  poly_active: {
+    bg: "rgba(34,197,94,0.1)",
+    color: "rgb(34,197,94)",
+    border: "1px solid rgba(34,197,94,0.2)",
+    label: "Active",
+    icon: CheckCircle2,
+  },
+  paused: {
+    bg: "rgba(249,115,22,0.1)",
+    color: "rgb(249,115,22)",
+    border: "1px solid rgba(249,115,22,0.2)",
+    label: "Paused",
+    icon: Clock,
+  },
 };
 
 const EFFORT_STYLES: Record<string, { color: string }> = {
@@ -152,6 +180,7 @@ export default function EarnPage() {
   const [togglingAgdp, setTogglingAgdp] = useState(false);
   const [agdpConfirm, setAgdpConfirm] = useState<"enable" | "disable" | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [polymarketStatus, setPolymarketStatus] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -316,6 +345,8 @@ export default function EarnPage() {
             agdpConfirm={agdpConfirm}
             setAgdpConfirm={setAgdpConfirm}
             handleToggleAgdp={handleToggleAgdp}
+            polymarketStatus={polymarketStatus}
+            onPolymarketStatusChange={setPolymarketStatus}
           />
         ))}
       </div>
@@ -334,6 +365,8 @@ function ChannelCard({
   agdpConfirm,
   setAgdpConfirm,
   handleToggleAgdp,
+  polymarketStatus,
+  onPolymarketStatusChange,
 }: {
   channel: EarningChannel;
   vm?: VMStatus["vm"];
@@ -343,11 +376,21 @@ function ChannelCard({
   agdpConfirm: "enable" | "disable" | null;
   setAgdpConfirm: (v: "enable" | "disable" | null) => void;
   handleToggleAgdp: (enabled: boolean) => void;
+  polymarketStatus: string | null;
+  onPolymarketStatusChange: (status: string) => void;
 }) {
   const Icon = channel.icon;
-  const status = STATUS_CONFIG[channel.status];
+  // Use dynamic status for polymarket channel when available
+  const statusKey = channel.id === "polymarket" && polymarketStatus
+    ? (polymarketStatus === "active" ? "poly_active" : polymarketStatus)
+    : channel.status;
+  const status = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG[channel.status];
   const StatusIcon = status.icon;
   const effort = EFFORT_STYLES[channel.effort];
+  // Derive icon background for polymarket dynamic states
+  const isChannelActive = channel.id === "polymarket" && polymarketStatus
+    ? polymarketStatus === "active"
+    : channel.status === "active";
 
   return (
     <div className="glass rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
@@ -356,11 +399,11 @@ function ChannelCard({
         <div
           className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
           style={{
-            background: channel.status === "active" ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.04)",
-            border: channel.status === "active" ? "1px solid rgba(34,197,94,0.15)" : "1px solid var(--border)",
+            background: isChannelActive ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.04)",
+            border: isChannelActive ? "1px solid rgba(34,197,94,0.15)" : "1px solid var(--border)",
           }}
         >
-          <Icon className="w-5 h-5" style={{ color: channel.status === "active" ? "rgb(34,197,94)" : "var(--muted)" }} />
+          <Icon className="w-5 h-5" style={{ color: isChannelActive ? "rgb(34,197,94)" : "var(--muted)" }} />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -418,7 +461,7 @@ function ChannelCard({
                     handleToggleAgdp={handleToggleAgdp}
                   />
                 )}
-                {channel.id === "polymarket" && <PolymarketPanel />}
+                {channel.id === "polymarket" && <PolymarketPanel onStatusChange={onPolymarketStatusChange} />}
                 {channel.id === "ecommerce" && <EcommerceSection botUsername={vm?.telegramBotUsername} />}
                 {channel.id === "freelance" && <FreelanceSection botUsername={vm?.telegramBotUsername} />}
               </div>
