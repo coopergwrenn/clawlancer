@@ -10,6 +10,13 @@ import {
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
   WORKSPACE_INDEX_SCRIPT,
 } from "./agent-intelligence";
+import {
+  validateAcpApiKey, getAcpAuthUrl, pollAcpAuthStatus,
+  fetchAcpAgents, createAcpAgent, registerAcpOffering,
+  getAcpAgentProfile, ACP_OFFERING_API,
+} from "@/lib/acp-api";
+import { CONFIG_SPEC, VM_MANIFEST, registerTemplate } from "./vm-manifest";
+import { reconcileVM } from "./vm-reconcile";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -57,36 +64,11 @@ const CHROME_CLEANUP = [
   'rm -rf ~/.openclaw/browser/*/user-data/Default/Sessions ~/.openclaw/browser/*/user-data/Default/"Session Storage" ~/.openclaw/browser/*/user-data/Default/"Current Session" ~/.openclaw/browser/*/user-data/Default/"Current Tabs" ~/.openclaw/browser/*/user-data/Default/"Last Session" ~/.openclaw/browser/*/user-data/Default/"Last Tabs" 2>/dev/null || true',
 ].join(' && ');
 
-// ── Fleet-wide config spec (single source of truth) ──
-// Bump `version` whenever you change any value below. The health check
-// compares each VM's `config_version` column against this — if behind,
-// it SSHes in and applies the missing config automatically.
-export const CONFIG_SPEC = {
-  version: 14,  // v14: skill file sync + GATEWAY_TOKEN + ffmpeg/openai deps
-  settings: {
-    "agents.defaults.heartbeat.every": "3h",
-    "agents.defaults.compaction.reserveTokensFloor": "30000",
-    "commands.restart": "true",
-    "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback": "true",
-    // Group policy defaults (2026.2.24+) — prevent lockout on upgrade
-    "channels.telegram.groupPolicy": "open",
-    "channels.telegram.groups.default.requireMention": "false",
-    "commands.useAccessGroups": "false",
-  } as Record<string, string>,
-  // Files that must exist in ~/.openclaw/workspace/
-  requiredWorkspaceFiles: ["SOUL.md", "CAPABILITIES.md", "MEMORY.md"],
-  // Max session file size in bytes before auto-rotate (512KB)
-  // Sessions approaching this size get rotated (archived, not deleted).
-  // Lowered from 1MB after Ladio incident — large sessions with thinking
-  // blocks can corrupt before reaching 1MB.
-  maxSessionBytes: 512 * 1024,
-  // Alert threshold — notify admin when any session exceeds this (256KB)
-  sessionAlertBytes: 256 * 1024,
-  // Memory write warning threshold — 80% of max session size (400KB)
-  // When a session exceeds this, the strip-thinking script injects urgent
-  // instructions into MEMORY.md telling the agent to write its memories NOW.
-  memoryWarnBytes: 400 * 1024,
-};
+// ── Fleet-wide config spec ──
+// CONFIG_SPEC is now derived from VM_MANIFEST in vm-manifest.ts.
+// Re-exported here for backwards compatibility with existing callers
+// (rotateOversizedSession, upgradeOpenClaw, configureOpenClaw, health cron).
+export { CONFIG_SPEC } from "./vm-manifest";
 
 // ── Thinking block stripping script ──
 // Runs every minute via cron on each VM. Strips thinking blocks from
@@ -95,7 +77,7 @@ export const CONFIG_SPEC = {
 // block signatures get corrupted in large session files.
 // The model still gets thinking on the CURRENT turn — we only strip
 // thinking from SAVED history so it's never replayed to the API.
-const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
+export const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
 """Strip thinking blocks, truncate tool results, cap session sizes, and enforce memory persistence.
 
 1. Strips thinking blocks from assistant messages (prevents "Invalid signature" errors)
@@ -470,7 +452,7 @@ finally:
 // Runs every minute via cron. Fixes the bug where the gateway-client device
 // gets paired with only operator.read, then the scope upgrade to operator.write
 // gets stuck in pending.json, causing a crash loop ("pairing required" every second).
-const AUTO_APPROVE_PAIRING_SCRIPT = `#!/usr/bin/env python3
+export const AUTO_APPROVE_PAIRING_SCRIPT = `#!/usr/bin/env python3
 """Auto-approve device pairing scope upgrades.
 Prevents gateway crash loops from stuck operator.read → operator.write upgrades.
 """
@@ -533,6 +515,11 @@ if changed:
     with open(PAIRED_FILE, "w") as f:
         json.dump(paired, f, indent=2)
 `;
+
+// Register scripts with the template registry so vm-reconcile.ts can access them.
+// Must be done at module load time, after the script constants are defined.
+registerTemplate("STRIP_THINKING_SCRIPT", STRIP_THINKING_SCRIPT);
+registerTemplate("AUTO_APPROVE_PAIRING_SCRIPT", AUTO_APPROVE_PAIRING_SCRIPT);
 
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
@@ -4886,21 +4873,8 @@ export async function startGateway(vm: VMRecord): Promise<boolean> {
 const AGDP_REPO = "https://github.com/Virtual-Protocol/openclaw-acp";
 const AGDP_DIR = "$HOME/virtuals-protocol-acp";
 const AGDP_OFFERING = {
-  name: "ai_research_task_completion",
-  json: {
-    name: "ai_research_task_completion",
-    description: "General-purpose AI agent capable of research, writing, analysis, code execution, and web search. Completes most tasks in under 5 minutes.",
-    jobFee: "1.00",
-    jobFeeType: "fixed",
-    requiredFunds: false,
-    requirementSchema: {
-      type: "object",
-      properties: {
-        task: { type: "string", description: "Description of the task to complete" },
-      },
-      required: ["task"],
-    },
-  },
+  name: ACP_OFFERING_API.name,
+  json: ACP_OFFERING_API,
   handlers: [
     'import { readFileSync } from "node:fs";',
     'import { join } from "node:path";',
@@ -5033,11 +5007,46 @@ const ACP_SERVE_SERVICE = [
   'WantedBy=default.target',
 ].join('\n');
 
+// ── ACP SSH helpers ──
+
+/** Read the ACP API key from config.json on the VM. Returns null if missing or unparseable. */
+async function readAcpApiKey(ssh: Awaited<ReturnType<typeof connectSSH>>): Promise<string | null> {
+  const result = await ssh.execCommand(`cat "${AGDP_DIR}/config.json" 2>/dev/null || echo ""`);
+  const raw = result.stdout.trim();
+  if (!raw || raw === "") return null;
+  try {
+    const cfg = JSON.parse(raw);
+    return cfg.LITE_AGENT_API_KEY ?? cfg.apiKey ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Write config.json + .env on the VM via base64 to avoid quoting issues. */
+async function writeAcpConfig(
+  ssh: Awaited<ReturnType<typeof connectSSH>>,
+  apiKey: string,
+  sessionToken?: string,
+): Promise<void> {
+  const config = {
+    LITE_AGENT_API_KEY: apiKey,
+    ...(sessionToken ? { SESSION_TOKEN: sessionToken } : {}),
+  };
+  const configB64 = Buffer.from(JSON.stringify(config, null, 2), "utf-8").toString("base64");
+  const envContent = `LITE_AGENT_API_KEY=${apiKey}${sessionToken ? `\nSESSION_TOKEN=${sessionToken}` : ""}`;
+  const envB64 = Buffer.from(envContent, "utf-8").toString("base64");
+  await ssh.execCommand(
+    `echo '${configB64}' | base64 -d > "${AGDP_DIR}/config.json" && echo '${envB64}' | base64 -d > "${AGDP_DIR}/.env"`
+  );
+}
+
 export interface AgdpInstallResult {
   /** URL the user must open to authenticate with Virtuals Protocol. Null if already authenticated. */
   authUrl: string | null;
   /** Whether ACP serve is already running (auth was already complete). */
   serving: boolean;
+  /** Auth request ID for polling — stored in DB so activate endpoint can use it. */
+  authRequestId: string | null;
 }
 
 export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult> {
@@ -5109,17 +5118,17 @@ with open(sys.argv[1], 'w') as f: json.dump(cfg, f, indent=2)
       'sleep 2',
       'echo "STEP:gateway_restarted"',
       '',
-      '# Check if already authenticated — if so, start acp serve via systemd',
+      '# Check if already authenticated — emit key or flag for server-side API calls',
       `if [ -f "${AGDP_DIR}/config.json" ]; then`,
-      '  systemctl --user start acp-serve.service 2>/dev/null || true',
-      '  echo "ACP_SERVING=true"',
+      `  ACP_KEY=$(cat "${AGDP_DIR}/config.json" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('LITE_AGENT_API_KEY',''))" 2>/dev/null || echo "")`,
+      '  if [ -n "$ACP_KEY" ]; then',
+      '    systemctl --user start acp-serve.service 2>/dev/null || true',
+      '    echo "ACP_KEY=$ACP_KEY"',
+      '  else',
+      '    echo "ACP_NEEDS_AUTH=true"',
+      '  fi',
       'else',
-      '  # Run acp setup to get the auth URL',
-      `  cd "${AGDP_DIR}"`,
-      '  SETUP_OUT=$(npx acp setup 2>&1 || true)',
-      '  # Extract URL from output (usually https://...)' ,
-      '  AUTH_URL=$(echo "$SETUP_OUT" | grep -oE "https://[^ ]+" | head -1)',
-      '  echo "ACP_AUTH_URL=$AUTH_URL"',
+      '  echo "ACP_NEEDS_AUTH=true"',
       'fi',
       'echo "STEP:acp_setup_done"',
       '',
@@ -5146,12 +5155,29 @@ with open(sys.argv[1], 'w') as f: json.dump(cfg, f, indent=2)
     }
     logger.info("aGDP install succeeded", { completedSteps, route: "lib/ssh" });
 
-    // Parse auth URL and serving status from output
-    const serving = result.stdout.includes("ACP_SERVING=true");
-    const authUrlMatch = result.stdout.match(/ACP_AUTH_URL=(https?:\/\/\S+)/);
-    const authUrl = authUrlMatch?.[1] ?? null;
+    // Parse key or auth-needed flag from SSH output
+    const keyMatch = result.stdout.match(/ACP_KEY=(\S+)/);
+    const acpKey = keyMatch?.[1] ?? null;
+    const needsAuth = result.stdout.includes("ACP_NEEDS_AUTH=true");
 
-    return { authUrl, serving };
+    if (acpKey) {
+      // Key exists — optionally validate, start serving
+      try { await validateAcpApiKey(acpKey); } catch { /* non-fatal */ }
+      return { authUrl: null, serving: true, authRequestId: null };
+    }
+
+    if (needsAuth) {
+      // No config.json — get auth URL via HTTP (no SSH needed)
+      try {
+        const authData = await getAcpAuthUrl();
+        return { authUrl: authData.authUrl, serving: false, authRequestId: authData.requestId };
+      } catch (err) {
+        logger.warn("getAcpAuthUrl failed during install", { error: String(err) });
+        return { authUrl: null, serving: false, authRequestId: null };
+      }
+    }
+
+    return { authUrl: null, serving: false, authRequestId: null };
   } finally {
     ssh.dispose();
   }
@@ -5220,6 +5246,8 @@ export interface AcpStatus {
   /** Number of service offerings registered (from whoami.jobs array). */
   offeringCount: number;
   authUrl: string | null;
+  /** Auth request ID for polling — stored in DB so activate endpoint can use it. */
+  authRequestId: string | null;
   /** Virtuals credits used today and the daily limit. */
   virtualsUsageToday: number;
   virtualsLimit: number;
@@ -5228,41 +5256,43 @@ export interface AcpStatus {
 export async function checkAcpStatus(vm: VMRecord & { tier?: string }): Promise<AcpStatus> {
   const ssh = await connectSSH(vm);
   try {
-    // Check if authenticated (config.json exists)
-    const authCheck = await ssh.execCommand(`[ -f "${AGDP_DIR}/config.json" ] && echo "AUTH_OK" || echo "AUTH_MISSING"`);
-    const authenticated = authCheck.stdout.includes("AUTH_OK");
+    // 1. Read API key from config.json (replaces blunt file-exists check)
+    const apiKey = await readAcpApiKey(ssh);
+    const authenticated = !!apiKey;
 
-    // Check if acp-serve is running via systemd
+    // 2. Check if acp-serve is running via systemd
     const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
     const serving = svcCheck.stdout.trim() === "active";
 
-    // Get agent info from whoami if authenticated
-    // Real fields from `npx acp whoami --json`: name, description, walletAddress,
-    // tokenAddress, token {name, symbol}, jobs[] (offerings), agentCount
+    // 3. If authenticated, get profile via HTTP API (replaces npx acp whoami)
     let walletAddress: string | null = null;
     let agentName: string | null = null;
     let offeringCount = 0;
-    if (authenticated) {
-      const whoamiResult = await ssh.execCommand(`cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && npx acp whoami --json 2>/dev/null || true`);
+    if (apiKey) {
       try {
-        const whoami = JSON.parse(whoamiResult.stdout);
-        walletAddress = whoami?.walletAddress ?? null;
-        agentName = whoami?.name ?? null;
-        offeringCount = Array.isArray(whoami?.jobs) ? whoami.jobs.length : 0;
+        const profile = await getAcpAgentProfile(apiKey);
+        walletAddress = profile.walletAddress ?? null;
+        agentName = profile.name ?? null;
+        offeringCount = profile.offeringCount ?? 0;
       } catch {
-        // whoami failed or returned non-JSON — not critical
+        // API call failed — not critical, key may be stale
       }
     }
 
-    // Get auth URL if not authenticated
+    // 4. If not authenticated, get auth URL via HTTP (replaces npx acp setup)
     let authUrl: string | null = null;
+    let authRequestId: string | null = null;
     if (!authenticated) {
-      const setupResult = await ssh.execCommand(`cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && npx acp setup 2>&1 || true`);
-      const urlMatch = setupResult.stdout.match(/https?:\/\/\S+/);
-      authUrl = urlMatch?.[0] ?? null;
+      try {
+        const authData = await getAcpAuthUrl();
+        authUrl = authData.authUrl;
+        authRequestId = authData.requestId;
+      } catch {
+        // Auth URL generation failed — not critical
+      }
     }
 
-    return { authenticated, serving, walletAddress, agentName, offeringCount, authUrl, virtualsUsageToday: 0, virtualsLimit: 0 };
+    return { authenticated, serving, walletAddress, agentName, offeringCount, authUrl, authRequestId, virtualsUsageToday: 0, virtualsLimit: 0 };
   } finally {
     ssh.dispose();
   }
@@ -5275,22 +5305,25 @@ export async function checkAcpStatus(vm: VMRecord & { tier?: string }): Promise<
 export async function startAcpServe(vm: VMRecord): Promise<{ success: boolean; error?: string }> {
   const ssh = await connectSSH(vm);
   try {
-    // Verify auth is complete
-    const authCheck = await ssh.execCommand(`[ -f "${AGDP_DIR}/config.json" ] && echo "AUTH_OK" || echo "AUTH_MISSING"`);
-    if (!authCheck.stdout.includes("AUTH_OK")) {
+    // 1. Read API key from config.json
+    const apiKey = await readAcpApiKey(ssh);
+    if (!apiKey) {
       return { success: false, error: "Authentication not completed yet. Please open the auth URL and sign in." };
     }
 
-    // Create the seller offering if not already done
-    const createResult = await ssh.execCommand(
-      `cd "${AGDP_DIR}" && ${NVM_PREAMBLE} && npx acp sell create "${AGDP_OFFERING.name}" --json 2>&1 || true`
-    );
-    logger.info("ACP sell create result", { vmId: vm.id, stdout: createResult.stdout.slice(0, 200) });
+    // 2. Register offering via HTTP API (replaces npx acp sell create)
+    try {
+      await registerAcpOffering(apiKey, ACP_OFFERING_API);
+      logger.info("ACP offering registered via API", { vmId: vm.id });
+    } catch (err) {
+      // Non-fatal — offering may already exist, or API may be down
+      logger.warn("ACP offering registration failed (non-fatal)", { vmId: vm.id, error: String(err) });
+    }
 
-    // Start the systemd service
+    // 3. Start the systemd service
     await ssh.execCommand('systemctl --user start acp-serve.service 2>/dev/null || true');
 
-    // Verify it's running
+    // 4. Verify it's running
     await new Promise((r) => setTimeout(r, 3000));
     const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
     const running = svcCheck.stdout.trim() === "active";
@@ -5303,6 +5336,73 @@ export async function startAcpServe(vm: VMRecord): Promise<{ success: boolean; e
     }
 
     return { success: true };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Complete ACP authentication after the user finishes the browser auth flow.
+ * Used by the activate endpoint when config.json doesn't exist yet.
+ *
+ * Flow:
+ *   1. Poll auth status (short timeout — user should have already authenticated)
+ *   2. Fetch/create ACP agent to get API key
+ *   3. Write config.json + .env to VM via SSH
+ *   4. Register offering via HTTP API
+ *   5. Start acp-serve systemd service
+ */
+export async function completeAcpAuth(
+  vm: VMRecord,
+  authRequestId: string,
+): Promise<{ success: boolean; apiKey?: string; error?: string }> {
+  // 1. Poll — short timeout since user should already have authenticated
+  let sessionToken: string;
+  try {
+    const pollResult = await pollAcpAuthStatus(authRequestId, { timeoutMs: 8_000 });
+    sessionToken = pollResult.sessionToken;
+  } catch (err) {
+    return { success: false, error: "Authentication not completed yet. Please complete the sign-in flow first." };
+  }
+
+  // 2. Get or create agent
+  let apiKey: string;
+  try {
+    const agents = await fetchAcpAgents(sessionToken);
+    if (agents.length > 0) {
+      apiKey = agents[0].apiKey;
+    } else {
+      const newAgent = await createAcpAgent(sessionToken, "InstaClaw Agent");
+      apiKey = newAgent.apiKey;
+    }
+  } catch (err) {
+    return { success: false, error: `Failed to get ACP agent: ${String(err).slice(0, 200)}` };
+  }
+
+  // 3. Write config to VM via SSH
+  const ssh = await connectSSH(vm);
+  try {
+    await writeAcpConfig(ssh, apiKey, sessionToken);
+
+    // 4. Register offering via HTTP API (non-fatal)
+    try {
+      await registerAcpOffering(apiKey, ACP_OFFERING_API);
+      logger.info("completeAcpAuth: offering registered", { vmId: vm.id });
+    } catch (err) {
+      logger.warn("completeAcpAuth: offering registration failed (non-fatal)", { vmId: vm.id, error: String(err) });
+    }
+
+    // 5. Start acp-serve via systemd
+    await ssh.execCommand('systemctl --user start acp-serve.service 2>/dev/null || true');
+    await new Promise((r) => setTimeout(r, 2000));
+    const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
+    const running = svcCheck.stdout.trim() === "active";
+
+    if (!running) {
+      logger.warn("completeAcpAuth: systemd service not active after start", { vmId: vm.id });
+    }
+
+    return { success: true, apiKey };
   } finally {
     ssh.dispose();
   }
@@ -5744,6 +5844,122 @@ export async function toggleMcpServer(
       success: result.stdout.includes("MCP_TOGGLED"),
       restarted: false,
     };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+// ── Integration credential deployment ──
+
+/**
+ * Deploy integration credentials to a VM's .env file.
+ * Uses base64-encoded values and idempotent sed/grep for safety.
+ * Also installs the corresponding MCP server via mcporter if applicable.
+ */
+export async function deployIntegrationCredentials(
+  vm: VMRecord,
+  slug: string,
+  envVars: Record<string, string>,
+  mcpConfig?: { command: string; env?: Record<string, string>; scope?: string; description?: string }
+): Promise<boolean> {
+  assertSafeShellArg(slug, "slug");
+
+  const ssh = await connectSSH(vm);
+  try {
+    const scriptLines: string[] = [
+      "#!/bin/bash",
+      NVM_PREAMBLE,
+      'touch "$HOME/.openclaw/.env"',
+    ];
+
+    // Write each env var using base64 for safe transport.
+    // Use delete-then-append (not sed replacement) to avoid issues with
+    // special characters in OAuth tokens breaking sed patterns.
+    for (const [key, value] of Object.entries(envVars)) {
+      assertSafeShellArg(key, "envVarKey");
+      const valB64 = Buffer.from(value, "utf-8").toString("base64");
+      scriptLines.push(
+        `sed -i '/^${key}=/d' "$HOME/.openclaw/.env" 2>/dev/null || true`,
+        `echo "${key}=$(echo '${valB64}' | base64 -d)" >> "$HOME/.openclaw/.env"`,
+        ""
+      );
+    }
+
+    // Install MCP server if config provided
+    if (mcpConfig) {
+      let addCmd = `mcporter config add ${slug} --command "${mcpConfig.command}"`;
+      if (mcpConfig.env) {
+        for (const [key, val] of Object.entries(mcpConfig.env)) {
+          addCmd += ` --env ${key}=${val}`;
+        }
+      }
+      if (mcpConfig.scope) addCmd += ` --scope ${mcpConfig.scope}`;
+      if (mcpConfig.description)
+        addCmd += ` --description "${mcpConfig.description}"`;
+
+      scriptLines.push(
+        `mcporter config remove ${slug} 2>/dev/null || true`,
+        `${addCmd} || true`
+      );
+    }
+
+    scriptLines.push('echo "DEPLOY_DONE"');
+    const script = scriptLines.join("\n");
+
+    await ssh.execCommand(
+      `cat > /tmp/ic-int-deploy.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-int-deploy.sh; EC=$?; rm -f /tmp/ic-int-deploy.sh; exit $EC"
+    );
+
+    return result.stdout.includes("DEPLOY_DONE");
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Remove integration credentials from a VM.
+ * Deletes env vars from .env and removes the MCP server via mcporter.
+ */
+export async function removeIntegrationCredentials(
+  vm: VMRecord,
+  slug: string,
+  envKeys: string[]
+): Promise<boolean> {
+  assertSafeShellArg(slug, "slug");
+
+  const ssh = await connectSSH(vm);
+  try {
+    const scriptLines: string[] = [
+      "#!/bin/bash",
+      NVM_PREAMBLE,
+    ];
+
+    // Remove each env var from .env
+    for (const key of envKeys) {
+      assertSafeShellArg(key, "envVarKey");
+      scriptLines.push(
+        `sed -i '/^${key}=/d' "$HOME/.openclaw/.env" 2>/dev/null || true`
+      );
+    }
+
+    // Remove MCP server
+    scriptLines.push(
+      `mcporter config remove ${slug} 2>/dev/null || true`,
+      'echo "REMOVE_DONE"'
+    );
+
+    const script = scriptLines.join("\n");
+    await ssh.execCommand(
+      `cat > /tmp/ic-int-remove.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-int-remove.sh; EC=$?; rm -f /tmp/ic-int-remove.sh; exit $EC"
+    );
+
+    return result.stdout.includes("REMOVE_DONE");
   } finally {
     ssh.dispose();
   }
