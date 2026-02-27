@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import Image from "next/image";
 import {
   Search,
   RefreshCw,
@@ -341,15 +342,25 @@ function ChannelCard({
     <div className="glass rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
       {/* Header row */}
       <button onClick={onToggle} className="w-full flex items-center gap-4 p-5 cursor-pointer text-left">
-        <div
-          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-          style={{
-            background: channel.status === "active" ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.04)",
-            border: channel.status === "active" ? "1px solid rgba(34,197,94,0.15)" : "1px solid var(--border)",
-          }}
-        >
-          <Icon className="w-5 h-5" style={{ color: channel.status === "active" ? "rgb(34,197,94)" : "var(--muted)" }} />
-        </div>
+        {channel.id === "polymarket" ? (
+          <Image
+            src="/images/polymarket-icon.png"
+            alt="Polymarket"
+            width={44}
+            height={44}
+            className="rounded-xl shrink-0"
+          />
+        ) : (
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+            style={{
+              background: channel.status === "active" ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.04)",
+              border: channel.status === "active" ? "1px solid rgba(34,197,94,0.15)" : "1px solid var(--border)",
+            }}
+          >
+            <Icon className="w-5 h-5" style={{ color: channel.status === "active" ? "rgb(34,197,94)" : "var(--muted)" }} />
+          </div>
+        )}
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
