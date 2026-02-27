@@ -18,6 +18,7 @@ import {
   Sparkles,
   Heart,
   TrendingUp,
+  Puzzle,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
@@ -29,6 +30,7 @@ const primaryNav = [
   { href: "/tasks", label: "Command Center", icon: MessageSquare, tourKey: "nav-command-center" },
   { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat" },
   { href: "/earn", label: "Earn", icon: TrendingUp, tourKey: "nav-earn" },
+  { href: "/skills", label: "Skills", icon: Puzzle, tourKey: "nav-skills" },
 ];
 
 // Overflow items shown in the "more" menu on mobile, visible on lg+
