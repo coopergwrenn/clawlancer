@@ -104,7 +104,6 @@ const DEFAULT_RISK: RiskConfig = {
   maxPositionSizeUSDC: 5,
 };
 
-// Check USDC balance on Polygon via public RPC
 async function fetchUsdcBalance(address: string): Promise<number> {
   const USDC = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
   const USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
@@ -133,10 +132,7 @@ async function fetchUsdcBalance(address: string): Promise<number> {
 function BotMessage({ message }: { message: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div
-      className="rounded-lg p-4 mt-3"
-      style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.12)" }}
-    >
+    <div className="glass rounded-lg p-4 mt-3">
       <div className="flex items-start gap-2.5">
         <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
         <div className="flex-1 min-w-0">
@@ -153,11 +149,9 @@ function BotMessage({ message }: { message: string }) {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           }}
-          className="px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all shrink-0"
+          className="glass px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all shrink-0"
           style={{
-            background: copied ? "rgba(34,197,94,0.1)" : "rgba(59,130,246,0.1)",
             color: copied ? "rgb(34,197,94)" : "rgb(59,130,246)",
-            border: copied ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(59,130,246,0.2)",
           }}
         >
           {copied ? "Copied!" : "Copy"}
@@ -187,10 +181,7 @@ function Section({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div
-      className="glass rounded-xl overflow-hidden"
-      style={{ border: "1px solid var(--border)" }}
-    >
+    <div className="glass rounded-xl overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between p-4 cursor-pointer text-left"
@@ -202,11 +193,10 @@ function Section({
               <span className="text-sm font-semibold">{title}</span>
               {badge && (
                 <span
-                  className="px-2 py-0.5 rounded-full text-xs shrink-0"
+                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0"
                   style={{
-                    background: "rgba(249,115,22,0.1)",
+                    background: "rgba(249,115,22,0.08)",
                     color: "#ea580c",
-                    border: "1px solid rgba(249,115,22,0.2)",
                   }}
                 >
                   {badge}
@@ -235,7 +225,9 @@ function Section({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4">{children}</div>
+            <div className="px-4 pb-4" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="pt-4">{children}</div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -243,7 +235,7 @@ function Section({
   );
 }
 
-// ── Funding Guide (collapsible options) ─────────────
+// ── Funding Guide (collapsible) ─────────────────────
 
 function FundingGuide() {
   const [openOption, setOpenOption] = useState<string | null>(null);
@@ -262,7 +254,7 @@ function FundingGuide() {
       id: "other-chain",
       title: "Have USDC on another chain?",
       content: (
-        <div className="text-xs space-y-2" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+        <div className="text-xs space-y-2.5" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
           <p>
             Bridge it to Polygon using Jumper Exchange &mdash; paste your wallet address above as the destination and select Polygon as the target network.
           </p>
@@ -270,12 +262,8 @@ function FundingGuide() {
             href="https://jumper.exchange"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-            style={{
-              background: "rgba(59,130,246,0.1)",
-              color: "rgb(59,130,246)",
-              border: "1px solid rgba(59,130,246,0.2)",
-            }}
+            className="glass inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{ color: "rgb(59,130,246)" }}
           >
             Open Jumper Exchange
             <ExternalLink className="w-3 h-3" />
@@ -295,11 +283,8 @@ function FundingGuide() {
   ];
 
   return (
-    <div
-      className="rounded-lg overflow-hidden"
-      style={{ border: "1px solid var(--border)" }}
-    >
-      <p className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+    <div className="glass rounded-xl overflow-hidden">
+      <p className="px-4 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
         Need help funding?
       </p>
       {options.map((opt, i) => {
@@ -311,7 +296,7 @@ function FundingGuide() {
           >
             <button
               onClick={() => setOpenOption(isOpen ? null : opt.id)}
-              className="w-full flex items-center justify-between px-3 py-2.5 text-left cursor-pointer"
+              className="w-full flex items-center justify-between px-4 py-2.5 text-left cursor-pointer"
             >
               <span className="text-xs font-medium">{opt.title}</span>
               <ChevronRight
@@ -331,9 +316,7 @@ function FundingGuide() {
                   transition={{ duration: 0.15 }}
                   className="overflow-hidden"
                 >
-                  <div className="px-3 pb-3">
-                    {opt.content}
-                  </div>
+                  <div className="px-4 pb-3">{opt.content}</div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -350,56 +333,60 @@ const STEP_LABELS = ["Create Wallet", "Fund Wallet", "Set Limits", "Start Tradin
 
 function ProgressBar({ currentStep, completedSteps }: { currentStep: number; completedSteps: Set<number> }) {
   return (
-    <div className="flex items-center gap-1 mb-5">
-      {STEP_LABELS.map((label, i) => {
-        const num = i + 1;
-        const done = completedSteps.has(num);
-        const active = num === currentStep;
-        return (
-          <div key={num} className="flex items-center gap-1 flex-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                style={{
-                  background: done
-                    ? "rgba(34,197,94,0.12)"
-                    : active
-                      ? "rgba(249,115,22,0.12)"
-                      : "rgba(0,0,0,0.04)",
-                  color: done
-                    ? "rgb(34,197,94)"
-                    : active
-                      ? "rgb(249,115,22)"
-                      : "var(--muted)",
-                  border: done
-                    ? "1.5px solid rgba(34,197,94,0.3)"
-                    : active
-                      ? "1.5px solid rgba(249,115,22,0.3)"
-                      : "1.5px solid var(--border)",
-                }}
-              >
-                {done ? <Check className="w-3 h-3" /> : num}
+    <div className="glass rounded-xl px-4 py-3 mb-4">
+      <div className="flex items-center gap-1">
+        {STEP_LABELS.map((label, i) => {
+          const num = i + 1;
+          const done = completedSteps.has(num);
+          const active = num === currentStep;
+          return (
+            <div key={num} className="flex items-center gap-1 flex-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                  style={{
+                    background: done
+                      ? "rgba(34,197,94,0.12)"
+                      : active
+                        ? "rgba(249,115,22,0.12)"
+                        : "transparent",
+                    color: done
+                      ? "rgb(34,197,94)"
+                      : active
+                        ? "rgb(249,115,22)"
+                        : "var(--muted)",
+                    border: done
+                      ? "1.5px solid rgba(34,197,94,0.25)"
+                      : active
+                        ? "1.5px solid rgba(249,115,22,0.25)"
+                        : "1.5px solid var(--border)",
+                  }}
+                >
+                  {done ? <Check className="w-3 h-3" /> : num}
+                </div>
+                <span
+                  className="text-[10px] font-medium truncate hidden sm:block"
+                  style={{
+                    color: done ? "rgb(34,197,94)" : active ? "rgb(249,115,22)" : "var(--muted)",
+                  }}
+                >
+                  {label}
+                </span>
               </div>
-              <span
-                className="text-[10px] font-medium truncate hidden sm:block"
-                style={{
-                  color: done ? "rgb(34,197,94)" : active ? "rgb(249,115,22)" : "var(--muted)",
-                }}
-              >
-                {label}
-              </span>
+              {i < 3 && (
+                <div
+                  className="flex-1 h-px mx-1"
+                  style={{
+                    background: done
+                      ? "rgba(34,197,94,0.25)"
+                      : "var(--border)",
+                  }}
+                />
+              )}
             </div>
-            {i < 3 && (
-              <div
-                className="flex-1 h-px mx-1"
-                style={{
-                  background: done ? "rgba(34,197,94,0.3)" : "var(--border)",
-                }}
-              />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -460,12 +447,8 @@ function RiskLimitInputs({
                   [key]: Math.min(500, Math.max(1, Number(e.target.value) || 1)),
                 })
               }
-              className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none"
-              style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
-              }}
+              className="glass w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none"
+              style={{ color: "var(--foreground)" }}
             />
           </div>
         </div>
@@ -535,20 +518,18 @@ export default function PolymarketPanel({
     fetchAll();
   }, [fetchAll]);
 
-  // Check balance when wallet exists
   const checkBalance = useCallback(async (address: string) => {
     setCheckingBalance(true);
     try {
       const bal = await fetchUsdcBalance(address);
       setBalance(bal);
     } catch {
-      // keep existing balance on error
+      // keep existing balance
     } finally {
       setCheckingBalance(false);
     }
   }, []);
 
-  // Auto-check balance on wallet load + poll every 15s until funded
   useEffect(() => {
     if (!wallet) return;
     checkBalance(wallet.address);
@@ -567,10 +548,8 @@ export default function PolymarketPanel({
     };
   }, [wallet, balance, checkBalance]);
 
-  // Derive setup state
   const setupComplete = wallet != null && riskConfig?.enabled === true;
 
-  // Report status to parent
   useEffect(() => {
     if (loading || !onStatusChange) return;
     if (!wallet) {
@@ -584,7 +563,6 @@ export default function PolymarketPanel({
     }
   }, [loading, wallet, riskConfig, onStatusChange]);
 
-  // BUG FIX: Set wallet state directly from API response instead of relying on fetchAll
   async function handleSetupWallet() {
     setSettingUpWallet(true);
     try {
@@ -596,7 +574,6 @@ export default function PolymarketPanel({
       const data = await res.json();
       if (res.ok) {
         showToast("Trading account created!", "success");
-        // Set wallet state directly — no fetchAll race condition
         if (data.address) {
           const newWallet: WalletInfo = {
             address: data.address,
@@ -606,7 +583,6 @@ export default function PolymarketPanel({
           setWallet(newWallet);
           setRiskConfig(DEFAULT_RISK);
           setRiskDraft({ ...DEFAULT_RISK });
-          // Trigger initial balance check
           checkBalance(data.address);
         }
       } else {
@@ -678,10 +654,7 @@ export default function PolymarketPanel({
 
   if (loading) {
     return (
-      <div
-        className="glass rounded-xl p-8 text-center"
-        style={{ border: "1px solid var(--border)" }}
-      >
+      <div className="glass rounded-xl p-8 text-center">
         <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: "var(--muted)" }} />
         <p className="text-sm" style={{ color: "var(--muted)" }}>Loading prediction market data...</p>
       </div>
@@ -792,7 +765,6 @@ function SetupFlow({
   const step3Unlocked = hasWallet && (isFunded || fundingSkipped);
   const step4Unlocked = step3Unlocked && limitsSaved;
 
-  // Derive current step + completed steps
   const completedSteps = new Set<number>();
   if (hasWallet) completedSteps.add(1);
   if (isFunded) completedSteps.add(2);
@@ -805,7 +777,6 @@ function SetupFlow({
 
   return (
     <div>
-      {/* Progress indicator */}
       <ProgressBar currentStep={currentStep} completedSteps={completedSteps} />
 
       <div className="space-y-3">
@@ -814,17 +785,13 @@ function SetupFlow({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="rounded-xl p-5"
-          style={{
-            border: hasWallet ? "1px solid rgba(34,197,94,0.2)" : "1px solid var(--border)",
-            background: hasWallet ? "rgba(34,197,94,0.02)" : "var(--card)",
-          }}
+          className="glass rounded-xl p-5"
         >
           {hasWallet ? (
             <div className="flex items-center gap-3">
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.3)" }}
+                style={{ background: "rgba(34,197,94,0.1)" }}
               >
                 <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
               </div>
@@ -846,7 +813,7 @@ function SetupFlow({
               </p>
               <div
                 className="rounded-lg p-3 flex items-start gap-2 mb-4"
-                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+                style={{ background: "rgba(0,0,0,0.02)" }}
               >
                 <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--muted)" }} />
                 <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
@@ -856,11 +823,11 @@ function SetupFlow({
               <button
                 onClick={handleSetupWallet}
                 disabled={settingUpWallet}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
                 style={{
                   background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                   color: "#fff",
-                  boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)",
+                  boxShadow: "0 2px 12px rgba(249,115,22,0.3)",
                 }}
               >
                 {settingUpWallet ? (
@@ -874,10 +841,10 @@ function SetupFlow({
                     <span
                       className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
                       style={{
-                        background: "rgba(255,255,255,0.25)",
+                        background: "rgba(255,255,255,0.2)",
                         backdropFilter: "blur(8px)",
                         color: "#fff",
-                        border: "1px solid rgba(255,255,255,0.3)",
+                        border: "1px solid rgba(255,255,255,0.25)",
                       }}
                     >
                       Free
@@ -896,23 +863,13 @@ function SetupFlow({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.08 }}
-              className="rounded-xl p-5"
-              style={{
-                border: isFunded
-                  ? "1px solid rgba(34,197,94,0.2)"
-                  : currentStep === 2
-                    ? "1px solid rgba(249,115,22,0.2)"
-                    : "1px solid var(--border)",
-                background: isFunded
-                  ? "rgba(34,197,94,0.02)"
-                  : "var(--card)",
-              }}
+              className="glass rounded-xl p-5"
             >
               {isFunded ? (
                 <div className="flex items-center gap-3">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.3)" }}
+                    style={{ background: "rgba(34,197,94,0.1)" }}
                   >
                     <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
                   </div>
@@ -927,12 +884,11 @@ function SetupFlow({
                 </div>
               ) : (
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <DollarSign className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
                       <p className="text-sm font-semibold">Fund Your Wallet</p>
                     </div>
-                    {/* Balance display */}
                     <div className="flex items-center gap-2">
                       <span
                         className="text-sm font-bold tabular-nums"
@@ -951,34 +907,34 @@ function SetupFlow({
                       </button>
                     </div>
                   </div>
-                  <p className="text-[11px] text-right mb-3" style={{ color: "var(--muted)", opacity: 0.6 }}>
+                  <p className="text-[11px] text-right mb-4" style={{ color: "var(--muted)", opacity: 0.6 }}>
                     Balance updates automatically after you send funds
                   </p>
 
-                  {/* Your Wallet — trust card */}
+                  {/* Trust card */}
                   <div
-                    className="rounded-lg p-4 mb-3"
-                    style={{ background: "rgba(34,197,94,0.03)", border: "1px solid rgba(34,197,94,0.12)" }}
+                    className="rounded-xl p-4 mb-3"
+                    style={{ background: "rgba(34,197,94,0.03)", border: "1px solid rgba(34,197,94,0.08)" }}
                   >
                     <div className="flex items-center gap-2 mb-2.5">
-                      <Lock className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+                      <Lock className="w-3.5 h-3.5" style={{ color: "rgb(34,197,94)" }} />
                       <p className="text-xs font-semibold" style={{ color: "rgb(34,197,94)" }}>Your Wallet, Your Keys</p>
                     </div>
-                    <ul className="space-y-1.5 text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                    <ul className="space-y-1.5 text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
                       <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
                         This is <strong>your</strong> wallet. The private key is stored securely on your dedicated VM &mdash; only your agent has access.
                       </li>
                       <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
                         You can export your private key anytime from your agent&apos;s settings.
                       </li>
                       <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
                         Withdraw your funds anytime &mdash; just message your agent &ldquo;send my funds to [paste your wallet address]&rdquo;
                       </li>
                       <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
                         InstaClaw never has access to your private key or funds.
                       </li>
                     </ul>
@@ -986,20 +942,17 @@ function SetupFlow({
 
                   {/* Chain warning */}
                   <div
-                    className="rounded-lg p-3 flex items-start gap-2 mb-3"
-                    style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}
+                    className="rounded-xl p-3 flex items-start gap-2 mb-4"
+                    style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.08)" }}
                   >
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "rgb(239,68,68)" }} />
-                    <p className="text-xs font-medium" style={{ color: "rgb(239,68,68)", lineHeight: "1.5" }}>
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(239,68,68)" }} />
+                    <p className="text-[11px] font-medium" style={{ color: "rgb(239,68,68)", lineHeight: "1.5" }}>
                       Send USDC on Polygon network only. USDC sent on other networks (Ethereum, Base, Arbitrum) will not appear.
                     </p>
                   </div>
 
-                  {/* Big address + copy */}
-                  <div
-                    className="flex items-center gap-2 rounded-lg px-4 py-3 mb-3"
-                    style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
-                  >
+                  {/* Address + copy */}
+                  <div className="glass rounded-xl flex items-center gap-2 px-4 py-3 mb-4">
                     <Wallet className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
                     <span className="text-xs sm:text-sm font-mono flex-1 truncate">{wallet.address}</span>
                     <button
@@ -1010,9 +963,8 @@ function SetupFlow({
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0"
                       style={{
-                        background: addrCopied ? "rgba(34,197,94,0.1)" : "rgba(59,130,246,0.1)",
+                        background: addrCopied ? "rgba(34,197,94,0.08)" : "rgba(59,130,246,0.08)",
                         color: addrCopied ? "rgb(34,197,94)" : "rgb(59,130,246)",
-                        border: addrCopied ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(59,130,246,0.2)",
                       }}
                     >
                       {addrCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1020,18 +972,17 @@ function SetupFlow({
                     </button>
                   </div>
 
-                  {/* How to fund — collapsible options */}
+                  {/* Funding guide */}
                   <FundingGuide />
 
-                  <p className="text-xs mt-3 mb-2" style={{ color: "var(--muted)" }}>
+                  <p className="text-xs mt-4 mb-3" style={{ color: "var(--muted)" }}>
                     Start with as little as $1 USDC to test, or $10&ndash;50 to get started.
                   </p>
 
-                  {/* Skip option */}
                   <button
                     onClick={onSkipFunding}
                     className="text-[11px] font-medium cursor-pointer transition-all"
-                    style={{ color: "var(--muted)", opacity: 0.7 }}
+                    style={{ color: "var(--muted)", opacity: 0.5 }}
                   >
                     Skip &mdash; I&apos;ll fund later
                   </button>
@@ -1048,23 +999,13 @@ function SetupFlow({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.08 }}
-              className="rounded-xl p-5"
-              style={{
-                border: limitsSaved
-                  ? "1px solid rgba(34,197,94,0.2)"
-                  : currentStep === 3
-                    ? "1px solid rgba(249,115,22,0.2)"
-                    : "1px solid var(--border)",
-                background: limitsSaved
-                  ? "rgba(34,197,94,0.02)"
-                  : "var(--card)",
-              }}
+              className="glass rounded-xl p-5"
             >
               {limitsSaved ? (
                 <div className="flex items-center gap-3">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.3)" }}
+                    style={{ background: "rgba(34,197,94,0.1)" }}
                   >
                     <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
                   </div>
@@ -1093,11 +1034,11 @@ function SetupFlow({
                   <button
                     onClick={handleSaveRisk}
                     disabled={savingRisk}
-                    className="mt-4 px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                    className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
                     style={{
-                      background: "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
+                      background: "linear-gradient(135deg, rgba(22,22,22,0.8), rgba(40,40,40,0.9))",
                       color: "#fff",
-                      boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
                     }}
                   >
                     {savingRisk ? "Saving..." : "Save Limits"}
@@ -1115,11 +1056,7 @@ function SetupFlow({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.08 }}
-              className="rounded-xl p-5"
-              style={{
-                border: "1px solid rgba(249,115,22,0.2)",
-                background: "rgba(249,115,22,0.02)",
-              }}
+              className="glass rounded-xl p-5"
             >
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
@@ -1133,8 +1070,8 @@ function SetupFlow({
 
               {/* Summary */}
               <div
-                className="rounded-lg p-4 mb-4 space-y-2"
-                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+                className="rounded-xl p-4 mb-4 space-y-2"
+                style={{ background: "rgba(0,0,0,0.02)" }}
               >
                 <div className="flex justify-between text-xs">
                   <span style={{ color: "var(--muted)" }}>Wallet</span>
@@ -1151,11 +1088,11 @@ function SetupFlow({
                   <span>${riskDraft.maxPositionSizeUSDC}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span style={{ color: "var(--muted)" }}>Daily spending limit</span>
+                  <span style={{ color: "var(--muted)" }}>Daily limit</span>
                   <span>${riskDraft.dailySpendCapUSDC}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span style={{ color: "var(--muted)" }}>Needs approval above</span>
+                  <span style={{ color: "var(--muted)" }}>Approval threshold</span>
                   <span>${riskDraft.confirmationThresholdUSDC}</span>
                 </div>
                 <div className="flex justify-between text-xs">
@@ -1167,11 +1104,11 @@ function SetupFlow({
               <button
                 onClick={handleEnableTrading}
                 disabled={savingRisk}
-                className="w-full px-5 py-3 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                className="w-full px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
                 style={{
                   background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                   color: "#fff",
-                  boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)",
+                  boxShadow: "0 2px 12px rgba(249,115,22,0.3)",
                 }}
               >
                 {savingRisk ? (
@@ -1243,7 +1180,6 @@ function DashboardView({
         showToast(toggled.enabled ? "Trading resumed" : "Trading paused", "success");
       }
     } catch {
-      // revert on error
       setRiskDraft({ ...toggled, enabled: !toggled.enabled });
       setRiskConfig({ ...toggled, enabled: !toggled.enabled });
     }
@@ -1255,12 +1191,8 @@ function DashboardView({
       <div className="flex justify-end">
         <button
           onClick={fetchAll}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all"
-          style={{
-            background: "rgba(0,0,0,0.04)",
-            color: "var(--muted)",
-            border: "1px solid var(--border)",
-          }}
+          className="glass flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all"
+          style={{ color: "var(--muted)" }}
         >
           <RefreshCw className="w-3 h-3" />
           Refresh
@@ -1268,24 +1200,17 @@ function DashboardView({
       </div>
 
       {/* ── Status Card ── */}
-      <div
-        className="rounded-xl p-4"
-        style={{
-          border: riskConfig.enabled
-            ? "1px solid rgba(34,197,94,0.2)"
-            : "1px solid rgba(249,115,22,0.2)",
-          background: riskConfig.enabled
-            ? "rgba(34,197,94,0.03)"
-            : "rgba(249,115,22,0.03)",
-        }}
-      >
-        {/* Top row: status + toggle */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+      <div className="glass rounded-xl p-5">
+        {/* Top row */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
             <div
-              className="w-2 h-2 rounded-full"
+              className="w-2.5 h-2.5 rounded-full"
               style={{
                 background: riskConfig.enabled ? "rgb(34,197,94)" : "rgb(249,115,22)",
+                boxShadow: riskConfig.enabled
+                  ? "0 0 8px rgba(34,197,94,0.4)"
+                  : "0 0 8px rgba(249,115,22,0.4)",
               }}
             />
             <span className="text-sm font-semibold">
@@ -1299,10 +1224,10 @@ function DashboardView({
             style={{
               background: riskConfig.enabled
                 ? "linear-gradient(135deg, rgba(34,197,94,0.7), rgba(22,163,74,0.85))"
-                : "rgba(0,0,0,0.08)",
+                : "rgba(0,0,0,0.06)",
               boxShadow: riskConfig.enabled
-                ? "0 0 0 1px rgba(34,197,94,0.3)"
-                : "0 0 0 1px rgba(0,0,0,0.08)",
+                ? "0 0 0 1px rgba(34,197,94,0.2), inset 0 1px 2px rgba(0,0,0,0.1)"
+                : "inset 0 1px 2px rgba(0,0,0,0.06)",
             }}
           >
             <span
@@ -1310,16 +1235,16 @@ function DashboardView({
               style={{
                 left: riskConfig.enabled ? "22px" : "2px",
                 background: "white",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
                 transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
               }}
             />
           </button>
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3 mb-3">
-          <div className="text-center">
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="text-center rounded-xl py-3" style={{ background: "rgba(0,0,0,0.02)" }}>
             <p
               className="text-lg font-bold tabular-nums"
               style={{ color: balance !== null && balance > 0 ? "var(--foreground)" : "var(--muted)" }}
@@ -1338,7 +1263,7 @@ function DashboardView({
               </button>
             </div>
           </div>
-          <div className="text-center">
+          <div className="text-center rounded-xl py-3" style={{ background: "rgba(0,0,0,0.02)" }}>
             <p
               className="text-lg font-bold tabular-nums"
               style={{ color: totalPnl > 0 ? "rgb(34,197,94)" : totalPnl < 0 ? "#ef4444" : "var(--foreground)" }}
@@ -1347,13 +1272,13 @@ function DashboardView({
             </p>
             <p className="text-[10px]" style={{ color: "var(--muted)" }}>P&L</p>
           </div>
-          <div className="text-center">
+          <div className="text-center rounded-xl py-3" style={{ background: "rgba(0,0,0,0.02)" }}>
             <p className="text-lg font-bold">{positions.length}</p>
             <p className="text-[10px]" style={{ color: "var(--muted)" }}>Positions</p>
           </div>
         </div>
 
-        {/* Wallet address */}
+        {/* Wallet */}
         <div className="flex items-center justify-between text-xs" style={{ color: "var(--muted)" }}>
           <div className="flex items-center gap-2">
             <Wallet className="w-3 h-3" />
@@ -1379,7 +1304,7 @@ function DashboardView({
         </div>
       </div>
 
-      {/* ── Markets You're Watching ── */}
+      {/* ── Markets ── */}
       <Section
         icon={Eye}
         title="Markets Your Agent Is Watching"
@@ -1404,9 +1329,7 @@ function DashboardView({
                     className="border-t"
                     style={{ borderColor: "var(--border)" }}
                   >
-                    <td className="py-2 pr-3 max-w-[200px] truncate">
-                      {m.question}
-                    </td>
+                    <td className="py-2 pr-3 max-w-[200px] truncate">{m.question}</td>
                     <td className="py-2 text-right font-mono font-semibold">
                       {(m.lastPrice * 100).toFixed(0)}%
                     </td>
@@ -1424,8 +1347,7 @@ function DashboardView({
         ) : (
           <div className="space-y-1">
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              You&apos;re not watching any markets yet. Ask your bot to find interesting
-              predictions to track.
+              You&apos;re not watching any markets yet. Ask your bot to find interesting predictions to track.
             </p>
             <BotMessage message="What are the hottest prediction markets right now?" />
           </div>
@@ -1450,7 +1372,7 @@ function DashboardView({
                 <div
                   className="px-1.5 py-0.5 rounded text-xs font-mono font-semibold shrink-0 mt-0.5"
                   style={{
-                    background: t.side === "BUY" ? "rgba(22,163,74,0.1)" : "rgba(239,68,68,0.1)",
+                    background: t.side === "BUY" ? "rgba(22,163,74,0.08)" : "rgba(239,68,68,0.08)",
                     color: t.side === "BUY" ? "#16a34a" : "#ef4444",
                   }}
                 >
@@ -1474,12 +1396,9 @@ function DashboardView({
             ))}
           </div>
         ) : (
-          <div className="space-y-1">
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
-              No trades yet. Once trading is on, every trade your agent places will show up
-              here with the reasoning behind it.
-            </p>
-          </div>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            No trades yet. Once trading is on, every trade your agent places will show up here with the reasoning behind it.
+          </p>
         )}
       </Section>
 
@@ -1494,11 +1413,11 @@ function DashboardView({
           <button
             onClick={handleSaveRisk}
             disabled={savingRisk}
-            className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all disabled:opacity-50"
+            className="px-4 py-2 rounded-xl text-sm font-medium cursor-pointer transition-all disabled:opacity-50"
             style={{
-              background: "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
+              background: "linear-gradient(135deg, rgba(22,22,22,0.8), rgba(40,40,40,0.9))",
               color: "#fff",
-              boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
             }}
           >
             {savingRisk ? "Saving..." : "Save Limits"}
