@@ -59,6 +59,14 @@ export async function GET() {
     try {
       const status = await checkAcpStatus(vm as VMRecord & { tier?: string });
 
+      // Store authRequestId in DB so activate endpoint can use it
+      if (status.authRequestId) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({ acp_auth_request_id: status.authRequestId })
+          .eq("id", vm.id);
+      }
+
       return NextResponse.json({
         enabled: true,
         vmId: vm.id,

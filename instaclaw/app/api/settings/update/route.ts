@@ -390,11 +390,18 @@ export async function POST(req: NextRequest) {
         try {
           if (enabled) {
             const result = await installAgdpSkill(vm);
-            logger.info("toggle_agdp: install complete", { vmId: vm.id, authUrl: !!result.authUrl, serving: result.serving, route: "settings/update" });
+            logger.info("toggle_agdp: install complete", { vmId: vm.id, authUrl: !!result.authUrl, serving: result.serving, authRequestId: !!result.authRequestId, route: "settings/update" });
+
+            // Store authRequestId + agdp_enabled in DB
+            const dbUpdate: Record<string, unknown> = { agdp_enabled: enabled };
+            if (result.authRequestId) {
+              dbUpdate.acp_auth_request_id = result.authRequestId;
+            }
             await supabase
               .from("instaclaw_vms")
-              .update({ agdp_enabled: enabled })
+              .update(dbUpdate)
               .eq("id", vm.id);
+
             return NextResponse.json({
               updated: true,
               authUrl: result.authUrl,

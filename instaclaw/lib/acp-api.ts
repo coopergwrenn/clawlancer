@@ -66,6 +66,32 @@ export interface AcpOffering {
   };
 }
 
+/**
+ * Canonical offering definition in API-validated format.
+ * Single source of truth for both `registerAcpOffering()` and the
+ * `offering.json` file written to disk on VMs.
+ */
+export const ACP_OFFERING_API: AcpOffering = {
+  name: "ai_research_task_completion",
+  description:
+    "General-purpose AI agent capable of research, writing, analysis, code execution, and web search. Completes most tasks in under 5 minutes.",
+  price: 1,
+  priceV2: { type: "fixed", value: 1 },
+  slaMinutes: 10,
+  deliverable: "Text-based deliverable (analysis, code, report, etc.)",
+  requiredFunds: false,
+  requirement: {
+    type: "object",
+    properties: {
+      task: {
+        type: "string",
+        description: "Description of the task to complete",
+      },
+    },
+    required: ["task"],
+  },
+};
+
 export interface PollOptions {
   timeoutMs?: number;
   onAuthUrl?: (newUrl: string, newRequestId: string) => void;

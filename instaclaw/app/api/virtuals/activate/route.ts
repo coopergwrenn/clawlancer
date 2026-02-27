@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { startAcpServe, type VMRecord } from "@/lib/ssh";
+import { startAcpServe, completeAcpAuth, type VMRecord } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,8 @@ export const maxDuration = 30;
 /**
  * POST /api/virtuals/activate
  * Called after the user completes the Virtuals Protocol auth URL flow.
- * Verifies auth, creates the seller offering, and starts acp serve.
+ * Tries startAcpServe first (key exists). If auth not completed, falls
+ * back to completeAcpAuth using the stored authRequestId.
  */
 export async function POST() {
   try {
@@ -23,7 +24,7 @@ export async function POST() {
 
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, agdp_enabled")
+      .select("id, ip_address, ssh_port, ssh_user, agdp_enabled, acp_auth_request_id")
       .eq("assigned_to", session.user.id)
       .single();
 
@@ -38,22 +39,51 @@ export async function POST() {
       );
     }
 
-    const result = await startAcpServe(vm as VMRecord);
+    // Try the fast path — key already exists on VM
+    const serveResult = await startAcpServe(vm as VMRecord);
+    if (serveResult.success) {
+      logger.info("ACP serve activated (key existed)", {
+        vmId: vm.id,
+        route: "virtuals/activate",
+      });
+      return NextResponse.json(serveResult);
+    }
 
-    if (result.success) {
-      logger.info("ACP serve activated", {
+    // Key doesn't exist — try completing auth via stored requestId
+    const requestId = vm.acp_auth_request_id;
+    if (!requestId) {
+      logger.warn("ACP activate: no auth request ID stored", {
+        vmId: vm.id,
+        route: "virtuals/activate",
+      });
+      return NextResponse.json({
+        success: false,
+        error: "No authentication session found. Please toggle Virtuals off and on to start a new auth flow.",
+      });
+    }
+
+    const authResult = await completeAcpAuth(vm as VMRecord, requestId);
+
+    if (authResult.success) {
+      // Clear the auth request ID now that auth is complete
+      await supabase
+        .from("instaclaw_vms")
+        .update({ acp_auth_request_id: null })
+        .eq("id", vm.id);
+
+      logger.info("ACP auth completed and serve activated", {
         vmId: vm.id,
         route: "virtuals/activate",
       });
     } else {
-      logger.warn("ACP serve activation failed", {
+      logger.warn("ACP auth completion failed", {
         vmId: vm.id,
-        error: result.error,
+        error: authResult.error,
         route: "virtuals/activate",
       });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(authResult);
   } catch (err) {
     logger.error("Virtuals activate error", {
       error: String(err),
