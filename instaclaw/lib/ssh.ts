@@ -62,7 +62,7 @@ const CHROME_CLEANUP = [
 // compares each VM's `config_version` column against this — if behind,
 // it SSHes in and applies the missing config automatically.
 export const CONFIG_SPEC = {
-  version: 13,
+  version: 14,  // v14: skill file sync + GATEWAY_TOKEN + ffmpeg/openai deps
   settings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
@@ -3305,6 +3305,117 @@ export async function auditVMConfig(vm: VMRecord & { gateway_token?: string; api
       }
     }
 
+    // 3g. Deploy skill SKILL.md files (always overwrite — read-only references)
+    // Uses putFile for reliability (total ~300KB base64 exceeds echo|base64 safe limit)
+    try {
+      const skillsBaseDir = path.join(process.cwd(), "skills");
+      const skillDirs = fs.readdirSync(skillsBaseDir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => d.name);
+
+      const deployLines: string[] = ['#!/bin/bash'];
+      let skillCount = 0;
+
+      for (const skillName of skillDirs) {
+        const skillMdPath = path.join(skillsBaseDir, skillName, "SKILL.md");
+        if (!fs.existsSync(skillMdPath)) continue;
+
+        const content = fs.readFileSync(skillMdPath, "utf-8");
+        const b64 = Buffer.from(content, "utf-8").toString("base64");
+        const remoteDir = `$HOME/.openclaw/skills/${skillName}`;
+
+        deployLines.push(`mkdir -p "${remoteDir}"`);
+        deployLines.push(`echo '${b64}' | base64 -d > "${remoteDir}/SKILL.md"`);
+        skillCount++;
+      }
+
+      // Also deploy sjinn-video reference files (frequently updated)
+      const sjinnRefs = [
+        { local: "references/sjinn-api.md", remote: "references/sjinn-api.md" },
+        { local: "references/video-prompting.md", remote: "references/video-prompting.md" },
+        { local: "references/video-production-pipeline.md", remote: "references/video-production-pipeline.md" },
+      ];
+      for (const ref of sjinnRefs) {
+        const refPath = path.join(skillsBaseDir, "sjinn-video", ref.local);
+        if (fs.existsSync(refPath)) {
+          const content = fs.readFileSync(refPath, "utf-8");
+          const b64 = Buffer.from(content, "utf-8").toString("base64");
+          deployLines.push(`mkdir -p "$HOME/.openclaw/skills/sjinn-video/references"`);
+          deployLines.push(`echo '${b64}' | base64 -d > "$HOME/.openclaw/skills/sjinn-video/${ref.remote}"`);
+        }
+      }
+
+      if (skillCount > 0) {
+        const deployScript = deployLines.join('\n');
+        const tmpLocal = `/tmp/ic-skill-deploy-${vm.id}.sh`;
+        fs.writeFileSync(tmpLocal, deployScript, "utf-8");
+        try {
+          await ssh.putFile(tmpLocal, '/tmp/ic-skill-deploy.sh');
+        } finally {
+          fs.unlinkSync(tmpLocal);
+        }
+        await ssh.execCommand('bash /tmp/ic-skill-deploy.sh && rm -f /tmp/ic-skill-deploy.sh');
+        fixed.push(`skill SKILL.md files (${skillCount} skills)`);
+      }
+    } catch (skillErr) {
+      // Non-critical — don't fail the audit for skill deployment issues
+      logger.warn("Skill file deployment failed in audit", {
+        route: "auditVMConfig",
+        vmId: vm.id,
+        error: String(skillErr),
+      });
+    }
+
+    // 3h. Ensure GATEWAY_TOKEN is in ~/.openclaw/.env
+    if (vm.gateway_token) {
+      const tokenCheck = await ssh.execCommand(
+        'grep -q "^GATEWAY_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && echo PRESENT || echo ABSENT'
+      );
+      if (tokenCheck.stdout.trim() === 'ABSENT') {
+        await ssh.execCommand(
+          `echo "GATEWAY_TOKEN=${vm.gateway_token}" >> "$HOME/.openclaw/.env"`
+        );
+        fixed.push('GATEWAY_TOKEN');
+      }
+    }
+
+    // 3i. Check system dependencies (ffmpeg + openai python)
+    // Non-blocking: attempt install, log if it fails
+    try {
+      const depCheck = await ssh.execCommand(
+        'echo "FFMPEG:$(which ffmpeg >/dev/null 2>&1 && echo OK || echo MISSING)"; ' +
+        'echo "OPENAI:$(python3 -c \'import openai\' 2>/dev/null && echo OK || echo MISSING)"'
+      );
+
+      const ffmpegMissing = depCheck.stdout.includes('FFMPEG:MISSING');
+      const openaiMissing = depCheck.stdout.includes('OPENAI:MISSING');
+
+      if (ffmpegMissing) {
+        const ffmpegInstall = await ssh.execCommand(
+          'sudo -n true 2>/dev/null && sudo apt-get update -qq 2>/dev/null && sudo apt-get install -y -qq ffmpeg 2>/dev/null && echo INSTALLED || echo SKIP'
+        );
+        if (ffmpegInstall.stdout.includes('INSTALLED')) {
+          fixed.push('ffmpeg (installed)');
+        }
+      }
+
+      if (openaiMissing) {
+        const openaiInstall = await ssh.execCommand(
+          'export PATH="$HOME/.local/bin:$PATH"; pip3 install --break-system-packages --quiet openai 2>/dev/null || pip3 install --user --quiet openai 2>/dev/null; python3 -c "import openai" 2>/dev/null && echo INSTALLED || echo FAIL'
+        );
+        if (openaiInstall.stdout.includes('INSTALLED')) {
+          fixed.push('openai python (installed)');
+        }
+      }
+    } catch (depErr) {
+      // Non-critical — don't fail audit for dependency issues
+      logger.warn("Dependency check failed in audit", {
+        route: "auditVMConfig",
+        vmId: vm.id,
+        error: String(depErr),
+      });
+    }
+
     // 4. Validate auth-profiles.json for all-inclusive and BYOK VMs
     let authProfileFixed = false;
     const expectedProxyBaseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway";
@@ -5407,6 +5518,168 @@ export async function upgradeOpenClaw(
   } finally {
     // ssh.dispose() may have already been called if resync path was taken.
     // NodeSSH.dispose() is safe to call multiple times.
+    ssh.dispose();
+  }
+}
+
+// ── Skills & Integrations Toggle ──
+
+// DB slugs that differ from the actual VM filesystem directory name
+const SKILL_DIR_MAP: Record<string, string> = {
+  "web-search": "web-search-browser",
+};
+
+// mcporter add commands for MCP servers (slug → config)
+const MCP_SERVER_CONFIGS: Record<
+  string,
+  { command: string; env?: Record<string, string>; scope?: string; description?: string }
+> = {
+  clawlancer: {
+    command: "npx -y clawlancer-mcp",
+    env: { CLAWLANCER_API_KEY: "", CLAWLANCER_BASE_URL: "https://clawlancer.ai" },
+    scope: "home",
+    description: "Clawlancer AI agent marketplace",
+  },
+};
+
+/**
+ * Toggle a skill directory on/off on the VM.
+ * Enable: renames `<slug>.disabled` → `<slug>`
+ * Disable: renames `<slug>` → `<slug>.disabled`
+ * Then restarts the gateway to pick up the change.
+ */
+export async function toggleSkillDir(
+  vm: VMRecord,
+  slug: string,
+  enabled: boolean
+): Promise<{ success: boolean; restarted: boolean }> {
+  assertSafeShellArg(slug, "slug");
+  const dirName = SKILL_DIR_MAP[slug] || slug;
+
+  const ssh = await connectSSH(vm);
+  try {
+    const skillsBase = "$HOME/.openclaw/skills";
+
+    const toggleScript = enabled
+      ? [
+          `if [ -d "${skillsBase}/${dirName}.disabled" ]; then`,
+          `  mv "${skillsBase}/${dirName}.disabled" "${skillsBase}/${dirName}"`,
+          `  echo "TOGGLED"`,
+          `elif [ -d "${skillsBase}/${dirName}" ]; then`,
+          `  echo "ALREADY_OK"`,
+          "else",
+          `  echo "DIR_NOT_FOUND"`,
+          "fi",
+        ]
+      : [
+          `if [ -d "${skillsBase}/${dirName}" ]; then`,
+          `  mv "${skillsBase}/${dirName}" "${skillsBase}/${dirName}.disabled"`,
+          `  echo "TOGGLED"`,
+          `elif [ -d "${skillsBase}/${dirName}.disabled" ]; then`,
+          `  echo "ALREADY_OK"`,
+          "else",
+          `  echo "DIR_NOT_FOUND"`,
+          "fi",
+        ];
+
+    const script = [
+      "#!/bin/bash",
+      ...toggleScript,
+      "",
+      "# Restart gateway to pick up skill change",
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      CHROME_CLEANUP,
+      "sleep 2",
+      "systemctl --user start openclaw-gateway",
+      "sleep 5",
+      'echo "RESTART_DONE"',
+    ].join("\n");
+
+    await ssh.execCommand(
+      `cat > /tmp/ic-skill-toggle.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-skill-toggle.sh; EC=$?; rm -f /tmp/ic-skill-toggle.sh; exit $EC"
+    );
+
+    const output = result.stdout.trim();
+    if (output.includes("DIR_NOT_FOUND")) {
+      logger.warn("Skill directory not found on VM", {
+        slug,
+        dirName,
+        vmId: vm.id,
+        route: "lib/ssh",
+      });
+    }
+
+    return { success: true, restarted: output.includes("RESTART_DONE") };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Toggle an MCP server on/off on the VM via mcporter.
+ * Falls back to skill directory rename if no mcporter config exists.
+ * Does NOT restart the gateway (mcporter changes are picked up live).
+ */
+export async function toggleMcpServer(
+  vm: VMRecord,
+  slug: string,
+  enabled: boolean
+): Promise<{ success: boolean; restarted: boolean }> {
+  assertSafeShellArg(slug, "slug");
+
+  const config = MCP_SERVER_CONFIGS[slug];
+  if (!config) {
+    // No mcporter config for this server — fall back to skill dir rename
+    return toggleSkillDir(vm, slug, enabled);
+  }
+
+  const ssh = await connectSSH(vm);
+  try {
+    let scriptLines: string[];
+
+    if (enabled) {
+      let addCmd = `mcporter config add ${slug} --command "${config.command}"`;
+      if (config.env) {
+        for (const [key, val] of Object.entries(config.env)) {
+          addCmd += ` --env ${key}=${val}`;
+        }
+      }
+      if (config.scope) addCmd += ` --scope ${config.scope}`;
+      if (config.description)
+        addCmd += ` --description "${config.description}"`;
+
+      scriptLines = [
+        "#!/bin/bash",
+        NVM_PREAMBLE,
+        `mcporter config remove ${slug} 2>/dev/null || true`,
+        `${addCmd} || true`,
+        'echo "MCP_TOGGLED"',
+      ];
+    } else {
+      scriptLines = [
+        "#!/bin/bash",
+        NVM_PREAMBLE,
+        `mcporter config remove ${slug} 2>/dev/null || true`,
+        'echo "MCP_TOGGLED"',
+      ];
+    }
+
+    const script = scriptLines.join("\n");
+    await ssh.execCommand(
+      `cat > /tmp/ic-mcp-toggle.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-mcp-toggle.sh; EC=$?; rm -f /tmp/ic-mcp-toggle.sh; exit $EC"
+    );
+
+    return {
+      success: result.stdout.includes("MCP_TOGGLED"),
+      restarted: false,
+    };
+  } finally {
     ssh.dispose();
   }
 }
