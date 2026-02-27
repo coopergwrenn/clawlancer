@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Get or create Stripe customer
     const { data: user } = await supabase
       .from("instaclaw_users")
-      .select("id, email, stripe_customer_id, deployment_lock_at")
+      .select("id, email, stripe_customer_id, deployment_lock_at, referred_by")
       .eq("id", session.user.id)
       .single();
 
@@ -106,12 +106,40 @@ export async function POST(req: NextRequest) {
 
     const origin = req.headers.get("origin") ?? process.env.NEXTAUTH_URL!;
 
+    // If user was referred by an ambassador, ensure the coupon exists and apply it
+    let discounts: { coupon: string }[] | undefined;
+    if (user.referred_by) {
+      // Verify the referral code belongs to an active ambassador
+      const { data: ambassador } = await supabase
+        .from("instaclaw_ambassadors")
+        .select("id")
+        .eq("referral_code", user.referred_by)
+        .eq("status", "approved")
+        .single();
+
+      if (ambassador) {
+        // Ensure the coupon exists in Stripe (idempotent)
+        try {
+          await stripe.coupons.retrieve("AMBASSADOR_25_OFF");
+        } catch {
+          await stripe.coupons.create({
+            id: "AMBASSADOR_25_OFF",
+            percent_off: 25,
+            duration: "once",
+            name: "Ambassador Referral — 25% Off First Month",
+          });
+        }
+        discounts = [{ coupon: "AMBASSADOR_25_OFF" }];
+      }
+    }
+
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: cancelUrl ? `${origin}${cancelUrl}` : `${origin}/plan`,
+      ...(discounts ? { discounts } : {}),
       ...(trial
         ? { subscription_data: { trial_period_days: 3 } }
         : {}),
@@ -119,6 +147,7 @@ export async function POST(req: NextRequest) {
         instaclaw_user_id: user.id,
         tier,
         api_mode: apiMode,
+        ...(user.referred_by ? { referral_code: user.referred_by } : {}),
       },
     });
 

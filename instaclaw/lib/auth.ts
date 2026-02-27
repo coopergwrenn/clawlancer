@@ -49,12 +49,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return false;
       }
 
+      // Read optional ambassador referral code from cookie
+      const referralCode = cookieStore.get("instaclaw_referral_code")?.value ?? null;
+
       // Create the user row
       const { error } = await supabase.from("instaclaw_users").insert({
         email: user.email?.toLowerCase(),
         name: user.name,
         google_id: account.providerAccountId,
         invited_by: inviteCode ? decodeURIComponent(inviteCode) : null,
+        referred_by: referralCode ? decodeURIComponent(referralCode).trim().toLowerCase() : null,
       });
 
       if (error) {

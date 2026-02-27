@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
  * client-side document.cookie.
  */
 export async function POST(req: NextRequest) {
-  const { code } = await req.json();
+  const { code, referralCode } = await req.json();
 
   if (!code || typeof code !== "string") {
     return NextResponse.json({ error: "Missing code" }, { status: 400 });
@@ -23,6 +23,17 @@ export async function POST(req: NextRequest) {
     secure: true,
     httpOnly: true,
   });
+
+  // Store ambassador referral code if provided (survives OAuth redirect)
+  if (referralCode && typeof referralCode === "string") {
+    res.cookies.set("instaclaw_referral_code", referralCode.trim().toLowerCase(), {
+      path: "/",
+      maxAge: 3600,
+      sameSite: "lax",
+      secure: true,
+      httpOnly: true,
+    });
+  }
 
   return res;
 }

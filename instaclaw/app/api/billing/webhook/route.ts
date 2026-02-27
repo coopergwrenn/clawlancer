@@ -120,6 +120,35 @@ async function processEvent(event: any) {
         { onConflict: "user_id" }
       );
 
+      // Credit ambassador if this user was referred
+      const referralCode = session.metadata?.referral_code;
+      if (referralCode) {
+        const { data: ambassador } = await supabase
+          .from("instaclaw_ambassadors")
+          .select("id, referral_count, earnings_total")
+          .eq("referral_code", referralCode)
+          .eq("status", "approved")
+          .single();
+
+        if (ambassador) {
+          await supabase
+            .from("instaclaw_ambassadors")
+            .update({
+              referral_count: (ambassador.referral_count ?? 0) + 1,
+              earnings_total: Number(ambassador.earnings_total ?? 0) + 10,
+            })
+            .eq("id", ambassador.id);
+
+          logger.info("Ambassador referral credited", {
+            route: "billing/webhook",
+            ambassadorId: ambassador.id,
+            referralCode,
+            referredUserId: userId,
+            earnings: 10,
+          });
+        }
+      }
+
       // Check if user already has a VM (verification endpoint may have assigned already)
       const { data: existingVm } = await supabase
         .from("instaclaw_vms")

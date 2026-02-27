@@ -1,15 +1,50 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 
 export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupInner />
+    </Suspense>
+  );
+}
+
+function SignupInner() {
+  const searchParams = useSearchParams();
   const [code, setCode] = useState("");
   const [validated, setValidated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Referral code (optional)
+  const [referralCode, setReferralCode] = useState("");
+  const [referralValid, setReferralValid] = useState<boolean | null>(null);
+  const [referralName, setReferralName] = useState("");
+
+  // Pre-fill referral code from ?ref= query param
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) {
+      setReferralCode(ref);
+      // Auto-validate
+      fetch("/api/ambassador/validate-referral", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: ref }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          setReferralValid(d.valid);
+          if (d.ambassadorName) setReferralName(d.ambassadorName);
+        })
+        .catch(() => {});
+    }
+  }, [searchParams]);
 
   function formatCode(value: string) {
     const clean = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
@@ -47,11 +82,11 @@ export default function SignupPage() {
     setError("");
 
     try {
-      // Store invite code in a server-set HttpOnly cookie (survives OAuth redirects reliably)
+      // Store invite code (and optional referral code) in server-set HttpOnly cookies
       const res = await fetch("/api/invite/store", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, referralCode: referralCode.trim() || undefined }),
       });
 
       if (!res.ok) {
@@ -158,6 +193,54 @@ export default function SignupPage() {
               }}
             >
               ✓ Invite code accepted
+            </div>
+
+            {/* Referral code (optional) */}
+            <div>
+              <label className="block text-sm mb-1.5" style={{ color: "#6b6b6b" }}>
+                Referral code <span style={{ opacity: 0.6 }}>(optional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. renata-1"
+                value={referralCode}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setReferralCode(val);
+                  setReferralValid(null);
+                  setReferralName("");
+                }}
+                onBlur={() => {
+                  if (!referralCode.trim()) return;
+                  fetch("/api/ambassador/validate-referral", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code: referralCode.trim() }),
+                  })
+                    .then((r) => r.json())
+                    .then((d) => {
+                      setReferralValid(d.valid);
+                      if (d.ambassadorName) setReferralName(d.ambassadorName);
+                    })
+                    .catch(() => setReferralValid(false));
+                }}
+                className="w-full px-4 py-3 rounded-lg text-sm outline-none transition-colors"
+                style={{
+                  background: "#ffffff",
+                  border: `1px solid ${referralValid === true ? "#22c55e" : referralValid === false ? "#ef4444" : "rgba(0,0,0,0.1)"}`,
+                  color: "#333334",
+                }}
+              />
+              {referralValid === true && (
+                <p className="text-xs mt-1.5" style={{ color: "#22c55e" }}>
+                  ✓ 25% off your first month{referralName ? ` — referred by ${referralName}` : ""}
+                </p>
+              )}
+              {referralValid === false && referralCode.trim() && (
+                <p className="text-xs mt-1.5" style={{ color: "#ef4444" }}>
+                  Referral code not found
+                </p>
+              )}
             </div>
 
             {error && (
