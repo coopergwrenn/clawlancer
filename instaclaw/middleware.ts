@@ -24,6 +24,7 @@ export default auth((req) => {
   const protectedPages = [
     "/dashboard", "/settings", "/billing", "/admin",
     "/tasks", "/history", "/files", "/scheduled", "/env-vars",
+    "/ambassador",
   ];
   const isProtectedPage = protectedPages.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
@@ -85,6 +86,7 @@ export const config = {
     "/files/:path*",
     "/scheduled/:path*",
     "/env-vars/:path*",
+    "/ambassador/:path*",
     "/api/((?!auth|_next).*)",
   ],
 };
