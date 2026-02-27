@@ -29,5 +29,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "skills/video-production/assets/template-basic"]
+  "exclude": ["node_modules", "scripts", "skills/video-production/assets/template-basic"]
 }
