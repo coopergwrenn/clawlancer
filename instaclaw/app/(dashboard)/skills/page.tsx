@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RotateCw, Loader2 } from "lucide-react";
+import { RotateCw, Loader2, Search, Download, Plus, Star, TrendingUp, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSearchParams } from "next/navigation";
 
@@ -426,37 +426,9 @@ export default function SkillsPage() {
         </div>
       )}
 
-      {/* ── Marketplace tab (Coming Soon shell) ── */}
+      {/* ── Marketplace tab ── */}
       {!loading && activeTab === "marketplace" && (
-        <div className="space-y-6">
-          <div
-            className="glass rounded-xl p-12 text-center"
-            style={{ border: "1px solid var(--border)" }}
-          >
-            <p
-              className="text-2xl font-normal tracking-[-0.5px] mb-2"
-              style={{ fontFamily: "var(--font-serif)" }}
-            >
-              Skill Marketplace
-            </p>
-            <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-              A marketplace where InstaClaw users can discover, share, and
-              install community-created skills.
-            </p>
-            <span
-              className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold"
-              style={{
-                background:
-                  "linear-gradient(135deg, rgba(59,130,246,0.15), rgba(37,99,235,0.1))",
-                color: "rgb(59,130,246)",
-                boxShadow:
-                  "0 0 0 1px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
-              }}
-            >
-              Coming Soon
-            </span>
-          </div>
-        </div>
+        <MarketplaceShell />
       )}
 
       {/* ── Shopify API key modal ── */}
@@ -871,6 +843,502 @@ function IntegrationCard({
               )}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Marketplace Shell (Coming Soon) ──────────────────
+
+const MARKETPLACE_CATEGORIES = [
+  "All",
+  "Creative",
+  "Productivity",
+  "Commerce",
+  "Social",
+  "Developer",
+  "Automation",
+] as const;
+
+interface PlaceholderSkill {
+  icon: string;
+  name: string;
+  author: string;
+  description: string;
+  installs: string;
+  rating: number;
+  category: string;
+  featured?: boolean;
+}
+
+const FEATURED_SKILLS: PlaceholderSkill[] = [
+  {
+    icon: "🎵",
+    name: "Music Producer",
+    author: "instaclaw",
+    description:
+      "Compose original music, mix tracks, and produce professional-quality audio across genres",
+    installs: "2.4k",
+    rating: 4.9,
+    category: "Creative",
+    featured: true,
+  },
+  {
+    icon: "📈",
+    name: "SEO Optimizer",
+    author: "growthlab",
+    description:
+      "Audit websites, research keywords, and generate SEO-optimized content strategies",
+    installs: "1.8k",
+    rating: 4.8,
+    category: "Productivity",
+    featured: true,
+  },
+  {
+    icon: "🤖",
+    name: "Discord Bot Manager",
+    author: "serverkit",
+    description:
+      "Build, deploy, and manage Discord bots with custom commands and automations",
+    installs: "3.1k",
+    rating: 4.7,
+    category: "Social",
+    featured: true,
+  },
+  {
+    icon: "⚡",
+    name: "Zapier Bridge",
+    author: "automate.io",
+    description:
+      "Connect your agent to 5,000+ apps through Zapier webhooks and triggers",
+    installs: "4.2k",
+    rating: 4.9,
+    category: "Automation",
+    featured: true,
+  },
+];
+
+const COMMUNITY_SKILLS: PlaceholderSkill[] = [
+  {
+    icon: "📊",
+    name: "Google Analytics Reporter",
+    author: "dataviz",
+    description: "Pull analytics data and generate weekly traffic reports",
+    installs: "892",
+    rating: 4.6,
+    category: "Productivity",
+  },
+  {
+    icon: "🎮",
+    name: "Game Asset Creator",
+    author: "pixelcraft",
+    description: "Generate sprites, textures, and UI elements for games",
+    installs: "1.1k",
+    rating: 4.5,
+    category: "Creative",
+  },
+  {
+    icon: "📦",
+    name: "Inventory Tracker",
+    author: "stockwise",
+    description: "Monitor stock levels across warehouses and trigger reorders",
+    installs: "634",
+    rating: 4.4,
+    category: "Commerce",
+  },
+  {
+    icon: "🔐",
+    name: "Security Auditor",
+    author: "securestack",
+    description: "Scan codebases for vulnerabilities and generate fix reports",
+    installs: "1.5k",
+    rating: 4.8,
+    category: "Developer",
+  },
+  {
+    icon: "✍️",
+    name: "Blog Writer",
+    author: "contentmill",
+    description: "Research topics, write long-form posts, and format for CMS",
+    installs: "2.1k",
+    rating: 4.3,
+    category: "Creative",
+  },
+  {
+    icon: "🗓️",
+    name: "Meeting Scheduler",
+    author: "calflow",
+    description: "Coordinate availability, book meetings, and send reminders",
+    installs: "987",
+    rating: 4.6,
+    category: "Productivity",
+  },
+  {
+    icon: "🐦",
+    name: "Twitter Thread Writer",
+    author: "viralkit",
+    description: "Craft engaging threads, schedule posts, and track engagement",
+    installs: "1.7k",
+    rating: 4.5,
+    category: "Social",
+  },
+  {
+    icon: "🧪",
+    name: "A/B Test Runner",
+    author: "splitlab",
+    description: "Design experiments, track variants, and report significance",
+    installs: "445",
+    rating: 4.7,
+    category: "Developer",
+  },
+];
+
+function MarketplaceShell() {
+  const [marketplaceCategory, setMarketplaceCategory] = useState("All");
+
+  const filteredFeatured =
+    marketplaceCategory === "All"
+      ? FEATURED_SKILLS
+      : FEATURED_SKILLS.filter((s) => s.category === marketplaceCategory);
+
+  const filteredCommunity =
+    marketplaceCategory === "All"
+      ? COMMUNITY_SKILLS
+      : COMMUNITY_SKILLS.filter((s) => s.category === marketplaceCategory);
+
+  return (
+    <div className="space-y-8">
+      {/* Hero banner */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="glass rounded-2xl p-8 sm:p-10 text-center relative overflow-hidden"
+      >
+        {/* Subtle gradient shimmer */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse at 30% 20%, rgba(59,130,246,0.06) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(168,85,247,0.04) 0%, transparent 50%)",
+          }}
+        />
+        <div className="relative z-10">
+          <span
+            className="inline-block px-3.5 py-1 rounded-full text-[11px] font-semibold mb-4"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(59,130,246,0.18), rgba(37,99,235,0.12))",
+              color: "rgb(96,165,250)",
+              boxShadow:
+                "0 0 0 1px rgba(59,130,246,0.25), 0 2px 8px rgba(59,130,246,0.1), inset 0 1px 0 rgba(255,255,255,0.1)",
+            }}
+          >
+            Coming Soon
+          </span>
+          <h2
+            className="text-2xl sm:text-3xl font-normal tracking-[-0.5px] mb-2"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Skill Marketplace
+          </h2>
+          <p
+            className="text-sm max-w-md mx-auto leading-relaxed"
+            style={{ color: "var(--muted)" }}
+          >
+            Discover, share, and install community-created skills. Build a skill
+            once, share it with every InstaClaw agent.
+          </p>
+        </div>
+      </motion.div>
+
+      {/* Search bar + Submit button row */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.3 }}
+        className="flex gap-3"
+      >
+        <div className="flex-1 relative">
+          <Search
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+            style={{ color: "var(--muted)", opacity: 0.5 }}
+          />
+          <input
+            type="text"
+            disabled
+            placeholder="Search community skills..."
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none disabled:cursor-not-allowed"
+            style={{
+              background: "rgba(0,0,0,0.03)",
+              border: "1px solid var(--border)",
+              color: "var(--muted)",
+              opacity: 0.6,
+            }}
+          />
+        </div>
+        <div className="relative group">
+          <button
+            disabled
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium disabled:cursor-not-allowed"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(22,22,22,0.6), rgba(40,40,40,0.7))",
+              color: "rgba(255,255,255,0.5)",
+              boxShadow:
+                "0 0 0 1px rgba(255,255,255,0.06), 0 2px 6px rgba(0,0,0,0.1)",
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Submit a Skill</span>
+          </button>
+          {/* Tooltip */}
+          <div
+            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-[11px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+            style={{
+              background: "rgba(0,0,0,0.85)",
+              color: "#fff",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            }}
+          >
+            Coming Soon — create and share your own skills
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Category filter tabs */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15, duration: 0.3 }}
+        className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide"
+      >
+        {MARKETPLACE_CATEGORIES.map((cat) => {
+          const isActive = marketplaceCategory === cat;
+          return (
+            <button
+              key={cat}
+              onClick={() => setMarketplaceCategory(cat)}
+              className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all cursor-pointer shrink-0"
+              style={
+                isActive
+                  ? {
+                      background:
+                        "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.9))",
+                      color: "#fff",
+                      boxShadow:
+                        "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
+                    }
+                  : {
+                      background: "rgba(0,0,0,0.04)",
+                      color: "var(--muted)",
+                      boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
+                    }
+              }
+            >
+              {cat}
+            </button>
+          );
+        })}
+      </motion.div>
+
+      {/* Featured Skills */}
+      {filteredFeatured.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.3 }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Star
+              className="w-4 h-4"
+              style={{ color: "rgb(250,204,21)" }}
+            />
+            <h3
+              className="text-lg font-normal tracking-[-0.3px]"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Featured
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredFeatured.map((skill, i) => (
+              <motion.div
+                key={skill.name}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 + i * 0.06, duration: 0.25 }}
+              >
+                <MarketplaceCard skill={skill} />
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Community Skills */}
+      {filteredCommunity.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.35, duration: 0.3 }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="w-4 h-4" style={{ color: "var(--muted)" }} />
+            <h3
+              className="text-lg font-normal tracking-[-0.3px]"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Community
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredCommunity.map((skill, i) => (
+              <motion.div
+                key={skill.name}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 + i * 0.04, duration: 0.25 }}
+              >
+                <MarketplaceCard skill={skill} />
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Empty filter state */}
+      {filteredFeatured.length === 0 && filteredCommunity.length === 0 && (
+        <div
+          className="glass rounded-xl p-8 text-center"
+          style={{ border: "1px solid var(--border)" }}
+        >
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            No skills in this category yet.
+          </p>
+        </div>
+      )}
+
+      {/* Recently Added — empty state */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5, duration: 0.3 }}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp className="w-4 h-4" style={{ color: "var(--muted)" }} />
+          <h3
+            className="text-lg font-normal tracking-[-0.3px]"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Recently Added
+          </h3>
+        </div>
+        <div
+          className="glass rounded-xl p-8 text-center"
+          style={{ border: "1px solid var(--border)" }}
+        >
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Skills from the community will appear here.
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ── MarketplaceCard ──────────────────────────────────
+
+function MarketplaceCard({ skill }: { skill: PlaceholderSkill }) {
+  return (
+    <div
+      className="glass rounded-xl p-5 relative overflow-hidden group"
+      style={{ border: "1px solid var(--border)" }}
+    >
+      {/* Coming Soon overlay on hover */}
+      <div
+        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 rounded-xl"
+        style={{
+          background: "rgba(0,0,0,0.5)",
+          backdropFilter: "blur(2px)",
+        }}
+      >
+        <span
+          className="px-4 py-1.5 rounded-full text-xs font-semibold"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.95))",
+            color: "#fff",
+            boxShadow:
+              "0 0 0 1px rgba(59,130,246,0.3), 0 4px 16px rgba(59,130,246,0.3)",
+          }}
+        >
+          Coming Soon
+        </span>
+      </div>
+
+      {/* Featured shimmer accent */}
+      {skill.featured && (
+        <div
+          className="absolute top-0 right-0 w-20 h-20 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(circle at 100% 0%, rgba(250,204,21,0.08) 0%, transparent 70%)",
+          }}
+        />
+      )}
+
+      <div className="flex items-start gap-3.5">
+        <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <h4 className="text-sm font-medium truncate">{skill.name}</h4>
+            {skill.featured && (
+              <Star
+                className="w-3 h-3 shrink-0"
+                style={{ color: "rgb(250,204,21)", fill: "rgb(250,204,21)" }}
+              />
+            )}
+          </div>
+          <p
+            className="text-[11px] mb-1.5"
+            style={{ color: "var(--muted)", opacity: 0.7 }}
+          >
+            by {skill.author}
+          </p>
+          <p
+            className="text-xs leading-relaxed line-clamp-2"
+            style={{ color: "var(--muted)" }}
+          >
+            {skill.description}
+          </p>
+          {/* Stats row */}
+          <div
+            className="flex items-center gap-3 mt-2.5 text-[11px]"
+            style={{ color: "var(--muted)", opacity: 0.7 }}
+          >
+            <span className="flex items-center gap-1">
+              <Download className="w-3 h-3" />
+              {skill.installs}
+            </span>
+            <span className="flex items-center gap-1">
+              <Star
+                className="w-3 h-3"
+                style={{ color: "rgb(250,204,21)", fill: "rgb(250,204,21)" }}
+              />
+              {skill.rating}
+            </span>
+            <span
+              className="px-2 py-0.5 rounded-full text-[10px]"
+              style={{
+                background: "rgba(0,0,0,0.04)",
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
+              }}
+            >
+              {skill.category}
+            </span>
+          </div>
         </div>
       </div>
     </div>
