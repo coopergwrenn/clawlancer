@@ -4219,6 +4219,13 @@ export async function updateApiKey(
   }
 }
 
+// Platform-managed env vars that must be preserved across user env var syncs.
+// These are written by configureOpenClaw(), resyncGatewayToken(), etc.
+// and must NEVER be wiped by user dashboard operations.
+const PLATFORM_ENV_VARS = new Set([
+  "GATEWAY_TOKEN",
+]);
+
 export async function updateEnvVars(
   vm: VMRecord,
   envVars: { name: string; value: string }[]
@@ -4232,17 +4239,75 @@ export async function updateEnvVars(
 
   const ssh = await connectSSH(vm);
   try {
-    // Build the .env file content and base64 encode to avoid heredoc injection
-    const envContent = envVars
-      .map((v) => `${v.name}=${v.value}`)
-      .join('\n');
-    const b64 = Buffer.from(envContent, "utf-8").toString("base64");
+    // 1. Read existing .env to preserve platform-managed vars
+    const existing = await ssh.execCommand(
+      "cat $HOME/.openclaw/.env 2>/dev/null"
+    );
 
-    // Write to OpenClaw's env file via base64 decode
+    const platformLines: string[] = [];
+    if (existing.stdout) {
+      for (const line of existing.stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx > 0) {
+          const key = trimmed.substring(0, eqIdx);
+          if (PLATFORM_ENV_VARS.has(key)) {
+            platformLines.push(trimmed);
+          }
+        }
+      }
+    }
+
+    // 2. Build merged content: user vars (excluding platform names) + platform lines
+    const userLines = envVars
+      .filter((v) => !PLATFORM_ENV_VARS.has(v.name))
+      .map((v) => `${v.name}=${v.value}`);
+
+    const merged = [...userLines, ...platformLines].join("\n");
+    const b64 = Buffer.from(merged, "utf-8").toString("base64");
+
+    // 3. Write merged .env
     await ssh.execCommand(
       `echo '${b64}' | base64 -d > $HOME/.openclaw/.env`
     );
-    await ssh.execCommand(`chmod 600 $HOME/.openclaw/.env`);
+    await ssh.execCommand("chmod 600 $HOME/.openclaw/.env");
+
+    // 4. Safety check: verify GATEWAY_TOKEN survived
+    const verify = await ssh.execCommand(
+      'grep -c "^GATEWAY_TOKEN=" $HOME/.openclaw/.env 2>/dev/null'
+    );
+    if (verify.stdout.trim() === "0") {
+      logger.error("GATEWAY_TOKEN missing from .env after updateEnvVars write — attempting recovery", {
+        vm: vm.id ?? vm.ip_address,
+        fn: "updateEnvVars",
+      });
+
+      // Recover from auth-profiles.json (always has the token)
+      const authRead = await ssh.execCommand(
+        "cat $HOME/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null"
+      );
+      if (authRead.stdout) {
+        try {
+          const auth = JSON.parse(authRead.stdout);
+          const token = auth?.profiles?.["anthropic:default"]?.key;
+          if (token && typeof token === "string" && token.length > 16) {
+            await ssh.execCommand(
+              `echo 'GATEWAY_TOKEN=${token}' >> $HOME/.openclaw/.env`
+            );
+            logger.warn("GATEWAY_TOKEN recovered from auth-profiles.json", {
+              vm: vm.id ?? vm.ip_address,
+              fn: "updateEnvVars",
+            });
+          }
+        } catch {
+          logger.error("Failed to parse auth-profiles.json for GATEWAY_TOKEN recovery", {
+            vm: vm.id ?? vm.ip_address,
+            fn: "updateEnvVars",
+          });
+        }
+      }
+    }
   } finally {
     ssh.dispose();
   }
