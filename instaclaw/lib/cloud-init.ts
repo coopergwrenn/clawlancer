@@ -217,7 +217,7 @@ chmod 600 "\${OPENCLAW_HOME}/.ssh/authorized_keys"
 # ── 3. Install system packages ──
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq fail2ban curl git ufw \\
+apt-get install -y -qq fail2ban curl git ufw ffmpeg \\
   libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \\
   libgbm1 libasound2 libpango-1.0-0 libxcomposite1 libxdamage1 \\
   libxfixes3 libxrandr2 libxshmfence1
@@ -247,6 +247,11 @@ su - "\${OPENCLAW_USER}" -c '
   nvm install 22
   nvm alias default 22
   npm install -g openclaw@2026.2.24 mcporter
+'
+
+# ── 7a. Install Python packages as openclaw user ──
+su - "\${OPENCLAW_USER}" -c '
+  pip3 install --break-system-packages --quiet openai
 '
 
 # ── 7b. Install Playwright Chromium + create symlink (as openclaw user) ──
