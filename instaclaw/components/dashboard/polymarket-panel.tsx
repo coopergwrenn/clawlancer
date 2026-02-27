@@ -583,7 +583,22 @@ function SetupFlow({
                     boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)",
                   }}
                 >
-                  {settingUpWallet ? "Creating account..." : "Create Wallet — Free"}
+                  {settingUpWallet ? "Creating account..." : (
+                    <>
+                      Create Wallet
+                      <span
+                        className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+                        style={{
+                          background: "rgba(255,255,255,0.25)",
+                          backdropFilter: "blur(8px)",
+                          color: "#fff",
+                          border: "1px solid rgba(255,255,255,0.3)",
+                        }}
+                      >
+                        Free
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             )}
