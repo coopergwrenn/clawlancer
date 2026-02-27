@@ -367,7 +367,7 @@ async function stepBootstrapConsumed(
 
   // Verify the agent has already been used (session files exist)
   const sessionCheck = await ssh.execCommand(
-    `ls ~/.openclaw/agents/main/agent/sessions/*.jsonl 2>/dev/null | head -1 | grep -q . && echo HAS_SESSIONS || echo NO_SESSIONS`
+    `ls ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1 | grep -q . && echo HAS_SESSIONS || echo NO_SESSIONS`
   );
 
   if (sessionCheck.stdout.trim() !== 'HAS_SESSIONS') {
