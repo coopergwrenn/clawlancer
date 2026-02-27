@@ -360,7 +360,7 @@ export default function SkillsPage() {
 
       {/* ── My Skills tab ── */}
       {!loading && activeTab === "skills" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
           <AnimatePresence mode="popLayout">
             {filteredSkills.map((skill, i) => (
               <motion.div
@@ -369,6 +369,7 @@ export default function SkillsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ delay: i * 0.04, duration: 0.25 }}
+                className="h-full"
               >
                 <SkillCard
                   skill={skill}
@@ -393,7 +394,7 @@ export default function SkillsPage() {
 
       {/* ── Integrations tab ── */}
       {!loading && activeTab === "integrations" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
           <AnimatePresence mode="popLayout">
             {filteredIntegrations.map((skill, i) => (
               <motion.div
@@ -402,6 +403,7 @@ export default function SkillsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ delay: i * 0.04, duration: 0.25 }}
+                className="h-full"
               >
                 <IntegrationCard
                   skill={skill}
@@ -594,7 +596,7 @@ function SkillCard({
 
   return (
     <div
-      className="glass rounded-xl p-5"
+      className="glass rounded-xl p-5 h-full"
       style={{ border: "1px solid var(--border)" }}
     >
       <div className="flex items-start gap-3.5">
@@ -638,14 +640,6 @@ function SkillCard({
           >
             {skill.description}
           </p>
-          {skill.requiresRestart && !isBuiltIn && (
-            <p
-              className="text-[10px] mt-1.5"
-              style={{ color: "var(--muted)", opacity: 0.7 }}
-            >
-              Requires restart
-            </p>
-          )}
         </div>
 
         {/* Toggle */}
@@ -737,7 +731,7 @@ function IntegrationCard({
 
   return (
     <div
-      className="glass rounded-xl p-5"
+      className="glass rounded-xl p-5 h-full"
       style={{
         border: "1px solid var(--border)",
         opacity: isComingSoon ? 0.65 : 1,
