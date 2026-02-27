@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
-import { connectSSH, NVM_PREAMBLE, GATEWAY_PORT } from "@/lib/ssh";
+import { upgradeOpenClaw, connectSSH, NVM_PREAMBLE } from "@/lib/ssh";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
         const { data: vm } = await supabase
           .from("instaclaw_vms")
-          .select("id, ip_address, ssh_port, ssh_user, assigned_to")
+          .select("id, ip_address, ssh_port, ssh_user, assigned_to, gateway_token, api_mode")
           .eq("assigned_to", user.id)
           .single();
 
@@ -64,60 +64,36 @@ export async function POST(req: NextRequest) {
 
         send({ step: "find_vm", status: "done", detail: `VM ${vm.id} (${vm.ip_address})` });
 
-        // Step 2: SSH upgrade — install new version
-        send({ step: "ssh_upgrade", status: "running", detail: `Installing openclaw@${version}...` });
+        // Step 2: Upgrade using the hardened upgradeOpenClaw() function
+        // (handles orphan cleanup, config settings, token sync, auth test)
+        send({ step: "ssh_upgrade", status: "running", detail: "Starting upgrade..." });
 
+        const result = await upgradeOpenClaw(
+          vm as VMRecord & { gateway_token?: string; api_mode?: string },
+          version,
+          (msg) => {
+            send({ step: "ssh_upgrade", status: "running", detail: msg });
+          },
+        );
+
+        if (!result.success) {
+          throw new Error(result.error ?? "Upgrade failed");
+        }
+
+        send({ step: "ssh_upgrade", status: "done", detail: "Upgrade complete" });
+
+        // Step 3: Version verify
+        send({ step: "verify", status: "running", detail: "Verifying version..." });
         const ssh = await connectSSH(vm as VMRecord);
         try {
-          const install = await ssh.execCommand(
-            `${NVM_PREAMBLE} && npm install -g openclaw@${version}`,
-          );
-          if (install.code !== 0) {
-            throw new Error(`npm install failed: ${install.stderr.slice(0, 300)}`);
-          }
-
-          send({ step: "ssh_upgrade", status: "running", detail: "Updating systemd service..." });
-          await ssh.execCommand(
-            `sed -i 's/^Description=.*/Description=OpenClaw Gateway v${version}/' ~/.config/systemd/user/openclaw-gateway.service && systemctl --user daemon-reload`,
-          );
-
-          send({ step: "ssh_upgrade", status: "running", detail: "Restarting gateway..." });
-          await ssh.execCommand("systemctl --user stop openclaw-gateway 2>/dev/null || true");
-          await new Promise((r) => setTimeout(r, 2000));
-          await ssh.execCommand("systemctl --user start openclaw-gateway");
-
-          send({ step: "ssh_upgrade", status: "done", detail: "Gateway restarted" });
-
-          // Step 3: Health check — 6 attempts x 5s = 30s max (CLAUDE.md Rule 5)
-          send({ step: "health_check", status: "running", detail: "Waiting for health..." });
-          let healthy = false;
-          for (let i = 0; i < 6; i++) {
-            await new Promise((r) => setTimeout(r, 5000));
-            const hc = await ssh.execCommand(
-              `curl -sf -m 5 -o /dev/null -w '%{http_code}' http://localhost:${GATEWAY_PORT}/health`,
-            );
-            if (hc.stdout.trim() === "200") {
-              healthy = true;
-              break;
-            }
-            send({ step: "health_check", status: "running", detail: `Attempt ${i + 1}/6 — not ready` });
-          }
-
-          if (!healthy) {
-            throw new Error("Gateway did not become healthy within 30s");
-          }
-          send({ step: "health_check", status: "done", detail: "Health check passed" });
-
-          // Step 4: Version verify
-          send({ step: "verify", status: "running", detail: "Verifying version..." });
           const vResult = await ssh.execCommand(`${NVM_PREAMBLE} && openclaw --version`);
           const installedVersion = vResult.stdout.trim();
           send({ step: "verify", status: "done", detail: `Running: ${installedVersion}`, version: installedVersion });
-
-          send({ step: "complete", status: "done", detail: "Canary upgrade complete", vmId: vm.id });
         } finally {
           ssh.dispose();
         }
+
+        send({ step: "complete", status: "done", detail: "Canary upgrade complete", vmId: vm.id });
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         send({ step: "error", status: "error", error: errorMsg });

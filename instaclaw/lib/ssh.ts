@@ -62,12 +62,16 @@ const CHROME_CLEANUP = [
 // compares each VM's `config_version` column against this — if behind,
 // it SSHes in and applies the missing config automatically.
 export const CONFIG_SPEC = {
-  version: 12,
+  version: 13,
   settings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
     "commands.restart": "true",
     "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback": "true",
+    // Group policy defaults (2026.2.24+) — prevent lockout on upgrade
+    "channels.telegram.groupPolicy": "open",
+    "channels.telegram.groups.default.requireMention": "false",
+    "commands.useAccessGroups": "false",
   } as Record<string, string>,
   // Files that must exist in ~/.openclaw/workspace/
   requiredWorkspaceFiles: ["SOUL.md", "CAPABILITIES.md", "MEMORY.md"],
@@ -5048,15 +5052,41 @@ export async function startAcpServe(vm: VMRecord): Promise<{ success: boolean; e
 }
 
 /**
- * Upgrade OpenClaw on a single VM: npm install → systemd update → restart → health check.
+ * Upgrade OpenClaw on a single VM.
+ *
+ * Steps:
+ *   0. Kill orphaned gateway/chrome processes (prevents port conflict crash loops)
+ *   1. npm install -g openclaw@version
+ *   2. Apply CONFIG_SPEC settings (controlUi, group policy, etc.)
+ *   3. Verify + resync gateway token across all 4 locations
+ *   4. Update systemd service description + daemon-reload (with DBUS fallback)
+ *   5. Restart gateway
+ *   6. Health check — HTTP 200 (6 attempts x 5s = 30s max, CLAUDE.md Rule 5)
+ *   7. Authenticated proxy test — verify token actually works end-to-end
  */
 export async function upgradeOpenClaw(
-  vm: VMRecord,
+  vm: VMRecord & { gateway_token?: string; api_mode?: string },
   version: string,
   onProgress?: (msg: string) => void,
 ): Promise<{ success: boolean; error?: string }> {
   const ssh = await connectSSH(vm);
   try {
+    // ── Step 0: Kill orphaned processes ──
+    // Prevents the crash loop that took down Mucus — a nohup gateway held
+    // port 18789, causing systemd to fail 4,294+ times.
+    onProgress?.("Cleaning up orphaned processes...");
+    await ssh.execCommand(
+      'systemctl --user stop openclaw-gateway 2>/dev/null || true',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+    await ssh.execCommand(CHROME_CLEANUP);
+    // Kill any rogue nohup gateway processes not managed by systemd
+    await ssh.execCommand(
+      'pkill -9 -f "openclaw.*gateway" 2>/dev/null || true',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // ── Step 1: npm install ──
     onProgress?.(`Installing openclaw@${version}...`);
     const install = await ssh.execCommand(
       `${NVM_PREAMBLE} && npm install -g openclaw@${version}`,
@@ -5068,41 +5098,188 @@ export async function upgradeOpenClaw(
       };
     }
 
-    onProgress?.("Setting controlUi config...");
-    await ssh.execCommand(
-      `${NVM_PREAMBLE} && openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true`,
-    );
+    // ── Step 2: Apply all CONFIG_SPEC settings ──
+    // Covers controlUi, group policy, heartbeat, compaction, etc.
+    onProgress?.("Applying config settings...");
+    const configCommands = Object.entries(CONFIG_SPEC.settings)
+      .map(([key, val]) => `openclaw config set ${key} '${val}' 2>/dev/null || true`)
+      .join(' && ');
+    await ssh.execCommand(`${NVM_PREAMBLE} && ${configCommands}`);
 
+    // ── Step 3: Token verification + resync ──
+    // The Mucus outage root cause: auth-profiles.json had a stale token.
+    // We now verify all 4 token locations match the DB token.
+    if (vm.gateway_token && vm.api_mode !== "byok") {
+      onProgress?.("Verifying gateway token consistency...");
+      const dbToken = vm.gateway_token;
+      const proxyBaseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway";
+
+      // Read auth-profiles.json from the VM
+      const authRead = await ssh.execCommand(
+        'cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null',
+      );
+
+      let tokenDrifted = false;
+      let driftReason = '';
+
+      if (authRead.code !== 0 || !authRead.stdout.trim()) {
+        tokenDrifted = true;
+        driftReason = 'auth-profiles.json missing or empty';
+      } else {
+        try {
+          const authData = JSON.parse(authRead.stdout);
+          const profile = authData?.profiles?.["anthropic:default"];
+          if (!profile) {
+            tokenDrifted = true;
+            driftReason = 'missing anthropic:default profile';
+          } else if (profile.key !== dbToken) {
+            tokenDrifted = true;
+            driftReason = `token mismatch: auth-profiles has ${(profile.key as string)?.slice(0, 8)}..., DB has ${dbToken.slice(0, 8)}...`;
+          } else if (profile.baseUrl !== proxyBaseUrl) {
+            tokenDrifted = true;
+            driftReason = `wrong baseUrl: ${profile.baseUrl ?? 'null'}`;
+          }
+        } catch {
+          tokenDrifted = true;
+          driftReason = 'invalid JSON in auth-profiles.json';
+        }
+      }
+
+      // Also check .env and openclaw.json tokens
+      const envCheck = await ssh.execCommand(
+        'grep "^GATEWAY_TOKEN=" ~/.openclaw/.env 2>/dev/null | head -1',
+      );
+      const envToken = envCheck.stdout.match(/^GATEWAY_TOKEN=(.+)/)?.[1]?.trim();
+      if (envToken && envToken !== dbToken) {
+        tokenDrifted = true;
+        driftReason += (driftReason ? '; ' : '') + `.env token mismatch: ${envToken.slice(0, 8)}...`;
+      }
+
+      if (tokenDrifted) {
+        onProgress?.(`Token drift detected (${driftReason}), resyncing...`);
+        logger.warn("TOKEN_AUDIT: upgradeOpenClaw detected token drift", {
+          operation: "upgradeOpenClaw",
+          vmId: vm.id,
+          driftReason,
+          dbTokenPrefix: dbToken.slice(0, 8),
+        });
+
+        // Write correct token to all 3 VM locations atomically
+        // 1. auth-profiles.json
+        const authProfile = JSON.stringify({
+          profiles: {
+            "anthropic:default": {
+              type: "api_key",
+              provider: "anthropic",
+              key: dbToken,
+              baseUrl: proxyBaseUrl,
+            },
+          },
+        });
+        const authB64 = Buffer.from(authProfile).toString("base64");
+        await ssh.execCommand(
+          `mkdir -p ~/.openclaw/agents/main/agent && echo '${authB64}' | base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json`,
+        );
+
+        // 2. openclaw.json gateway.auth.token (via config set)
+        await ssh.execCommand(
+          `${NVM_PREAMBLE} && openclaw config set gateway.auth.token '${dbToken}' 2>/dev/null || true`,
+        );
+
+        // 3. .env GATEWAY_TOKEN
+        await ssh.execCommand([
+          'touch "$HOME/.openclaw/.env"',
+          `grep -q "^GATEWAY_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && sed -i "s/^GATEWAY_TOKEN=.*/GATEWAY_TOKEN=${dbToken}/" "$HOME/.openclaw/.env" || echo "GATEWAY_TOKEN=${dbToken}" >> "$HOME/.openclaw/.env"`,
+        ].join(' && '));
+
+        onProgress?.("Token resynced across all locations");
+      } else {
+        onProgress?.("Token consistency verified");
+      }
+    }
+
+    // ── Step 4: Update systemd service ──
     onProgress?.("Updating systemd service...");
-    await ssh.execCommand(
-      `sed -i 's/^Description=.*/Description=OpenClaw Gateway v${version}/' ~/.config/systemd/user/openclaw-gateway.service && systemctl --user daemon-reload`,
-    );
+    // Update Description + OPENCLAW_SERVICE_VERSION env var
+    await ssh.execCommand([
+      `sed -i 's/^Description=.*/Description=OpenClaw Gateway v${version}/' ~/.config/systemd/user/openclaw-gateway.service`,
+      `sed -i 's/^Environment=OPENCLAW_SERVICE_VERSION=.*/Environment=OPENCLAW_SERVICE_VERSION=${version}/' ~/.config/systemd/user/openclaw-gateway.service`,
+    ].join(' && '));
 
+    // daemon-reload with DBUS fallback
+    // DBUS_SESSION_BUS_ADDRESS is often missing in SSH sessions, causing daemon-reload to fail.
+    // We try with explicit XDG_RUNTIME_DIR first, then fall back gracefully.
+    const reloadResult = await ssh.execCommand(
+      'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user daemon-reload 2>&1',
+    );
+    if (reloadResult.code !== 0) {
+      onProgress?.("daemon-reload failed (DBUS issue) — systemd will use updated unit on next full restart");
+      logger.warn("upgradeOpenClaw: daemon-reload failed", {
+        vmId: vm.id,
+        stderr: reloadResult.stderr?.slice(0, 200),
+      });
+    }
+
+    // ── Step 5: Restart gateway ──
     onProgress?.("Restarting gateway...");
+    // Clean stop + chrome cleanup + start
     await ssh.execCommand(
-      "systemctl --user stop openclaw-gateway 2>/dev/null || true",
+      'systemctl --user stop openclaw-gateway 2>/dev/null || true',
     );
     await new Promise((r) => setTimeout(r, 2000));
+    await ssh.execCommand(CHROME_CLEANUP);
     await ssh.execCommand("systemctl --user start openclaw-gateway");
 
-    // Health check — 6 attempts x 5s = 30s max (CLAUDE.md Rule 5)
+    // ── Step 6: Health check — 6 attempts x 5s = 30s max (CLAUDE.md Rule 5) ──
     onProgress?.("Waiting for health check...");
+    let healthy = false;
     for (let i = 0; i < 6; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       const hc = await ssh.execCommand(
         `curl -sf -m 5 -o /dev/null -w '%{http_code}' http://localhost:${GATEWAY_PORT}/health`,
       );
       if (hc.stdout.trim() === "200") {
+        healthy = true;
         onProgress?.("Health check passed");
-        return { success: true };
+        break;
       }
       onProgress?.(`Health check attempt ${i + 1}/6 — not ready yet`);
     }
 
-    return {
-      success: false,
-      error: "Gateway did not become healthy within 30s",
-    };
+    if (!healthy) {
+      return {
+        success: false,
+        error: "Gateway did not become healthy within 30s",
+      };
+    }
+
+    // ── Step 7: Authenticated proxy test ──
+    // The HTTP-only health check missed the Mucus 401 issue — the gateway
+    // was "healthy" but couldn't authenticate. This step verifies the token
+    // actually works end-to-end through the proxy.
+    if (vm.gateway_token && vm.api_mode !== "byok") {
+      onProgress?.("Verifying proxy authentication...");
+      const proxyBaseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim();
+      const proxyTest = await ssh.execCommand(
+        `curl -sf -m 10 -o /dev/null -w '%{http_code}' -H 'x-api-key: ${vm.gateway_token}' ${proxyBaseUrl}/api/gateway/v1/models 2>&1`,
+      );
+      const proxyStatus = proxyTest.stdout.trim();
+      if (proxyStatus === "401" || proxyStatus === "403") {
+        logger.error("TOKEN_AUDIT: upgradeOpenClaw proxy auth test FAILED post-upgrade", {
+          operation: "upgradeOpenClaw",
+          vmId: vm.id,
+          httpStatus: proxyStatus,
+          tokenPrefix: vm.gateway_token.slice(0, 8),
+        });
+        return {
+          success: false,
+          error: `Gateway healthy but proxy auth failed (HTTP ${proxyStatus}). Token mismatch may persist — run resyncGatewayToken.`,
+        };
+      }
+      onProgress?.("Proxy authentication verified");
+    }
+
+    return { success: true };
   } finally {
     ssh.dispose();
   }

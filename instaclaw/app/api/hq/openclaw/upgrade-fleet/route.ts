@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
         const supabase = getSupabase();
         const { data: vms, error } = await supabase
           .from("instaclaw_vms")
-          .select("id, ip_address, ssh_port, ssh_user, assigned_to")
+          .select("id, ip_address, ssh_port, ssh_user, assigned_to, gateway_token, api_mode")
           .not("assigned_to", "is", null);
 
         if (error || !vms) {
