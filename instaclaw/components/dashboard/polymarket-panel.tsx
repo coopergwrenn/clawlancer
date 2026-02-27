@@ -19,6 +19,9 @@ import {
   DollarSign,
   TrendingUp,
   Pause,
+  ExternalLink,
+  ChevronRight,
+  Lock,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────
@@ -236,6 +239,107 @@ function Section({
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Funding Guide (collapsible options) ─────────────
+
+function FundingGuide() {
+  const [openOption, setOpenOption] = useState<string | null>(null);
+
+  const options = [
+    {
+      id: "have-polygon",
+      title: "Already have USDC on Polygon?",
+      content: (
+        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          Send it directly to the wallet address above. It will appear in your balance within a few minutes.
+        </p>
+      ),
+    },
+    {
+      id: "other-chain",
+      title: "Have USDC on another chain?",
+      content: (
+        <div className="text-xs space-y-2" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          <p>
+            Bridge it to Polygon using Jumper Exchange &mdash; paste your wallet address above as the destination and select Polygon as the target network.
+          </p>
+          <a
+            href="https://jumper.exchange"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: "rgba(59,130,246,0.1)",
+              color: "rgb(59,130,246)",
+              border: "1px solid rgba(59,130,246,0.2)",
+            }}
+          >
+            Open Jumper Exchange
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      ),
+    },
+    {
+      id: "buy-usdc",
+      title: "Need to buy USDC?",
+      content: (
+        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          Buy USDC on Coinbase, Binance, or any major exchange. When withdrawing, select <strong>Polygon</strong> as the network and paste the wallet address above as the destination.
+        </p>
+      ),
+    },
+  ];
+
+  return (
+    <div
+      className="rounded-lg overflow-hidden"
+      style={{ border: "1px solid var(--border)" }}
+    >
+      <p className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+        How to fund
+      </p>
+      {options.map((opt, i) => {
+        const isOpen = openOption === opt.id;
+        return (
+          <div
+            key={opt.id}
+            style={{ borderTop: i > 0 ? "1px solid var(--border)" : undefined }}
+          >
+            <button
+              onClick={() => setOpenOption(isOpen ? null : opt.id)}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-left cursor-pointer"
+            >
+              <span className="text-xs font-medium">{opt.title}</span>
+              <ChevronRight
+                className="w-3.5 h-3.5 shrink-0 transition-transform"
+                style={{
+                  color: "var(--muted)",
+                  transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                }}
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {isOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-3 pb-3">
+                    {opt.content}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -848,9 +952,45 @@ function SetupFlow({
                     </div>
                   </div>
 
-                  <p className="text-xs mb-3" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-                    Send USDC on Polygon to this address to fund your agent&apos;s trading wallet.
-                  </p>
+                  {/* Your Wallet — trust card */}
+                  <div
+                    className="rounded-lg p-4 mb-3"
+                    style={{ background: "rgba(34,197,94,0.03)", border: "1px solid rgba(34,197,94,0.12)" }}
+                  >
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <Lock className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+                      <p className="text-xs font-semibold" style={{ color: "rgb(34,197,94)" }}>Your Wallet, Your Keys</p>
+                    </div>
+                    <ul className="space-y-1.5 text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        This is <strong>your</strong> wallet. The private key is stored securely on your dedicated VM &mdash; only your agent has access.
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        You can export your private key anytime from your VM via SSH.
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        You can withdraw your funds at any time by telling your agent &ldquo;withdraw my USDC to [your address].&rdquo;
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
+                        InstaClaw never has access to your private key or funds.
+                      </li>
+                    </ul>
+                  </div>
+
+                  {/* Chain warning */}
+                  <div
+                    className="rounded-lg p-3 flex items-start gap-2 mb-3"
+                    style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}
+                  >
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "rgb(239,68,68)" }} />
+                    <p className="text-xs font-medium" style={{ color: "rgb(239,68,68)", lineHeight: "1.5" }}>
+                      Send USDC on Polygon network only. USDC sent on other networks (Ethereum, Base, Arbitrum) will not appear.
+                    </p>
+                  </div>
 
                   {/* Big address + copy */}
                   <div
@@ -877,21 +1017,16 @@ function SetupFlow({
                     </button>
                   </div>
 
-                  {/* Helper text */}
-                  <div
-                    className="rounded-lg p-3 flex items-start gap-2 mb-3"
-                    style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.1)" }}
-                  >
-                    <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
-                    <div className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-                      <p>
-                        You can buy USDC on Coinbase, Binance, or any major exchange, then withdraw to Polygon.
-                      </p>
-                      <p className="mt-1 font-medium">
-                        We recommend starting with $10&ndash;50 USDC.
-                      </p>
-                    </div>
-                  </div>
+                  {/* How to fund — collapsible options */}
+                  <FundingGuide />
+
+                  <p className="text-xs mt-3 mb-2" style={{ color: "var(--muted)" }}>
+                    Start with as little as $1 USDC to test, or $10&ndash;50 to get started.
+                  </p>
+
+                  <p className="text-[11px] mb-3" style={{ color: "var(--muted)", opacity: 0.7, lineHeight: "1.5" }}>
+                    Want to withdraw? Just tell your agent &ldquo;send my USDC to [your wallet address]&rdquo; and it will transfer your funds back to you.
+                  </p>
 
                   {/* Skip option */}
                   <button
