@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RotateCw, Loader2, Search, Download, Plus, Star, TrendingUp, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSearchParams } from "next/navigation";
+import { getSkillIconPath } from "@/lib/skill-icons";
 
 // ── Types ────────────────────────────────────────────
 
@@ -603,7 +604,17 @@ function SkillCard({
     >
       <div className="flex items-start gap-3.5">
         {/* Icon */}
-        <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
+        {getSkillIconPath(skill.slug) ? (
+          <img
+            src={getSkillIconPath(skill.slug)!}
+            alt=""
+            width={24}
+            height={24}
+            className="shrink-0 mt-0.5"
+          />
+        ) : (
+          <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
+        )}
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -741,7 +752,17 @@ function IntegrationCard({
     >
       <div className="flex items-start gap-3.5">
         {/* Icon */}
-        <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
+        {getSkillIconPath(skill.slug) ? (
+          <img
+            src={getSkillIconPath(skill.slug)!}
+            alt=""
+            width={24}
+            height={24}
+            className="shrink-0 mt-0.5"
+          />
+        ) : (
+          <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
+        )}
 
         {/* Content */}
         <div className="flex-1 min-w-0">
