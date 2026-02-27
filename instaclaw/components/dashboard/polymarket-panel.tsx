@@ -355,7 +355,7 @@ export default function PolymarketPanel() {
       <Section
         icon={Wallet}
         title="Trading Account"
-        subtitle="Required before your agent can place any bets"
+        subtitle="Required before your agent can place any trades"
         defaultOpen
         badge={wallet ? truncateAddr(wallet.address) : undefined}
       >
@@ -388,7 +388,7 @@ export default function PolymarketPanel() {
         ) : (
           <div className="space-y-3">
             <p className="text-sm" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-              Your agent needs a trading account to place bets on prediction markets.
+              Your agent needs a trading account to place trades on Polymarket.
               This creates a secure wallet that only your agent can access.
             </p>
             <div
@@ -526,10 +526,10 @@ export default function PolymarketPanel() {
           ) : (
             <div className="space-y-1">
               <p className="text-sm" style={{ color: "var(--muted)" }}>
-                No active bets. Once you turn on trading and fund your account, your agent
-                can start placing bets for you.
+                No active trades. Once you turn on trading and fund your account, your agent
+                can start placing trades for you.
               </p>
-              <BotMessage message="What predictions do you think are good bets right now?" />
+              <BotMessage message="What predictions do you think are good trades right now?" />
             </div>
           )}
         </Section>
@@ -547,11 +547,11 @@ export default function PolymarketPanel() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">
-                  {riskDraft.enabled ? "Trading is turned on" : "Let my agent place bets"}
+                  {riskDraft.enabled ? "Trading is turned on" : "Let my agent place trades"}
                 </p>
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
                   {riskDraft.enabled
-                    ? "Your agent can bet within the limits you set below."
+                    ? "Your agent can trade within the limits you set below."
                     : "Flip this on to allow your agent to trade. You control all the limits."}
                 </p>
               </div>
@@ -591,7 +591,7 @@ export default function PolymarketPanel() {
                 >
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#ea580c" }} />
                   <p className="text-xs" style={{ color: "#ea580c" }}>
-                    Trading is on. Your agent will respect the limits below. Any bet larger
+                    Trading is on. Your agent will respect the limits below. Any trade larger
                     than your confirmation amount will need your approval first.
                   </p>
                 </div>
@@ -616,7 +616,7 @@ export default function PolymarketPanel() {
                     },
                     {
                       key: "maxPositionSizeUSDC" as const,
-                      label: "Biggest single bet",
+                      label: "Biggest single trade",
                       help: "The most your agent can put on one outcome",
                     },
                   ].map(({ key, label, help }) => (
@@ -686,7 +686,7 @@ export default function PolymarketPanel() {
       <Section
         icon={ScrollText}
         title="Trade History"
-        subtitle="Every bet your agent has placed, with its reasoning"
+        subtitle="Every trade your agent has placed, with its reasoning"
         badge={trades.length ? `${trades.length}` : undefined}
       >
         {trades.length ? (
@@ -726,7 +726,7 @@ export default function PolymarketPanel() {
         ) : (
           <div className="space-y-1">
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              No trades yet. Once trading is on, every bet your agent places will show up
+              No trades yet. Once trading is on, every trade your agent places will show up
               here with the reasoning behind it.
             </p>
           </div>

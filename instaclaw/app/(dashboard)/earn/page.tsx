@@ -71,9 +71,9 @@ const CHANNELS: EarningChannel[] = [
   },
   {
     id: "polymarket",
-    name: "Prediction Markets",
-    headline: "Track event odds and trade on real-world outcomes",
-    description: "Your agent can monitor prediction markets (like Polymarket), watch for price changes, and even place trades for you with safety limits you control.",
+    name: "Polymarket",
+    headline: "Track odds and place trades on Polymarket — the world's largest prediction market",
+    description: "Your agent monitors Polymarket, watches for price changes, and places trades for you with safety limits you control.",
     icon: TrendingUp,
     status: "one-click",
     effort: "One-time setup",
@@ -263,7 +263,7 @@ export default function EarnPage() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search (e.g. Shopify, prediction markets, freelance...)"
+          placeholder="Search (e.g. Shopify, Polymarket, freelance...)"
           className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none"
           style={{
             background: "var(--card)",
