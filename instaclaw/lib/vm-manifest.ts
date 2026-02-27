@@ -108,7 +108,7 @@ export function getTemplateContent(key: string): string {
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 15,
+  version: 16,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   configSettings: {

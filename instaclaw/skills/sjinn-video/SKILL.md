@@ -322,7 +322,133 @@ The proxy enforces these limits automatically. If you hit the limit, the proxy r
 
 ---
 
-## Error Handling
+## Failure Handling & Escalation
+
+### 1. Submission Verification
+
+After every `action=create` call, verify the response **immediately**:
+
+```bash
+# After submitting:
+HTTP_CODE=$(echo "$RESPONSE" | jq -r '.status // empty')
+ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error // empty')
+
+# Agent API: must have chat_id
+CHAT_ID=$(echo "$RESPONSE" | jq -r '.data.chat_id // empty')
+# Tool API: must have task_id
+TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id // empty')
+```
+
+**Hard rule:** If the response has no `chat_id` (Agent API) or no `task_id` (Tool API), the submission FAILED. Do NOT poll. Tell the user immediately and retry once.
+
+### 2. Retrieval Validation — API Type Matching
+
+**CRITICAL:** You MUST query with the SAME API type used during creation.
+
+| Created with | Query with | ID field | Correct |
+|-------------|-----------|----------|---------|
+| `"api": "agent"` | `"api": "agent"` | `chat_id` | YES |
+| `"api": "tool"` | `"api": "tool"` | `task_id` | YES |
+| `"api": "agent"` | `"api": "tool"` | `task_id` | **NO — will return nothing** |
+| `"api": "tool"` | `"api": "agent"` | `chat_id` | **NO — will return nothing** |
+
+**Hard rule:** When you save a pending task to `video-history.json`, you MUST record which `api` type was used. When querying, you MUST use that same `api` type and corresponding ID field.
+
+**There is NO `fetch` action.** There is NO GET endpoint. The ONLY way to retrieve results is `POST ?action=query` with the correct API type and ID.
+
+### 3. Retry Limits (Hard Rules)
+
+| Phase | Max Retries | Interval | After Exhaustion |
+|-------|------------|----------|-----------------|
+| Submission (`create`) | 2 | 30 seconds | Tell user, stop |
+| Polling (`query`) | 40 polls (10 min) | 15 seconds | Escalate (see below) |
+| Download (`curl -sL`) | 3 | 10 seconds | Report URL to user |
+| Telegram send | 2 | 5 seconds | Save locally, tell user path |
+
+**Hard rules:**
+- NEVER poll more than 40 times for a single video (10 minutes at 15s intervals)
+- NEVER retry a submission more than twice
+- NEVER silently drop a failed generation — always tell the user what happened
+
+### 4. Stalled Job Detection
+
+During polling, track the `status` value:
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| `0` | Queued | Normal — keep polling |
+| `1` | Completed | Extract URL, download |
+| `2` | Processing | Normal IF progressing |
+| `-1` | Failed | Stop polling, tell user |
+| No change after 20 polls | Stalled | Escalate |
+
+**Hard rule:** If `status` stays at the same value for 20 consecutive polls (5 minutes), the job is STALLED. Stop polling. Tell the user:
+
+> "Your video generation appears to be stuck on the backend. This is a known intermittent issue. Would you like me to try again with a new submission?"
+
+### 5. Escalation Protocol
+
+When a generation fails after exhausting retries:
+
+1. **Tell the user immediately** — never go silent
+2. **Log the failure** — append to `~/memory/video-history.json` with `"status": "failed"` and `"failure_reason": "..."`
+3. **Offer alternatives:**
+   - "Want me to try again?" (resubmit)
+   - "Want me to try cheap mode?" (faster, more reliable)
+   - "Want me to try a different model?" (if one model is failing)
+4. **Do NOT retry automatically more than once** — ask the user first
+
+### 6. Pre-Flight Checklist
+
+Before EVERY video generation, verify:
+
+```bash
+# 1. GATEWAY_TOKEN exists
+GATEWAY_TOKEN=$(grep GATEWAY_TOKEN ~/.openclaw/.env | cut -d= -f2)
+if [ -z "$GATEWAY_TOKEN" ]; then
+  echo "GATEWAY_TOKEN not configured"
+  # Tell user: "Video generation isn't set up yet. Contact support."
+  exit 1
+fi
+
+# 2. Quick connectivity test (optional, skip if recent success)
+TEST=$(curl -s -o /dev/null -w "%{http_code}" "https://instaclaw.io/api/gateway/sjinn?action=query" \
+  -H "Authorization: Bearer $GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"api":"tool","task_id":"00000000-0000-0000-0000-000000000000"}')
+# 200 = endpoint reachable (even if task not found, response is valid)
+# 401/403 = token issue
+# 5xx = backend down
+```
+
+### 7. Model Selection & Fallback Order
+
+If a specific model fails, try the next one:
+
+| Priority | Model | API | tool_type |
+|----------|-------|-----|-----------|
+| 1 | Seedance 2.0 (auto) | Agent API | n/a |
+| 2 | Veo3 | Tool API | `veo3-text-to-video-fast-api` |
+| 3 | Sora2 | Tool API | `sora2-text-to-video-api` |
+
+**Only fall back if:**
+- The user didn't request a specific model
+- The first attempt returned an error (not just slow)
+
+Tell the user when falling back: "The default model had an issue, trying Veo3 instead."
+
+### 8. Real-Time Communication Rules
+
+- **NEVER go silent for more than 2 minutes** during a generation
+- **ALWAYS tell the user what happened** when something fails — never swallow errors
+- **NEVER claim a video was generated** unless you have a downloaded file you can send
+- **NEVER say "I'll send it shortly"** unless you actually have the URL and are downloading
+- **If polling finds nothing after 5 minutes**, proactively update the user — don't wait for timeout
+- **If you lose track of a task ID**, tell the user honestly: "I lost track of that generation. Want me to start a new one?"
+
+---
+
+## Error Codes
 
 | Error Code | Meaning | User-Facing Response |
 |------------|---------|---------------------|
