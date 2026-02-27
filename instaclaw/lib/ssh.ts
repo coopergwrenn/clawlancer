@@ -5346,22 +5346,67 @@ export async function upgradeOpenClaw(
       );
       const proxyStatus = proxyTest.stdout.trim();
       if (proxyStatus === "401" || proxyStatus === "403") {
-        logger.error("TOKEN_AUDIT: upgradeOpenClaw proxy auth test FAILED post-upgrade", {
+        logger.warn("TOKEN_AUDIT: upgradeOpenClaw proxy auth test failed, attempting auto-resync", {
           operation: "upgradeOpenClaw",
           vmId: vm.id,
           httpStatus: proxyStatus,
           tokenPrefix: vm.gateway_token.slice(0, 8),
         });
-        return {
-          success: false,
-          error: `Gateway healthy but proxy auth failed (HTTP ${proxyStatus}). Token mismatch may persist — run resyncGatewayToken.`,
-        };
+
+        // Auto-resync: generate new token and write to all 4 locations + DB.
+        // Don't make the user wait 5 minutes for the health cron to catch it.
+        onProgress?.("Proxy auth failed — auto-resyncing token...");
+        try {
+          // Dispose current SSH before resync (it opens its own connection)
+          ssh.dispose();
+          const resyncResult = await resyncGatewayToken(
+            vm as Parameters<typeof resyncGatewayToken>[0],
+            { apiMode: vm.api_mode ?? undefined },
+          );
+
+          if (resyncResult.healthy) {
+            // Re-test proxy with the new token
+            const retest = await testProxyRoundTrip(resyncResult.gatewayToken, 1);
+            if (retest.success) {
+              onProgress?.("Token resynced — proxy authentication verified");
+              logger.info("TOKEN_AUDIT: upgradeOpenClaw auto-resync fixed proxy auth", {
+                operation: "upgradeOpenClaw",
+                vmId: vm.id,
+                newTokenPrefix: resyncResult.gatewayToken.slice(0, 8),
+              });
+              return { success: true };
+            }
+          }
+
+          // Resync didn't fix it — report failure
+          logger.error("TOKEN_AUDIT: upgradeOpenClaw auto-resync did NOT fix proxy auth", {
+            operation: "upgradeOpenClaw",
+            vmId: vm.id,
+            healthy: resyncResult.healthy,
+          });
+          return {
+            success: false,
+            error: `Proxy auth failed (HTTP ${proxyStatus}). Auto-resync attempted but did not fix the issue.`,
+          };
+        } catch (resyncErr) {
+          logger.error("TOKEN_AUDIT: upgradeOpenClaw auto-resync threw", {
+            operation: "upgradeOpenClaw",
+            vmId: vm.id,
+            error: String(resyncErr),
+          });
+          return {
+            success: false,
+            error: `Proxy auth failed (HTTP ${proxyStatus}). Auto-resync failed: ${String(resyncErr)}`,
+          };
+        }
       }
       onProgress?.("Proxy authentication verified");
     }
 
     return { success: true };
   } finally {
+    // ssh.dispose() may have already been called if resync path was taken.
+    // NodeSSH.dispose() is safe to call multiple times.
     ssh.dispose();
   }
 }
