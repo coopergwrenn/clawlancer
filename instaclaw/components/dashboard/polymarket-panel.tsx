@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronDown,
@@ -16,6 +16,9 @@ import {
   Info,
   Copy,
   Check,
+  DollarSign,
+  TrendingUp,
+  Pause,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────
@@ -90,7 +93,39 @@ function truncateAddr(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
-// ── Copyable Bot Message (same pattern as earn page) ──
+const DEFAULT_RISK: RiskConfig = {
+  enabled: false,
+  dailySpendCapUSDC: 25,
+  confirmationThresholdUSDC: 10,
+  dailyLossLimitUSDC: 15,
+  maxPositionSizeUSDC: 5,
+};
+
+// Check USDC balance on Polygon via public RPC
+async function fetchUsdcBalance(address: string): Promise<number> {
+  const USDC = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
+  const USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+  const callData = (token: string) =>
+    "0x70a08231" + address.slice(2).toLowerCase().padStart(64, "0");
+  const rpcCall = (token: string) =>
+    fetch("https://polygon-rpc.com", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_call",
+        params: [{ to: token, data: callData(token) }, "latest"],
+        id: 1,
+      }),
+    }).then((r) => r.json());
+
+  const [a, b] = await Promise.all([rpcCall(USDC), rpcCall(USDC_E)]);
+  const parse = (hex: string | undefined) =>
+    hex && hex !== "0x" ? parseInt(hex, 16) / 1e6 : 0;
+  return parse(a.result) + parse(b.result);
+}
+
+// ── Copyable Bot Message ────────────────────────────
 
 function BotMessage({ message }: { message: string }) {
   const [copied, setCopied] = useState(false);
@@ -205,31 +240,62 @@ function Section({
   );
 }
 
-// ── Step Indicator ──────────────────────────────────
+// ── Progress Bar ────────────────────────────────────
 
-function StepIndicator({ step, completed, active }: { step: number; completed: boolean; active: boolean }) {
+const STEP_LABELS = ["Create Wallet", "Fund Wallet", "Set Limits", "Start Trading"];
+
+function ProgressBar({ currentStep, completedSteps }: { currentStep: number; completedSteps: Set<number> }) {
   return (
-    <div
-      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-      style={{
-        background: completed
-          ? "rgba(34,197,94,0.1)"
-          : active
-            ? "rgba(249,115,22,0.1)"
-            : "rgba(0,0,0,0.04)",
-        color: completed
-          ? "rgb(34,197,94)"
-          : active
-            ? "rgb(249,115,22)"
-            : "var(--muted)",
-        border: completed
-          ? "1px solid rgba(34,197,94,0.2)"
-          : active
-            ? "1px solid rgba(249,115,22,0.2)"
-            : "1px solid var(--border)",
-      }}
-    >
-      {completed ? <Check className="w-4 h-4" /> : step}
+    <div className="flex items-center gap-1 mb-5">
+      {STEP_LABELS.map((label, i) => {
+        const num = i + 1;
+        const done = completedSteps.has(num);
+        const active = num === currentStep;
+        return (
+          <div key={num} className="flex items-center gap-1 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                style={{
+                  background: done
+                    ? "rgba(34,197,94,0.12)"
+                    : active
+                      ? "rgba(249,115,22,0.12)"
+                      : "rgba(0,0,0,0.04)",
+                  color: done
+                    ? "rgb(34,197,94)"
+                    : active
+                      ? "rgb(249,115,22)"
+                      : "var(--muted)",
+                  border: done
+                    ? "1.5px solid rgba(34,197,94,0.3)"
+                    : active
+                      ? "1.5px solid rgba(249,115,22,0.3)"
+                      : "1.5px solid var(--border)",
+                }}
+              >
+                {done ? <Check className="w-3 h-3" /> : num}
+              </div>
+              <span
+                className="text-[10px] font-medium truncate hidden sm:block"
+                style={{
+                  color: done ? "rgb(34,197,94)" : active ? "rgb(249,115,22)" : "var(--muted)",
+                }}
+              >
+                {label}
+              </span>
+            </div>
+            {i < 3 && (
+              <div
+                className="flex-1 h-px mx-1"
+                style={{
+                  background: done ? "rgba(34,197,94,0.3)" : "var(--border)",
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -238,24 +304,24 @@ function StepIndicator({ step, completed, active }: { step: number; completed: b
 
 const RISK_FIELDS: { key: keyof Omit<RiskConfig, "enabled">; label: string; help: string }[] = [
   {
+    key: "maxPositionSizeUSDC",
+    label: "Maximum per trade",
+    help: "The most your agent can spend on a single trade",
+  },
+  {
     key: "dailySpendCapUSDC",
-    label: "Max daily spending",
-    help: "Your agent won't spend more than this per day",
+    label: "Maximum per day",
+    help: "Total your agent can spend across all trades in one day",
   },
   {
     key: "confirmationThresholdUSDC",
     label: "Ask me before spending over",
-    help: "Bets above this amount need your OK first",
+    help: "Trades above this amount need your approval first",
   },
   {
     key: "dailyLossLimitUSDC",
-    label: "Stop if I lose more than",
-    help: "Trading pauses for the day if losses hit this",
-  },
-  {
-    key: "maxPositionSizeUSDC",
-    label: "Biggest single trade",
-    help: "The most your agent can put on one outcome",
+    label: "Stop-loss for the day",
+    help: "Trading pauses automatically if daily losses hit this",
   },
 ];
 
@@ -270,7 +336,7 @@ function RiskLimitInputs({
     <div className="grid gap-3 sm:grid-cols-2">
       {RISK_FIELDS.map(({ key, label, help }) => (
         <div key={key}>
-          <label className="text-xs font-medium block mb-0.5">{label}</label>
+          <label className="text-xs font-semibold block mb-0.5">{label}</label>
           <p className="text-[11px] mb-1.5" style={{ color: "var(--muted)" }}>{help}</p>
           <div className="relative">
             <span
@@ -321,6 +387,11 @@ export default function PolymarketPanel({
   const [savingRisk, setSavingRisk] = useState(false);
   const [riskDraft, setRiskDraft] = useState<RiskConfig | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [checkingBalance, setCheckingBalance] = useState(false);
+  const [limitsSaved, setLimitsSaved] = useState(false);
+  const [fundingSkipped, setFundingSkipped] = useState(false);
+  const balancePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const showToast = useCallback((msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -351,7 +422,7 @@ export default function PolymarketPanel({
     setWatchlist(wl);
     setPositions(pos?.positions ?? []);
     setRiskConfig(rc);
-    setRiskDraft(rc);
+    setRiskDraft(rc ?? DEFAULT_RISK);
     setTrades(tl?.trades ?? []);
     setLoading(false);
   }, [fetchFile]);
@@ -359,6 +430,38 @@ export default function PolymarketPanel({
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  // Check balance when wallet exists
+  const checkBalance = useCallback(async (address: string) => {
+    setCheckingBalance(true);
+    try {
+      const bal = await fetchUsdcBalance(address);
+      setBalance(bal);
+    } catch {
+      // keep existing balance on error
+    } finally {
+      setCheckingBalance(false);
+    }
+  }, []);
+
+  // Auto-check balance on wallet load + poll every 15s until funded
+  useEffect(() => {
+    if (!wallet) return;
+    checkBalance(wallet.address);
+  }, [wallet, checkBalance]);
+
+  useEffect(() => {
+    if (!wallet || (balance !== null && balance > 0)) {
+      if (balancePollRef.current) clearInterval(balancePollRef.current);
+      return;
+    }
+    balancePollRef.current = setInterval(() => {
+      if (wallet) checkBalance(wallet.address);
+    }, 15000);
+    return () => {
+      if (balancePollRef.current) clearInterval(balancePollRef.current);
+    };
+  }, [wallet, balance, checkBalance]);
 
   // Derive setup state
   const setupComplete = wallet != null && riskConfig?.enabled === true;
@@ -377,6 +480,7 @@ export default function PolymarketPanel({
     }
   }, [loading, wallet, riskConfig, onStatusChange]);
 
+  // BUG FIX: Set wallet state directly from API response instead of relying on fetchAll
   async function handleSetupWallet() {
     setSettingUpWallet(true);
     try {
@@ -388,7 +492,19 @@ export default function PolymarketPanel({
       const data = await res.json();
       if (res.ok) {
         showToast("Trading account created!", "success");
-        fetchAll();
+        // Set wallet state directly — no fetchAll race condition
+        if (data.address) {
+          const newWallet: WalletInfo = {
+            address: data.address,
+            chain_id: 137,
+            created_at: new Date().toISOString(),
+          };
+          setWallet(newWallet);
+          setRiskConfig(DEFAULT_RISK);
+          setRiskDraft({ ...DEFAULT_RISK });
+          // Trigger initial balance check
+          checkBalance(data.address);
+        }
       } else {
         showToast(data.error || "Setup failed — try again", "error");
       }
@@ -413,13 +529,44 @@ export default function PolymarketPanel({
       });
       if (res.ok) {
         setRiskConfig(riskDraft);
-        showToast("Safety limits saved!", "success");
+        setLimitsSaved(true);
+        showToast(riskDraft.enabled ? "Trading enabled!" : "Safety limits saved!", "success");
       } else {
         const data = await res.json();
         showToast(data.error || "Failed to save", "error");
       }
     } catch {
       showToast("Network error — check your connection", "error");
+    } finally {
+      setSavingRisk(false);
+    }
+  }
+
+  async function handleEnableTrading() {
+    if (!riskDraft) return;
+    const updated = { ...riskDraft, enabled: true };
+    setRiskDraft(updated);
+    setSavingRisk(true);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_polymarket_risk",
+          riskConfig: updated,
+        }),
+      });
+      if (res.ok) {
+        setRiskConfig(updated);
+        showToast("Trading is live! Your agent is now monitoring Polymarket.", "success");
+      } else {
+        const data = await res.json();
+        showToast(data.error || "Failed to enable", "error");
+        setRiskDraft({ ...updated, enabled: false });
+      }
+    } catch {
+      showToast("Network error — check your connection", "error");
+      setRiskDraft({ ...updated, enabled: false });
     } finally {
       setSavingRisk(false);
     }
@@ -436,6 +583,8 @@ export default function PolymarketPanel({
       </div>
     );
   }
+
+  const isFunded = balance !== null && balance > 0;
 
   return (
     <div className="space-y-3">
@@ -457,22 +606,6 @@ export default function PolymarketPanel({
         )}
       </AnimatePresence>
 
-      {/* Refresh */}
-      <div className="flex justify-end">
-        <button
-          onClick={fetchAll}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all"
-          style={{
-            background: "rgba(0,0,0,0.04)",
-            color: "var(--muted)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <RefreshCw className="w-3 h-3" />
-          Refresh
-        </button>
-      </div>
-
       {setupComplete ? (
         <DashboardView
           wallet={wallet!}
@@ -480,10 +613,16 @@ export default function PolymarketPanel({
           positions={positions}
           riskConfig={riskConfig!}
           riskDraft={riskDraft!}
+          setRiskConfig={setRiskConfig}
           setRiskDraft={setRiskDraft}
           trades={trades}
           savingRisk={savingRisk}
           handleSaveRisk={handleSaveRisk}
+          balance={balance}
+          checkingBalance={checkingBalance}
+          onCheckBalance={() => wallet && checkBalance(wallet.address)}
+          fetchAll={fetchAll}
+          showToast={showToast}
         />
       ) : (
         <SetupFlow
@@ -494,6 +633,14 @@ export default function PolymarketPanel({
           savingRisk={savingRisk}
           handleSetupWallet={handleSetupWallet}
           handleSaveRisk={handleSaveRisk}
+          handleEnableTrading={handleEnableTrading}
+          balance={balance}
+          checkingBalance={checkingBalance}
+          onCheckBalance={() => wallet && checkBalance(wallet.address)}
+          isFunded={isFunded}
+          limitsSaved={limitsSaved}
+          fundingSkipped={fundingSkipped}
+          onSkipFunding={() => setFundingSkipped(true)}
         />
       )}
     </div>
@@ -510,6 +657,14 @@ function SetupFlow({
   savingRisk,
   handleSetupWallet,
   handleSaveRisk,
+  handleEnableTrading,
+  balance,
+  checkingBalance,
+  onCheckBalance,
+  isFunded,
+  limitsSaved,
+  fundingSkipped,
+  onSkipFunding,
 }: {
   wallet: WalletInfo | null;
   riskDraft: RiskConfig | null;
@@ -518,261 +673,386 @@ function SetupFlow({
   savingRisk: boolean;
   handleSetupWallet: () => void;
   handleSaveRisk: () => void;
+  handleEnableTrading: () => void;
+  balance: number | null;
+  checkingBalance: boolean;
+  onCheckBalance: () => void;
+  isFunded: boolean;
+  limitsSaved: boolean;
+  fundingSkipped: boolean;
+  onSkipFunding: () => void;
 }) {
   const hasWallet = wallet != null;
   const [addrCopied, setAddrCopied] = useState(false);
+  const step2Unlocked = hasWallet;
+  const step3Unlocked = hasWallet && (isFunded || fundingSkipped);
+  const step4Unlocked = step3Unlocked && limitsSaved;
 
-  // Initialize risk draft with defaults if wallet exists but no config yet
-  useEffect(() => {
-    if (hasWallet && !riskDraft) {
-      setRiskDraft({
-        enabled: false,
-        dailySpendCapUSDC: 25,
-        confirmationThresholdUSDC: 10,
-        dailyLossLimitUSDC: 15,
-        maxPositionSizeUSDC: 10,
-      });
-    }
-  }, [hasWallet, riskDraft, setRiskDraft]);
+  // Derive current step + completed steps
+  const completedSteps = new Set<number>();
+  if (hasWallet) completedSteps.add(1);
+  if (isFunded) completedSteps.add(2);
+  if (limitsSaved) completedSteps.add(3);
+
+  let currentStep = 1;
+  if (hasWallet) currentStep = 2;
+  if (step3Unlocked) currentStep = 3;
+  if (step4Unlocked) currentStep = 4;
 
   return (
-    <div className="space-y-4">
-      {/* ── Step 1: Create Wallet ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="glass rounded-xl p-5"
-        style={{ border: hasWallet ? "1px solid rgba(34,197,94,0.2)" : "1px solid var(--border)" }}
-      >
-        <div className="flex items-start gap-3">
-          <StepIndicator step={1} completed={hasWallet} active={!hasWallet} />
-          <div className="flex-1 min-w-0">
-            {hasWallet ? (
-              <div>
+    <div>
+      {/* Progress indicator */}
+      <ProgressBar currentStep={currentStep} completedSteps={completedSteps} />
+
+      <div className="space-y-3">
+        {/* ── Step 1: Create Wallet ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="rounded-xl p-5"
+          style={{
+            border: hasWallet ? "1px solid rgba(34,197,94,0.2)" : "1px solid var(--border)",
+            background: hasWallet ? "rgba(34,197,94,0.02)" : "var(--card)",
+          }}
+        >
+          {hasWallet ? (
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.3)" }}
+              >
+                <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+              </div>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>
-                  Trading account created
+                  Wallet created
                 </p>
-                <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                  Created {new Date(wallet.created_at).toLocaleDateString()}
+                <p className="text-xs" style={{ color: "var(--muted)" }}>
+                  {truncateAddr(wallet.address)} &middot; Created {new Date(wallet.created_at).toLocaleDateString()}
                 </p>
-              </div>
-            ) : (
-              <div>
-                <h3 className="text-lg font-semibold mb-1">Get Started with Polymarket</h3>
-                <p className="text-sm mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-                  Your agent needs a trading account to track and trade on Polymarket.
-                  This creates a secure wallet that only your agent can access.
-                </p>
-                <div
-                  className="rounded-lg p-3 flex items-start gap-2 mb-4"
-                  style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
-                >
-                  <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--muted)" }} />
-                  <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
-                    No money is spent until you fund it and enable trading.
-                  </p>
-                </div>
-                <button
-                  onClick={handleSetupWallet}
-                  disabled={settingUpWallet}
-                  className="px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
-                  style={{
-                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
-                    color: "#fff",
-                    boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)",
-                  }}
-                >
-                  {settingUpWallet ? "Creating account..." : (
-                    <>
-                      Create Wallet
-                      <span
-                        className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
-                        style={{
-                          background: "rgba(255,255,255,0.25)",
-                          backdropFilter: "blur(8px)",
-                          color: "#fff",
-                          border: "1px solid rgba(255,255,255,0.3)",
-                        }}
-                      >
-                        Free
-                      </span>
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* ── Step 2: Fund Wallet ── */}
-      <AnimatePresence>
-        {hasWallet && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.05 }}
-            className="glass rounded-xl p-5"
-            style={{ border: "1px solid var(--border)" }}
-          >
-            <div className="flex items-start gap-3">
-              <StepIndicator step={2} completed={false} active={true} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold mb-1">Fund Your Wallet</p>
-                <p className="text-xs mb-3" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
-                  Send USDC (Polygon) to your trading wallet. Your agent can&apos;t trade until the wallet has funds.
-                </p>
-
-                {/* Address display + copy */}
-                <div
-                  className="flex items-center gap-2 rounded-lg px-3 py-2.5"
-                  style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
-                >
-                  <Wallet className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--muted)" }} />
-                  <span className="text-xs font-mono flex-1 truncate">{wallet.address}</span>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(wallet.address);
-                      setAddrCopied(true);
-                      setTimeout(() => setAddrCopied(false), 2000);
-                    }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all shrink-0"
-                    style={{
-                      background: addrCopied ? "rgba(34,197,94,0.1)" : "rgba(59,130,246,0.1)",
-                      color: addrCopied ? "rgb(34,197,94)" : "rgb(59,130,246)",
-                      border: addrCopied ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(59,130,246,0.2)",
-                    }}
-                  >
-                    {addrCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    {addrCopied ? "Copied!" : "Copy"}
-                  </button>
-                </div>
-
-                <div
-                  className="rounded-lg p-3 flex items-start gap-2 mt-3"
-                  style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.1)" }}
-                >
-                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
-                  <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
-                    You can also ask your bot how to deposit funds.
-                  </p>
-                </div>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Step 3: Set Safety Limits ── */}
-      <AnimatePresence>
-        {hasWallet && riskDraft && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="glass rounded-xl p-5"
-            style={{ border: "1px solid var(--border)" }}
-          >
-            <div className="flex items-start gap-3">
-              <StepIndicator step={3} completed={false} active={true} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold mb-1">Set Safety Limits</p>
-                <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
-                  Control how much your agent can spend. You can change these anytime.
+          ) : (
+            <div>
+              <h3 className="text-lg font-semibold mb-1">Get Started with Polymarket</h3>
+              <p className="text-sm mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                Your agent needs a trading wallet to place trades on Polymarket.
+                This creates a secure Polygon wallet that only your agent controls.
+              </p>
+              <div
+                className="rounded-lg p-3 flex items-start gap-2 mb-4"
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+              >
+                <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--muted)" }} />
+                <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
+                  No money is spent until you fund it and enable trading.
                 </p>
-                <RiskLimitInputs riskDraft={riskDraft} setRiskDraft={setRiskDraft} />
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Step 4: Enable Trading ── */}
-      <AnimatePresence>
-        {hasWallet && riskDraft && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.15 }}
-            className="glass rounded-xl p-5"
-            style={{ border: "1px solid var(--border)" }}
-          >
-            <div className="flex items-start gap-3">
-              <StepIndicator step={4} completed={false} active={true} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold mb-1">Enable Trading</p>
-                <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
-                  Flip the switch and save to let your agent trade within the limits you set above.
-                </p>
-
-                {/* Trading toggle */}
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm font-medium">
-                    {riskDraft.enabled ? "Trading is on" : "Let my agent place trades"}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setRiskDraft({ ...riskDraft, enabled: !riskDraft.enabled })}
-                    className="relative w-12 h-7 rounded-full transition-all cursor-pointer shrink-0"
-                    style={{
-                      background: riskDraft.enabled
-                        ? "linear-gradient(135deg, rgba(249,115,22,0.8), rgba(234,88,12,0.9))"
-                        : "rgba(0,0,0,0.08)",
-                      boxShadow: riskDraft.enabled
-                        ? "0 0 0 1px rgba(249,115,22,0.3), 0 2px 6px rgba(249,115,22,0.2)"
-                        : "0 0 0 1px rgba(0,0,0,0.08)",
-                    }}
-                  >
+              <button
+                onClick={handleSetupWallet}
+                disabled={settingUpWallet}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                style={{
+                  background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                  color: "#fff",
+                  boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)",
+                }}
+              >
+                {settingUpWallet ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Creating your secure wallet...
+                  </>
+                ) : (
+                  <>
+                    Create Wallet
                     <span
-                      className="absolute top-1 w-5 h-5 rounded-full transition-all"
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
                       style={{
-                        left: riskDraft.enabled ? "24px" : "4px",
-                        background: "white",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-                        transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
+                        background: "rgba(255,255,255,0.25)",
+                        backdropFilter: "blur(8px)",
+                        color: "#fff",
+                        border: "1px solid rgba(255,255,255,0.3)",
                       }}
-                    />
-                  </button>
-                </div>
+                    >
+                      Free
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </motion.div>
 
-                {riskDraft.enabled && (
+        {/* ── Step 2: Fund Wallet ── */}
+        <AnimatePresence>
+          {step2Unlocked && wallet && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.08 }}
+              className="rounded-xl p-5"
+              style={{
+                border: isFunded
+                  ? "1px solid rgba(34,197,94,0.2)"
+                  : currentStep === 2
+                    ? "1px solid rgba(249,115,22,0.2)"
+                    : "1px solid var(--border)",
+                background: isFunded
+                  ? "rgba(34,197,94,0.02)"
+                  : "var(--card)",
+              }}
+            >
+              {isFunded ? (
+                <div className="flex items-center gap-3">
                   <div
-                    className="flex items-start gap-2 p-3 rounded-lg mb-4"
-                    style={{
-                      background: "rgba(249,115,22,0.06)",
-                      border: "1px solid rgba(249,115,22,0.15)",
-                    }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.3)" }}
                   >
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#ea580c" }} />
-                    <p className="text-xs" style={{ color: "#ea580c" }}>
-                      Trading will be on. Your agent will respect the limits above. Any trade
-                      larger than your confirmation amount will need your approval first.
+                    <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>
+                      Wallet funded
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                      Balance: ${balance?.toFixed(2)} USDC
                     </p>
                   </div>
-                )}
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
+                      <p className="text-sm font-semibold">Fund Your Wallet</p>
+                    </div>
+                    {/* Balance display */}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-sm font-bold tabular-nums"
+                        style={{ color: balance !== null && balance > 0 ? "rgb(34,197,94)" : "var(--muted)" }}
+                      >
+                        ${balance !== null ? balance.toFixed(2) : "0.00"} USDC
+                      </span>
+                      <button
+                        onClick={onCheckBalance}
+                        disabled={checkingBalance}
+                        className="p-1 rounded-md cursor-pointer transition-all disabled:opacity-50"
+                        style={{ color: "var(--muted)" }}
+                        title="Check balance"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${checkingBalance ? "animate-spin" : ""}`} />
+                      </button>
+                    </div>
+                  </div>
 
-                <button
-                  onClick={handleSaveRisk}
-                  disabled={savingRisk}
-                  className="px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
-                  style={{
-                    background: riskDraft.enabled
-                      ? "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))"
-                      : "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
-                    color: "#fff",
-                    boxShadow: riskDraft.enabled
-                      ? "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)"
-                      : "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
-                  }}
-                >
-                  {savingRisk ? "Saving..." : riskDraft.enabled ? "Save & Enable Trading" : "Save Limits"}
-                </button>
+                  <p className="text-xs mb-3" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                    Send USDC on Polygon to this address to fund your agent&apos;s trading wallet.
+                  </p>
+
+                  {/* Big address + copy */}
+                  <div
+                    className="flex items-center gap-2 rounded-lg px-4 py-3 mb-3"
+                    style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+                  >
+                    <Wallet className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
+                    <span className="text-xs sm:text-sm font-mono flex-1 truncate">{wallet.address}</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(wallet.address);
+                        setAddrCopied(true);
+                        setTimeout(() => setAddrCopied(false), 2000);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0"
+                      style={{
+                        background: addrCopied ? "rgba(34,197,94,0.1)" : "rgba(59,130,246,0.1)",
+                        color: addrCopied ? "rgb(34,197,94)" : "rgb(59,130,246)",
+                        border: addrCopied ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(59,130,246,0.2)",
+                      }}
+                    >
+                      {addrCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {addrCopied ? "Copied!" : "Copy Address"}
+                    </button>
+                  </div>
+
+                  {/* Helper text */}
+                  <div
+                    className="rounded-lg p-3 flex items-start gap-2 mb-3"
+                    style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.1)" }}
+                  >
+                    <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
+                    <div className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                      <p>
+                        You can buy USDC on Coinbase, Binance, or any major exchange, then withdraw to Polygon.
+                      </p>
+                      <p className="mt-1 font-medium">
+                        We recommend starting with $10&ndash;50 USDC.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Skip option */}
+                  <button
+                    onClick={onSkipFunding}
+                    className="text-[11px] font-medium cursor-pointer transition-all"
+                    style={{ color: "var(--muted)", opacity: 0.7 }}
+                  >
+                    Skip &mdash; I&apos;ll fund later
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Step 3: Set Safety Limits ── */}
+        <AnimatePresence>
+          {step3Unlocked && riskDraft && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.08 }}
+              className="rounded-xl p-5"
+              style={{
+                border: limitsSaved
+                  ? "1px solid rgba(34,197,94,0.2)"
+                  : currentStep === 3
+                    ? "1px solid rgba(249,115,22,0.2)"
+                    : "1px solid var(--border)",
+                background: limitsSaved
+                  ? "rgba(34,197,94,0.02)"
+                  : "var(--card)",
+              }}
+            >
+              {limitsSaved ? (
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.3)" }}
+                  >
+                    <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>
+                      Safety limits saved
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                      ${riskDraft.maxPositionSizeUSDC}/trade &middot; ${riskDraft.dailySpendCapUSDC}/day limit
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Shield className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
+                    <p className="text-sm font-semibold">Set Your Safety Limits</p>
+                  </div>
+                  <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                    These limits control how much your agent can spend. You can change them anytime.
+                    We&apos;ve pre-filled conservative defaults to get you started.
+                  </p>
+
+                  <RiskLimitInputs riskDraft={riskDraft} setRiskDraft={setRiskDraft} />
+
+                  <button
+                    onClick={handleSaveRisk}
+                    disabled={savingRisk}
+                    className="mt-4 px-5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
+                      color: "#fff",
+                      boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
+                    }}
+                  >
+                    {savingRisk ? "Saving..." : "Save Limits"}
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Step 4: Enable Trading ── */}
+        <AnimatePresence>
+          {step4Unlocked && riskDraft && wallet && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.08 }}
+              className="rounded-xl p-5"
+              style={{
+                border: "1px solid rgba(249,115,22,0.2)",
+                background: "rgba(249,115,22,0.02)",
+              }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
+                <p className="text-sm font-semibold">Ready to Start Trading</p>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+              <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                Your agent will monitor Polymarket and place trades within your safety limits.
+                You&apos;ll need to approve any trade above ${riskDraft.confirmationThresholdUSDC}.
+              </p>
+
+              {/* Summary */}
+              <div
+                className="rounded-lg p-4 mb-4 space-y-2"
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+              >
+                <div className="flex justify-between text-xs">
+                  <span style={{ color: "var(--muted)" }}>Wallet</span>
+                  <span className="font-mono">{truncateAddr(wallet.address)}</span>
+                </div>
+                {balance !== null && (
+                  <div className="flex justify-between text-xs">
+                    <span style={{ color: "var(--muted)" }}>Balance</span>
+                    <span className="font-semibold">${balance.toFixed(2)} USDC</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span style={{ color: "var(--muted)" }}>Max per trade</span>
+                  <span>${riskDraft.maxPositionSizeUSDC}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span style={{ color: "var(--muted)" }}>Daily spending limit</span>
+                  <span>${riskDraft.dailySpendCapUSDC}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span style={{ color: "var(--muted)" }}>Needs approval above</span>
+                  <span>${riskDraft.confirmationThresholdUSDC}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span style={{ color: "var(--muted)" }}>Daily stop-loss</span>
+                  <span>${riskDraft.dailyLossLimitUSDC}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleEnableTrading}
+                disabled={savingRisk}
+                className="w-full px-5 py-3 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                style={{
+                  background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                  color: "#fff",
+                  boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25)",
+                }}
+              >
+                {savingRisk ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Enabling...
+                  </span>
+                ) : (
+                  "Start Trading"
+                )}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -785,28 +1065,77 @@ function DashboardView({
   positions,
   riskConfig,
   riskDraft,
+  setRiskConfig,
   setRiskDraft,
   trades,
   savingRisk,
   handleSaveRisk,
+  balance,
+  checkingBalance,
+  onCheckBalance,
+  fetchAll,
+  showToast,
 }: {
   wallet: WalletInfo;
   watchlist: Watchlist | null;
   positions: Position[];
   riskConfig: RiskConfig;
   riskDraft: RiskConfig;
+  setRiskConfig: (rc: RiskConfig) => void;
   setRiskDraft: (rc: RiskConfig | null) => void;
   trades: Trade[];
   savingRisk: boolean;
   handleSaveRisk: () => void;
+  balance: number | null;
+  checkingBalance: boolean;
+  onCheckBalance: () => void;
+  fetchAll: () => void;
+  showToast: (msg: string, type: "success" | "error") => void;
 }) {
   const [addrCopied, setAddrCopied] = useState(false);
+  const totalPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+
+  async function handleToggleTrading() {
+    const toggled = { ...riskDraft, enabled: !riskDraft.enabled };
+    setRiskDraft(toggled);
+    setRiskConfig(toggled);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_polymarket_risk", riskConfig: toggled }),
+      });
+      if (res.ok) {
+        showToast(toggled.enabled ? "Trading resumed" : "Trading paused", "success");
+      }
+    } catch {
+      // revert on error
+      setRiskDraft({ ...toggled, enabled: !toggled.enabled });
+      setRiskConfig({ ...toggled, enabled: !toggled.enabled });
+    }
+  }
 
   return (
     <div className="space-y-3">
+      {/* Refresh */}
+      <div className="flex justify-end">
+        <button
+          onClick={fetchAll}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all"
+          style={{
+            background: "rgba(0,0,0,0.04)",
+            color: "var(--muted)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <RefreshCw className="w-3 h-3" />
+          Refresh
+        </button>
+      </div>
+
       {/* ── Status Card ── */}
       <div
-        className="glass rounded-xl p-4"
+        className="rounded-xl p-4"
         style={{
           border: riskConfig.enabled
             ? "1px solid rgba(34,197,94,0.2)"
@@ -816,6 +1145,7 @@ function DashboardView({
             : "rgba(249,115,22,0.03)",
         }}
       >
+        {/* Top row: status + toggle */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div
@@ -830,22 +1160,13 @@ function DashboardView({
           </div>
           <button
             type="button"
-            onClick={() => {
-              const toggled = { ...riskDraft, enabled: !riskDraft.enabled };
-              setRiskDraft(toggled);
-              // Auto-save the toggle
-              fetch("/api/settings/update", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "update_polymarket_risk", riskConfig: toggled }),
-              });
-            }}
+            onClick={handleToggleTrading}
             className="relative w-11 h-6 rounded-full transition-all cursor-pointer shrink-0"
             style={{
-              background: riskDraft.enabled
+              background: riskConfig.enabled
                 ? "linear-gradient(135deg, rgba(34,197,94,0.7), rgba(22,163,74,0.85))"
                 : "rgba(0,0,0,0.08)",
-              boxShadow: riskDraft.enabled
+              boxShadow: riskConfig.enabled
                 ? "0 0 0 1px rgba(34,197,94,0.3)"
                 : "0 0 0 1px rgba(0,0,0,0.08)",
             }}
@@ -853,7 +1174,7 @@ function DashboardView({
             <span
               className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
               style={{
-                left: riskDraft.enabled ? "22px" : "2px",
+                left: riskConfig.enabled ? "22px" : "2px",
                 background: "white",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                 transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
@@ -862,6 +1183,43 @@ function DashboardView({
           </button>
         </div>
 
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="text-center">
+            <p
+              className="text-lg font-bold tabular-nums"
+              style={{ color: balance !== null && balance > 0 ? "var(--foreground)" : "var(--muted)" }}
+            >
+              ${balance !== null ? balance.toFixed(2) : "—"}
+            </p>
+            <div className="flex items-center justify-center gap-1">
+              <p className="text-[10px]" style={{ color: "var(--muted)" }}>Balance</p>
+              <button
+                onClick={onCheckBalance}
+                disabled={checkingBalance}
+                className="cursor-pointer disabled:opacity-50"
+                style={{ color: "var(--muted)" }}
+              >
+                <RefreshCw className={`w-2.5 h-2.5 ${checkingBalance ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+          </div>
+          <div className="text-center">
+            <p
+              className="text-lg font-bold tabular-nums"
+              style={{ color: totalPnl > 0 ? "rgb(34,197,94)" : totalPnl < 0 ? "#ef4444" : "var(--foreground)" }}
+            >
+              {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+            </p>
+            <p className="text-[10px]" style={{ color: "var(--muted)" }}>P&L</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold">{positions.length}</p>
+            <p className="text-[10px]" style={{ color: "var(--muted)" }}>Positions</p>
+          </div>
+        </div>
+
+        {/* Wallet address */}
         <div className="flex items-center justify-between text-xs" style={{ color: "var(--muted)" }}>
           <div className="flex items-center gap-2">
             <Wallet className="w-3 h-3" />
@@ -878,11 +1236,11 @@ function DashboardView({
               {addrCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
             </button>
           </div>
-          {positions.length > 0 && (
-            <span>
-              <BarChart3 className="w-3 h-3 inline mr-1" />
-              {positions.length} active position{positions.length !== 1 ? "s" : ""}
-            </span>
+          {!riskConfig.enabled && (
+            <div className="flex items-center gap-1" style={{ color: "rgb(249,115,22)" }}>
+              <Pause className="w-3 h-3" />
+              <span className="text-[10px] font-medium">Paused</span>
+            </div>
           )}
         </div>
       </div>
@@ -890,7 +1248,7 @@ function DashboardView({
       {/* ── Markets You're Watching ── */}
       <Section
         icon={Eye}
-        title="Markets You're Watching"
+        title="Markets Your Agent Is Watching"
         subtitle="Your agent tracks these and alerts you when odds change"
         badge={watchlist?.markets.length ? `${watchlist.markets.length}` : undefined}
       >
@@ -940,10 +1298,10 @@ function DashboardView({
         )}
       </Section>
 
-      {/* ── Trade History ── */}
+      {/* ── Recent Trades ── */}
       <Section
         icon={ScrollText}
-        title="Trade History"
+        title="Recent Trades"
         subtitle="Every trade your agent has placed, with its reasoning"
         badge={trades.length ? `${trades.length}` : undefined}
       >
