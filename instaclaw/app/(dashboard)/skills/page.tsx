@@ -300,9 +300,11 @@ export default function SkillsPage() {
                 layoutId="skills-tab-pill"
                 className="absolute inset-0 rounded-lg"
                 style={{
-                  background: "var(--card)",
+                  background: "rgba(255,255,255,0.55)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
                   boxShadow:
-                    "0 0 0 1px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+                    "0 0 0 1px rgba(255,255,255,0.45), 0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.5)",
                 }}
                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
               />
