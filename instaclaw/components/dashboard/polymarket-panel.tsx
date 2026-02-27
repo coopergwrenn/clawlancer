@@ -300,7 +300,7 @@ function FundingGuide() {
       style={{ border: "1px solid var(--border)" }}
     >
       <p className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-        How to fund
+        Need help funding?
       </p>
       {options.map((opt, i) => {
         const isOpen = openOption === opt.id;
@@ -951,6 +951,9 @@ function SetupFlow({
                       </button>
                     </div>
                   </div>
+                  <p className="text-[11px] text-right mb-3" style={{ color: "var(--muted)", opacity: 0.6 }}>
+                    Balance updates automatically after you send funds
+                  </p>
 
                   {/* Your Wallet — trust card */}
                   <div
@@ -968,11 +971,11 @@ function SetupFlow({
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
-                        You can export your private key anytime from your VM via SSH.
+                        You can export your private key anytime from your agent&apos;s settings.
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
-                        You can withdraw your funds at any time by telling your agent &ldquo;withdraw my USDC to [your address].&rdquo;
+                        Withdraw your funds anytime &mdash; just message your agent &ldquo;send my funds to [paste your wallet address]&rdquo;
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(34,197,94)" }} />
@@ -1022,10 +1025,6 @@ function SetupFlow({
 
                   <p className="text-xs mt-3 mb-2" style={{ color: "var(--muted)" }}>
                     Start with as little as $1 USDC to test, or $10&ndash;50 to get started.
-                  </p>
-
-                  <p className="text-[11px] mb-3" style={{ color: "var(--muted)", opacity: 0.7, lineHeight: "1.5" }}>
-                    Want to withdraw? Just tell your agent &ldquo;send my USDC to [your wallet address]&rdquo; and it will transfer your funds back to you.
                   </p>
 
                   {/* Skip option */}
