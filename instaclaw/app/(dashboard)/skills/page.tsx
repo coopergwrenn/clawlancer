@@ -1024,11 +1024,12 @@ function MarketplaceShell() {
           <span
             className="inline-block px-3.5 py-1 rounded-full text-[11px] font-semibold mb-4"
             style={{
-              background:
-                "linear-gradient(135deg, rgba(59,130,246,0.18), rgba(37,99,235,0.12))",
+              background: "rgba(59,130,246,0.08)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
               color: "rgb(96,165,250)",
               boxShadow:
-                "0 0 0 1px rgba(59,130,246,0.25), 0 2px 8px rgba(59,130,246,0.1), inset 0 1px 0 rgba(255,255,255,0.1)",
+                "0 0 0 1px rgba(59,130,246,0.18), 0 1px 3px rgba(59,130,246,0.06), inset 0 1px 0 rgba(255,255,255,0.25)",
             }}
           >
             Coming Soon
