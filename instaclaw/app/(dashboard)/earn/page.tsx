@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Image from "next/image";
 import {
   Search,
   RefreshCw,
@@ -19,6 +18,18 @@ import {
   Wallet,
   AlertCircle,
 } from "lucide-react";
+
+// Polymarket icon — official brand symbol (from polymarket.com/brand)
+function PolymarketIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} style={style}>
+      <path
+        d="M375.84 389.422C375.84 403.572 375.84 410.647 371.212 414.154C366.585 417.662 359.773 415.75 346.15 411.927L127.22 350.493C119.012 348.19 114.907 347.038 112.534 343.907C110.161 340.776 110.161 336.513 110.161 327.988V184.012C110.161 175.487 110.161 171.224 112.534 168.093C114.907 164.962 119.012 163.81 127.22 161.507L346.15 100.072C359.773 96.2495 366.585 94.338 371.212 97.8455C375.84 101.353 375.84 108.428 375.84 122.578V389.422ZM164.761 330.463L346.035 381.337V279.595L164.761 330.463ZM139.963 306.862L321.201 256L139.963 205.138V306.862ZM164.759 181.537L346.035 232.406V130.663L164.759 181.537Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
 import { motion, AnimatePresence } from "motion/react";
 import PolymarketPanel from "@/components/dashboard/polymarket-panel";
 
@@ -75,7 +86,7 @@ const CHANNELS: EarningChannel[] = [
     name: "Polymarket",
     headline: "Track odds and place trades on Polymarket — the world's largest prediction market",
     description: "Your agent monitors Polymarket, watches for price changes, and places trades for you with safety limits you control.",
-    icon: TrendingUp,
+    icon: PolymarketIcon,
     status: "one-click",
     effort: "One-time setup",
     tags: ["prediction market", "trading", "polymarket", "betting", "odds", "probabilities", "invest"],
@@ -342,25 +353,15 @@ function ChannelCard({
     <div className="glass rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
       {/* Header row */}
       <button onClick={onToggle} className="w-full flex items-center gap-4 p-5 cursor-pointer text-left">
-        {channel.id === "polymarket" ? (
-          <Image
-            src="/images/polymarket-icon.png"
-            alt="Polymarket"
-            width={44}
-            height={44}
-            className="rounded-xl shrink-0"
-          />
-        ) : (
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-            style={{
-              background: channel.status === "active" ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.04)",
-              border: channel.status === "active" ? "1px solid rgba(34,197,94,0.15)" : "1px solid var(--border)",
-            }}
-          >
-            <Icon className="w-5 h-5" style={{ color: channel.status === "active" ? "rgb(34,197,94)" : "var(--muted)" }} />
-          </div>
-        )}
+        <div
+          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+          style={{
+            background: channel.status === "active" ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.04)",
+            border: channel.status === "active" ? "1px solid rgba(34,197,94,0.15)" : "1px solid var(--border)",
+          }}
+        >
+          <Icon className="w-5 h-5" style={{ color: channel.status === "active" ? "rgb(34,197,94)" : "var(--muted)" }} />
+        </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
