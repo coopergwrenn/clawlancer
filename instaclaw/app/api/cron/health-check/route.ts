@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, assignVMWithSSHCheck } from "@/lib/ssh";
+import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -181,13 +182,13 @@ export async function GET(req: NextRequest) {
     // This MUST be outside the healthy-only block. The Ladio incident happened
     // because session rotation only ran on healthy VMs — an unhealthy/failed VM
     // had its sessions grow to 1.9MB unchecked until they corrupted.
-    if (result.largestSessionBytes > CONFIG_SPEC.maxSessionBytes) {
+    if (result.largestSessionBytes > VM_MANIFEST.maxSessionBytes) {
       logger.warn("Session overflow detected, rotating", {
         route: "cron/health-check",
         vmId: vm.id,
         vmName: vm.name,
         largestSessionBytes: result.largestSessionBytes,
-        maxSessionBytes: CONFIG_SPEC.maxSessionBytes,
+        maxSessionBytes: VM_MANIFEST.maxSessionBytes,
       });
 
       try {
@@ -209,7 +210,7 @@ export async function GET(req: NextRequest) {
           vmId: vm.id,
         });
       }
-    } else if (result.largestSessionBytes > CONFIG_SPEC.sessionAlertBytes) {
+    } else if (result.largestSessionBytes > VM_MANIFEST.sessionAlertBytes) {
       // Alert threshold — session is growing but not yet critical
       sessionsAlerted++;
       logger.warn("Session approaching size limit", {
@@ -217,15 +218,15 @@ export async function GET(req: NextRequest) {
         vmId: vm.id,
         vmName: vm.name,
         largestSessionBytes: result.largestSessionBytes,
-        alertThreshold: CONFIG_SPEC.sessionAlertBytes,
-        rotateThreshold: CONFIG_SPEC.maxSessionBytes,
+        alertThreshold: VM_MANIFEST.sessionAlertBytes,
+        rotateThreshold: VM_MANIFEST.maxSessionBytes,
       });
 
       if (ADMIN_EMAIL) {
         try {
           await sendAdminAlertEmail(
             "Session Size Warning",
-            `VM ${vm.name ?? vm.id} (${vm.ip_address}) has a session file at ${Math.round(result.largestSessionBytes / 1024)}KB.\n\nAlert threshold: ${Math.round(CONFIG_SPEC.sessionAlertBytes / 1024)}KB\nAuto-rotate threshold: ${Math.round(CONFIG_SPEC.maxSessionBytes / 1024)}KB\n\nThe session will be auto-rotated if it exceeds ${Math.round(CONFIG_SPEC.maxSessionBytes / 1024)}KB. No action needed yet — this is an early warning.`
+            `VM ${vm.name ?? vm.id} (${vm.ip_address}) has a session file at ${Math.round(result.largestSessionBytes / 1024)}KB.\n\nAlert threshold: ${Math.round(VM_MANIFEST.sessionAlertBytes / 1024)}KB\nAuto-rotate threshold: ${Math.round(VM_MANIFEST.maxSessionBytes / 1024)}KB\n\nThe session will be auto-rotated if it exceeds ${Math.round(VM_MANIFEST.maxSessionBytes / 1024)}KB. No action needed yet — this is an early warning.`
           );
         } catch {
           // Non-fatal
@@ -609,7 +610,7 @@ export async function GET(req: NextRequest) {
   const staleVms = vms.filter(
     (vm) =>
       healthyVmIds.has(vm.id) &&
-      (vm.config_version ?? 0) < CONFIG_SPEC.version
+      (vm.config_version ?? 0) < VM_MANIFEST.version
   );
 
   const auditBatch = staleVms.slice(0, CONFIG_AUDIT_BATCH_SIZE);
@@ -643,7 +644,7 @@ export async function GET(req: NextRequest) {
       // Update config_version — even if nothing was fixed, the check passed
       await supabase
         .from("instaclaw_vms")
-        .update({ config_version: CONFIG_SPEC.version })
+        .update({ config_version: VM_MANIFEST.version })
         .eq("id", vm.id);
     } catch (err) {
       logger.error("Config audit failed", {
@@ -655,40 +656,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ========================================================================
-  // Fifth pass: Ensure MEMORY.md exists on all healthy VMs
-  // Without this file, agents have no long-term memory from day one.
-  // Piggybacks on the healthy VM list — only checks VMs we know are reachable.
-  // Limit to 5 per cycle to avoid SSH overload.
-  // ========================================================================
-  let memoryFilesCreated = 0;
-
-  const memoryCheckBatch = vms
-    .filter((vm) => healthyVmIds.has(vm.id))
-    .slice(0, 5);
-
-  for (const vm of memoryCheckBatch) {
-    try {
-      const created = await ensureMemoryFile(vm);
-      if (created) {
-        memoryFilesCreated++;
-      }
-    } catch (err) {
-      logger.error("Memory file check failed", {
-        error: String(err),
-        route: "cron/health-check",
-        vmId: vm.id,
-        vmName: vm.name,
-      });
-    }
-  }
-
-  if (memoryFilesCreated > 0) {
-    logger.info("Memory files created on VMs", {
-      route: "cron/health-check",
-      memoryFilesCreated,
-    });
-  }
+  // Fifth pass: MEMORY.md ensure — REMOVED (absorbed into VM Manifest reconciliation).
+  // MEMORY.md is now a create_if_missing entry in VM_MANIFEST.files, deployed
+  // by reconcileVM() during the config audit pass above.
+  const memoryFilesCreated = 0;
 
   // ========================================================================
   // Sixth pass: Memory health monitoring
