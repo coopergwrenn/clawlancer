@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, ensureMemoryFile, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, CONFIG_SPEC, assignVMWithSSHCheck } from "@/lib/ssh";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -416,6 +416,107 @@ export async function GET(req: NextRequest) {
           vmId: tgVm.id,
           error: String(err),
         });
+      }
+    }
+  }
+
+  // ========================================================================
+  // Telegram duplicate token detection
+  // If two VMs share a bot token, both fight over getUpdates and one goes
+  // silent. The most recently assigned VM wins — older VMs get their
+  // telegram_bot_token nulled out and telegram disabled in openclaw.json.
+  // ========================================================================
+  let telegramDupesFixed = 0;
+
+  const { data: allTgVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, ip_address, ssh_port, ssh_user, telegram_bot_token, assigned_to, assigned_at")
+    .in("status", ["assigned", "ready"])
+    .not("telegram_bot_token", "is", null);
+
+  if (allTgVms && allTgVms.length > 1) {
+    // Group by token
+    const tokenMap = new Map<string, typeof allTgVms>();
+    for (const tvm of allTgVms) {
+      const tok = tvm.telegram_bot_token as string;
+      if (!tokenMap.has(tok)) tokenMap.set(tok, []);
+      tokenMap.get(tok)!.push(tvm);
+    }
+
+    for (const [token, group] of tokenMap) {
+      if (group.length <= 1) continue;
+
+      // Sort by assigned_at DESC — most recent wins
+      group.sort((a, b) => {
+        const aDate = a.assigned_at ? new Date(a.assigned_at).getTime() : 0;
+        const bDate = b.assigned_at ? new Date(b.assigned_at).getTime() : 0;
+        return bDate - aDate;
+      });
+
+      const winner = group[0];
+      const losers = group.slice(1);
+
+      logger.error("Duplicate Telegram bot token detected", {
+        route: "cron/health-check",
+        tokenPrefix: token.slice(0, 10) + "...",
+        winnerVm: winner.name ?? winner.id,
+        loserVms: losers.map((l) => l.name ?? l.id),
+      });
+
+      for (const loser of losers) {
+        try {
+          // Null out the telegram token in the DB
+          await supabase
+            .from("instaclaw_vms")
+            .update({ telegram_bot_token: null })
+            .eq("id", loser.id);
+
+          // SSH in and disable telegram in openclaw.json so the gateway
+          // stops polling getUpdates for the duplicate token
+          try {
+            const loserSsh = await connectSSH({
+              id: loser.id,
+              ip_address: loser.ip_address,
+              ssh_port: loser.ssh_port ?? 22,
+              ssh_user: loser.ssh_user ?? "openclaw",
+            });
+            try {
+              await loserSsh.execCommand(
+                `${NVM_PREAMBLE} && openclaw config set channels.telegram.enabled false 2>/dev/null || true`,
+              );
+            } finally {
+              loserSsh.dispose();
+            }
+          } catch {
+            // SSH may fail on some VMs — DB null is the critical fix
+          }
+
+          telegramDupesFixed++;
+          logger.info("Duplicate Telegram token removed from loser VM", {
+            route: "cron/health-check",
+            loserVm: loser.name ?? loser.id,
+            winnerVm: winner.name ?? winner.id,
+            tokenPrefix: token.slice(0, 10) + "...",
+          });
+        } catch (err) {
+          logger.error("Failed to fix duplicate Telegram token", {
+            route: "cron/health-check",
+            vmId: loser.id,
+            error: String(err),
+          });
+        }
+      }
+
+      // Alert admin
+      if (ADMIN_EMAIL) {
+        try {
+          await sendAdminAlertEmail(
+            "Duplicate Telegram Bot Token Detected",
+            `${group.length} VMs share the same Telegram bot token (${token.slice(0, 10)}...).\n\nWinner (kept): ${winner.name ?? winner.id}\nLosers (telegram disabled): ${losers.map((l) => l.name ?? l.id).join(", ")}\n\nThe loser VMs need their users to provide a new Telegram bot token.`
+          );
+        } catch {
+          // Non-fatal
+        }
       }
     }
   }
@@ -1277,6 +1378,7 @@ export async function GET(req: NextRequest) {
     restarted,
     alerted,
     webhooksFixed,
+    telegramDupesFixed,
     suspended,
     sessionsCleared,
     sessionsAlerted,

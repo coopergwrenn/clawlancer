@@ -2467,6 +2467,26 @@ export async function configureOpenClaw(
       vmUpdate.channels_enabled = config.channels;
     }
     if (config.telegramBotToken) {
+      // Guard: verify no other active VM already uses this Telegram bot token.
+      // Duplicate tokens cause both VMs to fight over getUpdates, silencing one.
+      const { data: dupeVms } = await supabase
+        .from("instaclaw_vms")
+        .select("id, name, assigned_to")
+        .eq("telegram_bot_token", config.telegramBotToken)
+        .neq("id", vm.id)
+        .in("status", ["assigned", "ready"]);
+
+      if (dupeVms && dupeVms.length > 0) {
+        const dupeIds = dupeVms.map((d) => d.name ?? d.id).join(", ");
+        logger.error("Telegram token duplicate detected — blocking write", {
+          route: "lib/ssh/configureOpenClaw",
+          vmId: vm.id,
+          duplicateVms: dupeIds,
+          tokenPrefix: config.telegramBotToken.slice(0, 10) + "...",
+        });
+        throw new Error(`Telegram bot token is already in use by VM(s): ${dupeIds}. Each bot token must be unique.`);
+      }
+
       vmUpdate.telegram_bot_token = config.telegramBotToken;
     }
     if (config.discordBotToken) {
