@@ -234,29 +234,33 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Ephemeral browser cleanup: kill Chrome if stale (>30min) or memory-heavy (>40% RAM).
+    // Runs on ALL SSH-accessible VMs regardless of gateway health — orphan Chrome
+    // processes are most likely on UNHEALTHY VMs (the Mucus incident: gateway crash-looped
+    // for 15.5h while 14 orphan Chrome processes ate memory unchecked).
+    try {
+      const browserResult = await killStaleBrowser(vm);
+      if (browserResult.killed) {
+        browsersKilled++;
+        logger.info("Stale browser killed", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          reason: browserResult.reason,
+          gatewayHealthy: result.healthy,
+        });
+      }
+    } catch (err) {
+      logger.error("Failed to check/kill stale browser", {
+        error: String(err),
+        route: "cron/health-check",
+        vmId: vm.id,
+      });
+    }
+
     if (result.healthy) {
       healthy++;
       healthyVmIds.add(vm.id);
-
-      // Ephemeral browser: kill Chrome if stale (>30min) or memory-heavy (>40% RAM)
-      try {
-        const browserResult = await killStaleBrowser(vm);
-        if (browserResult.killed) {
-          browsersKilled++;
-          logger.info("Stale browser killed", {
-            route: "cron/health-check",
-            vmId: vm.id,
-            vmName: vm.name,
-            reason: browserResult.reason,
-          });
-        }
-      } catch (err) {
-        logger.error("Failed to check/kill stale browser", {
-          error: String(err),
-          route: "cron/health-check",
-          vmId: vm.id,
-        });
-      }
 
       // Reset fail count on success
       await supabase
@@ -356,6 +360,32 @@ export async function GET(req: NextRequest) {
           } catch {
             // Non-fatal
           }
+        }
+      }
+
+      // Fix 5: Sustained unhealthy alerting — escalate when a VM has been
+      // unhealthy for 6+ consecutive checks (~30+ min). The Mucus incident
+      // went 15.5 hours unnoticed because the initial restart failed (broken
+      // config) and no further alerts were sent.
+      const SUSTAINED_UNHEALTHY_THRESHOLD = 6;
+      if (newFailCount === SUSTAINED_UNHEALTHY_THRESHOLD && ADMIN_EMAIL) {
+        const downtimeMinutes = newFailCount * 5; // ~5 min per health cron cycle
+        try {
+          await sendAdminAlertEmail(
+            "URGENT: VM Unhealthy 30+ Minutes",
+            [
+              `VM ${vm.name ?? vm.id} has been unhealthy for ~${downtimeMinutes} minutes (${newFailCount} consecutive failures).`,
+              `IP: ${vm.ip_address}`,
+              `User: ${vm.assigned_to ?? "unassigned"}`,
+              `Health status: ${vm.health_status}`,
+              `Last error: Gateway health check failed after restart attempt at failure #${ALERT_THRESHOLD}.`,
+              "",
+              "The health cron attempted a restart at failure #3 but the gateway did not recover.",
+              "This requires manual investigation — possible broken config, OOM, or systemd crash loop.",
+            ].join("\n")
+          );
+        } catch {
+          // Non-fatal
         }
       }
     }

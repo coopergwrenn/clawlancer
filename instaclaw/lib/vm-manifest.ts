@@ -108,7 +108,7 @@ export function getTemplateContent(key: string): string {
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 17,
+  version: 19,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   configSettings: {
@@ -119,6 +119,7 @@ export const VM_MANIFEST = {
     "channels.telegram.groupPolicy": "open",
     "channels.telegram.groups.default.requireMention": "false",
     "commands.useAccessGroups": "false",
+    "browser.maxConcurrentContexts": "2",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
@@ -254,6 +255,17 @@ export const VM_MANIFEST = {
   openclawJsonSettings: {
     "skills.load.extraDirs": ["/home/openclaw/.openclaw/skills"],
   } as Record<string, unknown>,
+
+  // ── Systemd unit overrides for openclaw-gateway.service ──
+  // Applied by reconciler and configureOpenClaw after `openclaw gateway install`.
+  systemdOverrides: {
+    "KillMode": "mixed",           // Kill Chrome children when gateway stops (was: process)
+    "RestartSec": "10",            // Wait 10s between restarts (was: 5)
+    "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
+    "StartLimitIntervalSec": "300", // 5-minute window for burst counting
+    "StartLimitAction": "stop",    // Stop unit after burst exceeded (was: none → infinite loop)
+    "ExecStartPre": "/bin/bash -c 'pkill -9 -f \"chrome.*remote-debugging-port\" 2>/dev/null || true'",
+  } as Record<string, string>,
 
   // ── Session thresholds (operational, kept for reference) ──
   maxSessionBytes: 512 * 1024,

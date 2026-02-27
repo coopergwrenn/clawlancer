@@ -75,6 +75,9 @@ export async function reconcileVM(
     // ── Step 8: Auth profiles ──
     const authProfileFixed = await stepAuthProfiles(ssh, vm, result, dryRun);
 
+    // ── Step 8b: Systemd unit overrides (KillMode, crash-loop breaker, Chrome cleanup) ──
+    await stepSystemdUnit(ssh, manifest, result, dryRun);
+
     // ── Step 9: Gateway restart (only if auth-profiles.json was modified) ──
     if (authProfileFixed && !dryRun) {
       result.gatewayRestartNeeded = true;
@@ -685,5 +688,82 @@ async function stepGatewayRestart(
       vmId: vm.id,
     });
     result.fixed.push('gateway restarted (WARNING: health check failed post-restart)');
+  }
+}
+
+/**
+ * Step 8b: Patch the openclaw-gateway.service systemd unit file.
+ * Ensures KillMode=mixed (kill Chrome children), crash-loop circuit breaker,
+ * and Chrome orphan cleanup on start. Prevents the Mucus incident (15.5h crash
+ * loop with zombie Chrome processes).
+ */
+async function stepSystemdUnit(
+  ssh: SSHConnection,
+  manifest: typeof VM_MANIFEST,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const overrides = manifest.systemdOverrides;
+  if (!overrides) return;
+
+  const unitPath = "$HOME/.config/systemd/user/openclaw-gateway.service";
+
+  // Check if unit file exists
+  const check = await ssh.execCommand(`[ -f ${unitPath} ] && echo EXISTS || echo MISSING`);
+  if (check.stdout.trim() !== "EXISTS") {
+    result.alreadyCorrect.push("systemd unit: not installed (skip)");
+    return;
+  }
+
+  // Read current unit content to check what needs patching
+  const catResult = await ssh.execCommand(`cat ${unitPath}`);
+  const currentUnit = catResult.stdout;
+
+  const patches: string[] = [];
+
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key === "ExecStartPre") {
+      // ExecStartPre is special — check if any ExecStartPre exists
+      if (!currentUnit.includes("ExecStartPre=")) {
+        patches.push(`sed -i '/^ExecStart=/i ExecStartPre=${value.replace(/'/g, "'\\''")}'  ${unitPath}`);
+      }
+    } else {
+      // For all other keys, check if the current value matches
+      const regex = new RegExp(`^${key}=(.*)$`, "m");
+      const match = currentUnit.match(regex);
+      if (match && match[1] === value) {
+        continue; // Already correct
+      }
+      if (match) {
+        // Key exists but wrong value — replace
+        patches.push(`sed -i 's/^${key}=.*/${key}=${value.replace(/\//g, "\\/")}/' ${unitPath}`);
+      } else {
+        // Key missing — add to appropriate section
+        const section = ["StartLimitBurst", "StartLimitIntervalSec", "StartLimitAction"].includes(key)
+          ? "\\[Unit\\]"
+          : "\\[Service\\]";
+        patches.push(`sed -i '/${section}/a ${key}=${value}' ${unitPath}`);
+      }
+    }
+  }
+
+  if (patches.length === 0) {
+    result.alreadyCorrect.push("systemd unit: all overrides correct");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`systemd unit: would apply ${patches.length} patches`);
+    return;
+  }
+
+  // Apply all patches and reload
+  const patchCmd = patches.join(" && ") + " && systemctl --user daemon-reload";
+  const patchResult = await ssh.execCommand(patchCmd);
+  if (patchResult.code === 0) {
+    result.fixed.push(`systemd unit: applied ${patches.length} patches (${Object.keys(overrides).join(", ")})`);
+    result.gatewayRestartNeeded = true;
+  } else {
+    result.errors.push(`systemd unit patch failed: ${patchResult.stderr}`);
   }
 }
