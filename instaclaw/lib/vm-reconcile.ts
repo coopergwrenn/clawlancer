@@ -340,12 +340,17 @@ async function deployFileEntry(
 }
 
 /**
- * Step 2b: Ensure .bootstrap_consumed exists on VMs that have already bootstrapped.
+ * Step 2b: Clean up bootstrap on VMs that have already bootstrapped.
  *
- * The agent is supposed to create this file after the first conversation, but
- * it's unreliable — if missing, every /reset re-triggers the full "first moment
- * awake" intro. We detect already-bootstrapped VMs by checking for session files
- * (any .jsonl in the sessions directory = agent has been used).
+ * The agent is supposed to delete BOOTSTRAP.md after the first conversation,
+ * but it's unreliable. If BOOTSTRAP.md still exists, the agent reads it on
+ * every new session and re-triggers the "first moment awake" intro — the
+ * .bootstrap_consumed sentinel in SOUL.md is a rule the agent SHOULD follow
+ * but doesn't reliably check before reading BOOTSTRAP.md directly.
+ *
+ * Fix: delete BOOTSTRAP.md AND create .bootstrap_consumed on VMs where the
+ * agent has already been used (session files exist). New VMs (no sessions)
+ * are left alone so the first-run bootstrap works normally.
  */
 async function stepBootstrapConsumed(
   ssh: SSHConnection,
@@ -353,36 +358,38 @@ async function stepBootstrapConsumed(
   dryRun: boolean,
 ): Promise<void> {
   const workspace = '~/.openclaw/workspace';
+  const bootstrapFile = `${workspace}/BOOTSTRAP.md`;
   const flag = `${workspace}/.bootstrap_consumed`;
 
-  // Check if BOOTSTRAP.md exists but .bootstrap_consumed doesn't
+  // Check if BOOTSTRAP.md still exists
   const check = await ssh.execCommand(
-    `test -f ${workspace}/BOOTSTRAP.md && ! test -f ${flag} && echo NEEDS_FIX || echo OK`
+    `test -f ${bootstrapFile} && echo EXISTS || echo GONE`
   );
 
-  if (check.stdout.trim() !== 'NEEDS_FIX') {
-    result.alreadyCorrect.push('.bootstrap_consumed');
+  if (check.stdout.trim() !== 'EXISTS') {
+    result.alreadyCorrect.push('bootstrap (BOOTSTRAP.md already removed)');
     return;
   }
 
-  // Verify the agent has already been used (session files exist)
+  // BOOTSTRAP.md exists — check if agent has already been used
   const sessionCheck = await ssh.execCommand(
     `ls ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1 | grep -q . && echo HAS_SESSIONS || echo NO_SESSIONS`
   );
 
   if (sessionCheck.stdout.trim() !== 'HAS_SESSIONS') {
-    // New VM — agent hasn't been used yet, don't create the flag
-    result.alreadyCorrect.push('.bootstrap_consumed (new VM, skip)');
+    // New VM — agent hasn't been used yet, leave BOOTSTRAP.md for first-run
+    result.alreadyCorrect.push('bootstrap (new VM, keeping BOOTSTRAP.md)');
     return;
   }
 
+  // Agent has sessions — BOOTSTRAP.md should have been deleted after first conversation
   if (dryRun) {
-    result.fixed.push('[dry-run] create .bootstrap_consumed (agent already bootstrapped)');
+    result.fixed.push('[dry-run] delete BOOTSTRAP.md + create .bootstrap_consumed');
     return;
   }
 
-  await ssh.execCommand(`touch ${flag}`);
-  result.fixed.push('.bootstrap_consumed (safety: agent already bootstrapped)');
+  await ssh.execCommand(`rm -f ${bootstrapFile} && touch ${flag}`);
+  result.fixed.push('bootstrap cleanup (deleted BOOTSTRAP.md, created .bootstrap_consumed)');
 }
 
 async function stepSkills(
