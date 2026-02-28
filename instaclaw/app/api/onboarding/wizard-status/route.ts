@@ -36,6 +36,7 @@ export async function GET() {
     .from("instaclaw_pending_users")
     .select("telegram_bot_token, telegram_bot_username, discord_bot_token, api_mode, tier, default_model")
     .eq("user_id", session.user.id)
+    .is("consumed_at", null)
     .single();
 
   // Get VM info for bot username and chat_id

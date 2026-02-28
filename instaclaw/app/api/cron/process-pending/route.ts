@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   const { data: pending } = await supabase
     .from("instaclaw_pending_users")
     .select("*, instaclaw_users!inner(email)")
+    .is("consumed_at", null) // Skip already-consumed records
     .order("created_at", { ascending: true })
     .limit(10);
 
@@ -114,6 +115,7 @@ export async function GET(req: NextRequest) {
         .from("instaclaw_pending_users")
         .select("id")
         .eq("user_id", vm.assigned_to)
+        .is("consumed_at", null)
         .single();
 
       if (!hasPending) continue;
@@ -232,6 +234,7 @@ export async function GET(req: NextRequest) {
         .from("instaclaw_pending_users")
         .select("id")
         .eq("user_id", vm.assigned_to)
+        .is("consumed_at", null)
         .single();
 
       if (hasPending) continue;
@@ -297,6 +300,7 @@ export async function GET(req: NextRequest) {
   const { data: stalePending } = await supabase
     .from("instaclaw_pending_users")
     .select("user_id, created_at")
+    .is("consumed_at", null) // Only clean up non-consumed stale records
     .lt("created_at", tenMinutesAgo)
     .limit(10);
 
@@ -325,6 +329,25 @@ export async function GET(req: NextRequest) {
         staleDuration: Math.floor((Date.now() - new Date(p.created_at).getTime()) / 1000 / 60),
       });
     }
+  }
+
+  // -----------------------------------------------------------------
+  // Pass 5: Clean up consumed pending_users older than 24 hours.
+  // Consumed records are kept as a safety net for re-configure scenarios
+  // but serve no purpose after 24h.
+  // -----------------------------------------------------------------
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { error: consumedErr } = await supabase
+    .from("instaclaw_pending_users")
+    .delete()
+    .not("consumed_at", "is", null)
+    .lt("consumed_at", oneDayAgo);
+
+  if (consumedErr) {
+    logger.error("Failed to clean consumed pending records", {
+      route: "cron/process-pending",
+      error: String(consumedErr),
+    });
   }
 
   return NextResponse.json({

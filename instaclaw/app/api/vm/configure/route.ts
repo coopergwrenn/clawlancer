@@ -61,12 +61,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Idempotency guard: skip configure if VM is already healthy and was
+    // configured recently. Prevents redundant reconfigures from billing
+    // webhooks, process-pending cron, and health cron auto-migration
+    // from accidentally racing and wiping tokens.
+    const isForced = body.force === true;
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    const lastConfigured = vm.last_health_check ? new Date(vm.last_health_check).getTime() : 0;
+
+    if (
+      !isForced &&
+      vm.health_status === "healthy" &&
+      vm.gateway_url &&
+      lastConfigured > fiveMinutesAgo
+    ) {
+      logger.info("Configure skipped — VM already healthy and recently configured", {
+        route: "vm/configure",
+        userId,
+        vmId: vm.id,
+        healthStatus: vm.health_status,
+        lastConfigured: new Date(lastConfigured).toISOString(),
+      });
+      return NextResponse.json({ configured: true, healthy: true, skipped: true });
+    }
+
     // Get pending user config (may not exist — e.g. user paid but didn't
     // finish the onboarding wizard). Fall back to sensible defaults.
     const { data: pending } = await supabase
       .from("instaclaw_pending_users")
       .select("*")
       .eq("user_id", userId)
+      .is("consumed_at", null) // Skip already-consumed records
       .single();
 
     // If no pending config, build defaults from subscription + VM data
@@ -177,9 +202,12 @@ export async function POST(req: NextRequest) {
       .eq("id", userId);
 
     if (pending) {
+      // Soft-consume instead of hard-delete — keeps the record available for
+      // 24h in case a second configure fires and needs to re-read token data.
+      // Consumed records are cleaned up by process-pending cron after 24h.
       await supabase
         .from("instaclaw_pending_users")
-        .delete()
+        .update({ consumed_at: new Date().toISOString() })
         .eq("user_id", userId);
     }
 

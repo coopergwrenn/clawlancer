@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       .from("instaclaw_pending_users")
       .select("telegram_bot_token, telegram_bot_username, discord_bot_token, api_mode, api_key, tier, default_model")
       .eq("user_id", session.user.id)
+      .is("consumed_at", null) // Don't read back consumed records
       .single();
 
     // Merge: prefer incoming values, fall back to existing record

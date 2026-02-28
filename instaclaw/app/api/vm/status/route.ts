@@ -105,6 +105,7 @@ export async function GET() {
       .from("instaclaw_pending_users")
       .select("created_at, stripe_session_id")
       .eq("user_id", session.user.id)
+      .is("consumed_at", null)
       .single();
 
     if (pending) {

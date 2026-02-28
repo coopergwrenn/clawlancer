@@ -2500,6 +2500,31 @@ export async function configureOpenClaw(
       vmUpdate.discord_bot_token = config.discordBotToken;
     }
 
+    // TOKEN_GUARD: If we're not writing any token, verify we're not accidentally
+    // overwriting existing tokens with null. The conditional writes above already
+    // prevent this, but this belt-and-suspenders check logs when a caller "forgot"
+    // to pass a token so we catch regressions early.
+    if (!config.telegramBotToken && !config.discordBotToken) {
+      const { data: currentVm } = await supabase
+        .from("instaclaw_vms")
+        .select("telegram_bot_token, discord_bot_token")
+        .eq("id", vm.id)
+        .single();
+
+      if (currentVm?.telegram_bot_token && !vmUpdate.telegram_bot_token) {
+        logger.warn("TOKEN_GUARD: configureOpenClaw called without telegram token — preserving existing", {
+          vmId: vm.id,
+          existingTokenPrefix: currentVm.telegram_bot_token.slice(0, 10),
+        });
+      }
+      if (currentVm?.discord_bot_token && !vmUpdate.discord_bot_token) {
+        logger.warn("TOKEN_GUARD: configureOpenClaw called without discord token — preserving existing", {
+          vmId: vm.id,
+          existingTokenPrefix: currentVm.discord_bot_token.slice(0, 10),
+        });
+      }
+    }
+
     const { error: vmError } = await supabase
       .from("instaclaw_vms")
       .update(vmUpdate)
