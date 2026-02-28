@@ -108,7 +108,7 @@ export function getTemplateContent(key: string): string {
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 27,
+  version: 28,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   configSettings: {
@@ -288,6 +288,8 @@ export const VM_MANIFEST = {
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
     "TasksMax": "150",              // Max threads+processes (Node ~20 + Chrome ~50 + headroom)
     "OOMScoreAdjust": "500",        // Higher = killed first. sshd has -900. Gateway dies before sshd.
+    "RuntimeMaxSec": "86400",       // Auto-restart gateway after 24h to prevent memory bloat
+    "RuntimeRandomizedExtraSec": "3600", // Stagger restarts across fleet by up to 1h
   } as Record<string, string>,
 
   // ── Session thresholds (operational, kept for reference) ──

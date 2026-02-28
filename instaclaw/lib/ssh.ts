@@ -544,6 +544,7 @@ DISK_AGGRESSIVE_PCT = 90
 MAX_CHROME_PROCS = 6
 MAX_CHROME_RSS_MB = 1500
 GATEWAY_FAIL_THRESHOLD = 3
+GATEWAY_MAX_UPTIME_SEC = 48 * 3600  # 48 hours — restart to prevent memory bloat
 
 def get_ram_pct():
     """Get total RAM usage percentage."""
@@ -719,6 +720,32 @@ def disk_cleanup(aggressive=False):
 
     return actions
 
+def get_gateway_uptime_sec():
+    """Get gateway process uptime in seconds via /proc/<pid>/stat."""
+    try:
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        result = subprocess.run(
+            ["systemctl", "--user", "show", "openclaw-gateway", "--property=ExecMainStartTimestamp"],
+            capture_output=True, text=True, timeout=5, env=env,
+        )
+        # ExecMainStartTimestamp=Fri 2026-02-28 18:58:39 UTC
+        line = result.stdout.strip()
+        if "=" in line:
+            ts_str = line.split("=", 1)[1].strip()
+            if ts_str:
+                from datetime import datetime as dt
+                # Parse systemd timestamp format
+                for fmt in ["%a %Y-%m-%d %H:%M:%S %Z", "%a %Y-%m-%d %H:%M:%S UTC"]:
+                    try:
+                        start = dt.strptime(ts_str, fmt).replace(tzinfo=timezone.utc)
+                        return int((datetime.now(timezone.utc) - start).total_seconds())
+                    except ValueError:
+                        continue
+    except Exception:
+        pass
+    return 0
+
 def get_health_fail_count():
     """Read consecutive health fail count from file."""
     try:
@@ -764,6 +791,12 @@ def main():
     elif disk_pct > DISK_CLEANUP_PCT:
         actions.extend(disk_cleanup(aggressive=False))
 
+    # --- Gateway uptime check (prevent memory bloat) ---
+    gateway_uptime = get_gateway_uptime_sec()
+    if gateway_uptime > GATEWAY_MAX_UPTIME_SEC:
+        actions.append(f"restart_gateway(uptime={gateway_uptime // 3600}h)")
+        actions.append(restart_gateway())
+
     # --- Gateway health check ---
     fail_count = get_health_fail_count()
     if gateway_healthy:
@@ -787,6 +820,7 @@ def main():
         "chrome_count": chrome_count,
         "chrome_rss_mb": chrome_rss_mb,
         "gateway_healthy": gateway_healthy,
+        "gateway_uptime_hours": round(gateway_uptime / 3600, 1),
         "actions_taken": actions,
         "uptime_seconds": uptime_seconds,
     }
