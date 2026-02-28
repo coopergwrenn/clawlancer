@@ -121,10 +121,13 @@ export async function POST(req: NextRequest) {
               userId: session.user.id,
               tokenLength: telegramToken.length,
               tokenPrefix: telegramToken.slice(0, 8),
+              rawTokenLength: rawToken.length,
+              charsStripped: rawToken.length - telegramToken.length,
               telegramResponse: JSON.stringify(getMeData).slice(0, 300),
             });
+            const tgDesc = getMeData.description || "unknown error";
             return NextResponse.json(
-              { error: "Invalid Telegram bot token. Please double-check the token from @BotFather." },
+              { error: `Token rejected by Telegram: "${tgDesc}". Token length: ${telegramToken.length}, chars stripped: ${rawToken.length - telegramToken.length}. Please double-check with @BotFather.` },
               { status: 400 }
             );
           }
@@ -134,9 +137,10 @@ export async function POST(req: NextRequest) {
             route: "settings/update",
             userId: session.user.id,
             error: String(fetchErr),
+            tokenLength: telegramToken.length,
           });
           return NextResponse.json(
-            { error: "Failed to validate Telegram bot token. Please check your connection and try again." },
+            { error: `Could not reach Telegram API: ${String(fetchErr).slice(0, 100)}. Token length: ${telegramToken.length}.` },
             { status: 400 }
           );
         }
