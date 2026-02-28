@@ -9,7 +9,20 @@ function AuthErrorContent() {
   const params = useSearchParams();
   const error = params.get("error");
 
+  const isNoAccount = error === "NoAccount";
   const isAccessDenied = error === "AccessDenied";
+
+  const title = isNoAccount
+    ? "No account found"
+    : isAccessDenied
+      ? "Sign-up failed"
+      : "Something went wrong";
+
+  const description = isNoAccount
+    ? "There\u2019s no Instaclaw account linked to that Google email. Make sure you\u2019re signing in with the same Google account you originally signed up with."
+    : isAccessDenied
+      ? "Your invite code could not be verified. This can happen if cookies were blocked or the code expired. Please try again."
+      : "An unexpected error occurred during sign-in. Please try again.";
 
   return (
     <div
@@ -29,28 +42,40 @@ function AuthErrorContent() {
             className="text-3xl sm:text-4xl font-normal tracking-[-1px]"
             style={{ fontFamily: "var(--font-serif)" }}
           >
-            {isAccessDenied ? "Sign-up failed" : "Something went wrong"}
+            {title}
           </h1>
 
           <p className="text-base" style={{ color: "#6b6b6b" }}>
-            {isAccessDenied
-              ? "Your invite code could not be verified. This can happen if cookies were blocked or the code expired. Please try again."
-              : "An unexpected error occurred during sign-in. Please try again."}
+            {description}
           </p>
         </div>
 
         <div className="space-y-3">
-          <Link
-            href="/signup"
-            className="block w-full px-6 py-4 rounded-lg text-base font-semibold transition-all"
-            style={{
-              background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-              color: "#ffffff",
-              boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
-            }}
-          >
-            Try again with your invite code
-          </Link>
+          {isNoAccount ? (
+            <Link
+              href="/signin"
+              className="block w-full px-6 py-4 rounded-lg text-base font-semibold transition-all"
+              style={{
+                background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                color: "#ffffff",
+                boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+              }}
+            >
+              Try a different Google account
+            </Link>
+          ) : (
+            <Link
+              href="/signup"
+              className="block w-full px-6 py-4 rounded-lg text-base font-semibold transition-all"
+              style={{
+                background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                color: "#ffffff",
+                boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+              }}
+            >
+              Try again with your invite code
+            </Link>
+          )}
 
           <p className="text-sm" style={{ color: "#6b6b6b" }}>
             If this keeps happening, contact{" "}

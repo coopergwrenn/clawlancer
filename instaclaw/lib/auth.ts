@@ -43,10 +43,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const cookieStore = await cookies();
       const inviteCode = cookieStore.get("instaclaw_invite_code")?.value;
 
-      // NEW users MUST have a valid invite code
+      // No invite code means the user came from /signin (not /signup).
+      // They authenticated with a Google account that has no InstaClaw account.
+      // Redirect to a specific error so the UI can tell them to try a different email.
       if (!inviteCode) {
-        logger.error("Sign-up rejected: no invite code", { email: user.email, route: "auth/signIn" });
-        return false;
+        logger.warn("Sign-in with unregistered email", { email: user.email, route: "auth/signIn" });
+        return "/auth-error?error=NoAccount";
       }
 
       const normalizedCode = decodeURIComponent(inviteCode).trim().toUpperCase();
