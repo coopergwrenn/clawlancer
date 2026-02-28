@@ -14,13 +14,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const supabase = getSupabase();
 
       // Check if the user already exists
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from("instaclaw_users")
         .select("id")
         .eq("google_id", account.providerAccountId)
         .single();
 
+      if (existingError) {
+        logger.error("AUTH_DEBUG: existing user lookup failed", {
+          route: "auth/signIn",
+          email: user.email,
+          googleId: account.providerAccountId,
+          error: String(existingError),
+          code: existingError.code,
+        });
+      }
+
       if (existing) return true;
+
+      logger.error("AUTH_DEBUG: user not found — falling through to invite check", {
+        route: "auth/signIn",
+        email: user.email,
+        googleId: account.providerAccountId,
+        existingData: JSON.stringify(existing),
+      });
 
       // Read the invite code from the cookie set before OAuth redirect
       const cookieStore = await cookies();
