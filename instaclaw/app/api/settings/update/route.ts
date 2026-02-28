@@ -97,11 +97,12 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // Whitelist only valid Telegram bot token characters (digits, letters,
-        // colon, underscore, hyphen). iOS copy-paste from the Telegram app
-        // inserts invisible Unicode marks (LTR/RTL marks, zero-width chars, etc.)
-        // that a blacklist approach can't reliably catch.
-        const telegramToken = rawToken.replace(/[^a-zA-Z0-9:_-]/g, "");
+        // Extract the actual bot token from whatever was pasted. On mobile,
+        // users often copy the entire BotFather message (including surrounding
+        // text like "Use this token to access the HTTP API:"). The token format
+        // is always <digits>:<alphanumeric_hash>, so we extract that pattern.
+        const tokenMatch = rawToken.match(/(\d{8,15}:[A-Za-z0-9_-]{30,50})/);
+        const telegramToken = tokenMatch ? tokenMatch[1] : rawToken.replace(/[^a-zA-Z0-9:_-]/g, "");
 
         if (!telegramToken) {
           return NextResponse.json(
