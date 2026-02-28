@@ -59,8 +59,12 @@ export default function DashboardLayout({
   const tourControllingMore = useRef(false);
   const [heartbeatHealth, setHeartbeatHealth] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
 
+  // Only redirect to onboarding if we have a confirmed session (user.id is set
+  // by the session callback) AND onboardingComplete is explicitly false.
+  // Using strict equality prevents redirecting when the session callback's
+  // Supabase query fails and onboardingComplete is undefined.
   const needsOnboarding =
-    status !== "loading" && session?.user && !session.user.onboardingComplete;
+    status !== "loading" && session?.user?.id && session.user.onboardingComplete === false;
 
   useEffect(() => {
     if (needsOnboarding) {
