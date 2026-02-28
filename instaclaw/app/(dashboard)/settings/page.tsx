@@ -16,6 +16,9 @@ import {
   Store,
   Mail,
   ShieldAlert,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import { WorldIDSection } from "@/components/dashboard/world-id-section";
 
@@ -181,6 +184,7 @@ export default function SettingsPage() {
   async function handleUpdateTelegram() {
     if (!telegramToken.trim()) return;
     setSavingTelegram(true);
+    setError("");
     setTelegramError("");
     setTelegramWarning("");
     setTelegramSuccess(false);
@@ -197,10 +201,8 @@ export default function SettingsPage() {
       if (res.ok) {
         setTelegramSuccess(true);
         setTelegramToken("");
-        setTimeout(() => setTelegramSuccess(false), 5000);
         if (data.sshFailed && data.message) {
           setTelegramWarning(data.message);
-          setTimeout(() => setTelegramWarning(""), 10000);
         }
         // Refresh status to pick up new bot username
         const statusRes = await fetch("/api/vm/status");
@@ -208,11 +210,9 @@ export default function SettingsPage() {
         setVmStatus(statusData);
       } else {
         setTelegramError(data.error || "Failed to update Telegram token");
-        setTimeout(() => setTelegramError(""), 8000);
       }
     } catch {
       setTelegramError("Network error — please check your connection and try again.");
-      setTimeout(() => setTelegramError(""), 8000);
     } finally {
       setSavingTelegram(false);
     }
@@ -729,11 +729,16 @@ export default function SettingsPage() {
                 type="password"
                 placeholder="New Telegram bot token..."
                 value={telegramToken}
-                onChange={(e) => setTelegramToken(e.target.value)}
+                onChange={(e) => {
+                  setTelegramToken(e.target.value);
+                  if (telegramError) setTelegramError("");
+                  if (telegramSuccess) setTelegramSuccess(false);
+                  if (telegramWarning) setTelegramWarning("");
+                }}
                 className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none"
                 style={{
                   background: "var(--card)",
-                  border: "1px solid var(--border)",
+                  border: telegramError ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border)",
                   color: "var(--foreground)",
                 }}
               />
@@ -759,42 +764,44 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            {/* Inline feedback */}
+            {/* Inline feedback — always visible, never at top of page */}
             {telegramSuccess && (
               <div
-                className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs"
+                className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium"
                 style={{
-                  background: "rgba(34,197,94,0.08)",
-                  border: "1px solid rgba(34,197,94,0.2)",
+                  background: "rgba(34,197,94,0.1)",
+                  border: "1px solid rgba(34,197,94,0.3)",
                   color: "rgb(22,163,74)",
                 }}
               >
-                <span className="font-semibold">Token saved successfully!</span>
-                {vm.telegramBotUsername && <span>Bot: @{vm.telegramBotUsername}</span>}
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Token saved successfully!{vm.telegramBotUsername ? ` Bot: @${vm.telegramBotUsername}` : ""}</span>
               </div>
             )}
             {telegramWarning && (
               <div
-                className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs leading-relaxed"
+                className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm leading-relaxed"
                 style={{
-                  background: "rgba(234,179,8,0.08)",
-                  border: "1px solid rgba(234,179,8,0.2)",
+                  background: "rgba(234,179,8,0.1)",
+                  border: "1px solid rgba(234,179,8,0.3)",
                   color: "rgb(161,98,7)",
                 }}
               >
-                {telegramWarning}
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{telegramWarning}</span>
               </div>
             )}
             {telegramError && (
               <div
-                className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs leading-relaxed"
+                className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm font-medium leading-relaxed"
                 style={{
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.2)",
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.3)",
                   color: "rgb(220,38,38)",
                 }}
               >
-                {telegramError}
+                <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{telegramError}</span>
               </div>
             )}
 
