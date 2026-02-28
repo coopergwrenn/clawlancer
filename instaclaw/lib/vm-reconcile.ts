@@ -921,12 +921,25 @@ async function stepGatewayRestart(
   vm: VMRecord,
   result: ReconcileResult,
 ): Promise<void> {
+  const DBUS_PREFIX = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
   result.gatewayRestarted = true;
 
-  await ssh.execCommand(
-    'systemctl --user restart openclaw-gateway 2>/dev/null || ' +
-    '(pkill -9 -f "openclaw-gateway" 2>/dev/null; sleep 2; systemctl --user start openclaw-gateway) || true'
+  // Restart with DBUS workaround (required for SSH sessions without a login shell)
+  const restartResult = await ssh.execCommand(
+    `${DBUS_PREFIX} && systemctl --user restart openclaw-gateway`
   );
+
+  // If restart failed, try kill + start as fallback
+  if (restartResult.code !== 0) {
+    logger.warn("systemctl restart failed, trying kill + start fallback", {
+      route: "reconcileVM",
+      vmId: vm.id,
+      stderr: restartResult.stderr,
+    });
+    await ssh.execCommand('pkill -9 -f "openclaw-gateway" 2>/dev/null || true');
+    await new Promise((r) => setTimeout(r, 2000));
+    await ssh.execCommand(`${DBUS_PREFIX} && systemctl --user start openclaw-gateway`);
+  }
 
   // Verify gateway comes back healthy (up to 30s, per CLAUDE.md rule #5)
   let healthy = false;
@@ -948,15 +961,20 @@ async function stepGatewayRestart(
       route: "reconcileVM",
       vmId: vm.id,
     });
-    result.fixed.push('gateway restarted (WARNING: health check failed post-restart)');
+    result.errors.push('gateway restart failed: not healthy after 30s');
   }
 }
 
 /**
- * Step 8b: Patch the openclaw-gateway.service systemd unit file.
- * Ensures KillMode=mixed (kill Chrome children), crash-loop circuit breaker,
- * and Chrome orphan cleanup on start. Prevents the Mucus incident (15.5h crash
- * loop with zombie Chrome processes).
+ * Step 8c: Deploy systemd override.conf drop-in for openclaw-gateway.service.
+ *
+ * Uses a proper drop-in file (~/.config/systemd/user/openclaw-gateway.service.d/override.conf)
+ * instead of sed-patching the main unit file. This is idempotent, reliable, and
+ * survives gateway upgrades that rewrite the base unit file.
+ *
+ * IMPORTANT: This step writes the file and runs daemon-reload BEFORE any gateway
+ * restart (step 9). The ordering prevents the vm-057 bug where the gateway was
+ * restarted without the override applied.
  */
 async function stepSystemdUnit(
   ssh: SSHConnection,
@@ -967,71 +985,55 @@ async function stepSystemdUnit(
   const overrides = manifest.systemdOverrides;
   if (!overrides) return;
 
+  const DBUS_PREFIX = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
   const unitPath = "$HOME/.config/systemd/user/openclaw-gateway.service";
+  const overrideDir = "$HOME/.config/systemd/user/openclaw-gateway.service.d";
+  const overridePath = `${overrideDir}/override.conf`;
 
-  // Check if unit file exists
+  // Check if unit file exists (gateway installed)
   const check = await ssh.execCommand(`[ -f ${unitPath} ] && echo EXISTS || echo MISSING`);
   if (check.stdout.trim() !== "EXISTS") {
     result.alreadyCorrect.push("systemd unit: not installed (skip)");
     return;
   }
 
-  // Read current unit content to check what needs patching
-  const catResult = await ssh.execCommand(`cat ${unitPath}`);
-  const currentUnit = catResult.stdout;
-
-  const patches: string[] = [];
-
+  // Build expected override.conf content
+  const lines = ["[Service]"];
   for (const [key, value] of Object.entries(overrides)) {
-    if (key === "ExecStartPre") {
-      // ExecStartPre is special — check if it exists AND matches the expected value
-      const execStartPreMatch = currentUnit.match(/^ExecStartPre=(.*)$/m);
-      if (!execStartPreMatch) {
-        // Missing entirely — insert before ExecStart
-        patches.push(`sed -i '/^ExecStart=/i ExecStartPre=${value.replace(/'/g, "'\\''")}'  ${unitPath}`);
-      } else if (execStartPreMatch[1] !== value) {
-        // Exists but wrong value (e.g. buggy pkill pattern) — replace in place
-        patches.push(`sed -i 's|^ExecStartPre=.*|ExecStartPre=${value.replace(/'/g, "'\\''")}|' ${unitPath}`);
-      }
-    } else {
-      // For all other keys, check if the current value matches
-      const regex = new RegExp(`^${key}=(.*)$`, "m");
-      const match = currentUnit.match(regex);
-      if (match && match[1] === value) {
-        continue; // Already correct
-      }
-      if (match) {
-        // Key exists but wrong value — replace
-        patches.push(`sed -i 's/^${key}=.*/${key}=${value.replace(/\//g, "\\/")}/' ${unitPath}`);
-      } else {
-        // Key missing — add to appropriate section
-        const section = ["StartLimitBurst", "StartLimitIntervalSec", "StartLimitAction"].includes(key)
-          ? "\\[Unit\\]"
-          : "\\[Service\\]";
-        patches.push(`sed -i '/${section}/a ${key}=${value}' ${unitPath}`);
-      }
-    }
+    lines.push(`${key}=${value}`);
   }
+  const expectedContent = lines.join("\n") + "\n";
 
-  if (patches.length === 0) {
-    result.alreadyCorrect.push("systemd unit: all overrides correct");
+  // Check if override.conf already matches
+  const catResult = await ssh.execCommand(`cat ${overridePath} 2>/dev/null`);
+  if (catResult.stdout === expectedContent) {
+    result.alreadyCorrect.push("systemd override.conf: all settings correct");
     return;
   }
 
   if (dryRun) {
-    result.fixed.push(`systemd unit: would apply ${patches.length} patches`);
+    result.fixed.push(`[dry-run] systemd override.conf: would write ${Object.keys(overrides).length} settings`);
     return;
   }
 
-  // Apply all patches and reload
-  const patchCmd = patches.join(" && ") + " && systemctl --user daemon-reload";
-  const patchResult = await ssh.execCommand(patchCmd);
-  if (patchResult.code === 0) {
-    result.fixed.push(`systemd unit: applied ${patches.length} patches (${Object.keys(overrides).join(", ")})`);
-    result.gatewayRestartNeeded = true;
-  } else {
-    result.errors.push(`systemd unit patch failed: ${patchResult.stderr}`);
+  // Write override.conf via base64 (avoids shell escaping issues)
+  await ssh.execCommand(`mkdir -p ${overrideDir}`);
+  const b64 = Buffer.from(expectedContent).toString("base64");
+  const writeResult = await ssh.execCommand(`echo '${b64}' | base64 -d > ${overridePath}`);
+  if (writeResult.code !== 0) {
+    result.errors.push(`systemd override.conf write failed: ${writeResult.stderr}`);
+    return;
   }
+
+  // daemon-reload with DBUS workaround (required for SSH sessions)
+  const reloadResult = await ssh.execCommand(`${DBUS_PREFIX} && systemctl --user daemon-reload`);
+  if (reloadResult.code !== 0) {
+    result.errors.push(`systemd daemon-reload failed: ${reloadResult.stderr}`);
+    return;
+  }
+
+  result.fixed.push(`systemd override.conf (${Object.keys(overrides).length} settings)`);
+  result.gatewayRestartNeeded = true;
 }
 
 /**
