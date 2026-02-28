@@ -553,6 +553,49 @@ export async function GET(req: NextRequest) {
   }
 
   // ========================================================================
+  // Telegram token missing detection
+  // Alert when a VM has telegram in channels_enabled but telegram_bot_token
+  // is NULL. This catches the Feb 18-20 bug (commit 46bd26f) where
+  // reconfigures wiped tokens. Alert-only — no auto-fix.
+  // ========================================================================
+  let telegramTokenMissing = 0;
+
+  const { data: telegramEnabledVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, ip_address, assigned_to")
+    .eq("status", "assigned")
+    .not("assigned_to", "is", null)
+    .contains("channels_enabled", ["telegram"])
+    .is("telegram_bot_token", null);
+
+  if (telegramEnabledVms?.length) {
+    for (const tvm of telegramEnabledVms) {
+      telegramTokenMissing++;
+      logger.error("Telegram enabled but bot token missing", {
+        route: "cron/health-check",
+        vmId: tvm.id,
+        vmName: tvm.name,
+        ipAddress: tvm.ip_address,
+        assignedTo: tvm.assigned_to,
+      });
+    }
+
+    if (ADMIN_EMAIL) {
+      try {
+        const vmList = telegramEnabledVms
+          .map((v) => `  - ${v.name ?? v.id} (user: ${v.assigned_to})`)
+          .join("\n");
+        await sendAdminAlertEmail(
+          "Telegram Token Missing on Active VMs",
+          `${telegramEnabledVms.length} VM(s) have telegram in channels_enabled but telegram_bot_token is NULL.\n\nThese users' agents cannot receive Telegram messages:\n${vmList}\n\nAction required: Contact the affected users to re-enter their bot token via Settings.`
+        );
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+
+  // ========================================================================
   // Third pass: Check for past_due subscriptions and suspend after grace period
   // ========================================================================
   let suspended = 0;
@@ -1380,6 +1423,7 @@ export async function GET(req: NextRequest) {
     alerted,
     webhooksFixed,
     telegramDupesFixed,
+    telegramTokenMissing,
     suspended,
     sessionsCleared,
     sessionsAlerted,
