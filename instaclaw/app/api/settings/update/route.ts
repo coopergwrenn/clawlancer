@@ -97,9 +97,11 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // Aggressively strip invisible chars that mobile copy/paste can introduce
-        // (newlines, carriage returns, zero-width spaces, non-breaking spaces, etc.)
-        const telegramToken = rawToken.replace(/[\s\u200B\u200C\u200D\uFEFF\u00A0\r\n]/g, "");
+        // Whitelist only valid Telegram bot token characters (digits, letters,
+        // colon, underscore, hyphen). iOS copy-paste from the Telegram app
+        // inserts invisible Unicode marks (LTR/RTL marks, zero-width chars, etc.)
+        // that a blacklist approach can't reliably catch.
+        const telegramToken = rawToken.replace(/[^a-zA-Z0-9:_-]/g, "");
 
         if (!telegramToken) {
           return NextResponse.json(
