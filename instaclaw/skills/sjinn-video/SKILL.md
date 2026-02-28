@@ -214,7 +214,7 @@ while true; do
   if [ "$STATUS" = "1" ]; then break; fi  # 1 = completed
   sleep 15
 done
-VIDEO_URL=$(echo "$RESULT" | jq -r '.data.tool_results[-1].result[0]')
+VIDEO_URL=$(echo "$RESULT" | jq -r '.data.video_url')
 ```
 
 **Tool API:**
@@ -230,8 +230,10 @@ while true; do
   if [ "$STATUS" = "-1" ]; then echo "FAILED"; break; fi  # -1 = failed
   sleep 15
 done
-VIDEO_URL=$(echo "$RESULT" | jq -r '.data.output.video_url')
+VIDEO_URL=$(echo "$RESULT" | jq -r '.data.video_url')
 ```
+
+> **Note:** The proxy normalizes responses — `data.video_url` always contains the final video URL regardless of which API type was used. The proxy also auto-corrects if you accidentally query with the wrong API type.
 
 ### Polling Intervals & Timeouts
 

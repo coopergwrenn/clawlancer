@@ -234,7 +234,7 @@ while [ $ELAPSED -lt 600 ]; do
   STATUS=$(echo "$RESULT" | jq -r '.data.status')
   if [ "$STATUS" = "1" ]; then
     echo "Completed!"
-    VIDEO_URL=$(echo "$RESULT" | jq -r '.data.tool_results[-1].result[0]')
+    VIDEO_URL=$(echo "$RESULT" | jq -r '.data.video_url')
     break
   fi
   sleep 15
@@ -273,7 +273,7 @@ while [ $ELAPSED -lt 600 ]; do
   STATUS=$(echo "$RESULT" | jq -r '.data.status')
   if [ "$STATUS" = "1" ]; then
     echo "Completed!"
-    VIDEO_URL=$(echo "$RESULT" | jq -r '.data.output.video_url')
+    VIDEO_URL=$(echo "$RESULT" | jq -r '.data.video_url')
     break
   elif [ "$STATUS" = "-1" ]; then
     echo "FAILED"

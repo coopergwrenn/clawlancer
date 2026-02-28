@@ -236,19 +236,22 @@ export async function POST(req: NextRequest) {
     // ACTION: query — Poll status of existing generation
     // ────────────────────────────────────────────────────────
     if (action === "query") {
+      // Accept ID from either field — agents sometimes mix up api types
+      const queryId = body.chat_id || body.task_id;
+
       let sjinnUrl: string;
       let sjinnBody: Record<string, unknown>;
 
       if (api === "agent") {
         sjinnUrl = SJINN_AGENT_QUERY_URL;
         sjinnBody = {
-          chat_id: body.chat_id,
+          chat_id: queryId,
           ...(body.tool_names && { tool_names: body.tool_names }),
         };
       } else {
         sjinnUrl = SJINN_TOOL_QUERY_URL;
         sjinnBody = {
-          task_id: body.task_id,
+          task_id: queryId,
         };
       }
 
@@ -261,7 +264,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify(sjinnBody),
       });
 
-      const sjinnData = await sjinnRes.json();
+      let sjinnData = await sjinnRes.json();
 
       if (!sjinnRes.ok) {
         logger.error("Sjinn query error", {
@@ -273,6 +276,88 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(sjinnData, {
           status: sjinnRes.status >= 400 ? sjinnRes.status : 502,
         });
+      }
+
+      // ── Auto-fallback: if "not found", try the other API type ──
+      // Agents sometimes create with Tool API but query with Agent API
+      // (or vice versa). Sjinn returns HTTP 200 with success:false.
+      if (
+        queryId &&
+        sjinnData.success === false &&
+        (sjinnData.errorMsg?.toLowerCase().includes("not found") ||
+          !sjinnData.data)
+      ) {
+        const fallbackApi = api === "agent" ? "tool" : "agent";
+        const fallbackUrl =
+          fallbackApi === "agent"
+            ? SJINN_AGENT_QUERY_URL
+            : SJINN_TOOL_QUERY_URL;
+        const fallbackBody =
+          fallbackApi === "agent"
+            ? { chat_id: queryId, ...(body.tool_names && { tool_names: body.tool_names }) }
+            : { task_id: queryId };
+
+        const fallbackRes = await fetch(fallbackUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sjinnApiKey}`,
+          },
+          body: JSON.stringify(fallbackBody),
+        });
+        const fallbackData = await fallbackRes.json();
+
+        if (fallbackData.success === true && fallbackData.data) {
+          logger.info("Sjinn query auto-corrected API type", {
+            route: "gateway/sjinn",
+            vmId: vm.id,
+            requestedApi: api,
+            correctedApi: fallbackApi,
+            queryId,
+          });
+          sjinnData = fallbackData;
+        }
+      }
+
+      // ── Normalize: ensure data.video_url is always present ──
+      // Agent API puts URLs in data.tool_results[].result[]
+      // Tool API puts URLs in data.output_urls[] or data.output.video_url
+      // We add data.video_url so agents can always use one extraction path.
+      if (sjinnData.success && sjinnData.data && sjinnData.data.status === 1) {
+        if (!sjinnData.data.video_url) {
+          // Agent API format: find composed video or last .mp4 in tool_results
+          const toolResults = sjinnData.data.tool_results;
+          if (Array.isArray(toolResults) && toolResults.length > 0) {
+            const composed = toolResults.find(
+              (t: { name: string }) => t.name === "ffmpeg_full_compose"
+            );
+            const lastVideo = [...toolResults]
+              .reverse()
+              .find(
+                (t: { result: unknown }) =>
+                  Array.isArray(t.result) &&
+                  t.result.some((r: string) => typeof r === "string" && r.endsWith(".mp4"))
+              );
+            const source = composed || lastVideo;
+            if (source && Array.isArray(source.result)) {
+              sjinnData.data.video_url = source.result[0];
+            }
+          }
+
+          // Tool API format: output.video_url or output_urls[]
+          if (!sjinnData.data.video_url && sjinnData.data.output?.video_url) {
+            sjinnData.data.video_url = sjinnData.data.output.video_url;
+          }
+          if (
+            !sjinnData.data.video_url &&
+            Array.isArray(sjinnData.data.output_urls) &&
+            sjinnData.data.output_urls.length > 0
+          ) {
+            sjinnData.data.video_url =
+              sjinnData.data.output_urls.find((u: string) => u.endsWith(".mp4")) ||
+              sjinnData.data.output_urls[0];
+          }
+        }
       }
 
       return NextResponse.json(sjinnData);
