@@ -104,21 +104,19 @@ export async function POST(req: NextRequest) {
           const getMeData = await getMeRes.json();
           if (!getMeData.ok || !getMeData.result?.username) {
             return NextResponse.json(
-              { error: "Invalid Telegram bot token" },
+              { error: "Invalid Telegram bot token. Please double-check the token from @BotFather." },
               { status: 400 }
             );
           }
           botUsername = getMeData.result.username;
         } catch {
           return NextResponse.json(
-            { error: "Failed to validate Telegram bot token" },
+            { error: "Failed to validate Telegram bot token. Please check your connection and try again." },
             { status: 400 }
           );
         }
 
-        await updateChannelToken(vm, "telegram", { botToken: telegramToken });
-
-        // Update DB
+        // Save to DB FIRST so the token is never lost, even if SSH fails
         const tgChannels: string[] = vm.channels_enabled ?? ["telegram"];
         if (!tgChannels.includes("telegram")) {
           tgChannels.push("telegram");
@@ -134,7 +132,28 @@ export async function POST(req: NextRequest) {
           })
           .eq("id", vm.id);
 
-        return NextResponse.json({ updated: true, botUsername });
+        // Now try to SSH and configure the VM — if this fails, the token is
+        // still saved in the DB and the next health-check will pick it up.
+        let sshFailed = false;
+        try {
+          await updateChannelToken(vm, "telegram", { botToken: telegramToken });
+        } catch (sshErr) {
+          sshFailed = true;
+          logger.warn("Telegram token saved to DB but SSH configure failed — will retry on next health check", {
+            route: "settings/update",
+            vmId: vm.id,
+            error: String(sshErr),
+          });
+        }
+
+        return NextResponse.json({
+          updated: true,
+          botUsername,
+          sshFailed,
+          message: sshFailed
+            ? "Token saved! Your bot is currently offline so the live update couldn't complete, but it will apply automatically when your bot comes back online."
+            : undefined,
+        });
       }
 
       case "update_discord_token": {
@@ -146,9 +165,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        await updateChannelToken(vm, "discord", { botToken: discordToken });
-
-        // Update DB
+        // Save to DB FIRST so the token is never lost, even if SSH fails
         const currentChannels: string[] = vm.channels_enabled ?? ["telegram"];
         if (!currentChannels.includes("discord")) {
           currentChannels.push("discord");
@@ -162,7 +179,25 @@ export async function POST(req: NextRequest) {
           })
           .eq("id", vm.id);
 
-        return NextResponse.json({ updated: true });
+        let sshFailed = false;
+        try {
+          await updateChannelToken(vm, "discord", { botToken: discordToken });
+        } catch (sshErr) {
+          sshFailed = true;
+          logger.warn("Discord token saved to DB but SSH configure failed", {
+            route: "settings/update",
+            vmId: vm.id,
+            error: String(sshErr),
+          });
+        }
+
+        return NextResponse.json({
+          updated: true,
+          sshFailed,
+          message: sshFailed
+            ? "Token saved! Your bot is currently offline so the live update couldn't complete, but it will apply automatically when your bot comes back online."
+            : undefined,
+        });
       }
 
       case "update_slack_token": {

@@ -62,9 +62,12 @@ export default function SettingsPage() {
   const [telegramToken, setTelegramToken] = useState("");
   const [savingTelegram, setSavingTelegram] = useState(false);
   const [telegramSuccess, setTelegramSuccess] = useState(false);
+  const [telegramError, setTelegramError] = useState("");
+  const [telegramWarning, setTelegramWarning] = useState("");
   const [discordToken, setDiscordToken] = useState("");
   const [savingDiscord, setSavingDiscord] = useState(false);
   const [discordSuccess, setDiscordSuccess] = useState(false);
+  const [discordError, setDiscordError] = useState("");
   const [slackToken, setSlackToken] = useState("");
   const [savingSlack, setSavingSlack] = useState(false);
   const [slackSuccess, setSlackSuccess] = useState(false);
@@ -178,7 +181,8 @@ export default function SettingsPage() {
   async function handleUpdateTelegram() {
     if (!telegramToken.trim()) return;
     setSavingTelegram(true);
-    setError("");
+    setTelegramError("");
+    setTelegramWarning("");
     setTelegramSuccess(false);
     try {
       const res = await fetch("/api/settings/update", {
@@ -189,20 +193,26 @@ export default function SettingsPage() {
           telegramToken: telegramToken.trim(),
         }),
       });
+      const data = await res.json();
       if (res.ok) {
         setTelegramSuccess(true);
         setTelegramToken("");
-        setTimeout(() => setTelegramSuccess(false), 3000);
+        setTimeout(() => setTelegramSuccess(false), 5000);
+        if (data.sshFailed && data.message) {
+          setTelegramWarning(data.message);
+          setTimeout(() => setTelegramWarning(""), 10000);
+        }
         // Refresh status to pick up new bot username
         const statusRes = await fetch("/api/vm/status");
-        const data = await statusRes.json();
-        setVmStatus(data);
+        const statusData = await statusRes.json();
+        setVmStatus(statusData);
       } else {
-        const data = await res.json();
-        setError(data.error || "Failed to update Telegram token");
+        setTelegramError(data.error || "Failed to update Telegram token");
+        setTimeout(() => setTelegramError(""), 8000);
       }
     } catch {
-      setError("Network error");
+      setTelegramError("Network error — please check your connection and try again.");
+      setTimeout(() => setTelegramError(""), 8000);
     } finally {
       setSavingTelegram(false);
     }
@@ -211,7 +221,7 @@ export default function SettingsPage() {
   async function handleUpdateDiscord() {
     if (!discordToken.trim()) return;
     setSavingDiscord(true);
-    setError("");
+    setDiscordError("");
     setDiscordSuccess(false);
     try {
       const res = await fetch("/api/settings/update", {
@@ -222,16 +232,18 @@ export default function SettingsPage() {
           discordToken: discordToken.trim(),
         }),
       });
+      const data = await res.json();
       if (res.ok) {
         setDiscordSuccess(true);
         setDiscordToken("");
-        setTimeout(() => setDiscordSuccess(false), 3000);
+        setTimeout(() => setDiscordSuccess(false), 5000);
       } else {
-        const data = await res.json();
-        setError(data.error || "Failed to update Discord token");
+        setDiscordError(data.error || "Failed to update Discord token");
+        setTimeout(() => setDiscordError(""), 8000);
       }
     } catch {
-      setError("Network error");
+      setDiscordError("Network error — please check your connection and try again.");
+      setTimeout(() => setDiscordError(""), 8000);
     } finally {
       setSavingDiscord(false);
     }
@@ -700,13 +712,8 @@ export default function SettingsPage() {
         <div>
           <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
             <Bot className="w-5 h-5" /> Telegram Bot Token
-            {telegramSuccess && (
-              <span className="text-xs ml-auto font-normal" style={{ color: "var(--success)" }}>
-                Updated
-              </span>
-            )}
           </h2>
-          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
+          <div className="glass rounded-xl p-6 space-y-3" style={{ border: telegramError ? "1px solid rgba(239,68,68,0.4)" : telegramSuccess ? "1px solid rgba(34,197,94,0.4)" : "1px solid var(--border)", transition: "border-color 0.3s ease" }}>
             {vm.telegramBotUsername && (
               <div className="flex items-center gap-2">
                 <span className="text-sm" style={{ color: "var(--muted)" }}>
@@ -735,19 +742,67 @@ export default function SettingsPage() {
                 disabled={savingTelegram || !telegramToken.trim()}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-50 transition-all active:scale-95"
                 style={{
-                  background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                  background: savingTelegram
+                    ? "rgba(0,0,0,0.06)"
+                    : "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
                   color: "#000000",
                   boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
                   backdropFilter: "blur(8px)",
                 }}
               >
-                <Save className="w-3.5 h-3.5" />
+                {savingTelegram ? (
+                  <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
                 {savingTelegram ? "Saving..." : "Save"}
               </button>
             </div>
-            <p className="text-xs" style={{ color: "var(--muted)" }}>
-              Update your Telegram bot token. The gateway will restart with the new token immediately.
-            </p>
+
+            {/* Inline feedback */}
+            {telegramSuccess && (
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs"
+                style={{
+                  background: "rgba(34,197,94,0.08)",
+                  border: "1px solid rgba(34,197,94,0.2)",
+                  color: "rgb(22,163,74)",
+                }}
+              >
+                <span className="font-semibold">Token saved successfully!</span>
+                {vm.telegramBotUsername && <span>Bot: @{vm.telegramBotUsername}</span>}
+              </div>
+            )}
+            {telegramWarning && (
+              <div
+                className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs leading-relaxed"
+                style={{
+                  background: "rgba(234,179,8,0.08)",
+                  border: "1px solid rgba(234,179,8,0.2)",
+                  color: "rgb(161,98,7)",
+                }}
+              >
+                {telegramWarning}
+              </div>
+            )}
+            {telegramError && (
+              <div
+                className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs leading-relaxed"
+                style={{
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.2)",
+                  color: "rgb(220,38,38)",
+                }}
+              >
+                {telegramError}
+              </div>
+            )}
+
+            {!telegramSuccess && !telegramError && !telegramWarning && (
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Update your Telegram bot token. The gateway will restart with the new token immediately.
+              </p>
+            )}
           </div>
         </div>
       )}
