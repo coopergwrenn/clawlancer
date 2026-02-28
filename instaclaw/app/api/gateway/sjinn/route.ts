@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
           tool_type: fallbackToolType,
           input: {
             prompt: body.message,
-            aspect_ratio: "16:9",
+            aspect_ratio: body.aspect_ratio || body.input?.aspect_ratio || "16:9",
           },
         };
 
@@ -239,16 +239,21 @@ export async function POST(req: NextRequest) {
 
       // If success:false persists even after fallback (e.g. template-only request)
       if (sjinnData.success === false) {
+        const isAgentDown = sjinnData.errorMsg?.includes("Start Agent Failed");
         logger.error("Sjinn create failed", {
           route: "gateway/sjinn",
           vmId: vm.id,
           api: actualApi,
           errorMsg: sjinnData.errorMsg,
+          isAgentDown,
+          hadTemplate: !!body.template_id,
         });
         return NextResponse.json(
           {
             error: "sjinn_error",
-            message: "Video generation failed. Please try again.",
+            message: isAgentDown
+              ? "The video Agent API is temporarily unavailable. Single-shot videos via Tool API still work — try requesting a specific model (Veo3 or Sora2) instead of a multi-shot template."
+              : "Video generation failed. Please try again.",
             details: sjinnData,
           },
           { status: 502 }
