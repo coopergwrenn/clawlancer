@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, assignVMWithSSHCheck, readWatchdogStatus } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
-import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail, sendAutoMigratedEmail } from "@/lib/email";
+import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
+import { AlertCollector } from "@/lib/admin-alert";
 import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
 
@@ -39,6 +40,9 @@ export async function GET(req: NextRequest) {
   if (!vms?.length) {
     return NextResponse.json({ checked: 0 });
   }
+
+  // Collect all admin alerts for this cycle — flush as grouped digest at the end
+  const alerts = new AlertCollector();
 
   let healthy = 0;
   let unhealthy = 0;
@@ -146,17 +150,12 @@ export async function GET(req: NextRequest) {
           assignedTo: vm.assigned_to,
         });
 
-        // Alert admin
-        if (ADMIN_EMAIL) {
-          try {
-            await sendAdminAlertEmail(
-              "VM Auto-Quarantined: SSH Dead",
-              `VM ${vm.name ?? vm.id} (${vm.ip_address}) has failed ${newSshFailCount} consecutive SSH connectivity checks and has been auto-quarantined.\n\nAssigned to user: ${vm.assigned_to ?? "none"}\n\nThe VM status has been set to "failed". If a user was assigned, they will need to be moved to a new VM.`
-            );
-          } catch {
-            // Non-fatal
-          }
-        }
+        // Alert admin (via digest)
+        alerts.add(
+          "VM Auto-Quarantined: SSH Dead",
+          vm.name ?? vm.id,
+          `IP: ${vm.ip_address}\nSSH failures: ${newSshFailCount}\nAssigned to: ${vm.assigned_to ?? "none"}\nStatus set to "failed".`
+        );
       }
     } else {
       // Not yet at threshold — just increment counter
@@ -212,7 +211,8 @@ export async function GET(req: NextRequest) {
         });
       }
     } else if (result.largestSessionBytes > VM_MANIFEST.sessionAlertBytes) {
-      // Alert threshold — session is growing but not yet critical
+      // Alert threshold (480KB) — session approaching auto-rotate (512KB).
+      // Informational only — goes into digest, never as individual email.
       sessionsAlerted++;
       logger.warn("Session approaching size limit", {
         route: "cron/health-check",
@@ -223,16 +223,11 @@ export async function GET(req: NextRequest) {
         rotateThreshold: VM_MANIFEST.maxSessionBytes,
       });
 
-      if (ADMIN_EMAIL) {
-        try {
-          await sendAdminAlertEmail(
-            "Session Size Warning",
-            `VM ${vm.name ?? vm.id} (${vm.ip_address}) has a session file at ${Math.round(result.largestSessionBytes / 1024)}KB.\n\nAlert threshold: ${Math.round(VM_MANIFEST.sessionAlertBytes / 1024)}KB\nAuto-rotate threshold: ${Math.round(VM_MANIFEST.maxSessionBytes / 1024)}KB\n\nThe session will be auto-rotated if it exceeds ${Math.round(VM_MANIFEST.maxSessionBytes / 1024)}KB. No action needed yet — this is an early warning.`
-          );
-        } catch {
-          // Non-fatal
-        }
-      }
+      alerts.add(
+        "Session Size Warning",
+        vm.name ?? vm.id,
+        `Session at ${Math.round(result.largestSessionBytes / 1024)}KB (auto-rotate at ${Math.round(VM_MANIFEST.maxSessionBytes / 1024)}KB). No action needed.`
+      );
     }
 
     // Ephemeral browser cleanup: kill Chrome if stale (>30min) or memory-heavy (>40% RAM).
@@ -369,25 +364,13 @@ export async function GET(req: NextRequest) {
       // went 15.5 hours unnoticed because the initial restart failed (broken
       // config) and no further alerts were sent.
       const SUSTAINED_UNHEALTHY_THRESHOLD = 6;
-      if (newFailCount === SUSTAINED_UNHEALTHY_THRESHOLD && ADMIN_EMAIL) {
-        const downtimeMinutes = newFailCount * 5; // ~5 min per health cron cycle
-        try {
-          await sendAdminAlertEmail(
-            "URGENT: VM Unhealthy 30+ Minutes",
-            [
-              `VM ${vm.name ?? vm.id} has been unhealthy for ~${downtimeMinutes} minutes (${newFailCount} consecutive failures).`,
-              `IP: ${vm.ip_address}`,
-              `User: ${vm.assigned_to ?? "unassigned"}`,
-              `Health status: ${vm.health_status}`,
-              `Last error: Gateway health check failed after restart attempt at failure #${ALERT_THRESHOLD}.`,
-              "",
-              "The health cron attempted a restart at failure #3 but the gateway did not recover.",
-              "This requires manual investigation — possible broken config, OOM, or systemd crash loop.",
-            ].join("\n")
-          );
-        } catch {
-          // Non-fatal
-        }
+      if (newFailCount === SUSTAINED_UNHEALTHY_THRESHOLD) {
+        const downtimeMinutes = newFailCount * 5;
+        alerts.add(
+          "URGENT: VM Unhealthy 30+ Minutes",
+          vm.name ?? vm.id,
+          `Unhealthy for ~${downtimeMinutes}min (${newFailCount} failures).\nIP: ${vm.ip_address}\nUser: ${vm.assigned_to ?? "unassigned"}\nRestart attempted at failure #${ALERT_THRESHOLD} but gateway did not recover.`
+        );
       }
     }
   }
@@ -539,17 +522,12 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Alert admin
-      if (ADMIN_EMAIL) {
-        try {
-          await sendAdminAlertEmail(
-            "Duplicate Telegram Bot Token Detected",
-            `${group.length} VMs share the same Telegram bot token (${token.slice(0, 10)}...).\n\nWinner (kept): ${winner.name ?? winner.id}\nLosers (telegram disabled): ${losers.map((l) => l.name ?? l.id).join(", ")}\n\nThe loser VMs need their users to provide a new Telegram bot token.`
-          );
-        } catch {
-          // Non-fatal
-        }
-      }
+      // Alert admin (via digest)
+      alerts.add(
+        "Duplicate Telegram Bot Token Detected",
+        winner.name ?? winner.id,
+        `${group.length} VMs share token (${token.slice(0, 10)}...).\nWinner: ${winner.name ?? winner.id}\nLosers (disabled): ${losers.map((l) => l.name ?? l.id).join(", ")}`
+      );
     }
   }
 
@@ -581,18 +559,13 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    if (ADMIN_EMAIL) {
-      try {
-        const vmList = telegramEnabledVms
-          .map((v) => `  - ${v.name ?? v.id} (user: ${v.assigned_to})`)
-          .join("\n");
-        await sendAdminAlertEmail(
-          "Telegram Token Missing on Active VMs",
-          `${telegramEnabledVms.length} VM(s) have telegram in channels_enabled but telegram_bot_token is NULL.\n\nThese users' agents cannot receive Telegram messages:\n${vmList}\n\nAction required: Contact the affected users to re-enter their bot token via Settings.`
-        );
-      } catch {
-        // Non-fatal
-      }
+    // Alert admin (via digest) — one entry per affected VM
+    for (const tvm of telegramEnabledVms) {
+      alerts.add(
+        "Telegram Token Missing",
+        tvm.name ?? tvm.id,
+        `User: ${tvm.assigned_to}\nTelegram enabled but bot token is NULL.`
+      );
     }
   }
 
@@ -789,16 +762,12 @@ export async function GET(req: NextRequest) {
           assignedTo: vm.assigned_to,
         });
 
-        if (ADMIN_EMAIL) {
-          try {
-            await sendAdminAlertEmail(
-              "Memory Empty Alert",
-              `VM ${vm.name ?? vm.id} (${vm.ip_address}) has an empty or near-empty MEMORY.md (${memHealth.memSizeBytes} bytes) despite being assigned for ${Math.round(hoursSinceAssigned)} hours with active sessions (largest: ${Math.round(sessionHealth.largestSessionBytes / 1024)}KB).\n\nAssigned to: ${vm.assigned_to ?? "unknown"}\nActive tasks file: ${memHealth.activeTasksExists ? "exists" : "MISSING"}\n\nThis means the agent is not persisting any long-term memory. The user will lose all context on session rotation.`
-            );
-          } catch {
-            // Non-fatal
-          }
-        }
+        // Alert admin (via digest)
+        alerts.add(
+          "Memory Empty Alert",
+          vm.name ?? vm.id,
+          `MEMORY.md: ${memHealth.memSizeBytes} bytes\nAssigned ${Math.round(hoursSinceAssigned)}h ago\nLargest session: ${Math.round(sessionHealth.largestSessionBytes / 1024)}KB\nUser: ${vm.assigned_to ?? "unknown"}`
+        );
       }
 
       // MEMORY_STALE: MEMORY.md not updated in 72h+ with active sessions
@@ -951,14 +920,11 @@ export async function GET(req: NextRequest) {
             assignedTo: vm.assigned_to,
           });
 
-          if (ADMIN_EMAIL) {
-            try {
-              await sendAdminAlertEmail(
-                "VM Proxy-Quarantined: Auth Chain Broken",
-                `VM ${vm.name ?? vm.id} (${vm.ip_address}, user: ${vm.assigned_to}) has been quarantined after ${currentCount + 1} consecutive proxy auth failures.\n\nAuto-resync was attempted but did not fix the issue.\n\nACTION REQUIRED: Manual review needed. Run full reconfigure or investigate the proxy auth chain.\n\nTo un-quarantine: update health_status back to "healthy" and reset proxy_401_count to 0 after fixing.`
-              );
-            } catch { /* non-fatal */ }
-          }
+          alerts.add(
+            "VM Proxy-Quarantined: Auth Chain Broken",
+            vm.name ?? vm.id,
+            `IP: ${vm.ip_address}\nUser: ${vm.assigned_to}\nProxy failures: ${currentCount + 1}\nACTION: Manual review needed.`
+          );
           continue;
         }
 
@@ -1022,14 +988,11 @@ export async function GET(req: NextRequest) {
 
           // Alert admin at threshold (quarantine happens next cycle)
           if (newCount >= PROXY_401_THRESHOLD) {
-            if (ADMIN_EMAIL) {
-              try {
-                await sendAdminAlertEmail(
-                  "Cron: Proxy Auth Failure — Quarantine Pending",
-                  `VM ${vm.id} (${vm.name ?? "unnamed"}, user: ${vm.assigned_to}) has failed ${newCount} consecutive proxy round-trip tests. Auto-resync did NOT fix the issue.\n\nLatest error: ${result.error}\n\nThe VM will be proxy-quarantined on the next health check cycle unless the issue resolves.`
-                );
-              } catch { /* non-fatal */ }
-            }
+            alerts.add(
+              "Proxy Auth Failure — Quarantine Pending",
+              vm.name ?? vm.id,
+              `Failures: ${newCount}\nUser: ${vm.assigned_to}\nError: ${result.error}\nWill be quarantined next cycle.`
+            );
           }
         }
       } else {
@@ -1131,16 +1094,11 @@ export async function GET(req: NextRequest) {
             sshFailCount: newCount,
           });
 
-          if (ADMIN_EMAIL) {
-            try {
-              await sendAdminAlertEmail(
-                "Pool VM Auto-Quarantined: SSH Dead",
-                `Ready pool VM ${rvm.name ?? rvm.id} (${rvm.ip_address}) has failed ${newCount} consecutive SSH checks and has been removed from the pool.\n\nThis VM was never assigned to a user.`
-              );
-            } catch {
-              // Non-fatal
-            }
-          }
+          alerts.add(
+            "Pool VM Auto-Quarantined: SSH Dead",
+            rvm.name ?? rvm.id,
+            `IP: ${rvm.ip_address}\nSSH failures: ${newCount}\nNever assigned to a user.`
+          );
         }
       } else {
         await supabase
@@ -1204,16 +1162,11 @@ export async function GET(req: NextRequest) {
             previousSshFailCount: qvm.ssh_fail_count,
           });
 
-          if (ADMIN_EMAIL) {
-            try {
-              await sendAdminAlertEmail(
-                "VM Auto-Recovered from Quarantine",
-                `VM ${qvm.name ?? qvm.id} (${qvm.ip_address}) was quarantined but its gateway HTTP health check is now responding OK.\n\nThe VM has been restored to status: "${newStatus}".\nAssigned to: ${qvm.assigned_to ?? "none (pool VM)"}\nPrevious ssh_fail_count: ${qvm.ssh_fail_count}`
-              );
-            } catch {
-              // Non-fatal
-            }
-          }
+          alerts.add(
+            "VM Auto-Recovered from Quarantine",
+            qvm.name ?? qvm.id,
+            `IP: ${qvm.ip_address}\nRestored to: "${newStatus}"\nUser: ${qvm.assigned_to ?? "none (pool VM)"}`
+          );
         }
       } catch {
         // Gateway still unreachable — leave quarantined
@@ -1278,16 +1231,11 @@ export async function GET(req: NextRequest) {
           assignedTo: vm.assigned_to,
         });
 
-        if (ADMIN_EMAIL) {
-          try {
-            await sendAdminAlertEmail(
-              "Cloud Reboot Initiated",
-              `VM ${vm.name ?? vm.id} (${vm.ip_address}) was rebooted via ${vm.provider} API.\n\nReboot #${rebootCount + 1} of 2.\nAssigned to: ${vm.assigned_to}\n\nThe next health check cycle will verify if the VM recovered.`
-            );
-          } catch {
-            // Non-fatal
-          }
-        }
+        alerts.add(
+          "Cloud Reboot Initiated",
+          vm.name ?? vm.id,
+          `IP: ${vm.ip_address}\nProvider: ${vm.provider}\nReboot #${rebootCount + 1} of 2\nUser: ${vm.assigned_to}`
+        );
       } catch (rebootErr) {
         logger.error("Cloud reboot failed", {
           route: "cron/health-check",
@@ -1462,17 +1410,12 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // Step 6: Email admin
-        if (ADMIN_EMAIL) {
-          try {
-            await sendAdminAlertEmail(
-              "Auto-Migration Completed",
-              `User ${userId} (${migratedUser?.email ?? "unknown"}) was auto-migrated from dead VM ${deadVm.name ?? deadVm.id} (${deadVm.ip_address}) to ${newVm.id} (${newVm.ip_address}).\n\nNew VM healthy: ${newVmHealthy}\nConfigure result: ${JSON.stringify(configResult)}`
-            );
-          } catch {
-            // Non-fatal
-          }
-        }
+        // Step 6: Alert admin (via digest)
+        alerts.add(
+          "Auto-Migration Completed",
+          deadVm.name ?? deadVm.id,
+          `User: ${userId} (${migratedUser?.email ?? "unknown"})\nFrom: ${deadVm.ip_address}\nTo: ${newVm.ip_address}\nNew VM healthy: ${newVmHealthy}`
+        );
       } catch (migErr) {
         logger.error("Auto-migration failed", {
           route: "cron/health-check",
@@ -1524,20 +1467,20 @@ export async function GET(req: NextRequest) {
 
       metricsCollected++;
 
-      if (status.diskPct > 90 && ADMIN_EMAIL) {
-        try {
-          await sendAdminAlertEmail(
-            "VM Disk Critical",
-            `VM ${vm.name ?? vm.id} (${vm.ip_address}): disk usage at ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome processes: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}`
-          );
-        } catch {
-          // Non-fatal
-        }
+      if (status.diskPct > 90) {
+        alerts.add(
+          "VM Disk Critical",
+          vm.name ?? vm.id,
+          `Disk: ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}`
+        );
       }
     } catch {
       // Non-fatal — metrics are best-effort
     }
   }
+
+  // Flush all collected alerts as grouped digest emails (one per alert type)
+  const alertResult = await alerts.flush();
 
   return NextResponse.json({
     checked: vms.length,
@@ -1572,5 +1515,7 @@ export async function GET(req: NextRequest) {
     cloudRebooted,
     autoMigrated,
     metricsCollected,
+    alertDigestsSent: alertResult.sent,
+    alertDigestsSkipped: alertResult.skipped,
   });
 }

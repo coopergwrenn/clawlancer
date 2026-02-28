@@ -294,7 +294,7 @@ export const VM_MANIFEST = {
 
   // ── Session thresholds (operational, kept for reference) ──
   maxSessionBytes: 512 * 1024,
-  sessionAlertBytes: 256 * 1024,
+  sessionAlertBytes: 480 * 1024,
   memoryWarnBytes: 400 * 1024,
 } as const;
 
