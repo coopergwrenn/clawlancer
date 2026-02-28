@@ -13,7 +13,7 @@
  * Detects all 8 InstaClaw skills:
  *   1. voice-audio-production    5. social-media-content
  *   2. email-outreach            6. ecommerce-marketplace
- *   3. financial-analysis        7. video-production
+ *   3. financial-analysis        7. motion-graphics
  *   4. competitive-intelligence  8. brand-design
  *
  * Usage:
@@ -223,14 +223,14 @@ function buildCapabilities(): string {
       "✅ Brand asset extraction for videos (fonts, colors, logos via browser tool)",
       "✅ Draft and production rendering pipeline (15s @ 1080p, 1-3MB output)",
       "⚠️ AI video prompting (Kling AI — requires separate API, not pre-installed)",
-      "→ Skills: remotion-video-production",
-      "→ Template: ~/.openclaw/skills/video-production/assets/template-basic/",
-      "→ Reference: ~/.openclaw/skills/video-production/references/advanced-patterns.md"
+      "→ Skills: motion-graphics",
+      "→ Template: ~/.openclaw/skills/motion-graphics/assets/template-basic/",
+      "→ Reference: ~/.openclaw/skills/motion-graphics/references/advanced-patterns.md"
     );
   } else {
     lines.push(
       "❌ Video production (Remotion — not yet installed)",
-      "→ Skills: remotion-video-production (when installed)"
+      "→ Skills: motion-graphics (when installed)"
     );
   }
   lines.push("");
@@ -497,7 +497,7 @@ function buildCapabilities(): string {
     "│   ├── competitive-intelligence/",
     "│   ├── social-media-content/",
     "│   ├── ecommerce-marketplace/",
-    "│   ├── video-production/",
+    "│   ├── motion-graphics/",
     "│   └── brand-design/",
     "├── config/                # Platform configs",
     "│   └── ecommerce.yaml    # BYOK credentials",

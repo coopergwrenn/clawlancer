@@ -25,7 +25,6 @@ import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
 
 const MODEL_OPTIONS = [
-  { id: "minimax-m2.5", label: "MiniMax M2.5" },
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
   { id: "claude-opus-4-5-20250820", label: "Claude Opus 4.5" },

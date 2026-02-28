@@ -158,7 +158,7 @@ Each capability in CAPABILITIES.md is tagged **(MCP)** or **(Skill)**:
 | ecommerce-marketplace | ~/.openclaw/skills/ecommerce-marketplace/SKILL.md |
 | marketplace-earning | ~/.openclaw/skills/marketplace-earning/SKILL.md |
 | voice-audio-production | ~/.openclaw/skills/voice-audio-production/SKILL.md |
-| video-production | ~/.openclaw/skills/video-production/SKILL.md |
+| motion-graphics | ~/.openclaw/skills/motion-graphics/SKILL.md |
 | polymarket | ~/.openclaw/skills/polymarket/SKILL.md |
 | language-teacher | ~/.openclaw/skills/language-teacher/SKILL.md |
 
@@ -166,14 +166,14 @@ Each capability in CAPABILITIES.md is tagged **(MCP)** or **(Skill)**:
 
 When a user asks for video content, route to the correct skill:
 
-**Motion Graphics** (Skill: video-production) — Use for:
+**Motion Graphics** (Skill: motion-graphics) — Use for:
 - Promo videos, product demos, animated explainers, social media ads
 - Kinetic typography, text animations, UI animations
 - Pitch deck videos, website hero loops
 - Anything where you need exact brand colors, fonts, logos
 - Anything where the user will iterate on timing, copy, or design
 
-This skill uses Remotion with React animation libraries (Framer Motion, GSAP, React Spring) to produce premium animated videos from code. Zero credits consumed. Read \`~/.openclaw/skills/video-production/SKILL.md\` for the full toolkit.
+This skill uses Remotion with React animation libraries (Framer Motion, GSAP, React Spring) to produce premium animated videos from code. Zero credits consumed. Read \`~/.openclaw/skills/motion-graphics/SKILL.md\` for the full toolkit.
 
 **DO NOT use raw FFmpeg for animated content.** FFmpeg is only for encoding, format conversion, trimming, and concatenation. For actual motion graphics with transitions, text effects, and animation — always use the Motion Graphics skill.
 
@@ -382,7 +382,7 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 
 ### Media & Creative
 - **The Director — AI Creative Studio** (Skill: sjinn-video) — Your built-in creative director. Describe any scene, ad, or content idea in plain English and get professional video, images, music, and audio. Powered by Seedance 2.0, Sora2, Veo3, and more.
-- **Motion Graphics** (Skill: video-production) — Programmatic animated videos (Remotion + Framer Motion + GSAP + React Spring). Product demos, explainers, social ads, pitch decks. Full brand fidelity, surgical editing, zero credits.
+- **Motion Graphics** (Skill: motion-graphics) — Programmatic animated videos (Remotion + Framer Motion + GSAP + React Spring). Product demos, explainers, social ads, pitch decks. Full brand fidelity, surgical editing, zero credits.
 - **Voice & Audio** (Skill: voice-audio-production) — Text-to-speech (OpenAI/ElevenLabs), audio processing, sound effects
 - **Image Generation** (Skill: sjinn-video) — AI stills and thumbnails (Nano Banana, seedream 4.5) via The Director
 
@@ -489,7 +489,7 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 → Scripts: ~/scripts/email-client.sh, ~/scripts/email-safety-check.py, ~/scripts/email-digest.py
 → Config: ~/.openclaw/email-config.json
 
-## 🎬 MOTION GRAPHICS (Skill: video-production)
+## 🎬 MOTION GRAPHICS (Skill: motion-graphics)
 ✅ Programmatic animated videos — Remotion + Framer Motion + GSAP + React Spring
 ✅ Prompt enhancement: vague requests → detailed scene-by-scene technical specs
 ✅ Storyboard templates for product launches, explainers, TikTok/Reels, pitch decks, website heroes
@@ -501,8 +501,8 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 ✅ Zero credits consumed — render as many iterations as needed
 ⚠️ This is for ANIMATED content (text, UI, graphics). For AI-generated realistic video → use The Director (sjinn-video)
 → Skills: motion-graphics
-→ Template: ~/.openclaw/skills/video-production/assets/template-basic/
-→ Reference: ~/.openclaw/skills/video-production/references/advanced-patterns.md
+→ Template: ~/.openclaw/skills/motion-graphics/assets/template-basic/
+→ Reference: ~/.openclaw/skills/motion-graphics/references/advanced-patterns.md
 
 ## 🎬 THE DIRECTOR — AI CREATIVE STUDIO (Skill: sjinn-video)
 

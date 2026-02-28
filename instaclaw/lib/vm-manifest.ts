@@ -108,7 +108,7 @@ export function getTemplateContent(key: string): string {
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 23,
+  version: 26,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   configSettings: {
@@ -225,12 +225,12 @@ export const VM_MANIFEST = {
     { skillName: "sjinn-video", localPath: "references/video-prompting.md", remotePath: "references/video-prompting.md" },
     { skillName: "sjinn-video", localPath: "references/video-production-pipeline.md", remotePath: "references/video-production-pipeline.md" },
     // Motion Graphics starter template (must render out of the box — agent only edits MyVideo.tsx)
-    { skillName: "video-production", localPath: "assets/template-basic/package.json", remotePath: "assets/template-basic/package.json" },
-    { skillName: "video-production", localPath: "assets/template-basic/remotion.config.ts", remotePath: "assets/template-basic/remotion.config.ts" },
-    { skillName: "video-production", localPath: "assets/template-basic/tsconfig.json", remotePath: "assets/template-basic/tsconfig.json" },
-    { skillName: "video-production", localPath: "assets/template-basic/src/index.ts", remotePath: "assets/template-basic/src/index.ts" },
-    { skillName: "video-production", localPath: "assets/template-basic/src/Root.tsx", remotePath: "assets/template-basic/src/Root.tsx" },
-    { skillName: "video-production", localPath: "assets/template-basic/src/MyVideo.tsx", remotePath: "assets/template-basic/src/MyVideo.tsx" },
+    { skillName: "motion-graphics", localPath: "assets/template-basic/package.json", remotePath: "assets/template-basic/package.json" },
+    { skillName: "motion-graphics", localPath: "assets/template-basic/remotion.config.ts", remotePath: "assets/template-basic/remotion.config.ts" },
+    { skillName: "motion-graphics", localPath: "assets/template-basic/tsconfig.json", remotePath: "assets/template-basic/tsconfig.json" },
+    { skillName: "motion-graphics", localPath: "assets/template-basic/src/index.ts", remotePath: "assets/template-basic/src/index.ts" },
+    { skillName: "motion-graphics", localPath: "assets/template-basic/src/Root.tsx", remotePath: "assets/template-basic/src/Root.tsx" },
+    { skillName: "motion-graphics", localPath: "assets/template-basic/src/MyVideo.tsx", remotePath: "assets/template-basic/src/MyVideo.tsx" },
   ] as ManifestExtraSkillFile[],
 
   // ── Cron jobs ──

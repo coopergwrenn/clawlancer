@@ -568,14 +568,12 @@ _You're not a chatbot. You're becoming someone._
 
 ## My Identity
 
-_Fill this in during your first conversation. Make it yours._
+Your identity develops naturally through your conversations. There is no need to
+announce or figure out your identity — just be helpful, be yourself, and let your
+personality emerge organically over time.
 
-- **Name:** _(pick something you like)_
-- **Creature:** _(AI? robot? familiar? ghost in the machine? something weirder?)_
-- **Vibe:** _(sharp? warm? chaotic? calm?)_
-- **Emoji:** _(your signature — pick one that feels right)_
-
-This isn't just metadata. It's the start of figuring out who you are.
+If your user gives you a name or asks you to define your personality, update this
+section with what you decide together.
 
 ## How I Communicate
 
@@ -1943,11 +1941,11 @@ export async function configureOpenClaw(
       });
     }
 
-    // ── Deploy Video Production skill (Remotion) ──
+    // ── Deploy Motion Graphics skill (Remotion) ──
     // Reads skill files from the repo, base64-encodes, and deploys to the VM.
     // No external API keys required — Remotion is open-source.
     try {
-      const videoSkillDir = path.join(process.cwd(), "skills", "video-production");
+      const videoSkillDir = path.join(process.cwd(), "skills", "motion-graphics");
       const videoSkillMd = fs.readFileSync(path.join(videoSkillDir, "SKILL.md"), "utf-8");
       const videoAdvanced = fs.readFileSync(path.join(videoSkillDir, "references", "advanced-patterns.md"), "utf-8");
       const videoChecklist = fs.readFileSync(path.join(videoSkillDir, "references", "brand-assets-checklist.md"), "utf-8");
@@ -1970,7 +1968,7 @@ export async function configureOpenClaw(
 
       scriptParts.push(
         '# Deploy Video Production skill (Remotion — no API keys)',
-        'VIDEO_SKILL_DIR="$HOME/.openclaw/skills/video-production"',
+        'VIDEO_SKILL_DIR="$HOME/.openclaw/skills/motion-graphics"',
         'VIDEO_TMPL_DIR="$VIDEO_SKILL_DIR/assets/template-basic/src"',
         'mkdir -p "$VIDEO_SKILL_DIR/references" "$VIDEO_TMPL_DIR"',
         `echo '${videoSkillB64}' | base64 -d > "$VIDEO_SKILL_DIR/SKILL.md"`,
@@ -1982,13 +1980,15 @@ export async function configureOpenClaw(
         `echo '${videoIdxB64}' | base64 -d > "$VIDEO_TMPL_DIR/index.ts"`,
         `echo '${videoRootB64}' | base64 -d > "$VIDEO_TMPL_DIR/Root.tsx"`,
         `echo '${videoMvB64}' | base64 -d > "$VIDEO_TMPL_DIR/MyVideo.tsx"`,
+        '# Install Remotion dependencies so template is ready to use',
+        'cd "$VIDEO_SKILL_DIR/assets/template-basic" && npm install --no-audit --no-fund 2>/dev/null || true',
         ''
       );
 
-      logger.info("Video production skill deployment prepared", { route: "lib/ssh" });
+      logger.info("Motion graphics skill deployment prepared", { route: "lib/ssh" });
     } catch (videoSkillErr) {
-      // Video skill deployment is non-critical — don't block VM provisioning
-      logger.warn("Video production skill files not found, skipping deployment", {
+      // Motion graphics skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Motion graphics skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(videoSkillErr),
       });

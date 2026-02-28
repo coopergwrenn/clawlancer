@@ -849,14 +849,6 @@ export default function ConnectPage() {
                         desc: "Best for deep analysis, coding, and multi-step agent tasks. Top-tier intelligence.",
                         recommended: false,
                       },
-                      {
-                        id: "minimax-m2.5",
-                        label: "MiniMax M2.5",
-                        tier: "Budget",
-                        cost: "0.2 units/message",
-                        desc: "5x more messages per credit. Best for simple chat — may struggle with complex multi-step tasks.",
-                        recommended: false,
-                      },
                     ].map((m) => (
                       <button
                         key={m.id}

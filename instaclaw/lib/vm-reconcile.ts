@@ -60,8 +60,17 @@ export async function reconcileVM(
     // ── Step 2b: Bootstrap safety ──
     await stepBootstrapConsumed(ssh, result, dryRun);
 
+    // ── Step 2c: Rename video-production → motion-graphics ──
+    await stepRenameVideoSkill(ssh, result, dryRun);
+
+    // ── Step 2d: Fix blank identity in SOUL.md + remove legacy IDENTITY.md ──
+    await stepFixBlankIdentity(ssh, result, dryRun);
+
     // ── Step 3: Skills ──
     await stepSkills(ssh, vm, manifest, result, dryRun);
+
+    // ── Step 3b: Remotion dependencies (npm install in motion-graphics template) ──
+    await stepRemotionDeps(ssh, result, dryRun);
 
     // ── Step 4: Cron jobs ──
     await stepCronJobs(ssh, manifest, result, dryRun);
@@ -78,11 +87,15 @@ export async function reconcileVM(
     // ── Step 8: Auth profiles ──
     const authProfileFixed = await stepAuthProfiles(ssh, vm, result, dryRun);
 
-    // ── Step 8b: Systemd unit overrides (KillMode, crash-loop breaker, Chrome cleanup) ──
+    // ── Step 8b: Clear stale provider cooldown from auth-profiles.json ──
+    const cooldownCleared = await stepClearProviderCooldown(ssh, result, dryRun);
+    if (cooldownCleared) result.gatewayRestartNeeded = true;
+
+    // ── Step 8c: Systemd unit overrides (KillMode, crash-loop breaker, Chrome cleanup) ──
     await stepSystemdUnit(ssh, manifest, result, dryRun);
 
-    // ── Step 9: Gateway restart (only if auth-profiles.json was modified) ──
-    if (authProfileFixed && !dryRun) {
+    // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
+    if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun) {
       result.gatewayRestartNeeded = true;
       await stepGatewayRestart(ssh, vm, result);
     }
@@ -392,6 +405,158 @@ async function stepBootstrapConsumed(
   result.fixed.push('bootstrap cleanup (deleted BOOTSTRAP.md, created .bootstrap_consumed)');
 }
 
+async function stepFixBlankIdentity(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const workspace = '~/.openclaw/workspace';
+  const soulFile = `${workspace}/SOUL.md`;
+  const identityFile = `${workspace}/IDENTITY.md`;
+
+  // Check if SOUL.md has the blank identity template
+  const check = await ssh.execCommand(
+    `grep -c '_(pick something you like)_' ${soulFile} 2>/dev/null || echo 0`
+  );
+  const isBlank = parseInt(check.stdout.trim(), 10) > 0;
+
+  if (!isBlank) {
+    // Also clean up legacy IDENTITY.md if it has the blank template
+    const legacyCheck = await ssh.execCommand(
+      `grep -c '_(pick something you like)_' ${identityFile} 2>/dev/null || echo 0`
+    );
+    if (parseInt(legacyCheck.stdout.trim(), 10) > 0) {
+      if (!dryRun) {
+        await ssh.execCommand(`rm -f ${identityFile}`);
+        result.fixed.push('identity (deleted blank legacy IDENTITY.md)');
+      } else {
+        result.fixed.push('[dry-run] delete blank legacy IDENTITY.md');
+      }
+    } else {
+      result.alreadyCorrect.push('identity (SOUL.md already personalized)');
+    }
+    return;
+  }
+
+  // SOUL.md has blank identity — replace the template section
+  // The blank section spans from "## My Identity" to "## How I Communicate"
+  // Replace the placeholder content with a neutral default
+  const replacement = [
+    '## My Identity',
+    '',
+    'Your identity develops naturally through your conversations. There is no need to',
+    'announce or figure out your identity — just be helpful, be yourself, and let your',
+    'personality emerge organically over time.',
+    '',
+    'If your user gives you a name or asks you to define your personality, update this',
+    'section with what you decide together.',
+    '',
+  ].join('\\n');
+
+  if (dryRun) {
+    result.fixed.push('[dry-run] fix blank identity in SOUL.md');
+    return;
+  }
+
+  // Use sed to replace the blank identity section
+  // Match from "## My Identity" through the blank template to the line before "## How I Communicate"
+  await ssh.execCommand(
+    `sed -i '/^## My Identity$/,/^## How I Communicate$/{ /^## How I Communicate$/!d; }' ${soulFile} && ` +
+    `sed -i '/^## How I Communicate$/i\\${replacement}' ${soulFile}`
+  );
+
+  // Verify it worked
+  const verify = await ssh.execCommand(
+    `grep -c '_(pick something you like)_' ${soulFile} 2>/dev/null || echo 0`
+  );
+  if (parseInt(verify.stdout.trim(), 10) > 0) {
+    result.errors.push('identity fix failed — blank template still in SOUL.md');
+    return;
+  }
+
+  result.fixed.push('identity (replaced blank template in SOUL.md)');
+
+  // Also delete legacy blank IDENTITY.md
+  await ssh.execCommand(`rm -f ${identityFile}`);
+}
+
+async function stepRenameVideoSkill(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const oldDir = '~/.openclaw/skills/video-production';
+  const newDir = '~/.openclaw/skills/motion-graphics';
+
+  // Check if old directory exists
+  const check = await ssh.execCommand(
+    `test -d ${oldDir} && echo EXISTS || echo GONE`
+  );
+
+  if (check.stdout.trim() !== 'EXISTS') {
+    result.alreadyCorrect.push('skill rename (video-production already gone)');
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push('[dry-run] rename video-production → motion-graphics');
+    return;
+  }
+
+  // Remove new dir if it exists (stale partial rename), then move
+  await ssh.execCommand(`rm -rf ${newDir} && mv ${oldDir} ${newDir}`);
+  result.fixed.push('skill rename (video-production → motion-graphics)');
+}
+
+async function stepRemotionDeps(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const templateDir = '~/.openclaw/skills/motion-graphics/assets/template-basic';
+
+  // Check if template directory exists
+  const dirCheck = await ssh.execCommand(
+    `test -f ${templateDir}/package.json && echo EXISTS || echo MISSING`
+  );
+  if (dirCheck.stdout.trim() !== 'EXISTS') {
+    result.alreadyCorrect.push('remotion deps (template not deployed yet)');
+    return;
+  }
+
+  // Check if node_modules already has remotion installed
+  const installed = await ssh.execCommand(
+    `test -d ${templateDir}/node_modules/remotion && echo YES || echo NO`
+  );
+  if (installed.stdout.trim() === 'YES') {
+    result.alreadyCorrect.push('remotion deps (already installed)');
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push('[dry-run] npm install in motion-graphics template');
+    return;
+  }
+
+  // Run npm install with NVM
+  const nvm = 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"';
+  const install = await ssh.execCommand(
+    `${nvm} && cd ${templateDir} && npm install --no-audit --no-fund 2>&1`,
+    { execOptions: { timeout: 180000 } }
+  );
+
+  // Verify installation
+  const verify = await ssh.execCommand(
+    `test -d ${templateDir}/node_modules/remotion && echo YES || echo NO`
+  );
+  if (verify.stdout.trim() !== 'YES') {
+    result.errors.push(`remotion deps install failed: ${install.stderr?.slice(0, 200) || install.stdout?.slice(-200)}`);
+    return;
+  }
+
+  result.fixed.push('remotion deps (npm install in motion-graphics template)');
+}
+
 async function stepSkills(
   ssh: SSHConnection,
   vm: VMRecord,
@@ -606,6 +771,43 @@ async function stepEnvVars(
     await ssh.execCommand(`echo "${envName}=${value}" >> "$HOME/.openclaw/.env"`);
     result.fixed.push(envName);
   }
+}
+
+async function stepClearProviderCooldown(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<boolean> {
+  const authFile = '/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json';
+
+  // Check if any provider has disabledUntil set
+  const check = await ssh.execCommand(
+    `python3 -c "import json; d=json.load(open('${authFile}')); s=d.get('usageStats',{}); print('COOLDOWN' if any(v.get('disabledUntil') for v in s.values() if isinstance(v, dict)) else 'CLEAN')" 2>/dev/null || echo SKIP`
+  );
+
+  if (check.stdout.trim() === 'CLEAN' || check.stdout.trim() === 'SKIP') {
+    result.alreadyCorrect.push('provider cooldown (none active)');
+    return false;
+  }
+
+  if (dryRun) {
+    result.fixed.push('[dry-run] clear provider cooldown from auth-profiles.json');
+    return true;
+  }
+
+  await ssh.execCommand(
+    `python3 -c "
+import json
+f = '${authFile}'
+d = json.load(open(f))
+if 'usageStats' in d:
+    d['usageStats'] = {}
+json.dump(d, open(f, 'w'), indent=2)
+"`
+  );
+
+  result.fixed.push('provider cooldown (cleared disabledUntil from auth-profiles.json)');
+  return true;
 }
 
 async function stepAuthProfiles(

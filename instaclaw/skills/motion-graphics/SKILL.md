@@ -1025,13 +1025,11 @@ assets/template-basic/
 ### Setup Workflow
 
 ```bash
-# 1. Copy template to workspace
-cp -r ~/.openclaw/skills/video-production/assets/template-basic ~/workspace/video-project
+# 1. Copy template to workspace (includes pre-installed node_modules)
+cp -r ~/.openclaw/skills/motion-graphics/assets/template-basic ~/workspace/video-project
+cd ~/workspace/video-project
 
-# 2. Install dependencies
-cd ~/workspace/video-project && npm install
-
-# 3. Edit src/MyVideo.tsx with brand assets, scenes, and copy
+# 2. Edit src/MyVideo.tsx with brand assets, scenes, and copy
 
 # 4. Preview (opens browser)
 npx remotion preview src/index.ts
@@ -1648,12 +1646,26 @@ curl -F "chat_id=$CHAT_ID" \
      "https://api.telegram.org/bot$BOT_TOKEN/sendVideo"
 ```
 
-**Step 3: Confirm delivery**
+**Step 3: Confirm delivery and STOP**
+
+Capture the curl response. Check for `"ok":true` — that means the video was delivered successfully.
+
 ```bash
-# Check response for success
-# {"ok":true,"result":{"message_id":...}} = delivered
-# {"ok":false,"description":"..."} = failed, check error
+# Save the response to verify delivery
+RESPONSE=$(curl -s -F "chat_id=$CHAT_ID" \
+     -F "video=@out/final.mp4" \
+     -F "caption=Here's your video!" \
+     -F "supports_streaming=true" \
+     "https://api.telegram.org/bot$BOT_TOKEN/sendVideo")
+echo "$RESPONSE" | python3 -c "import sys,json; r=json.load(sys.stdin); print('DELIVERED' if r.get('ok') else 'FAILED:', json.dumps(r, indent=2)[:200])"
 ```
+
+**CRITICAL: After a successful sendVideo (HTTP 200, `"ok":true`), you are DONE.**
+- Do NOT attempt to re-send via the message tool, file transfer, or any other method
+- Do NOT use `sendDocument` as a "backup" — one successful `sendVideo` is sufficient
+- Do NOT try to attach or embed the video in a text reply
+- Simply tell the user "Video sent!" and ask for feedback
+- If `"ok":false`, THEN troubleshoot (check file size, bot token, chat ID)
 
 ### File Size Limits
 
@@ -1682,8 +1694,9 @@ curl -F "chat_id=$CHAT_ID" \
 - [ ] File size is under 20MB (re-encode if larger)
 - [ ] Send via `sendVideo` (not `sendDocument` — users want inline playback)
 - [ ] Include a caption describing what the video is
-- [ ] Confirm the Telegram API returns `"ok":true`
-- [ ] Tell the user the video has been sent and ask for feedback
+- [ ] Capture the curl response and verify `"ok":true`
+- [ ] If `"ok":true` → STOP. Tell the user "Video sent!" and ask for feedback
+- [ ] Do NOT re-send via message tool, sendDocument, or any other method after success
 
 ---
 
@@ -1699,6 +1712,6 @@ From real InstaClaw video production:
 
 ## Scripts & References
 
-- `~/.openclaw/skills/video-production/assets/template-basic/` — Starter template (renders out of the box)
-- `~/.openclaw/skills/video-production/references/advanced-patterns.md` — Complex animations, audio sync, data-driven videos
-- `~/.openclaw/skills/video-production/references/brand-assets-checklist.md` — Asset collection checklist
+- `~/.openclaw/skills/motion-graphics/assets/template-basic/` — Starter template (renders out of the box)
+- `~/.openclaw/skills/motion-graphics/references/advanced-patterns.md` — Complex animations, audio sync, data-driven videos
+- `~/.openclaw/skills/motion-graphics/references/brand-assets-checklist.md` — Asset collection checklist
