@@ -6,7 +6,7 @@ Create professional animated videos, explainers, product demos, and social conte
 
 ```yaml
 name: motion-graphics
-version: 2.2.0
+version: 2.3.0
 updated: 2026-02-27
 author: InstaClaw
 triggers:
@@ -1045,25 +1045,53 @@ npx remotion render src/index.ts MyVideo out/final.mp4 --crf 18 --codec h264
 
 ### Composition Registration
 
-In `src/Root.tsx`, register compositions for different aspect ratios:
+`src/Root.tsx` registers three compositions for different aspect ratios. **DO NOT rename this export** — `src/index.ts` imports `Root` by name.
 
 ```tsx
+import React from "react";
 import { Composition } from "remotion";
 import { MyVideo } from "./MyVideo";
 
-export const RemotionRoot = () => (
-  <>
-    {/* 16:9 landscape */}
-    <Composition id="Landscape" component={MyVideo} durationInFrames={900} fps={30} width={1920} height={1080} />
+export const Root: React.FC = () => {
+  const defaultProps = {
+    brandName: "Your Brand",
+    tagline: "Your Tagline Here",
+    primaryColor: "#e67e4d",
+    bgDark: "#0f1419",
+    bgLight: "#f5f3ee",
+    textLight: "#ffffff",
+    headingFont: '"Instrument Serif", serif',
+    bodyFont: "Inter, sans-serif",
+    ctaText: "Get Started",
+    ctaUrl: "https://example.com",
+  };
 
-    {/* 9:16 vertical (TikTok/Reels) */}
-    <Composition id="Vertical" component={MyVideo} durationInFrames={450} fps={30} width={1080} height={1920} />
+  return (
+    <>
+      {/* 16:9 landscape (YouTube, website) — 15s @ 30fps */}
+      <Composition id="MyVideo" component={MyVideo} durationInFrames={450} fps={30}
+        width={1920} height={1080} defaultProps={defaultProps} />
 
-    {/* 1:1 square (Instagram) */}
-    <Composition id="Square" component={MyVideo} durationInFrames={900} fps={30} width={1080} height={1080} />
-  </>
-);
+      {/* 9:16 vertical (TikTok, Reels, Stories) — 15s @ 30fps */}
+      <Composition id="Vertical" component={MyVideo} durationInFrames={450} fps={30}
+        width={1080} height={1920} defaultProps={defaultProps} />
+
+      {/* 1:1 square (Instagram feed) — 15s @ 30fps */}
+      <Composition id="Square" component={MyVideo} durationInFrames={450} fps={30}
+        width={1080} height={1080} defaultProps={defaultProps} />
+    </>
+  );
+};
 ```
+
+`src/index.ts` — **Never modify this file:**
+```ts
+import { registerRoot } from "remotion";
+import { Root } from "./Root";
+registerRoot(Root);
+```
+
+**Composition IDs for render commands:** `MyVideo` (16:9), `Vertical` (9:16), `Square` (1:1)
 
 ---
 
@@ -1587,6 +1615,75 @@ Apply ALL of these to any video and it will look premium:
 - [ ] CTA has enough screen time (3+ seconds)
 - [ ] Overall duration matches the brief — not padded with dead time
 - [ ] Tone matches the requested feel (professional, playful, premium, etc.)
+
+---
+
+## Section 10: Delivery — Sending Videos to Users
+
+After rendering, **you MUST send the video to the user.** A rendered file sitting on your VM is useless. The user is on Telegram — send it there.
+
+### Telegram Video Delivery (Primary Method)
+
+Your Telegram bot token is in `~/.openclaw/openclaw.json`. Use it to send the rendered .mp4 directly as a Telegram video message.
+
+**Step 1: Extract bot token and find chat ID**
+```bash
+# Extract bot token from config
+BOT_TOKEN=$(python3 -c "import json; print(json.load(open('$HOME/.openclaw/openclaw.json'))['channels']['telegram']['botToken'])")
+
+# Get chat_id from most recent incoming message
+CHAT_ID=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?limit=1&offset=-1" | python3 -c "import sys,json; r=json.load(sys.stdin)['result']; print(r[-1]['message']['chat']['id'] if r else 'NONE')")
+
+echo "Bot: $BOT_TOKEN"
+echo "Chat: $CHAT_ID"
+```
+
+**Step 2: Send the video**
+```bash
+# Send video with caption (max 50MB, recommended <20MB)
+curl -F "chat_id=$CHAT_ID" \
+     -F "video=@out/final.mp4" \
+     -F "caption=Here's your video! 🎬" \
+     -F "supports_streaming=true" \
+     "https://api.telegram.org/bot$BOT_TOKEN/sendVideo"
+```
+
+**Step 3: Confirm delivery**
+```bash
+# Check response for success
+# {"ok":true,"result":{"message_id":...}} = delivered
+# {"ok":false,"description":"..."} = failed, check error
+```
+
+### File Size Limits
+
+| Method | Max Size | Notes |
+|--------|----------|-------|
+| Telegram sendVideo | 50MB hard limit | 20MB recommended for reliable delivery |
+| Telegram sendDocument | 50MB hard limit | Fallback — sends as file attachment, no inline player |
+
+### If the video is too large (>20MB)
+
+1. **Re-encode with higher CRF** (smaller file):
+```bash
+ffmpeg -i out/final.mp4 -crf 26 -preset medium -movflags +faststart out/final-compressed.mp4
+```
+
+2. **Send as document** (if still >50MB after compression):
+```bash
+curl -F "chat_id=$CHAT_ID" \
+     -F "document=@out/final.mp4" \
+     -F "caption=Video file (large)" \
+     "https://api.telegram.org/bot$BOT_TOKEN/sendDocument"
+```
+
+### Delivery Checklist
+- [ ] Video renders without errors
+- [ ] File size is under 20MB (re-encode if larger)
+- [ ] Send via `sendVideo` (not `sendDocument` — users want inline playback)
+- [ ] Include a caption describing what the video is
+- [ ] Confirm the Telegram API returns `"ok":true`
+- [ ] Tell the user the video has been sent and ask for feedback
 
 ---
 

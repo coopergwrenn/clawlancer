@@ -6,7 +6,9 @@
     "preview": "remotion preview src/index.ts",
     "render": "remotion render src/index.ts MyVideo out/video.mp4",
     "render:draft": "remotion render src/index.ts MyVideo out/draft.mp4 --crf 28",
-    "render:prod": "remotion render src/index.ts MyVideo out/final.mp4 --crf 18 --codec h264"
+    "render:prod": "remotion render src/index.ts MyVideo out/final.mp4 --crf 18 --codec h264",
+    "render:vertical": "remotion render src/index.ts Vertical out/vertical.mp4 --crf 18 --codec h264",
+    "render:square": "remotion render src/index.ts Square out/square.mp4 --crf 18 --codec h264"
   },
   "dependencies": {
     "remotion": "^4.0.0",
