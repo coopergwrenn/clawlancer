@@ -89,10 +89,21 @@ export async function POST(req: NextRequest) {
       }
 
       case "update_telegram_token": {
-        const { telegramToken } = body;
-        if (!telegramToken || typeof telegramToken !== "string") {
+        const rawToken = body.telegramToken;
+        if (!rawToken || typeof rawToken !== "string") {
           return NextResponse.json(
             { error: "telegramToken is required" },
+            { status: 400 }
+          );
+        }
+
+        // Aggressively strip invisible chars that mobile copy/paste can introduce
+        // (newlines, carriage returns, zero-width spaces, non-breaking spaces, etc.)
+        const telegramToken = rawToken.replace(/[\s\u200B\u200C\u200D\uFEFF\u00A0\r\n]/g, "");
+
+        if (!telegramToken) {
+          return NextResponse.json(
+            { error: "Telegram bot token is empty after removing whitespace." },
             { status: 400 }
           );
         }
@@ -103,13 +114,25 @@ export async function POST(req: NextRequest) {
           const getMeRes = await fetch(`https://api.telegram.org/bot${telegramToken}/getMe`);
           const getMeData = await getMeRes.json();
           if (!getMeData.ok || !getMeData.result?.username) {
+            logger.error("Telegram getMe rejected token", {
+              route: "settings/update",
+              userId: session.user.id,
+              tokenLength: telegramToken.length,
+              tokenPrefix: telegramToken.slice(0, 8),
+              telegramResponse: JSON.stringify(getMeData).slice(0, 300),
+            });
             return NextResponse.json(
               { error: "Invalid Telegram bot token. Please double-check the token from @BotFather." },
               { status: 400 }
             );
           }
           botUsername = getMeData.result.username;
-        } catch {
+        } catch (fetchErr) {
+          logger.error("Telegram getMe fetch failed", {
+            route: "settings/update",
+            userId: session.user.id,
+            error: String(fetchErr),
+          });
           return NextResponse.json(
             { error: "Failed to validate Telegram bot token. Please check your connection and try again." },
             { status: 400 }
