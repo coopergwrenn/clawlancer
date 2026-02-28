@@ -108,7 +108,7 @@ export function getTemplateContent(key: string): string {
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 22,
+  version: 23,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   configSettings: {
@@ -119,7 +119,6 @@ export const VM_MANIFEST = {
     "channels.telegram.groupPolicy": "open",
     "channels.telegram.groups.default.requireMention": "false",
     "commands.useAccessGroups": "false",
-    "browser.maxConcurrentContexts": "2",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
@@ -271,7 +270,7 @@ export const VM_MANIFEST = {
     "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
     "StartLimitIntervalSec": "300", // 5-minute window for burst counting
     "StartLimitAction": "stop",    // Stop unit after burst exceeded (was: none → infinite loop)
-    "ExecStartPre": "/bin/bash -c 'pkill -9 -f \"chrome.*remote-debugging-port\" 2>/dev/null || true'",
+    "ExecStartPre": "/bin/bash -c 'pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
   } as Record<string, string>,
 
   // ── Session thresholds (operational, kept for reference) ──

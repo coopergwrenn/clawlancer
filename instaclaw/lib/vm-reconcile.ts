@@ -779,9 +779,14 @@ async function stepSystemdUnit(
 
   for (const [key, value] of Object.entries(overrides)) {
     if (key === "ExecStartPre") {
-      // ExecStartPre is special — check if any ExecStartPre exists
-      if (!currentUnit.includes("ExecStartPre=")) {
+      // ExecStartPre is special — check if it exists AND matches the expected value
+      const execStartPreMatch = currentUnit.match(/^ExecStartPre=(.*)$/m);
+      if (!execStartPreMatch) {
+        // Missing entirely — insert before ExecStart
         patches.push(`sed -i '/^ExecStart=/i ExecStartPre=${value.replace(/'/g, "'\\''")}'  ${unitPath}`);
+      } else if (execStartPreMatch[1] !== value) {
+        // Exists but wrong value (e.g. buggy pkill pattern) — replace in place
+        patches.push(`sed -i 's|^ExecStartPre=.*|ExecStartPre=${value.replace(/'/g, "'\\''")}|' ${unitPath}`);
       }
     } else {
       // For all other keys, check if the current value matches
