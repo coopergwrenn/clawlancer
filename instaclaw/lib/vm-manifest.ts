@@ -108,7 +108,7 @@ export function getTemplateContent(key: string): string {
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 26,
+  version: 27,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   configSettings: {
@@ -213,6 +213,14 @@ export const VM_MANIFEST = {
       executable: true,
       useSFTP: true,
     },
+    {
+      remotePath: "~/.openclaw/scripts/vm-watchdog.py",
+      source: "template",
+      templateKey: "VM_WATCHDOG_SCRIPT",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+    },
   ] as ManifestFileEntry[],
 
   // ── Skill files ──
@@ -245,6 +253,11 @@ export const VM_MANIFEST = {
       command: "python3 ~/.openclaw/scripts/auto-approve-pairing.py > /dev/null 2>&1",
       marker: "auto-approve-pairing.py",
     },
+    {
+      schedule: "* * * * *",
+      command: "python3 ~/.openclaw/scripts/vm-watchdog.py > /dev/null 2>&1",
+      marker: "vm-watchdog.py",
+    },
   ] as ManifestCronJob[],
 
   // ── System packages (installed via sudo apt-get) ──
@@ -271,6 +284,10 @@ export const VM_MANIFEST = {
     "StartLimitIntervalSec": "300", // 5-minute window for burst counting
     "StartLimitAction": "stop",    // Stop unit after burst exceeded (was: none → infinite loop)
     "ExecStartPre": "/bin/bash -c 'pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
+    "MemoryHigh": "3G",             // Soft limit: kernel throttles at 3GB (gateway slows, doesn't die)
+    "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
+    "TasksMax": "150",              // Max threads+processes (Node ~20 + Chrome ~50 + headroom)
+    "OOMScoreAdjust": "500",        // Higher = killed first. sshd has -900. Gateway dies before sshd.
   } as Record<string, string>,
 
   // ── Session thresholds (operational, kept for reference) ──

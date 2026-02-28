@@ -94,6 +94,9 @@ export async function reconcileVM(
     // ── Step 8c: Systemd unit overrides (KillMode, crash-loop breaker, Chrome cleanup) ──
     await stepSystemdUnit(ssh, manifest, result, dryRun);
 
+    // ── Step 8d: sshd OOM protection (OOMScoreAdjust=-900 drop-in) ──
+    await stepSSHDProtection(ssh, result, dryRun);
+
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
     if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun) {
       result.gatewayRestartNeeded = true;
@@ -1028,5 +1031,48 @@ async function stepSystemdUnit(
     result.gatewayRestartNeeded = true;
   } else {
     result.errors.push(`systemd unit patch failed: ${patchResult.stderr}`);
+  }
+}
+
+/**
+ * Step 8d: Deploy sshd OOM protection drop-in.
+ * Sets OOMScoreAdjust=-900 for sshd so the system OOM killer will always
+ * prefer the gateway (OOMScoreAdjust=500) over sshd. This is a belt-and-suspenders
+ * defense alongside cgroup MemoryMax — even if cgroup limits somehow fail,
+ * sshd stays alive.
+ */
+async function stepSSHDProtection(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const dropInPath = "/etc/systemd/system/ssh.service.d/oom-protect.conf";
+  const expectedContent = "[Service]\nOOMScoreAdjust=-900";
+
+  // Check if drop-in already exists with correct content
+  const check = await ssh.execCommand(`cat ${dropInPath} 2>/dev/null || echo MISSING`);
+  const current = check.stdout.trim();
+
+  if (current === expectedContent) {
+    result.alreadyCorrect.push("sshd OOM protection: already set");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push("[dry-run] sshd OOM protection: would deploy drop-in");
+    return;
+  }
+
+  const cmd = [
+    `sudo mkdir -p /etc/systemd/system/ssh.service.d/`,
+    `echo -e "[Service]\\nOOMScoreAdjust=-900" | sudo tee ${dropInPath} > /dev/null`,
+    `sudo systemctl daemon-reload`,
+  ].join(" && ");
+
+  const deployResult = await ssh.execCommand(cmd);
+  if (deployResult.code === 0) {
+    result.fixed.push("sshd OOM protection: deployed drop-in (OOMScoreAdjust=-900)");
+  } else {
+    result.errors.push(`sshd OOM protection failed: ${deployResult.stderr}`);
   }
 }

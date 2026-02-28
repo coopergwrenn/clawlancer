@@ -49,7 +49,7 @@ export async function GET() {
     const supabase = getSupabase();
     const { data: vms, error } = await supabase
       .from("instaclaw_vms")
-      .select("id, provider, server_type, status, assigned_to, tier, api_mode, created_at, default_model");
+      .select("id, provider, server_type, status, assigned_to, tier, api_mode, created_at, default_model, last_ram_pct, last_disk_pct, last_chrome_count, last_uptime_seconds");
 
     if (error) throw new Error(error.message);
 
@@ -273,6 +273,10 @@ export async function GET() {
         apiMode: vm.api_mode,
         createdAt: vm.created_at,
         monthlyCost: cost,
+        ramPct: vm.last_ram_pct,
+        diskPct: vm.last_disk_pct,
+        chromeCount: vm.last_chrome_count,
+        uptimeSeconds: vm.last_uptime_seconds,
       };
     });
 

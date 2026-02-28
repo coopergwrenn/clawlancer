@@ -277,4 +277,8 @@ export const hetznerProvider: CloudProvider = {
   async deleteServer(providerId: string): Promise<void> {
     await deleteServer(Number(providerId));
   },
+
+  async rebootServer(providerId: string): Promise<void> {
+    await hetznerFetch(`/servers/${providerId}/actions/reboot`, { method: "POST" });
+  },
 };

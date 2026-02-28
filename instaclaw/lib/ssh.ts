@@ -516,10 +516,299 @@ if changed:
         json.dump(paired, f, indent=2)
 `;
 
+// ── VM Watchdog script ──
+// Runs every minute via cron. Monitors RAM, disk, Chrome, and gateway health.
+// Takes corrective action (kill Chrome, restart gateway, clean disk) before
+// the system OOM killer can take down sshd. Writes status JSON for the
+// external health cron to read.
+export const VM_WATCHDOG_SCRIPT = `#!/usr/bin/env python3
+"""VM Watchdog — local resource monitor and self-healing agent.
+
+Runs every minute via cron. Monitors system resources and takes corrective
+action before the OOM killer can take down sshd.
+
+Writes ~/.openclaw/watchdog-status.json for the external health cron to read.
+"""
+import json, os, subprocess, time, glob, shutil
+from datetime import datetime, timezone
+
+STATUS_FILE = os.path.expanduser("~/.openclaw/watchdog-status.json")
+HEALTH_URL = "http://localhost:18789/health"
+HEALTH_FAIL_FILE = os.path.expanduser("~/.openclaw/.watchdog-health-fails")
+
+# Thresholds
+RAM_KILL_CHROME_PCT = 85
+RAM_RESTART_GATEWAY_PCT = 95
+DISK_CLEANUP_PCT = 80
+DISK_AGGRESSIVE_PCT = 90
+MAX_CHROME_PROCS = 6
+MAX_CHROME_RSS_MB = 1500
+GATEWAY_FAIL_THRESHOLD = 3
+
+def get_ram_pct():
+    """Get total RAM usage percentage."""
+    try:
+        with open("/proc/meminfo") as f:
+            lines = f.readlines()
+        info = {}
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2:
+                info[parts[0].rstrip(":")] = int(parts[1])
+        total = info.get("MemTotal", 1)
+        available = info.get("MemAvailable", total)
+        return round((1 - available / total) * 100, 1)
+    except Exception:
+        return 0.0
+
+def get_disk_pct():
+    """Get root filesystem usage percentage."""
+    try:
+        st = os.statvfs("/")
+        used = (st.f_blocks - st.f_bfree) * st.f_frsize
+        total = st.f_blocks * st.f_frsize
+        return round(used / total * 100, 1) if total > 0 else 0.0
+    except Exception:
+        return 0.0
+
+def get_chrome_info():
+    """Get Chrome process count and total RSS in MB."""
+    count = 0
+    total_rss = 0
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "pid,rss,comm"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and "chrome" in parts[2].lower():
+                count += 1
+                total_rss += int(parts[1])  # RSS in KB
+    except Exception:
+        pass
+    return count, round(total_rss / 1024, 1)
+
+def get_uptime():
+    """Get system uptime in seconds."""
+    try:
+        with open("/proc/uptime") as f:
+            return int(float(f.read().split()[0]))
+    except Exception:
+        return 0
+
+def check_gateway_health():
+    """Check if gateway health endpoint responds OK."""
+    try:
+        result = subprocess.run(
+            ["curl", "-sf", "--max-time", "5", HEALTH_URL],
+            capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def kill_chrome(reason=""):
+    """Kill all Chrome processes."""
+    try:
+        subprocess.run(
+            ["pkill", "-9", "-f", "chrome.*remote-debugging-port"],
+            capture_output=True, timeout=10,
+        )
+    except Exception:
+        pass
+    return f"killed_chrome({reason})"
+
+def kill_oldest_chrome():
+    """Kill the oldest Chrome process by PID (lowest PID = oldest)."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "chrome.*remote-debugging-port"],
+            capture_output=True, text=True, timeout=5,
+        )
+        pids = sorted([int(p) for p in result.stdout.strip().split() if p.strip()])
+        if pids:
+            os.kill(pids[0], 9)
+            return f"killed_oldest_chrome(pid={pids[0]})"
+    except Exception:
+        pass
+    return None
+
+def restart_gateway():
+    """Restart the openclaw-gateway via systemctl."""
+    try:
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        subprocess.run(
+            ["systemctl", "--user", "restart", "openclaw-gateway"],
+            capture_output=True, timeout=30, env=env,
+        )
+    except Exception:
+        pass
+    return "restarted_gateway"
+
+def disk_cleanup(aggressive=False):
+    """Clean up disk space."""
+    actions = []
+    home = os.path.expanduser("~")
+    max_age_days = 3 if aggressive else 7
+
+    # Clean session archives
+    archive_dir = os.path.join(home, ".openclaw/agents/main/sessions-archive")
+    if os.path.isdir(archive_dir):
+        cutoff = time.time() - max_age_days * 86400
+        for entry in os.scandir(archive_dir):
+            if entry.stat().st_mtime < cutoff:
+                try:
+                    if entry.is_dir():
+                        shutil.rmtree(entry.path)
+                    else:
+                        os.unlink(entry.path)
+                    actions.append(f"rm_archive({entry.name})")
+                except Exception:
+                    pass
+
+    # Clean backups
+    backup_dir = os.path.join(home, ".openclaw/backups")
+    if os.path.isdir(backup_dir):
+        cutoff = time.time() - max_age_days * 86400
+        for entry in os.scandir(backup_dir):
+            if entry.stat().st_mtime < cutoff:
+                try:
+                    if entry.is_dir():
+                        shutil.rmtree(entry.path)
+                    else:
+                        os.unlink(entry.path)
+                    actions.append(f"rm_backup({entry.name})")
+                except Exception:
+                    pass
+
+    # Vacuum journald
+    try:
+        subprocess.run(
+            ["journalctl", "--user", "--vacuum-time=2d"],
+            capture_output=True, timeout=15,
+        )
+        actions.append("journal_vacuum")
+    except Exception:
+        pass
+
+    if aggressive:
+        # npm cache
+        try:
+            subprocess.run(
+                ["npm", "cache", "clean", "--force"],
+                capture_output=True, timeout=30,
+            )
+            actions.append("npm_cache_clean")
+        except Exception:
+            pass
+
+        # Rendered videos older than 1 day
+        skills_dir = os.path.join(home, ".openclaw/skills")
+        if os.path.isdir(skills_dir):
+            cutoff = time.time() - 86400
+            for pattern in ["*/output/*.mp4", "*/output/*.webm"]:
+                for f in glob.glob(os.path.join(skills_dir, pattern)):
+                    try:
+                        if os.path.getmtime(f) < cutoff:
+                            os.unlink(f)
+                            actions.append(f"rm_video({os.path.basename(f)})")
+                    except Exception:
+                        pass
+
+    return actions
+
+def get_health_fail_count():
+    """Read consecutive health fail count from file."""
+    try:
+        with open(HEALTH_FAIL_FILE) as f:
+            return int(f.read().strip())
+    except Exception:
+        return 0
+
+def set_health_fail_count(count):
+    """Write consecutive health fail count to file."""
+    try:
+        with open(HEALTH_FAIL_FILE, "w") as f:
+            f.write(str(count))
+    except Exception:
+        pass
+
+def main():
+    actions = []
+    ram_pct = get_ram_pct()
+    disk_pct = get_disk_pct()
+    chrome_count, chrome_rss_mb = get_chrome_info()
+    uptime_seconds = get_uptime()
+    gateway_healthy = check_gateway_health()
+
+    # --- RAM checks ---
+    if ram_pct > RAM_RESTART_GATEWAY_PCT:
+        actions.append(kill_chrome("ram_critical"))
+        actions.append(restart_gateway())
+    elif ram_pct > RAM_KILL_CHROME_PCT:
+        actions.append(kill_chrome("ram_high"))
+
+    # --- Chrome checks ---
+    if chrome_count > MAX_CHROME_PROCS:
+        action = kill_oldest_chrome()
+        if action:
+            actions.append(action)
+    if chrome_rss_mb > MAX_CHROME_RSS_MB and ram_pct <= RAM_KILL_CHROME_PCT:
+        actions.append(kill_chrome("chrome_rss_high"))
+
+    # --- Disk checks ---
+    if disk_pct > DISK_AGGRESSIVE_PCT:
+        actions.extend(disk_cleanup(aggressive=True))
+    elif disk_pct > DISK_CLEANUP_PCT:
+        actions.extend(disk_cleanup(aggressive=False))
+
+    # --- Gateway health check ---
+    fail_count = get_health_fail_count()
+    if gateway_healthy:
+        if fail_count > 0:
+            set_health_fail_count(0)
+    else:
+        fail_count += 1
+        set_health_fail_count(fail_count)
+        if fail_count >= GATEWAY_FAIL_THRESHOLD:
+            actions.append(restart_gateway())
+            set_health_fail_count(0)
+
+    # --- Write status file ---
+    # Filter None values from actions
+    actions = [a for a in actions if a]
+
+    status = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ram_pct": ram_pct,
+        "disk_pct": disk_pct,
+        "chrome_count": chrome_count,
+        "chrome_rss_mb": chrome_rss_mb,
+        "gateway_healthy": gateway_healthy,
+        "actions_taken": actions,
+        "uptime_seconds": uptime_seconds,
+    }
+
+    tmp = STATUS_FILE + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
+        with open(tmp, "w") as f:
+            json.dump(status, f)
+        os.replace(tmp, STATUS_FILE)
+    except Exception:
+        pass
+
+if __name__ == "__main__":
+    main()
+`;
+
 // Register scripts with the template registry so vm-reconcile.ts can access them.
 // Must be done at module load time, after the script constants are defined.
 registerTemplate("STRIP_THINKING_SCRIPT", STRIP_THINKING_SCRIPT);
 registerTemplate("AUTO_APPROVE_PAIRING_SCRIPT", AUTO_APPROVE_PAIRING_SCRIPT);
+registerTemplate("VM_WATCHDOG_SCRIPT", VM_WATCHDOG_SCRIPT);
 
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
@@ -3044,6 +3333,48 @@ export async function migrateUserData(
 
     if (sourceSSH) sourceSSH.dispose();
     if (targetSSH) targetSSH.dispose();
+  }
+}
+
+/**
+ * Read the watchdog status file from a VM via a single SSH command.
+ * Returns parsed status or null if unreachable/missing.
+ */
+export interface WatchdogStatus {
+  reachable: boolean;
+  ramPct: number;
+  diskPct: number;
+  chromeCount: number;
+  chromeRssMb: number;
+  gatewayHealthy: boolean;
+  uptimeSeconds: number;
+  actionsTaken: string[];
+  ts: string;
+}
+
+export async function readWatchdogStatus(vm: VMRecord): Promise<WatchdogStatus | null> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const result = await ssh.execCommand("cat ~/.openclaw/watchdog-status.json 2>/dev/null");
+      if (result.code !== 0 || !result.stdout.trim()) return null;
+      const data = JSON.parse(result.stdout.trim());
+      return {
+        reachable: true,
+        ramPct: data.ram_pct ?? 0,
+        diskPct: data.disk_pct ?? 0,
+        chromeCount: data.chrome_count ?? 0,
+        chromeRssMb: data.chrome_rss_mb ?? 0,
+        gatewayHealthy: data.gateway_healthy ?? false,
+        uptimeSeconds: data.uptime_seconds ?? 0,
+        actionsTaken: data.actions_taken ?? [],
+        ts: data.ts ?? "",
+      };
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return null;
   }
 }
 

@@ -263,4 +263,8 @@ export const linodeProvider: CloudProvider = {
   async deleteServer(providerId: string): Promise<void> {
     await linodeFetch(`/linode/instances/${providerId}`, { method: "DELETE" });
   },
+
+  async rebootServer(providerId: string): Promise<void> {
+    await linodeFetch(`/linode/instances/${providerId}/reboot`, { method: "POST" });
+  },
 };

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, assignVMWithSSHCheck } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, assignVMWithSSHCheck, readWatchdogStatus } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAdminAlertEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
+import { getProvider } from "@/lib/providers";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -1165,7 +1166,7 @@ export async function GET(req: NextRequest) {
 
   const { data: quarantinedVms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, name, assigned_to, ssh_fail_count")
+    .select("id, ip_address, name, assigned_to, ssh_fail_count, cloud_reboot_count")
     .eq("status", "failed")
     .not("ip_address", "is", null);
 
@@ -1186,6 +1187,7 @@ export async function GET(req: NextRequest) {
               status: newStatus as "assigned" | "ready",
               health_status: "healthy",
               ssh_fail_count: 0,
+              cloud_reboot_count: 0,
               last_health_check: new Date().toISOString(),
             })
             .eq("id", qvm.id);
@@ -1220,11 +1222,91 @@ export async function GET(req: NextRequest) {
   }
 
   // ========================================================================
+  // Cloud reboot pass: Reboot quarantined VMs via cloud provider API.
+  // This is an intermediate recovery step before auto-migration. A reboot
+  // often fixes OOM, disk full, or kernel-level issues without needing
+  // a full VM migration.
+  //
+  // Rules:
+  //   - Only VMs with status="failed" and an assigned user
+  //   - Skip if last_cloud_reboot was less than 5 minutes ago (wait for reboot)
+  //   - Skip if cloud_reboot_count >= 2 (exhausted — let auto-migration handle it)
+  //   - Requires provider_server_id to call the cloud API
+  // ========================================================================
+  let cloudRebooted = 0;
+
+  const { data: rebootCandidates } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, ip_address, assigned_to, provider, provider_server_id, cloud_reboot_count, last_cloud_reboot")
+    .eq("status", "failed")
+    .not("assigned_to", "is", null)
+    .not("provider_server_id", "is", null);
+
+  if (rebootCandidates?.length) {
+    const now = Date.now();
+    for (const vm of rebootCandidates) {
+      const rebootCount = vm.cloud_reboot_count ?? 0;
+      if (rebootCount >= 2) continue; // Exhausted — auto-migration will handle
+
+      // Wait at least 5 minutes after last reboot
+      if (vm.last_cloud_reboot) {
+        const elapsed = now - new Date(vm.last_cloud_reboot).getTime();
+        if (elapsed < 5 * 60 * 1000) continue;
+      }
+
+      try {
+        const provider = getProvider(vm.provider as "hetzner" | "digitalocean" | "linode");
+        if (!provider.rebootServer) continue;
+
+        await provider.rebootServer(vm.provider_server_id);
+        cloudRebooted++;
+
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            cloud_reboot_count: rebootCount + 1,
+            last_cloud_reboot: new Date().toISOString(),
+          })
+          .eq("id", vm.id);
+
+        logger.info("Cloud reboot initiated", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          provider: vm.provider,
+          rebootNumber: rebootCount + 1,
+          assignedTo: vm.assigned_to,
+        });
+
+        if (ADMIN_EMAIL) {
+          try {
+            await sendAdminAlertEmail(
+              "Cloud Reboot Initiated",
+              `VM ${vm.name ?? vm.id} (${vm.ip_address}) was rebooted via ${vm.provider} API.\n\nReboot #${rebootCount + 1} of 2.\nAssigned to: ${vm.assigned_to}\n\nThe next health check cycle will verify if the VM recovered.`
+            );
+          } catch {
+            // Non-fatal
+          }
+        }
+      } catch (rebootErr) {
+        logger.error("Cloud reboot failed", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          provider: vm.provider,
+          error: String(rebootErr),
+        });
+      }
+    }
+  }
+
+  // ========================================================================
   // Auto-migration pass: Move paying users off dead VMs to fresh ones.
   // Only triggers for quarantined VMs (status="failed") that:
   //   1. Have a user assigned (assigned_to is not null)
   //   2. That user has an active/trialing subscription
   //   3. Gateway is still unreachable (not recovered above)
+  //   4. Cloud reboots exhausted (cloud_reboot_count >= 2)
   // Limited to AUTO_MIGRATE_BATCH_SIZE per cycle to prevent storms.
   // ========================================================================
   let autoMigrated = 0;
@@ -1232,7 +1314,7 @@ export async function GET(req: NextRequest) {
   // Re-query quarantined VMs that still have users (auto-recovery may have fixed some)
   const { data: deadAssignedVms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, name, assigned_to, tier, ssh_port, ssh_user")
+    .select("id, ip_address, name, assigned_to, tier, ssh_port, ssh_user, cloud_reboot_count")
     .eq("status", "failed")
     .not("assigned_to", "is", null)
     .not("ip_address", "is", null);
@@ -1248,7 +1330,10 @@ export async function GET(req: NextRequest) {
 
     const payingUserIds = new Set((activeSubs ?? []).map((s) => s.user_id));
 
-    const migratable = deadAssignedVms.filter((v) => payingUserIds.has(v.assigned_to!));
+    const migratable = deadAssignedVms.filter((v) =>
+      payingUserIds.has(v.assigned_to!) &&
+      (v.cloud_reboot_count ?? 0) >= 2
+    );
 
     for (const deadVm of migratable.slice(0, AUTO_MIGRATE_BATCH_SIZE)) {
       const userId = deadVm.assigned_to!;
@@ -1409,6 +1494,51 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ========================================================================
+  // Fleet metrics pass: Read watchdog status from SSH-alive VMs and persist
+  // to DB. Batched to 10 VMs per cycle to stay within cron timeout.
+  // ========================================================================
+  const METRICS_BATCH_SIZE = 10;
+  let metricsCollected = 0;
+
+  const metricsVms = sshAliveVms.slice(0, METRICS_BATCH_SIZE);
+  for (const vm of metricsVms) {
+    try {
+      const status = await readWatchdogStatus({
+        id: vm.id,
+        ip_address: vm.ip_address,
+        ssh_port: vm.ssh_port ?? 22,
+        ssh_user: vm.ssh_user ?? "openclaw",
+      });
+      if (!status) continue;
+
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          last_ram_pct: status.ramPct,
+          last_disk_pct: status.diskPct,
+          last_chrome_count: status.chromeCount,
+          last_uptime_seconds: status.uptimeSeconds,
+        })
+        .eq("id", vm.id);
+
+      metricsCollected++;
+
+      if (status.diskPct > 90 && ADMIN_EMAIL) {
+        try {
+          await sendAdminAlertEmail(
+            "VM Disk Critical",
+            `VM ${vm.name ?? vm.id} (${vm.ip_address}): disk usage at ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome processes: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}`
+          );
+        } catch {
+          // Non-fatal
+        }
+      }
+    } catch {
+      // Non-fatal — metrics are best-effort
+    }
+  }
+
   return NextResponse.json({
     checked: vms.length,
     sshChecked,
@@ -1439,6 +1569,8 @@ export async function GET(req: NextRequest) {
     proxyFailed,
     proxyResynced,
     proxyQuarantined,
+    cloudRebooted,
     autoMigrated,
+    metricsCollected,
   });
 }

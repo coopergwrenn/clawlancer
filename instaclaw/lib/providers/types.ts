@@ -18,5 +18,6 @@ export interface CloudProvider {
   createServer(config: ServerConfig): Promise<ServerResult>;
   waitForServer(providerId: string): Promise<ServerResult>;
   deleteServer(providerId: string): Promise<void>;
+  rebootServer?(providerId: string): Promise<void>;
   isConfigured(): boolean;
 }
