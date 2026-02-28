@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      const sjinnRes = await fetch(sjinnUrl, {
+      let sjinnRes = await fetch(sjinnUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -157,7 +157,49 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify(sjinnBody),
       });
 
-      const sjinnData = await sjinnRes.json();
+      let sjinnData = await sjinnRes.json();
+      let actualApi = api;
+
+      // ── Auto-fallback: if Agent API fails, retry with Tool API ──
+      // Sjinn Agent API can return success:false ("Start Agent Failed")
+      // while Tool API still works. Fall back to veo3 via Tool API.
+      if (
+        api === "agent" &&
+        sjinnData.success === false &&
+        !body.template_id // Templates are Agent API only — can't fall back
+      ) {
+        const fallbackToolType = "veo3-text-to-video-fast-api";
+        const fallbackBody = {
+          tool_type: fallbackToolType,
+          input: {
+            prompt: body.message,
+            aspect_ratio: "16:9",
+          },
+        };
+
+        logger.info("Agent API failed, falling back to Tool API", {
+          route: "gateway/sjinn",
+          vmId: vm.id,
+          agentError: sjinnData.errorMsg,
+          fallbackTool: fallbackToolType,
+        });
+
+        const fallbackRes = await fetch(SJINN_TOOL_CREATE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sjinnApiKey}`,
+          },
+          body: JSON.stringify(fallbackBody),
+        });
+        const fallbackData = await fallbackRes.json();
+
+        if (fallbackData.success === true) {
+          sjinnRes = fallbackRes;
+          sjinnData = fallbackData;
+          actualApi = "tool";
+        }
+      }
 
       // --- Handle Sjinn errors ---
       if (!sjinnRes.ok || sjinnData.code === 100 || sjinnData.code === 101) {
@@ -195,9 +237,27 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // If success:false persists even after fallback (e.g. template-only request)
+      if (sjinnData.success === false) {
+        logger.error("Sjinn create failed", {
+          route: "gateway/sjinn",
+          vmId: vm.id,
+          api: actualApi,
+          errorMsg: sjinnData.errorMsg,
+        });
+        return NextResponse.json(
+          {
+            error: "sjinn_error",
+            message: "Video generation failed. Please try again.",
+            details: sjinnData,
+          },
+          { status: 502 }
+        );
+      }
+
       // --- Success: increment usage ---
       const sjinnRequestId =
-        api === "agent"
+        actualApi === "agent"
           ? sjinnData.data?.chat_id
           : sjinnData.data?.task_id;
 
@@ -205,9 +265,9 @@ export async function POST(req: NextRequest) {
         .rpc("instaclaw_increment_video_usage", {
           p_vm_id: vm.id,
           p_generation_type: generationType,
-          p_sjinn_api: api,
+          p_sjinn_api: actualApi,
           p_sjinn_request_id: sjinnRequestId || null,
-          p_sjinn_tool_type: body.tool_type || null,
+          p_sjinn_tool_type: body.tool_type || (actualApi !== api ? "veo3-text-to-video-fast-api" : null),
         })
         .then(({ error: incError }) => {
           if (incError) {
@@ -222,12 +282,18 @@ export async function POST(req: NextRequest) {
       logger.info("Sjinn generation submitted", {
         route: "gateway/sjinn",
         vmId: vm.id,
-        api,
+        api: actualApi,
+        requestedApi: api !== actualApi ? api : undefined,
         generationType,
-        toolType: body.tool_type || null,
+        toolType: body.tool_type || (actualApi !== api ? "veo3-text-to-video-fast-api" : null),
         requestId: sjinnRequestId,
         remaining: limitResult?.remaining ?? "unknown",
       });
+
+      // If we fell back from Agent→Tool, tell the agent which API to poll with
+      if (actualApi !== api) {
+        sjinnData._corrected_api = actualApi;
+      }
 
       return NextResponse.json(sjinnData);
     }
