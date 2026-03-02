@@ -46,6 +46,7 @@ export const metadata: Metadata = {
   },
   other: {
     "virtual-protocol-site-verification": "71866cde58a96a5163f3cd027122f2c8",
+    "msvalidate.01": "43D6476A930C29D499D77B858F7D7219",
   },
 };
 
