@@ -118,7 +118,7 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.7, ease: SNAPPY }}
         >
-          Your Own OpenClaw.
+          Your Personal AI Agent.
           <br />
           Live in Minutes.
         </motion.h1>

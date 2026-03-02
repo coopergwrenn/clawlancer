@@ -98,7 +98,68 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Bottom row: Copyright + links */}
+        {/* Link columns */}
+        <div
+          className="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-8 mb-8 border-t"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--foreground)" }}>Product</h4>
+            <ul className="space-y-1.5">
+              {[
+                { href: "/pricing", label: "Pricing" },
+                { href: "/how-it-works", label: "How It Works" },
+                { href: "/compare/instaclaw-vs-self-hosting", label: "vs Self-Hosting" },
+                { href: "/docs", label: "Docs" },
+              ].map((l) => (
+                <li key={l.href}><a href={l.href} className="text-xs hover:underline transition-colors" style={{ color: "var(--muted)" }}>{l.label}</a></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--foreground)" }}>Resources</h4>
+            <ul className="space-y-1.5">
+              {[
+                { href: "/faq", label: "FAQ" },
+                { href: "/blog", label: "Blog" },
+                { href: "/about", label: "About" },
+                { href: "mailto:support@instaclaw.io", label: "Contact" },
+              ].map((l) => (
+                <li key={l.href}><a href={l.href} className="text-xs hover:underline transition-colors" style={{ color: "var(--muted)" }}>{l.label}</a></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--foreground)" }}>Use Cases</h4>
+            <ul className="space-y-1.5">
+              {[
+                { href: "/use-cases/polymarket-trading", label: "Polymarket" },
+                { href: "/use-cases/crypto-trading", label: "Crypto Trading" },
+                { href: "/use-cases/business-automation", label: "Business" },
+                { href: "/use-cases/research-assistant", label: "Research" },
+                { href: "/use-cases/social-media", label: "Social Media" },
+                { href: "/use-cases/video-creation", label: "Video" },
+              ].map((l) => (
+                <li key={l.href}><a href={l.href} className="text-xs hover:underline transition-colors" style={{ color: "var(--muted)" }}>{l.label}</a></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--foreground)" }}>Company</h4>
+            <ul className="space-y-1.5">
+              {[
+                { href: "/about", label: "About" },
+                { href: "/privacy", label: "Privacy" },
+                { href: "/terms", label: "Terms" },
+                { href: "mailto:support@instaclaw.io", label: "Contact" },
+              ].map((l) => (
+                <li key={l.href}><a href={l.href} className="text-xs hover:underline transition-colors" style={{ color: "var(--muted)" }}>{l.label}</a></li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Bottom row: Copyright */}
         <div
           className="flex flex-col items-center gap-3 pt-6 border-t"
           style={{ borderColor: "var(--border)" }}
@@ -106,33 +167,6 @@ export function Footer() {
           <p className="text-xs" style={{ color: "var(--muted)" }}>
             &copy; {new Date().getFullYear()} InstaClaw. All rights reserved.
           </p>
-
-          <div
-            className="flex gap-6 text-xs"
-            style={{ color: "var(--muted)" }}
-          >
-            <a
-              href="/privacy"
-              className="hover:underline transition-colors"
-              style={{ color: "var(--muted)" }}
-            >
-              Privacy
-            </a>
-            <a
-              href="/terms"
-              className="hover:underline transition-colors"
-              style={{ color: "var(--muted)" }}
-            >
-              Terms
-            </a>
-            <a
-              href="mailto:support@instaclaw.io"
-              className="hover:underline transition-colors"
-              style={{ color: "var(--muted)" }}
-            >
-              Contact
-            </a>
-          </div>
         </div>
       </div>
     </footer>

@@ -24,21 +24,25 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
+  metadataBase: new URL("https://instaclaw.io"),
+  title: "InstaClaw.io — Your Personal AI Agent, Live in Minutes",
   description:
-    "A personal AI that works for you around the clock. It handles your tasks, remembers everything, and gets smarter every day. Set it up in minutes.",
+    "A personal AI that works for you around the clock. It handles your tasks, remembers everything, and gets smarter every day. Set it up in minutes. No technical experience required.",
+  alternates: { canonical: "https://instaclaw.io" },
   openGraph: {
-    title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
+    title: "InstaClaw.io — Your Personal AI Agent, Live in Minutes",
     description:
       "A personal AI that works for you around the clock. It handles your tasks, remembers everything, and gets smarter every day. Set it up in minutes.",
+    url: "https://instaclaw.io",
     siteName: "InstaClaw.io",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "InstaClaw.io — Your Own OpenClaw Instance, Live in Minutes",
+    title: "InstaClaw.io — Your Personal AI Agent, Live in Minutes",
     description:
       "A personal AI that works for you around the clock. It handles your tasks, remembers everything, and gets smarter every day. Set it up in minutes.",
+    site: "@instaclaws",
   },
   other: {
     "virtual-protocol-site-verification": "71866cde58a96a5163f3cd027122f2c8",

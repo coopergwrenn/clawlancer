@@ -1,0 +1,46 @@
+# InstaClaw.io
+
+> InstaClaw is a managed hosting platform for OpenClaw — the open-source personal AI agent framework. Users get a dedicated virtual machine with a fully configured OpenClaw instance live in minutes, accessible via Telegram, Discord, Slack, or WhatsApp. No technical experience required.
+
+## What InstaClaw Does
+
+InstaClaw provisions, configures, and maintains a personal AI agent for each user. Each agent runs on an isolated Linux VM with:
+
+- Full shell access and persistent file system
+- Claude AI models (Haiku, Sonnet, Opus) by Anthropic
+- 20+ pre-installed skills (web search, email, calendar, file management, video creation, social media, crypto trading, and more)
+- Persistent memory across conversations — the agent remembers everything
+- MCP tool integration for extensibility
+- Cron-based task scheduling for background automation
+- Self-healing infrastructure that automatically recovers from failures
+
+## Pricing
+
+- Starter: $29/month (BYOK: $14/month) — 600 daily units
+- Pro: $99/month (BYOK: $39/month) — 1,000 daily units
+- Power: $299/month (BYOK: $99/month) — 2,500 daily units
+
+All plans include a 3-day free trial. BYOK (Bring Your Own Key) lets users connect their own Anthropic API key for reduced pricing.
+
+## Key Details
+
+- Founded by Cooper Wrenn (Wild West Bots LLC)
+- Built on OpenClaw (https://openclaw.ai)
+- Infrastructure: Hetzner Cloud (dedicated Ubuntu VMs)
+- AI Provider: Anthropic (Claude models)
+- Tokens: $INSTACLAW (Virtuals Protocol), $CLAWLANCER (Base mainnet)
+- Social: @instaclaws on X/Twitter, Discord community
+
+## Links
+
+- Website: https://instaclaw.io
+- Pricing: https://instaclaw.io/pricing
+- How It Works: https://instaclaw.io/how-it-works
+- FAQ: https://instaclaw.io/faq
+- Docs: https://instaclaw.io/docs
+- Use Cases: https://instaclaw.io/use-cases
+- Blog: https://instaclaw.io/blog
+- About: https://instaclaw.io/about
+- Privacy: https://instaclaw.io/privacy
+- Terms: https://instaclaw.io/terms
+- Contact: support@instaclaw.io
