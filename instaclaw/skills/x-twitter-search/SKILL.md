@@ -1,7 +1,7 @@
 # X/Twitter Search
 ```yaml
 name: x-twitter-search
-version: 1.0.0
+version: 3.0.0
 updated: 2026-03-02
 author: InstaClaw
 triggers:
@@ -12,222 +12,293 @@ triggers:
 
 ## Overview
 
-You can search X/Twitter using the built-in `web_search` tool (Brave Search API) with `site:` filters. This gives you access to indexed tweets, threads, profiles, and trending discussions — no Twitter API key required.
+You can search X/Twitter using the Twitter API v2 directly from your VM. This gives you real-time access to tweets from the last 7 days with full engagement metrics, author info, and direct links.
 
 **This is a read-only search skill.** You can find and read tweets but cannot post, like, retweet, or interact with Twitter accounts.
 
-**Primary tool:** `web_search` (Brave Search API — already configured on your VM)
-**Secondary tool:** `web_fetch` (for reading full thread pages when search snippets aren't enough)
+**How it works:** Your VM calls the Twitter API v2 directly using your own `TWITTER_BEARER_TOKEN` environment variable.
 
-## How It Works
+## Setup Check
 
-Brave Search indexes public X/Twitter pages. By adding `site:x.com` or `site:twitter.com` to your search query, results are filtered to only return content from X/Twitter.
+Before making any Twitter API call, check that the token is set:
 
-Both domains work — `x.com` is the current domain, `twitter.com` still resolves. Use both for maximum coverage.
+```bash
+TWITTER_BEARER_TOKEN=$(grep TWITTER_BEARER_TOKEN ~/.openclaw/.env | cut -d= -f2)
+if [ -z "$TWITTER_BEARER_TOKEN" ]; then
+  echo "TWITTER_BEARER_TOKEN not set"
+fi
+```
+
+### If `TWITTER_BEARER_TOKEN` is not set
+
+Tell the user:
+
+> Your Twitter API key isn't configured yet. To enable X/Twitter search:
+>
+> 1. Go to your **InstaClaw dashboard → Environment Variables** and add `TWITTER_BEARER_TOKEN`
+> 2. To get a key: go to [developer.x.com](https://developer.x.com), create a Project, create an App, then generate a **Bearer Token** under "Keys and Tokens"
+> 3. Note: X Basic API tier costs $200/mo and includes 10,000 tweet reads/month
+>
+> Once added, the token syncs to your VM automatically.
+
+Then stop — do not attempt the search.
+
+## How to Search
+
+```bash
+TWITTER_BEARER_TOKEN=$(grep TWITTER_BEARER_TOKEN ~/.openclaw/.env | cut -d= -f2)
+curl -s "https://api.x.com/2/tweets/search/recent?query=AI%20agents%20-is%3Aretweet&max_results=10&tweet.fields=text,created_at,author_id,public_metrics,entities,note_tweet,referenced_tweets,in_reply_to_user_id&expansions=author_id&user.fields=username,name,profile_image_url,verified,public_metrics" \
+  -H "Authorization: Bearer $TWITTER_BEARER_TOKEN"
+```
+
+### Query Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `query` | Yes | Twitter search query (1-512 chars). Supports Twitter v2 operators. |
+| `max_results` | No | Results to return (10-100, default 10) |
+| `sort_order` | No | `"recency"` (default) or `"relevancy"` |
+| `tweet.fields` | No | Comma-separated fields: `text,created_at,author_id,public_metrics,entities,note_tweet,referenced_tweets,in_reply_to_user_id` |
+| `expansions` | No | `author_id` to include user data |
+| `user.fields` | No | `username,name,profile_image_url,verified,public_metrics` |
+
+### Response Format
+
+```json
+{
+  "data": [
+    {
+      "id": "1234567890123456789",
+      "text": "Full tweet text...",
+      "author_id": "12345",
+      "created_at": "2026-03-01T18:40:40.000Z",
+      "public_metrics": {
+        "like_count": 42,
+        "retweet_count": 5,
+        "reply_count": 2,
+        "quote_count": 1
+      }
+    }
+  ],
+  "includes": {
+    "users": [
+      {
+        "id": "12345",
+        "username": "exampleuser",
+        "name": "Example User",
+        "verified": false,
+        "public_metrics": {
+          "followers_count": 1500
+        }
+      }
+    ]
+  },
+  "meta": {
+    "result_count": 10,
+    "newest_id": "...",
+    "oldest_id": "..."
+  }
+}
+```
+
+To build tweet URLs: `https://x.com/{username}/status/{tweet_id}`
+
+## Twitter v2 Query Operators
+
+Use these in the `query` parameter to refine your search:
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `from:username` | Tweets from a specific user | `from:elonmusk` |
+| `to:username` | Replies to a user | `to:OpenAI` |
+| `-is:retweet` | Exclude retweets (recommended) | `AI agents -is:retweet` |
+| `is:reply` / `-is:reply` | Filter replies in or out | `from:sama -is:reply` |
+| `has:media` | Tweets with images/video | `AI art has:media` |
+| `has:links` | Tweets with URLs | `startup funding has:links` |
+| `lang:en` | Language filter | `trending lang:en` |
+| `"exact phrase"` | Exact match | `"GPT-5 release"` |
+| `(A OR B)` | Boolean OR | `(crypto OR bitcoin)` |
+| `-word` | Exclude a term | `AI -spam -bot` |
+| `#hashtag` | Hashtag search | `#BuildInPublic` |
+| `conversation_id:ID` | Tweets in a thread | `conversation_id:123456` |
 
 ## Search Patterns
 
-### Pattern 1: Posts About a Topic
-
-Find recent tweets discussing a specific subject.
+### Pattern 1: Topic Search
+Find tweets about a subject.
 
 ```
 User: "What are people saying about Claude 4 on Twitter?"
 
-Search queries (run both):
-  web_search("Claude 4 site:x.com", count=10, freshness="pw")
-  web_search("Claude 4 site:twitter.com", count=10, freshness="pw")
+Query: Claude 4 -is:retweet lang:en
+max_results: 15
 
 Deliver:
   - Summarize the main opinions and reactions
   - Quote notable tweets with attribution (@username)
   - Note the sentiment balance (positive/negative/mixed)
-  - Include direct links to interesting tweets
+  - Include direct x.com links to interesting tweets
 ```
 
-### Pattern 2: Posts from a Specific Account
-
-Find tweets from a particular user.
+### Pattern 2: Account Search
+Find tweets from a specific user.
 
 ```
 User: "What has @elonmusk been posting about lately?"
 
-Search queries:
-  web_search("from:elonmusk site:x.com", count=10, freshness="pw")
-  web_search("elonmusk site:x.com", count=10, freshness="pw")
-
-Note: The "from:" operator may not always work via Brave indexing.
-If "from:" returns poor results, fall back to searching the username directly.
+Query: from:elonmusk
+max_results: 15
 
 Deliver:
   - List their recent posts chronologically
   - Summarize themes and topics
-  - Note any posts with high engagement (if visible in snippets)
+  - Include engagement metrics (likes, retweets)
 ```
 
 ### Pattern 3: Trending Discussions
-
-Discover what's currently trending or viral on X.
+Find what's getting traction.
 
 ```
-User: "What's trending on Twitter right now?"
+User: "What's trending in AI on Twitter?"
 
-Search queries:
-  web_search("trending on twitter today site:x.com", freshness="pd")
-  web_search("viral tweet today site:x.com", freshness="pd")
-  web_search("twitter trending topics today", freshness="pd")
-
-The third query (without site: filter) catches news articles ABOUT
-Twitter trends, which are often more useful than individual tweets.
+Query: AI trending -is:retweet lang:en
+sort_order: relevancy
+max_results: 15
 
 Deliver:
-  - Top 5-10 trending topics with brief context
-  - Notable viral posts
-  - Links to representative tweets for each trend
+  - Top topics with brief context
+  - Notable viral posts with engagement numbers
+  - Links to representative tweets
 ```
 
-### Pattern 4: Time-Filtered Search
-
-Find tweets from a specific time period.
-
-```
-User: "What did people tweet about the Super Bowl last week?"
-
-Search queries:
-  web_search("Super Bowl site:x.com", count=15, freshness="pw")
-  web_search("Super Bowl reactions site:twitter.com", count=10, freshness="pw")
-
-Freshness values:
-  "pd" = past day (24 hours)
-  "pw" = past week
-  "pm" = past month
-
-Note: Brave Search freshness is approximate. For precise date ranges,
-mention the date in the query itself:
-  web_search("Super Bowl February 2026 site:x.com")
-```
-
-### Pattern 5: Combined Filters
-
-Combine multiple search operators for precise results.
+### Pattern 4: Combined Filters
+Mix operators for precise results.
 
 ```
-User: "Find tweets from AI researchers about GPT-5 this month"
+User: "Find tweets from AI researchers about GPT-5"
 
-Search queries:
-  web_search("GPT-5 AI researcher site:x.com", count=15, freshness="pm")
-  web_search("GPT-5 \"machine learning\" site:x.com", count=10, freshness="pm")
-  web_search("GPT-5 announcement site:twitter.com", count=10, freshness="pm")
+Query: GPT-5 (AI OR "machine learning") -is:retweet lang:en
+max_results: 15
 
-Operator reference:
-  "exact phrase"     — Match exact text
-  word1 OR word2     — Match either term
-  -word              — Exclude a term
-  site:x.com         — Only X/Twitter results
-
-Examples:
-  "OpenAI" GPT-5 -rumors site:x.com
-  (crypto OR bitcoin) announcement site:x.com
-  "breaking news" AI site:x.com -bot -spam
+Deliver:
+  - Key insights and opinions
+  - Quote high-engagement tweets
+  - Summarize the overall narrative
 ```
 
-### Pattern 6: Hashtag Search
-
+### Pattern 5: Hashtag Search
 Find posts using a specific hashtag.
 
 ```
 User: "Show me tweets with #BuildInPublic"
 
-Search queries:
-  web_search("#BuildInPublic site:x.com", count=15, freshness="pw")
-  web_search("BuildInPublic site:x.com", count=10, freshness="pw")
+Query: #BuildInPublic -is:retweet
+max_results: 15
 
-Search both with and without the # symbol — Brave may index either form.
+Deliver:
+  - Interesting projects being built in public
+  - High-engagement posts
+  - Themes and trends in the hashtag
 ```
 
-### Pattern 7: Conversation and Thread Discovery
-
-Find Twitter threads and discussions.
-
-```
-User: "Find good Twitter threads about startup fundraising"
-
-Search queries:
-  web_search("startup fundraising thread site:x.com", count=15)
-  web_search("startup fundraising \"a thread\" site:x.com", count=10)
-  web_search("startup fundraising tips site:x.com", count=10)
-
-When you find a promising thread:
-  web_fetch("https://x.com/username/status/1234567890")
-
-  Use web_fetch to read the full thread content if the search snippet
-  only shows the first tweet.
-```
-
-### Pattern 8: Monitoring Brand/Company Mentions
-
-Track what people are saying about a specific brand.
+### Pattern 6: Brand Monitoring
+Track mentions of a company or product.
 
 ```
 User: "What are people saying about Stripe on Twitter?"
 
-Search queries:
-  web_search("Stripe site:x.com", count=15, freshness="pw")
-  web_search("Stripe payments site:x.com", count=10, freshness="pw")
-  web_search("@stripe site:x.com", count=10, freshness="pw")
+Query: Stripe OR @stripe -is:retweet
+max_results: 15
 
 Deliver:
   - Overall sentiment summary
-  - Common praise points
-  - Common complaints
-  - Notable posts from verified accounts or industry figures
-  - Comparison to competitor mentions if relevant
+  - Common praise and complaints
+  - Notable posts from verified/industry accounts
 ```
 
-## Freshness Quick Reference
+### Pattern 7: Conversation Thread
+Follow a specific thread or conversation.
 
-| Filter | Meaning | Best For |
-|--------|---------|----------|
-| `freshness="pd"` | Past 24 hours | Breaking news, today's viral content |
-| `freshness="pw"` | Past 7 days | Recent discussions, weekly trends |
-| `freshness="pm"` | Past 30 days | Broader sentiment, monthly roundups |
-| _(omit)_ | All time | Historical tweets, evergreen content |
+```
+User: "Show me the full thread from this tweet"
+
+Query: from:username conversation_id:1234567890123456789
+max_results: 25
+
+Deliver:
+  - Thread content in order
+  - Key points from the author
+  - Notable replies if applicable
+```
+
+### Pattern 8: Media Posts
+Find tweets with images or video.
+
+```
+User: "Find AI art being shared on Twitter"
+
+Query: AI art has:media -is:retweet
+max_results: 15
+
+Deliver:
+  - Describe the media content from the tweet text
+  - Include x.com links so user can view the media
+  - Note engagement levels
+```
+
+## Rate Limits
+
+These are your own API limits based on your X developer tier:
+
+| Tier | Requests / 15 min | Tweet reads / month | Cost |
+|------|-------------------|---------------------|------|
+| Basic | 450 | 10,000 | $200/mo |
+| Pro | 450 | 1,000,000 | $5,000/mo |
+
+If you get a 429 response, check the `retry-after` header and wait before retrying.
 
 ## Best Practices
 
-1. **Always run two queries** — one with `site:x.com` and one with `site:twitter.com`. Brave indexes both domains and results may differ.
+1. **Use `-is:retweet` by default** — Removes duplicates, gives you more unique content per search.
 
-2. **Use freshness filters** — Without them, you'll get old results mixed with new. Default to `"pw"` (past week) unless the user specifies otherwise.
+2. **Quote tweets with attribution** — Always include the @username when quoting. Format: `"Tweet text" — @username`
 
-3. **Quote tweets with attribution** — Always include the @username when quoting. Format: `"Tweet text" — @username`
+3. **Include engagement metrics** — The API returns likes, retweets, replies, and quotes. Use them to highlight popular takes.
 
-4. **Acknowledge limitations upfront** — Tell the user this searches indexed content, not the live firehose. Some very recent tweets (minutes old) may not appear yet.
+4. **Include direct links** — Build tweet URLs as `https://x.com/{username}/status/{tweet_id}`. Include x.com links to notable tweets.
 
-5. **Follow up with web_fetch** — If a search result links to an interesting thread, use `web_fetch` on the full URL to get the complete content.
+5. **Don't fabricate tweets** — Only report tweets that appear in your search results. Never invent tweet text or attribute fake quotes to real accounts.
 
-6. **Don't fabricate tweets** — Only report tweets that appear in your search results. Never invent tweet text or attribute fake quotes to real accounts.
+6. **Use `sort_order=relevancy`** for discovery — When the user wants popular/important tweets rather than the most recent.
 
-7. **Note engagement when visible** — If Brave snippets show reply counts, retweets, or likes, include them. But don't guess engagement numbers.
+7. **Combine operators** — Stack `from:`, `-is:retweet`, `lang:en`, `has:media` etc. for precise results.
 
-8. **Cross-reference with news** — For trending topics, also search without `site:x.com` to get news coverage that provides context for the Twitter conversation.
+8. **URL-encode the query** — When building the curl URL, ensure special characters in the query are percent-encoded (spaces → `%20`, colons → `%3A`, etc.).
 
 ## Known Limitations
 
-- **Not real-time** — Brave indexes X/Twitter pages with a delay (minutes to hours). Very fresh tweets may not appear.
-- **No structured metadata** — You get tweet text and URLs, not like counts, retweet counts, or follower numbers.
-- **No reply threads** — Search returns individual tweets, not full conversation threads. Use `web_fetch` on the tweet URL for thread context.
-- **No DMs or protected accounts** — Only public tweets are indexed.
-- **Rate limits** — Shared with other web_search uses. Budget ~20 searches per X/Twitter research task.
-- **from: operator** — May not work consistently via Brave. Fall back to searching the username as plain text.
-- **Brave site: is experimental** — The `site:` operator is documented by Brave as experimental. If results seem incomplete, try the query without `site:` and scan for x.com/twitter.com URLs in general results.
+- **7-day window** — Twitter API v2 search/recent only covers the last 7 days. Older tweets are not available.
+- **No DMs or protected accounts** — Only public tweets are searchable.
+- **Read-only** — Cannot post, like, retweet, or follow.
+- **No media content** — You get tweet text and metadata, not image/video files. Link the user to x.com for media viewing.
+- **Rate limits are yours** — You are using the user's own API quota. Be mindful of monthly read caps.
+
+## Error Handling
+
+| HTTP Status | Meaning | What to Do |
+|-------------|---------|------------|
+| 400 | Bad request / invalid query | Check query syntax and encoding |
+| 401 | Unauthorized | Token is invalid or expired — tell user to check their TWITTER_BEARER_TOKEN |
+| 403 | Forbidden | Token lacks permissions or tier doesn't support this endpoint |
+| 429 | Rate limited | Wait for `retry-after` seconds, then retry |
+| 503 | Service unavailable | Twitter is having issues — retry in a few minutes |
 
 ## Quality Checklist
 
-- [ ] Used both `site:x.com` and `site:twitter.com` for coverage
-- [ ] Applied appropriate freshness filter
+- [ ] Checked `TWITTER_BEARER_TOKEN` is set before calling
+- [ ] Used `-is:retweet` to filter noise
 - [ ] Quoted tweets with @username attribution
-- [ ] Included direct links to notable tweets
+- [ ] Included direct x.com links to notable tweets
+- [ ] Reported engagement metrics (likes, retweets)
 - [ ] Summarized sentiment (not just listed tweets)
-- [ ] Disclosed this is indexed search, not live firehose
 - [ ] Did not fabricate or hallucinate tweet content
-- [ ] Followed up with web_fetch for full threads when needed

@@ -655,6 +655,14 @@ function SkillCard({
           >
             {skill.description}
           </p>
+          {skill.requiresApiKey && (
+            <p className="text-[11px] mt-1.5" style={{ color: "var(--muted)" }}>
+              Requires API key —{" "}
+              <a href="/env-vars" className="underline" style={{ color: "var(--accent)" }}>
+                add in Environment Variables
+              </a>
+            </p>
+          )}
         </div>
 
         {/* Toggle */}

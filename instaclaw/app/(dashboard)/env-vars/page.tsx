@@ -46,6 +46,11 @@ const SUGGESTIONS = [
     label: "Google services access",
     link: "https://console.cloud.google.com/apis/credentials",
   },
+  {
+    name: "TWITTER_BEARER_TOKEN",
+    label: "Search X/Twitter",
+    link: "https://developer.x.com/en/portal/dashboard",
+  },
 ];
 
 export default function EnvVarsPage() {
