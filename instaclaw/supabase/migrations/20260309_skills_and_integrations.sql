@@ -80,7 +80,7 @@ INSERT INTO instaclaw_skills (slug, name, description, icon, category, item_type
 VALUES
   ('social-media-content', 'Social Media', 'Creates and manages content across social platforms', '📱', 'social', 'skill', true, 1),
   ('web-search', 'Web Search', 'Searches the web in real-time for current information', '🔎', 'social', 'mcp_server', false, 2),
-  ('x-twitter-search', 'X/Twitter Search', 'Searches X/Twitter for latest posts and trends', '🐦', 'social', 'mcp_server', false, 3);
+  ('x-twitter-search', 'X/Twitter Search', 'Searches X/Twitter for latest posts and trends', '🐦', 'social', 'skill', true, 3);
 
 -- Communication
 INSERT INTO instaclaw_skills (slug, name, description, icon, category, item_type, requires_restart, sort_order)

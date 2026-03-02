@@ -2562,6 +2562,30 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy X/Twitter Search skill ──
+    // Doc-only skill — uses built-in web_search (Brave) with site:x.com filters.
+    try {
+      const xSearchSkillDir = path.join(process.cwd(), "skills", "x-twitter-search");
+      const xSearchSkillMd = fs.readFileSync(path.join(xSearchSkillDir, "SKILL.md"), "utf-8");
+
+      const xSearchSkillB64 = Buffer.from(xSearchSkillMd, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy X/Twitter Search skill (doc-only — uses built-in web_search)',
+        'XSEARCH_SKILL_DIR="$HOME/.openclaw/skills/x-twitter-search"',
+        'mkdir -p "$XSEARCH_SKILL_DIR"',
+        `echo '${xSearchSkillB64}' | base64 -d > "$XSEARCH_SKILL_DIR/SKILL.md"`,
+        ''
+      );
+
+      logger.info("X/Twitter Search skill deployment prepared", { route: "lib/ssh" });
+    } catch (xSearchSkillErr) {
+      logger.warn("X/Twitter Search skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(xSearchSkillErr),
+      });
+    }
+
     // Base64-encode a Python script to auto-approve device pairing.
     // Avoids nested heredoc issues (PYEOF inside ICEOF).
     const pairingPython = [
