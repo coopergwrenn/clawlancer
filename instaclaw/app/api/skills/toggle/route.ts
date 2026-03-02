@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { toggleSkillDir, toggleMcpServer } from "@/lib/ssh";
+import { toggleSkillDir, toggleMcpServer, installAgdpSkill, uninstallAgdpSkill } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 // SSH + gateway restart can take up to 15s
@@ -77,7 +77,77 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // SSH into VM and toggle based on item_type
+    // ── Special case: Virtuals aGDP uses its own install/uninstall flow ──
+    if (skill.slug === "virtuals-agdp") {
+      try {
+        if (enabled) {
+          const agdpResult = await installAgdpSkill(vm);
+
+          // Update instaclaw_vms.agdp_enabled (+ authRequestId if present)
+          const dbUpdate: Record<string, unknown> = { agdp_enabled: true };
+          if (agdpResult.authRequestId) {
+            dbUpdate.acp_auth_request_id = agdpResult.authRequestId;
+          }
+          await supabase.from("instaclaw_vms").update(dbUpdate).eq("id", vm.id);
+
+          // Update vm_skills state
+          await supabase
+            .from("instaclaw_vm_skills")
+            .update({ enabled: true })
+            .eq("vm_id", vm.id)
+            .eq("skill_id", skill.id);
+
+          logger.info("Skill toggled (aGDP install)", {
+            slug: skill.slug,
+            enabled,
+            authUrl: !!agdpResult.authUrl,
+            serving: agdpResult.serving,
+            vmId: vm.id,
+            userId: session.user.id,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({
+            success: true,
+            restarted: false,
+            authUrl: agdpResult.authUrl,
+            serving: agdpResult.serving,
+          });
+        } else {
+          await uninstallAgdpSkill(vm);
+
+          await supabase.from("instaclaw_vms").update({ agdp_enabled: false }).eq("id", vm.id);
+          await supabase
+            .from("instaclaw_vm_skills")
+            .update({ enabled: false })
+            .eq("vm_id", vm.id)
+            .eq("skill_id", skill.id);
+
+          logger.info("Skill toggled (aGDP uninstall)", {
+            slug: skill.slug,
+            enabled,
+            vmId: vm.id,
+            userId: session.user.id,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({ success: true, restarted: false });
+        }
+      } catch (agdpErr) {
+        logger.error("aGDP toggle failed", {
+          vmId: vm.id,
+          enabled,
+          error: String(agdpErr),
+          route: "api/skills/toggle",
+        });
+        return NextResponse.json(
+          { error: `Virtuals toggle failed: ${String(agdpErr).slice(0, 200)}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // ── Generic toggle: skill dirs and MCP servers ──
     let result: { success: boolean; restarted: boolean };
 
     if (skill.item_type === "mcp_server") {
