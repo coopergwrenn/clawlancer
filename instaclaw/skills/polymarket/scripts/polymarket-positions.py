@@ -89,8 +89,16 @@ def get_current_price_for_token(market, token_id):
     return None
 
 
+RPC_FALLBACKS = [
+    "https://api.zan.top/polygon-mainnet",
+    "https://1rpc.io/matic",
+    "https://polygon-rpc.com",
+    "https://polygon-bor-rpc.publicnode.com",
+]
+
+
 def get_rpc_url():
-    """Read POLYGON_RPC_URL from env file, fallback to default."""
+    """Read POLYGON_RPC_URL from env file, or find a working fallback."""
     env_file = Path.home() / ".openclaw" / ".env"
     if env_file.exists():
         with open(env_file) as f:
@@ -100,7 +108,18 @@ def get_rpc_url():
                     val = line.split("=", 1)[1].strip().strip('"').strip("'")
                     if val:
                         return val
-    return "https://polygon-rpc.com"
+    import urllib.request
+    for rpc in RPC_FALLBACKS:
+        try:
+            payload = json.dumps({"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}).encode()
+            req = urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(resp.read().decode())
+            if "result" in data:
+                return rpc
+        except Exception:
+            continue
+    return RPC_FALLBACKS[0]
 
 
 def init_clob_client(wallet):

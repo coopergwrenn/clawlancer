@@ -33,10 +33,16 @@ ENV_FILE = Path.home() / ".openclaw" / ".env"
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137  # Polygon mainnet
 
-DEFAULT_RPC = "https://polygon-rpc.com"
+RPC_FALLBACKS = [
+    "https://api.zan.top/polygon-mainnet",
+    "https://1rpc.io/matic",
+    "https://polygon-rpc.com",
+    "https://polygon-bor-rpc.publicnode.com",
+]
 
 # Contract addresses (Polygon mainnet)
-USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"      # Bridged USDC (Polymarket collateral)
+USDC_NATIVE = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"  # Native USDC (Circle-issued)
 CTF_EXCHANGE = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
 NEG_RISK_CTF_EXCHANGE = "0xC5d563A36AE78145C45a50134d48A1215220f80a"
 NEG_RISK_ADAPTER = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"
@@ -70,7 +76,7 @@ def load_wallet():
 
 
 def get_rpc_url():
-    """Read POLYGON_RPC_URL from env file, fallback to default."""
+    """Read POLYGON_RPC_URL from env file, or find a working fallback."""
     if ENV_FILE.exists():
         with open(ENV_FILE) as f:
             for line in f:
@@ -79,7 +85,19 @@ def get_rpc_url():
                     val = line.split("=", 1)[1].strip().strip('"').strip("'")
                     if val:
                         return val
-    return DEFAULT_RPC
+    # Try fallbacks until one works
+    import urllib.request
+    for rpc in RPC_FALLBACKS:
+        try:
+            payload = json.dumps({"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}).encode()
+            req = urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(resp.read().decode())
+            if "result" in data:
+                return rpc
+        except Exception:
+            continue
+    return RPC_FALLBACKS[0]
 
 
 def save_creds_state(derived, verified):
@@ -356,7 +374,47 @@ def cmd_status(args):
     else:
         checks["approvals"] = {"skipped": True, "reason": "wallet or web3 missing"}
 
-    # 5. Live API check (only if credentials derived + py-clob-client available)
+    # 5. Balance check (only if wallet + web3 available)
+    if wallet and deps.get("web3"):
+        try:
+            from web3 import Web3
+            rpc_url = get_rpc_url()
+            w3 = Web3(Web3.HTTPProvider(rpc_url))
+            if w3.is_connected():
+                address_cs = Web3.to_checksum_address(wallet["address"])
+                balances = {}
+                for label, token_addr in [("usdc_e", USDC_E), ("usdc_native", USDC_NATIVE)]:
+                    contract = w3.eth.contract(
+                        address=Web3.to_checksum_address(token_addr), abi=ERC20_ABI
+                    )
+                    try:
+                        raw = contract.functions.allowance(address_cs, address_cs).call()
+                        # Actually use balanceOf — need to add to ABI. Use raw eth_call instead.
+                    except Exception:
+                        pass
+                # Raw eth_call for balanceOf (0x70a08231)
+                addr_padded = wallet["address"][2:].lower().zfill(64)
+                call_data = "0x70a08231" + addr_padded
+                for label, token_addr in [("usdc_e", USDC_E), ("usdc_native", USDC_NATIVE)]:
+                    try:
+                        result = w3.eth.call({"to": Web3.to_checksum_address(token_addr), "data": call_data})
+                        balances[label] = int(result.hex(), 16) / 1e6
+                    except Exception:
+                        balances[label] = None
+                try:
+                    matic_wei = w3.eth.get_balance(address_cs)
+                    balances["pol_matic"] = matic_wei / 1e18
+                except Exception:
+                    balances["pol_matic"] = None
+                checks["balances"] = balances
+            else:
+                checks["balances"] = {"error": "rpc_not_connected"}
+        except Exception as e:
+            checks["balances"] = {"error": str(e)}
+    else:
+        checks["balances"] = {"skipped": True}
+
+    # 6. Live API check (only if credentials derived + py-clob-client available)
     if wallet and creds_state and creds_state.get("derived") and deps.get("py_clob_client"):
         try:
             from py_clob_client.client import ClobClient
@@ -411,6 +469,28 @@ def cmd_status(args):
             print(f"  Approvals: SKIPPED ({approvals.get('reason', '')})")
         else:
             print(f"  Approvals: ERROR ({approvals.get('error', 'unknown')})")
+        # Balances
+        bals = checks.get("balances", {})
+        if isinstance(bals, dict) and not bals.get("error") and not bals.get("skipped"):
+            usdc_e = bals.get("usdc_e")
+            usdc_n = bals.get("usdc_native")
+            pol = bals.get("pol_matic")
+            usdc_e_str = f"${usdc_e:.2f}" if usdc_e is not None else "?"
+            usdc_n_str = f"${usdc_n:.2f}" if usdc_n is not None else "?"
+            pol_str = f"{pol:.4f}" if pol is not None else "?"
+            print(f"  USDC.e (Polymarket collateral): {usdc_e_str}")
+            print(f"  USDC (native):                  {usdc_n_str}")
+            print(f"  POL/MATIC (gas):                {pol_str}")
+            if usdc_n and usdc_n > 0 and (not usdc_e or usdc_e == 0):
+                print("  NOTE: You have native USDC but Polymarket uses USDC.e.")
+                print("        Deposit via https://polymarket.com to auto-convert,")
+                print("        or swap on a DEX (e.g. Uniswap on Polygon).")
+            if pol is not None and pol < 0.01:
+                print("  WARN: Very low POL/MATIC — need gas to send approval txs.")
+        elif bals.get("skipped"):
+            print("  Balances: SKIPPED")
+        else:
+            print(f"  Balances: ERROR ({bals.get('error', 'unknown')})")
         # Live API
         api = checks.get("api_live", {})
         if api.get("ok"):
