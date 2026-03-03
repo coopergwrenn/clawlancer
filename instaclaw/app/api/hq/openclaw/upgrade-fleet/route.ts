@@ -12,7 +12,6 @@ function sseEvent(data: Record<string, unknown>): string {
 }
 
 const BATCH_SIZE = 5;
-const BATCH_PAUSE_MS = 10000;
 
 export async function POST(req: NextRequest) {
   if (!(await verifyHQAuth())) {
@@ -73,8 +72,8 @@ export async function POST(req: NextRequest) {
             detail: `Batch ${b + 1}/${totalBatches}: starting ${batch.length} VMs`,
           });
 
-          // Process each VM in the batch sequentially for SSH stability
-          for (const vm of batch) {
+          // Process all VMs in the batch in parallel
+          await Promise.all(batch.map(async (vm) => {
             send({
               step: "vm_upgrade",
               status: "running",
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest) {
                   ip: vm.ip_address,
                   detail: `Already on ${version}`,
                 });
-                continue;
+                return;
               }
 
               // Upgrade
@@ -156,7 +155,7 @@ export async function POST(req: NextRequest) {
                 error: errMsg,
               });
             }
-          }
+          }));
 
           send({
             step: "batch",
@@ -169,18 +168,17 @@ export async function POST(req: NextRequest) {
             failed,
           });
 
-          // Pause between batches (except the last)
+          // Brief pause between batches to avoid SSH connection storms
           if (b < totalBatches - 1) {
-            send({ step: "batch_pause", status: "running", detail: "Pausing 10s before next batch..." });
-            await new Promise((r) => setTimeout(r, BATCH_PAUSE_MS));
+            await new Promise((r) => setTimeout(r, 1000));
           }
         }
 
-        // Version sweep — verify all VMs
+        // Version sweep — verify all VMs in parallel
         send({ step: "sweep", status: "running", detail: "Running version sweep..." });
         let sweepMatched = 0;
         let sweepMismatched = 0;
-        for (const vm of vms) {
+        await Promise.all(vms.map(async (vm) => {
           try {
             const ssh = await connectSSH(vm as VMRecord);
             try {
@@ -198,7 +196,7 @@ export async function POST(req: NextRequest) {
           } catch {
             sweepMismatched++;
           }
-        }
+        }));
 
         send({
           step: "sweep",
