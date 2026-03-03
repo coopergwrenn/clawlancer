@@ -1333,7 +1333,7 @@ function buildOpenClawConfig(
   const ocConfig: Record<string, unknown> = {
     wizard: {
       lastRunAt: now,
-      lastRunVersion: "2026.2.24",
+      lastRunVersion: OPENCLAW_PINNED_VERSION,
       lastRunCommand: "onboard",
       lastRunMode: "local",
     },
