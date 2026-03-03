@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 const navLinks = [
   { href: "/pricing", label: "Pricing" },
@@ -11,6 +14,8 @@ const navLinks = [
 ];
 
 export function SiteHeader() {
+  const { data: session } = useSession();
+
   return (
     <header
       className="sticky top-0 z-50 py-4 px-4 sm:px-6"
@@ -53,7 +58,7 @@ export function SiteHeader() {
         </nav>
 
         <Link
-          href="/signup"
+          href={session ? "/dashboard" : "/signup"}
           className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
           style={{
             background:
@@ -69,7 +74,7 @@ export function SiteHeader() {
             color: "#333334",
           }}
         >
-          Sign Up
+          {session ? "Dashboard" : "Sign Up"}
         </Link>
       </div>
     </header>
