@@ -462,6 +462,29 @@ Subscribe to specific markets for live price updates. See `references/monitoring
 
 ## Tier 3: Autonomous Trading (Opt-In Required)
 
+### HARD RULES — Trade Execution
+
+NEVER write inline Python for trading. ALL trades MUST use the scripts:
+
+- **Buy:** `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json`
+- **Sell:** `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --json`
+- **Cancel:** `python3 ~/scripts/polymarket-trade.py cancel --order-id <id> --json`
+- **Verify:** `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
+- **Positions:** `python3 ~/scripts/polymarket-positions.py list --json`
+- **Portfolio:** `python3 ~/scripts/polymarket-portfolio.py summary --json`
+- **Trades:** `python3 ~/scripts/polymarket-portfolio.py trades --json`
+- **P&L:** `python3 ~/scripts/polymarket-positions.py pnl --json`
+- **Setup:** `python3 ~/scripts/polymarket-setup-creds.py setup --json`
+
+**NEVER** report a trade as executed without a real CLOB order ID from `polymarket-trade.py`. If you don't have one, the trade didn't happen.
+**NEVER** show P&L without first running `polymarket-positions.py` or `polymarket-portfolio.py`.
+**NEVER** write ad-hoc Python for order placement — use the scripts.
+**NEVER** generate fake P&L tables or ASCII dashboards from memory. When a user asks to see their trades or portfolio, run `polymarket-portfolio.py` and show the real output.
+**NEVER** buy both YES and NO on the same market. That's hedging against yourself for zero expected value. Pick a side based on your research.
+**ALWAYS** run `polymarket-setup-creds.py status` before attempting ANY trade to verify the wallet is properly configured. If it fails, tell the user setup is incomplete — do not proceed to fake trades.
+If any script returns an error, report the **exact error** to the user.
+If you cannot execute a trade, say so clearly — **do not fake it**.
+
 ### Safety First
 
 **NEVER auto-trade without explicit user opt-in.** Before every trade, the agent checks `~/.openclaw/polymarket/risk-config.json`:
@@ -501,11 +524,12 @@ User commands:
 ```
 
 The agent will:
-1. Look up the market on Gamma API to get token IDs
-2. Create a limit order via py-clob-client
-3. Sign with the wallet private key
-4. Post to the CLOB API
-5. Confirm execution with transaction details
+1. Look up the market on Gamma API to get the market ID
+2. Execute via script: `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json`
+3. Verify the order: `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
+4. Report the real order ID, status, and transaction hash to the user
+
+For sells: `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --json`
 
 ### Thesis-Driven Trades
 
@@ -520,7 +544,25 @@ The agent will:
 3. Form a thesis (e.g., "Market prices 72% cut, but CPI data suggests only 60%")
 4. If thesis suggests >=5% edge, propose the trade with reasoning
 5. Wait for user approval (always, for thesis trades)
-6. Execute and log with full reasoning chain
+6. Execute via: `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json`
+7. Verify via: `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
+8. Log with full reasoning chain
+
+### Guardrails
+
+**Pre-trade checklist** (agent MUST complete before any trade):
+1. Confirm `risk-config.json` has `enabled: true`
+2. Check daily spend limit is not exceeded
+3. If amount > `confirmationThresholdUSDC`, ask user for explicit approval
+4. Verify wallet has sufficient USDC.e balance
+5. Verify CLOB API credentials are set up: `python3 ~/scripts/polymarket-setup-creds.py status --json`
+
+**Post-trade verification** (agent MUST complete after every trade):
+1. Capture the `order_id` from `polymarket-trade.py` output
+2. Run `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
+3. Report the order status and transaction hash to the user
+4. If the order fails or is unmatched, tell the user — never claim success without proof
+5. Run `python3 ~/scripts/polymarket-positions.py list --json` to confirm the position
 
 ### Token IDs
 
@@ -546,8 +588,15 @@ For multi-outcome markets, each outcome has its own token ID pair. See `referenc
 | `~/.openclaw/polymarket/risk-config.json` | Trading risk parameters (enabled, limits) |
 | `~/.openclaw/polymarket/positions.json` | Open position tracking |
 | `~/.openclaw/polymarket/trade-log.json` | Trade history with reasoning |
+| `~/.openclaw/polymarket/daily-spend.json` | Daily spend/loss tracker (resets at UTC midnight) |
+| `~/.openclaw/polymarket/creds-state.json` | CLOB API credential derivation state |
 | `~/memory/polymarket-watchlist.json` | Market watchlist with alert thresholds |
 | `~/scripts/setup-polymarket-wallet.sh` | Wallet generation script |
+| `~/scripts/polymarket-setup-creds.py` | CLOB API credential derivation + ERC-20 approvals |
+| `~/scripts/polymarket-trade.py` | Trade execution (buy/sell/cancel/orders) with risk enforcement |
+| `~/scripts/polymarket-positions.py` | On-chain position verification + P&L |
+| `~/scripts/polymarket-verify.py` | Order/trade verification with real tx hashes |
+| `~/scripts/polymarket-portfolio.py` | Portfolio summary with positions, P&L, and Polygonscan tx links |
 
 ---
 
