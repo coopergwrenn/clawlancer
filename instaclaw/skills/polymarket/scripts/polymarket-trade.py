@@ -39,6 +39,19 @@ CLOB_HOST = "https://clob.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
 CHAIN_ID = 137
 
+# USDC contract addresses (Polygon mainnet)
+USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"       # Bridged — Polymarket uses this
+USDC_NATIVE = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"   # Native — NOT usable on Polymarket
+
+ENV_FILE = Path.home() / ".openclaw" / ".env"
+
+RPC_FALLBACKS = [
+    "https://api.zan.top/polygon-mainnet",
+    "https://1rpc.io/matic",
+    "https://polygon-rpc.com",
+    "https://polygon-bor-rpc.publicnode.com",
+]
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -216,6 +229,54 @@ def update_positions(market_id, market_question, outcome, token_id, shares, avg_
     save_json(POSITIONS_FILE, positions)
 
 
+def get_rpc_url():
+    """Read POLYGON_RPC_URL from env file, or find a working fallback."""
+    if ENV_FILE.exists():
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("POLYGON_RPC_URL="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+    for rpc in RPC_FALLBACKS:
+        try:
+            payload = json.dumps({"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}).encode()
+            req = urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(resp.read().decode())
+            if "result" in data:
+                return rpc
+        except Exception:
+            continue
+    return RPC_FALLBACKS[0]
+
+
+def check_usdc_balance(wallet_address):
+    """Check USDC.e and native USDC balances. Returns (usdc_e, usdc_native) or (None, None)."""
+    rpc_url = get_rpc_url()
+    addr_padded = wallet_address[2:].lower().zfill(64)
+    call_data = "0x70a08231" + addr_padded  # balanceOf(address)
+
+    balances = {}
+    for label, token_addr in [("usdc_e", USDC_E), ("usdc_native", USDC_NATIVE)]:
+        try:
+            payload = json.dumps({
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [{"to": token_addr, "data": call_data}, "latest"],
+                "id": 1,
+            }).encode()
+            req = urllib.request.Request(rpc_url, data=payload, headers={"Content-Type": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = json.loads(resp.read().decode())
+            raw = data.get("result", "0x0")
+            balances[label] = int(raw, 16) / 1e6 if raw and raw != "0x" else 0.0
+        except Exception:
+            balances[label] = None
+    return balances.get("usdc_e"), balances.get("usdc_native")
+
+
 def output_result(msg, json_mode=False, data=None):
     """Print result in appropriate format."""
     if json_mode and data is not None:
@@ -265,7 +326,37 @@ def cmd_buy(args):
         )
         return 1
 
-    # 5. Fetch market info
+    # 5. Pre-trade balance check — detect wrong USDC type
+    usdc_e_bal, usdc_native_bal = check_usdc_balance(wallet["address"])
+    if usdc_e_bal is not None and usdc_native_bal is not None:
+        if usdc_e_bal < args.amount and usdc_native_bal > 0:
+            output_result(
+                f"FAIL — Wrong USDC type. You have ${usdc_native_bal:.2f} native USDC but "
+                f"Polymarket requires USDC.e (bridged). Your USDC.e balance is ${usdc_e_bal:.2f}.\n"
+                f"  To fix: deposit through https://polymarket.com (auto-converts),\n"
+                f"  or swap native USDC to USDC.e on a Polygon DEX (Uniswap, QuickSwap).\n"
+                f"  USDC.e contract: 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174\n"
+                f"  Native USDC contract: 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+                args.json,
+                {
+                    "status": "FAIL",
+                    "error": "wrong_usdc_type",
+                    "usdc_e_balance": usdc_e_bal,
+                    "usdc_native_balance": usdc_native_bal,
+                    "fix": "Deposit through polymarket.com to auto-convert, or swap native USDC to USDC.e on a Polygon DEX",
+                },
+            )
+            return 1
+        if usdc_e_bal < args.amount and usdc_native_bal == 0:
+            output_result(
+                f"FAIL — Insufficient USDC.e balance: ${usdc_e_bal:.2f} < ${args.amount:.2f} needed.\n"
+                f"  Fund wallet: {wallet['address']}",
+                args.json,
+                {"status": "FAIL", "error": "insufficient_balance", "usdc_e_balance": usdc_e_bal, "address": wallet["address"]},
+            )
+            return 1
+
+    # 6. Fetch market info
     market = fetch_market_info(args.market_id)
     if not market:
         output_result(
@@ -275,7 +366,7 @@ def cmd_buy(args):
         )
         return 1
 
-    # 6. Get token ID
+    # 7. Get token ID
     token_id = get_token_id(market, args.outcome)
     if not token_id:
         outcomes = json.loads(market.get("outcomes", "[]"))
@@ -286,7 +377,7 @@ def cmd_buy(args):
         )
         return 1
 
-    # 7. Determine price
+    # 8. Determine price
     if args.price:
         price = args.price
     else:
@@ -299,7 +390,7 @@ def cmd_buy(args):
             )
             return 1
 
-    # 8. Calculate shares
+    # 9. Calculate shares
     if price <= 0 or price >= 1:
         output_result(
             f"FAIL — Invalid price {price}. Must be between 0 and 1.",
@@ -310,7 +401,7 @@ def cmd_buy(args):
 
     shares = round(args.amount / price, 2)
 
-    # 9. Init CLOB client
+    # 10. Init CLOB client
     client, err = init_clob_client(wallet)
     if not client:
         output_result(
@@ -320,7 +411,7 @@ def cmd_buy(args):
         )
         return 1
 
-    # 10. Build and post order
+    # 11. Build and post order
     try:
         from py_clob_client.clob_types import OrderArgs, OrderType
         from py_clob_client.order_builder.constants import BUY
@@ -360,7 +451,7 @@ def cmd_buy(args):
         )
         return 1
 
-    # 11. Parse response
+    # 12. Parse response
     if isinstance(resp, dict):
         order_id = resp.get("orderID", resp.get("order_id", ""))
         status = resp.get("status", "unknown")
@@ -374,12 +465,12 @@ def cmd_buy(args):
         taking = ""
         making = ""
 
-    # 12. Update daily spend
+    # 13. Update daily spend
     daily_spend["total_spent_usdc"] = daily_spend.get("total_spent_usdc", 0) + args.amount
     daily_spend["trade_count"] = daily_spend.get("trade_count", 0) + 1
     save_json(DAILY_SPEND_FILE, daily_spend)
 
-    # 13. Log trade
+    # 14. Log trade
     market_question = market.get("question", "Unknown")
     log_entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -398,10 +489,10 @@ def cmd_buy(args):
     }
     log_trade(log_entry)
 
-    # 14. Update positions
+    # 15. Update positions
     update_positions(args.market_id, market_question, args.outcome, token_id, shares, price, "BUY")
 
-    # 15. Output
+    # 16. Output
     result = {
         "status": "OK",
         "action": "BUY",

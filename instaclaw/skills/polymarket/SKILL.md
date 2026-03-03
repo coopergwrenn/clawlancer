@@ -374,9 +374,19 @@ This generates a Polygon EOA wallet and stores it at `~/.openclaw/polymarket/wal
 
 **Important chain details:**
 - **Chain: Polygon (chain ID 137)** — NOT Base, NOT Ethereum mainnet
-- **Gas token:** MATIC (needed for transaction fees)
-- **Trading token:** USDC.e (bridged USDC on Polygon — this is what Polymarket uses)
-- Fund wallet with MATIC (gas) + USDC.e (trading) via any Polygon bridge or exchange withdrawal
+- **Gas token:** POL/MATIC (~0.1 POL is enough for many transactions)
+- **Trading token:** USDC.e `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174` (bridged USDC on Polygon)
+
+**CRITICAL — USDC.e vs native USDC:**
+Polymarket uses **USDC.e** (bridged), NOT native USDC (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`). These are different tokens on the same chain. If the user sends native USDC to the agent wallet, it will show a balance but **cannot be used for trading** until converted.
+
+**How to fund the wallet:**
+1. **Easiest:** Deposit through [polymarket.com](https://polymarket.com) UI — it auto-converts any USDC type to USDC.e
+2. **Direct transfer:** Send USDC.e (NOT native USDC) to the agent's Polygon address
+3. **Gas:** Also send ~0.1 POL for transaction fees (approvals, swaps)
+4. **If the user already sent native USDC:** They need to swap it to USDC.e on a Polygon DEX (e.g. Uniswap, QuickSwap) or deposit through polymarket.com
+
+**Check balance:** `python3 ~/scripts/polymarket-setup-creds.py status` — shows both USDC.e and native USDC balances
 
 **Wallet commands:**
 ```bash
