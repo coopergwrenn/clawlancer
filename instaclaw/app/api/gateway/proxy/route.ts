@@ -267,6 +267,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- Detect tool-use continuations ---
+    // If the last message contains tool_result blocks, this is a continuation
+    // call within an agent turn, not a new user message. Charged at 0.2x.
+    let isToolContinuation = false;
+    if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
+      const msgs = parsedBody.messages as Array<{ role?: string; content?: unknown }>;
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
+        isToolContinuation = (lastMsg.content as Array<{ type?: string }>).some(
+          (block) => block.type === "tool_result"
+        );
+      }
+    }
+
     // --- Global daily spend circuit breaker (always UTC) ---
     const todayStr = new Date().toISOString().split("T")[0];
 
@@ -364,7 +378,7 @@ export async function POST(req: NextRequest) {
     // always uses the final routed model for correct cost tracking.
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_limit_only",
-      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz, p_is_virtuals: isVirtuals }
+      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz, p_is_virtuals: isVirtuals, p_is_tool_continuation: isToolContinuation }
     );
 
     if (limitError) {
@@ -789,6 +803,7 @@ export async function POST(req: NextRequest) {
         p_is_heartbeat: isHeartbeat,
         p_timezone: userTz,
         p_is_virtuals: isVirtuals,
+        p_is_tool_continuation: isToolContinuation,
       })
       .then(({ error: incError }) => {
         if (incError) {
@@ -803,7 +818,8 @@ export async function POST(req: NextRequest) {
 
     // --- Increment tier usage (fire-and-forget) ---
     if (routingDecision && !isHeartbeat) {
-      const costWeight = routingDecision.tier === 1 ? 1 : routingDecision.tier === 2 ? 4 : 19;
+      const baseCostWeight = routingDecision.tier === 1 ? 1 : routingDecision.tier === 2 ? 4 : 19;
+      const costWeight = isToolContinuation ? baseCostWeight * 0.2 : baseCostWeight;
       supabase
         .rpc("instaclaw_increment_tier_usage", {
           p_vm_id: vm.id,
