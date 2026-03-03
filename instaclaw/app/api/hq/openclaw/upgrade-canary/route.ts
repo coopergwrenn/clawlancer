@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
 import { upgradeOpenClaw, connectSSH, NVM_PREAMBLE } from "@/lib/ssh";
+import { logger } from "@/lib/logger";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
@@ -43,32 +44,51 @@ export async function POST(req: NextRequest) {
           .map((e) => e.trim().toLowerCase())
           .filter(Boolean);
 
+        logger.info("Canary upgrade: admin email lookup", {
+          route: "hq/openclaw/upgrade-canary",
+          adminEmails,
+          envRaw: process.env.ADMIN_EMAILS ?? "(unset)",
+        });
+
         let user: { id: string } | null = null;
         for (const email of adminEmails) {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from("instaclaw_users")
             .select("id")
             .ilike("email", email)
             .single();
+          logger.info("Canary upgrade: email query result", {
+            route: "hq/openclaw/upgrade-canary",
+            email,
+            found: !!data,
+            userId: data?.id ?? null,
+            error: error?.message ?? null,
+          });
           if (data) { user = data; break; }
         }
 
         // Fallback: grab the first assigned VM if no admin email matched
         if (!user) {
-          const { data: fallbackVm } = await supabase
+          const { data: fallbackVm, error: fallbackErr } = await supabase
             .from("instaclaw_vms")
             .select("assigned_to")
             .eq("status", "assigned")
             .not("assigned_to", "is", null)
             .limit(1)
             .single();
+          logger.info("Canary upgrade: fallback VM lookup", {
+            route: "hq/openclaw/upgrade-canary",
+            found: !!fallbackVm,
+            assignedTo: fallbackVm?.assigned_to ?? null,
+            error: fallbackErr?.message ?? null,
+          });
           if (fallbackVm?.assigned_to) {
             user = { id: fallbackVm.assigned_to };
           }
         }
 
         if (!user) {
-          send({ step: "find_vm", status: "error", error: "Admin user not found" });
+          send({ step: "find_vm", status: "error", error: "Admin user not found — checked: " + adminEmails.join(", ") + " (env: " + (process.env.ADMIN_EMAILS ?? "unset") + ")" });
           controller.close();
           return;
         }
