@@ -3,9 +3,9 @@
 # open-spots.sh — Open new spots by provisioning VMs
 #
 # Usage:
-#   ./scripts/open-spots.sh 3                          # Provision 3 new Hetzner VMs (default)
-#   ./scripts/open-spots.sh 3 --provider=digitalocean  # Provision 3 new DigitalOcean VMs
-#   ./scripts/open-spots.sh                            # Default: provision 2 new Hetzner VMs
+#   ./scripts/open-spots.sh 3                       # Provision 3 new Linode VMs (default)
+#   ./scripts/open-spots.sh 3 --provider=hetzner    # Provision 3 new Hetzner VMs
+#   ./scripts/open-spots.sh                          # Default: provision 2 new Linode VMs
 #
 # Reads credentials from .env.local automatically.
 # No dependency on the web app — talks to providers + Supabase directly.
@@ -28,7 +28,7 @@ load_env() {
 }
 
 # Parse arguments
-PROVIDER="hetzner"
+PROVIDER="linode"
 COUNT=""
 for arg in "$@"; do
   case "$arg" in
@@ -460,8 +460,254 @@ if [ "$SUCCESS" -gt 0 ]; then
   fi
 fi
 
+# =============================================================================
+# Provider: Linode
+# =============================================================================
+elif [ "$PROVIDER" = "linode" ]; then
+
+LINODE_TOKEN=$(load_env "LINODE_API_TOKEN")
+
+if [ -z "$LINODE_TOKEN" ]; then echo "Error: LINODE_API_TOKEN not found in .env.local"; exit 1; fi
+
+LINODE_TYPE="g6-standard-2"
+LINODE_IMAGE="linode/ubuntu24.04"
+LINODE_REGION="us-east"
+
+# --- Get SSH key ID ---
+echo "Resolving Linode resources..."
+SSH_KEY_ID=$(curl -s 'https://api.linode.com/v4/profile/sshkeys' \
+  -H "Authorization: Bearer ${LINODE_TOKEN}" \
+  | python3 -c "import json,sys; keys=json.load(sys.stdin)['data']; print(next((k['id'] for k in keys if k['label']=='instaclaw-deploy'), ''))")
+
+if [ -z "$SSH_KEY_ID" ]; then echo "Error: SSH key 'instaclaw-deploy' not found on Linode"; exit 1; fi
+echo "  SSH Key ID: $SSH_KEY_ID"
+echo ""
+
+# --- Build cloud-init user_data for fresh Ubuntu 24.04 install ---
+LINODE_USER_DATA=$(cat <<'CLOUDINIT'
+#!/bin/bash
+set -euo pipefail
+exec > /var/log/instaclaw-bootstrap.log 2>&1
+echo "=== InstaClaw VM bootstrap started at $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+
+OPENCLAW_USER="openclaw"
+OPENCLAW_HOME="/home/${OPENCLAW_USER}"
+CONFIG_DIR="${OPENCLAW_HOME}/.openclaw"
+
+# 1. Create openclaw user
+if ! id -u "${OPENCLAW_USER}" &>/dev/null; then
+  useradd -m -s /bin/bash "${OPENCLAW_USER}"
+  echo "${OPENCLAW_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${OPENCLAW_USER}
+  chmod 440 /etc/sudoers.d/${OPENCLAW_USER}
+fi
+
+# 2. Copy SSH authorized keys from root
+mkdir -p "${OPENCLAW_HOME}/.ssh"
+cp /root/.ssh/authorized_keys "${OPENCLAW_HOME}/.ssh/authorized_keys"
+chown -R "${OPENCLAW_USER}:${OPENCLAW_USER}" "${OPENCLAW_HOME}/.ssh"
+chmod 700 "${OPENCLAW_HOME}/.ssh"
+chmod 600 "${OPENCLAW_HOME}/.ssh/authorized_keys"
+
+# 3. Install system packages
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq fail2ban curl git ufw
+
+# 4. Configure firewall
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 18789/tcp
+ufw --force enable
+
+# 5. Harden SSH
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl restart ssh
+
+# 6. Regenerate SSH host keys (unique per VM)
+rm -f /etc/ssh/ssh_host_* 2>/dev/null || true
+dpkg-reconfigure openssh-server 2>/dev/null || ssh-keygen -A
+systemd-machine-id-setup
+
+# 7. Install nvm + Node as openclaw user
+su - "${OPENCLAW_USER}" -c '
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  nvm install 22
+  nvm alias default 22
+  npm install -g openclaw@2026.2.24
+'
+
+# 8. Create OpenClaw config directory with placeholder
+mkdir -p "${CONFIG_DIR}"
+cat > "${CONFIG_DIR}/openclaw.json" <<'EOF'
+{"_placeholder":true,"gateway":{"mode":"local","port":18789,"bind":"lan"}}
+EOF
+chown -R "${OPENCLAW_USER}:${OPENCLAW_USER}" "${CONFIG_DIR}"
+chmod 600 "${CONFIG_DIR}/openclaw.json"
+
+# 9. Configure fail2ban
+rm -f /var/lib/fail2ban/fail2ban.sqlite3 2>/dev/null || true
+systemctl restart fail2ban 2>/dev/null || true
+
+# 10. Restart SSH with fresh host keys
+if systemctl is-active ssh.service &>/dev/null; then systemctl restart ssh; fi
+
+echo "=== InstaClaw VM bootstrap complete at $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+CLOUDINIT
+)
+
+echo "=== Provisioning $COUNT VM(s) via Linode ($LINODE_TYPE, $LINODE_IMAGE, $LINODE_REGION) ==="
+echo "    Cloud-init user_data will auto-install OpenClaw on each VM."
+echo ""
+
+SUCCESS=0
+# Track created VMs for readiness polling
+declare -a CREATED_IPS=()
+declare -a CREATED_NAMES=()
+
+for i in $(seq 1 "$COUNT"); do
+  VM_NUM=$((NEXT_NUM + i - 1))
+  VM_NAME=$(printf "instaclaw-vm-%02d" "$VM_NUM")
+
+  echo "[$i/$COUNT] Creating $VM_NAME..."
+
+  # Base64-encode user_data for Linode metadata
+  LINODE_USER_DATA_B64=$(echo "$LINODE_USER_DATA" | base64)
+
+  # Build JSON with user_data via python3 to avoid shell escaping issues
+  CREATE_RESULT=$(python3 -c "
+import json, sys
+body = {
+    'label': '${VM_NAME}',
+    'type': '${LINODE_TYPE}',
+    'region': '${LINODE_REGION}',
+    'image': '${LINODE_IMAGE}',
+    'authorized_keys': [int('${SSH_KEY_ID}')],
+    'metadata': {
+        'user_data': sys.stdin.read().strip()
+    }
+}
+print(json.dumps(body))
+" <<< "$LINODE_USER_DATA_B64" | curl -s -X POST 'https://api.linode.com/v4/linode/instances' \
+    -H "Authorization: Bearer ${LINODE_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d @-)
+
+  LINODE_ID=$(echo "$CREATE_RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+
+  if [ -z "$LINODE_ID" ]; then
+    echo "  ERROR: Failed to create Linode instance"
+    echo "$CREATE_RESULT" | python3 -m json.tool 2>/dev/null || echo "$CREATE_RESULT"
+    continue
+  fi
+
+  echo "  Linode ID: $LINODE_ID — waiting for IP..."
+
+  # Poll until running with public IP (max 2 minutes)
+  IP=""
+  for attempt in $(seq 1 24); do
+    sleep 5
+    LINODE_DATA=$(curl -s "https://api.linode.com/v4/linode/instances/${LINODE_ID}" \
+      -H "Authorization: Bearer ${LINODE_TOKEN}")
+    STATUS=$(echo "$LINODE_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" 2>/dev/null)
+    IP=$(echo "$LINODE_DATA" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+ipv4=d.get('ipv4',[])
+print(ipv4[0] if ipv4 else '')
+" 2>/dev/null)
+
+    if [ "$STATUS" = "running" ] && [ -n "$IP" ]; then
+      break
+    fi
+    printf "."
+  done
+  echo ""
+
+  if [ -z "$IP" ]; then
+    echo "  ERROR: Linode $LINODE_ID did not get an IP in time"
+    continue
+  fi
+
+  echo "  IP: $IP"
+
+  # Insert into Supabase as provisioning (cloud-init still running)
+  VM_STATUS="provisioning"
+
+  INSERT_RESULT=$(curl -s -X POST "${SUPABASE_URL}/rest/v1/instaclaw_vms" \
+    -H "apikey: ${SUPABASE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_KEY}" \
+    -H "Content-Type: application/json" \
+    -H "Prefer: return=representation" \
+    -d "{\"ip_address\":\"${IP}\",\"name\":\"${VM_NAME}\",\"provider_server_id\":\"${LINODE_ID}\",\"provider\":\"linode\",\"ssh_port\":22,\"ssh_user\":\"openclaw\",\"status\":\"${VM_STATUS}\",\"region\":\"${LINODE_REGION}\",\"server_type\":\"${LINODE_TYPE}\"}")
+
+  echo "  Inserted into DB: status=$VM_STATUS provider=linode"
+  CREATED_IPS+=("$IP")
+  CREATED_NAMES+=("$VM_NAME")
+  SUCCESS=$((SUCCESS + 1))
+  echo ""
+done
+
+# --- Poll for cloud-init completion and flip to ready ---
+if [ "$SUCCESS" -gt 0 ]; then
+  SSH_PRIVATE_KEY_B64=$(load_env "SSH_PRIVATE_KEY_B64")
+  if [ -n "$SSH_PRIVATE_KEY_B64" ]; then
+    echo "=== Waiting for cloud-init to finish on $SUCCESS VM(s) (up to 10 minutes)... ==="
+    SSH_KEY_FILE=$(mktemp)
+    echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$SSH_KEY_FILE"
+    chmod 600 "$SSH_KEY_FILE"
+
+    READY_COUNT=0
+    for idx in $(seq 0 $((SUCCESS - 1))); do
+      VM_IP="${CREATED_IPS[$idx]}"
+      VM_NAME="${CREATED_NAMES[$idx]}"
+      echo "  Polling $VM_NAME ($VM_IP)..."
+
+      CLOUD_INIT_DONE=false
+      for attempt in $(seq 1 60); do
+        # SSH as root to check cloud-init sentinel (openclaw user may not exist yet)
+        RESULT=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+          -i "$SSH_KEY_FILE" "root@${VM_IP}" \
+          "test -f /var/lib/cloud/instance/boot-finished && echo READY" 2>/dev/null || true)
+
+        if [ "$RESULT" = "READY" ]; then
+          echo "    Cloud-init complete! Updating status to ready..."
+          # Update status in Supabase
+          curl -s -X PATCH "${SUPABASE_URL}/rest/v1/instaclaw_vms?ip_address=eq.${VM_IP}" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"ready"}' > /dev/null
+          CLOUD_INIT_DONE=true
+          READY_COUNT=$((READY_COUNT + 1))
+          break
+        fi
+        printf "."
+        sleep 10
+      done
+      echo ""
+
+      if [ "$CLOUD_INIT_DONE" = false ]; then
+        echo "    WARNING: Cloud-init did not finish in 10 min. VM stays as 'provisioning'."
+        echo "    The cloud-init-poll cron job will retry automatically."
+      fi
+    done
+
+    rm -f "$SSH_KEY_FILE"
+    echo ""
+    echo "=== $READY_COUNT/$SUCCESS VM(s) reached ready status ==="
+  else
+    echo ""
+    echo "NOTE: SSH_PRIVATE_KEY_B64 not found — skipping cloud-init polling."
+    echo "VMs are in 'provisioning' status. The cloud-init-poll cron will flip them to 'ready'."
+  fi
+fi
+
 else
-  echo "Error: Unknown provider '$PROVIDER'. Use 'hetzner' or 'digitalocean'."
+  echo "Error: Unknown provider '$PROVIDER'. Use 'linode', 'hetzner', or 'digitalocean'."
   exit 1
 fi
 
