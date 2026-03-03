@@ -37,9 +37,9 @@ const categories: { title: string; items: UseCaseItem[] }[] = [
       },
       {
         slug: "crypto-trading",
-        title: "Crypto Trading",
+        title: "Crypto Trading & Earning",
         description:
-          "Set up wallet alerts, track token prices across chains, and get real-time DeFi opportunities delivered to Telegram. Your agent monitors on-chain data while you sleep — whale movements, liquidity shifts, new pool launches — and sends you only what matters.",
+          "Your agent doesn't just trade — it earns. It completes bounties, freelance tasks, and microjobs across multiple AI agent marketplaces and crypto platforms while you sleep. On top of that, it monitors token prices across chains, tracks whale movements and liquidity shifts, and delivers real-time DeFi opportunities straight to Telegram. One agent, multiple income streams, zero effort from you.",
       },
     ],
   },
