@@ -115,9 +115,12 @@ export const VM_MANIFEST = {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
     "commands.restart": "true",
-    "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback": "true",
+    // NOTE: gateway.controlUi is version-dependent and handled by
+    // upgradeOpenClaw() / restartGateway() — NOT set here statically.
+    // v2026.2.24+ REQUIRES dangerouslyAllowHostHeaderOriginFallback=true
+    // v2026.2.17–2026.2.23 REJECTS the controlUi key entirely
     "channels.telegram.groupPolicy": "open",
-    "channels.telegram.groups.default.requireMention": "false",
+    "channels.telegram.groups.*.requireMention": "false",
     "commands.useAccessGroups": "false",
   } as Record<string, string>,
 
