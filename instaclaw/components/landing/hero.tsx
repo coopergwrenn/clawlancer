@@ -31,11 +31,18 @@ export function Hero() {
 
       {/* Top-right Sign In / Dashboard */}
       <motion.div
-        className="absolute top-6 right-6 z-20"
+        className="absolute top-6 right-6 z-20 flex items-center gap-1"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.3, duration: 0.5, ease: SNAPPY }}
       >
+        <Link
+          href="/blog"
+          className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
+          style={{ color: "var(--foreground)" }}
+        >
+          Blog
+        </Link>
         {session ? (
           <Link
             href="/dashboard"
