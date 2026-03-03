@@ -1369,6 +1369,9 @@ function buildOpenClawConfig(
       mode: "local",
       port: GATEWAY_PORT,
       bind: "lan",
+      controlUi: {
+        dangerouslyAllowHostHeaderOriginFallback: true,
+      },
       auth: {
         mode: "token",
         token: gatewayToken,
@@ -2625,7 +2628,7 @@ export async function configureOpenClaw(
       '  grep -q "^StartLimitIntervalSec=" "$UNIT" || sed -i "/^\\[Unit\\]/a StartLimitIntervalSec=300" "$UNIT"',
       '  sed -i "s/^StartLimitAction=.*/StartLimitAction=stop/" "$UNIT"',
       '  grep -q "^StartLimitAction=" "$UNIT" || sed -i "/^\\[Unit\\]/a StartLimitAction=stop" "$UNIT"',
-      '  grep -q "^ExecStartPre=" "$UNIT" || sed -i "/^ExecStart=/i ExecStartPre=/bin/bash -c \'pkill -9 -f \\\"chrome.*remote-debugging-port\\\" 2>/dev/null || true\'" "$UNIT"',
+      '  grep -q "^ExecStartPre=" "$UNIT" || sed -i "/^ExecStart=/i ExecStartPre=/bin/bash -c \'pkill -9 -f \\\"[c]hrome.*remote-debugging-port\\\" 2>/dev/null || true\'" "$UNIT"',
       '  systemctl --user daemon-reload',
       'fi',
       '',
@@ -4737,7 +4740,7 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
       '  NEEDS_RELOAD=0',
       '  grep -q "^KillMode=mixed" "$UNIT" || { sed -i "s/^KillMode=.*/KillMode=mixed/" "$UNIT"; grep -q "^KillMode=" "$UNIT" || sed -i "/^\\[Service\\]/a KillMode=mixed" "$UNIT"; NEEDS_RELOAD=1; }',
       '  grep -q "^StartLimitAction=stop" "$UNIT" || { sed -i "s/^StartLimitAction=.*/StartLimitAction=stop/" "$UNIT"; grep -q "^StartLimitAction=" "$UNIT" || sed -i "/^\\[Unit\\]/a StartLimitAction=stop" "$UNIT"; NEEDS_RELOAD=1; }',
-      '  grep -q "^ExecStartPre=" "$UNIT" || { sed -i "/^ExecStart=/i ExecStartPre=/bin/bash -c \'pkill -9 -f \\\"chrome.*remote-debugging-port\\\" 2>/dev/null || true\'" "$UNIT"; NEEDS_RELOAD=1; }',
+      '  grep -q "^ExecStartPre=" "$UNIT" || { sed -i "/^ExecStart=/i ExecStartPre=/bin/bash -c \'pkill -9 -f \\\"[c]hrome.*remote-debugging-port\\\" 2>/dev/null || true\'" "$UNIT"; NEEDS_RELOAD=1; }',
       '  [ "$NEEDS_RELOAD" = "1" ] && systemctl --user daemon-reload',
       'fi',
       '',
