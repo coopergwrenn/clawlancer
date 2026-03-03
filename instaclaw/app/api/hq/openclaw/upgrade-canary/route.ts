@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 function sseEvent(data: Record<string, unknown>): string {
   return `data: ${JSON.stringify(data)}\n\n`;
