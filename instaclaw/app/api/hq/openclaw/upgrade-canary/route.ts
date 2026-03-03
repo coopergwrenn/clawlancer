@@ -35,14 +35,37 @@ export async function POST(req: NextRequest) {
         // Step 1: Find Cooper's VM (admin user)
         send({ step: "find_vm", status: "running", detail: "Finding canary VM..." });
 
-        const adminEmail = "coop@valtlabs.com";
         const supabase = getSupabase();
 
-        const { data: user } = await supabase
-          .from("instaclaw_users")
-          .select("id")
-          .eq("email", adminEmail)
-          .single();
+        // Find the admin's VM — pick the first assigned VM owned by any known admin email
+        const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+          .split(",")
+          .map((e) => e.trim().toLowerCase())
+          .filter(Boolean);
+
+        let user: { id: string } | null = null;
+        for (const email of adminEmails) {
+          const { data } = await supabase
+            .from("instaclaw_users")
+            .select("id")
+            .ilike("email", email)
+            .single();
+          if (data) { user = data; break; }
+        }
+
+        // Fallback: grab the first assigned VM if no admin email matched
+        if (!user) {
+          const { data: fallbackVm } = await supabase
+            .from("instaclaw_vms")
+            .select("assigned_to")
+            .eq("status", "assigned")
+            .not("assigned_to", "is", null)
+            .limit(1)
+            .single();
+          if (fallbackVm?.assigned_to) {
+            user = { id: fallbackVm.assigned_to };
+          }
+        }
 
         if (!user) {
           send({ step: "find_vm", status: "error", error: "Admin user not found" });
