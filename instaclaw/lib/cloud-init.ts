@@ -128,8 +128,8 @@ export function getBrowserSetupScript(): string {
 if ! dpkg -l libnss3 libgbm1 2>/dev/null | grep -q "^ii"; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \\
-    libcups2 libdrm2 libgbm1 libasound2 libpango-1.0-0 libxcomposite1 \\
+  apt-get install -y -qq libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 \\
+    libcups2t64 libdrm2 libgbm1 libasound2t64 libpango-1.0-0 libxcomposite1 \\
     libxdamage1 libxfixes3 libxrandr2 libxshmfence1 libxkbcommon0 libcairo2
 fi
 
@@ -218,8 +218,8 @@ chmod 600 "\${OPENCLAW_HOME}/.ssh/authorized_keys"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq fail2ban curl git ufw ffmpeg \\
-  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \\
-  libgbm1 libasound2 libpango-1.0-0 libxcomposite1 libxdamage1 \\
+  libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \\
+  libgbm1 libasound2t64 libpango-1.0-0 libxcomposite1 libxdamage1 \\
   libxfixes3 libxrandr2 libxshmfence1
 
 # ── 4. Configure firewall ──
@@ -246,7 +246,7 @@ su - "\${OPENCLAW_USER}" -c '
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   nvm install 22
   nvm alias default 22
-  npm install -g openclaw@2026.2.24 mcporter
+  npm install -g openclaw@2026.3.2 mcporter
 '
 
 # ── 7a. Install Python packages as openclaw user ──
