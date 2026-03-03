@@ -55,6 +55,8 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/blog/ai-agent-for-crypto", label: "How to Use an AI Agent for Crypto Trading and Research", changeFrequency: "monthly", priority: 0.6 },
   { path: "/blog/make-money-ai-agent", label: "5 Ways to Make Money with Your AI Agent in 2026", changeFrequency: "monthly", priority: 0.6 },
   { path: "/blog/openclaw-security", label: "Is OpenClaw Safe? Security and Privacy Explained", changeFrequency: "monthly", priority: 0.6 },
+  { path: "/blog/openclaw-api-guide", label: "OpenClaw API — The Developer's Guide", changeFrequency: "monthly", priority: 0.6 },
+  { path: "/blog/ai-agent-video-creation", label: "AI Agents for Video Creation — How It Works", changeFrequency: "monthly", priority: 0.6 },
   { path: "/privacy", label: "Privacy", changeFrequency: "yearly", priority: 0.3 },
   { path: "/terms", label: "Terms", changeFrequency: "yearly", priority: 0.3 },
 ];

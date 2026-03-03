@@ -19,6 +19,22 @@ const collectionJsonLd = {
 
 const posts = [
   {
+    slug: "ai-agent-video-creation",
+    title: "AI Agents for Video Creation — How It Works",
+    excerpt:
+      "AI agents can now create videos from text descriptions using tools like Remotion. Here's how the video creation pipeline works and how to get started.",
+    date: "March 2026",
+    readTime: "11 min read",
+  },
+  {
+    slug: "openclaw-api-guide",
+    title: "OpenClaw API — The Developer's Guide",
+    excerpt:
+      "Everything developers need to know about the OpenClaw API. Authentication, endpoints, rate limits, and code examples for building on top of the OpenClaw platform.",
+    date: "March 2026",
+    readTime: "10 min read",
+  },
+  {
     slug: "openclaw-security",
     title: "Is OpenClaw Safe? Security and Privacy Explained",
     excerpt:
