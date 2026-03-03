@@ -64,7 +64,7 @@ export default function WhatIsAPersonalAiAgentPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            A personal AI agent is a dedicated AI system that works exclusively
+            A <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>personal AI agent</a> is a dedicated AI system that works exclusively
             for one person. It runs on its own compute infrastructure, acts
             autonomously on your behalf, maintains persistent memory across
             every interaction, and improves over time as it learns your
@@ -388,7 +388,7 @@ export default function WhatIsAPersonalAiAgentPage() {
             >
               InstaClaw
             </Link>
-            , which provides managed hosting for OpenClaw — the leading
+            , which provides managed hosting for <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> — the leading
             open-source AI agent framework.
           </p>
           <p
@@ -396,7 +396,7 @@ export default function WhatIsAPersonalAiAgentPage() {
             style={{ color: "#6b6b6b" }}
           >
             The process takes about two minutes. Sign up on instaclaw.io,
-            connect your Telegram account, and your agent is live. No server
+            connect your <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Telegram</a> account, and your agent is live. No server
             setup, no terminal commands, no technical knowledge required.
             InstaClaw handles the entire infrastructure — provisioning your
             dedicated VM, installing and configuring OpenClaw, managing updates,

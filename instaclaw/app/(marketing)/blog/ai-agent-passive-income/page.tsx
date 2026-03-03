@@ -52,7 +52,7 @@ export default function AiAgentPassiveIncomePage() {
             The idea of passive income has always been appealing but rarely
             realistic. Most "passive" income streams require enormous upfront
             investment -- either money, time, or both -- and still demand ongoing
-            attention. But the emergence of personal AI agents is changing the
+            attention. But the emergence of <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>personal AI agents</a> is changing the
             math. When you have a capable AI that works around the clock,
             remembers context, executes multi-step tasks, and improves over time,
             the economics of one-person businesses and side projects shift
@@ -196,7 +196,7 @@ export default function AiAgentPassiveIncomePage() {
 
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             Your agent can continuously track on-chain data, monitor social
-            sentiment across Twitter and Telegram, scan news sources for
+            sentiment across Twitter and <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Telegram</a>, scan news sources for
             market-moving events, analyze wallet movements of known entities,
             compile daily briefings on specific tokens or sectors, and alert you
             to unusual activity. It does not make trading decisions -- you do.
@@ -311,7 +311,7 @@ export default function AiAgentPassiveIncomePage() {
               an InstaClaw plan
             </Link>{" "}
             that fits your budget. The BYOK plan at $14/month is the most
-            affordable starting point if you already have an Anthropic API key.
+            affordable starting point if you already have an <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Anthropic</a> API key.
             Spend the first week getting comfortable with your agent -- learn its
             strengths, test different prompts, and experiment with various skills.
             Then pick your first income strategy and commit to it for 30 days.

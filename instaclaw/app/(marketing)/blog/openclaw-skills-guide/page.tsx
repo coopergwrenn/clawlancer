@@ -54,7 +54,7 @@ export default function OpenclawSkillsGuidePage() {
             What Are OpenClaw Skills?
           </h2>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            An OpenClaw skill is a plugin that gives your AI agent a new capability. Each skill is a small program that implements the Model Context Protocol (MCP), which defines how AI agents discover and use external tools. Think of skills as apps for your AI agent — just like you install apps on your phone to add features, you install skills to expand what your agent can do.
+            An OpenClaw skill is a plugin that gives your AI agent a new capability. Each skill is a small program that implements the <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Model Context Protocol (MCP)</a>, which defines how AI agents discover and use external tools. Think of skills as apps for your AI agent — just like you install apps on your phone to add features, you install skills to expand what your agent can do.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             The key difference between OpenClaw skills and traditional API integrations is <strong style={{ color: "#333334" }}>context awareness</strong>. MCP tools don&apos;t just execute commands — they provide context to the AI about what they can do, what parameters they need, and how to use them effectively. This means your agent can intelligently chain multiple skills together to accomplish complex tasks without you having to write integration code.
@@ -87,7 +87,7 @@ export default function OpenclawSkillsGuidePage() {
             How to Install OpenClaw Skills
           </h2>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            The process for installing OpenClaw skills depends on whether you&apos;re running the framework yourself or using a managed service. If you&apos;re self-hosting, you&apos;ll edit your openclaw.yaml configuration file and add an entry for each MCP server you want to use. Each entry includes the server command, arguments, and any environment variables it needs (like API keys).
+            The process for installing <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> skills depends on whether you&apos;re running the framework yourself or using a managed service. If you&apos;re self-hosting, you&apos;ll edit your openclaw.yaml configuration file and add an entry for each MCP server you want to use. Each entry includes the server command, arguments, and any environment variables it needs (like API keys).
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             Here&apos;s what a typical skill configuration looks like in openclaw.yaml:
@@ -197,7 +197,7 @@ export default function OpenclawSkillsGuidePage() {
             First, skill composition is becoming more sophisticated. Early skills were simple wrappers around single APIs. Newer skills combine multiple services and include built-in intelligence for handling edge cases. For example, modern file management skills can automatically detect file types, extract metadata, and suggest appropriate actions — they&apos;re not just dumb filesystem access.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Second, we&apos;re seeing the emergence of skill marketplaces and ecosystems. Just as mobile apps created platform lock-in for iOS and Android, skill availability is becoming a competitive factor for AI agent frameworks. OpenClaw&apos;s open-source nature and MCP standardization give it an advantage here — skills built for OpenClaw work with any MCP-compatible agent framework.
+            Second, we&apos;re seeing the emergence of skill marketplaces and ecosystems. Just as mobile apps created platform lock-in for iOS and Android, skill availability is becoming a competitive factor for AI agent frameworks. <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw&apos;s open-source nature</a> and MCP standardization give it an advantage here — skills built for OpenClaw work with any MCP-compatible agent framework.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             Third, skills are becoming more autonomous. Early MCP tools required the agent to explicitly call them with specific parameters. Newer skills can proactively suggest actions, run background processes, and chain multiple operations without agent intervention. This moves us closer to truly autonomous AI assistants that don&apos;t just respond to commands but actively manage workflows.

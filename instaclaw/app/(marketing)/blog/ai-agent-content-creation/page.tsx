@@ -54,7 +54,7 @@ export default function AiAgentContentCreationPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            The content creation landscape has transformed dramatically over the past few years. What once required hours of manual effort — writing blog posts, editing videos, scheduling social media updates, designing graphics — can now be handled by AI agents that work autonomously while you sleep. These aren&apos;t simple automation tools or chatbots that need constant prompting. They&apos;re intelligent systems that understand your brand voice, audience preferences, and content goals, then execute entire workflows without human intervention.
+            The content creation landscape has transformed dramatically over the past few years. What once required hours of manual effort — writing blog posts, editing videos, scheduling social media updates, designing graphics — can now be handled by <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>AI agents</a> that work autonomously while you sleep. These aren&apos;t simple automation tools or chatbots that need constant prompting. They&apos;re intelligent systems that understand your brand voice, audience preferences, and content goals, then execute entire workflows without human intervention.
           </p>
 
           <p
@@ -285,7 +285,7 @@ export default function AiAgentContentCreationPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            Modern platforms handle this complexity for you. InstaClaw, for example, provides managed infrastructure for OpenClaw agents, which means you can deploy a content creation agent without setting up servers, configuring APIs, or managing technical dependencies. The platform handles hosting, scaling, monitoring, and maintenance automatically.
+            Modern platforms handle this complexity for you. InstaClaw, for example, provides managed infrastructure for <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> agents, which means you can deploy a content creation agent without setting up servers, configuring APIs, or managing technical dependencies. The platform handles hosting, scaling, monitoring, and maintenance automatically.
           </p>
 
           <p

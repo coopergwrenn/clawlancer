@@ -42,10 +42,10 @@ export default function WhatCanAiAgentsDoPage() {
 
         <section className="mb-12">
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Most people think of AI agents as glorified chatbots — tools that answer questions, maybe draft an email or two. But the reality of <strong style={{ color: "#333334" }}>ai agent capabilities</strong> goes far beyond text generation. Personal AI agents can browse the web, execute tasks autonomously, interact with APIs, manage workflows, and even handle financial transactions on your behalf.
+            Most people think of <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>AI agents</a> as glorified chatbots — tools that answer questions, maybe draft an email or two. But the reality of <strong style={{ color: "#333334" }}>ai agent capabilities</strong> goes far beyond text generation. Personal AI agents can browse the web, execute tasks autonomously, interact with APIs, manage workflows, and even handle financial transactions on your behalf.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            If you&apos;ve ever wondered <strong style={{ color: "#333334" }}>what can ai do</strong> in practical, real-world scenarios, this post will expand your understanding significantly. We&apos;re covering ten concrete <strong style={{ color: "#333334" }}>ai agent use cases</strong> that demonstrate the versatility and power of frameworks like OpenClaw — the open-source foundation that powers personalized AI agents.
+            If you&apos;ve ever wondered <strong style={{ color: "#333334" }}>what can ai do</strong> in practical, real-world scenarios, this post will expand your understanding significantly. We&apos;re covering ten concrete <strong style={{ color: "#333334" }}>ai agent use cases</strong> that demonstrate the versatility and power of frameworks like <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> — the open-source foundation that powers personalized AI agents.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             Whether you&apos;re a developer exploring automation options or a business owner looking to streamline operations, understanding what AI agents can actually accomplish is the first step toward leveraging them effectively. Let&apos;s dive into the capabilities you might not have considered.
@@ -246,7 +246,7 @@ export default function WhatCanAiAgentsDoPage() {
             Getting Started with Agent Deployment
           </h2>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            The barrier to experimenting with AI agents has dropped dramatically. Frameworks like OpenClaw provide the agent logic, while managed platforms handle infrastructure complexity. You can deploy a functioning agent in minutes rather than weeks.
+            The barrier to experimenting with AI agents has dropped dramatically. Frameworks like <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> provide the agent logic, while managed platforms handle infrastructure complexity. You can deploy a functioning agent in minutes rather than weeks.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             The key considerations are security, reliability, and maintenance. Self-hosting gives you complete control but requires significant DevOps expertise. Managed platforms trade some control for convenience: automatic updates, security patches, scaling, and monitoring handled for you.

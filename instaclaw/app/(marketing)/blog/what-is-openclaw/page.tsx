@@ -64,7 +64,7 @@ export default function WhatIsOpenClawPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            OpenClaw is an open-source personal AI agent framework. It gives AI
+            <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> is an open-source personal AI agent framework. It gives AI
             agents their own compute environment — a full Linux server with shell
             access, persistent memory, file storage, tool integration, cron
             scheduling, and the ability to interact via messaging platforms like
@@ -94,7 +94,7 @@ export default function WhatIsOpenClawPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            The framework is fully open-source, meaning anyone can inspect the
+            The framework is fully <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>open-source</a>, meaning anyone can inspect the
             code, contribute to it, or self-host it on their own infrastructure.
             This transparency is fundamental to the project&apos;s philosophy: your AI
             agent should work for you, not for a corporation. You should be able
@@ -138,7 +138,7 @@ export default function WhatIsOpenClawPage() {
           >
             Agent profiles define the agent&apos;s identity, personality, and
             authentication credentials. Auth tokens connect the agent to AI
-            model providers like Anthropic, enabling access to models like Claude
+            model providers like <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Anthropic</a>, enabling access to models like Claude
             Haiku (fast and affordable), Claude Sonnet (balanced), and Claude
             Opus (most capable). You can switch models at any time depending on
             your needs and budget.
@@ -147,7 +147,7 @@ export default function WhatIsOpenClawPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            The skills system is built on the Model Context Protocol (MCP) — an
+            The skills system is built on the <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Model Context Protocol (MCP)</a> — an
             open standard for tool integration. Skills are MCP tool servers that
             give the agent new capabilities: web browsing, social media search,
             video creation, crypto trading, and more. Installing a new skill is

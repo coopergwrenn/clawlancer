@@ -55,7 +55,7 @@ export default function AiAgentPolymarketPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            Polymarket has emerged as the leading decentralized prediction market platform, allowing users to bet on real-world events ranging from politics and sports to crypto prices and tech launches. The platform processes millions in daily volume, and successful traders are increasingly turning to automation to gain an edge. An <strong style={{ color: "#333334" }}>ai polymarket</strong> agent can monitor markets 24/7, analyze news feeds, process historical data, and execute trades faster than any human trader.
+            Polymarket has emerged as the leading decentralized prediction market platform, allowing users to bet on real-world events ranging from politics and sports to crypto prices and tech launches. The platform processes millions in daily volume, and successful traders are increasingly turning to automation to gain an edge. An <strong style={{ color: "#333334" }}>ai polymarket</strong> <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>agent</a> can monitor markets 24/7, analyze news feeds, process historical data, and execute trades faster than any human trader.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"
@@ -109,7 +109,7 @@ export default function AiAgentPolymarketPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            Most successful implementations use a language model as the reasoning engine. GPT-4 or Claude can read news articles, assess their relevance to specific markets, and estimate probability shifts. The agent combines this qualitative analysis with quantitative signals like order flow imbalances, spread changes, and volume spikes.
+            Most successful implementations use a language model as the reasoning engine. GPT-4 or <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Claude</a> can read news articles, assess their relevance to specific markets, and estimate probability shifts. The agent combines this qualitative analysis with quantitative signals like order flow imbalances, spread changes, and volume spikes.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"
@@ -175,7 +175,7 @@ export default function AiAgentPolymarketPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            RSS feeds provide a lightweight way to monitor news sources. Your agent can subscribe to dozens of feeds and process new articles within seconds of publication. Twitter monitoring captures real-time sentiment and breaking news before it reaches traditional outlets. Telegram channels often carry insider information in niche markets like crypto launches.
+            RSS feeds provide a lightweight way to monitor news sources. Your agent can subscribe to dozens of feeds and process new articles within seconds of publication. Twitter monitoring captures real-time sentiment and breaking news before it reaches traditional outlets. <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Telegram</a> channels often carry insider information in niche markets like crypto launches.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"

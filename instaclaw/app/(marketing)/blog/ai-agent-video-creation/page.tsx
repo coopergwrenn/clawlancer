@@ -42,7 +42,7 @@ export default function AiAgentVideoCreationPage() {
 
         <section className="mb-12">
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Video content has become the dominant format for communication, marketing, education, and entertainment. Yet creating professional video remains time-intensive and requires specialized skills. The emergence of <strong style={{ color: "#333334" }}>ai video</strong> technology is changing this landscape fundamentally. AI agents can now generate videos from text descriptions, automate editing workflows, and handle the entire production pipeline without human intervention.
+            Video content has become the dominant format for communication, marketing, education, and entertainment. Yet creating professional video remains time-intensive and requires specialized skills. The emergence of <strong style={{ color: "#333334" }}>ai video</strong> technology is changing this landscape fundamentally. <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>AI agents</a> can now generate videos from text descriptions, automate editing workflows, and handle the entire production pipeline without human intervention.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             This capability is powered by frameworks like Remotion, which provides programmatic video generation, combined with large language models that understand creative intent and translate it into executable code. The result is <strong style={{ color: "#333334" }}>ai agent video</strong> systems that function as autonomous video producers — capable of storyboarding, rendering, and iterating on content based on natural language instructions.
@@ -162,7 +162,7 @@ export default function AiAgentVideoCreationPage() {
             Template libraries accelerate development. Rather than generating every composition from scratch, agents can select from pre-built templates for common video types — explainer videos, social media clips, testimonial compilations, tutorial recordings — and customize them based on specific requirements. This approach combines AI flexibility with production efficiency.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Developers building these capabilities can reference comprehensive guidance in our <Link href="/blog/openclaw-skills-guide" className="underline" style={{ color: "#DC6743" }}>OpenClaw skills documentation</Link>, which covers skill architecture patterns, parameter handling, and integration best practices.
+            Developers building these capabilities can reference comprehensive guidance in our <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> <Link href="/blog/openclaw-skills-guide" className="underline" style={{ color: "#DC6743" }}>skills documentation</Link>, which covers skill architecture patterns, parameter handling, and integration best practices.
           </p>
         </section>
 

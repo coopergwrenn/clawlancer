@@ -49,7 +49,7 @@ export default function DeployOpenClawNoCodePage() {
           </p>
 
           <p className="text-sm leading-relaxed mb-10" style={{ color: "#6b6b6b" }}>
-            OpenClaw is one of the most capable open-source AI agent frameworks
+            <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> is one of the most capable open-source AI agent frameworks
             available today. It gives you a persistent, memory-equipped,
             skill-enabled AI agent that runs 24/7 and connects to your favorite
             messaging apps. But actually getting it running? That is a different
@@ -70,7 +70,7 @@ export default function DeployOpenClawNoCodePage() {
             OpenClaw is an incredible piece of technology. It gives you a
             personal AI agent with persistent memory, dozens of built-in skills,
             access to frontier Claude models, and the ability to connect to
-            Telegram, Discord, and other messaging platforms. It can research
+            <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Telegram</a>, Discord, and other messaging platforms. It can research
             topics, write content, analyze data, manage files, browse the web,
             and execute multi-step tasks autonomously. For anyone who wants a
             truly capable AI assistant that goes far beyond a chat window,
@@ -82,7 +82,7 @@ export default function DeployOpenClawNoCodePage() {
             The self-hosting path requires you to provision a Linux server
             (typically Ubuntu), SSH into it, install Docker or run the binary
             directly, configure DNS records and SSL certificates, set up
-            authentication tokens, wire up your Anthropic API key, configure the
+            authentication tokens, wire up your <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Anthropic</a> API key, configure the
             gateway runtime, set up systemd services for auto-restart, and then
             monitor the whole thing to make sure it stays running. If something
             breaks at 3 AM, you are the one who has to fix it.

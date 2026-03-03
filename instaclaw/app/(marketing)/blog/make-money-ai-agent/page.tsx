@@ -55,13 +55,13 @@ export default function MakeMoneyAiAgentPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            The AI agent economy is here, and it&apos;s creating unprecedented opportunities for individuals to generate income in ways that were impossible just a few years ago. What started as experimental automation has evolved into legitimate business models that people are using to replace or supplement their traditional income sources.
+            The <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>AI agent</a> economy is here, and it&apos;s creating unprecedented opportunities for individuals to generate income in ways that were impossible just a few years ago. What started as experimental automation has evolved into legitimate business models that people are using to replace or supplement their traditional income sources.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            The key difference between 2026 and earlier years is <strong style={{ color: "#333334" }}>reliability</strong>. AI agents are no longer experimental toys that break constantly. Frameworks like OpenClaw have matured to the point where you can deploy an agent, configure it once, and have it generate value for months without intervention. This stability is what transforms AI from a curiosity into a genuine income stream.
+            The key difference between 2026 and earlier years is <strong style={{ color: "#333334" }}>reliability</strong>. AI agents are no longer experimental toys that break constantly. Frameworks like <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> have matured to the point where you can deploy an agent, configure it once, and have it generate value for months without intervention. This stability is what transforms AI from a curiosity into a genuine income stream.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"

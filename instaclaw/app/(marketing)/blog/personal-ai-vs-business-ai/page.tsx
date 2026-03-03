@@ -65,9 +65,9 @@ export default function PersonalAiVsBusinessAiPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            Both categories leverage similar underlying technology — large
-            language models, automation frameworks, API integrations — but they
-            solve fundamentally different problems. A personal AI agent acts as
+            Both categories leverage similar underlying technology — <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>large
+            language models</a>, automation frameworks, API integrations — but they
+            solve fundamentally different problems. A personal <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>AI agent</a> acts as
             your digital assistant, learning your preferences and handling your
             individual workflows. Business AI operates at a different scale,
             managing processes across teams, enforcing compliance requirements,

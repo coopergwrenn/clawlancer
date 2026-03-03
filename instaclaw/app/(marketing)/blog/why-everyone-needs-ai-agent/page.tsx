@@ -42,7 +42,7 @@ export default function WhyEveryoneNeedsAiAgentPage() {
 
         <section className="mb-12">
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Five years ago, the idea of everyone having a <strong style={{ color: "#333334" }}>personal AI agent</strong> sounded like science fiction. Today, it&apos;s not a question of if, but when. The trajectory is clear: by 2027, personal AI agents will be as common as smartphones were in 2015. The cost is dropping, the capabilities are expanding, and the use cases are becoming undeniable.
+            Five years ago, the idea of everyone having a <strong style={{ color: "#333334" }}>personal <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>AI agent</a></strong> sounded like science fiction. Today, it&apos;s not a question of if, but when. The trajectory is clear: by 2027, personal AI agents will be as common as smartphones were in 2015. The cost is dropping, the capabilities are expanding, and the use cases are becoming undeniable.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             This isn&apos;t hype. This is the natural evolution of how we interact with technology. Just as email became essential for communication and search engines became essential for information, AI agents are becoming essential for productivity, decision-making, and daily life management. Understanding <strong style={{ color: "#333334" }}>why AI adoption</strong> is accelerating at this pace helps explain why the shift from optional tool to necessary companion is happening faster than most people realize.
@@ -138,7 +138,7 @@ export default function WhyEveryoneNeedsAiAgentPage() {
             One of the biggest obstacles to widespread AI adoption has been trust. People worry about privacy, accuracy, and control. These concerns are valid, but they&apos;re being systematically addressed through better technology and clearer frameworks. Modern AI agents operate with explicit permissions, provide transparent explanations for their actions, and maintain user control over data and decisions.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            The shift from cloud-only to hybrid and self-hosted options also addresses privacy concerns. Open-source frameworks like OpenClaw allow users to run their agents on their own infrastructure, keeping sensitive data entirely under their control. This flexibility — from fully managed cloud solutions to completely self-hosted deployments — ensures that users can choose the trust model that matches their needs.
+            The shift from cloud-only to hybrid and self-hosted options also addresses privacy concerns. Open-source frameworks like <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> allow users to run their agents on their own infrastructure, keeping sensitive data entirely under their control. This flexibility — from fully managed cloud solutions to completely self-hosted deployments — ensures that users can choose the trust model that matches their needs.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             As more people use AI agents without incident, social proof builds. The fear of the unknown gives way to familiarity. When your neighbors, colleagues, and family members successfully rely on AI agents daily, the perceived risk diminishes. This normalization is well underway — AI assistance is becoming expected rather than experimental.
@@ -174,7 +174,7 @@ export default function WhyEveryoneNeedsAiAgentPage() {
             The good news is that starting is easier than ever. You don&apos;t need technical expertise or significant investment. You can begin with simple use cases — email management, calendar coordination, research assistance — and expand as you build confidence. The learning curve is gentle because the interface is conversational. You learn by doing, and the agent learns with you.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            For those ready to move beyond experimentation to serious deployment, choosing the right foundation matters. Open-source solutions provide transparency and control. Managed hosting provides reliability without complexity. The combination — like what InstaClaw offers for OpenClaw — gives you the best of both worlds: enterprise capabilities with startup agility.
+            For those ready to move beyond experimentation to serious deployment, choosing the right foundation matters. <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Open-source solutions</a> provide transparency and control. Managed hosting provides reliability without complexity. The combination — like what InstaClaw offers for OpenClaw — gives you the best of both worlds: enterprise capabilities with startup agility.
           </p>
         </section>
 

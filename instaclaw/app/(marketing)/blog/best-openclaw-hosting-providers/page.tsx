@@ -48,10 +48,10 @@ export default function BestOpenClawHostingProvidersPage() {
           </p>
 
           <p className="text-sm leading-relaxed mb-10" style={{ color: "#6b6b6b" }}>
-            OpenClaw has quickly become the most popular framework for running a
-            personal AI agent. It is open-source, built on Anthropic's Claude
+            <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> has quickly become the most popular framework for running a
+            personal AI agent. It is <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>open-source</a>, built on <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Anthropic</a>&apos;s Claude
             models, and supports persistent memory, dozens of skills, and
-            connections to messaging platforms like Telegram and Discord. But
+            connections to messaging platforms like <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Telegram</a> and Discord. But
             before you can use it, you need somewhere to run it. This guide
             compares the three main approaches to hosting OpenClaw in 2026: self-
             hosting on a VPS, managed hosting through InstaClaw, and DIY setups

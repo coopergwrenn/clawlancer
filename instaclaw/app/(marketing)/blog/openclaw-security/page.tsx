@@ -42,7 +42,7 @@ export default function OpenclawSecurityPage() {
 
         <section className="mb-12">
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            When you hand over your emails, documents, calendar access, and other sensitive data to an AI agent, the first question should always be: <strong style={{ color: "#333334" }}>is this safe?</strong> With OpenClaw — the open-source personal AI agent framework — security and privacy aren&apos;t afterthoughts. They&apos;re foundational architectural decisions that give you complete control over your data.
+            When you hand over your emails, documents, calendar access, and other sensitive data to an AI agent, the first question should always be: <strong style={{ color: "#333334" }}>is this safe?</strong> With <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> — the <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>open-source</a> personal AI agent framework — security and privacy aren&apos;t afterthoughts. They&apos;re foundational architectural decisions that give you complete control over your data.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
             This post breaks down exactly how OpenClaw security works, what makes AI agent privacy different from traditional software, and why openclaw safe is more than just a marketing claim. Whether you&apos;re considering self-hosting or using a managed platform like InstaClaw, understanding the security model is critical before you deploy your first agent.
@@ -85,7 +85,7 @@ export default function OpenclawSecurityPage() {
           </p>
 
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            <strong style={{ color: "#333334" }}>API Key Management:</strong> OpenClaw uses secure credential storage for all API keys and authentication tokens. You provide your own keys for services like OpenAI, Anthropic, or Google — OpenClaw never has access to a shared pool of credentials. If you use InstaClaw for managed hosting, your credentials are encrypted at rest and never shared across instances.
+            <strong style={{ color: "#333334" }}>API Key Management:</strong> OpenClaw uses secure credential storage for all API keys and authentication tokens. You provide your own keys for services like OpenAI, <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Anthropic</a>, or Google — OpenClaw never has access to a shared pool of credentials. If you use InstaClaw for managed hosting, your credentials are encrypted at rest and never shared across instances.
           </p>
 
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>

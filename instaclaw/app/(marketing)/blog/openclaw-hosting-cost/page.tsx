@@ -76,7 +76,7 @@ export default function OpenclawHostingCostPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            Running an OpenClaw agent involves three primary cost categories: <strong style={{ color: "#333334" }}>infrastructure hosting</strong>, <strong style={{ color: "#333334" }}>LLM API usage</strong>, and <strong style={{ color: "#333334" }}>supporting services</strong> like databases and storage. The total ai agent cost varies dramatically depending on how you deploy and how actively your agent runs.
+            Running an <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a> agent involves three primary cost categories: <strong style={{ color: "#333334" }}>infrastructure hosting</strong>, <strong style={{ color: "#333334" }}>LLM API usage</strong>, and <strong style={{ color: "#333334" }}>supporting services</strong> like databases and storage. The total ai agent cost varies dramatically depending on how you deploy and how actively your agent runs.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"
@@ -103,7 +103,7 @@ export default function OpenclawHostingCostPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            The largest and most unpredictable component of <strong style={{ color: "#333334" }}>ai agent pricing</strong> is the language model API. OpenClaw typically uses OpenAI, Anthropic, or similar providers for its reasoning capabilities. This is where costs can range from $5 to $500+ per month depending on your usage patterns.
+            The largest and most unpredictable component of <strong style={{ color: "#333334" }}>ai agent pricing</strong> is the language model API. OpenClaw typically uses OpenAI, <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Anthropic</a>, or similar providers for its reasoning capabilities. This is where costs can range from $5 to $500+ per month depending on your usage patterns.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"

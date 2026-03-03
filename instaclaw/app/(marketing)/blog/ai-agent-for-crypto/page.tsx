@@ -61,13 +61,13 @@ export default function AiAgentForCryptoPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            An <strong style={{ color: "#333334" }}>ai agent crypto</strong> system can monitor markets continuously, execute trades based on predefined strategies, research new tokens, track whale wallets, and manage your portfolio without human intervention. Unlike simple trading bots that follow rigid rules, modern AI agents use large language models to understand context, analyze sentiment, and make nuanced decisions.
+            An <a href="https://en.wikipedia.org/wiki/Intelligent_agent" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}><strong style={{ color: "#DC6743" }}>ai agent</strong></a> crypto system can monitor markets continuously, execute trades based on predefined strategies, research new tokens, track whale wallets, and manage your portfolio without human intervention. Unlike simple trading bots that follow rigid rules, modern AI agents use large language models to understand context, analyze sentiment, and make nuanced decisions.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            This guide walks through building a crypto-focused AI agent using OpenClaw, the open-source framework designed for <Link href="/blog/what-is-a-personal-ai-agent" className="underline" style={{ color: "#DC6743" }}>personal AI agents</Link>. You&apos;ll learn how to configure market monitoring, set up trading logic, implement research workflows, and deploy your agent to run autonomously.
+            This guide walks through building a crypto-focused AI agent using <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>OpenClaw</a>, the <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>open-source</a> framework designed for <Link href="/blog/what-is-a-personal-ai-agent" className="underline" style={{ color: "#DC6743" }}>personal AI agents</Link>. You&apos;ll learn how to configure market monitoring, set up trading logic, implement research workflows, and deploy your agent to run autonomously.
           </p>
         </section>
 
