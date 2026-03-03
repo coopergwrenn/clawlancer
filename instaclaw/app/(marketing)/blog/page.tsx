@@ -19,6 +19,30 @@ const collectionJsonLd = {
 
 const posts = [
   {
+    slug: "personal-ai-agent-vs-chatbot",
+    title: "Personal AI Agent vs AI Chatbot — What's the Difference?",
+    excerpt:
+      "Chatbots like ChatGPT, Claude, and Gemini answer when you ask. Personal AI agents run on their own server, remember everything, and act autonomously. Here's how the two paradigms compare — and when you need which.",
+    date: "March 2026",
+    readTime: "8 min read",
+  },
+  {
+    slug: "what-can-ai-agents-do",
+    title: "10 Things Your AI Agent Can Do That You Didn't Know About",
+    excerpt:
+      "From scheduling tasks to browsing the web to trading crypto, personal AI agents are more capable than most people realize. Here are 10 surprising use cases.",
+    date: "March 2026",
+    readTime: "8 min read",
+  },
+  {
+    slug: "ai-agent-telegram-bot",
+    title: "How to Build a Telegram Bot with an AI Agent",
+    excerpt:
+      "Step-by-step guide to connecting an OpenClaw AI agent to Telegram. Your agent becomes a persistent, intelligent bot that remembers everything and acts on your behalf.",
+    date: "March 2026",
+    readTime: "10 min read",
+  },
+  {
     slug: "what-is-openclaw",
     title: "What is OpenClaw? A Complete Guide for Beginners (2026)",
     excerpt:

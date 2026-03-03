@@ -37,6 +37,9 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/blog/deploy-openclaw-no-code", label: "Deploy OpenClaw No Code", changeFrequency: "monthly", priority: 0.7 },
   { path: "/blog/ai-agent-passive-income", label: "AI Agent Passive Income", changeFrequency: "monthly", priority: 0.7 },
   { path: "/blog/best-openclaw-hosting-providers", label: "Best OpenClaw Hosting", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/blog/ai-agent-telegram-bot", label: "How to Build a Telegram Bot with an AI Agent", changeFrequency: "monthly", priority: 0.6 },
+  { path: "/blog/what-can-ai-agents-do", label: "10 Things Your AI Agent Can Do That You Didn't Know About", changeFrequency: "monthly", priority: 0.6 },
+  { path: "/blog/personal-ai-agent-vs-chatbot", label: "Personal AI Agent vs AI Chatbot — What's the Difference?", changeFrequency: "monthly", priority: 0.6 },
   { path: "/privacy", label: "Privacy", changeFrequency: "yearly", priority: 0.3 },
   { path: "/terms", label: "Terms", changeFrequency: "yearly", priority: 0.3 },
 ];
