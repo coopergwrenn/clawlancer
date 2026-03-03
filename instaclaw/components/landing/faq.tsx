@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     q: "What can it actually do for me?",
-    a: "Sort and reply to your emails, research topics and summarize findings, manage your schedule, generate reports, post to social media, monitor websites, automate repetitive tasks, and much more. It comes pre-loaded with powerful skills and learns your preferences over time — the more you use it, the better it gets.",
+    a: "Sort and reply to your emails, research topics and summarize findings, manage your schedule, generate reports, post to social media, monitor websites, automate repetitive tasks, create videos, trade crypto, and much more. It comes pre-loaded with 20+ powerful skills and learns your preferences over time — the more you use it, the better it gets.",
     tech: "Under the hood: full bash shell execution, Python/Node runtime, web browsing via headless browser, file I/O, MCP tool servers, web search APIs, cron-based task scheduling, and a skills system that lets the agent learn and reuse complex workflows. The VM runs Ubuntu with 3 vCPU, 4GB RAM, and 80GB SSD.",
   },
   {
@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: "What are skills?",
-    a: "Skills are superpowers you can add to your AI. Things like searching X/Twitter for the latest posts, monitoring websites, managing your inbox, or running safety checks. Every InstaClaw agent comes pre-loaded with the best skills, and we're constantly adding new ones as they come out. You can also teach your agent new skills just by talking to it.",
+    a: "Skills are superpowers you can add to your AI. Things like searching X/Twitter, monitoring websites, managing your inbox, creating videos, or trading crypto. Every InstaClaw agent comes pre-loaded with 20+ skills, and we're constantly adding new ones. You can also teach your agent new skills just by talking to it.",
     tech: "Skills are MCP tool servers and OpenClaw skill packages that extend agent capabilities. We curate and pre-install top skills from the OpenClaw ecosystem. When a user teaches their agent a new workflow via chat, it's saved as a reusable skill and synced to the dashboard. Skills can also be added/removed/configured from the web dashboard. The skill system supports versioning — we push updates automatically as improved versions are released.",
   },
   {
@@ -35,7 +35,7 @@ const faqs = [
   },
   {
     q: "What are credits?",
-    a: "Every message your AI handles uses a small number of units. Starter gives you 600 units/day, Pro gives you 1,000/day, and Power gives you 2,500/day — limits reset at midnight UTC. Background heartbeat checks have their own separate budget and won't eat into your daily units. If you need more, you can grab a credit pack that kicks in instantly.",
+    a: "Every message your AI handles uses a small number of units. Haiku costs 1 unit, Sonnet costs 4, Opus costs 19. Starter gives you 600 units/day, Pro gives you 1,000/day, and Power gives you 2,500/day. Limits reset at midnight UTC. If you need more, you can grab a credit pack that kicks in instantly.",
     tech: "Units are weighted by model: Haiku costs 1 unit, Sonnet costs 4, Opus costs 19. A simple message with Haiku uses 1 unit. BYOK users bypass the unit system entirely and pay Anthropic directly. Credit packs (50/$5, 200/$15, 500/$30) are available for overflow beyond daily limits. Heartbeats run every 3 hours and consume from a dedicated 200-unit buffer that sits above the display limit.",
   },
   {
@@ -49,17 +49,17 @@ const faqs = [
   },
   {
     q: "What's BYOK mode?",
-    a: "Bring Your Own Key. If you already have an Anthropic API key (or want to get one), you can connect it directly and pay Anthropic for AI usage yourself. This cuts your InstaClaw price roughly in half. Great for power users who want more control over costs.",
+    a: "Bring Your Own Key. If you already have an Anthropic API key, connect it directly and pay Anthropic for AI usage yourself. This cuts your InstaClaw subscription roughly in half. Your API key is encrypted at rest and stored on your VM only — all API calls go directly from your VM to Anthropic.",
     tech: "In BYOK mode, your API key is encrypted at rest and stored on your VM only. All API calls go directly from your VM to Anthropic — we never proxy or log them. You can choose any Claude model (Sonnet, Opus, Haiku) and configure rate limits, token budgets, and system prompts directly.",
   },
   {
     q: "What AI model does it use?",
-    a: "InstaClaw runs on Claude by Anthropic — the same model behind Claude.ai. On All-Inclusive plans, we handle model selection automatically. On BYOK plans, you can choose your preferred Claude model and have full control over your API configuration.",
+    a: "InstaClaw runs on Claude by Anthropic — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can switch models anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users can configure any Claude model.",
     tech: "Default model is Claude Haiku 4.5 — fast, capable, and the best value per unit. All models are always available: just tell your bot 'use Sonnet' or 'switch to Opus' mid-conversation. BYOK users can configure any Claude model via the dashboard or API.",
   },
   {
     q: "Do I get full access to the server?",
-    a: "Yes. You get your own dedicated server that you can access directly. You can install software, run custom scripts, and configure it however you want. The AI has the same access, so you can also just ask it to do this for you.",
+    a: "Yes. You get your own dedicated Ubuntu VM with full SSH access (key-based auth). You can install software, run custom scripts, set up cron jobs, run background services — it's your machine. The AI has the same access, so you can also just ask it to do things for you.",
     tech: "Full SSH access (key-based auth) to a dedicated Ubuntu VM hosted in the US. Root-equivalent access for full control. Pre-installed: Python 3, Node.js, Docker-ready, OpenClaw runtime with local API gateway. You can install any apt/pip/npm package, set up cron jobs, run background services — it's your machine.",
   },
   {

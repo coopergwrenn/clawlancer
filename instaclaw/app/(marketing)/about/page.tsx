@@ -217,6 +217,81 @@ export default function AboutPage() {
               </p>
             </section>
 
+            {/* What InstaClaw Replaces */}
+            <section>
+              <h2
+                className="text-2xl sm:text-3xl font-normal tracking-[-0.5px] mb-4"
+                style={{ fontFamily: "var(--font-serif)" }}
+              >
+                What InstaClaw Replaces
+              </h2>
+              <p style={{ color: "#6b6b6b" }}>
+                InstaClaw is an alternative to managing your own infrastructure,
+                hiring human assistants, or settling for limited AI chatbots.
+                Here&apos;s what our users are replacing with InstaClaw:
+              </p>
+              <ul className="mt-4 space-y-4" style={{ color: "#6b6b6b" }}>
+                <li className="flex items-start gap-3">
+                  <span
+                    className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full"
+                    style={{ background: "#DC6743" }}
+                  />
+                  <div>
+                    <strong style={{ color: "#333334" }}>
+                      Instead of self-hosting OpenClaw
+                    </strong>{" "}
+                    — provisioning a VPS, installing Docker, configuring
+                    dependencies, managing SSL certificates, handling updates,
+                    and monitoring uptime. InstaClaw handles all of that in
+                    under two minutes.
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span
+                    className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full"
+                    style={{ background: "#DC6743" }}
+                  />
+                  <div>
+                    <strong style={{ color: "#333334" }}>
+                      Instead of a virtual assistant ($15-40/hr)
+                    </strong>{" "}
+                    — for tasks like email management, research, scheduling,
+                    content creation, and data entry, an AI agent handles them
+                    24/7 at a fraction of the cost with no onboarding time.
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span
+                    className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full"
+                    style={{ background: "#DC6743" }}
+                  />
+                  <div>
+                    <strong style={{ color: "#333334" }}>
+                      Instead of limited chatbots
+                    </strong>{" "}
+                    — session-based AI tools that forget everything when you
+                    close the tab. InstaClaw gives you a persistent agent with
+                    its own server, long-term memory, and the ability to
+                    take autonomous action.
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span
+                    className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full"
+                    style={{ background: "#DC6743" }}
+                  />
+                  <div>
+                    <strong style={{ color: "#333334" }}>
+                      Instead of stitching together multiple SaaS tools
+                    </strong>{" "}
+                    — web search, social media monitoring, content scheduling,
+                    file management, task automation. One AI agent replaces
+                    the patchwork of subscriptions.
+                  </div>
+                </li>
+              </ul>
+            </section>
+
             {/* Contact */}
             <section>
               <h2

@@ -7,6 +7,7 @@ import { Testimonials } from "@/components/landing/testimonials";
 import { Pricing } from "@/components/landing/pricing";
 import { FAQ } from "@/components/landing/faq";
 import { Footer } from "@/components/landing/footer";
+import { AsSeenOn } from "@/components/landing/as-seen-on";
 import { LenisProvider } from "@/components/landing/lenis-provider";
 import { ScrollReveal } from "@/components/landing/scroll-reveal";
 import { NotificationBar } from "@/components/landing/notification-bar";
@@ -95,7 +96,7 @@ const homepageJsonLd = [
         name: "What can it actually do for me?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Sort and reply to your emails, research topics, manage your schedule, generate reports, post to social media, monitor websites, automate repetitive tasks, and much more. It comes pre-loaded with powerful skills and learns your preferences over time.",
+          text: "Sort and reply to your emails, research topics and summarize findings, manage your schedule, generate reports, post to social media, monitor websites, automate repetitive tasks, create videos, trade crypto, and much more. It comes pre-loaded with 20+ powerful skills and learns your preferences over time.",
         },
       },
       {
@@ -111,7 +112,7 @@ const homepageJsonLd = [
         name: "What are skills?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Skills are superpowers you can add to your AI. Things like searching X/Twitter, monitoring websites, managing your inbox, or running safety checks. Every agent comes pre-loaded with the best skills.",
+          text: "Skills are superpowers you can add to your AI. Things like searching X/Twitter, monitoring websites, managing your inbox, creating videos, or trading crypto. Every InstaClaw agent comes pre-loaded with 20+ skills, and we're constantly adding new ones.",
         },
       },
       {
@@ -119,7 +120,7 @@ const homepageJsonLd = [
         name: "What are credits?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Every message your AI handles uses a small number of units. Starter gives you 600 units/day, Pro gives you 1,000/day, and Power gives you 2,500/day — limits reset at midnight UTC.",
+          text: "Every message your AI handles uses a small number of units. Haiku costs 1 unit, Sonnet costs 4, Opus costs 19. Starter gives you 600 units/day, Pro gives you 1,000/day, and Power gives you 2,500/day. Limits reset at midnight UTC.",
         },
       },
       {
@@ -143,7 +144,7 @@ const homepageJsonLd = [
         name: "What's BYOK mode?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Bring Your Own Key. If you already have an Anthropic API key, you can connect it directly and pay Anthropic for AI usage yourself. This cuts your InstaClaw price roughly in half.",
+          text: "Bring Your Own Key. If you already have an Anthropic API key, connect it directly and pay Anthropic for AI usage yourself. This cuts your InstaClaw subscription roughly in half. Your API key is encrypted at rest and stored on your VM only — all API calls go directly from your VM to Anthropic.",
         },
       },
       {
@@ -151,7 +152,7 @@ const homepageJsonLd = [
         name: "What AI model does it use?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "InstaClaw runs on Claude by Anthropic. On All-Inclusive plans, we handle model selection automatically. On BYOK plans, you can choose your preferred Claude model.",
+          text: "InstaClaw runs on Claude by Anthropic — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can switch models anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users can configure any Claude model.",
         },
       },
       {
@@ -159,7 +160,7 @@ const homepageJsonLd = [
         name: "Do I get full access to the server?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Yes. You get your own dedicated server with full SSH access. You can install software, run custom scripts, and configure it however you want.",
+          text: "Yes. You get your own dedicated Ubuntu VM with full SSH access (key-based auth). You can install software, run custom scripts, set up cron jobs, run background services — it's your machine. The AI has the same access, so you can also just ask it to do things for you.",
         },
       },
       {
@@ -193,6 +194,7 @@ export default function Home() {
       >
         <NotificationBar />
         <Hero />
+        <AsSeenOn />
         <hr className="section-divider" />
         <ScrollReveal text="We believe everyone deserves a *personal* *AI* that actually does ~things.~ Not just chat. Not just suggest. Actually _take_ _action_ on your behalf. Literally anything." />
         <hr className="section-divider" />

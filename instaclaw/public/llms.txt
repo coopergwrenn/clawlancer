@@ -38,9 +38,50 @@ All plans include a 3-day free trial. BYOK (Bring Your Own Key) lets users conne
 - How It Works: https://instaclaw.io/how-it-works
 - FAQ: https://instaclaw.io/faq
 - Docs: https://instaclaw.io/docs
-- Use Cases: https://instaclaw.io/use-cases
-- Blog: https://instaclaw.io/blog
 - About: https://instaclaw.io/about
 - Privacy: https://instaclaw.io/privacy
 - Terms: https://instaclaw.io/terms
 - Contact: support@instaclaw.io
+
+## Comparisons
+
+- InstaClaw vs Self-Hosting: https://instaclaw.io/compare/instaclaw-vs-self-hosting
+
+## Use Cases
+
+- Use Cases Overview: https://instaclaw.io/use-cases
+- Polymarket Trading: https://instaclaw.io/use-cases/polymarket-trading
+- Shopify Management: https://instaclaw.io/use-cases/shopify-management
+- Video Creation: https://instaclaw.io/use-cases/video-creation
+- Language Learning: https://instaclaw.io/use-cases/language-learning
+- Business Automation: https://instaclaw.io/use-cases/business-automation
+- Research Assistant: https://instaclaw.io/use-cases/research-assistant
+- Social Media: https://instaclaw.io/use-cases/social-media
+- Crypto Trading: https://instaclaw.io/use-cases/crypto-trading
+
+## Blog
+
+- Blog Index: https://instaclaw.io/blog
+- What is OpenClaw?: https://instaclaw.io/blog/what-is-openclaw
+- What is a Personal AI Agent?: https://instaclaw.io/blog/what-is-a-personal-ai-agent
+- Deploy OpenClaw Without Code: https://instaclaw.io/blog/deploy-openclaw-no-code
+- AI Agent Passive Income: https://instaclaw.io/blog/ai-agent-passive-income
+- Best OpenClaw Hosting Providers: https://instaclaw.io/blog/best-openclaw-hosting-providers
+- OpenClaw vs ChatGPT: https://instaclaw.io/blog/openclaw-vs-chatgpt
+- AI Agent Telegram Bot: https://instaclaw.io/blog/ai-agent-telegram-bot
+- What Can AI Agents Do: https://instaclaw.io/blog/what-can-ai-agents-do
+- OpenClaw Skills Guide: https://instaclaw.io/blog/openclaw-skills-guide
+- AI Agent for Crypto: https://instaclaw.io/blog/ai-agent-for-crypto
+- Personal AI vs Business AI: https://instaclaw.io/blog/personal-ai-vs-business-ai
+- OpenClaw Security: https://instaclaw.io/blog/openclaw-security
+- AI Agent Content Creation: https://instaclaw.io/blog/ai-agent-content-creation
+- Best AI Agent Platforms 2026: https://instaclaw.io/blog/best-ai-agent-platforms-2026
+- OpenClaw API Guide: https://instaclaw.io/blog/openclaw-api-guide
+- AI Agent Polymarket: https://instaclaw.io/blog/ai-agent-polymarket
+- Future of Personal AI: https://instaclaw.io/blog/future-of-personal-ai
+- OpenClaw vs AutoGPT: https://instaclaw.io/blog/openclaw-vs-autogpt
+- AI Agent for Research: https://instaclaw.io/blog/ai-agent-for-research
+- Make Money with AI Agent: https://instaclaw.io/blog/make-money-ai-agent
+- OpenClaw Hosting Cost: https://instaclaw.io/blog/openclaw-hosting-cost
+- AI Agent Video Creation: https://instaclaw.io/blog/ai-agent-video-creation
+- Why Everyone Needs an AI Agent: https://instaclaw.io/blog/why-everyone-needs-ai-agent

@@ -179,6 +179,31 @@ export default function UseCasesPage() {
               . Your agent can do almost anything — if it can be done on a
               computer, it can probably do it.
             </p>
+            <p className="mt-4">
+              <Link
+                href="/pricing"
+                className="underline hover:opacity-70"
+                style={{ color: "#DC6743" }}
+              >
+                View pricing
+              </Link>{" "}
+              ·{" "}
+              <Link
+                href="/blog/what-is-a-personal-ai-agent"
+                className="underline hover:opacity-70"
+                style={{ color: "#DC6743" }}
+              >
+                What is a personal AI agent?
+              </Link>{" "}
+              ·{" "}
+              <Link
+                href="/docs"
+                className="underline hover:opacity-70"
+                style={{ color: "#DC6743" }}
+              >
+                Documentation
+              </Link>
+            </p>
           </div>
         </div>
       </section>
