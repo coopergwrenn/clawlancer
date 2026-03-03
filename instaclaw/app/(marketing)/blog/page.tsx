@@ -107,14 +107,6 @@ const posts = [
     readTime: "10 min read",
   },
   {
-    slug: "openclaw-api-guide",
-    title: "OpenClaw API — The Developer's Guide",
-    excerpt:
-      "Everything developers need to know about the OpenClaw API. Authentication, endpoints, rate limits, and code examples for building on top of the OpenClaw platform.",
-    date: "March 2026",
-    readTime: "8 min read",
-  },
-  {
     slug: "future-of-personal-ai",
     title: "The Future of Personal AI — What's Coming in 2026 and Beyond",
     excerpt:
@@ -145,14 +137,6 @@ const posts = [
       "A transparent look at the costs of running an OpenClaw agent — VPS hosting, API usage, managed vs self-hosted, and tips for keeping costs low.",
     date: "March 2026",
     readTime: "9 min read",
-  },
-  {
-    slug: "ai-agent-video-creation",
-    title: "AI Agents for Video Creation — How It Works",
-    excerpt:
-      "AI agents can now create videos from text descriptions using tools like Remotion. Here's how the video creation pipeline works and how to get started.",
-    date: "March 2026",
-    readTime: "10 min read",
   },
   {
     slug: "personal-ai-agent-vs-chatbot",
