@@ -473,14 +473,16 @@ LINODE_TYPE="g6-standard-2"
 LINODE_IMAGE="linode/ubuntu24.04"
 LINODE_REGION="us-east"
 
-# --- Get SSH key ID ---
+# --- Get SSH public key ---
 echo "Resolving Linode resources..."
-SSH_KEY_ID=$(curl -s 'https://api.linode.com/v4/profile/sshkeys' \
+SSH_PUB_KEY=$(curl -s 'https://api.linode.com/v4/profile/sshkeys' \
   -H "Authorization: Bearer ${LINODE_TOKEN}" \
-  | python3 -c "import json,sys; keys=json.load(sys.stdin)['data']; print(next((k['id'] for k in keys if k['label']=='instaclaw-deploy'), ''))")
+  | python3 -c "import json,sys; keys=json.load(sys.stdin)['data']; print(next((k['ssh_key'] for k in keys if k['label']=='instaclaw-deploy'), ''))")
 
-if [ -z "$SSH_KEY_ID" ]; then echo "Error: SSH key 'instaclaw-deploy' not found on Linode"; exit 1; fi
-echo "  SSH Key ID: $SSH_KEY_ID"
+if [ -z "$SSH_PUB_KEY" ]; then echo "Error: SSH key 'instaclaw-deploy' not found on Linode"; exit 1; fi
+echo "  SSH Key ID: $(curl -s 'https://api.linode.com/v4/profile/sshkeys' \
+  -H "Authorization: Bearer ${LINODE_TOKEN}" \
+  | python3 -c "import json,sys; keys=json.load(sys.stdin)['data']; print(next((k['id'] for k in keys if k['label']=='instaclaw-deploy'), ''))")"
 echo ""
 
 # --- Build cloud-init user_data for fresh Ubuntu 24.04 install ---
@@ -578,14 +580,18 @@ for i in $(seq 1 "$COUNT"); do
   LINODE_USER_DATA_B64=$(echo "$LINODE_USER_DATA" | base64)
 
   # Build JSON with user_data via python3 to avoid shell escaping issues
-  CREATE_RESULT=$(python3 -c "
-import json, sys
+  # Pass SSH key via env var to avoid shell escaping issues with the key content
+  # root_pass is required by Linode API but irrelevant — cloud-init disables password auth
+  CREATE_RESULT=$(export _IC_SSH_PUB_KEY="$SSH_PUB_KEY" && python3 -c "
+import json, sys, os, secrets, string
+root_pass = ''.join(secrets.choice(string.ascii_letters + string.digits + '!@#') for _ in range(32))
 body = {
     'label': '${VM_NAME}',
     'type': '${LINODE_TYPE}',
     'region': '${LINODE_REGION}',
     'image': '${LINODE_IMAGE}',
-    'authorized_keys': [int('${SSH_KEY_ID}')],
+    'root_pass': root_pass,
+    'authorized_keys': [os.environ['_IC_SSH_PUB_KEY']],
     'metadata': {
         'user_data': sys.stdin.read().strip()
     }
