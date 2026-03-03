@@ -5,7 +5,7 @@ import { upgradeOpenClaw, connectSSH, NVM_PREAMBLE } from "@/lib/ssh";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 600;
+export const maxDuration = 900;
 
 function sseEvent(data: Record<string, unknown>): string {
   return `data: ${JSON.stringify(data)}\n\n`;
