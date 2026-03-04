@@ -282,6 +282,7 @@ export const VM_MANIFEST = {
   // ── openclaw.json settings to ensure ──
   openclawJsonSettings: {
     "skills.load.extraDirs": ["/home/openclaw/.openclaw/skills"],
+    "skills.limits.maxSkillsPromptChars": 200000,
   } as Record<string, unknown>,
 
   // ── Systemd unit overrides for openclaw-gateway.service ──
