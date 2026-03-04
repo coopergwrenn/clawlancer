@@ -159,7 +159,7 @@ Each capability in CAPABILITIES.md is tagged **(MCP)** or **(Skill)**:
 | marketplace-earning | ~/.openclaw/skills/marketplace-earning/SKILL.md |
 | voice-audio-production | ~/.openclaw/skills/voice-audio-production/SKILL.md |
 | motion-graphics | ~/.openclaw/skills/motion-graphics/SKILL.md |
-| polymarket | ~/.openclaw/skills/polymarket/SKILL.md |
+| prediction-markets | ~/.openclaw/skills/prediction-markets/SKILL.md |
 | language-teacher | ~/.openclaw/skills/language-teacher/SKILL.md |
 
 ## 1J-3 — Motion Graphics vs The Director (Video Routing)
@@ -592,32 +592,37 @@ Your agent's built-in creative director. Describe any scene, ad, or content idea
 → Skills: brand-asset-extraction
 → Reference: ~/.openclaw/skills/brand-design/references/brand-extraction-guide.md
 
-## 🔮 PREDICTION MARKETS — POLYMARKET (Skill: polymarket)
+## 🔮 PREDICTION MARKETS — POLYMARKET + KALSHI (Skill: prediction-markets)
+✅ Two platforms: Polymarket (crypto, USDC.e on Polygon) + Kalshi (USD, CFTC-regulated)
 ✅ Browse Polymarket markets — fetch top markets by volume, filter client-side by keyword
 ✅ Real-time probability data — crowd-consensus odds backed by $1B+ monthly volume
 ✅ Market analysis with news cross-reference — compare market prices to latest news sentiment
 ✅ Opportunities reports — scan top markets, biggest movers, markets closing soon
 ✅ Event deep-dives — multi-outcome markets with full probability breakdowns
+✅ Cross-platform price comparison — detect arbitrage opportunities between Polymarket and Kalshi
 ✅ Cross-skill intelligence — prediction data feeds into competitive-intelligence, financial-analysis, web research
 ⚠️ Read-only intelligence always available — no auth needed for Gamma API market data
 
 -- Tier 2: Portfolio & Monitoring --
 ✅ Dedicated Polygon wallet — setup-polymarket-wallet.sh creates EOA on chain 137
+✅ Kalshi BYOK — user brings API key from kalshi.com
 ✅ Market watchlist — ~/memory/polymarket-watchlist.json with alert thresholds
 ✅ Recurring monitoring — 4h price checks, daily summaries via heartbeat integration
 ✅ Price alerts — threshold-based notifications on watched markets
-⚠️ Wallet must be set up first — run ~/scripts/setup-polymarket-wallet.sh
+⚠️ Wallet must be set up first — run ~/scripts/setup-polymarket-wallet.sh (Polymarket)
+⚠️ Kalshi requires user to create account + API key at kalshi.com
 
 -- Tier 3: Autonomous Trading (Opt-In Required) --
 ✅ Manual trades via py-clob-client — buy/sell orders on Polymarket CLOB
-✅ Risk management — daily spend cap, confirmation threshold, loss limits
+✅ Manual trades via Kalshi REST API — buy/sell orders with RSA key-pair auth
+✅ Risk management — daily spend cap, confirmation threshold, loss limits (per platform)
 ✅ Trade logging — every trade logged to trade-log.json AND MEMORY.md with reasoning
-⚠️ Trading DISABLED by default — user must explicitly enable
-⚠️ US: CFTC-regulated, legal. Non-US: check local restrictions.
+⚠️ Trading DISABLED by default — user must explicitly enable per platform
+⚠️ Polymarket: International (US agents use proxy). Kalshi: CFTC-regulated, US-legal.
 
-→ Skills: polymarket
-→ Reference: ~/.openclaw/skills/polymarket/references/gamma-api.md, ~/.openclaw/skills/polymarket/references/analysis.md, ~/.openclaw/skills/polymarket/references/trading.md, ~/.openclaw/skills/polymarket/references/monitoring.md
-→ Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json
+→ Skills: prediction-markets
+→ Reference: ~/.openclaw/skills/prediction-markets/references/gamma-api.md, ~/.openclaw/skills/prediction-markets/references/analysis.md, ~/.openclaw/skills/prediction-markets/references/trading.md, ~/.openclaw/skills/prediction-markets/references/monitoring.md, ~/.openclaw/skills/prediction-markets/references/kalshi-api.md, ~/.openclaw/skills/prediction-markets/references/kalshi-trading.md
+→ Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json, ~/.openclaw/prediction-markets/kalshi-creds.json, ~/.openclaw/prediction-markets/kalshi-risk-config.json
 
 ## 🗣️ LANGUAGE TEACHER (Skill: language-teacher)
 ✅ Learn any language — personalized lessons, quizzes, conversation practice, stories

@@ -1,13 +1,16 @@
-# Prediction Markets (Polymarket)
+# Prediction Markets
 ```yaml
-name: polymarket
-version: 1.0.0
-updated: 2026-02-24
+name: prediction-markets
+version: 2.0.0
+updated: 2026-03-04
 author: InstaClaw
 phase: 3  # Full stack: read-only intelligence (Tier 1), portfolio monitoring (Tier 2), autonomous trading (Tier 3)
+platforms:
+  - polymarket  # Polygon/USDC.e — crypto-native, CLOB API
+  - kalshi      # USD — CFTC-regulated, REST API, BYOK
 triggers:
-  keywords: [prediction market, polymarket, odds, probability, chances, bet on, betting, forecast, market odds, implied probability, wager, betting odds, market intelligence, event probability, market scan, prediction odds]
-  phrases: ["what are the chances of", "what are the odds", "prediction market", "polymarket", "will X happen", "probability of", "browse markets", "top prediction markets", "hottest markets", "market analysis", "is X likely", "market scan", "what will happen", "prediction odds"]
+  keywords: [prediction market, polymarket, kalshi, odds, probability, chances, bet on, betting, forecast, market odds, implied probability, wager, betting odds, market intelligence, event probability, market scan, prediction odds]
+  phrases: ["what are the chances of", "what are the odds", "prediction market", "polymarket", "kalshi", "will X happen", "probability of", "browse markets", "top prediction markets", "hottest markets", "market analysis", "is X likely", "market scan", "what will happen", "prediction odds"]
   NOT: [stock market, stock price, financial analysis, crypto price, token price]
 ```
 
@@ -15,13 +18,23 @@ triggers:
 
 These rules override everything else in this skill file. Violating them causes real financial harm.
 
-**Rule 1 — Balance Checks:** When a user asks about their wallet balance, funds, money, or whether they can trade, run this and NOTHING else:
+**Rule 1 — Balance Checks:**
+
+*Polymarket:* When a user asks about their Polymarket wallet balance, funds, money, or whether they can trade, run this and NOTHING else:
 ```bash
 python3 ~/scripts/polymarket-setup-creds.py status
 ```
-This shows USDC.e, native USDC, POL gas, API creds, and approvals. Do NOT check balances with ad-hoc Python, manual RPC calls, or `eth_getBalance`. The script handles RPC failover automatically. If you only check MATIC, you will miss USDC balances and give the user wrong information.
+This shows USDC.e, native USDC, POL gas, API creds, and approvals. Do NOT check balances with ad-hoc Python, manual RPC calls, or `eth_getBalance`. The script handles RPC failover automatically.
+
+*Kalshi:* When a user asks about their Kalshi balance:
+```bash
+python3 ~/scripts/kalshi-portfolio.py summary
+```
+This shows cash balance, portfolio value, positions, and P&L. If it returns `not_configured`, run `python3 ~/scripts/kalshi-setup.py status` to check credential state.
 
 **Rule 2 — Trade Execution:** NEVER write inline Python for trading. ALL trades MUST use these scripts:
+
+### Polymarket Commands
 | Action | Command |
 |--------|---------|
 | Buy | `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json` |
@@ -38,13 +51,32 @@ This shows USDC.e, native USDC, POL gas, API creds, and approvals. Do NOT check 
 | Swap | `python3 ~/scripts/polymarket-wallet.py swap --from usdc --to usdc.e --amount 6.70 --json` |
 | Ack Risk | `python3 ~/scripts/polymarket-trade.py acknowledge-risk --json` |
 
-**Rule 3 — No Faking:** NEVER report a trade as executed without a real CLOB order ID. NEVER generate fake P&L tables or dashboards from memory. NEVER show portfolio data without running a script. If a script fails, report the exact error — do not make up results.
+### Kalshi Commands
+| Action | Command |
+|--------|---------|
+| Buy | `python3 ~/scripts/kalshi-trade.py buy --ticker <TICKER> --side yes --amount 10 --json` |
+| Sell | `python3 ~/scripts/kalshi-trade.py sell --ticker <TICKER> --side yes --contracts 10 --json` |
+| Cancel | `python3 ~/scripts/kalshi-trade.py cancel --order-id <id> --json` |
+| Orders | `python3 ~/scripts/kalshi-trade.py orders --json` |
+| Positions | `python3 ~/scripts/kalshi-positions.py list --json` |
+| History | `python3 ~/scripts/kalshi-positions.py history --limit 20 --json` |
+| P&L | `python3 ~/scripts/kalshi-positions.py pnl --json` |
+| Portfolio | `python3 ~/scripts/kalshi-portfolio.py summary --json` |
+| Detail | `python3 ~/scripts/kalshi-portfolio.py detail --json` |
+| Setup | `python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY> --private-key-file <PEM> --json` |
+| Status | `python3 ~/scripts/kalshi-setup.py status --json` |
+| Balance | `python3 ~/scripts/kalshi-setup.py balance --json` |
+
+**Rule 3 — No Faking:** NEVER report a trade as executed without a real order ID. NEVER generate fake P&L tables or dashboards from memory. NEVER show portfolio data without running a script. If a script fails, report the exact error — do not make up results.
 
 **Rule 4 — No Hedging:** NEVER buy both YES and NO on the same market. That's a zero-EV hedge.
 
-**Rule 5 — Setup First:** ALWAYS run `polymarket-setup-creds.py status` before attempting ANY trade. If it shows problems (missing creds, missing approvals, wrong USDC type, no gas), tell the user what's wrong and do not proceed.
+**Rule 5 — Setup First:** ALWAYS run the appropriate status command before attempting ANY trade:
+- Polymarket: `polymarket-setup-creds.py status`
+- Kalshi: `kalshi-setup.py status`
+If status shows problems (missing creds, missing approvals, wrong USDC type, no gas), tell the user what's wrong and do not proceed.
 
-**Rule 6 — Token Transfers:** To send tokens from the wallet, use:
+**Rule 6 — Token Transfers (Polymarket only):** To send tokens from the wallet, use:
 ```bash
 python3 ~/scripts/polymarket-wallet.py transfer --token usdc.e --to 0x... --amount 10
 ```
@@ -54,7 +86,7 @@ python3 ~/scripts/polymarket-wallet.py swap --from usdc --to usdc.e --amount 6.7
 ```
 NEVER tell the user to do manual transfers via Polygonscan or MetaMask. Use the script.
 
-**Rule 7 — US Region Warning:** If a trade returns BLOCK with "risk acknowledgment" required, show the user this exact message:
+**Rule 7 — US Region Warning (Polymarket):** If a trade returns BLOCK with "risk acknowledgment" required, show the user this exact message:
 
 > Polymarket's international markets are not officially available in the US. By proceeding, you acknowledge:
 > - Your funds could be restricted to close-only or permanently frozen by Polymarket at any time
@@ -66,30 +98,48 @@ NEVER tell the user to do manual transfers via Polygonscan or MetaMask. Use the 
 If user says 'I understand the risks', run:
 `python3 ~/scripts/polymarket-trade.py acknowledge-risk`
 
-If user says 'US markets only', tell them the CFTC-regulated platform is at polymarketexchange.com and requires separate onboarding (not yet integrated).
+If user says 'US markets only', suggest Kalshi as the US-regulated alternative — it's already integrated. Run `python3 ~/scripts/kalshi-setup.py status` to check if Kalshi is configured.
+
+**Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. When a user wants to set up Kalshi:
+1. Tell them to go to kalshi.com → Settings → API → Create key pair
+2. They provide the API Key ID and download the private key .pem file
+3. Run: `python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY> --private-key-file /path/to/key.pem`
 
 ---
 
 ## Overview
 
-You have access to Polymarket, the world's largest prediction market (~$1B+ monthly volume). Use this skill to browse markets, analyze probabilities, cross-reference with news, and deliver intelligence reports on global events.
+You have access to **two prediction market platforms**:
 
-**What Polymarket is:** A prediction market where people trade on event outcomes. Prices represent crowd-consensus probabilities. A "Yes" share priced at $0.65 means the crowd thinks there's a 65% chance the event happens.
+### Polymarket (Crypto-Native)
+- World's largest prediction market (~$1B+ monthly volume)
+- **Collateral:** USDC.e on Polygon (chain ID 137)
+- **API:** Gamma (read-only, no auth) + CLOB (trading, key derivation)
+- **Account:** Auto-provisioned from Polygon wallet
+- **Strengths:** Massive liquidity, broad market coverage, multi-outcome markets
+- **Region:** International (US agents use proxy — see Rule 7)
 
-**Why this matters:** Prediction market data is crowdsourced intelligence backed by real money. Unlike polls or pundit opinions, market participants have financial skin in the game. This makes Polymarket data uniquely reliable for forecasting.
+### Kalshi (US-Regulated)
+- CFTC-regulated prediction exchange
+- **Collateral:** USD (real dollars, funded via bank/card on kalshi.com)
+- **API:** REST v2 with RSA key-pair auth
+- **Account:** User creates on kalshi.com (BYOK model)
+- **Strengths:** Legal in US, no crypto required, regulated settlement
+- **Region:** US-based, no geoblock
 
-**Current phase:** Full stack — Tier 1 (read-only intelligence), Tier 2 (wallet, watchlist, monitoring, alerts), Tier 3 (autonomous trading via CLOB API with risk management).
+**What prediction markets are:** Markets where people trade on event outcomes. Prices represent crowd-consensus probabilities. A YES share at $0.65 means the crowd estimates 65% probability.
 
-> See Tier 2 and Tier 3 sections below for portfolio monitoring and trading capabilities.
+**Why this matters:** Prediction market data is crowdsourced intelligence backed by real money. Unlike polls or pundit opinions, participants have skin in the game. This makes the data uniquely reliable for forecasting.
 
 ## When to Use This Skill
 
 - User asks about prediction markets, odds, or probabilities for events
 - User asks "what are the chances of X happening"
 - User wants market intelligence on politics, crypto, sports, tech, entertainment
-- User asks to browse or search Polymarket
+- User asks to browse or search prediction markets
 - User asks for an "opportunities report" or "market scan"
 - User wants to compare market probability to recent news
+- User mentions Polymarket or Kalshi by name
 - Another skill (competitive-intelligence, financial-analysis) needs probability data on an event
 
 **Do NOT use this skill for:**
@@ -97,7 +147,22 @@ You have access to Polymarket, the world's largest prediction market (~$1B+ mont
 - Crypto token prices (use financial-analysis skill)
 - Sports scores or stats (only use for prediction market odds on sports outcomes)
 
-## Gamma API Reference
+## Platform Routing
+
+When a user asks to trade or check positions, determine the platform:
+
+1. **User specifies platform** — Use that platform
+2. **User says "Kalshi"** — Use Kalshi scripts
+3. **User says "Polymarket"** — Use Polymarket scripts
+4. **User says "prediction market" generically** — Check which platforms are configured:
+   - Run `kalshi-setup.py status` and `polymarket-setup-creds.py status`
+   - If only one is configured, use that one
+   - If both configured, ask user which platform
+5. **Market browsing (read-only)** — Use Gamma API (Polymarket) by default since it's public and has the most markets. Kalshi browsing requires auth.
+
+---
+
+## Gamma API Reference (Polymarket — Read-Only)
 
 Base URL: `https://gamma-api.polymarket.com`
 
@@ -133,14 +198,6 @@ curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=vol
 ```
 
 Events group related markets (e.g., "2028 Democratic Nominee" contains 128+ candidate markets). Supports `limit`, `offset`, `closed`, `order` (use `volume`, `volume24hr`, `endDate`, `createdAt`), `ascending`.
-
-### Get Event Details
-
-```bash
-curl -s "https://gamma-api.polymarket.com/events/{id}"
-```
-
-Returns the event with all associated markets in the `markets` array.
 
 ### Key Response Fields (Markets)
 
@@ -183,6 +240,50 @@ If the Gamma API is unreachable (timeout, 500 error, empty response):
 2. Suggest trying again in a few minutes
 3. Do NOT crash, retry infinitely, or hallucinate market data
 
+---
+
+## Kalshi API Reference (Authenticated)
+
+Base URL: `https://trading-api.kalshi.com/trade-api/v2`
+
+All endpoints require RSA key-pair authentication. See `references/kalshi-api.md` for full details.
+
+### Key Concepts
+
+- **Prices:** Cents (1-99). YES at 45 = $0.45 = 45% implied probability
+- **Balances:** Cents. `50000` = $500.00
+- **Settlement:** Binary — pays $1.00 (100c) if correct, $0.00 if wrong
+- **Ticker format:** `KXBTC-26MAR14-B90000` = event-date-strike
+
+### Key Endpoints
+
+```
+GET /markets                — List markets (paginated)
+GET /markets/{ticker}       — Single market by ticker
+GET /portfolio/balance      — Cash balance + portfolio value
+GET /portfolio/positions    — Open positions
+GET /portfolio/orders       — Order history
+POST /portfolio/orders      — Place order
+DELETE /portfolio/orders/{id} — Cancel order
+```
+
+### Order Format
+
+```json
+{
+  "ticker": "KXBTC-26MAR14-B90000",
+  "action": "buy",
+  "side": "yes",
+  "type": "limit",
+  "count": 10,
+  "yes_price": 45
+}
+```
+
+Fields: `ticker` (required), `action` (`buy`/`sell`), `side` (`yes`/`no`), `type` (`limit`/`market`), `count` (contracts), `yes_price`/`no_price` (cents 1-99), `time_in_force` (`fill_or_kill`, `good_till_canceled`, `immediate_or_cancel`).
+
+---
+
 ## Output Formatting
 
 When presenting market data, always use this structure:
@@ -206,10 +307,25 @@ Resolution: March 15, 2026
 [Brief context from web search if relevant]
 ```
 
+### Kalshi Market Report
+```
+**[Market Title]**
+Ticker: KXBTC-26MAR14-B90000
+
+| Side | Bid | Ask | Last |
+|------|-----|-----|------|
+| YES  | 43c | 45c | 44c  |
+| NO   | 55c | 57c | 56c  |
+
+Volume (24h): $123,456
+Open Interest: 5,000 contracts
+Expires: March 14, 2026
+```
+
 ### Multi-Market Report (Top Markets / Scan)
 ```
 **Top Prediction Markets by 24h Volume**
-Updated: Feb 24, 2026
+Updated: Mar 4, 2026
 
 | # | Market | Yes | No | 24h Vol | Total Vol |
 |---|--------|-----|-----|---------|-----------|
@@ -259,62 +375,43 @@ for m in matches[:5]:
 ```
 
 ### Step 2: Cross-Reference with News
-Use `web_search` to find 3-5 recent news articles related to the market topic:
-```
-web_search("Fed rate decision March 2026 latest")
-web_search("FOMC meeting March 2026 expectations")
-```
+Use `web_search` to find 3-5 recent news articles related to the market topic.
 
 ### Step 3: Compare Market vs. News Sentiment
 - Is the market pricing consistent with the latest news?
 - Has something happened that the market hasn't priced in yet?
 - Are experts or data sources suggesting a different probability?
 
-### Step 4: Present Analysis
+### Step 4: Cross-Platform Comparison
+If both Polymarket and Kalshi have the same event, compare prices:
+- Price differences > 3% may indicate an arbitrage opportunity
+- Note: different settlement rules mean "same event" may resolve differently
+- Always check resolution criteria on both platforms
+
+### Step 5: Present Analysis
 ```
 **Market Analysis: Will the Fed Cut Rates in March?**
 
-Current Market: 72% Yes ($0.72)
+Current Market: Polymarket 72% Yes | Kalshi 68% Yes
 
 **Recent Developments:**
 - Feb 21: CPI came in at 2.8% (above 2.6% expected)
 - Feb 23: Fed Governor Waller speech hinted at "patience"
 - Feb 24: CME FedWatch tool shows 68% probability of hold
 
-**Assessment:**
-The market at 72% for a cut appears slightly optimistic given the hotter-than-expected
-CPI print and Waller's hawkish tone. CME FedWatch (which tracks futures pricing from
-institutional traders) shows only 68% for a cut. The 4-point gap suggests the Polymarket
-crowd may be slow to price in the latest inflation data.
+**Cross-Platform Note:**
+Polymarket at 72% is 4 points above Kalshi at 68%. CME FedWatch aligns closer to Kalshi.
 
-**Key date to watch:** March 18-19 FOMC meeting
+**Assessment:**
+The market at 72% for a cut appears slightly optimistic given the hotter-than-expected CPI.
 
 *This is market analysis based on publicly available data, not financial advice.
 Prediction market prices reflect crowd consensus, not guaranteed outcomes.*
 ```
 
-### Step 5: Disclaimer
+### Step 6: Disclaimer
 ALWAYS include at the end of any analysis:
 > *This is market analysis based on publicly available data, not financial advice. Prediction market prices reflect crowd consensus, not guaranteed outcomes.*
-
-## Common Queries (Quick Reference)
-
-```bash
-# Top markets by 24h volume (most active right now)
-curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=volume24hr&ascending=false"
-
-# Biggest events (grouped markets)
-curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=volume&ascending=false"
-
-# Markets closing soon (next 7 days)
-curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=endDate&ascending=true"
-
-# Single market by ID
-curl -s "https://gamma-api.polymarket.com/markets/654415"
-
-# Single event by ID (with all associated markets)
-curl -s "https://gamma-api.polymarket.com/events/30829"
-```
 
 ## Searching for Markets
 
@@ -341,23 +438,28 @@ for m in matches[:10]:
 - Sports: `['win the', 'nba', 'nfl', 'premier league', 'champions league', 'super bowl', 'world cup']`
 - Tech: `['apple', 'google', 'openai', 'ai ', 'launch', 'release']`
 
+## Common Queries (Quick Reference)
+
+```bash
+# Top markets by 24h volume (most active right now)
+curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=volume24hr&ascending=false"
+
+# Biggest events (grouped markets)
+curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=volume&ascending=false"
+
+# Markets closing soon (next 7 days)
+curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=endDate&ascending=true"
+
+# Single market by ID
+curl -s "https://gamma-api.polymarket.com/markets/654415"
+
+# Single event by ID (with all associated markets)
+curl -s "https://gamma-api.polymarket.com/events/30829"
+```
+
 ## Parsing API Responses
 
 The `outcomes` and `outcomePrices` fields are JSON strings, not arrays. Parse them:
-
-```bash
-# Using jq to extract clean data
-curl -s "https://gamma-api.polymarket.com/markets?limit=5&closed=false&order=volume24hr&ascending=false" | \
-  jq '.[] | {
-    question,
-    outcomes: (.outcomes | fromjson),
-    prices: (.outcomePrices | fromjson),
-    volume_24h: .volume24hr,
-    total_volume: .volumeNum,
-    liquidity: .liquidityNum,
-    end_date: .endDateIso
-  }'
-```
 
 ```bash
 # Using Python for richer formatting
@@ -381,10 +483,10 @@ for m in markets:
 ## Cross-Skill Integration
 
 ### With competitive-intelligence
-When researching a competitor or industry event, check if there's a related prediction market. Fetch top markets and filter client-side for relevant keywords. Include market probabilities in competitive intelligence reports for quantitative forecasting.
+When researching a competitor or industry event, check if there's a related prediction market. Include market probabilities in competitive intelligence reports for quantitative forecasting.
 
 ### With financial-analysis
-When analyzing stocks or crypto, check related prediction markets for event risk. For example, Fed rate decision markets directly impact stock/bond outlooks. Fetch top markets, filter for "fed" or "rate" keywords.
+When analyzing stocks or crypto, check related prediction markets for event risk. Fed rate decision markets directly impact stock/bond outlooks.
 
 ### With web-search-browser
 Every market analysis should include a web search step. The analysis framework above shows this pattern. Never present market prices without context.
@@ -404,24 +506,13 @@ When user asks for a "market scan" or "opportunities report", produce:
 2. **Biggest movers (24h)** — Markets with largest price swings
 3. **High-volume, close-to-resolution** — Markets ending within 7 days with >$100k volume
 4. **Cross-reference top 3 with news** — Quick analysis on whether prices seem right
+5. **Cross-platform comparison** — If Kalshi is configured, compare prices on overlapping events
 
 Use 3-5 API calls total. Don't fetch individually — use `limit=20` and filter client-side.
 
-## Safety Rules
+---
 
-- **No financial advice** — Always frame as "market analysis" with the disclaimer
-- **Respect rate limits** — Max 1 req/sec for Gamma API, 1 order/sec for CLOB
-- **No hallucinated data** — If you can't reach the API, say so. Never invent prices.
-- **Source attribution** — Always link to `https://polymarket.com/event/[event_slug]/[market_slug]` (get event slug from `market.events[0].slug`)
-- **Price = probability** — Always explain that $0.65 = 65% implied probability
-- **Private key security** — NEVER log, display, or include the private key in any output, memory file, or chat message
-- **Risk config required** — Check `risk-config.json` before every trade. If `enabled !== true`, refuse the trade.
-- **User opt-in** — Trading must be explicitly enabled by the user. Never auto-enable.
-- **Trade logging** — Every trade must be logged with full details and reasoning
-
-## Tier 2: Portfolio & Monitoring
-
-### Wallet Setup
+## Polymarket Wallet Setup
 
 Your agent has a dedicated Polygon wallet for Polymarket trading. To set it up:
 
@@ -447,14 +538,29 @@ Polymarket uses **USDC.e** (bridged), NOT native USDC (`0x3c499c542cEF5E3811e119
 
 **Check balance:** `python3 ~/scripts/polymarket-setup-creds.py status` — shows both USDC.e and native USDC balances
 
-**Wallet commands:**
-```bash
-# Check wallet status
-bash ~/scripts/setup-polymarket-wallet.sh status
+## Kalshi Account Setup
 
-# Show wallet address (for funding)
-bash ~/scripts/setup-polymarket-wallet.sh address
+Kalshi is a **BYOK (Bring Your Own Key)** integration. The user must create their own account and API keys.
+
+### Setup Steps
+1. User creates account at [kalshi.com](https://kalshi.com) (includes KYC)
+2. User goes to Settings → API → Create API Key
+3. User downloads the private key .pem file
+4. User provides the API Key ID and .pem file path
+5. Run:
+```bash
+python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY_ID> --private-key-file /path/to/private_key.pem
 ```
+
+**Credentials stored at:** `~/.openclaw/prediction-markets/kalshi-creds.json` (0o600 permissions)
+
+**Check status:** `python3 ~/scripts/kalshi-setup.py status` — shows whether API key is configured and tests authentication
+
+**Check balance:** `python3 ~/scripts/kalshi-setup.py balance` — shows USD balance from Kalshi API
+
+---
+
+## Tier 2: Portfolio & Monitoring
 
 ### Market Watchlist
 
@@ -481,10 +587,6 @@ The watchlist file at `~/memory/polymarket-watchlist.json` tracks markets the us
 }
 ```
 
-**To add a market to the watchlist:** "Watch the Bitcoin 200k market and alert me if it goes above 50%"
-
-**To remove:** "Stop watching the Bitcoin market"
-
 ### Recurring Monitoring
 
 Monitoring integrates with the heartbeat/cron system for automated checks:
@@ -493,17 +595,14 @@ Monitoring integrates with the heartbeat/cron system for automated checks:
 - Fetch all watched markets via Gamma API
 - Compare current price to `lastPrice`
 - If price changed by more than `alertThreshold`, trigger alert
-- Update `lastPrice` and `lastChecked` in watchlist JSON
 
 **Daily Summary (9am user-local time):**
 - Compile all watched markets with current prices and 24h changes
-- Include any open positions with unrealized P&L
-- Note any markets approaching resolution deadline
+- Include any open positions on both platforms with unrealized P&L
 
 **Weekly P&L Report (Sunday):**
-- Aggregate all trading activity for the week
+- Aggregate all trading activity for the week across both platforms
 - Calculate realized P&L from closed positions
-- Calculate unrealized P&L from open positions
 - Compare performance to simple hold strategies
 
 ### Alert System
@@ -516,17 +615,6 @@ Supported alert types:
 | `resolution` | Triggers when market resolves | "Tell me when the election market resolves" |
 | `volume_spike` | Triggers when 24h volume increases by >2x | "Alert me if there's unusual activity" |
 
-Alerts are delivered via the user's primary channel (Telegram, Discord, etc.) through the normal message flow.
-
-### WebSocket Price Streams
-
-For real-time monitoring, connect to:
-```
-wss://ws-subscriptions-clob.polymarket.com/ws/market
-```
-
-Subscribe to specific markets for live price updates. See `references/monitoring.md` for connection details and callback patterns.
-
 ---
 
 ## Tier 3: Autonomous Trading (Opt-In Required)
@@ -535,32 +623,43 @@ Subscribe to specific markets for live price updates. See `references/monitoring
 
 ### Safety First
 
-**NEVER auto-trade without explicit user opt-in.** Before every trade, the agent checks `~/.openclaw/polymarket/risk-config.json`:
+**NEVER auto-trade without explicit user opt-in.** Before every trade, the agent checks the risk config:
 
+**Polymarket:** `~/.openclaw/polymarket/risk-config.json`
 ```json
 {
   "enabled": false,
   "dailySpendCapUSDC": 50,
   "confirmationThresholdUSDC": 25,
   "dailyLossLimitUSDC": 100,
-  "maxPositionSizeUSDC": 100,
-  "updatedAt": "2026-02-24T10:00:00Z"
+  "maxPositionSizeUSDC": 100
+}
+```
+
+**Kalshi:** `~/.openclaw/prediction-markets/kalshi-risk-config.json`
+```json
+{
+  "enabled": false,
+  "daily_spend_cap": 50.00,
+  "max_position_size": 100.00,
+  "daily_loss_limit": 100.00
 }
 ```
 
 - **enabled** — `false` by default. Must be explicitly set to `true` by the user.
-- **dailySpendCapUSDC** — Maximum total spending per day. Agent refuses trades that would exceed this.
-- **confirmationThresholdUSDC** — Trades above this amount require explicit user confirmation before execution.
-- **dailyLossLimitUSDC** — If realized + unrealized losses for the day exceed this, trading halts automatically.
-- **maxPositionSizeUSDC** — Maximum size for any single position.
+- **daily spend cap** — Maximum total spending per day. Agent refuses trades that would exceed this.
+- **max position size** — Maximum size for any single position.
+- **daily loss limit** — If losses exceed this, trading halts automatically.
 
 ### Trade Execution Flow
 
 1. **Opportunity analysis** — Agent identifies a trading opportunity (user request or thesis-driven)
-2. **Risk check** — Verify `enabled === true`, check daily spend/loss limits, position size limits
-3. **Confirmation** — If trade amount > `confirmationThresholdUSDC`, ask user for explicit approval
-4. **Execute** — Place order via `py-clob-client` (CLOB API)
-5. **Log** — Record trade to `~/.openclaw/polymarket/trade-log.json` AND append to MEMORY.md with reasoning
+2. **Platform selection** — Determine which platform to use (see Platform Routing)
+3. **Risk check** — Verify `enabled === true`, check daily spend/loss limits, position size limits
+4. **Confirmation** — If trade amount > confirmation threshold, ask user for explicit approval
+5. **Execute** — Place order via the appropriate script
+6. **Verify** — Confirm order status (Polymarket: `polymarket-verify.py`; Kalshi: check order status via `kalshi-trade.py orders`)
+7. **Log** — Record trade with reasoning
 
 ### Manual Trades
 
@@ -568,68 +667,52 @@ User commands:
 ```
 "Bet $10 on YES for Will Bitcoin hit $200k by June?"
 "Buy 50 YES shares of the Fed rate cut market at $0.68"
+"Buy 10 contracts of KXBTC-26MAR14-B90000 YES at 45 cents on Kalshi"
 "Sell my position in the election market"
 ```
 
-The agent will:
-1. Look up the market on Gamma API to get the market ID
-2. Execute via script: `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json`
-3. Verify the order: `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
-4. Report the real order ID, status, and transaction hash to the user
+### Cross-Platform Arbitrage
 
-For sells: `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --json`
-
-### Thesis-Driven Trades
-
-For research-backed trades:
-```
-"Research the Fed rate decision market and place a trade if you find an edge"
-```
-
-The agent will:
-1. Fetch market data from Gamma API
-2. Run web searches for relevant news and data
-3. Form a thesis (e.g., "Market prices 72% cut, but CPI data suggests only 60%")
-4. If thesis suggests >=5% edge, propose the trade with reasoning
-5. Wait for user approval (always, for thesis trades)
-6. Execute via: `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json`
-7. Verify via: `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
-8. Log with full reasoning chain
+When the same event trades on both Polymarket and Kalshi:
+1. Fetch prices from both platforms
+2. If price difference > 5%, flag as potential arbitrage
+3. **ALWAYS warn the user:** Different settlement rules, different collateral (USDC.e vs USD), different expiration times
+4. Present the opportunity, let the user decide
+5. Execute on each platform separately if approved
 
 ### Guardrails
 
 **Pre-trade checklist** (agent MUST complete before any trade):
-1. Confirm `risk-config.json` has `enabled: true`
+1. Confirm risk config has `enabled: true` for the target platform
 2. Check daily spend limit is not exceeded
-3. If amount > `confirmationThresholdUSDC`, ask user for explicit approval
-4. Verify wallet has sufficient USDC.e balance
-5. Verify CLOB API credentials are set up: `python3 ~/scripts/polymarket-setup-creds.py status --json`
+3. If amount > confirmation threshold, ask user for explicit approval
+4. Verify funds are available (USDC.e balance for Polymarket, USD balance for Kalshi)
+5. Verify credentials are set up: run status command for target platform
 
 **Post-trade verification** (agent MUST complete after every trade):
-1. Capture the `order_id` from `polymarket-trade.py` output
-2. Run `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
-3. Report the order status and transaction hash to the user
-4. If the order fails or is unmatched, tell the user — never claim success without proof
-5. Run `python3 ~/scripts/polymarket-positions.py list --json` to confirm the position
+1. Capture the order ID from script output
+2. Verify order status (filled, partial, rejected)
+3. Report status to the user
+4. If the order fails, tell the user — never claim success without proof
+5. Run positions list to confirm the position
 
-### Token IDs
+### Token IDs (Polymarket)
 
 Token IDs for trading come from the Gamma API `clobTokenIds` field:
 - **Index 0** = YES token
 - **Index 1** = NO token
 
-For multi-outcome markets, each outcome has its own token ID pair. See `references/trading.md` for full details.
-
 ### Compliance Note
 
-- **United States:** Polymarket is CFTC-regulated. US users can trade legally on the platform.
-- **Non-US:** Check local restrictions. Some jurisdictions restrict prediction market trading.
+- **Polymarket:** International. US agents use proxy (see Rule 7). Funds may be restricted.
+- **Kalshi:** CFTC-regulated. Legal for US residents. Real USD, bank-funded.
 - The agent does not provide legal or financial advice. All trades are at the user's risk.
 
 ---
 
 ## File Paths Reference
 
+### Polymarket Files
 | File | Purpose |
 |------|---------|
 | `~/.openclaw/polymarket/wallet.json` | Polygon EOA wallet (private key + address) |
@@ -638,16 +721,55 @@ For multi-outcome markets, each outcome has its own token ID pair. See `referenc
 | `~/.openclaw/polymarket/trade-log.json` | Trade history with reasoning |
 | `~/.openclaw/polymarket/daily-spend.json` | Daily spend/loss tracker (resets at UTC midnight) |
 | `~/.openclaw/polymarket/creds-state.json` | CLOB API credential derivation state |
+| `~/.openclaw/polymarket/polymarket-risk.json` | US region risk acknowledgment |
 | `~/memory/polymarket-watchlist.json` | Market watchlist with alert thresholds |
-| `~/scripts/setup-polymarket-wallet.sh` | Wallet generation script |
-| `~/scripts/polymarket-setup-creds.py` | CLOB API credential derivation + ERC-20 approvals |
-| `~/scripts/polymarket-trade.py` | Trade execution (buy/sell/cancel/orders) with risk enforcement |
-| `~/scripts/polymarket-positions.py` | On-chain position verification + P&L |
-| `~/scripts/polymarket-verify.py` | Order/trade verification with real tx hashes |
-| `~/scripts/polymarket-portfolio.py` | Portfolio summary with positions, P&L, and Polygonscan tx links |
-| `~/scripts/polymarket-wallet.py` | ERC-20 transfer, balance check, and USDC/USDC.e swap |
+
+### Kalshi Files
+| File | Purpose |
+|------|---------|
+| `~/.openclaw/prediction-markets/kalshi-creds.json` | Kalshi API credentials (key ID + PEM) |
+| `~/.openclaw/prediction-markets/kalshi-risk-config.json` | Trading risk parameters (enabled, limits) |
+| `~/.openclaw/prediction-markets/kalshi-trade-log.json` | Trade history |
+| `~/.openclaw/prediction-markets/kalshi-daily-spend.json` | Daily spend tracker |
+
+### Scripts
+| Script | Platform | Purpose |
+|--------|----------|---------|
+| `~/scripts/setup-polymarket-wallet.sh` | Polymarket | Wallet generation |
+| `~/scripts/polymarket-setup-creds.py` | Polymarket | CLOB API credential derivation + ERC-20 approvals |
+| `~/scripts/polymarket-trade.py` | Polymarket | Trade execution (buy/sell/cancel) with risk enforcement |
+| `~/scripts/polymarket-positions.py` | Polymarket | Position verification + P&L |
+| `~/scripts/polymarket-verify.py` | Polymarket | Order/trade verification with tx hashes |
+| `~/scripts/polymarket-portfolio.py` | Polymarket | Portfolio summary with P&L |
+| `~/scripts/polymarket-wallet.py` | Polymarket | ERC-20 transfer, balance check, USDC swap |
+| `~/scripts/kalshi-setup.py` | Kalshi | API key setup + status + balance |
+| `~/scripts/kalshi-trade.py` | Kalshi | Trade execution (buy/sell/cancel/orders) |
+| `~/scripts/kalshi-positions.py` | Kalshi | Positions, history, P&L |
+| `~/scripts/kalshi-portfolio.py` | Kalshi | Portfolio summary + detail |
+
+### Reference Docs
+| File | Description |
+|------|-------------|
+| `references/gamma-api.md` | Polymarket Gamma API deep reference |
+| `references/trading.md` | Polymarket CLOB trading patterns |
+| `references/analysis.md` | Market analysis methodology |
+| `references/monitoring.md` | WebSocket price streams + monitoring |
+| `references/kalshi-api.md` | Kalshi REST API v2 reference |
+| `references/kalshi-trading.md` | Kalshi trading patterns + strategies |
 
 ---
+
+## Safety Rules
+
+- **No financial advice** — Always frame as "market analysis" with the disclaimer
+- **Respect rate limits** — Max 1 req/sec for Gamma API, 1 req/sec for Kalshi API, 1 order/sec for CLOB
+- **No hallucinated data** — If you can't reach the API, say so. Never invent prices.
+- **Source attribution** — Always link to `https://polymarket.com/event/[event_slug]/[market_slug]` for Polymarket markets
+- **Price = probability** — Always explain that $0.65 = 65% implied probability
+- **Private key security** — NEVER log, display, or include private keys (Polygon or Kalshi PEM) in any output, memory file, or chat message
+- **Risk config required** — Check risk config before every trade on either platform. If `enabled !== true`, refuse the trade.
+- **User opt-in** — Trading must be explicitly enabled by the user. Never auto-enable.
+- **Trade logging** — Every trade must be logged with full details and reasoning
 
 ## Quality Checklist
 
@@ -657,11 +779,12 @@ For multi-outcome markets, each outcome has its own token ID pair. See `referenc
 - [ ] Multi-outcome markets show all outcomes (not just top 2)
 - [ ] Disclaimer included on all analysis outputs
 - [ ] API errors handled gracefully (no crashes, no hallucinated data)
-- [ ] Null/missing fields handled with `.get()` defaults (bestBid, oneDayPriceChange, etc.)
-- [ ] Source link to Polymarket included for every market referenced (use event_slug/market_slug format)
+- [ ] Null/missing fields handled with `.get()` defaults
+- [ ] Source link included for every market referenced
 - [ ] Rate limits respected (1 req/sec max, 3-5 calls per scan)
-- [ ] Wallet private key NEVER logged, NEVER in MEMORY.md, NEVER in chat messages
+- [ ] Private keys NEVER logged, NEVER in MEMORY.md, NEVER in chat messages
 - [ ] Risk config validated before every trade — `enabled` must be `true`
-- [ ] Every trade logged to trade-log.json with timestamp, amount, reasoning
+- [ ] Every trade logged with timestamp, amount, reasoning
 - [ ] Trades above confirmation threshold require explicit user approval
 - [ ] Opt-in verification — agent confirms user has explicitly enabled trading before first trade
+- [ ] Cross-platform: correct platform selected based on user intent

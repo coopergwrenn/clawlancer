@@ -82,14 +82,14 @@ const CHANNELS: EarningChannel[] = [
     tags: ["marketplace", "agent commerce", "virtuals", "acp", "secondary", "ai jobs"],
   },
   {
-    id: "polymarket",
-    name: "Polymarket",
-    headline: "Track odds and place trades on Polymarket — the world's largest prediction market",
-    description: "Your agent monitors Polymarket, watches for price changes, and places trades for you with safety limits you control.",
+    id: "prediction-markets",
+    name: "Prediction Markets",
+    headline: "Trade on Polymarket and Kalshi — the world's largest prediction markets",
+    description: "Your agent monitors Polymarket and Kalshi, watches for price changes, compares odds across platforms, and places trades with safety limits you control.",
     icon: PolymarketIcon,
     status: "one-click",
     effort: "One-time setup",
-    tags: ["prediction market", "trading", "polymarket", "betting", "odds", "probabilities", "invest"],
+    tags: ["prediction market", "trading", "polymarket", "kalshi", "betting", "odds", "probabilities", "invest"],
   },
   {
     id: "ecommerce",
@@ -381,14 +381,14 @@ function ChannelCard({
 }) {
   const Icon = channel.icon;
   // Use dynamic status for polymarket channel when available
-  const statusKey = channel.id === "polymarket" && polymarketStatus
+  const statusKey = channel.id === "prediction-markets" && polymarketStatus
     ? (polymarketStatus === "active" ? "poly_active" : polymarketStatus)
     : channel.status;
   const status = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG[channel.status];
   const StatusIcon = status.icon;
   const effort = EFFORT_STYLES[channel.effort];
   // Derive icon background for polymarket dynamic states
-  const isChannelActive = channel.id === "polymarket" && polymarketStatus
+  const isChannelActive = channel.id === "prediction-markets" && polymarketStatus
     ? polymarketStatus === "active"
     : channel.status === "active";
 
@@ -461,7 +461,7 @@ function ChannelCard({
                     handleToggleAgdp={handleToggleAgdp}
                   />
                 )}
-                {channel.id === "polymarket" && <PolymarketPanel onStatusChange={onPolymarketStatusChange} />}
+                {channel.id === "prediction-markets" && <PolymarketPanel onStatusChange={onPolymarketStatusChange} />}
                 {channel.id === "ecommerce" && <EcommerceSection botUsername={vm?.telegramBotUsername} />}
                 {channel.id === "freelance" && <FreelanceSection botUsername={vm?.telegramBotUsername} />}
               </div>

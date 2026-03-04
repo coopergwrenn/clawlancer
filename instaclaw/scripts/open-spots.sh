@@ -687,6 +687,11 @@ if [ "$SUCCESS" -gt 0 ]; then
             -H "Authorization: Bearer ${SUPABASE_KEY}" \
             -H "Content-Type: application/json" \
             -d '{"status":"ready"}' > /dev/null
+          # Set AGENT_REGION in ~/.openclaw/.env
+          echo "    Setting AGENT_REGION=${LINODE_REGION}..."
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
+            -i "$SSH_KEY_FILE" "openclaw@${VM_IP}" \
+            "mkdir -p ~/.openclaw && grep -q AGENT_REGION ~/.openclaw/.env 2>/dev/null || echo 'AGENT_REGION=${LINODE_REGION}' >> ~/.openclaw/.env" 2>/dev/null || true
           CLOUD_INIT_DONE=true
           READY_COUNT=$((READY_COUNT + 1))
           break

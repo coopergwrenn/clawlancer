@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# fleet-push-polymarket-skill.sh — Deploy prediction markets (Polymarket) skill to existing VMs
+# fleet-push-prediction-markets-skill.sh — Deploy prediction markets skill (Polymarket + Kalshi) to fleet
 #
-# Pushes: SKILL.md, references/gamma-api.md, references/analysis.md
-# No external API keys needed — Gamma API is public, no auth required.
+# Pushes: SKILL.md, references (gamma-api, analysis, trading, monitoring, kalshi-api, kalshi-trading),
+# all Polymarket scripts, all Kalshi scripts. Creates backward compat symlink from polymarket → prediction-markets.
 #
 # Usage:
-#   fleet-push-polymarket-skill.sh --dry-run    — Preview deployment
-#   fleet-push-polymarket-skill.sh --canary     — Deploy to 1 VM, pause for approval
-#   fleet-push-polymarket-skill.sh --all        — Deploy to all active VMs
+#   fleet-push-prediction-markets-skill.sh --dry-run    — Preview deployment
+#   fleet-push-prediction-markets-skill.sh --canary     — Deploy to 1 VM, pause for approval
+#   fleet-push-prediction-markets-skill.sh --all        — Deploy to all active VMs
 #
 # MANDATORY: Always run --dry-run first, per CLAUDE.md rules.
 #
@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SKILL_DIR="$PROJECT_ROOT/skills/polymarket"
+SKILL_DIR="$PROJECT_ROOT/skills/prediction-markets"
 
 # Load env
 if [ -f "$PROJECT_ROOT/.env.local" ]; then
@@ -63,13 +63,20 @@ deploy_to_vm() {
 
   echo "  Deploying to $vm_id ($user@$ip, region=$region)..."
 
+  # Polymarket files
   local skill_md_b64 gamma_api_b64 analysis_b64 trading_b64 monitoring_b64 wallet_script_b64
   local setup_creds_b64 trade_b64 positions_b64 verify_b64 portfolio_b64 wallet_py_b64
+  # Kalshi files
+  local kalshi_api_b64 kalshi_trading_b64
+  local kalshi_setup_b64 kalshi_trade_b64 kalshi_positions_b64 kalshi_portfolio_b64
+
   skill_md_b64=$(base64 < "$SKILL_DIR/SKILL.md")
   gamma_api_b64=$(base64 < "$SKILL_DIR/references/gamma-api.md")
   analysis_b64=$(base64 < "$SKILL_DIR/references/analysis.md")
   trading_b64=$(base64 < "$SKILL_DIR/references/trading.md")
   monitoring_b64=$(base64 < "$SKILL_DIR/references/monitoring.md")
+  kalshi_api_b64=$(base64 < "$SKILL_DIR/references/kalshi-api.md")
+  kalshi_trading_b64=$(base64 < "$SKILL_DIR/references/kalshi-trading.md")
   wallet_script_b64=$(base64 < "$SKILL_DIR/scripts/setup-polymarket-wallet.sh")
   setup_creds_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-setup-creds.py")
   trade_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-trade.py")
@@ -77,18 +84,29 @@ deploy_to_vm() {
   verify_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-verify.py")
   portfolio_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-portfolio.py")
   wallet_py_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-wallet.py")
+  kalshi_setup_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-setup.py")
+  kalshi_trade_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-trade.py")
+  kalshi_positions_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-positions.py")
+  kalshi_portfolio_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-portfolio.py")
 
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
 
-SKILL_DIR="\$HOME/.openclaw/skills/polymarket"
-mkdir -p "\$SKILL_DIR/references" "\$SKILL_DIR/scripts" "\$HOME/scripts" "\$HOME/.openclaw/polymarket" "\$HOME/memory"
+SKILL_DIR="\$HOME/.openclaw/skills/prediction-markets"
+mkdir -p "\$SKILL_DIR/references" "\$SKILL_DIR/scripts" "\$HOME/scripts" "\$HOME/.openclaw/polymarket" "\$HOME/.openclaw/prediction-markets" "\$HOME/memory"
 
+# SKILL.md + Polymarket references
 echo '$skill_md_b64' | base64 -d > "\$SKILL_DIR/SKILL.md"
 echo '$gamma_api_b64' | base64 -d > "\$SKILL_DIR/references/gamma-api.md"
 echo '$analysis_b64' | base64 -d > "\$SKILL_DIR/references/analysis.md"
 echo '$trading_b64' | base64 -d > "\$SKILL_DIR/references/trading.md"
 echo '$monitoring_b64' | base64 -d > "\$SKILL_DIR/references/monitoring.md"
+
+# Kalshi references
+echo '$kalshi_api_b64' | base64 -d > "\$SKILL_DIR/references/kalshi-api.md"
+echo '$kalshi_trading_b64' | base64 -d > "\$SKILL_DIR/references/kalshi-trading.md"
+
+# Polymarket scripts
 echo '$wallet_script_b64' | base64 -d > "\$HOME/scripts/setup-polymarket-wallet.sh"
 chmod +x "\$HOME/scripts/setup-polymarket-wallet.sh"
 echo '$setup_creds_b64' | base64 -d > "\$HOME/scripts/polymarket-setup-creds.py"
@@ -104,11 +122,25 @@ chmod +x "\$HOME/scripts/polymarket-positions.py"
 chmod +x "\$HOME/scripts/polymarket-verify.py"
 chmod +x "\$HOME/scripts/polymarket-portfolio.py"
 
-# Bootstrap pip if missing (common on minimal Ubuntu VMs)
-python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true
-python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets web3 2>/dev/null || true
+# Kalshi scripts
+echo '$kalshi_setup_b64' | base64 -d > "\$HOME/scripts/kalshi-setup.py"
+echo '$kalshi_trade_b64' | base64 -d > "\$HOME/scripts/kalshi-trade.py"
+echo '$kalshi_positions_b64' | base64 -d > "\$HOME/scripts/kalshi-positions.py"
+echo '$kalshi_portfolio_b64' | base64 -d > "\$HOME/scripts/kalshi-portfolio.py"
+chmod +x "\$HOME/scripts/kalshi-setup.py"
+chmod +x "\$HOME/scripts/kalshi-trade.py"
+chmod +x "\$HOME/scripts/kalshi-positions.py"
+chmod +x "\$HOME/scripts/kalshi-portfolio.py"
 
-echo "  Polymarket prediction markets skill deployed successfully (Phase 1-3 + trade scripts)"
+# Backward compat: remove old polymarket dir before symlinking
+rm -rf "\$HOME/.openclaw/skills/polymarket" 2>/dev/null
+ln -sfn "\$SKILL_DIR" "\$HOME/.openclaw/skills/polymarket"
+
+# Bootstrap pip if missing
+python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true
+python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets web3 cryptography 2>/dev/null || true
+
+echo "  Prediction markets skill deployed (Polymarket + Kalshi)"
 REMOTE_SCRIPT
 
   # Set CLOB_PROXY_URL on US VMs (region starts with "us-" or "nyc")
@@ -130,31 +162,40 @@ REMOTE_SCRIPT
 
 case "$MODE" in
   --dry-run)
-    echo "=== DRY RUN: Polymarket Prediction Markets Skill Deployment (Phase 1-3) ==="
+    echo "=== DRY RUN: Prediction Markets Skill Deployment (Polymarket + Kalshi) ==="
     echo ""
     echo "Files to deploy:"
-    echo "  SKILL.md                          -> ~/.openclaw/skills/polymarket/SKILL.md"
-    echo "  references/gamma-api.md           -> ~/.openclaw/skills/polymarket/references/gamma-api.md"
-    echo "  references/analysis.md            -> ~/.openclaw/skills/polymarket/references/analysis.md"
-    echo "  references/trading.md             -> ~/.openclaw/skills/polymarket/references/trading.md"
-    echo "  references/monitoring.md          -> ~/.openclaw/skills/polymarket/references/monitoring.md"
-    echo "  scripts/setup-polymarket-wallet.sh -> ~/scripts/setup-polymarket-wallet.sh"
-    echo "  scripts/polymarket-setup-creds.py  -> ~/scripts/polymarket-setup-creds.py"
-    echo "  scripts/polymarket-trade.py        -> ~/scripts/polymarket-trade.py"
-    echo "  scripts/polymarket-positions.py    -> ~/scripts/polymarket-positions.py"
-    echo "  scripts/polymarket-verify.py       -> ~/scripts/polymarket-verify.py"
-    echo "  scripts/polymarket-portfolio.py    -> ~/scripts/polymarket-portfolio.py"
-    echo "  scripts/polymarket-wallet.py       -> ~/scripts/polymarket-wallet.py"
+    echo "  SKILL.md                            -> ~/.openclaw/skills/prediction-markets/SKILL.md"
+    echo "  references/gamma-api.md             -> ~/.openclaw/skills/prediction-markets/references/gamma-api.md"
+    echo "  references/analysis.md              -> ~/.openclaw/skills/prediction-markets/references/analysis.md"
+    echo "  references/trading.md               -> ~/.openclaw/skills/prediction-markets/references/trading.md"
+    echo "  references/monitoring.md            -> ~/.openclaw/skills/prediction-markets/references/monitoring.md"
+    echo "  references/kalshi-api.md            -> ~/.openclaw/skills/prediction-markets/references/kalshi-api.md"
+    echo "  references/kalshi-trading.md        -> ~/.openclaw/skills/prediction-markets/references/kalshi-trading.md"
+    echo "  scripts/setup-polymarket-wallet.sh  -> ~/scripts/setup-polymarket-wallet.sh"
+    echo "  scripts/polymarket-setup-creds.py   -> ~/scripts/polymarket-setup-creds.py"
+    echo "  scripts/polymarket-trade.py         -> ~/scripts/polymarket-trade.py"
+    echo "  scripts/polymarket-positions.py     -> ~/scripts/polymarket-positions.py"
+    echo "  scripts/polymarket-verify.py        -> ~/scripts/polymarket-verify.py"
+    echo "  scripts/polymarket-portfolio.py     -> ~/scripts/polymarket-portfolio.py"
+    echo "  scripts/polymarket-wallet.py        -> ~/scripts/polymarket-wallet.py"
+    echo "  scripts/kalshi-setup.py             -> ~/scripts/kalshi-setup.py"
+    echo "  scripts/kalshi-trade.py             -> ~/scripts/kalshi-trade.py"
+    echo "  scripts/kalshi-positions.py         -> ~/scripts/kalshi-positions.py"
+    echo "  scripts/kalshi-portfolio.py         -> ~/scripts/kalshi-portfolio.py"
+    echo ""
+    echo "Symlink: ~/.openclaw/skills/polymarket -> ~/.openclaw/skills/prediction-markets"
     echo ""
     echo "Directories created:"
-    echo "  ~/.openclaw/skills/polymarket/scripts"
+    echo "  ~/.openclaw/skills/prediction-markets/references"
+    echo "  ~/.openclaw/prediction-markets (Kalshi state)"
+    echo "  ~/.openclaw/polymarket (Polymarket state)"
     echo "  ~/scripts"
-    echo "  ~/.openclaw/polymarket"
     echo "  ~/memory"
     echo ""
-    echo "pip dependencies: py-clob-client, eth-account, websockets, web3"
+    echo "pip dependencies: py-clob-client, eth-account, websockets, web3, cryptography"
     echo ""
-    echo "No API keys required — Gamma API is public, wallet generated locally."
+    echo "No API keys required — Gamma API is public, Kalshi is BYOK."
     echo ""
 
     VMS=$(fetch_vms)
@@ -165,7 +206,7 @@ case "$MODE" in
     ;;
 
   --canary)
-    echo "=== CANARY: Deploying to first VM only ==="
+    echo "=== CANARY: Deploying prediction markets skill to first VM only ==="
     VMS=$(fetch_vms)
 
     if [ -n "${CANARY_IP:-}" ]; then
@@ -197,12 +238,12 @@ if vms:
 
     echo ""
     echo "=== CANARY COMPLETE ==="
-    echo "Verify: ssh ${USER}@${IP} 'ls ~/.openclaw/skills/polymarket/'"
+    echo "Verify: ssh ${USER}@${IP} 'ls ~/.openclaw/skills/prediction-markets/ && ls ~/scripts/kalshi-*.py'"
     echo "If healthy, run: $0 --all"
     ;;
 
   --all)
-    echo "=== FLEET DEPLOY: Polymarket Prediction Markets Skill ==="
+    echo "=== FLEET DEPLOY: Prediction Markets Skill (Polymarket + Kalshi) ==="
     VMS=$(fetch_vms)
 
     echo "$VMS" | python3 -c "
@@ -219,7 +260,7 @@ for v in vms:
     ;;
 
   --help|*)
-    echo "fleet-push-polymarket-skill.sh — Deploy Polymarket prediction markets skill to fleet"
+    echo "fleet-push-prediction-markets-skill.sh — Deploy prediction markets skill (Polymarket + Kalshi) to fleet"
     echo ""
     echo "Usage:"
     echo "  $0 --dry-run   — Preview deployment (ALWAYS run first)"

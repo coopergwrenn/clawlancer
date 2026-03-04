@@ -2470,45 +2470,68 @@ export async function configureOpenClaw(
       });
     }
 
-    // ── Deploy Polymarket Prediction Markets skill (Phase 1-3) ──
-    // Phase 1: read-only Gamma API. Phase 2: wallet + monitoring. Phase 3: trading via CLOB.
+    // ── Deploy Prediction Markets skill (Polymarket + Kalshi) ──
+    // Polymarket: Gamma API (read-only), wallet, CLOB trading
+    // Kalshi: REST API v2 with RSA key-pair auth, BYOK model
     try {
-      const polySkillDir = path.join(process.cwd(), "skills", "polymarket");
-      const polySkillMd = fs.readFileSync(path.join(polySkillDir, "SKILL.md"), "utf-8");
-      const polyGammaApi = fs.readFileSync(path.join(polySkillDir, "references", "gamma-api.md"), "utf-8");
-      const polyAnalysis = fs.readFileSync(path.join(polySkillDir, "references", "analysis.md"), "utf-8");
-      const polyTrading = fs.readFileSync(path.join(polySkillDir, "references", "trading.md"), "utf-8");
-      const polyMonitoring = fs.readFileSync(path.join(polySkillDir, "references", "monitoring.md"), "utf-8");
-      const polyWalletScript = fs.readFileSync(path.join(polySkillDir, "scripts", "setup-polymarket-wallet.sh"), "utf-8");
+      const predSkillDir = path.join(process.cwd(), "skills", "prediction-markets");
+      const predSkillMd = fs.readFileSync(path.join(predSkillDir, "SKILL.md"), "utf-8");
+      const polyGammaApi = fs.readFileSync(path.join(predSkillDir, "references", "gamma-api.md"), "utf-8");
+      const polyAnalysis = fs.readFileSync(path.join(predSkillDir, "references", "analysis.md"), "utf-8");
+      const polyTrading = fs.readFileSync(path.join(predSkillDir, "references", "trading.md"), "utf-8");
+      const polyMonitoring = fs.readFileSync(path.join(predSkillDir, "references", "monitoring.md"), "utf-8");
+      const kalshiApi = fs.readFileSync(path.join(predSkillDir, "references", "kalshi-api.md"), "utf-8");
+      const kalshiTrading = fs.readFileSync(path.join(predSkillDir, "references", "kalshi-trading.md"), "utf-8");
+      const polyWalletScript = fs.readFileSync(path.join(predSkillDir, "scripts", "setup-polymarket-wallet.sh"), "utf-8");
+      const kalshiSetup = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-setup.py"), "utf-8");
+      const kalshiTrade = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-trade.py"), "utf-8");
+      const kalshiPositions = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-positions.py"), "utf-8");
+      const kalshiPortfolio = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-portfolio.py"), "utf-8");
 
-      const polySkillB64 = Buffer.from(polySkillMd, "utf-8").toString("base64");
+      const predSkillB64 = Buffer.from(predSkillMd, "utf-8").toString("base64");
       const polyGammaB64 = Buffer.from(polyGammaApi, "utf-8").toString("base64");
       const polyAnalysisB64 = Buffer.from(polyAnalysis, "utf-8").toString("base64");
       const polyTradingB64 = Buffer.from(polyTrading, "utf-8").toString("base64");
       const polyMonitoringB64 = Buffer.from(polyMonitoring, "utf-8").toString("base64");
+      const kalshiApiB64 = Buffer.from(kalshiApi, "utf-8").toString("base64");
+      const kalshiTradingB64 = Buffer.from(kalshiTrading, "utf-8").toString("base64");
       const polyWalletB64 = Buffer.from(polyWalletScript, "utf-8").toString("base64");
+      const kalshiSetupB64 = Buffer.from(kalshiSetup, "utf-8").toString("base64");
+      const kalshiTradeB64 = Buffer.from(kalshiTrade, "utf-8").toString("base64");
+      const kalshiPositionsB64 = Buffer.from(kalshiPositions, "utf-8").toString("base64");
+      const kalshiPortfolioB64 = Buffer.from(kalshiPortfolio, "utf-8").toString("base64");
 
       scriptParts.push(
-        '# Deploy Polymarket Prediction Markets skill (Phase 1-3)',
-        'POLY_SKILL_DIR="$HOME/.openclaw/skills/polymarket"',
-        'mkdir -p "$POLY_SKILL_DIR/references" "$POLY_SKILL_DIR/scripts" "$HOME/scripts" "$HOME/.openclaw/polymarket" "$HOME/memory"',
-        `echo '${polySkillB64}' | base64 -d > "$POLY_SKILL_DIR/SKILL.md"`,
-        `echo '${polyGammaB64}' | base64 -d > "$POLY_SKILL_DIR/references/gamma-api.md"`,
-        `echo '${polyAnalysisB64}' | base64 -d > "$POLY_SKILL_DIR/references/analysis.md"`,
-        `echo '${polyTradingB64}' | base64 -d > "$POLY_SKILL_DIR/references/trading.md"`,
-        `echo '${polyMonitoringB64}' | base64 -d > "$POLY_SKILL_DIR/references/monitoring.md"`,
+        '# Deploy Prediction Markets skill (Polymarket + Kalshi)',
+        'PRED_SKILL_DIR="$HOME/.openclaw/skills/prediction-markets"',
+        'mkdir -p "$PRED_SKILL_DIR/references" "$PRED_SKILL_DIR/scripts" "$HOME/scripts" "$HOME/.openclaw/polymarket" "$HOME/.openclaw/prediction-markets" "$HOME/memory"',
+        `echo '${predSkillB64}' | base64 -d > "$PRED_SKILL_DIR/SKILL.md"`,
+        `echo '${polyGammaB64}' | base64 -d > "$PRED_SKILL_DIR/references/gamma-api.md"`,
+        `echo '${polyAnalysisB64}' | base64 -d > "$PRED_SKILL_DIR/references/analysis.md"`,
+        `echo '${polyTradingB64}' | base64 -d > "$PRED_SKILL_DIR/references/trading.md"`,
+        `echo '${polyMonitoringB64}' | base64 -d > "$PRED_SKILL_DIR/references/monitoring.md"`,
+        `echo '${kalshiApiB64}' | base64 -d > "$PRED_SKILL_DIR/references/kalshi-api.md"`,
+        `echo '${kalshiTradingB64}' | base64 -d > "$PRED_SKILL_DIR/references/kalshi-trading.md"`,
         `echo '${polyWalletB64}' | base64 -d > "$HOME/scripts/setup-polymarket-wallet.sh"`,
         'chmod +x "$HOME/scripts/setup-polymarket-wallet.sh"',
+        `echo '${kalshiSetupB64}' | base64 -d > "$HOME/scripts/kalshi-setup.py"`,
+        `echo '${kalshiTradeB64}' | base64 -d > "$HOME/scripts/kalshi-trade.py"`,
+        `echo '${kalshiPositionsB64}' | base64 -d > "$HOME/scripts/kalshi-positions.py"`,
+        `echo '${kalshiPortfolioB64}' | base64 -d > "$HOME/scripts/kalshi-portfolio.py"`,
+        'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py"',
+        '# Backward compat: remove old polymarket dir before symlinking',
+        'rm -rf "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
+        'ln -sfn "$PRED_SKILL_DIR" "$HOME/.openclaw/skills/polymarket"',
         '# Bootstrap pip if missing (common on minimal Ubuntu VMs)',
         'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
-        'python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets 2>/dev/null || true',
+        'python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets cryptography 2>/dev/null || true',
         ''
       );
 
-      logger.info("Polymarket prediction markets skill deployment prepared (Phase 1-3)", { route: "lib/ssh" });
+      logger.info("Prediction markets skill deployment prepared (Polymarket + Kalshi)", { route: "lib/ssh" });
     } catch (polySkillErr) {
-      // Polymarket skill deployment is non-critical — don't block VM provisioning
-      logger.warn("Polymarket skill files not found, skipping deployment", {
+      // Prediction markets skill deployment is non-critical — don't block VM provisioning
+      logger.warn("Prediction markets skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(polySkillErr),
       });

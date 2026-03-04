@@ -32,7 +32,7 @@ SKILLS=(
   "fleet-push-ecommerce-skill.sh"
   "fleet-push-video-skill.sh"
   "fleet-push-brand-skill.sh"
-  "fleet-push-polymarket-skill.sh"
+  "fleet-push-prediction-markets-skill.sh"
   "fleet-push-language-teacher-skill.sh"
 )
 
@@ -49,7 +49,7 @@ LABELS=(
   "E-Commerce & Marketplace"
   "Video Production (Remotion)"
   "Brand Asset Extraction"
-  "Prediction Markets (Polymarket)"
+  "Prediction Markets (Polymarket + Kalshi)"
   "Language Teacher"
 )
 
@@ -254,6 +254,6 @@ case "$MODE" in
     echo "  - SJINN_API_KEY (Video Production)"
     echo ""
     echo "No API keys needed (doc-only or built-in tools):"
-    echo "  - Web Search, Code Execution, Marketplace, Social Media, Video Production, Brand Extraction, Polymarket, Language Teacher"
+    echo "  - Web Search, Code Execution, Marketplace, Social Media, Video Production, Brand Extraction, Prediction Markets, Language Teacher"
     ;;
 esac
