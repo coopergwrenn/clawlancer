@@ -11,6 +11,38 @@ triggers:
   NOT: [stock market, stock price, financial analysis, crypto price, token price]
 ```
 
+## MANDATORY RULES — Read Before Anything Else
+
+These rules override everything else in this skill file. Violating them causes real financial harm.
+
+**Rule 1 — Balance Checks:** When a user asks about their wallet balance, funds, money, or whether they can trade, run this and NOTHING else:
+```bash
+python3 ~/scripts/polymarket-setup-creds.py status
+```
+This shows USDC.e, native USDC, POL gas, API creds, and approvals. Do NOT check balances with ad-hoc Python, manual RPC calls, or `eth_getBalance`. The script handles RPC failover automatically. If you only check MATIC, you will miss USDC balances and give the user wrong information.
+
+**Rule 2 — Trade Execution:** NEVER write inline Python for trading. ALL trades MUST use these scripts:
+| Action | Command |
+|--------|---------|
+| Buy | `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json` |
+| Sell | `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --json` |
+| Cancel | `python3 ~/scripts/polymarket-trade.py cancel --order-id <id> --json` |
+| Verify | `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json` |
+| Positions | `python3 ~/scripts/polymarket-positions.py list --json` |
+| Portfolio | `python3 ~/scripts/polymarket-portfolio.py summary --json` |
+| Trades | `python3 ~/scripts/polymarket-portfolio.py trades --json` |
+| P&L | `python3 ~/scripts/polymarket-positions.py pnl --json` |
+| Setup | `python3 ~/scripts/polymarket-setup-creds.py setup --json` |
+| Status | `python3 ~/scripts/polymarket-setup-creds.py status --json` |
+
+**Rule 3 — No Faking:** NEVER report a trade as executed without a real CLOB order ID. NEVER generate fake P&L tables or dashboards from memory. NEVER show portfolio data without running a script. If a script fails, report the exact error — do not make up results.
+
+**Rule 4 — No Hedging:** NEVER buy both YES and NO on the same market. That's a zero-EV hedge.
+
+**Rule 5 — Setup First:** ALWAYS run `polymarket-setup-creds.py status` before attempting ANY trade. If it shows problems (missing creds, missing approvals, wrong USDC type, no gas), tell the user what's wrong and do not proceed.
+
+---
+
 ## Overview
 
 You have access to Polymarket, the world's largest prediction market (~$1B+ monthly volume). Use this skill to browse markets, analyze probabilities, cross-reference with news, and deliver intelligence reports on global events.
@@ -472,30 +504,7 @@ Subscribe to specific markets for live price updates. See `references/monitoring
 
 ## Tier 3: Autonomous Trading (Opt-In Required)
 
-### HARD RULES — Trade Execution
-
-NEVER write inline Python for trading. ALL trades MUST use the scripts:
-
-- **Buy:** `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json`
-- **Sell:** `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --json`
-- **Cancel:** `python3 ~/scripts/polymarket-trade.py cancel --order-id <id> --json`
-- **Verify:** `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json`
-- **Positions:** `python3 ~/scripts/polymarket-positions.py list --json`
-- **Portfolio:** `python3 ~/scripts/polymarket-portfolio.py summary --json`
-- **Trades:** `python3 ~/scripts/polymarket-portfolio.py trades --json`
-- **P&L:** `python3 ~/scripts/polymarket-positions.py pnl --json`
-- **Setup:** `python3 ~/scripts/polymarket-setup-creds.py setup --json`
-- **Wallet/Balance Check:** `python3 ~/scripts/polymarket-setup-creds.py status --json`
-
-**NEVER** check wallet balances with ad-hoc Python or manual RPC calls. ALWAYS use `polymarket-setup-creds.py status` — it checks USDC.e, native USDC, POL gas, API creds, and approvals in one command. If a user asks "what's my balance?" or "do I have money?", run this script.
-**NEVER** report a trade as executed without a real CLOB order ID from `polymarket-trade.py`. If you don't have one, the trade didn't happen.
-**NEVER** show P&L without first running `polymarket-positions.py` or `polymarket-portfolio.py`.
-**NEVER** write ad-hoc Python for order placement — use the scripts.
-**NEVER** generate fake P&L tables or ASCII dashboards from memory. When a user asks to see their trades or portfolio, run `polymarket-portfolio.py` and show the real output.
-**NEVER** buy both YES and NO on the same market. That's hedging against yourself for zero expected value. Pick a side based on your research.
-**ALWAYS** run `polymarket-setup-creds.py status` before attempting ANY trade to verify the wallet is properly configured. If it fails, tell the user setup is incomplete — do not proceed to fake trades.
-If any script returns an error, report the **exact error** to the user.
-If you cannot execute a trade, say so clearly — **do not fake it**.
+> **All mandatory rules are at the top of this file.** See "MANDATORY RULES" section above.
 
 ### Safety First
 
