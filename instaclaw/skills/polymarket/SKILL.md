@@ -34,12 +34,24 @@ This shows USDC.e, native USDC, POL gas, API creds, and approvals. Do NOT check 
 | P&L | `python3 ~/scripts/polymarket-positions.py pnl --json` |
 | Setup | `python3 ~/scripts/polymarket-setup-creds.py setup --json` |
 | Status | `python3 ~/scripts/polymarket-setup-creds.py status --json` |
+| Transfer | `python3 ~/scripts/polymarket-wallet.py transfer --token usdc.e --to 0x... --amount 10 --json` |
+| Swap | `python3 ~/scripts/polymarket-wallet.py swap --from usdc --to usdc.e --amount 6.70 --json` |
 
 **Rule 3 — No Faking:** NEVER report a trade as executed without a real CLOB order ID. NEVER generate fake P&L tables or dashboards from memory. NEVER show portfolio data without running a script. If a script fails, report the exact error — do not make up results.
 
 **Rule 4 — No Hedging:** NEVER buy both YES and NO on the same market. That's a zero-EV hedge.
 
 **Rule 5 — Setup First:** ALWAYS run `polymarket-setup-creds.py status` before attempting ANY trade. If it shows problems (missing creds, missing approvals, wrong USDC type, no gas), tell the user what's wrong and do not proceed.
+
+**Rule 6 — Token Transfers:** To send tokens from the wallet, use:
+```bash
+python3 ~/scripts/polymarket-wallet.py transfer --token usdc.e --to 0x... --amount 10
+```
+To swap native USDC to USDC.e:
+```bash
+python3 ~/scripts/polymarket-wallet.py swap --from usdc --to usdc.e --amount 6.70
+```
+NEVER tell the user to do manual transfers via Polygonscan or MetaMask. Use the script.
 
 ---
 
@@ -618,6 +630,7 @@ For multi-outcome markets, each outcome has its own token ID pair. See `referenc
 | `~/scripts/polymarket-positions.py` | On-chain position verification + P&L |
 | `~/scripts/polymarket-verify.py` | Order/trade verification with real tx hashes |
 | `~/scripts/polymarket-portfolio.py` | Portfolio summary with positions, P&L, and Polygonscan tx links |
+| `~/scripts/polymarket-wallet.py` | ERC-20 transfer, balance check, and USDC/USDC.e swap |
 
 ---
 

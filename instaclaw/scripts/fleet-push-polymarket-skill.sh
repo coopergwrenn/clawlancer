@@ -63,7 +63,7 @@ deploy_to_vm() {
   echo "  Deploying to $vm_id ($user@$ip)..."
 
   local skill_md_b64 gamma_api_b64 analysis_b64 trading_b64 monitoring_b64 wallet_script_b64
-  local setup_creds_b64 trade_b64 positions_b64 verify_b64 portfolio_b64
+  local setup_creds_b64 trade_b64 positions_b64 verify_b64 portfolio_b64 wallet_py_b64
   skill_md_b64=$(base64 < "$SKILL_DIR/SKILL.md")
   gamma_api_b64=$(base64 < "$SKILL_DIR/references/gamma-api.md")
   analysis_b64=$(base64 < "$SKILL_DIR/references/analysis.md")
@@ -75,6 +75,7 @@ deploy_to_vm() {
   positions_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-positions.py")
   verify_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-verify.py")
   portfolio_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-portfolio.py")
+  wallet_py_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-wallet.py")
 
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
@@ -94,6 +95,8 @@ echo '$trade_b64' | base64 -d > "\$HOME/scripts/polymarket-trade.py"
 echo '$positions_b64' | base64 -d > "\$HOME/scripts/polymarket-positions.py"
 echo '$verify_b64' | base64 -d > "\$HOME/scripts/polymarket-verify.py"
 echo '$portfolio_b64' | base64 -d > "\$HOME/scripts/polymarket-portfolio.py"
+echo '$wallet_py_b64' | base64 -d > "\$HOME/scripts/polymarket-wallet.py"
+chmod +x "\$HOME/scripts/polymarket-wallet.py"
 chmod +x "\$HOME/scripts/polymarket-setup-creds.py"
 chmod +x "\$HOME/scripts/polymarket-trade.py"
 chmod +x "\$HOME/scripts/polymarket-positions.py"
@@ -126,6 +129,7 @@ case "$MODE" in
     echo "  scripts/polymarket-positions.py    -> ~/scripts/polymarket-positions.py"
     echo "  scripts/polymarket-verify.py       -> ~/scripts/polymarket-verify.py"
     echo "  scripts/polymarket-portfolio.py    -> ~/scripts/polymarket-portfolio.py"
+    echo "  scripts/polymarket-wallet.py       -> ~/scripts/polymarket-wallet.py"
     echo ""
     echo "Directories created:"
     echo "  ~/.openclaw/skills/polymarket/scripts"
