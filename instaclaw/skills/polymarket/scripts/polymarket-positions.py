@@ -92,10 +92,10 @@ def get_current_price_for_token(market, token_id):
 
 
 RPC_FALLBACKS = [
-    "https://api.zan.top/polygon-mainnet",
     "https://1rpc.io/matic",
-    "https://polygon-rpc.com",
     "https://polygon-bor-rpc.publicnode.com",
+    "https://api.zan.top/polygon-mainnet",
+    "https://polygon-rpc.com",
 ]
 
 

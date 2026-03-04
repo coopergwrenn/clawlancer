@@ -748,9 +748,16 @@ async function stepEnvVars(
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  // Map env var names to their values from the VM record
+  // Map env var names to their values from the VM record or manifest defaults
+  const vmRegion = (vm as VMRecord & { region?: string }).region;
   const envValues: Record<string, string | undefined> = {
     GATEWAY_TOKEN: vm.gateway_token,
+    POLYGON_RPC_URL: manifest.envVarDefaults?.POLYGON_RPC_URL,
+    AGENT_REGION: vmRegion ?? undefined,
+    // CLOB_PROXY_URL only for US-region VMs
+    ...(vmRegion?.startsWith("us-") || vmRegion?.startsWith("nyc")
+      ? { CLOB_PROXY_URL: manifest.envVarDefaults?.CLOB_PROXY_URL }
+      : {}),
   };
 
   for (const envName of manifest.requiredEnvVars) {

@@ -26,6 +26,7 @@ export interface VMRecord {
   ssh_port: number;
   ssh_user: string;
   assigned_to?: string;
+  region?: string;
 }
 
 interface UserConfig {
@@ -1900,7 +1901,7 @@ export async function configureOpenClaw(
     }
 
     // Build the complete openclaw.json as a single JSON object
-    const braveKey = config.braveApiKey || process.env.BRAVE_API_KEY;
+    const braveKey = config.braveApiKey || process.env.BRAVE_SEARCH_API_KEY;
     const ocConfig = buildOpenClawConfig(config, gatewayToken, proxyBaseUrl, openclawModel, braveKey);
     const ocConfigB64 = Buffer.from(JSON.stringify(ocConfig, null, 2), "utf-8").toString("base64");
 
@@ -1956,6 +1957,34 @@ export async function configureOpenClaw(
       '  echo "GATEWAY_TOKEN=$GT_KEY" >> "$HOME/.openclaw/.env"',
       ''
     );
+
+    // Deploy POLYGON_RPC_URL — reliable Polygon RPC for Polymarket scripts
+    scriptParts.push(
+      '# Deploy POLYGON_RPC_URL for Polymarket',
+      'grep -q "^POLYGON_RPC_URL=" "$HOME/.openclaw/.env" 2>/dev/null || \\',
+      '  echo "POLYGON_RPC_URL=https://1rpc.io/matic" >> "$HOME/.openclaw/.env"',
+      ''
+    );
+
+    // Deploy AGENT_REGION if available
+    if (vm.region) {
+      scriptParts.push(
+        '# Deploy AGENT_REGION',
+        `grep -q "^AGENT_REGION=" "$HOME/.openclaw/.env" 2>/dev/null || \\`,
+        `  echo "AGENT_REGION=${vm.region}" >> "$HOME/.openclaw/.env"`,
+        ''
+      );
+    }
+
+    // Deploy CLOB_PROXY_URL for US-region VMs
+    if (vm.region?.startsWith("us-") || vm.region?.startsWith("nyc")) {
+      scriptParts.push(
+        '# Deploy CLOB_PROXY_URL for US-region VM',
+        'grep -q "^CLOB_PROXY_URL=" "$HOME/.openclaw/.env" 2>/dev/null || \\',
+        '  echo "CLOB_PROXY_URL=http://172.105.22.90:8080" >> "$HOME/.openclaw/.env"',
+        ''
+      );
+    }
 
     // Install Clawlancer MCP tools via mcporter
     // mcporter is pre-installed globally on all VMs. Here we:
@@ -2201,7 +2230,7 @@ export async function configureOpenClaw(
       );
 
       // Deploy ElevenLabs API key to VM .env if available
-      const elevenlabsKey = config.elevenlabsApiKey || (config.apiMode === "all_inclusive" ? process.env.ELEVENLABS_API_KEY : undefined);
+      const elevenlabsKey = config.elevenlabsApiKey || process.env.ELEVENLABS_API_KEY;
       if (elevenlabsKey) {
         // Use base64 to avoid shell injection from special characters in the key
         const elevenlabsKeyB64 = Buffer.from(elevenlabsKey, "utf-8").toString("base64");

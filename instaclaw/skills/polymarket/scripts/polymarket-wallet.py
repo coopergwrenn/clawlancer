@@ -32,10 +32,10 @@ ENV_FILE = Path.home() / ".openclaw" / ".env"
 CHAIN_ID = 137  # Polygon mainnet
 
 RPC_FALLBACKS = [
-    "https://api.zan.top/polygon-mainnet",
     "https://1rpc.io/matic",
-    "https://polygon-rpc.com",
     "https://polygon-bor-rpc.publicnode.com",
+    "https://api.zan.top/polygon-mainnet",
+    "https://polygon-rpc.com",
 ]
 
 # Contract addresses (Polygon mainnet)

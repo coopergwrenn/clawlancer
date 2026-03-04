@@ -48,10 +48,10 @@ USDC_NATIVE = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"   # Native — NOT us
 ENV_FILE = Path.home() / ".openclaw" / ".env"
 
 RPC_FALLBACKS = [
-    "https://api.zan.top/polygon-mainnet",
     "https://1rpc.io/matic",
-    "https://polygon-rpc.com",
     "https://polygon-bor-rpc.publicnode.com",
+    "https://api.zan.top/polygon-mainnet",
+    "https://polygon-rpc.com",
 ]
 
 # ---------------------------------------------------------------------------
