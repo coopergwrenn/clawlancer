@@ -95,7 +95,7 @@ def sign_request(api_key_id, private_key_pem, method, path):
 
 def kalshi_request(api_key_id, private_key_pem, method, endpoint, body=None):
     """Make an authenticated request to the Kalshi API."""
-    path = f"/trade-api/v2{endpoint}"
+    path = f"/trade-api/v2{endpoint.split('?')[0]}"
     url = f"{KALSHI_BASE_URL}{endpoint}"
 
     headers, err = sign_request(api_key_id, private_key_pem, method, path)

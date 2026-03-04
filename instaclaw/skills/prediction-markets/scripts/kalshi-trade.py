@@ -83,7 +83,7 @@ def _sign_request(api_key_id, private_key_pem, method, path):
 def kalshi_request(creds, method, endpoint, body=None):
     import urllib.request, urllib.error
     base = "https://trading-api.kalshi.com/trade-api/v2"
-    path = f"/trade-api/v2{endpoint}"
+    path = f"/trade-api/v2{endpoint.split('?')[0]}"
     url = f"{base}{endpoint}"
 
     headers = _sign_request(creds["api_key_id"], creds["private_key_pem"], method, path)
