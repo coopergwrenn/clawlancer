@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { toggleSkillDir, toggleMcpServer, installAgdpSkill, uninstallAgdpSkill } from "@/lib/ssh";
+import { toggleSkillDir, toggleMcpServer, installAgdpSkill, uninstallAgdpSkill, installSolanaDefiSkill, uninstallSolanaDefiSkill } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
-// SSH + gateway restart can take up to 15s
-export const maxDuration = 30;
+// SSH + gateway restart + pip install can take up to 45s
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -142,6 +142,74 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json(
           { error: `Virtuals toggle failed: ${String(agdpErr).slice(0, 200)}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // ── Special case: Solana DeFi uses install/uninstall (wallet generation on enable) ──
+    if (skill.slug === "solana-defi") {
+      try {
+        if (enabled) {
+          const solResult = await installSolanaDefiSkill(vm);
+
+          // Save wallet address + enabled flag to instaclaw_vms
+          const dbUpdate: Record<string, unknown> = { solana_defi_enabled: true };
+          if (solResult.walletAddress) {
+            dbUpdate.solana_wallet_address = solResult.walletAddress;
+          }
+          await supabase.from("instaclaw_vms").update(dbUpdate).eq("id", vm.id);
+
+          // Update vm_skills state
+          await supabase
+            .from("instaclaw_vm_skills")
+            .update({ enabled: true })
+            .eq("vm_id", vm.id)
+            .eq("skill_id", skill.id);
+
+          logger.info("Skill toggled (Solana DeFi install)", {
+            slug: skill.slug,
+            enabled,
+            walletAddress: solResult.walletAddress,
+            vmId: vm.id,
+            userId: session.user.id,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({
+            success: true,
+            restarted: true,
+            walletAddress: solResult.walletAddress,
+          });
+        } else {
+          await uninstallSolanaDefiSkill(vm);
+
+          await supabase.from("instaclaw_vms").update({ solana_defi_enabled: false }).eq("id", vm.id);
+          await supabase
+            .from("instaclaw_vm_skills")
+            .update({ enabled: false })
+            .eq("vm_id", vm.id)
+            .eq("skill_id", skill.id);
+
+          logger.info("Skill toggled (Solana DeFi uninstall)", {
+            slug: skill.slug,
+            enabled,
+            vmId: vm.id,
+            userId: session.user.id,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({ success: true, restarted: true });
+        }
+      } catch (solErr) {
+        logger.error("Solana DeFi toggle failed", {
+          vmId: vm.id,
+          enabled,
+          error: String(solErr),
+          route: "api/skills/toggle",
+        });
+        return NextResponse.json(
+          { error: `Solana DeFi toggle failed: ${String(solErr).slice(0, 200)}` },
           { status: 500 }
         );
       }

@@ -3,7 +3,7 @@
 // Imported by ssh.ts for system prompt augmentation and workspace file deployment.
 
 /** Bump this when intelligence content changes. Matches CONFIG_SPEC.version. */
-export const INTELLIGENCE_VERSION = "3.6";
+export const INTELLIGENCE_VERSION = "3.7";
 
 /** Sentinel markers for idempotent append to system-prompt.md */
 export const INTELLIGENCE_MARKER_START = "<!-- INTELLIGENCE_V2_START -->";
@@ -161,6 +161,7 @@ Each capability in CAPABILITIES.md is tagged **(MCP)** or **(Skill)**:
 | motion-graphics | ~/.openclaw/skills/motion-graphics/SKILL.md |
 | prediction-markets | ~/.openclaw/skills/prediction-markets/SKILL.md |
 | language-teacher | ~/.openclaw/skills/language-teacher/SKILL.md |
+| solana-defi | ~/.openclaw/skills/solana-defi/SKILL.md |
 
 ## 1J-3 — Motion Graphics vs The Director (Video Routing)
 
@@ -391,6 +392,7 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 - **Financial Analysis** (Skill: financial-analysis) — Real-time stock/crypto/forex quotes, 50+ technical indicators, options chains, charts
 - **Competitive Intelligence** (Skill: competitive-intelligence) — Monitor competitors (pricing, features, hiring), daily digests, alerts
 - **Prediction Markets** (Skill: prediction-markets) — Polymarket + Kalshi trading via installed scripts. ALWAYS run scripts in ~/scripts/ — NEVER improvise or ask for API keys.
+- **Solana DeFi Trading** (Skill: solana-defi) — Trade tokens on Solana via Jupiter & PumpPortal. Auto-provisioned wallet. ALWAYS use ~/scripts/ — max 3 retries, never dump raw output.
 
 ### Communication & Content
 - **Email** (Skill: email-outreach) — Send from your @instaclaw.io address, safety checks, digest generation
@@ -627,6 +629,36 @@ Your agent's built-in creative director. Describe any scene, ad, or content idea
 → Skills: prediction-markets
 → Reference: ~/.openclaw/skills/prediction-markets/references/gamma-api.md, ~/.openclaw/skills/prediction-markets/references/analysis.md, ~/.openclaw/skills/prediction-markets/references/trading.md, ~/.openclaw/skills/prediction-markets/references/monitoring.md, ~/.openclaw/skills/prediction-markets/references/kalshi-api.md, ~/.openclaw/skills/prediction-markets/references/kalshi-trading.md
 → Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json, ~/.openclaw/prediction-markets/kalshi-creds.json, ~/.openclaw/prediction-markets/kalshi-risk-config.json
+
+## ◎ SOLANA DEFI TRADING (Skill: solana-defi)
+
+⚡ CRITICAL: You have Solana trading scripts ALREADY INSTALLED at ~/scripts/. ALWAYS use them.
+⚡ NEVER raw-dog curl calls to Jupiter or PumpPortal. NEVER write ad-hoc code for trading.
+⚡ Maximum 3 retries per operation. NEVER dump raw API responses — always summarize.
+
+### Quick Command Reference:
+- **Check balance:** \`python3 ~/scripts/solana-balance.py check --json\`
+- **SOL only:** \`python3 ~/scripts/solana-balance.py sol --json\`
+- **Buy token:** \`python3 ~/scripts/solana-trade.py buy --mint <MINT> --amount 0.1 --json\`
+- **Sell token:** \`python3 ~/scripts/solana-trade.py sell --mint <MINT> --amount ALL --json\`
+- **Get quote:** \`python3 ~/scripts/solana-trade.py quote --input SOL --output <MINT> --amount 0.1 --json\`
+- **Portfolio:** \`python3 ~/scripts/solana-positions.py summary --json\`
+- **Token price:** \`python3 ~/scripts/solana-balance.py price --mint <MINT> --json\`
+- **Snipe pump.fun:** \`python3 ~/scripts/solana-snipe.py buy --mint <MINT> --amount 0.05 --json\`
+- **Watch launches:** \`python3 ~/scripts/solana-snipe.py watch --min-sol 5 --json\`
+
+### Capabilities:
+✅ Trade any SPL token via Jupiter V6 (best-route aggregator)
+✅ Snipe pump.fun launches via PumpPortal
+✅ Portfolio tracking with P&L via DexScreener
+✅ Auto-provisioned Solana wallet per agent
+⚠️ Requires enabling + funding — wallet starts empty
+⚠️ Default limits: 0.1 SOL max/trade, 0.5 SOL daily loss limit
+⚠️ ALWAYS confirm with user before executing trades (unless auto-trade enabled)
+
+→ Skills: solana-defi
+→ Reference: ~/.openclaw/skills/solana-defi/references/jupiter-api.md, ~/.openclaw/skills/solana-defi/references/pumpportal-api.md, ~/.openclaw/skills/solana-defi/references/dexscreener-api.md, ~/.openclaw/skills/solana-defi/references/solana-rpc.md, ~/.openclaw/skills/solana-defi/references/safety-patterns.md
+→ Config: ~/.openclaw/.env (SOLANA_PRIVATE_KEY, SOLANA_WALLET_ADDRESS, SOLANA_RPC_URL), ~/.openclaw/solana-defi/config.json
 
 ## 🗣️ LANGUAGE TEACHER (Skill: language-teacher)
 ✅ Learn any language — personalized lessons, quizzes, conversation practice, stories

@@ -78,6 +78,13 @@ export default function SkillsPage() {
   const [shopifyDomain, setShopifyDomain] = useState("");
   const [shopifyToken, setShopifyToken] = useState("");
 
+  // Solana DeFi state
+  const [solanaWallet, setSolanaWallet] = useState<string | null>(null);
+  const [solanaBalance, setSolanaBalance] = useState<number | null>(null);
+  const [solanaBalanceLoading, setSolanaBalanceLoading] = useState(false);
+  const [solanaImportModal, setSolanaImportModal] = useState(false);
+  const [solanaImportKey, setSolanaImportKey] = useState("");
+
   const showToast = useCallback(
     (message: string, type: "success" | "error") => {
       setToast({ message, type });
@@ -151,6 +158,15 @@ export default function SkillsPage() {
         const verb = !skill.enabled ? "enabled" : "disabled";
         const suffix = data.restarted ? " — agent restarting" : "";
         showToast(`${skill.name} ${verb}${suffix}`, "success");
+        // Capture Solana wallet address from toggle response
+        if (skill.slug === "solana-defi" && data.walletAddress) {
+          setSolanaWallet(data.walletAddress);
+          setSolanaBalance(0);
+        }
+        if (skill.slug === "solana-defi" && !skill.enabled === false) {
+          setSolanaWallet(null);
+          setSolanaBalance(null);
+        }
         fetchSkills();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -227,6 +243,59 @@ export default function SkillsPage() {
       setConnectingSlug(null);
     }
   }
+
+  // ── Solana DeFi helpers ──
+
+  const fetchSolanaBalance = useCallback(async () => {
+    setSolanaBalanceLoading(true);
+    try {
+      const res = await fetch("/api/skills/solana-defi/balance", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setSolanaBalance(data.sol ?? 0);
+        if (data.address) setSolanaWallet(data.address);
+      }
+    } catch {
+      // silent
+    } finally {
+      setSolanaBalanceLoading(false);
+    }
+  }, []);
+
+  async function handleSolanaImport() {
+    if (!solanaImportKey.trim()) return;
+    setConnectingSlug("solana-defi");
+    try {
+      const res = await fetch("/api/skills/solana-defi/import-wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ privateKey: solanaImportKey.trim() }),
+      });
+      const data = await res.json();
+      if (data.success && data.walletAddress) {
+        setSolanaWallet(data.walletAddress);
+        setSolanaImportModal(false);
+        setSolanaImportKey("");
+        showToast("Wallet imported", "success");
+        fetchSolanaBalance();
+      } else {
+        showToast(data.error || "Import failed", "error");
+      }
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setConnectingSlug(null);
+    }
+  }
+
+  // Fetch Solana balance when skill is enabled
+  useEffect(() => {
+    const allSkills = Object.values(skills).flat();
+    const solanaSkill = allSkills.find((s) => s.slug === "solana-defi" && s.enabled);
+    if (solanaSkill) {
+      fetchSolanaBalance();
+    }
+  }, [skills, fetchSolanaBalance]);
 
   async function handleDisconnect(skill: Skill) {
     if (disconnectingSlug) return;
@@ -381,6 +450,73 @@ export default function SkillsPage() {
                   toggling={togglingSlug === skill.slug}
                   onToggle={() => handleToggle(skill)}
                 />
+                {/* Solana DeFi wallet panel — shown when enabled */}
+                {skill.slug === "solana-defi" && skill.enabled && (
+                  <div
+                    className="glass rounded-xl p-4 mt-2"
+                    style={{ border: "1px solid var(--border)" }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+                        Agent Wallet
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => fetchSolanaBalance()}
+                          disabled={solanaBalanceLoading}
+                          className="text-xs px-2 py-0.5 rounded cursor-pointer"
+                          style={{ color: "var(--accent)", opacity: solanaBalanceLoading ? 0.5 : 1 }}
+                        >
+                          {solanaBalanceLoading ? <RotateCw className="w-3 h-3 animate-spin inline" /> : "Refresh"}
+                        </button>
+                      </div>
+                    </div>
+                    {solanaWallet ? (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <code className="text-xs font-mono truncate" style={{ color: "var(--foreground)" }}>
+                            {solanaWallet.slice(0, 6)}...{solanaWallet.slice(-4)}
+                          </code>
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(solanaWallet); showToast("Address copied", "success"); }}
+                            className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer"
+                            style={{ background: "rgba(255,255,255,0.05)", color: "var(--muted)" }}
+                          >
+                            Copy
+                          </button>
+                          <a
+                            href={`https://solscan.io/account/${solanaWallet}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] underline"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            Solscan
+                          </a>
+                        </div>
+                        <p className="text-xs mb-2" style={{ color: "var(--foreground)" }}>
+                          Balance: {solanaBalance !== null ? `${solanaBalance.toFixed(4)} SOL` : "..."}
+                        </p>
+                        {solanaBalance === 0 && (
+                          <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>
+                            Fund your agent — send SOL to this address from Phantom, Coinbase, or any wallet.
+                          </p>
+                        )}
+                        <button
+                          onClick={() => setSolanaImportModal(true)}
+                          className="text-[11px] underline cursor-pointer"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          Import existing wallet
+                        </button>
+                      </>
+                    ) : (
+                      <p className="text-xs" style={{ color: "var(--muted)" }}>
+                        Wallet generating...
+                      </p>
+                    )}
+                  </div>
+                )}
               </motion.div>
             ))}
           </AnimatePresence>
@@ -552,6 +688,99 @@ export default function SkillsPage() {
                     </span>
                   ) : (
                     "Connect"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Solana wallet import modal ── */}
+      <AnimatePresence>
+        {solanaImportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSolanaImportModal(false);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="glass rounded-2xl p-6 w-full max-w-md space-y-4"
+              style={{
+                border: "1px solid var(--border)",
+                background: "var(--card)",
+                boxShadow: "0 16px 64px rgba(0,0,0,0.2)",
+              }}
+            >
+              <div>
+                <h3
+                  className="text-lg font-normal tracking-[-0.3px]"
+                  style={{ fontFamily: "var(--font-serif)" }}
+                >
+                  Import Solana Wallet
+                </h3>
+                <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                  Replace your agent&apos;s wallet with an existing Solana keypair. Make sure to
+                  transfer any remaining funds from the current wallet first.
+                </p>
+              </div>
+              <div>
+                <label
+                  className="text-xs font-medium block mb-1"
+                  style={{ color: "var(--muted)" }}
+                >
+                  Private key (base58)
+                </label>
+                <input
+                  type="password"
+                  value={solanaImportKey}
+                  onChange={(e) => setSolanaImportKey(e.target.value)}
+                  placeholder="Base58-encoded private key..."
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                  style={{
+                    background: "rgba(0,0,0,0.04)",
+                    border: "1px solid var(--border)",
+                    color: "var(--foreground)",
+                  }}
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => { setSolanaImportModal(false); setSolanaImportKey(""); }}
+                  className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                    color: "#000",
+                    boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSolanaImport}
+                  disabled={!solanaImportKey.trim() || connectingSlug === "solana-defi"}
+                  className="px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
+                    color: "#fff",
+                    boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  {connectingSlug === "solana-defi" ? (
+                    <span className="flex items-center gap-1.5">
+                      <RotateCw className="w-3 h-3 animate-spin" />
+                      Importing...
+                    </span>
+                  ) : (
+                    "Import"
                   )}
                 </button>
               </div>

@@ -2788,6 +2788,64 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Solana DeFi Trading skill (Skill 15) ──
+    // Scripts-based trading via Jupiter V6, PumpPortal, DexScreener.
+    // Skill starts disabled — user opts in via dashboard toggle which generates wallet.
+    try {
+      const solSkillDir = path.join(process.cwd(), "skills", "solana-defi");
+      const solSkillMd = fs.readFileSync(path.join(solSkillDir, "SKILL.md"), "utf-8");
+      const solJupiterApi = fs.readFileSync(path.join(solSkillDir, "references", "jupiter-api.md"), "utf-8");
+      const solPumpportalApi = fs.readFileSync(path.join(solSkillDir, "references", "pumpportal-api.md"), "utf-8");
+      const solDexscreenerApi = fs.readFileSync(path.join(solSkillDir, "references", "dexscreener-api.md"), "utf-8");
+      const solSolanaRpc = fs.readFileSync(path.join(solSkillDir, "references", "solana-rpc.md"), "utf-8");
+      const solSafetyPatterns = fs.readFileSync(path.join(solSkillDir, "references", "safety-patterns.md"), "utf-8");
+      const solSetupWallet = fs.readFileSync(path.join(solSkillDir, "scripts", "setup-solana-wallet.py"), "utf-8");
+      const solTrade = fs.readFileSync(path.join(solSkillDir, "scripts", "solana-trade.py"), "utf-8");
+      const solBalance = fs.readFileSync(path.join(solSkillDir, "scripts", "solana-balance.py"), "utf-8");
+      const solPositions = fs.readFileSync(path.join(solSkillDir, "scripts", "solana-positions.py"), "utf-8");
+      const solSnipe = fs.readFileSync(path.join(solSkillDir, "scripts", "solana-snipe.py"), "utf-8");
+
+      const solSkillB64 = Buffer.from(solSkillMd, "utf-8").toString("base64");
+      const solJupiterB64 = Buffer.from(solJupiterApi, "utf-8").toString("base64");
+      const solPumpportalB64 = Buffer.from(solPumpportalApi, "utf-8").toString("base64");
+      const solDexscreenerB64 = Buffer.from(solDexscreenerApi, "utf-8").toString("base64");
+      const solSolanaRpcB64 = Buffer.from(solSolanaRpc, "utf-8").toString("base64");
+      const solSafetyB64 = Buffer.from(solSafetyPatterns, "utf-8").toString("base64");
+      const solSetupWalletB64 = Buffer.from(solSetupWallet, "utf-8").toString("base64");
+      const solTradeB64 = Buffer.from(solTrade, "utf-8").toString("base64");
+      const solBalanceB64 = Buffer.from(solBalance, "utf-8").toString("base64");
+      const solPositionsB64 = Buffer.from(solPositions, "utf-8").toString("base64");
+      const solSnipeB64 = Buffer.from(solSnipe, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy Solana DeFi Trading skill (Skill 15) — starts DISABLED',
+        'SOL_SKILL_DIR="$HOME/.openclaw/skills/solana-defi.disabled"',
+        'mkdir -p "$SOL_SKILL_DIR/references" "$HOME/scripts" "$HOME/.openclaw/solana-defi"',
+        `echo '${solSkillB64}' | base64 -d > "$SOL_SKILL_DIR/SKILL.md"`,
+        `echo '${solJupiterB64}' | base64 -d > "$SOL_SKILL_DIR/references/jupiter-api.md"`,
+        `echo '${solPumpportalB64}' | base64 -d > "$SOL_SKILL_DIR/references/pumpportal-api.md"`,
+        `echo '${solDexscreenerB64}' | base64 -d > "$SOL_SKILL_DIR/references/dexscreener-api.md"`,
+        `echo '${solSolanaRpcB64}' | base64 -d > "$SOL_SKILL_DIR/references/solana-rpc.md"`,
+        `echo '${solSafetyB64}' | base64 -d > "$SOL_SKILL_DIR/references/safety-patterns.md"`,
+        `echo '${solSetupWalletB64}' | base64 -d > "$HOME/scripts/setup-solana-wallet.py"`,
+        `echo '${solTradeB64}' | base64 -d > "$HOME/scripts/solana-trade.py"`,
+        `echo '${solBalanceB64}' | base64 -d > "$HOME/scripts/solana-balance.py"`,
+        `echo '${solPositionsB64}' | base64 -d > "$HOME/scripts/solana-positions.py"`,
+        `echo '${solSnipeB64}' | base64 -d > "$HOME/scripts/solana-snipe.py"`,
+        'chmod +x "$HOME/scripts/setup-solana-wallet.py" "$HOME/scripts/solana-trade.py" "$HOME/scripts/solana-balance.py" "$HOME/scripts/solana-positions.py" "$HOME/scripts/solana-snipe.py"',
+        '# Install Python deps for Solana trading',
+        'python3 -m pip install --quiet --break-system-packages solders base58 httpx 2>/dev/null || true',
+        ''
+      );
+
+      logger.info("Solana DeFi Trading skill deployment prepared (Skill 15)", { route: "lib/ssh" });
+    } catch (solSkillErr) {
+      logger.warn("Solana DeFi Trading skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(solSkillErr),
+      });
+    }
+
     // ── Deploy X/Twitter Search skill ──
     // Doc-only skill — uses built-in web_search (Brave) with site:x.com filters.
     try {
@@ -5493,6 +5551,162 @@ export async function uninstallAgdpSkill(vm: VMRecord): Promise<void> {
     if (result.code !== 0 || !result.stdout.includes("AGDP_UNINSTALL_DONE")) {
       logger.error("aGDP uninstall failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
       throw new Error(`aGDP uninstall failed: ${result.stderr || result.stdout}`);
+    }
+  } finally {
+    ssh.dispose();
+  }
+}
+
+// ── Solana DeFi Trading skill install/uninstall ──
+
+export interface SolanaInstallResult {
+  walletAddress: string;
+}
+
+/**
+ * Install Solana DeFi Trading skill on a VM.
+ * Generates a wallet (idempotent), deploys scripts, enables skill dir, restarts gateway.
+ */
+export async function installSolanaDefiSkill(vm: VMRecord): Promise<SolanaInstallResult> {
+  const ssh = await connectSSH(vm);
+  try {
+    // Read and base64-encode all skill files
+    const solSkillDir = path.join(process.cwd(), "skills", "solana-defi");
+    const files: Array<{ localPath: string; remotePath: string; executable?: boolean }> = [
+      { localPath: path.join(solSkillDir, "SKILL.md"), remotePath: "$SOL_SKILL_DIR/SKILL.md" },
+      { localPath: path.join(solSkillDir, "references", "jupiter-api.md"), remotePath: "$SOL_SKILL_DIR/references/jupiter-api.md" },
+      { localPath: path.join(solSkillDir, "references", "pumpportal-api.md"), remotePath: "$SOL_SKILL_DIR/references/pumpportal-api.md" },
+      { localPath: path.join(solSkillDir, "references", "dexscreener-api.md"), remotePath: "$SOL_SKILL_DIR/references/dexscreener-api.md" },
+      { localPath: path.join(solSkillDir, "references", "solana-rpc.md"), remotePath: "$SOL_SKILL_DIR/references/solana-rpc.md" },
+      { localPath: path.join(solSkillDir, "references", "safety-patterns.md"), remotePath: "$SOL_SKILL_DIR/references/safety-patterns.md" },
+      { localPath: path.join(solSkillDir, "scripts", "setup-solana-wallet.py"), remotePath: "$HOME/scripts/setup-solana-wallet.py", executable: true },
+      { localPath: path.join(solSkillDir, "scripts", "solana-trade.py"), remotePath: "$HOME/scripts/solana-trade.py", executable: true },
+      { localPath: path.join(solSkillDir, "scripts", "solana-balance.py"), remotePath: "$HOME/scripts/solana-balance.py", executable: true },
+      { localPath: path.join(solSkillDir, "scripts", "solana-positions.py"), remotePath: "$HOME/scripts/solana-positions.py", executable: true },
+      { localPath: path.join(solSkillDir, "scripts", "solana-snipe.py"), remotePath: "$HOME/scripts/solana-snipe.py", executable: true },
+    ];
+
+    const deployLines: string[] = [];
+    const chmodTargets: string[] = [];
+    for (const f of files) {
+      const content = fs.readFileSync(f.localPath, "utf-8");
+      const b64 = Buffer.from(content, "utf-8").toString("base64");
+      deployLines.push(`echo '${b64}' | base64 -d > "${f.remotePath}"`);
+      if (f.executable) chmodTargets.push(`"${f.remotePath}"`);
+    }
+
+    const script = [
+      '#!/bin/bash',
+      'set -o pipefail',
+      NVM_PREAMBLE,
+      '',
+      'echo "STEP:start"',
+      '',
+      '# Ensure directories exist',
+      'SOL_SKILL_DIR="$HOME/.openclaw/skills/solana-defi"',
+      'mkdir -p "$SOL_SKILL_DIR/references" "$HOME/scripts" "$HOME/.openclaw/solana-defi"',
+      '',
+      '# Remove .disabled version if it exists (we are enabling)',
+      'if [ -d "$SOL_SKILL_DIR.disabled" ]; then',
+      '  rm -rf "$SOL_SKILL_DIR.disabled"',
+      'fi',
+      'echo "STEP:dirs_ready"',
+      '',
+      '# Deploy skill files',
+      ...deployLines,
+      `chmod +x ${chmodTargets.join(' ')}`,
+      'echo "STEP:files_deployed"',
+      '',
+      '# Install Python deps',
+      'python3 -m pip install --quiet --break-system-packages solders base58 httpx 2>/dev/null || true',
+      'echo "STEP:deps_installed"',
+      '',
+      '# Generate wallet (idempotent — skips if SOLANA_PRIVATE_KEY exists in .env)',
+      'WALLET_OUTPUT=$(python3 "$HOME/scripts/setup-solana-wallet.py" generate --json 2>&1)',
+      'echo "WALLET_OUTPUT=$WALLET_OUTPUT"',
+      'echo "STEP:wallet_done"',
+      '',
+      '# Restart gateway',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'sleep 2',
+      'systemctl --user start openclaw-gateway 2>/dev/null || true',
+      'sleep 3',
+      'echo "STEP:gateway_restarted"',
+      '',
+      'echo "SOLANA_INSTALL_DONE"',
+    ].join('\n');
+
+    await ssh.execCommand(`cat > /tmp/ic-solana-install.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-solana-install.sh; EC=$?; rm -f /tmp/ic-solana-install.sh; exit $EC');
+
+    const completedSteps = (result.stdout.match(/STEP:\w+/g) || []).map((s: string) => s.replace("STEP:", ""));
+    const lastStep = completedSteps[completedSteps.length - 1] || "none";
+
+    if (result.code !== 0 || !result.stdout.includes("SOLANA_INSTALL_DONE")) {
+      logger.error("Solana DeFi install failed", {
+        error: result.stderr,
+        stdout: result.stdout.slice(-500),
+        lastStep,
+        completedSteps,
+        exitCode: result.code,
+        route: "lib/ssh",
+      });
+      throw new Error(`Solana DeFi install failed at step "${lastStep}" (exit ${result.code}). stderr: ${result.stderr?.slice(-400) || "none"}`);
+    }
+    logger.info("Solana DeFi install succeeded", { completedSteps, route: "lib/ssh" });
+
+    // Parse wallet address from output
+    const walletMatch = result.stdout.match(/WALLET_OUTPUT=(.+)/);
+    let walletAddress = "";
+    if (walletMatch) {
+      try {
+        const walletData = JSON.parse(walletMatch[1]);
+        walletAddress = walletData.address || "";
+      } catch {
+        walletAddress = walletMatch[1].trim();
+      }
+    }
+
+    return { walletAddress };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Uninstall Solana DeFi Trading skill from a VM.
+ * Renames skill dir to .disabled, restarts gateway.
+ * Does NOT delete wallet or scripts — preserves funds.
+ */
+export async function uninstallSolanaDefiSkill(vm: VMRecord): Promise<void> {
+  const ssh = await connectSSH(vm);
+  try {
+    const script = [
+      '#!/bin/bash',
+      'set -eo pipefail',
+      NVM_PREAMBLE,
+      '',
+      '# Disable skill dir (rename to .disabled)',
+      'SOL_SKILL_DIR="$HOME/.openclaw/skills/solana-defi"',
+      'if [ -d "$SOL_SKILL_DIR" ]; then',
+      '  mv "$SOL_SKILL_DIR" "$SOL_SKILL_DIR.disabled"',
+      'fi',
+      '',
+      '# Restart gateway',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'sleep 2',
+      'systemctl --user start openclaw-gateway 2>/dev/null || true',
+      'sleep 3',
+      '',
+      'echo "SOLANA_UNINSTALL_DONE"',
+    ].join('\n');
+
+    await ssh.execCommand(`cat > /tmp/ic-solana-uninstall.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-solana-uninstall.sh; EC=$?; rm -f /tmp/ic-solana-uninstall.sh; exit $EC');
+
+    if (result.code !== 0 || !result.stdout.includes("SOLANA_UNINSTALL_DONE")) {
+      logger.error("Solana DeFi uninstall failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
+      throw new Error(`Solana DeFi uninstall failed: ${result.stderr || result.stdout}`);
     }
   } finally {
     ssh.dispose();
