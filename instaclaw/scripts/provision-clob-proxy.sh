@@ -4,8 +4,10 @@
 # to serve as an nginx reverse proxy for Polymarket CLOB API traffic.
 #
 # US-based VMs are geoblocked on CLOB write endpoints (POST /order → 403).
-# This proxy sits in Canada and forwards CLOB requests, authenticated by a
-# secret path token embedded in the host URL.
+# This proxy sits in Canada and forwards CLOB requests transparently.
+# Security: UFW IP whitelist restricts port 8080 to known VM IPs only.
+# IMPORTANT: underscores_in_headers must be ON — py_clob_client uses
+# POLY_ADDRESS, POLY_SIGNATURE etc. headers which nginx drops by default.
 #
 # Usage:
 #   ./scripts/provision-clob-proxy.sh           # Provision and print proxy URL
@@ -43,9 +45,6 @@ NANODE_REGION="ca-central"
 NANODE_IMAGE="linode/ubuntu24.04"
 NANODE_LABEL="instaclaw-clob-proxy"
 
-# Generate a random secret token for path-based auth
-SECRET_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(24))")
-
 # Build cloud-init user_data that installs nginx and configures the reverse proxy
 CLOUD_INIT=$(cat <<CLOUDINIT_EOF
 #!/bin/bash
@@ -57,22 +56,25 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq nginx ufw
 
-# Configure UFW
+# Configure UFW — only SSH open by default; port 8080 is restricted to VM IPs
+# VM IPs are added post-provision via fleet scripts
 ufw allow 22/tcp
-ufw allow 8080/tcp
 ufw --force enable
 
 # Harden SSH
 sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
 systemctl restart ssh
 
-# Write nginx config
+# CRITICAL: Allow underscore headers — py_clob_client uses POLY_ADDRESS,
+# POLY_SIGNATURE, POLY_TIMESTAMP, POLY_NONCE headers which nginx drops by default
+sed -i '/http {/a\    underscores_in_headers on;' /etc/nginx/nginx.conf
+
+# Write nginx config — transparent proxy, no path prefix
 cat > /etc/nginx/sites-available/clob-proxy <<'NGINX_EOF'
 server {
     listen 8080;
 
-    location /${SECRET_TOKEN}/ {
-        rewrite ^/${SECRET_TOKEN}(/.*)$ \$1 break;
+    location / {
         proxy_pass https://clob.polymarket.com;
         proxy_set_header Host clob.polymarket.com;
         proxy_ssl_server_name on;
@@ -80,10 +82,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_connect_timeout 10s;
         proxy_read_timeout 120s;
-    }
-
-    location / {
-        return 403 "Unauthorized";
+        proxy_buffering off;
     }
 }
 NGINX_EOF
@@ -113,9 +112,10 @@ if [ "$MODE" = "--dry-run" ]; then
   echo "Cloud-init installs:"
   echo "  - nginx (reverse proxy to clob.polymarket.com)"
   echo "  - UFW (ports 22, 8080 only)"
-  echo "  - Path-based token auth (secret token in URL path)"
+  echo "  - UFW IP whitelist (VM IPs added post-provision)"
+  echo "  - underscores_in_headers on (for POLY_* headers)"
   echo ""
-  echo "Output: CLOB_PROXY_URL=http://<IP>:8080/<TOKEN>"
+  echo "Output: CLOB_PROXY_URL=http://<IP>:8080"
   echo ""
   echo "Run without --dry-run to provision."
   exit 0
@@ -197,7 +197,7 @@ if [ -z "$IP" ]; then
   exit 1
 fi
 
-PROXY_URL="http://${IP}:8080/${SECRET_TOKEN}"
+PROXY_URL="http://${IP}:8080"
 
 echo ""
 echo "=== CLOB Proxy Nanode Provisioned ==="
@@ -214,14 +214,13 @@ echo ""
 echo "1. Wait ~2 minutes for cloud-init to finish installing nginx"
 echo ""
 echo "2. Verify proxy is up:"
-echo "   curl http://${IP}:8080/${SECRET_TOKEN}/"
-echo "   (should return \"OK\")"
+echo "   curl http://${IP}:8080/"
+echo "   (should return Polymarket API response)"
 echo ""
-echo "3. Verify geoblock bypass:"
-echo "   curl -X POST http://${IP}:8080/${SECRET_TOKEN}/order -d '{}'"
-echo "   (should return 401 auth error, NOT 403 geoblock)"
+echo "3. Add VM IPs to UFW:"
+echo "   ssh root@${IP} 'ufw allow from <VM_IP> to any port 8080 proto tcp'"
 echo ""
 echo "4. Add to .env.local:"
 echo "   CLOB_PROXY_URL=${PROXY_URL}"
 echo ""
-echo "5. Deploy to US VMs via fleet-push-polymarket-skill.sh"
+echo "5. Deploy to US VMs via fleet-push-prediction-markets-skill.sh"
