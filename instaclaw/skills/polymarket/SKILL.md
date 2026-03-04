@@ -485,7 +485,9 @@ NEVER write inline Python for trading. ALL trades MUST use the scripts:
 - **Trades:** `python3 ~/scripts/polymarket-portfolio.py trades --json`
 - **P&L:** `python3 ~/scripts/polymarket-positions.py pnl --json`
 - **Setup:** `python3 ~/scripts/polymarket-setup-creds.py setup --json`
+- **Wallet/Balance Check:** `python3 ~/scripts/polymarket-setup-creds.py status --json`
 
+**NEVER** check wallet balances with ad-hoc Python or manual RPC calls. ALWAYS use `polymarket-setup-creds.py status` — it checks USDC.e, native USDC, POL gas, API creds, and approvals in one command. If a user asks "what's my balance?" or "do I have money?", run this script.
 **NEVER** report a trade as executed without a real CLOB order ID from `polymarket-trade.py`. If you don't have one, the trade didn't happen.
 **NEVER** show P&L without first running `polymarket-positions.py` or `polymarket-portfolio.py`.
 **NEVER** write ad-hoc Python for order placement — use the scripts.
