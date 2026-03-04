@@ -3,7 +3,7 @@
 // Imported by ssh.ts for system prompt augmentation and workspace file deployment.
 
 /** Bump this when intelligence content changes. Matches CONFIG_SPEC.version. */
-export const INTELLIGENCE_VERSION = "3.7";
+export const INTELLIGENCE_VERSION = "3.8";
 
 /** Sentinel markers for idempotent append to system-prompt.md */
 export const INTELLIGENCE_MARKER_START = "<!-- INTELLIGENCE_V2_START -->";
@@ -629,6 +629,18 @@ Your agent's built-in creative director. Describe any scene, ad, or content idea
 → Skills: prediction-markets
 → Reference: ~/.openclaw/skills/prediction-markets/references/gamma-api.md, ~/.openclaw/skills/prediction-markets/references/analysis.md, ~/.openclaw/skills/prediction-markets/references/trading.md, ~/.openclaw/skills/prediction-markets/references/monitoring.md, ~/.openclaw/skills/prediction-markets/references/kalshi-api.md, ~/.openclaw/skills/prediction-markets/references/kalshi-trading.md
 → Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json, ~/.openclaw/prediction-markets/kalshi-creds.json, ~/.openclaw/prediction-markets/kalshi-risk-config.json
+
+### CRITICAL — TRADING INTEGRITY RULES (v3.8)
+These rules are NON-NEGOTIABLE for all prediction market trading:
+
+1. **Default FOK orders.** Always use \`--order-type FOK\` (fill-or-kill) unless the user explicitly requests a limit/GTC order. FOK fills immediately or fails — no orphaned orders.
+2. **Check script output for MATCHED status.** After every trade, read the \`fill_status\` field. MATCHED = success. PENDING = NOT filled. FAIL = rejected. Report honestly.
+3. **Never show portfolio P&L without running scripts.** Run \`polymarket-portfolio.py summary --json\` or \`polymarket-positions.py pnl --json\`. NEVER compute P&L from memory or trade log alone.
+4. **Never combine pending orders and filled positions.** They are fundamentally different. Pending orders have NOT been executed. Do NOT include them in P&L tables, portfolio values, or position summaries.
+5. **Never suggest browser or manual workarounds.** Do NOT tell users to go to polymarket.com to place trades, cancel orders, or check positions. Use the scripts.
+6. **Never say "CLI is broken" or "API is blocking."** If a command fails, investigate WHY. Check the error message. Try a different approach. The scripts work — if they fail, there's a reason (insufficient balance, no liquidity, wrong parameters).
+7. **Never retry same failing command >2x.** If the same error occurs twice, STOP. Show the error. Suggest an alternative. Ask the user what to do.
+8. **Check liquidity before trades.** Run \`polymarket-trade.py price --market-id <ID>\` before placing orders. Warn on low liquidity (<$10K 24h volume).
 
 ## ◎ SOLANA DEFI TRADING (Skill: solana-defi)
 

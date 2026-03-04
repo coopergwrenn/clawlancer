@@ -39,11 +39,18 @@ This shows cash balance, portfolio value, positions, and P&L. If it returns `not
 ### Polymarket Commands
 | Action | Command |
 |--------|---------|
-| Buy | `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json` |
-| Sell | `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --json` |
-| Cancel | `python3 ~/scripts/polymarket-trade.py cancel --order-id <id> --json` |
+| Buy (FOK) | `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --json` |
+| Buy (GTC limit) | `python3 ~/scripts/polymarket-trade.py buy --market-id <id> --outcome YES --amount 10 --order-type GTC --price 0.65 --json` |
+| Sell (FOK) | `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --json` |
+| Sell (GTC limit) | `python3 ~/scripts/polymarket-trade.py sell --market-id <id> --outcome YES --shares 15 --order-type GTC --price 0.70 --json` |
+| Check Price | `python3 ~/scripts/polymarket-trade.py price --market-id <id> --json` |
+| Check Orders | `python3 ~/scripts/polymarket-trade.py check-orders --json` |
+| Cancel One | `python3 ~/scripts/polymarket-trade.py cancel --order-id <id> --json` |
+| Cancel All | `python3 ~/scripts/polymarket-trade.py cancel-all --json` |
+| Convert to Market | `python3 ~/scripts/polymarket-trade.py convert-to-market --order-id <id> --json` |
 | Verify | `python3 ~/scripts/polymarket-verify.py order --order-id <id> --wait --json` |
 | Positions | `python3 ~/scripts/polymarket-positions.py list --json` |
+| Positions (all) | `python3 ~/scripts/polymarket-positions.py list --all --json` |
 | Portfolio | `python3 ~/scripts/polymarket-portfolio.py summary --json` |
 | Trades | `python3 ~/scripts/polymarket-portfolio.py trades --json` |
 | P&L | `python3 ~/scripts/polymarket-positions.py pnl --json` |
@@ -74,7 +81,12 @@ This shows cash balance, portfolio value, positions, and P&L. If it returns `not
 | Market detail | `python3 ~/scripts/kalshi-browse.py detail --ticker <TICKER> --json` |
 | Categories | `python3 ~/scripts/kalshi-browse.py categories --json` |
 
-**Rule 3 — No Faking:** NEVER report a trade as executed without a real order ID. NEVER generate fake P&L tables or dashboards from memory. NEVER show portfolio data without running a script. If a script fails, report the exact error — do not make up results.
+**Rule 3 — No Faking (STRICT):** NEVER report a trade as executed without a real order ID and MATCHED fill status. NEVER generate fake P&L tables or dashboards from memory. NEVER show portfolio data without running a script. If a script fails, report the exact error — do not make up results. Specific cases:
+- LIVE or PENDING status ≠ executed. An order sitting in the book is NOT a completed trade.
+- NEVER combine pending orders and filled positions in the same P&L table. They are fundamentally different.
+- If 3 trades were placed and only 1 filled, report honestly: "1 of 3 trades filled. 2 orders are pending in the orderbook."
+- NEVER say "market order" if you placed a limit (GTC) order. Report what ACTUALLY happened.
+- NEVER fabricate transaction hashes, share counts, or fill prices.
 
 **Rule 4 — No Hedging:** NEVER buy both YES and NO on the same market. That's a zero-EV hedge.
 
@@ -111,6 +123,12 @@ Then proceed with wallet setup.
 If user says 'US markets only', suggest Kalshi as the US-regulated alternative — it's already integrated. Run `python3 ~/scripts/kalshi-setup.py status` to check if Kalshi is configured.
 
 This warning also triggers automatically if a trade returns BLOCK with "risk acknowledgment" required (safety net for cases where the proactive check was missed).
+
+**Rule 9 — Liquidity Awareness:** ALWAYS check 24h volume before trading. Run `python3 ~/scripts/polymarket-trade.py price --market-id <id>` to see orderbook depth. If 24h volume < $10,000, WARN the user: "This market has low liquidity ($X 24h volume). Orders may not fill or may have high slippage." NEVER place orders > $20 on markets with < $10K 24h volume without explicit user confirmation.
+
+**Rule 10 — Order Monitoring:** For GTC orders, check order status within 60 seconds of placement using `python3 ~/scripts/polymarket-trade.py check-orders`. Inform the user if orders are PENDING (not filled). Present options: cancel (`cancel --order-id`), adjust price, convert to market (`convert-to-market --order-id`), or wait. NEVER show pending orders as part of P&L calculations.
+
+**Rule 11 — Retry Limit:** If the same command fails with the same error TWICE, STOP. Do NOT retry a third time. Instead: (1) show the exact error message, (2) suggest an alternative approach (different price, different order type, different market, check liquidity), (3) ask the user what they want to do. NEVER bang on the same wall more than twice. NEVER blame the tools, the CLI, or the API — if something fails, investigate why.
 
 **Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. Telegram-friendly onboarding flow:
 
@@ -763,15 +781,53 @@ Supported alert types:
 - **max position size** — Maximum size for any single position.
 - **daily loss limit** — If losses exceed this, trading halts automatically.
 
-### Trade Execution Flow
+### Trade Execution Flow (6-Step Mandatory Process)
 
-1. **Opportunity analysis** — Agent identifies a trading opportunity (user request or thesis-driven)
-2. **Platform selection** — Determine which platform to use (see Platform Routing)
-3. **Risk check** — Verify `enabled === true`, check daily spend/loss limits, position size limits
-4. **Confirmation** — If trade amount > confirmation threshold, ask user for explicit approval
-5. **Execute** — Place order via the appropriate script
-6. **Verify** — Confirm order status (Polymarket: `polymarket-verify.py`; Kalshi: check order status via `kalshi-trade.py orders`)
-7. **Log** — Record trade with reasoning
+Every Polymarket trade MUST follow these 6 steps in order. Skipping steps causes the problems found in testing (unfilled orders, fake P&L, bad retries).
+
+**Step 1 — RESEARCH:** Understand the market before trading.
+- Fetch market info from Gamma API
+- Check resolution criteria, end date, and current prices
+- Cross-reference with web search for context
+
+**Step 2 — CHECK PRICE:** Get real orderbook pricing.
+```bash
+python3 ~/scripts/polymarket-trade.py price --market-id <CONDITION_ID> --json
+```
+- Shows best bid, best ask, spread, mid price, 24h volume
+- If 24h volume < $10K, WARN user about low liquidity (Rule 9)
+- If spread > 5%, warn about potential slippage
+
+**Step 3 — CHECK LIQUIDITY:** Assess whether the trade can fill.
+- Review ask depth (for buys) or bid depth (for sells)
+- If orderbook is thin (< 5 orders on relevant side), warn user
+- For large orders (> $20), check if size exceeds available liquidity at best price
+
+**Step 4 — EXECUTE:** Place the trade (default FOK for immediate fill).
+```bash
+# FOK (default) — fills immediately or fails. Preferred for most trades.
+python3 ~/scripts/polymarket-trade.py buy --market-id <ID> --outcome YES --amount 10 --json
+
+# GTC (limit order) — sits in book until filled. Use only when targeting specific price.
+python3 ~/scripts/polymarket-trade.py buy --market-id <ID> --outcome YES --amount 10 --order-type GTC --price 0.60 --json
+```
+- FOK orders auto-price at best ask (buys) or best bid (sells)
+- Script reports fill_status: MATCHED, PENDING, FAIL, or CANCELLED
+
+**Step 5 — VERIFY:** Confirm what actually happened.
+- Read the script output — check `fill_status` field
+- MATCHED = trade executed, shares acquired. Report success with real numbers.
+- PENDING = order is in the book, NOT filled. Do NOT report as a completed trade.
+- FAIL = order rejected or FOK couldn't fill. Report failure honestly.
+- If PENDING: run `check-orders` within 60 seconds, inform user of status (Rule 10)
+
+**Step 6 — MONITOR PENDING:** Handle unfilled GTC orders.
+- If any orders are PENDING after 60 seconds:
+  ```bash
+  python3 ~/scripts/polymarket-trade.py check-orders --json
+  ```
+- Present options to user: wait, cancel (`cancel --order-id`), convert to market order (`convert-to-market --order-id`)
+- NEVER include pending orders in P&L or portfolio value calculations
 
 ### Manual Trades
 

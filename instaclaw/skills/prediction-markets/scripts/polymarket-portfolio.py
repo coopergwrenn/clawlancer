@@ -31,7 +31,21 @@ POSITIONS_FILE = POLYMARKET_DIR / "positions.json"
 TRADE_LOG_FILE = POLYMARKET_DIR / "trade-log.json"
 
 GAMMA_API = "https://gamma-api.polymarket.com"
+CLOB_HOST_DEFAULT = "https://clob.polymarket.com"
 POLYGONSCAN = "https://polygonscan.com/tx"
+CHAIN_ID = 137
+
+# USDC contract addresses (Polygon mainnet)
+USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+
+ENV_FILE = Path.home() / ".openclaw" / ".env"
+
+RPC_FALLBACKS = [
+    "https://api.zan.top/polygon-mainnet",
+    "https://1rpc.io/matic",
+    "https://polygon-rpc.com",
+    "https://polygon-bor-rpc.publicnode.com",
+]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -100,6 +114,101 @@ def collect_tx_hashes_for_position(trade_log, token_id):
     return hashes
 
 
+def get_rpc_url():
+    """Read POLYGON_RPC_URL from env file, or find a working fallback."""
+    if ENV_FILE.exists():
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("POLYGON_RPC_URL="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+    for rpc in RPC_FALLBACKS:
+        try:
+            payload = json.dumps({"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}).encode()
+            req = urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(resp.read().decode())
+            if "result" in data:
+                return rpc
+        except Exception:
+            continue
+    return RPC_FALLBACKS[0]
+
+
+def get_clob_host():
+    """Read CLOB host from env."""
+    if ENV_FILE.exists():
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("CLOB_PROXY_URL="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+    return CLOB_HOST_DEFAULT
+
+
+def init_clob_client(wallet):
+    """Initialize CLOB client."""
+    try:
+        from py_clob_client.client import ClobClient
+    except ImportError:
+        return None, "py-clob-client not installed"
+    try:
+        host = get_clob_host()
+        client = ClobClient(host, key=wallet["private_key"], chain_id=CHAIN_ID)
+        api_creds = client.create_or_derive_api_creds()
+        client.set_api_creds(api_creds)
+        return client, None
+    except Exception as e:
+        return None, str(e)
+
+
+def check_usdc_balance(wallet_address):
+    """Check USDC.e balance. Returns float or None."""
+    rpc_url = get_rpc_url()
+    addr_padded = wallet_address[2:].lower().zfill(64)
+    call_data = "0x70a08231" + addr_padded
+    try:
+        payload = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "eth_call",
+            "params": [{"to": USDC_E, "data": call_data}, "latest"],
+            "id": 1,
+        }).encode()
+        req = urllib.request.Request(rpc_url, data=payload, headers={"Content-Type": "application/json"})
+        resp = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(resp.read().decode())
+        raw = data.get("result", "0x0")
+        return int(raw, 16) / 1e6 if raw and raw != "0x" else 0.0
+    except Exception:
+        return None
+
+
+def verify_on_chain_balance(wallet, token_id):
+    """Check on-chain balance for a single CT token. Returns shares or None."""
+    try:
+        from web3 import Web3
+    except ImportError:
+        return None
+    rpc_url = get_rpc_url()
+    try:
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        if not w3.is_connected():
+            return None
+        CT_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+        CT_ABI = json.loads('[{"inputs":[{"name":"account","type":"address"},{"name":"id","type":"uint256"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]')
+        ct = w3.eth.contract(address=Web3.to_checksum_address(CT_ADDRESS), abi=CT_ABI)
+        addr = Web3.to_checksum_address(wallet["address"])
+        tid = int(token_id, 16) if isinstance(token_id, str) and token_id.startswith("0x") else int(token_id)
+        raw = ct.functions.balanceOf(addr, tid).call()
+        return raw / 1e6
+    except Exception:
+        return None
+
+
 def compute_cost_basis(trade_log):
     """Compute FIFO cost basis per token_id. Returns {token_id: avg_entry_price}."""
     buys = {}  # token_id -> [(shares, price)]
@@ -126,7 +235,7 @@ def compute_cost_basis(trade_log):
 # ---------------------------------------------------------------------------
 
 def cmd_summary(args):
-    """Full portfolio summary: positions + P&L + tx links."""
+    """Full portfolio summary: verified positions + pending orders + cash balance."""
     wallet = load_wallet()
     if not wallet:
         if args.json:
@@ -139,28 +248,46 @@ def cmd_summary(args):
     trade_log = load_json(TRADE_LOG_FILE, [])
     cost_basis = compute_cost_basis(trade_log)
 
-    if not positions and not trade_log:
+    # FIX 8: Get USDC.e cash balance
+    usdc_balance = check_usdc_balance(wallet["address"])
+
+    # FIX 8: Get open orders from CLOB
+    open_orders = []
+    client, client_err = init_clob_client(wallet)
+    if client:
+        try:
+            orders = client.get_orders()
+            if orders:
+                open_orders = orders
+        except Exception:
+            pass
+
+    if not positions and not trade_log and not open_orders:
+        result = {
+            "status": "OK",
+            "wallet": wallet["address"],
+            "usdc_balance": usdc_balance,
+            "positions": [],
+            "pending_orders": [],
+            "total_value": 0,
+            "total_pnl": 0,
+            "trade_count": 0,
+        }
         if args.json:
-            print(json.dumps({
-                "status": "OK",
-                "wallet": wallet["address"],
-                "positions": [],
-                "total_value": 0,
-                "total_pnl": 0,
-                "trade_count": 0,
-            }))
+            print(json.dumps(result))
         else:
             print(f"OK — Portfolio for {wallet['address']}")
+            if usdc_balance is not None:
+                print(f"  Cash: ${usdc_balance:.2f} USDC.e")
             print("  No positions or trades yet.")
         return 0
 
-    # Build enriched position data
+    # Build enriched position data — FIX 8: only verified positions in P&L
     portfolio_rows = []
     total_value = 0.0
     total_pnl = 0.0
     total_cost = 0.0
 
-    # Cache market lookups to avoid duplicate API calls
     market_cache = {}
 
     for p in positions:
@@ -171,45 +298,46 @@ def cmd_summary(args):
         if shares <= 0:
             continue
 
-        # Fetch market info (cached)
+        # FIX 8: Verify on-chain balance — only include verified positions in P&L
+        on_chain_shares = verify_on_chain_balance(wallet, token_id) if token_id else None
+        if on_chain_shares is not None and on_chain_shares <= 0:
+            continue  # Skip — no on-chain balance, don't include in P&L
+        actual_shares = on_chain_shares if on_chain_shares is not None else shares
+
         if market_id not in market_cache:
             market_cache[market_id] = fetch_market_info(market_id)
         market = market_cache[market_id]
 
         question = p.get("question", p.get("market_question", "Unknown"))
         outcome = p.get("outcome", "?")
-
-        # Entry price: prefer cost basis from trade log, fallback to positions file
         entry_price = cost_basis.get(token_id, p.get("avg_price", 0))
 
-        # Current price from Gamma
         current_price = None
         market_url = None
         if market:
             current_price = get_current_price_for_token(market, token_id)
             market_url = get_market_url(market)
 
-        # P&L calculation
-        position_cost = entry_price * shares
+        position_cost = entry_price * actual_shares
         if current_price is not None:
-            position_value = current_price * shares
+            position_value = current_price * actual_shares
             unrealized_pnl = position_value - position_cost
         else:
-            position_value = position_cost  # fallback
+            position_value = position_cost
             unrealized_pnl = 0.0
 
         total_value += position_value
         total_pnl += unrealized_pnl
         total_cost += position_cost
 
-        # Tx hashes from trade log
         tx_hashes = collect_tx_hashes_for_position(trade_log, token_id)
 
         row = {
             "market": question,
             "market_id": market_id,
             "outcome": outcome,
-            "shares": round(shares, 2),
+            "shares": round(actual_shares, 2),
+            "verified": on_chain_shares is not None,
             "entry_price": round(entry_price, 4),
             "current_price": round(current_price, 4) if current_price is not None else None,
             "value_usdc": round(position_value, 2),
@@ -221,7 +349,7 @@ def cmd_summary(args):
 
     # Realized P&L from sells
     realized_pnl = 0.0
-    sell_buys = {}  # deep copy for FIFO
+    sell_buys = {}
     for t in trade_log:
         if t.get("action") == "BUY":
             tid = t.get("token_id", "")
@@ -247,11 +375,37 @@ def cmd_summary(args):
 
     combined_pnl = total_pnl + realized_pnl
 
+    # FIX 8: Format pending orders
+    pending_orders_data = []
+    for o in open_orders:
+        try:
+            o_price = float(o.get("price", 0))
+            o_size = float(o.get("original_size", o.get("size", 0)))
+            o_matched = float(o.get("size_matched", 0))
+            o_remaining = o_size - o_matched
+            o_value = o_price * o_remaining
+        except (ValueError, TypeError):
+            o_value = 0
+            o_remaining = 0
+        pending_orders_data.append({
+            "order_id": o.get("id", o.get("order_id", "?")),
+            "side": o.get("side", "?"),
+            "price": o.get("price", "?"),
+            "size": o.get("original_size", o.get("size", "?")),
+            "size_matched": o.get("size_matched", "0"),
+            "remaining": round(o_remaining, 2),
+            "value_tied": round(o_value, 2),
+            "status": o.get("status", "?"),
+            "type": o.get("type", o.get("order_type", "?")),
+        })
+
     if args.json:
         print(json.dumps({
             "status": "OK",
             "wallet": wallet["address"],
-            "positions": portfolio_rows,
+            "usdc_balance": usdc_balance,
+            "verified_positions": portfolio_rows,
+            "pending_orders": pending_orders_data,
             "total_value": round(total_value, 2),
             "total_cost": round(total_cost, 2),
             "unrealized_pnl": round(total_pnl, 2),
@@ -263,14 +417,21 @@ def cmd_summary(args):
     else:
         print(f"=== Portfolio Summary — {wallet['address']} ===\n")
 
+        # Cash balance
+        if usdc_balance is not None:
+            print(f"  Cash: ${usdc_balance:.2f} USDC.e\n")
+
+        # Verified positions
         if not portfolio_rows:
-            print("  No open positions.\n")
+            print("  No verified open positions.\n")
         else:
+            print(f"  --- Verified Positions ({len(portfolio_rows)}) ---\n")
             for row in portfolio_rows:
                 pnl_str = f"${row['unrealized_pnl']:+.2f}" if row["current_price"] is not None else "N/A"
                 cur_str = f"${row['current_price']:.4f}" if row["current_price"] is not None else "N/A"
+                v_str = " [on-chain verified]" if row.get("verified") else ""
 
-                print(f"  {row['market']}")
+                print(f"  {row['market']}{v_str}")
                 print(f"    Side: {row['outcome']}  |  Shares: {row['shares']:.2f}")
                 print(f"    Entry: ${row['entry_price']:.4f}  |  Current: {cur_str}  |  P&L: {pnl_str}")
                 print(f"    Value: ${row['value_usdc']:.2f} USDC")
@@ -281,7 +442,18 @@ def cmd_summary(args):
                         print(f"    Tx: {link}")
                 print()
 
-        print("  --- Totals ---")
+        # FIX 8: Pending orders section (separate from P&L)
+        if pending_orders_data:
+            print(f"  --- Pending Orders ({len(pending_orders_data)}) ---")
+            print(f"  (These are NOT filled — not included in P&L)\n")
+            for po in pending_orders_data:
+                print(f"  Order: {po['order_id']}")
+                print(f"    {po['side']} {po['size']} @ ${po['price']}  |  Matched: {po['size_matched']}  |  Type: {po['type']}")
+                print(f"    Status: {po['status']}  |  Capital tied: ~${po['value_tied']:.2f} USDC")
+                print()
+
+        # Totals (only from verified positions)
+        print("  --- P&L (verified positions only) ---")
         print(f"  Portfolio Value: ${total_value:.2f} USDC")
         print(f"  Total Cost:      ${total_cost:.2f} USDC")
         print(f"  Unrealized P&L:  ${total_pnl:+.2f}")

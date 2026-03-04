@@ -158,23 +158,77 @@ def init_clob_client(wallet):
 # list subcommand
 # ---------------------------------------------------------------------------
 
-def cmd_list(args):
-    """Show positions from local file + open orders from CLOB API."""
-    positions = load_json(POSITIONS_FILE, [])
+def verify_on_chain_balance(wallet, token_id):
+    """Check on-chain balance for a single token. Returns shares or None on error."""
+    try:
+        from web3 import Web3
+    except ImportError:
+        return None
 
+    rpc_url = get_rpc_url()
+    try:
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        if not w3.is_connected():
+            return None
+
+        ct_contract = w3.eth.contract(
+            address=Web3.to_checksum_address(CONDITIONAL_TOKENS),
+            abi=CT_BALANCE_ABI,
+        )
+        address_cs = Web3.to_checksum_address(wallet["address"])
+
+        if isinstance(token_id, str):
+            if token_id.startswith("0x"):
+                token_id_int = int(token_id, 16)
+            else:
+                token_id_int = int(token_id)
+        else:
+            token_id_int = int(token_id)
+
+        on_chain_raw = ct_contract.functions.balanceOf(address_cs, token_id_int).call()
+        return on_chain_raw / 1e6
+    except Exception:
+        return None
+
+
+def cmd_list(args):
+    """Show positions from local file + open orders from CLOB API.
+
+    By default, only shows positions with verified on-chain balance > 0.
+    Use --all to show everything including unverified positions.
+    """
+    positions = load_json(POSITIONS_FILE, [])
     wallet = load_wallet()
 
-    # Try to fetch current prices for each position
+    show_all = getattr(args, 'all', False)
+
+    # Try to fetch current prices and verify on-chain for each position
     enriched = []
+    skipped = 0
     for p in positions:
         entry = dict(p)
+        token_id = p.get("token_id", "")
+
+        # FIX 7: On-chain verification — filter out positions with 0 on-chain balance
+        if not show_all and wallet and token_id:
+            on_chain_shares = verify_on_chain_balance(wallet, token_id)
+            if on_chain_shares is not None:
+                entry["on_chain_shares"] = on_chain_shares
+                entry["verified"] = True
+                if on_chain_shares <= 0:
+                    skipped += 1
+                    continue  # Skip — no on-chain balance
+            else:
+                entry["verified"] = False
+
         market = fetch_market_info(p.get("market_id", ""))
         if market:
             current_price = get_current_price_for_token(market, p.get("token_id", ""))
             if current_price is not None:
                 entry["current_price"] = current_price
-                entry["current_value"] = round(current_price * p.get("shares", 0), 2)
-                entry["unrealized_pnl"] = round((current_price - p.get("avg_price", 0)) * p.get("shares", 0), 2)
+                shares_for_calc = entry.get("on_chain_shares", p.get("shares", 0))
+                entry["current_value"] = round(current_price * shares_for_calc, 2)
+                entry["unrealized_pnl"] = round((current_price - p.get("avg_price", 0)) * shares_for_calc, 2)
         enriched.append(entry)
 
     # Open orders from CLOB
@@ -194,27 +248,38 @@ def cmd_list(args):
             "status": "OK",
             "positions": enriched,
             "open_orders": len(open_orders),
+            "skipped_no_onchain_balance": skipped,
+            "verified_only": not show_all,
         }, indent=2))
     else:
         if not enriched and not open_orders:
-            print("OK — No positions or open orders")
+            msg = "OK — No verified positions or open orders"
+            if skipped > 0:
+                msg += f" ({skipped} position(s) have 0 on-chain balance — use --all to see)"
+            print(msg)
             return 0
 
         if enriched:
-            print(f"=== Positions ({len(enriched)}) ===\n")
+            label = "Verified Positions" if not show_all else "All Positions"
+            print(f"=== {label} ({len(enriched)}) ===\n")
             for p in enriched:
                 question = p.get("question", p.get("market_question", "Unknown"))
                 outcome = p.get("outcome", "?")
-                shares = p.get("shares", 0)
+                shares = p.get("on_chain_shares", p.get("shares", 0))
                 avg = p.get("avg_price", 0)
                 cur = p.get("current_price")
                 pnl = p.get("unrealized_pnl")
+                verified = p.get("verified", False)
 
-                print(f"  {question}")
+                v_tag = " [verified]" if verified else " [unverified]" if not show_all else ""
+                print(f"  {question}{v_tag}")
                 print(f"    {outcome}: {shares:.2f} shares @ ${avg:.4f} avg")
                 if cur is not None:
                     print(f"    Current: ${cur:.4f}  Value: ${p.get('current_value', 0):.2f}  P&L: ${pnl:+.2f}")
                 print()
+
+            if skipped > 0:
+                print(f"  ({skipped} position(s) excluded — 0 on-chain balance. Use --all to see.)\n")
 
         if open_orders:
             print(f"=== Open Orders ({len(open_orders)}) ===\n")
@@ -453,7 +518,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     # list
-    sp_list = subparsers.add_parser("list", help="Show current positions")
+    sp_list = subparsers.add_parser("list", help="Show current positions (verified on-chain by default)")
+    sp_list.add_argument("--all", action="store_true", help="Show all positions including unverified (0 on-chain balance)")
     sp_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # sync
