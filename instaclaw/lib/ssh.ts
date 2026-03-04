@@ -1596,7 +1596,7 @@ function buildOpenClawConfig(
         extraDirs: ["/home/openclaw/.openclaw/skills"],
       },
       limits: {
-        maxSkillsPromptChars: 200000,
+        maxSkillsPromptChars: 350000,
       },
     },
     plugins: {
