@@ -441,6 +441,83 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      case "acknowledge_polymarket_risk": {
+        const riskSsh = await connectSSH(vm);
+        try {
+          const result = await riskSsh.execCommand(
+            'python3 ~/scripts/polymarket-trade.py acknowledge-risk 2>&1'
+          );
+          if (result.code !== 0) {
+            // Check if already acknowledged
+            if (result.stdout?.includes("already acknowledged") || result.stderr?.includes("already acknowledged")) {
+              return NextResponse.json({ updated: true, message: "Already acknowledged" });
+            }
+            return NextResponse.json(
+              { error: result.stderr || result.stdout || "Risk acknowledgement failed" },
+              { status: 500 }
+            );
+          }
+          logger.info("Polymarket risk acknowledged", {
+            route: "settings/update",
+            userId: session.user.id,
+          });
+          return NextResponse.json({ updated: true });
+        } finally {
+          riskSsh.dispose();
+        }
+      }
+
+      case "setup_polymarket_creds": {
+        const credsSsh = await connectSSH(vm);
+        try {
+          const result = await credsSsh.execCommand(
+            'python3 ~/scripts/polymarket-setup-creds.py approve 2>&1'
+          );
+          if (result.code !== 0) {
+            if (result.stdout?.includes("already") || result.stderr?.includes("already")) {
+              return NextResponse.json({ updated: true, message: "Credentials already set up" });
+            }
+            return NextResponse.json(
+              { error: result.stderr || result.stdout || "Credentials setup failed" },
+              { status: 500 }
+            );
+          }
+          logger.info("Polymarket creds setup", {
+            route: "settings/update",
+            userId: session.user.id,
+          });
+          return NextResponse.json({ updated: true });
+        } finally {
+          credsSsh.dispose();
+        }
+      }
+
+      case "connect_kalshi": {
+        const { apiKeyId, privateKey } = body;
+        if (!apiKeyId || typeof apiKeyId !== "string" || !privateKey || typeof privateKey !== "string") {
+          return NextResponse.json(
+            { error: "apiKeyId and privateKey are required" },
+            { status: 400 }
+          );
+        }
+
+        const kalshiSsh = await connectSSH(vm);
+        try {
+          const credsJson = JSON.stringify({ apiKeyId, privateKey }, null, 2);
+          const credsB64 = Buffer.from(credsJson, "utf-8").toString("base64");
+          await kalshiSsh.execCommand(
+            `mkdir -p "$HOME/.openclaw/kalshi" && echo '${credsB64}' | base64 -d > "$HOME/.openclaw/kalshi/credentials.json" && chmod 600 "$HOME/.openclaw/kalshi/credentials.json"`
+          );
+          logger.info("Kalshi credentials connected", {
+            route: "settings/update",
+            userId: session.user.id,
+          });
+          return NextResponse.json({ updated: true });
+        } finally {
+          kalshiSsh.dispose();
+        }
+      }
+
       case "toggle_agdp": {
         const { enabled } = body;
         if (typeof enabled !== "boolean") {

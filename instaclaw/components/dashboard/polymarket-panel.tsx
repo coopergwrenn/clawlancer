@@ -22,6 +22,9 @@ import {
   ExternalLink,
   ChevronRight,
   Lock,
+  Zap,
+  HelpCircle,
+  Key,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────
@@ -79,6 +82,13 @@ interface Trade {
   reasoning: string;
 }
 
+interface Balances {
+  usdcE: number;
+  usdcNative: number;
+  pol: number;
+  total: number;
+}
+
 // ── Helpers ─────────────────────────────────────────
 
 function timeAgo(iso: string): string {
@@ -98,33 +108,41 @@ function truncateAddr(addr: string): string {
 
 const DEFAULT_RISK: RiskConfig = {
   enabled: false,
-  dailySpendCapUSDC: 25,
-  confirmationThresholdUSDC: 10,
-  dailyLossLimitUSDC: 15,
-  maxPositionSizeUSDC: 5,
+  dailySpendCapUSDC: 50,
+  confirmationThresholdUSDC: 25,
+  dailyLossLimitUSDC: 100,
+  maxPositionSizeUSDC: 100,
 };
 
-async function fetchUsdcBalance(address: string): Promise<number> {
+async function fetchBalances(address: string): Promise<Balances> {
   const USDC = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
   const USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
-  const callData = (token: string) =>
+  const balanceOfData =
     "0x70a08231" + address.slice(2).toLowerCase().padStart(64, "0");
-  const rpcCall = (token: string) =>
+
+  const rpcCall = (method: string, params: unknown[]) =>
     fetch("https://polygon-rpc.com", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "eth_call",
-        params: [{ to: token, data: callData(token) }, "latest"],
-        id: 1,
-      }),
+      body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
     }).then((r) => r.json());
 
-  const [a, b] = await Promise.all([rpcCall(USDC), rpcCall(USDC_E)]);
-  const parse = (hex: string | undefined) =>
+  const [usdcRes, usdcERes, polRes] = await Promise.all([
+    rpcCall("eth_call", [{ to: USDC, data: balanceOfData }, "latest"]),
+    rpcCall("eth_call", [{ to: USDC_E, data: balanceOfData }, "latest"]),
+    rpcCall("eth_getBalance", [address, "latest"]),
+  ]);
+
+  const parse6 = (hex: string | undefined) =>
     hex && hex !== "0x" ? parseInt(hex, 16) / 1e6 : 0;
-  return parse(a.result) + parse(b.result);
+  const parse18 = (hex: string | undefined) =>
+    hex && hex !== "0x" ? parseInt(hex, 16) / 1e18 : 0;
+
+  const usdcE = parse6(usdcERes.result);
+  const usdcNative = parse6(usdcRes.result);
+  const pol = parse18(polRes.result);
+
+  return { usdcE, usdcNative, pol, total: usdcE + usdcNative };
 }
 
 // ── Copyable Bot Message ────────────────────────────
@@ -150,9 +168,7 @@ function BotMessage({ message }: { message: string }) {
             setTimeout(() => setCopied(false), 2000);
           }}
           className="glass px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-all shrink-0"
-          style={{
-            color: copied ? "rgb(34,197,94)" : "rgb(59,130,246)",
-          }}
+          style={{ color: copied ? "rgb(34,197,94)" : "rgb(59,130,246)" }}
         >
           {copied ? "Copied!" : "Copy"}
         </button>
@@ -251,8 +267,22 @@ function FundingGuide() {
       ),
     },
     {
+      id: "exchange",
+      title: "Buying from an exchange (Coinbase, Binance, etc.)?",
+      content: (
+        <div className="text-xs space-y-2" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          <p>
+            <strong>1.</strong> Buy USDC on your exchange.<br />
+            <strong>2.</strong> Go to &ldquo;Withdraw&rdquo; and paste the wallet address above.<br />
+            <strong>3.</strong> Select <strong>Polygon</strong> as the network (NOT Ethereum, NOT Base).<br />
+            <strong>4.</strong> Also send ~$0.50 worth of POL for gas fees (or use the exchange&apos;s Polygon withdrawal).
+          </p>
+        </div>
+      ),
+    },
+    {
       id: "other-chain",
-      title: "Have USDC on another chain?",
+      title: "Have crypto on another chain?",
       content: (
         <div className="text-xs space-y-2.5" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
           <p>
@@ -269,15 +299,6 @@ function FundingGuide() {
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
-      ),
-    },
-    {
-      id: "buy-usdc",
-      title: "Need to buy USDC?",
-      content: (
-        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-          Buy USDC on Coinbase, Binance, or any major exchange. When withdrawing, select <strong>Polygon</strong> as the network and paste the wallet address above as the destination.
-        </p>
       ),
     },
   ];
@@ -329,7 +350,7 @@ function FundingGuide() {
 
 // ── Progress Bar ────────────────────────────────────
 
-const STEP_LABELS = ["Create Wallet", "Fund Wallet", "Set Limits", "Start Trading"];
+const STEP_LABELS = ["Create Wallet", "Fund Wallet", "Activate", "Risk Disclosure", "Set Limits"];
 
 function ProgressBar({ currentStep, completedSteps }: { currentStep: number; completedSteps: Set<number> }) {
   return (
@@ -373,7 +394,7 @@ function ProgressBar({ currentStep, completedSteps }: { currentStep: number; com
                   {label}
                 </span>
               </div>
-              {i < 3 && (
+              {i < STEP_LABELS.length - 1 && (
                 <div
                   className="flex-1 h-px mx-1"
                   style={{
@@ -457,6 +478,375 @@ function RiskLimitInputs({
   );
 }
 
+// ── Copyable Address ────────────────────────────────
+
+function CopyableAddress({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="glass rounded-xl flex items-center gap-2 px-4 py-3">
+      <Wallet className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
+      <span className="text-xs sm:text-sm font-mono flex-1 truncate">{address}</span>
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(address);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0"
+        style={{
+          background: copied ? "rgba(34,197,94,0.08)" : "rgba(59,130,246,0.08)",
+          color: copied ? "rgb(34,197,94)" : "rgb(59,130,246)",
+        }}
+      >
+        {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        {copied ? "Copied!" : "Copy Address"}
+      </button>
+    </div>
+  );
+}
+
+// ── FAQ Section ─────────────────────────────────────
+
+const FAQ_ITEMS = [
+  {
+    q: "I sent USDC but it's not showing up",
+    a: "Make sure you sent on the Polygon network (not Ethereum, Base, or Arbitrum). Polygon transfers usually arrive in 1-2 minutes. If you sent on the wrong network, you'll need to bridge the funds to Polygon.",
+  },
+  {
+    q: "What's USDC.e vs USDC?",
+    a: "Both are worth exactly $1. USDC.e (bridged USDC) is what Polymarket uses for trading. Regular USDC works on Polygon too. Your agent handles both automatically.",
+  },
+  {
+    q: "How much POL do I need?",
+    a: "About $0.50 worth of POL is enough for hundreds of transactions. POL is the gas token on Polygon — every transaction costs a fraction of a cent.",
+  },
+  {
+    q: "Can I withdraw my funds?",
+    a: 'Yes! Tell your agent "send my USDC.e to [your wallet address]" and it will transfer your funds. You always have full control.',
+  },
+  {
+    q: "What if Polymarket freezes my account?",
+    a: "Withdraw regularly to your own wallet. For a fully regulated alternative, connect Kalshi in the Kalshi tab — it's US-regulated and uses normal USD.",
+  },
+];
+
+function FAQSection() {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  return (
+    <div className="glass rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 pt-3 pb-1.5">
+        <HelpCircle className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
+        <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+          Frequently Asked Questions
+        </p>
+      </div>
+      {FAQ_ITEMS.map((item, i) => {
+        const isOpen = openIdx === i;
+        return (
+          <div key={i} style={{ borderTop: "1px solid var(--border)" }}>
+            <button
+              onClick={() => setOpenIdx(isOpen ? null : i)}
+              className="w-full flex items-center justify-between px-4 py-2.5 text-left cursor-pointer"
+            >
+              <span className="text-xs font-medium">{item.q}</span>
+              <ChevronRight
+                className="w-3.5 h-3.5 shrink-0 transition-transform"
+                style={{
+                  color: "var(--muted)",
+                  transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                }}
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {isOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden"
+                >
+                  <p className="px-4 pb-3 text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                    {item.a}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Quick Start Guide ───────────────────────────────
+
+function QuickStartGuide() {
+  return (
+    <Section icon={MessageSquare} title="Quick Start" subtitle="Example messages to get your agent trading">
+      <div className="space-y-1">
+        <BotMessage message="What are the hottest prediction markets right now?" />
+        <BotMessage message="Buy $5 of YES on 'Will Bitcoin hit $100k by June?'" />
+        <BotMessage message="Show me my Polymarket positions" />
+        <BotMessage message="Set an alert if the Trump election odds go above 60%" />
+      </div>
+    </Section>
+  );
+}
+
+// ── Status Overview (always visible in dashboard) ───
+
+function StatusOverview({
+  wallet,
+  balances,
+  credsReady,
+  riskAcknowledged,
+}: {
+  wallet: WalletInfo;
+  balances: Balances | null;
+  credsReady: boolean;
+  riskAcknowledged: boolean;
+}) {
+  const [addrCopied, setAddrCopied] = useState(false);
+
+  const rows: { label: string; ok: boolean; value: string; copyable?: string }[] = [
+    {
+      label: "Wallet",
+      ok: true,
+      value: truncateAddr(wallet.address),
+      copyable: wallet.address,
+    },
+    {
+      label: "USDC.e",
+      ok: (balances?.usdcE ?? 0) > 0,
+      value: balances ? `$${balances.usdcE.toFixed(2)}` : "$0.00",
+    },
+    {
+      label: "POL (gas)",
+      ok: (balances?.pol ?? 0) > 0.001,
+      value: balances ? `$${(balances.pol * 0.45).toFixed(2)}` : "$0.00",
+    },
+    {
+      label: "Approvals",
+      ok: credsReady,
+      value: credsReady ? "Ready" : "Need setup",
+    },
+    {
+      label: "CLOB Creds",
+      ok: credsReady,
+      value: credsReady ? "Derived" : "Need setup",
+    },
+    {
+      label: "Risk Ack",
+      ok: riskAcknowledged,
+      value: riskAcknowledged ? "Accepted" : "Required",
+    },
+  ];
+
+  return (
+    <div className="glass rounded-xl p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--muted)" }}>
+        System Status
+      </p>
+      <div className="grid gap-2">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between text-xs">
+            <span style={{ color: "var(--muted)" }}>{row.label}</span>
+            <div className="flex items-center gap-2">
+              <span className={row.ok ? "" : ""} style={{ color: row.ok ? "rgb(34,197,94)" : "rgb(239,68,68)" }}>
+                {row.ok ? "\u2705" : "\u274C"} {row.value}
+              </span>
+              {row.copyable && (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(row.copyable!);
+                    setAddrCopied(true);
+                    setTimeout(() => setAddrCopied(false), 2000);
+                  }}
+                  className="cursor-pointer"
+                  style={{ color: addrCopied ? "rgb(34,197,94)" : "var(--muted)" }}
+                >
+                  {addrCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Kalshi Section ──────────────────────────────────
+
+function KalshiSection({
+  kalshiConnected,
+  showToast,
+  onConnected,
+}: {
+  kalshiConnected: boolean;
+  showToast: (msg: string, type: "success" | "error") => void;
+  onConnected: () => void;
+}) {
+  const [apiKeyId, setApiKeyId] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
+  async function handleConnect() {
+    if (!apiKeyId.trim() || !privateKey.trim()) {
+      showToast("Both API Key ID and Private Key are required", "error");
+      return;
+    }
+    setConnecting(true);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "connect_kalshi",
+          apiKeyId: apiKeyId.trim(),
+          privateKey: privateKey.trim(),
+        }),
+      });
+      if (res.ok) {
+        showToast("Kalshi connected!", "success");
+        onConnected();
+        setApiKeyId("");
+        setPrivateKey("");
+      } else {
+        const data = await res.json();
+        showToast(data.error || "Failed to connect Kalshi", "error");
+      }
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <BarChart3 className="w-4 h-4" style={{ color: "rgb(59,130,246)" }} />
+          <h3 className="text-sm font-semibold">What is Kalshi?</h3>
+        </div>
+        <p className="text-xs mb-3" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          Kalshi is a <strong>US-regulated</strong> prediction market (CFTC-regulated exchange).
+          Unlike Polymarket, it uses normal USD — no crypto needed. Your agent can trade on both
+          platforms simultaneously for better odds.
+        </p>
+        <div
+          className="rounded-lg p-3 flex items-start gap-2"
+          style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.08)" }}
+        >
+          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(59,130,246)" }} />
+          <p className="text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
+            You&apos;ll need a Kalshi account with API access enabled.
+            Go to <a href="https://kalshi.com" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "rgb(59,130,246)" }}>kalshi.com</a> to
+            sign up, then generate API keys from your account settings.
+          </p>
+        </div>
+      </div>
+
+      {kalshiConnected ? (
+        <div className="glass rounded-xl p-5">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: "rgba(34,197,94,0.1)" }}
+            >
+              <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>
+                Kalshi Connected
+              </p>
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Your agent can now trade on Kalshi
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="glass rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Key className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
+            <p className="text-sm font-semibold">Connect Your Kalshi API</p>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold block mb-1">API Key ID</label>
+              <input
+                type="text"
+                value={apiKeyId}
+                onChange={(e) => setApiKeyId(e.target.value)}
+                placeholder="e.g. abc123-def456-..."
+                className="glass w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ color: "var(--foreground)" }}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold block mb-1">Private Key</label>
+              <textarea
+                value={privateKey}
+                onChange={(e) => setPrivateKey(e.target.value)}
+                placeholder="Paste your RSA private key here..."
+                rows={4}
+                className="glass w-full px-3 py-2 rounded-lg text-sm outline-none resize-none font-mono"
+                style={{ color: "var(--foreground)" }}
+              />
+            </div>
+            <button
+              onClick={handleConnect}
+              disabled={connecting || !apiKeyId.trim() || !privateKey.trim()}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+              style={{
+                background: "linear-gradient(135deg, rgba(59,130,246,0.85), rgba(37,99,235,0.95))",
+                color: "#fff",
+                boxShadow: "0 2px 12px rgba(59,130,246,0.3)",
+              }}
+            >
+              {connecting ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Connecting...
+                </span>
+              ) : (
+                "Connect Kalshi"
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tab Bar ─────────────────────────────────────────
+
+function TabBar({ activeTab, onTabChange }: { activeTab: "polymarket" | "kalshi"; onTabChange: (tab: "polymarket" | "kalshi") => void }) {
+  return (
+    <div className="glass rounded-xl p-1 flex gap-1 mb-4">
+      {(["polymarket", "kalshi"] as const).map((tab) => (
+        <button
+          key={tab}
+          onClick={() => onTabChange(tab)}
+          className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+          style={{
+            background: activeTab === tab ? "rgba(249,115,22,0.08)" : "transparent",
+            color: activeTab === tab ? "rgb(249,115,22)" : "var(--muted)",
+          }}
+        >
+          {tab === "polymarket" ? "Polymarket" : "Kalshi"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Main Panel ──────────────────────────────────────
 
 export default function PolymarketPanel({
@@ -474,10 +864,14 @@ export default function PolymarketPanel({
   const [savingRisk, setSavingRisk] = useState(false);
   const [riskDraft, setRiskDraft] = useState<RiskConfig | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
-  const [balance, setBalance] = useState<number | null>(null);
+  const [balances, setBalances] = useState<Balances | null>(null);
   const [checkingBalance, setCheckingBalance] = useState(false);
-  const [limitsSaved, setLimitsSaved] = useState(false);
-  const [fundingSkipped, setFundingSkipped] = useState(false);
+  const [credsReady, setCredsReady] = useState(false);
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
+  const [kalshiConnected, setKalshiConnected] = useState(false);
+  const [activeTab, setActiveTab] = useState<"polymarket" | "kalshi">("polymarket");
+  const [activatingCreds, setActivatingCreds] = useState(false);
+  const [acknowledgingRisk, setAcknowledgingRisk] = useState(false);
   const balancePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const showToast = useCallback((msg: string, type: "success" | "error") => {
@@ -498,12 +892,14 @@ export default function PolymarketPanel({
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [w, wl, pos, rc, tl] = await Promise.all([
+    const [w, wl, pos, rc, tl, riskAck, kalshiCreds] = await Promise.all([
       fetchFile("~/.openclaw/polymarket/wallet.json"),
       fetchFile("~/memory/polymarket-watchlist.json"),
       fetchFile("~/.openclaw/polymarket/positions.json"),
       fetchFile("~/.openclaw/polymarket/risk-config.json"),
       fetchFile("~/.openclaw/polymarket/trade-log.json"),
+      fetchFile("~/.openclaw/polymarket/polymarket-risk.json"),
+      fetchFile("~/.openclaw/kalshi/credentials.json"),
     ]);
     setWallet(w);
     setWatchlist(wl);
@@ -511,6 +907,10 @@ export default function PolymarketPanel({
     setRiskConfig(rc);
     setRiskDraft(rc ?? DEFAULT_RISK);
     setTrades(tl?.trades ?? []);
+    setRiskAcknowledged(riskAck != null);
+    setKalshiConnected(kalshiCreds != null);
+    // Creds are ready if risk-config exists (setup-creds was run as part of activation)
+    setCredsReady(rc != null && riskAck != null);
     setLoading(false);
   }, [fetchFile]);
 
@@ -521,10 +921,10 @@ export default function PolymarketPanel({
   const checkBalance = useCallback(async (address: string) => {
     setCheckingBalance(true);
     try {
-      const bal = await fetchUsdcBalance(address);
-      setBalance(bal);
+      const bal = await fetchBalances(address);
+      setBalances(bal);
     } catch {
-      // keep existing balance
+      // keep existing
     } finally {
       setCheckingBalance(false);
     }
@@ -536,7 +936,7 @@ export default function PolymarketPanel({
   }, [wallet, checkBalance]);
 
   useEffect(() => {
-    if (!wallet || (balance !== null && balance > 0)) {
+    if (!wallet || (balances !== null && balances.total > 0)) {
       if (balancePollRef.current) clearInterval(balancePollRef.current);
       return;
     }
@@ -546,7 +946,7 @@ export default function PolymarketPanel({
     return () => {
       if (balancePollRef.current) clearInterval(balancePollRef.current);
     };
-  }, [wallet, balance, checkBalance]);
+  }, [wallet, balances, checkBalance]);
 
   const setupComplete = wallet != null && riskConfig?.enabled === true;
 
@@ -595,6 +995,78 @@ export default function PolymarketPanel({
     }
   }
 
+  async function handleActivateCreds() {
+    setActivatingCreds(true);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setup_polymarket_creds" }),
+      });
+      if (res.ok) {
+        setCredsReady(true);
+        showToast("Trading activated! Approvals and credentials are set up.", "success");
+      } else {
+        const data = await res.json();
+        showToast(data.error || "Activation failed — try again", "error");
+      }
+    } catch {
+      showToast("Network error — check your connection", "error");
+    } finally {
+      setActivatingCreds(false);
+    }
+  }
+
+  async function handleAcknowledgeRisk() {
+    setAcknowledgingRisk(true);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "acknowledge_polymarket_risk" }),
+      });
+      if (res.ok) {
+        setRiskAcknowledged(true);
+        showToast("Risk disclosure acknowledged", "success");
+      } else {
+        const data = await res.json();
+        showToast(data.error || "Failed — try again", "error");
+      }
+    } catch {
+      showToast("Network error — check your connection", "error");
+    } finally {
+      setAcknowledgingRisk(false);
+    }
+  }
+
+  async function handleSaveRiskAndEnable() {
+    if (!riskDraft) return;
+    const updated = { ...riskDraft, enabled: true };
+    setSavingRisk(true);
+    try {
+      const res = await fetch("/api/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_polymarket_risk",
+          riskConfig: updated,
+        }),
+      });
+      if (res.ok) {
+        setRiskConfig(updated);
+        setRiskDraft(updated);
+        showToast("Trading is live! Your agent is now monitoring Polymarket.", "success");
+      } else {
+        const data = await res.json();
+        showToast(data.error || "Failed to save", "error");
+      }
+    } catch {
+      showToast("Network error — check your connection", "error");
+    } finally {
+      setSavingRisk(false);
+    }
+  }
+
   async function handleSaveRisk() {
     if (!riskDraft) return;
     setSavingRisk(true);
@@ -609,7 +1081,6 @@ export default function PolymarketPanel({
       });
       if (res.ok) {
         setRiskConfig(riskDraft);
-        setLimitsSaved(true);
         showToast(riskDraft.enabled ? "Trading enabled!" : "Safety limits saved!", "success");
       } else {
         const data = await res.json();
@@ -617,36 +1088,6 @@ export default function PolymarketPanel({
       }
     } catch {
       showToast("Network error — check your connection", "error");
-    } finally {
-      setSavingRisk(false);
-    }
-  }
-
-  async function handleEnableTrading() {
-    if (!riskDraft) return;
-    const updated = { ...riskDraft, enabled: true };
-    setRiskDraft(updated);
-    setSavingRisk(true);
-    try {
-      const res = await fetch("/api/settings/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_polymarket_risk",
-          riskConfig: updated,
-        }),
-      });
-      if (res.ok) {
-        setRiskConfig(updated);
-        showToast("Trading is live! Your agent is now monitoring Polymarket.", "success");
-      } else {
-        const data = await res.json();
-        showToast(data.error || "Failed to enable", "error");
-        setRiskDraft({ ...updated, enabled: false });
-      }
-    } catch {
-      showToast("Network error — check your connection", "error");
-      setRiskDraft({ ...updated, enabled: false });
     } finally {
       setSavingRisk(false);
     }
@@ -660,8 +1101,6 @@ export default function PolymarketPanel({
       </div>
     );
   }
-
-  const isFunded = balance !== null && balance > 0;
 
   return (
     <div className="space-y-3">
@@ -683,7 +1122,15 @@ export default function PolymarketPanel({
         )}
       </AnimatePresence>
 
-      {setupComplete ? (
+      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {activeTab === "kalshi" ? (
+        <KalshiSection
+          kalshiConnected={kalshiConnected}
+          showToast={showToast}
+          onConnected={() => setKalshiConnected(true)}
+        />
+      ) : setupComplete ? (
         <DashboardView
           wallet={wallet!}
           watchlist={watchlist}
@@ -695,11 +1142,13 @@ export default function PolymarketPanel({
           trades={trades}
           savingRisk={savingRisk}
           handleSaveRisk={handleSaveRisk}
-          balance={balance}
+          balances={balances}
           checkingBalance={checkingBalance}
           onCheckBalance={() => wallet && checkBalance(wallet.address)}
           fetchAll={fetchAll}
           showToast={showToast}
+          credsReady={credsReady}
+          riskAcknowledged={riskAcknowledged}
         />
       ) : (
         <SetupFlow
@@ -709,15 +1158,16 @@ export default function PolymarketPanel({
           settingUpWallet={settingUpWallet}
           savingRisk={savingRisk}
           handleSetupWallet={handleSetupWallet}
-          handleSaveRisk={handleSaveRisk}
-          handleEnableTrading={handleEnableTrading}
-          balance={balance}
+          handleActivateCreds={handleActivateCreds}
+          handleAcknowledgeRisk={handleAcknowledgeRisk}
+          handleSaveRiskAndEnable={handleSaveRiskAndEnable}
+          balances={balances}
           checkingBalance={checkingBalance}
           onCheckBalance={() => wallet && checkBalance(wallet.address)}
-          isFunded={isFunded}
-          limitsSaved={limitsSaved}
-          fundingSkipped={fundingSkipped}
-          onSkipFunding={() => setFundingSkipped(true)}
+          credsReady={credsReady}
+          riskAcknowledged={riskAcknowledged}
+          activatingCreds={activatingCreds}
+          acknowledgingRisk={acknowledgingRisk}
         />
       )}
     </div>
@@ -733,15 +1183,16 @@ function SetupFlow({
   settingUpWallet,
   savingRisk,
   handleSetupWallet,
-  handleSaveRisk,
-  handleEnableTrading,
-  balance,
+  handleActivateCreds,
+  handleAcknowledgeRisk,
+  handleSaveRiskAndEnable,
+  balances,
   checkingBalance,
   onCheckBalance,
-  isFunded,
-  limitsSaved,
-  fundingSkipped,
-  onSkipFunding,
+  credsReady,
+  riskAcknowledged,
+  activatingCreds,
+  acknowledgingRisk,
 }: {
   wallet: WalletInfo | null;
   riskDraft: RiskConfig | null;
@@ -749,31 +1200,37 @@ function SetupFlow({
   settingUpWallet: boolean;
   savingRisk: boolean;
   handleSetupWallet: () => void;
-  handleSaveRisk: () => void;
-  handleEnableTrading: () => void;
-  balance: number | null;
+  handleActivateCreds: () => void;
+  handleAcknowledgeRisk: () => void;
+  handleSaveRiskAndEnable: () => void;
+  balances: Balances | null;
   checkingBalance: boolean;
   onCheckBalance: () => void;
-  isFunded: boolean;
-  limitsSaved: boolean;
-  fundingSkipped: boolean;
-  onSkipFunding: () => void;
+  credsReady: boolean;
+  riskAcknowledged: boolean;
+  activatingCreds: boolean;
+  acknowledgingRisk: boolean;
 }) {
   const hasWallet = wallet != null;
-  const [addrCopied, setAddrCopied] = useState(false);
+  const isFunded = (balances?.total ?? 0) > 0;
+  const [fundingSkipped, setFundingSkipped] = useState(false);
+
   const step2Unlocked = hasWallet;
   const step3Unlocked = hasWallet && (isFunded || fundingSkipped);
-  const step4Unlocked = step3Unlocked && limitsSaved;
+  const step4Unlocked = step3Unlocked && credsReady;
+  const step5Unlocked = step4Unlocked && riskAcknowledged;
 
   const completedSteps = new Set<number>();
   if (hasWallet) completedSteps.add(1);
   if (isFunded) completedSteps.add(2);
-  if (limitsSaved) completedSteps.add(3);
+  if (credsReady) completedSteps.add(3);
+  if (riskAcknowledged) completedSteps.add(4);
 
   let currentStep = 1;
   if (hasWallet) currentStep = 2;
   if (step3Unlocked) currentStep = 3;
   if (step4Unlocked) currentStep = 4;
+  if (step5Unlocked) currentStep = 5;
 
   return (
     <div>
@@ -808,8 +1265,8 @@ function SetupFlow({
             <div>
               <h3 className="text-lg font-semibold mb-1">Get Started with Polymarket</h3>
               <p className="text-sm mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-                Your agent needs a trading wallet to place trades on Polymarket.
-                This creates a secure Polygon wallet that only your agent controls.
+                Your agent needs a trading wallet on Polygon (a fast, cheap blockchain).
+                This creates a secure wallet that only your agent controls &mdash; you can withdraw funds anytime.
               </p>
               <div
                 className="rounded-lg p-3 flex items-start gap-2 mb-4"
@@ -878,7 +1335,7 @@ function SetupFlow({
                       Wallet funded
                     </p>
                     <p className="text-xs" style={{ color: "var(--muted)" }}>
-                      Balance: ${balance?.toFixed(2)} USDC
+                      USDC.e: ${balances?.usdcE.toFixed(2)} &middot; USDC: ${balances?.usdcNative.toFixed(2)} &middot; POL: {balances?.pol.toFixed(4)}
                     </p>
                   </div>
                 </div>
@@ -889,31 +1346,64 @@ function SetupFlow({
                       <DollarSign className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
                       <p className="text-sm font-semibold">Fund Your Wallet</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="text-sm font-bold tabular-nums"
-                        style={{ color: balance !== null && balance > 0 ? "rgb(34,197,94)" : "var(--muted)" }}
-                      >
-                        ${balance !== null ? balance.toFixed(2) : "0.00"} USDC
-                      </span>
-                      <button
-                        onClick={onCheckBalance}
-                        disabled={checkingBalance}
-                        className="p-1 rounded-md cursor-pointer transition-all disabled:opacity-50"
-                        style={{ color: "var(--muted)" }}
-                        title="Check balance"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${checkingBalance ? "animate-spin" : ""}`} />
-                      </button>
+                    <button
+                      onClick={onCheckBalance}
+                      disabled={checkingBalance}
+                      className="p-1 rounded-md cursor-pointer transition-all disabled:opacity-50"
+                      style={{ color: "var(--muted)" }}
+                      title="Check balance"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${checkingBalance ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+
+                  {/* Balance breakdown */}
+                  <div className="grid grid-cols-3 gap-2 mb-4 mt-3">
+                    <div className="glass rounded-lg p-2.5 text-center">
+                      <p className="text-xs font-bold tabular-nums">${balances?.usdcE.toFixed(2) ?? "0.00"}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>USDC.e</p>
+                      <p className="text-[9px]" style={{ color: "var(--muted)", opacity: 0.6 }}>Trading money</p>
+                    </div>
+                    <div className="glass rounded-lg p-2.5 text-center">
+                      <p className="text-xs font-bold tabular-nums">${balances?.usdcNative.toFixed(2) ?? "0.00"}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>USDC</p>
+                      <p className="text-[9px]" style={{ color: "var(--muted)", opacity: 0.6 }}>Also $1 each</p>
+                    </div>
+                    <div className="glass rounded-lg p-2.5 text-center">
+                      <p className="text-xs font-bold tabular-nums">{balances?.pol.toFixed(4) ?? "0.0000"}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>POL</p>
+                      <p className="text-[9px]" style={{ color: "var(--muted)", opacity: 0.6 }}>Gas fees</p>
                     </div>
                   </div>
-                  <p className="text-[11px] text-right mb-4" style={{ color: "var(--muted)", opacity: 0.6 }}>
-                    Balance updates automatically after you send funds
-                  </p>
+
+                  {/* Plain language explanation */}
+                  <div
+                    className="rounded-lg p-3 mb-3"
+                    style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.08)" }}
+                  >
+                    <p className="text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                      <strong>USDC.e</strong> is your trading money &mdash; this is what Polymarket uses.
+                      <strong> POL</strong> pays for transaction fees (like postage for the blockchain). ~$0.50 of POL is plenty for hundreds of trades.
+                    </p>
+                  </div>
+
+                  {/* Chain warning */}
+                  <div
+                    className="rounded-xl p-3 flex items-start gap-2 mb-4"
+                    style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)" }}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(239,68,68)" }} />
+                    <p className="text-[11px] font-semibold" style={{ color: "rgb(239,68,68)", lineHeight: "1.5" }}>
+                      Always send on the Polygon network. Funds sent on Ethereum, Base, or Arbitrum will NOT arrive here.
+                    </p>
+                  </div>
+
+                  {/* Address + copy */}
+                  <CopyableAddress address={wallet.address} />
 
                   {/* Trust card */}
                   <div
-                    className="rounded-xl p-4 mb-3"
+                    className="rounded-xl p-4 mt-3 mb-3"
                     style={{ background: "rgba(34,197,94,0.03)", border: "1px solid rgba(34,197,94,0.08)" }}
                   >
                     <div className="flex items-center gap-2 mb-2.5">
@@ -923,53 +1413,13 @@ function SetupFlow({
                     <ul className="space-y-1.5 text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
-                        This is <strong>your</strong> wallet. The private key is stored securely on your dedicated VM &mdash; only your agent has access.
+                        The private key is stored securely on your dedicated VM &mdash; only your agent has access.
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
-                        You can export your private key anytime from your agent&apos;s settings.
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
-                        Withdraw your funds anytime &mdash; just message your agent &ldquo;send my funds to [paste your wallet address]&rdquo;
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgba(34,197,94,0.5)" }} />
-                        InstaClaw never has access to your private key or funds.
+                        Withdraw anytime &mdash; just message your agent &ldquo;send my funds to [your wallet]&rdquo;
                       </li>
                     </ul>
-                  </div>
-
-                  {/* Chain warning */}
-                  <div
-                    className="rounded-xl p-3 flex items-start gap-2 mb-4"
-                    style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.08)" }}
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "rgb(239,68,68)" }} />
-                    <p className="text-[11px] font-medium" style={{ color: "rgb(239,68,68)", lineHeight: "1.5" }}>
-                      Send USDC on Polygon network only. USDC sent on other networks (Ethereum, Base, Arbitrum) will not appear.
-                    </p>
-                  </div>
-
-                  {/* Address + copy */}
-                  <div className="glass rounded-xl flex items-center gap-2 px-4 py-3 mb-4">
-                    <Wallet className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
-                    <span className="text-xs sm:text-sm font-mono flex-1 truncate">{wallet.address}</span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(wallet.address);
-                        setAddrCopied(true);
-                        setTimeout(() => setAddrCopied(false), 2000);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0"
-                      style={{
-                        background: addrCopied ? "rgba(34,197,94,0.08)" : "rgba(59,130,246,0.08)",
-                        color: addrCopied ? "rgb(34,197,94)" : "rgb(59,130,246)",
-                      }}
-                    >
-                      {addrCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      {addrCopied ? "Copied!" : "Copy Address"}
-                    </button>
                   </div>
 
                   {/* Funding guide */}
@@ -980,7 +1430,7 @@ function SetupFlow({
                   </p>
 
                   <button
-                    onClick={onSkipFunding}
+                    onClick={() => setFundingSkipped(true)}
                     className="text-[11px] font-medium cursor-pointer transition-all"
                     style={{ color: "var(--muted)", opacity: 0.5 }}
                   >
@@ -992,16 +1442,16 @@ function SetupFlow({
           )}
         </AnimatePresence>
 
-        {/* ── Step 3: Set Safety Limits ── */}
+        {/* ── Step 3: Activate Trading ── */}
         <AnimatePresence>
-          {step3Unlocked && riskDraft && (
+          {step3Unlocked && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.08 }}
               className="glass rounded-xl p-5"
             >
-              {limitsSaved ? (
+              {credsReady ? (
                 <div className="flex items-center gap-3">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
@@ -1011,37 +1461,50 @@ function SetupFlow({
                   </div>
                   <div>
                     <p className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>
-                      Safety limits saved
+                      Trading activated
                     </p>
                     <p className="text-xs" style={{ color: "var(--muted)" }}>
-                      ${riskDraft.maxPositionSizeUSDC}/trade &middot; ${riskDraft.dailySpendCapUSDC}/day limit
+                      Approvals and CLOB credentials are set up
                     </p>
                   </div>
                 </div>
               ) : (
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <Shield className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
-                    <p className="text-sm font-semibold">Set Your Safety Limits</p>
+                    <Zap className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
+                    <p className="text-sm font-semibold">Activate Trading</p>
                   </div>
-                  <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-                    These limits control how much your agent can spend. You can change them anytime.
-                    We&apos;ve pre-filled conservative defaults to get you started.
+                  <p className="text-xs mb-3" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                    This sets up the approvals and credentials your agent needs to place trades on Polymarket.
+                    It connects your wallet to Polymarket&apos;s order book so your agent can buy and sell positions.
                   </p>
-
-                  <RiskLimitInputs riskDraft={riskDraft} setRiskDraft={setRiskDraft} />
-
+                  <div
+                    className="rounded-lg p-3 flex items-start gap-2 mb-4"
+                    style={{ background: "rgba(0,0,0,0.02)" }}
+                  >
+                    <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--muted)" }} />
+                    <p className="text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.5" }}>
+                      This is a one-time setup. No funds are spent &mdash; it just authorizes your agent to trade when you&apos;re ready.
+                    </p>
+                  </div>
                   <button
-                    onClick={handleSaveRisk}
-                    disabled={savingRisk}
-                    className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                    onClick={handleActivateCreds}
+                    disabled={activatingCreds}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
                     style={{
-                      background: "linear-gradient(135deg, rgba(22,22,22,0.8), rgba(40,40,40,0.9))",
+                      background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                       color: "#fff",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                      boxShadow: "0 2px 12px rgba(249,115,22,0.3)",
                     }}
                   >
-                    {savingRisk ? "Saving..." : "Save Limits"}
+                    {activatingCreds ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Activating...
+                      </>
+                    ) : (
+                      "Activate"
+                    )}
                   </button>
                 </div>
               )}
@@ -1049,62 +1512,116 @@ function SetupFlow({
           )}
         </AnimatePresence>
 
-        {/* ── Step 4: Enable Trading ── */}
+        {/* ── Step 4: Risk Disclosure ── */}
         <AnimatePresence>
-          {step4Unlocked && riskDraft && wallet && (
+          {step4Unlocked && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.08 }}
               className="glass rounded-xl p-5"
             >
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
-                <p className="text-sm font-semibold">Ready to Start Trading</p>
-              </div>
+              {riskAcknowledged ? (
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: "rgba(34,197,94,0.1)" }}
+                  >
+                    <Check className="w-4 h-4" style={{ color: "rgb(34,197,94)" }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: "rgb(34,197,94)" }}>
+                      Risk disclosure accepted
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                      You understand the risks of prediction market trading
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
+                    <p className="text-sm font-semibold">Risk Disclosure</p>
+                  </div>
 
+                  <div
+                    className="rounded-xl p-4 mb-3 space-y-3"
+                    style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.08)" }}
+                  >
+                    <p className="text-xs font-medium" style={{ color: "rgb(239,68,68)", lineHeight: "1.6" }}>
+                      Please read carefully before proceeding:
+                    </p>
+                    <ul className="space-y-2 text-[11px]" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+                      <li className="flex items-start gap-2">
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(239,68,68)" }} />
+                        <span>
+                          <strong>Prediction markets carry real financial risk.</strong> You can lose some or all of your deposited funds.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(239,68,68)" }} />
+                        <span>
+                          <strong>Polymarket may restrict accounts</strong> that access the platform through proxies or from restricted jurisdictions. Withdraw profits regularly.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Info className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "rgb(59,130,246)" }} />
+                        <span>
+                          <strong>For a regulated alternative</strong>, consider Kalshi (available in the Kalshi tab). It&apos;s CFTC-regulated, uses USD, and doesn&apos;t require crypto.
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <button
+                    onClick={handleAcknowledgeRisk}
+                    disabled={acknowledgingRisk}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(22,22,22,0.8), rgba(40,40,40,0.9))",
+                      color: "#fff",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    {acknowledgingRisk ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "I Understand the Risks"
+                    )}
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Step 5: Set Risk Limits & Start Trading ── */}
+        <AnimatePresence>
+          {step5Unlocked && riskDraft && wallet && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.08 }}
+              className="glass rounded-xl p-5"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Shield className="w-4 h-4" style={{ color: "rgb(249,115,22)" }} />
+                <p className="text-sm font-semibold">Set Your Safety Limits</p>
+              </div>
               <p className="text-xs mb-4" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-                Your agent will monitor Polymarket and place trades within your safety limits.
-                You&apos;ll need to approve any trade above ${riskDraft.confirmationThresholdUSDC}.
+                These limits control how much your agent can spend. You can change them anytime after setup.
               </p>
 
-              {/* Summary */}
-              <div
-                className="rounded-xl p-4 mb-4 space-y-2"
-                style={{ background: "rgba(0,0,0,0.02)" }}
-              >
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: "var(--muted)" }}>Wallet</span>
-                  <span className="font-mono">{truncateAddr(wallet.address)}</span>
-                </div>
-                {balance !== null && (
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: "var(--muted)" }}>Balance</span>
-                    <span className="font-semibold">${balance.toFixed(2)} USDC</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: "var(--muted)" }}>Max per trade</span>
-                  <span>${riskDraft.maxPositionSizeUSDC}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: "var(--muted)" }}>Daily limit</span>
-                  <span>${riskDraft.dailySpendCapUSDC}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: "var(--muted)" }}>Approval threshold</span>
-                  <span>${riskDraft.confirmationThresholdUSDC}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span style={{ color: "var(--muted)" }}>Daily stop-loss</span>
-                  <span>${riskDraft.dailyLossLimitUSDC}</span>
-                </div>
-              </div>
+              <RiskLimitInputs riskDraft={riskDraft} setRiskDraft={setRiskDraft} />
 
               <button
-                onClick={handleEnableTrading}
+                onClick={handleSaveRiskAndEnable}
                 disabled={savingRisk}
-                className="w-full px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                className="w-full mt-4 px-5 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
                 style={{
                   background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                   color: "#fff",
@@ -1114,15 +1631,20 @@ function SetupFlow({
                 {savingRisk ? (
                   <span className="flex items-center justify-center gap-2">
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    Enabling...
+                    Starting...
                   </span>
                 ) : (
-                  "Start Trading"
+                  "Save & Start Trading"
                 )}
               </button>
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* FAQ at bottom of setup */}
+      <div className="mt-4">
+        <FAQSection />
       </div>
     </div>
   );
@@ -1141,11 +1663,13 @@ function DashboardView({
   trades,
   savingRisk,
   handleSaveRisk,
-  balance,
+  balances,
   checkingBalance,
   onCheckBalance,
   fetchAll,
   showToast,
+  credsReady,
+  riskAcknowledged,
 }: {
   wallet: WalletInfo;
   watchlist: Watchlist | null;
@@ -1157,13 +1681,14 @@ function DashboardView({
   trades: Trade[];
   savingRisk: boolean;
   handleSaveRisk: () => void;
-  balance: number | null;
+  balances: Balances | null;
   checkingBalance: boolean;
   onCheckBalance: () => void;
   fetchAll: () => void;
   showToast: (msg: string, type: "success" | "error") => void;
+  credsReady: boolean;
+  riskAcknowledged: boolean;
 }) {
-  const [addrCopied, setAddrCopied] = useState(false);
   const totalPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
 
   async function handleToggleTrading() {
@@ -1198,6 +1723,14 @@ function DashboardView({
           Refresh
         </button>
       </div>
+
+      {/* ── Status Overview ── */}
+      <StatusOverview
+        wallet={wallet}
+        balances={balances}
+        credsReady={credsReady}
+        riskAcknowledged={riskAcknowledged}
+      />
 
       {/* ── Status Card ── */}
       <div className="glass rounded-xl p-5">
@@ -1247,9 +1780,9 @@ function DashboardView({
           <div className="text-center rounded-xl py-3" style={{ background: "rgba(0,0,0,0.02)" }}>
             <p
               className="text-lg font-bold tabular-nums"
-              style={{ color: balance !== null && balance > 0 ? "var(--foreground)" : "var(--muted)" }}
+              style={{ color: balances && balances.total > 0 ? "var(--foreground)" : "var(--muted)" }}
             >
-              ${balance !== null ? balance.toFixed(2) : "—"}
+              ${balances ? balances.total.toFixed(2) : "\u2014"}
             </p>
             <div className="flex items-center justify-center gap-1">
               <p className="text-[10px]" style={{ color: "var(--muted)" }}>Balance</p>
@@ -1278,25 +1811,18 @@ function DashboardView({
           </div>
         </div>
 
+        {/* Balance breakdown */}
+        <div className="grid grid-cols-3 gap-2 text-[10px] mb-3" style={{ color: "var(--muted)" }}>
+          <div className="text-center">USDC.e: ${balances?.usdcE.toFixed(2) ?? "0.00"}</div>
+          <div className="text-center">USDC: ${balances?.usdcNative.toFixed(2) ?? "0.00"}</div>
+          <div className="text-center">POL: {balances?.pol.toFixed(4) ?? "0.0000"}</div>
+        </div>
+
         {/* Wallet */}
         <div className="flex items-center justify-between text-xs" style={{ color: "var(--muted)" }}>
-          <div className="flex items-center gap-2">
-            <Wallet className="w-3 h-3" />
-            <span className="font-mono">{truncateAddr(wallet.address)}</span>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(wallet.address);
-                setAddrCopied(true);
-                setTimeout(() => setAddrCopied(false), 2000);
-              }}
-              className="cursor-pointer"
-              style={{ color: addrCopied ? "rgb(34,197,94)" : "var(--muted)" }}
-            >
-              {addrCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-            </button>
-          </div>
+          <CopyableAddress address={wallet.address} />
           {!riskConfig.enabled && (
-            <div className="flex items-center gap-1" style={{ color: "rgb(249,115,22)" }}>
+            <div className="flex items-center gap-1 ml-2" style={{ color: "rgb(249,115,22)" }}>
               <Pause className="w-3 h-3" />
               <span className="text-[10px] font-medium">Paused</span>
             </div>
@@ -1334,10 +1860,10 @@ function DashboardView({
                       {(m.lastPrice * 100).toFixed(0)}%
                     </td>
                     <td className="py-2 text-right" style={{ color: "var(--muted)" }}>
-                      {m.alertThreshold ? `${(m.alertThreshold * 100).toFixed(0)}% change` : "—"}
+                      {m.alertThreshold ? `${(m.alertThreshold * 100).toFixed(0)}% change` : "\u2014"}
                     </td>
                     <td className="py-2 text-right" style={{ color: "var(--muted)" }}>
-                      {m.lastChecked ? timeAgo(m.lastChecked) : "—"}
+                      {m.lastChecked ? timeAgo(m.lastChecked) : "\u2014"}
                     </td>
                   </tr>
                 ))}
@@ -1424,6 +1950,12 @@ function DashboardView({
           </button>
         </div>
       </Section>
+
+      {/* ── Quick Start ── */}
+      <QuickStartGuide />
+
+      {/* ── FAQ ── */}
+      <FAQSection />
     </div>
   );
 }
