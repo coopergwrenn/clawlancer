@@ -113,7 +113,7 @@ export async function GET() {
         tierMinimum: skill.tier_minimum,
         sortOrder: skill.sort_order,
         status: skill.status,
-        enabled: vmSkill?.enabled ?? (skill.item_type !== "integration"),
+        enabled: vmSkill?.enabled ?? (skill.is_default && skill.item_type !== "integration"),
         connected: vmSkill?.connected ?? false,
         connectedAccount: vmSkill?.connected_account ?? null,
       };

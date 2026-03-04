@@ -2078,6 +2078,21 @@ export async function configureOpenClaw(
       ''
     );
 
+    // Deploy session protection scripts (circuit breaker + watchdog)
+    // These are also in vm-manifest.ts for reconciliation, but must be present from first boot.
+    const stripThinkingB64 = Buffer.from(STRIP_THINKING_SCRIPT, "utf-8").toString("base64");
+    const watchdogB64 = Buffer.from(VM_WATCHDOG_SCRIPT, "utf-8").toString("base64");
+    scriptParts.push(
+      '# Deploy session protection scripts (circuit breaker + growth watchdog)',
+      `echo '${stripThinkingB64}' | base64 -d > "$HOME/.openclaw/scripts/strip-thinking.py"`,
+      'chmod +x "$HOME/.openclaw/scripts/strip-thinking.py"',
+      `echo '${watchdogB64}' | base64 -d > "$HOME/.openclaw/scripts/vm-watchdog.py"`,
+      'chmod +x "$HOME/.openclaw/scripts/vm-watchdog.py"',
+      '# Pre-create sessions-backup dir for circuit breaker auto-backup',
+      'mkdir -p "$HOME/.openclaw/agents/main/sessions-backup"',
+      ''
+    );
+
     if (config.gmailProfileSummary) {
       // Gmail connected → personalized BOOTSTRAP.md + profile data
       const bootstrap = buildPersonalizedBootstrap(config.gmailProfileSummary);

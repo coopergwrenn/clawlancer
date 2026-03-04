@@ -90,12 +90,10 @@ export async function POST(req: NextRequest) {
           }
           await supabase.from("instaclaw_vms").update(dbUpdate).eq("id", vm.id);
 
-          // Update vm_skills state
+          // Upsert vm_skills state (row may not exist for new VMs)
           await supabase
             .from("instaclaw_vm_skills")
-            .update({ enabled: true })
-            .eq("vm_id", vm.id)
-            .eq("skill_id", skill.id);
+            .upsert({ vm_id: vm.id, skill_id: skill.id, enabled: true }, { onConflict: "vm_id,skill_id" });
 
           logger.info("Skill toggled (aGDP install)", {
             slug: skill.slug,
@@ -119,9 +117,7 @@ export async function POST(req: NextRequest) {
           await supabase.from("instaclaw_vms").update({ agdp_enabled: false }).eq("id", vm.id);
           await supabase
             .from("instaclaw_vm_skills")
-            .update({ enabled: false })
-            .eq("vm_id", vm.id)
-            .eq("skill_id", skill.id);
+            .upsert({ vm_id: vm.id, skill_id: skill.id, enabled: false }, { onConflict: "vm_id,skill_id" });
 
           logger.info("Skill toggled (aGDP uninstall)", {
             slug: skill.slug,
@@ -160,12 +156,10 @@ export async function POST(req: NextRequest) {
           }
           await supabase.from("instaclaw_vms").update(dbUpdate).eq("id", vm.id);
 
-          // Update vm_skills state
+          // Upsert vm_skills state (row may not exist for new VMs)
           await supabase
             .from("instaclaw_vm_skills")
-            .update({ enabled: true })
-            .eq("vm_id", vm.id)
-            .eq("skill_id", skill.id);
+            .upsert({ vm_id: vm.id, skill_id: skill.id, enabled: true }, { onConflict: "vm_id,skill_id" });
 
           logger.info("Skill toggled (Solana DeFi install)", {
             slug: skill.slug,
@@ -187,9 +181,7 @@ export async function POST(req: NextRequest) {
           await supabase.from("instaclaw_vms").update({ solana_defi_enabled: false }).eq("id", vm.id);
           await supabase
             .from("instaclaw_vm_skills")
-            .update({ enabled: false })
-            .eq("vm_id", vm.id)
-            .eq("skill_id", skill.id);
+            .upsert({ vm_id: vm.id, skill_id: skill.id, enabled: false, connected: false }, { onConflict: "vm_id,skill_id" });
 
           logger.info("Skill toggled (Solana DeFi uninstall)", {
             slug: skill.slug,
@@ -232,12 +224,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update DB state
+    // Upsert DB state (row may not exist for new VMs with non-default skills)
     await supabase
       .from("instaclaw_vm_skills")
-      .update({ enabled })
-      .eq("vm_id", vm.id)
-      .eq("skill_id", skill.id);
+      .upsert({ vm_id: vm.id, skill_id: skill.id, enabled }, { onConflict: "vm_id,skill_id" });
 
     logger.info("Skill toggled", {
       slug: skill.slug,
