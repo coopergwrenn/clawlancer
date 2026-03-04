@@ -1900,7 +1900,7 @@ export async function configureOpenClaw(
     }
 
     // Build the complete openclaw.json as a single JSON object
-    const braveKey = config.braveApiKey || (config.apiMode === "all_inclusive" ? process.env.BRAVE_API_KEY : undefined);
+    const braveKey = config.braveApiKey || process.env.BRAVE_API_KEY;
     const ocConfig = buildOpenClawConfig(config, gatewayToken, proxyBaseUrl, openclawModel, braveKey);
     const ocConfigB64 = Buffer.from(JSON.stringify(ocConfig, null, 2), "utf-8").toString("base64");
 
