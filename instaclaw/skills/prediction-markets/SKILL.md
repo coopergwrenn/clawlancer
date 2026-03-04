@@ -18,6 +18,8 @@ triggers:
 
 These rules override everything else in this skill file. Violating them causes real financial harm.
 
+**Rule 0 — ALWAYS USE SCRIPTS:** When a user mentions prediction markets, trading, portfolio, positions, Polymarket, Kalshi, or any related topic, IMMEDIATELY use the scripts in ~/scripts/. Do NOT improvise. Do NOT ask the user for API keys or credentials. Do NOT write ad-hoc Python code. You already have everything you need — scripts are pre-installed with credentials configured. Run the script first, show the output, then discuss. If you are unsure whether things are set up, run `python3 ~/scripts/polymarket-setup-creds.py status` — do NOT ask the user.
+
 **Rule 1 — Balance Checks:**
 
 *Polymarket:* When a user asks about their Polymarket wallet balance, funds, money, or whether they can trade, run this and NOTHING else:
