@@ -1474,6 +1474,24 @@ export async function GET(req: NextRequest) {
           `Disk: ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}`
         );
       }
+
+      // Session growth alert — runaway task detected
+      if (status.sessionGrowthAlert) {
+        alerts.add(
+          "Session Rapid Growth",
+          vm.name ?? vm.id,
+          `Runaway session detected: ${status.sessionGrowthAlert}\nRAM: ${status.ramPct}%\nGateway healthy: ${status.gatewayHealthy}`
+        );
+      }
+
+      // Circuit breaker tripped — error loop or degradation forced session archive
+      if (status.circuitBreaker) {
+        alerts.add(
+          "Circuit Breaker Tripped",
+          vm.name ?? vm.id,
+          `Session degradation detected.\nSession: ${status.circuitBreaker.session_id}\nIssue: ${status.circuitBreaker.issue}\nTripped at: ${new Date((status.circuitBreaker.ts ?? 0) * 1000).toISOString()}`
+        );
+      }
     } catch {
       // Non-fatal — metrics are best-effort
     }

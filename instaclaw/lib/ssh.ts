@@ -109,6 +109,13 @@ ACTIVE_TASKS_MD = os.path.join(WORKSPACE_DIR, "memory/active-tasks.md")
 # Flag files (stored in sessions dir alongside .jsonl files)
 MEMORY_FLAG = os.path.join(SESSIONS_DIR, ".memory-write-pending")
 STALE_FLAG = os.path.join(SESSIONS_DIR, ".memory-stale-notified")
+DEGRADED_FLAG = os.path.join(SESSIONS_DIR, ".session-degraded")
+CIRCUIT_BREAKER_FLAG = os.path.join(SESSIONS_DIR, ".circuit-breaker-tripped")
+
+# Session quality thresholds
+EMPTY_RESPONSE_THRESHOLD = 3
+ERROR_LOOP_THRESHOLD = 5
+ERROR_PATTERNS = ["SIGKILL", "signal: killed", "out of memory", "empty response"]
 
 # Timing constants
 MEMORY_FLAG_TTL = 300    # 5 minutes before giving up on memory write
@@ -206,6 +213,73 @@ def remove_memory_section(path, marker_start, marker_end):
     except Exception as e:
         print(f"remove_memory_section failed: {e}")
 
+def check_session_quality(jsonl_file, session_id):
+    """Scan tail of session for degradation patterns. Returns action to take."""
+    try:
+        assistant_msgs = []
+        with open(jsonl_file) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                    msg = d.get("message", {})
+                    if msg.get("role") == "assistant":
+                        assistant_msgs.append(msg)
+                except json.JSONDecodeError:
+                    pass
+
+        if not assistant_msgs:
+            return None
+
+        # Check last N for empty responses (content is [], "", None, or [{}])
+        tail = assistant_msgs[-EMPTY_RESPONSE_THRESHOLD:]
+        empty_count = sum(1 for m in tail if m.get("content") in ([], "", None, [{}]))
+        if len(tail) >= EMPTY_RESPONSE_THRESHOLD and empty_count >= EMPTY_RESPONSE_THRESHOLD:
+            return "empty_responses"
+
+        # Check last N for error loops (SIGKILL, OOM, etc.)
+        tail = assistant_msgs[-ERROR_LOOP_THRESHOLD:]
+        error_count = 0
+        for m in tail:
+            content_str = json.dumps(m.get("content", ""))
+            if any(p.lower() in content_str.lower() for p in ERROR_PATTERNS):
+                error_count += 1
+        if len(tail) >= ERROR_LOOP_THRESHOLD and error_count >= ERROR_LOOP_THRESHOLD:
+            return "error_loop"
+
+        return None
+    except Exception:
+        return None
+
+def extract_session_summary(jsonl_file):
+    """Extract key context from a session about to be archived."""
+    try:
+        user_msgs = []
+        with open(jsonl_file) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                    msg = d.get("message", {})
+                    if msg.get("role") == "user":
+                        content = msg.get("content", "")
+                        if isinstance(content, list):
+                            content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+                        if len(content) > 20:
+                            user_msgs.append(content[:200])
+                except json.JSONDecodeError:
+                    pass
+
+        if not user_msgs:
+            return None
+
+        summary_path = os.path.join(ARCHIVE_DIR, f"{os.path.basename(jsonl_file)}.context.txt")
+        with open(summary_path, "w") as f:
+            f.write(f"# Session Context (auto-extracted {datetime.now(timezone.utc).isoformat()})\\n\\n")
+            for i, msg in enumerate(user_msgs[-10:], 1):
+                f.write(f"{i}. {msg}\\n")
+        return summary_path
+    except Exception:
+        return None
+
 total_stripped = 0
 total_truncated = 0
 archived_sessions = []
@@ -230,6 +304,9 @@ try:
             archive_name = f"{session_id}-overflow-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
             archive_path = os.path.join(ARCHIVE_DIR, archive_name)
             shutil.copy2(jsonl_file, archive_path)
+
+            # Extract session context summary before removing the session
+            extract_session_summary(jsonl_file)
 
             # Save archive metadata with memory compliance info
             try:
@@ -301,6 +378,64 @@ try:
         # Track largest active session for Layer 2 staleness check
         if file_size > largest_active_session:
             largest_active_session = file_size
+
+        # ── Phase 1.5: Session quality check (empty responses + error loops) ──
+        quality_issue = check_session_quality(jsonl_file, session_id)
+        if quality_issue == "empty_responses":
+            # Write degraded flag for watchdog/health check to pick up
+            try:
+                with open(DEGRADED_FLAG, "w") as f:
+                    json.dump({"session_id": session_id, "issue": "empty_responses", "ts": time.time()}, f)
+                # Inject warning into MEMORY.md
+                inject_memory_section(MEMORY_MD,
+                    "<!-- INSTACLAW:SESSION_DEGRADED:START -->",
+                    "<!-- INSTACLAW:SESSION_DEGRADED:END -->",
+                    """
+## \\u26a0\\ufe0f SESSION DEGRADED \\u2014 EMPTY RESPONSES DETECTED
+
+Your last several responses returned empty content. This usually means your context
+is corrupted or a task is stuck in a failure loop.
+
+**Action required:**
+1. Stop any repeating/looping task immediately
+2. Write a summary of what you were working on to MEMORY.md
+3. Start a fresh approach to the task
+""")
+                print(f"SESSION DEGRADED: {session_id} — {EMPTY_RESPONSE_THRESHOLD}+ consecutive empty responses")
+            except Exception:
+                pass
+        elif quality_issue == "error_loop":
+            # Force-archive the session and trip circuit breaker
+            try:
+                os.makedirs(ARCHIVE_DIR, exist_ok=True)
+                archive_name = f"{session_id}-errorloop-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+                archive_path = os.path.join(ARCHIVE_DIR, archive_name)
+                shutil.copy2(jsonl_file, archive_path)
+                os.remove(jsonl_file)
+                archived_sessions.append(session_id)
+
+                # Remove from sessions.json
+                try:
+                    with open(SESSIONS_JSON) as f:
+                        sj = json.load(f)
+                    for key in list(sj.keys()):
+                        if sj[key].get("sessionId") == session_id:
+                            del sj[key]
+                    with open(SESSIONS_JSON, "w") as f:
+                        json.dump(sj, f, indent=2)
+                except Exception:
+                    pass
+
+                # Write circuit breaker flag
+                with open(CIRCUIT_BREAKER_FLAG, "w") as f:
+                    json.dump({"session_id": session_id, "issue": "error_loop", "ts": time.time()}, f)
+
+                # Inject memory prompt for next session
+                inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
+                print(f"CIRCUIT BREAKER TRIPPED: {session_id} — {ERROR_LOOP_THRESHOLD}+ consecutive error messages, session force-archived")
+            except Exception as e:
+                print(f"Error loop archive failed: {e}")
+            continue
 
         # ── Phase 2: Memory write enforcement (400KB-512KB) ──
         if file_size > MEMORY_WARN_BYTES:
@@ -762,6 +897,61 @@ def set_health_fail_count(count):
     except Exception:
         pass
 
+def check_session_growth():
+    """Detect rapidly growing sessions (runaway tasks)."""
+    sess_dir = os.path.expanduser("~/.openclaw/agents/main/sessions")
+    growth_file = os.path.expanduser("~/.openclaw/.watchdog-session-sizes")
+
+    current_max = 0
+    for f in glob.glob(os.path.join(sess_dir, "*.jsonl")):
+        try:
+            size = os.path.getsize(f)
+            if size > current_max:
+                current_max = size
+        except Exception:
+            pass
+
+    prev_size = 0
+    prev_time = 0
+    try:
+        with open(growth_file) as f:
+            data = json.load(f)
+            prev_size = data.get("size", 0)
+            prev_time = data.get("time", 0)
+    except Exception:
+        pass
+
+    try:
+        with open(growth_file, "w") as f:
+            json.dump({"size": current_max, "time": time.time()}, f)
+    except Exception:
+        pass
+
+    if prev_time == 0:
+        return None
+
+    elapsed = time.time() - prev_time
+    if elapsed < 30:
+        return None
+
+    growth_rate = (current_max - prev_size) / elapsed
+
+    # Alert if growing >1KB/sec (60KB/min — would hit 512KB in ~8 minutes)
+    if growth_rate > 1024:
+        return f"rapid_growth({growth_rate:.0f} B/s, {current_max} bytes)"
+    return None
+
+def check_circuit_breaker():
+    """Check if strip-thinking.py tripped the circuit breaker."""
+    cb_file = os.path.expanduser("~/.openclaw/agents/main/sessions/.circuit-breaker-tripped")
+    try:
+        if os.path.exists(cb_file):
+            with open(cb_file) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
 def main():
     actions = []
     ram_pct = get_ram_pct()
@@ -809,6 +999,14 @@ def main():
             actions.append(restart_gateway())
             set_health_fail_count(0)
 
+    # --- Session growth check ---
+    session_growth_alert = check_session_growth()
+    if session_growth_alert:
+        actions.append(session_growth_alert)
+
+    # --- Circuit breaker check ---
+    circuit_breaker = check_circuit_breaker()
+
     # --- Write status file ---
     # Filter None values from actions
     actions = [a for a in actions if a]
@@ -823,6 +1021,8 @@ def main():
         "gateway_uptime_hours": round(gateway_uptime / 3600, 1),
         "actions_taken": actions,
         "uptime_seconds": uptime_seconds,
+        "session_growth_alert": session_growth_alert,
+        "circuit_breaker": circuit_breaker,
     }
 
     tmp = STATUS_FILE + ".tmp"
@@ -3434,6 +3634,8 @@ export interface WatchdogStatus {
   uptimeSeconds: number;
   actionsTaken: string[];
   ts: string;
+  sessionGrowthAlert: string | null;
+  circuitBreaker: { session_id: string; issue: string; ts: number } | null;
 }
 
 export async function readWatchdogStatus(vm: VMRecord): Promise<WatchdogStatus | null> {
@@ -3453,6 +3655,8 @@ export async function readWatchdogStatus(vm: VMRecord): Promise<WatchdogStatus |
         uptimeSeconds: data.uptime_seconds ?? 0,
         actionsTaken: data.actions_taken ?? [],
         ts: data.ts ?? "",
+        sessionGrowthAlert: data.session_growth_alert ?? null,
+        circuitBreaker: data.circuit_breaker ?? null,
       };
     } finally {
       ssh.dispose();
@@ -3546,6 +3750,10 @@ export async function clearSessions(vm: VMRecord): Promise<boolean> {
       const cmd = [
         // Back up openclaw.json before restart (gateway --force can wipe channel config)
         'cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
+        // Back up ALL session files before clearing (prevents permanent data loss)
+        '&& mkdir -p ~/.openclaw/agents/main/sessions-backup',
+        '&& cp ~/.openclaw/agents/main/sessions/*.jsonl ~/.openclaw/agents/main/sessions-backup/ 2>/dev/null || true',
+        '&& cp ~/.openclaw/agents/main/sessions/sessions.json ~/.openclaw/agents/main/sessions-backup/ 2>/dev/null || true',
         // Stop via systemd (keeps Restart=always working for future crashes)
         '&& (systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true)',
         '&& rm -f ~/.openclaw/agents/main/sessions/*.jsonl ~/.openclaw/agents/main/sessions/sessions.json',
@@ -3595,6 +3803,9 @@ export async function repairCorruptedSession(vm: VMRecord): Promise<boolean> {
 
       // Extract session ID from filename (e.g. "abc123.jsonl" → "abc123")
       const sessionId = corruptFile.split('/').pop()?.replace('.jsonl', '') ?? '';
+
+      // Back up the session before deleting (prevents permanent data loss)
+      await ssh.execCommand(`mkdir -p ${sessDir}-backup && cp "${corruptFile}" "${sessDir}-backup/" 2>/dev/null || true`);
 
       // Delete only the corrupted session file
       await ssh.execCommand(`rm -f "${corruptFile}"`);
