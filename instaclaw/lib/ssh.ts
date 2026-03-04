@@ -2487,6 +2487,7 @@ export async function configureOpenClaw(
       const kalshiTrade = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-trade.py"), "utf-8");
       const kalshiPositions = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-positions.py"), "utf-8");
       const kalshiPortfolio = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-portfolio.py"), "utf-8");
+      const kalshiBrowse = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-browse.py"), "utf-8");
 
       const predSkillB64 = Buffer.from(predSkillMd, "utf-8").toString("base64");
       const polyGammaB64 = Buffer.from(polyGammaApi, "utf-8").toString("base64");
@@ -2500,6 +2501,7 @@ export async function configureOpenClaw(
       const kalshiTradeB64 = Buffer.from(kalshiTrade, "utf-8").toString("base64");
       const kalshiPositionsB64 = Buffer.from(kalshiPositions, "utf-8").toString("base64");
       const kalshiPortfolioB64 = Buffer.from(kalshiPortfolio, "utf-8").toString("base64");
+      const kalshiBrowseB64 = Buffer.from(kalshiBrowse, "utf-8").toString("base64");
 
       scriptParts.push(
         '# Deploy Prediction Markets skill (Polymarket + Kalshi)',
@@ -2518,7 +2520,8 @@ export async function configureOpenClaw(
         `echo '${kalshiTradeB64}' | base64 -d > "$HOME/scripts/kalshi-trade.py"`,
         `echo '${kalshiPositionsB64}' | base64 -d > "$HOME/scripts/kalshi-positions.py"`,
         `echo '${kalshiPortfolioB64}' | base64 -d > "$HOME/scripts/kalshi-portfolio.py"`,
-        'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py"',
+        `echo '${kalshiBrowseB64}' | base64 -d > "$HOME/scripts/kalshi-browse.py"`,
+        'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py" "$HOME/scripts/kalshi-browse.py"',
         '# Backward compat: remove old polymarket dir before symlinking',
         'rm -rf "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
         'ln -sfn "$PRED_SKILL_DIR" "$HOME/.openclaw/skills/polymarket"',

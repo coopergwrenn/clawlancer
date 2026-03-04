@@ -110,7 +110,19 @@ def load_creds():
 
 
 def load_risk_config():
-    return load_json(RISK_CONFIG_FILE)
+    config = load_json(RISK_CONFIG_FILE)
+    if config is None:
+        # Auto-create with conservative defaults
+        config = {
+            "enabled": False,
+            "daily_spend_cap": 50.00,
+            "max_position_size": 100.00,
+            "daily_loss_limit": 100.00,
+            "confirmation_threshold": 25.00,
+        }
+        RISK_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        save_json(RISK_CONFIG_FILE, config)
+    return config
 
 
 def load_daily_spend():
@@ -151,10 +163,6 @@ def log_trade(entry):
 
 def cmd_buy(args):
     config = load_risk_config()
-    if not config:
-        output("BLOCK — Risk config not found at ~/.openclaw/prediction-markets/kalshi-risk-config.json",
-               args.json, {"status": "BLOCK", "error": "risk_config_missing"})
-        return 2
 
     daily_spend = load_daily_spend()
     ok, reason = check_risk_limits(args.amount, config, daily_spend)
@@ -167,6 +175,18 @@ def cmd_buy(args):
         output("FAIL — Kalshi not configured. Run: python3 ~/scripts/kalshi-setup.py setup", args.json,
                {"status": "FAIL", "error": "not_configured"})
         return 1
+
+    # Pre-trade balance check
+    bal_resp, bal_err = kalshi_request(creds, "GET", "/portfolio/balance")
+    if bal_resp:
+        available_cents = bal_resp.get("balance", 0)
+        available_usd = available_cents / 100
+        if available_usd < args.amount:
+            output(f"FAIL — Insufficient balance: ${available_usd:.2f} available, need ${args.amount:.2f}. Deposit more at kalshi.com.",
+                   args.json, {"status": "FAIL", "error": "insufficient_balance",
+                               "available_usd": available_usd, "needed_usd": args.amount,
+                               "suggestion": "Deposit more funds at kalshi.com"})
+            return 1
 
     # Determine price and contracts
     if args.limit_price:

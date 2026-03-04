@@ -5,6 +5,8 @@ kalshi-setup.py — Store and validate Kalshi API credentials, check balance.
 Usage:
   python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY_ID> --private-key-file <PEM_PATH> [--json]
   python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY_ID> --private-key-pem <PEM_STRING> [--json]
+  python3 ~/scripts/kalshi-setup.py setup-interactive --api-key-id <KEY_ID> [--json]
+      (reads PEM from stdin — Telegram-friendly)
   python3 ~/scripts/kalshi-setup.py status [--json]
   python3 ~/scripts/kalshi-setup.py balance [--json]
 
@@ -28,6 +30,7 @@ from pathlib import Path
 
 PREDICTION_DIR = Path.home() / ".openclaw" / "prediction-markets"
 CREDS_FILE = PREDICTION_DIR / "kalshi-creds.json"
+PEM_FILE = PREDICTION_DIR / "kalshi-private-key.pem"
 
 KALSHI_BASE_URL = "https://trading-api.kalshi.com/trade-api/v2"
 
@@ -205,6 +208,85 @@ def cmd_setup(args):
 
 
 # ---------------------------------------------------------------------------
+# setup-interactive subcommand (reads PEM from stdin — Telegram-friendly)
+# ---------------------------------------------------------------------------
+
+def cmd_setup_interactive(args):
+    """Read PEM from stdin, save to file, then run normal setup flow."""
+    try:
+        from cryptography.hazmat.primitives import serialization
+    except ImportError:
+        output("FAIL — cryptography not installed. Run: pip3 install cryptography", args.json,
+               {"status": "FAIL", "error": "missing_cryptography"})
+        return 1
+
+    api_key_id = args.api_key_id
+    if not api_key_id:
+        output("FAIL — --api-key-id is required", args.json,
+               {"status": "FAIL", "error": "missing_api_key_id"})
+        return 1
+
+    # Read PEM from stdin
+    pem_text = sys.stdin.read().strip()
+    if not pem_text:
+        output("FAIL — No PEM data received on stdin. Pipe the PEM content to this command.", args.json,
+               {"status": "FAIL", "error": "empty_stdin"})
+        return 1
+
+    # Validate PEM format
+    try:
+        serialization.load_pem_private_key(
+            pem_text.encode("utf-8"),
+            password=None,
+        )
+    except Exception as e:
+        output(f"FAIL — Invalid private key: {e}\nMake sure you copied the FULL PEM including -----BEGIN and -----END lines.", args.json,
+               {"status": "FAIL", "error": "invalid_private_key"})
+        return 1
+
+    # Save PEM to file
+    PEM_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PEM_FILE.write_text(pem_text)
+    PEM_FILE.chmod(0o600)
+
+    # Test connection by fetching balance
+    result, err = kalshi_request(api_key_id, pem_text, "GET", "/portfolio/balance")
+    if err:
+        # Clean up on failure
+        PEM_FILE.unlink(missing_ok=True)
+        output(f"FAIL — Could not verify credentials: {err}\nDouble-check you copied the full PEM and the correct API Key ID.", args.json,
+               {"status": "FAIL", "error": "verify_failed", "detail": err})
+        return 1
+
+    balance_cents = result.get("balance", 0)
+    portfolio_cents = result.get("portfolio_value", 0)
+
+    # Store credentials
+    creds = {
+        "platform": "kalshi",
+        "api_key_id": api_key_id,
+        "private_key_pem": pem_text,
+        "verified": True,
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+    }
+    save_json(CREDS_FILE, creds)
+
+    output(
+        f"OK — Kalshi API credentials stored and verified\n"
+        f"  Balance:         ${balance_cents / 100:.2f}\n"
+        f"  Portfolio Value: ${portfolio_cents / 100:.2f}",
+        args.json,
+        {
+            "status": "OK",
+            "verified": True,
+            "balance_usd": balance_cents / 100,
+            "portfolio_value_usd": portfolio_cents / 100,
+        },
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # status subcommand
 # ---------------------------------------------------------------------------
 
@@ -340,6 +422,10 @@ def main():
     sp_setup.add_argument("--private-key-pem", help="RSA private key PEM as string")
     sp_setup.add_argument("--json", action="store_true", help="Output as JSON")
 
+    sp_interactive = subparsers.add_parser("setup-interactive", help="Setup from stdin PEM (Telegram-friendly)")
+    sp_interactive.add_argument("--api-key-id", required=True, help="Kalshi API Key ID")
+    sp_interactive.add_argument("--json", action="store_true", help="Output as JSON")
+
     sp_status = subparsers.add_parser("status", help="Check Kalshi setup status")
     sp_status.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -351,7 +437,7 @@ def main():
         parser.print_help()
         return 1
 
-    cmd_map = {"setup": cmd_setup, "status": cmd_status, "balance": cmd_balance}
+    cmd_map = {"setup": cmd_setup, "setup-interactive": cmd_setup_interactive, "status": cmd_status, "balance": cmd_balance}
     return cmd_map[args.command](args)
 
 

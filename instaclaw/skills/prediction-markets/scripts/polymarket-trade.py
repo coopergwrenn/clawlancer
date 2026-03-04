@@ -175,13 +175,20 @@ def init_clob_client(wallet):
     except ImportError:
         return None, "py-clob-client not installed. Run: pip3 install py-clob-client"
 
+    host = get_clob_host()
     try:
-        host = get_clob_host()
         client = ClobClient(host, key=wallet["private_key"], chain_id=CHAIN_ID)
         api_creds = client.create_or_derive_api_creds()
         client.set_api_creds(api_creds)
         return client, None
+    except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
+        if host != CLOB_HOST_DEFAULT:
+            return None, f"CLOB proxy unreachable at {host}. The proxy server may be down or misconfigured. Try again in a few minutes or contact support."
+        return None, f"CLOB client init failed: {e}"
     except Exception as e:
+        err_str = str(e).lower()
+        if host != CLOB_HOST_DEFAULT and ("connection" in err_str or "refused" in err_str or "unreachable" in err_str or "timeout" in err_str):
+            return None, f"CLOB proxy unreachable at {host}. The proxy server may be down or misconfigured. Try again in a few minutes or contact support."
         return None, f"CLOB client init failed: {e}"
 
 
@@ -301,6 +308,23 @@ def output_result(msg, json_mode=False, data=None):
         print(msg)
 
 
+def _check_us_region_proxy():
+    """Detect misconfigured US VM missing proxy. Returns (ok, error_data)."""
+    agent_region = ""
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            if line.startswith("AGENT_REGION="):
+                agent_region = line.split("=", 1)[1].strip().strip('"').strip("'")
+    if agent_region.startswith("us") and get_clob_host() == CLOB_HOST_DEFAULT:
+        return False, {
+            "status": "FAIL",
+            "error": "us_region_no_proxy",
+            "detail": "This VM is in the US and Polymarket blocks trading from US IPs. The CLOB proxy has not been configured for this VM.",
+            "suggestion": "Contact support to configure the proxy, or use Kalshi instead: python3 ~/scripts/kalshi-setup.py status",
+        }
+    return True, None
+
+
 def check_proxy_risk_ack():
     """Check if risk acknowledgment is needed when using proxy. Returns (ok, reason)."""
     host = get_clob_host()
@@ -336,6 +360,12 @@ def cmd_acknowledge_risk(args):
 def cmd_buy(args):
     """Execute a buy order."""
     from decimal import Decimal
+
+    # 0a. Check US region proxy misconfiguration
+    proxy_ok, proxy_err = _check_us_region_proxy()
+    if not proxy_ok:
+        output_result(proxy_err["detail"], args.json, proxy_err)
+        return 1
 
     # 0. Check proxy risk acknowledgment
     ack_ok, ack_reason = check_proxy_risk_ack()
@@ -584,6 +614,12 @@ def cmd_buy(args):
 
 def cmd_sell(args):
     """Execute a sell order."""
+
+    # 0a. Check US region proxy misconfiguration
+    proxy_ok, proxy_err = _check_us_region_proxy()
+    if not proxy_ok:
+        output_result(proxy_err["detail"], args.json, proxy_err)
+        return 1
 
     # 0. Check proxy risk acknowledgment
     ack_ok, ack_reason = check_proxy_risk_ack()

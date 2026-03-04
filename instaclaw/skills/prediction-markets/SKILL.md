@@ -64,8 +64,13 @@ This shows cash balance, portfolio value, positions, and P&L. If it returns `not
 | Portfolio | `python3 ~/scripts/kalshi-portfolio.py summary --json` |
 | Detail | `python3 ~/scripts/kalshi-portfolio.py detail --json` |
 | Setup | `python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY> --private-key-file <PEM> --json` |
+| Setup (Telegram) | `echo "<PEM_TEXT>" \| python3 ~/scripts/kalshi-setup.py setup-interactive --api-key-id <KEY> --json` |
 | Status | `python3 ~/scripts/kalshi-setup.py status --json` |
 | Balance | `python3 ~/scripts/kalshi-setup.py balance --json` |
+| Browse markets | `python3 ~/scripts/kalshi-browse.py search --query "bitcoin" --json` |
+| Trending | `python3 ~/scripts/kalshi-browse.py trending --limit 10 --json` |
+| Market detail | `python3 ~/scripts/kalshi-browse.py detail --ticker <TICKER> --json` |
+| Categories | `python3 ~/scripts/kalshi-browse.py categories --json` |
 
 **Rule 3 — No Faking:** NEVER report a trade as executed without a real order ID. NEVER generate fake P&L tables or dashboards from memory. NEVER show portfolio data without running a script. If a script fails, report the exact error — do not make up results.
 
@@ -86,7 +91,9 @@ python3 ~/scripts/polymarket-wallet.py swap --from usdc --to usdc.e --amount 6.7
 ```
 NEVER tell the user to do manual transfers via Polygonscan or MetaMask. Use the script.
 
-**Rule 7 — US Region Warning (Polymarket):** If a trade returns BLOCK with "risk acknowledgment" required, show the user this exact message:
+**Rule 7 — US Region Warning (Polymarket):** ALWAYS check `~/.openclaw/.env` for `AGENT_REGION` BEFORE starting any Polymarket wallet setup for a new user. If `AGENT_REGION` starts with `us`, show the warning FIRST — before wallet creation, before funding, before anything.
+
+Show the user this exact message:
 
 > Polymarket's international markets are not officially available in the US. By proceeding, you acknowledge:
 > - Your funds could be restricted to close-only or permanently frozen by Polymarket at any time
@@ -97,13 +104,56 @@ NEVER tell the user to do manual transfers via Polygonscan or MetaMask. Use the 
 
 If user says 'I understand the risks', run:
 `python3 ~/scripts/polymarket-trade.py acknowledge-risk`
+Then proceed with wallet setup.
 
 If user says 'US markets only', suggest Kalshi as the US-regulated alternative — it's already integrated. Run `python3 ~/scripts/kalshi-setup.py status` to check if Kalshi is configured.
 
-**Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. When a user wants to set up Kalshi:
-1. Tell them to go to kalshi.com → Settings → API → Create key pair
-2. They provide the API Key ID and download the private key .pem file
-3. Run: `python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY> --private-key-file /path/to/key.pem`
+This warning also triggers automatically if a trade returns BLOCK with "risk acknowledgment" required (safety net for cases where the proactive check was missed).
+
+**Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. Telegram-friendly onboarding flow:
+
+1. Tell the user: "Go to kalshi.com → Settings → API → Create API Key"
+2. Tell the user: "Copy your API Key ID (a short string like 'abc123-def456')"
+3. Tell the user: "Download the private key .pem file, open it in a text editor, and paste the ENTIRE contents here in a message"
+4. When user pastes PEM text (starts with `-----BEGIN` and ends with `-----END`):
+   a. Save the PEM to `~/.openclaw/prediction-markets/kalshi-private-key.pem` (write file, chmod 600)
+   b. Run: `python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY_ID> --private-key-file ~/.openclaw/prediction-markets/kalshi-private-key.pem --json`
+   c. If verification succeeds: "Connected to Kalshi! Your balance is $X.XX"
+   d. If verification fails: "That key didn't work. Double-check you copied the full PEM including the BEGIN/END lines, and the correct API Key ID."
+
+Alternative (if PEM is already on the filesystem):
+`python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY> --private-key-file /path/to/key.pem`
+
+---
+
+## FIRST CONTACT — New User Onboarding
+
+When a user mentions prediction markets for the FIRST time and NO platforms are configured yet:
+
+1. Check `~/.openclaw/.env` for `AGENT_REGION`
+2. Check platform status:
+   - Does `~/.openclaw/polymarket/wallet.json` exist? (Polymarket configured)
+   - Does `~/.openclaw/prediction-markets/kalshi-creds.json` exist? (Kalshi configured)
+
+3. If NEITHER is configured, present options based on region:
+
+**FOR US USERS** (AGENT_REGION starts with "us"), say:
+
+> I can set you up with prediction market trading. You have two options:
+>
+> **Polymarket** — The world's largest prediction market. Thousands of markets covering politics, crypto, sports, and world events. Uses crypto (USDC on Polygon). Important: Polymarket's international platform isn't officially available in the US — there's regulatory risk involved, and your funds could potentially be frozen. Most of our users choose this option for the wider market selection.
+>
+> **Kalshi** — CFTC-regulated, fully legal in the US. Fund with USD via bank transfer or debit card. Fewer markets but zero regulatory risk. Requires KYC (government ID verification) on kalshi.com.
+>
+> Which would you prefer? You can always add the other one later.
+
+**FOR NON-US USERS** (AGENT_REGION does not start with "us", or is not set), say:
+
+> I can set you up with prediction market trading on Polymarket — the world's largest prediction market with thousands of markets on politics, crypto, sports, and world events.
+>
+> Want me to get you set up?
+
+Do NOT offer Kalshi to non-US users — it requires US KYC/residency.
 
 ---
 
@@ -158,7 +208,10 @@ When a user asks to trade or check positions, determine the platform:
    - Run `kalshi-setup.py status` and `polymarket-setup-creds.py status`
    - If only one is configured, use that one
    - If both configured, ask user which platform
-5. **Market browsing (read-only)** — Use Gamma API (Polymarket) by default since it's public and has the most markets. Kalshi browsing requires auth.
+   - If neither configured, follow the FIRST CONTACT onboarding flow above
+5. **Market browsing (read-only)** — Use Gamma API (Polymarket) by default for unauthenticated browsing. If Kalshi is configured, also use `kalshi-browse.py` for Kalshi market data.
+
+**IMPORTANT — Kalshi is US-only:** Kalshi requires US residency and government ID verification (KYC). Do NOT offer Kalshi to non-US users. If a non-US user asks about Kalshi, explain: "Kalshi is only available to US residents — it requires US government ID verification. Polymarket is your best option for prediction market trading."
 
 ---
 
@@ -512,6 +565,19 @@ Use 3-5 API calls total. Don't fetch individually — use `limit=20` and filter 
 
 ---
 
+## Polymarket Onboarding Flow
+
+Follow these steps IN ORDER for new Polymarket users:
+
+1. **Check region FIRST:** Read `AGENT_REGION` from `~/.openclaw/.env`
+2. **IF US region** (starts with "us"): Show Rule 7 warning BEFORE any wallet setup. Wait for user to say "I understand the risks" or choose Kalshi instead. If they acknowledge, run `python3 ~/scripts/polymarket-trade.py acknowledge-risk`.
+3. **Create wallet:** `bash ~/scripts/setup-polymarket-wallet.sh`
+4. **Derive CLOB credentials:** `python3 ~/scripts/polymarket-setup-creds.py setup`
+5. **Show wallet address and funding instructions** (see "How to Fund" below)
+6. **User funds wallet** with USDC.e + POL gas
+7. **Send ERC-20 approvals:** `python3 ~/scripts/polymarket-setup-creds.py approve`
+8. **Ready to trade**
+
 ## Polymarket Wallet Setup
 
 Your agent has a dedicated Polygon wallet for Polymarket trading. To set it up:
@@ -530,33 +596,77 @@ This generates a Polygon EOA wallet and stores it at `~/.openclaw/polymarket/wal
 **CRITICAL — USDC.e vs native USDC:**
 Polymarket uses **USDC.e** (bridged), NOT native USDC (`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`). These are different tokens on the same chain. If the user sends native USDC to the agent wallet, it will show a balance but **cannot be used for trading** until converted.
 
-**How to fund the wallet:**
-1. **Easiest:** Deposit through [polymarket.com](https://polymarket.com) UI — it auto-converts any USDC type to USDC.e
-2. **Direct transfer:** Send USDC.e (NOT native USDC) to the agent's Polygon address
-3. **Gas:** Also send ~0.1 POL for transaction fees (approvals, swaps)
-4. **If the user already sent native USDC:** They need to swap it to USDC.e on a Polygon DEX (e.g. Uniswap, QuickSwap) or deposit through polymarket.com
+## How to Fund Your Polymarket Wallet
+
+When a user needs to fund their agent's Polymarket wallet, walk them through these options:
+
+**OPTION 1 — User has crypto (easiest):**
+"Send USDC.e to your agent's wallet on the Polygon network:
+- Address: [show wallet address from wallet.json]
+- Network: Polygon (NOT Ethereum, NOT Base)
+- Token: USDC.e (bridged USDC, contract `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`)
+- Also send ~$0.10 worth of POL to the same address for transaction fees."
+
+**OPTION 2 — User sent wrong USDC type:**
+"Your agent has native USDC but needs USDC.e. I can swap it automatically — just make sure there's a small amount of POL in the wallet for gas."
+Command: `python3 ~/scripts/polymarket-wallet.py swap --from usdc --to usdc.e --amount <AMOUNT>`
+
+**OPTION 3 — User has no crypto at all:**
+"You can buy USDC on an exchange like Coinbase or Binance, then send it to your agent's Polygon wallet address. Make sure you:
+1. Buy USDC (any type)
+2. Withdraw to the **Polygon network** (not Ethereum — much cheaper fees)
+3. Send to: [wallet address]
+4. Also send a tiny amount of POL/MATIC for gas fees (~$0.10 worth)"
+
+**Common mistakes to warn about:**
+- Sending on Ethereum instead of Polygon (tokens won't show up, recovery is complex)
+- Sending native USDC instead of USDC.e (fixable with swap command above)
+- Forgetting gas — wallet needs POL to do any on-chain transactions
 
 **Check balance:** `python3 ~/scripts/polymarket-setup-creds.py status` — shows both USDC.e and native USDC balances
 
 ## Kalshi Account Setup
 
-Kalshi is a **BYOK (Bring Your Own Key)** integration. The user must create their own account and API keys.
+Kalshi is a **BYOK (Bring Your Own Key)** integration. The user must create their own account and API keys. **Kalshi is US-only** — requires US residency and government ID.
 
-### Setup Steps
-1. User creates account at [kalshi.com](https://kalshi.com) (includes KYC)
-2. User goes to Settings → API → Create API Key
-3. User downloads the private key .pem file
-4. User provides the API Key ID and .pem file path
-5. Run:
-```bash
-python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY_ID> --private-key-file /path/to/private_key.pem
-```
+### Setup Steps (Telegram-Friendly)
+1. Tell user: "Go to kalshi.com, create an account (includes KYC with government ID), and fund it"
+2. Tell user: "Go to Settings → API → Create API Key"
+3. Tell user: "Copy your API Key ID (a short string like 'abc123-def456')"
+4. Tell user: "Download the private key .pem file, open it in a text editor, and paste the ENTIRE contents here in a message"
+5. When user pastes PEM text (starts with `-----BEGIN` and ends with `-----END`):
+   a. Save the PEM to `~/.openclaw/prediction-markets/kalshi-private-key.pem` (write file, chmod 600)
+   b. Run: `python3 ~/scripts/kalshi-setup.py setup --api-key-id <KEY_ID> --private-key-file ~/.openclaw/prediction-markets/kalshi-private-key.pem --json`
+   c. If verification succeeds: "Connected to Kalshi! Your balance is $X.XX"
+   d. If verification fails: "That key didn't work. Double-check you copied the full PEM including the BEGIN/END lines."
 
 **Credentials stored at:** `~/.openclaw/prediction-markets/kalshi-creds.json` (0o600 permissions)
 
 **Check status:** `python3 ~/scripts/kalshi-setup.py status` — shows whether API key is configured and tests authentication
 
 **Check balance:** `python3 ~/scripts/kalshi-setup.py balance` — shows USD balance from Kalshi API
+
+### Kalshi Funding
+
+After connecting your Kalshi API key, fund your account on kalshi.com:
+1. Log into kalshi.com
+2. Click "Deposit" or go to Account → Deposit
+3. Add funds via bank transfer (ACH), debit card, or wire transfer
+4. Funds are in USD — no crypto needed
+5. Funds available immediately for card deposits, 1-3 business days for bank transfers
+
+Your agent can check your balance anytime: `python3 ~/scripts/kalshi-setup.py balance`
+
+### Kalshi Risk Config
+
+The first time a trade is attempted, a default risk config is auto-created at `~/.openclaw/prediction-markets/kalshi-risk-config.json`:
+- `enabled`: `false` (user must explicitly enable)
+- `daily_spend_cap`: $50
+- `max_position_size`: $100
+- `daily_loss_limit`: $100
+- `confirmation_threshold`: $25
+
+To enable trading, the agent updates `enabled` to `true` after user confirms. Adjust limits based on user preference ("go conservative" → lower limits, "I want to trade bigger" → raise them).
 
 ---
 
@@ -710,6 +820,54 @@ Token IDs for trading come from the Gamma API `clobTokenIds` field:
 
 ---
 
+## Cross-Platform Portfolio
+
+When a user says "show my portfolio" or "how are my trades doing" and BOTH platforms are configured:
+
+1. Run both portfolio scripts:
+   - `python3 ~/scripts/polymarket-portfolio.py summary --json`
+   - `python3 ~/scripts/kalshi-portfolio.py summary --json`
+2. Present side by side:
+
+```
+Your Prediction Markets Portfolio
+
+POLYMARKET:
+  Cash: $XX.XX USDC.e
+  Open Positions: X
+  Realized P&L: +/- $XX.XX
+
+KALSHI:
+  Cash: $XX.XX USD
+  Open Positions: X
+  Realized P&L: +/- $XX.XX
+
+Combined Value: ~$XX.XX (approximate — USDC.e ≈ USD)
+```
+
+If only ONE platform is configured, just show that one. Don't mention the other.
+
+## Users With Both Platforms
+
+When a user has both Polymarket and Kalshi configured, be clear about separate funding:
+
+"Your Polymarket and Kalshi accounts are completely separate:
+- **Polymarket:** funded with USDC.e (crypto) in your agent wallet on Polygon
+- **Kalshi:** funded with USD (real dollars) in your Kalshi account on kalshi.com
+- Money can't move between them directly."
+
+## Withdrawing Funds
+
+**Polymarket:** To withdraw USDC.e from the Polymarket wallet:
+```bash
+python3 ~/scripts/polymarket-wallet.py transfer --token usdc.e --to <USER_EXTERNAL_WALLET> --amount <AMOUNT>
+```
+
+**Kalshi:** Kalshi withdrawals must be done on kalshi.com — the API does not support withdrawals.
+Tell the user: "To withdraw from Kalshi, log into kalshi.com → Account → Withdraw. Funds go back to your linked bank account. I can't do this through the API."
+
+---
+
 ## File Paths Reference
 
 ### Polymarket Files
@@ -746,6 +904,7 @@ Token IDs for trading come from the Gamma API `clobTokenIds` field:
 | `~/scripts/kalshi-trade.py` | Kalshi | Trade execution (buy/sell/cancel/orders) |
 | `~/scripts/kalshi-positions.py` | Kalshi | Positions, history, P&L |
 | `~/scripts/kalshi-portfolio.py` | Kalshi | Portfolio summary + detail |
+| `~/scripts/kalshi-browse.py` | Kalshi | Market search, trending, detail, categories |
 
 ### Reference Docs
 | File | Description |

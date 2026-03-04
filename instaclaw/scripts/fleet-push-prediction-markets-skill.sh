@@ -68,7 +68,7 @@ deploy_to_vm() {
   local setup_creds_b64 trade_b64 positions_b64 verify_b64 portfolio_b64 wallet_py_b64
   # Kalshi files
   local kalshi_api_b64 kalshi_trading_b64
-  local kalshi_setup_b64 kalshi_trade_b64 kalshi_positions_b64 kalshi_portfolio_b64
+  local kalshi_setup_b64 kalshi_trade_b64 kalshi_positions_b64 kalshi_portfolio_b64 kalshi_browse_b64
 
   skill_md_b64=$(base64 < "$SKILL_DIR/SKILL.md")
   gamma_api_b64=$(base64 < "$SKILL_DIR/references/gamma-api.md")
@@ -88,6 +88,7 @@ deploy_to_vm() {
   kalshi_trade_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-trade.py")
   kalshi_positions_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-positions.py")
   kalshi_portfolio_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-portfolio.py")
+  kalshi_browse_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-browse.py")
 
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
@@ -127,10 +128,12 @@ echo '$kalshi_setup_b64' | base64 -d > "\$HOME/scripts/kalshi-setup.py"
 echo '$kalshi_trade_b64' | base64 -d > "\$HOME/scripts/kalshi-trade.py"
 echo '$kalshi_positions_b64' | base64 -d > "\$HOME/scripts/kalshi-positions.py"
 echo '$kalshi_portfolio_b64' | base64 -d > "\$HOME/scripts/kalshi-portfolio.py"
+echo '$kalshi_browse_b64' | base64 -d > "\$HOME/scripts/kalshi-browse.py"
 chmod +x "\$HOME/scripts/kalshi-setup.py"
 chmod +x "\$HOME/scripts/kalshi-trade.py"
 chmod +x "\$HOME/scripts/kalshi-positions.py"
 chmod +x "\$HOME/scripts/kalshi-portfolio.py"
+chmod +x "\$HOME/scripts/kalshi-browse.py"
 
 # Backward compat: remove old polymarket dir before symlinking
 rm -rf "\$HOME/.openclaw/skills/polymarket" 2>/dev/null
@@ -183,6 +186,7 @@ case "$MODE" in
     echo "  scripts/kalshi-trade.py             -> ~/scripts/kalshi-trade.py"
     echo "  scripts/kalshi-positions.py         -> ~/scripts/kalshi-positions.py"
     echo "  scripts/kalshi-portfolio.py         -> ~/scripts/kalshi-portfolio.py"
+    echo "  scripts/kalshi-browse.py           -> ~/scripts/kalshi-browse.py"
     echo ""
     echo "Symlink: ~/.openclaw/skills/polymarket -> ~/.openclaw/skills/prediction-markets"
     echo ""
