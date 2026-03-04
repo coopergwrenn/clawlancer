@@ -13,7 +13,8 @@
 # MANDATORY: Always run --dry-run first, per CLAUDE.md rules.
 #
 
-set -euo pipefail
+set -uo pipefail
+# Note: -e intentionally omitted — SSH failures on individual VMs should not abort the fleet deploy
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -250,17 +251,25 @@ if vms:
     echo "=== FLEET DEPLOY: Prediction Markets Skill (Polymarket + Kalshi) ==="
     VMS=$(fetch_vms)
 
+    # Write VM list to temp file to avoid heredoc-stdin conflicts in the loop
+    VM_LIST_FILE=$(mktemp)
     echo "$VMS" | python3 -c "
 import json, sys
 vms = json.load(sys.stdin)
 for v in vms:
     print(f\"{v['ip_address']} {v.get('ssh_user','agent')} {v['id']} {v.get('region','')}\")
-" 2>/dev/null | while read -r IP USER VM_ID REGION; do
-      deploy_to_vm "$IP" "$USER" "$VM_ID" "$REGION" || echo "  FAILED: $VM_ID ($IP)" >&2
-    done
+" 2>/dev/null > "$VM_LIST_FILE"
+
+    DEPLOY_OK=0
+    DEPLOY_FAIL=0
+    while IFS=' ' read -r IP USER VM_ID REGION <&3; do
+      deploy_to_vm "$IP" "$USER" "$VM_ID" "$REGION" && DEPLOY_OK=$((DEPLOY_OK + 1)) || { echo "  FAILED: $VM_ID ($IP)" >&2; DEPLOY_FAIL=$((DEPLOY_FAIL + 1)); }
+    done 3< "$VM_LIST_FILE"
+    rm -f "$VM_LIST_FILE"
 
     echo ""
     echo "=== FLEET DEPLOY COMPLETE ==="
+    echo "  Succeeded: $DEPLOY_OK  Failed: $DEPLOY_FAIL  Total: $((DEPLOY_OK + DEPLOY_FAIL))"
     ;;
 
   --help|*)
