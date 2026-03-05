@@ -299,7 +299,7 @@ export default function HQAmbassadorsPage() {
           style={{ background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)" }}
         >
           <div
-            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-xl p-5"
+            className="w-full sm:max-w-md max-h-[90vh] flex flex-col rounded-t-2xl sm:rounded-xl p-5"
             style={{
               background: "var(--card)",
               border: "1px solid var(--border)",
@@ -316,7 +316,7 @@ export default function HQAmbassadorsPage() {
               <StatusBadge status={selected.status} />
             </div>
 
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 text-sm overflow-y-auto min-h-0 flex-1">
               <div>
                 <span style={{ color: "var(--muted)" }}>Email: </span>
                 {selected.instaclaw_users?.email ?? "—"}
