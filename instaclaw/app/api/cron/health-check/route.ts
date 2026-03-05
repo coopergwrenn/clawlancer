@@ -1497,11 +1497,39 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── CLOB Proxy Health Check ──────────────────────────────────────────
+  // The CLOB proxy (Nanode at 172.105.22.90:8080) is a single point of
+  // failure for all US-region Polymarket trading.  If it's down, alert.
+  let clobProxyHealthy = false;
+  try {
+    const proxyUrl = process.env.CLOB_PROXY_URL ?? "http://172.105.22.90:8080";
+    const proxyResp = await fetch(`${proxyUrl}/`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    clobProxyHealthy = proxyResp.ok;
+    if (!clobProxyHealthy) {
+      logger.error("CLOB proxy health check failed", { status: proxyResp.status, route: "cron/health-check" });
+      alerts.add(
+        "CLOB Proxy Down",
+        "clob-proxy (172.105.22.90)",
+        `CLOB proxy returned HTTP ${proxyResp.status}. All US Polymarket trading is broken.\nProxy URL: ${proxyUrl}\nFix: SSH root@172.105.22.90, check nginx, restart if needed.`
+      );
+    }
+  } catch (proxyErr) {
+    logger.error("CLOB proxy unreachable", { error: String(proxyErr), route: "cron/health-check" });
+    alerts.add(
+      "CLOB Proxy Down",
+      "clob-proxy (172.105.22.90)",
+      `CLOB proxy is unreachable (connection refused/timeout). All US Polymarket trading is broken.\nError: ${String(proxyErr)}\nFix: SSH root@172.105.22.90, check nginx, restart if needed.`
+    );
+  }
+
   // Flush all collected alerts as grouped digest emails (one per alert type)
   const alertResult = await alerts.flush();
 
   return NextResponse.json({
     checked: vms.length,
+    clobProxyHealthy,
     sshChecked,
     sshFailed,
     sshQuarantined,
