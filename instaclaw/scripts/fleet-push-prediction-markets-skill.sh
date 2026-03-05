@@ -70,6 +70,7 @@ deploy_to_vm() {
   # Kalshi files
   local kalshi_api_b64 kalshi_trading_b64
   local kalshi_setup_b64 kalshi_trade_b64 kalshi_positions_b64 kalshi_portfolio_b64 kalshi_browse_b64
+  local poly_search_b64
 
   skill_md_b64=$(base64 < "$SKILL_DIR/SKILL.md")
   gamma_api_b64=$(base64 < "$SKILL_DIR/references/gamma-api.md")
@@ -90,6 +91,7 @@ deploy_to_vm() {
   kalshi_positions_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-positions.py")
   kalshi_portfolio_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-portfolio.py")
   kalshi_browse_b64=$(base64 < "$SKILL_DIR/scripts/kalshi-browse.py")
+  poly_search_b64=$(base64 < "$SKILL_DIR/scripts/polymarket-search.py")
 
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" bash -s <<REMOTE_SCRIPT
 set -e
@@ -117,8 +119,10 @@ echo '$positions_b64' | base64 -d > "\$HOME/scripts/polymarket-positions.py"
 echo '$verify_b64' | base64 -d > "\$HOME/scripts/polymarket-verify.py"
 echo '$portfolio_b64' | base64 -d > "\$HOME/scripts/polymarket-portfolio.py"
 echo '$wallet_py_b64' | base64 -d > "\$HOME/scripts/polymarket-wallet.py"
+echo '$poly_search_b64' | base64 -d > "\$HOME/scripts/polymarket-search.py"
 chmod +x "\$HOME/scripts/polymarket-wallet.py"
 chmod +x "\$HOME/scripts/polymarket-setup-creds.py"
+chmod +x "\$HOME/scripts/polymarket-search.py"
 chmod +x "\$HOME/scripts/polymarket-trade.py"
 chmod +x "\$HOME/scripts/polymarket-positions.py"
 chmod +x "\$HOME/scripts/polymarket-verify.py"
@@ -188,6 +192,7 @@ case "$MODE" in
     echo "  scripts/kalshi-positions.py         -> ~/scripts/kalshi-positions.py"
     echo "  scripts/kalshi-portfolio.py         -> ~/scripts/kalshi-portfolio.py"
     echo "  scripts/kalshi-browse.py           -> ~/scripts/kalshi-browse.py"
+    echo "  scripts/polymarket-search.py       -> ~/scripts/polymarket-search.py"
     echo ""
     echo "Symlink: ~/.openclaw/skills/polymarket -> ~/.openclaw/skills/prediction-markets"
     echo ""

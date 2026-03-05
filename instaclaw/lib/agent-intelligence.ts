@@ -620,7 +620,8 @@ Your agent's built-in creative director. Describe any scene, ad, or content idea
 - **Positions:** \`python3 ~/scripts/polymarket-positions.py list\` — all open positions
 - **Buy:** \`python3 ~/scripts/polymarket-trade.py buy --market-id <ID> --outcome yes --amount <USD>\`
 - **Sell:** \`python3 ~/scripts/polymarket-trade.py sell --market-id <ID> --outcome yes --shares <N>\`
-- **Browse markets:** \`curl -s "https://gamma-api.polymarket.com/markets?limit=10&order=volume24hr&ascending=false&closed=false"\`
+- **Browse markets:** \`python3 ~/scripts/polymarket-search.py search --query "topic"\`
+- **Trending markets:** \`python3 ~/scripts/polymarket-search.py trending\`
 - **Kalshi browse:** \`python3 ~/scripts/kalshi-browse.py search --query "topic"\`
 - **Kalshi trending:** \`python3 ~/scripts/kalshi-browse.py trending\`
 - **Kalshi portfolio:** \`python3 ~/scripts/kalshi-portfolio.py summary\`

@@ -1159,7 +1159,7 @@ When the user mentions any of these topics, run the corresponding script FIRST b
 | portfolio, positions, P&L, balance, trades | \\\`python3 ~/scripts/polymarket-portfolio.py summary\\\` |
 | polymarket, prediction market, odds, betting | \\\`python3 ~/scripts/polymarket-setup-creds.py status\\\` |
 | kalshi | \\\`python3 ~/scripts/kalshi-portfolio.py summary\\\` |
-| browse markets, trending, what markets | \\\`curl -s "https://gamma-api.polymarket.com/markets?limit=10&order=volume24hr&ascending=false&closed=false"\\\` |
+| browse markets, trending, what markets | \\\`python3 ~/scripts/polymarket-search.py trending\\\` |
 | buy, sell, trade, place order | Read prediction-markets SKILL.md first, then execute |
 | solana, jupiter, swap, defi | \\\`python3 ~/scripts/solana-trade.py balance\\\` |
 | web search, look up, research, find | Use Brave Search API (\\\`web_search\\\` tool) |
@@ -2748,6 +2748,7 @@ export async function configureOpenClaw(
       const kalshiPositions = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-positions.py"), "utf-8");
       const kalshiPortfolio = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-portfolio.py"), "utf-8");
       const kalshiBrowse = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-browse.py"), "utf-8");
+      const polySearch = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-search.py"), "utf-8");
 
       const predSkillB64 = Buffer.from(predSkillMd, "utf-8").toString("base64");
       const polyGammaB64 = Buffer.from(polyGammaApi, "utf-8").toString("base64");
@@ -2762,6 +2763,7 @@ export async function configureOpenClaw(
       const kalshiPositionsB64 = Buffer.from(kalshiPositions, "utf-8").toString("base64");
       const kalshiPortfolioB64 = Buffer.from(kalshiPortfolio, "utf-8").toString("base64");
       const kalshiBrowseB64 = Buffer.from(kalshiBrowse, "utf-8").toString("base64");
+      const polySearchB64 = Buffer.from(polySearch, "utf-8").toString("base64");
 
       scriptParts.push(
         '# Deploy Prediction Markets skill (Polymarket + Kalshi)',
@@ -2781,7 +2783,8 @@ export async function configureOpenClaw(
         `echo '${kalshiPositionsB64}' | base64 -d > "$HOME/scripts/kalshi-positions.py"`,
         `echo '${kalshiPortfolioB64}' | base64 -d > "$HOME/scripts/kalshi-portfolio.py"`,
         `echo '${kalshiBrowseB64}' | base64 -d > "$HOME/scripts/kalshi-browse.py"`,
-        'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py" "$HOME/scripts/kalshi-browse.py"',
+        `echo '${polySearchB64}' | base64 -d > "$HOME/scripts/polymarket-search.py"`,
+        'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py" "$HOME/scripts/kalshi-browse.py" "$HOME/scripts/polymarket-search.py"',
         '# Clean up legacy polymarket symlink (was double-counting skill budget)',
         'rm -f "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
         '# Bootstrap pip if missing (common on minimal Ubuntu VMs)',

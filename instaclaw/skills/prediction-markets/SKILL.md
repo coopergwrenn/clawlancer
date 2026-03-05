@@ -64,6 +64,9 @@ This shows cash balance, portfolio value, positions, and P&L. If it returns `not
 | Transfer | `python3 ~/scripts/polymarket-wallet.py transfer --token usdc.e --to 0x... --amount 10 --json` |
 | Swap | `python3 ~/scripts/polymarket-wallet.py swap --from usdc --to usdc.e --amount 6.70 --json` |
 | Ack Risk | `python3 ~/scripts/polymarket-trade.py acknowledge-risk --json` |
+| Search Markets | `python3 ~/scripts/polymarket-search.py search --query "bitcoin" --json` |
+| Trending Markets | `python3 ~/scripts/polymarket-search.py trending --json` |
+| Market Detail | `python3 ~/scripts/polymarket-search.py detail --market-id <id> --json` |
 
 ### Kalshi Commands
 | Action | Command |
@@ -134,6 +137,8 @@ This warning also triggers automatically if a trade returns BLOCK with "risk ack
 **Rule 10 — Order Monitoring:** For GTC orders, check order status within 60 seconds of placement using `python3 ~/scripts/polymarket-trade.py check-orders`. Inform the user if orders are PENDING (not filled). Present options: cancel (`cancel --order-id`), adjust price, convert to market (`convert-to-market --order-id`), or wait. NEVER show pending orders as part of P&L calculations.
 
 **Rule 11 — Retry Limit:** If the same command fails with the same error TWICE, STOP. Do NOT retry a third time. Instead: (1) show the exact error message, (2) suggest an alternative approach (different price, different order type, different market, check liquidity), (3) ask the user what they want to do. NEVER bang on the same wall more than twice. NEVER blame the tools, the CLI, or the API — if something fails, investigate why.
+
+**Rule 12 — NEVER PIVOT WITHOUT PERMISSION:** Once a user says buy or sell, execute THAT trade. Do NOT suggest alternative markets or different outcomes unless explicitly asked. If search returns no exact match, say so — do not substitute.
 
 **Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. Telegram-friendly onboarding flow:
 
@@ -791,7 +796,8 @@ Supported alert types:
 Every Polymarket trade MUST follow these 6 steps in order. Skipping steps causes the problems found in testing (unfilled orders, fake P&L, bad retries).
 
 **Step 1 — RESEARCH:** Understand the market before trading.
-- Fetch market info from Gamma API
+- Search for the market: `python3 ~/scripts/polymarket-search.py search --query "topic" --json`
+- Get full detail: `python3 ~/scripts/polymarket-search.py detail --market-id <condition_id> --json`
 - Check resolution criteria, end date, and current prices
 - Cross-reference with web search for context
 
@@ -968,6 +974,7 @@ Tell the user: "To withdraw from Kalshi, log into kalshi.com → Account → Wit
 | `~/scripts/kalshi-positions.py` | Kalshi | Positions, history, P&L |
 | `~/scripts/kalshi-portfolio.py` | Kalshi | Portfolio summary + detail |
 | `~/scripts/kalshi-browse.py` | Kalshi | Market search, trending, detail, categories |
+| `~/scripts/polymarket-search.py` | Polymarket | Market search, trending, detail |
 
 ### Reference Docs
 | File | Description |
