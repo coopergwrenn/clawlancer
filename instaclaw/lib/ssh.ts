@@ -1609,6 +1609,8 @@ function buildOpenClawConfig(
         extraDirs: ["/home/openclaw/.openclaw/skills"],
       },
       limits: {
+        // DO NOT CHANGE — 18 skills total 328K chars. Below 350K they silently drop.
+        // Caused 3 fleet-wide outages. Also enforced by reconciler via configSettings.
         maxSkillsPromptChars: 350000,
       },
     },

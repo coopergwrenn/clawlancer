@@ -111,6 +111,7 @@ export const VM_MANIFEST = {
   version: 28,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
+  // The reconciler pushes these on every health cycle — drift is auto-corrected.
   configSettings: {
     "agents.defaults.heartbeat.every": "3h",
     "agents.defaults.compaction.reserveTokensFloor": "30000",
@@ -122,6 +123,10 @@ export const VM_MANIFEST = {
     "channels.telegram.groupPolicy": "open",
     "channels.telegram.groups.*.requireMention": "false",
     "commands.useAccessGroups": "false",
+    // DO NOT CHANGE — total SKILL.md content is 328K chars across 18 skills.
+    // Below 350K, skills are silently dropped (alphabetical load order).
+    // Caused 3 fleet-wide outages when reverted. See commits 0cad0b7, 9e1e767.
+    "skills.limits.maxSkillsPromptChars": "350000",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
@@ -279,9 +284,12 @@ export const VM_MANIFEST = {
     CLOB_PROXY_URL: "http://172.105.22.90:8080",
   } as Record<string, string>,
 
-  // ── openclaw.json settings to ensure ──
+  // ── openclaw.json initial settings (written by configureOpenClaw, NOT reconciler) ──
+  // NOTE: configSettings above is the authoritative source — the reconciler enforces those.
+  // This section is only used during initial VM provisioning via buildOpenClawConfig().
   openclawJsonSettings: {
     "skills.load.extraDirs": ["/home/openclaw/.openclaw/skills"],
+    // DO NOT CHANGE — must match configSettings value above. See comments there.
     "skills.limits.maxSkillsPromptChars": 350000,
   } as Record<string, unknown>,
 
