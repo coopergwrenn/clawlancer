@@ -60,6 +60,7 @@ export default auth((req) => {
     "/api/health",
     "/api/spots",
     "/api/hq",
+    "/api/ambassador/badge",
   ];
 
   const isAPI = pathname.startsWith("/api/");
