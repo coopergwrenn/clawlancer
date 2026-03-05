@@ -1,3 +1,8 @@
+---
+name: x-twitter-search
+description: >-
+  Search X/Twitter for tweets, trends, and mentions using the Twitter API v2. Use when the user asks to search Twitter, find tweets, check trending topics, or look up Twitter mentions. Read-only — cannot post tweets.
+---
 # X/Twitter Search
 ```yaml
 name: x-twitter-search

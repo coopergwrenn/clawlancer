@@ -1,3 +1,8 @@
+---
+name: financial-analysis
+description: >-
+  Real-time stock, crypto, forex, and options data with 50+ technical indicators via Alpha Vantage. Use when the user asks about stock prices, technical analysis, RSI, MACD, options chains, crypto prices, market briefings, or earnings reports.
+---
 # Financial Data & Technical Analysis
 ```yaml
 name: financial-analysis

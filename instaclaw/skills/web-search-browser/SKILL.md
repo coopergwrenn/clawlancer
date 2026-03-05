@@ -1,3 +1,8 @@
+---
+name: web-search-browser
+description: >-
+  Search the web, browse pages, take screenshots, scrape data, and automate web interactions. Use when the user asks to search the web, look something up, visit a website, take a screenshot, or scrape a page.
+---
 # Web Search & Browser Automation
 ```yaml
 name: web-search-browser

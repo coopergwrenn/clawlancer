@@ -1,3 +1,8 @@
+---
+name: prediction-markets
+description: >-
+  Trade on Polymarket (crypto) and Kalshi (USD) using pre-installed scripts. Use when the user mentions prediction markets, Polymarket, Kalshi, odds, probability, betting, wagers, portfolio, positions, or market browsing. ALWAYS use ~/scripts/ — never improvise.
+---
 # Prediction Markets
 ```yaml
 name: prediction-markets

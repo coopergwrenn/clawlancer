@@ -1,3 +1,8 @@
+---
+name: solana-defi
+description: >-
+  Trade tokens on Solana via Jupiter and PumpPortal with an auto-provisioned wallet. Use when the user mentions Solana, DeFi, swaps, Jupiter, pump.fun, memecoins, SPL tokens, or Solana portfolio. ALWAYS use ~/scripts/ — never improvise.
+---
 # Solana DeFi Trading
 ```yaml
 name: solana-defi

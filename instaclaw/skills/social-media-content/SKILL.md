@@ -1,3 +1,8 @@
+---
+name: social-media-content
+description: >-
+  Generate platform-native social media content — tweets, threads, LinkedIn posts, Instagram captions, Reddit posts, and content calendars. Use when the user asks to write a tweet, create a thread, plan social content, or find trending topics.
+---
 # Social Media Content Engine
 ```yaml
 name: social-media-content

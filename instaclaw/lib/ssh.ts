@@ -1596,7 +1596,7 @@ function buildOpenClawConfig(
         extraDirs: ["/home/openclaw/.openclaw/skills"],
       },
       limits: {
-        maxSkillsPromptChars: 350000,
+        maxSkillsPromptChars: 50000,
       },
     },
     plugins: {
@@ -2769,9 +2769,8 @@ export async function configureOpenClaw(
         `echo '${kalshiPortfolioB64}' | base64 -d > "$HOME/scripts/kalshi-portfolio.py"`,
         `echo '${kalshiBrowseB64}' | base64 -d > "$HOME/scripts/kalshi-browse.py"`,
         'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py" "$HOME/scripts/kalshi-browse.py"',
-        '# Backward compat: remove old polymarket dir before symlinking',
-        'rm -rf "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
-        'ln -sfn "$PRED_SKILL_DIR" "$HOME/.openclaw/skills/polymarket"',
+        '# Clean up legacy polymarket symlink (was double-counting skill budget)',
+        'rm -f "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
         '# Bootstrap pip if missing (common on minimal Ubuntu VMs)',
         'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
         'python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets cryptography 2>/dev/null || true',

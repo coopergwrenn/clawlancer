@@ -1,3 +1,8 @@
+---
+name: voice-audio-production
+description: >-
+  Generate voiceovers, narration, and audio content using OpenAI TTS and ElevenLabs. Use when the user asks for voiceover, text-to-speech, podcast audio, narration, voice messages, or adding audio to videos.
+---
 # Voice & Audio Production
 ```yaml
 name: voice-audio-production

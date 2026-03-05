@@ -1,3 +1,8 @@
+---
+name: language-teacher
+description: >-
+  Interactive language lessons, vocabulary quizzes, grammar practice, and streak tracking in any language. Use when the user wants to learn a language, practice vocabulary, take a quiz, get a lesson, or check their language learning progress.
+---
 # Language Teacher
 ```yaml
 name: language-teacher

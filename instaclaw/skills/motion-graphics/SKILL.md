@@ -1,3 +1,8 @@
+---
+name: motion-graphics
+description: >-
+  Create programmatic animated videos, explainers, product demos, and social content using Remotion + React. Use when the user asks for video animation, motion graphics, demo videos, promo videos, animated explainers, product launch videos, or branded video content. NOT for AI-generated realistic video — use sjinn-video for that.
+---
 # Motion Graphics Skill
 
 Create professional animated videos, explainers, product demos, and social content using code-driven motion graphics. This is NOT AI-generated video — this is programmatic animation with full creative control.

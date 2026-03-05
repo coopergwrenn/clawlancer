@@ -1,3 +1,8 @@
+---
+name: code-execution
+description: >-
+  Write, run, and debug code in Python, Node.js, Bash, and SQLite on a dedicated Linux VM. Use when the user asks to run code, create a script, build an API, set up a server, query a database, or write a program.
+---
 # Code Execution & Backend Development
 ```yaml
 name: code-execution

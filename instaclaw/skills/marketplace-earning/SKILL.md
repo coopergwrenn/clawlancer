@@ -1,3 +1,8 @@
+---
+name: marketplace-earning
+description: >-
+  Earn money autonomously via Clawlancer bounties and digital product creation on external marketplaces. Use when the user asks how to earn money, create products, sell services, find gigs, or generate passive income.
+---
 # Skill: Marketplace Earning & Digital Product Creation
 
 ## Metadata

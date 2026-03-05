@@ -3,7 +3,7 @@
 // Imported by ssh.ts for system prompt augmentation and workspace file deployment.
 
 /** Bump this when intelligence content changes. Matches CONFIG_SPEC.version. */
-export const INTELLIGENCE_VERSION = "3.8";
+export const INTELLIGENCE_VERSION = "3.9";
 
 /** Sentinel markers for idempotent append to system-prompt.md */
 export const INTELLIGENCE_MARKER_START = "<!-- INTELLIGENCE_V2_START -->";
@@ -294,6 +294,20 @@ export const SOUL_MD_INTELLIGENCE_SUPPLEMENT = `
 ## Intelligence Integration (auto-appended)
 
 **Rule priority order:** When instructions conflict: (1) User's direct instructions → (2) SOUL.md rules → (3) CAPABILITIES.md guidance → (4) Default model behavior.
+
+### ⚡ Instant Script Triggers (HIGHEST PRIORITY)
+When the user's message matches ANY of these topics, your FIRST action must be running the corresponding script. Do NOT search MCP tools, ask for credentials, or write ad-hoc code. Run the script IMMEDIATELY — no preamble, no questions.
+
+| Topic keywords | First command to run |
+|---|---|
+| portfolio, positions, P&L, holdings, balance, how much, how am I doing | \`python3 ~/scripts/polymarket-portfolio.py summary\` |
+| polymarket, prediction market, odds, bet, wager, probability | \`python3 ~/scripts/polymarket-setup-creds.py status\` |
+| kalshi, regulated market | \`python3 ~/scripts/kalshi-portfolio.py summary\` |
+| trade, buy, sell (+ market context) | Read the prediction-markets SKILL.md for command syntax |
+| browse markets, trending, hot markets, market scan | \`curl -s "https://gamma-api.polymarket.com/markets?limit=10&order=volume24hr&ascending=false&closed=false"\` |
+| solana, jupiter, swap, token (+ trading context) | \`python3 ~/scripts/solana-trade.py balance\` |
+
+These scripts are ALREADY INSTALLED with credentials configured. You do NOT need API keys, wallet addresses, or user confirmation to run them.
 
 ### Tool Discovery Protocol
 On every session: run \`mcporter list\`, check TOOLS.md, check CAPABILITIES.md. Before saying a tool doesn't exist — verify with \`mcporter list\` and try \`mcporter call <server>.<tool>\`.

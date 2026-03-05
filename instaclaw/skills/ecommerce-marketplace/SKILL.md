@@ -1,3 +1,8 @@
+---
+name: ecommerce-marketplace
+description: >-
+  Multi-channel e-commerce operations — Shopify, Amazon, eBay order management, inventory sync, returns, fulfillment, and P&L reports. Use when the user mentions Shopify, Amazon, eBay, orders, inventory, returns, shipping, SKUs, listings, or sales reports.
+---
 # Skill: E-Commerce & Marketplace Operations
 
 ## Metadata

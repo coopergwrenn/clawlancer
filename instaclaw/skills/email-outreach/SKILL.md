@@ -1,3 +1,8 @@
+---
+name: email-outreach
+description: >-
+  Send, receive, and manage email from the agent's own @instaclaw.io inbox. Use when the user asks to send email, check inbox, draft replies, cold outreach, email campaigns, follow-ups, or check for verification codes.
+---
 # Email & Outreach
 ```yaml
 name: email-outreach

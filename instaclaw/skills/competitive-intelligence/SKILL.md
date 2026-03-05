@@ -1,3 +1,8 @@
+---
+name: competitive-intelligence
+description: >-
+  Monitor competitors, track market trends, analyze sentiment, and deliver competitive briefings. Use when the user asks about competitors, competitive analysis, market research, industry trends, competitor pricing, or market monitoring.
+---
 # Competitive Intelligence & Market Research
 ```yaml
 name: competitive-intelligence

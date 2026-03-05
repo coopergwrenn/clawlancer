@@ -1,3 +1,8 @@
+---
+name: sjinn-video
+description: >-
+  AI-powered creative studio for generating video, images, and music using Seedance 2.0, Veo3, Sora2, and other AI models. Use when the user asks to create a video, generate footage, make a TikTok/YouTube video, lip sync, add subtitles, or produce AI-generated visual content.
+---
 # The Director — AI Creative Studio
 
 ```yaml

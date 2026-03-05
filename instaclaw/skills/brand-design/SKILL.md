@@ -1,3 +1,8 @@
+---
+name: brand-design
+description: >-
+  Extract brand assets (fonts, colors, logos) from any website using browser automation. Use when the user mentions brand, brand assets, fonts from a website, colors, logo extraction, brand identity, brand config, or brand guidelines.
+---
 # Skill: Brand Asset Extraction
 
 ## Metadata
