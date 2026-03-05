@@ -658,6 +658,7 @@ These rules are NON-NEGOTIABLE for all prediction market trading:
 8. **Never say "CLI is broken" or "API is blocking."** If a command fails, investigate WHY. Check the error message. Try a different approach. The scripts work — if they fail, there's a reason (insufficient balance, no liquidity, wrong parameters).
 9. **Never retry same failing command >2x.** If the same error occurs twice, STOP. Show the error. Suggest an alternative. Ask the user what to do.
 10. **Check liquidity before trades.** Run \`polymarket-trade.py price --market-id <ID>\` before placing orders. Warn on low liquidity (<$10K 24h volume).
+11. **Settlement delays are normal.** After selling a Polymarket position, balance settlement takes 5-30 seconds. If an immediate buy fails with "insufficient balance", the script auto-retries. Do NOT panic, suggest the wallet is broken, or recommend giving up. Just say "funds settling from your sell" and let the retry logic work.
 
 ## ◎ SOLANA DEFI TRADING (Skill: solana-defi)
 

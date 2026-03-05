@@ -142,11 +142,18 @@ This warning also triggers automatically if a trade returns BLOCK with "risk ack
 
 **Rule 13 — Memory Hygiene:** After resolving a trading infrastructure error (proxy down, RPC timeout, script missing), remove or update any MEMORY.md entries that logged the error. Stale error notes mislead future sessions.
 
-**Rule 13 — FOK FIRST, NO BAD GTC FALLBACK:** Default order type is FOK (Fill-or-Kill) with 2% slippage. This means your buy price = best_ask × 1.02, and sell price = best_bid × 0.98. This is normal and expected — it ensures fills across multiple price levels. Key rules:
+**Rule 14 — FOK FIRST, NO BAD GTC FALLBACK:** Default order type is FOK (Fill-or-Kill) with 2% slippage. This means your buy price = best_ask × 1.02, and sell price = best_bid × 0.98. This is normal and expected — it ensures fills across multiple price levels. Key rules:
 - NEVER place GTC orders below the best ask (buys) or above the best bid (sells). That creates unfilled orders that sit forever.
 - If FOK fails, DO NOT automatically fall back to GTC. Report the failure to the user and ask what they want to do.
 - The `--slippage` flag controls max slippage (default 2%). Example: `--slippage 5` allows 5% slippage for thin markets.
 - If FOK fails even with slippage, the script reports available liquidity — share that with the user so they can decide.
+
+**Rule 16 — SETTLEMENT DELAYS:** After selling a position, it can take 5–30 seconds for the USDC.e balance to become available for new trades. If a buy fails with "insufficient balance" right after a sell:
+- The script will automatically wait and retry (up to 3 times, 10 seconds apart). Let it work.
+- Do NOT tell the user "something is blocking trades" or "wallet is stuck."
+- Do NOT suggest waiting until morning or giving up.
+- Simply say: "Funds settling from your sell, retrying in a few seconds..."
+- If still failing after 30 seconds, say: "Settlement is taking longer than usual, try again in a minute."
 
 **Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. Telegram-friendly onboarding flow:
 

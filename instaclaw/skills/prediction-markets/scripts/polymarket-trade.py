@@ -365,6 +365,29 @@ def init_clob_client(wallet):
     return None, f"All CLOB hosts unreachable: {'; '.join(errors)}"
 
 
+def had_recent_sell(seconds=60):
+    """Check if a sell was logged within the last N seconds (settlement delay)."""
+    from datetime import datetime, timezone, timedelta
+    log = load_json(TRADE_LOG_FILE, [])
+    if not log:
+        return False
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+    for entry in reversed(log[-10:]):
+        action = entry.get("action", "").upper()
+        ts_str = entry.get("timestamp", "")
+        if action != "SELL":
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts >= cutoff:
+                return True
+        except (ValueError, TypeError):
+            continue
+    return False
+
+
 def log_trade(entry):
     """Append a trade entry to trade-log.json."""
     log = load_json(TRADE_LOG_FILE, [])
@@ -679,13 +702,33 @@ def cmd_buy(args):
             )
             return 1
         if usdc_e_bal < amount and usdc_native_bal == 0:
-            output_result(
-                f"FAIL — Insufficient USDC.e balance: ${usdc_e_bal:.2f} < ${amount:.2f} needed.\n"
-                f"  Fund wallet: {wallet['address']}",
-                args.json,
-                {"status": "FAIL", "error": "insufficient_balance", "usdc_e_balance": usdc_e_bal, "address": wallet["address"]},
-            )
-            return 1
+            # Check if a recent sell might be settling
+            if had_recent_sell(seconds=60):
+                import time
+                for retry in range(3):
+                    wait = 10 * (retry + 1)
+                    print(f"Balance settling from recent sell... retrying in {wait - 10 * retry}s ({retry + 1}/3)", file=sys.stderr)
+                    time.sleep(10)
+                    usdc_e_bal, usdc_native_bal = check_usdc_balance(wallet["address"])
+                    if usdc_e_bal is not None and usdc_e_bal >= amount:
+                        break
+                else:
+                    output_result(
+                        f"FAIL — Balance still not available after 30 seconds. Your recent sell may need more time to settle.\n"
+                        f"  Current balance: ${usdc_e_bal:.2f}, needed: ${amount:.2f}\n"
+                        f"  Try again in a minute.",
+                        args.json,
+                        {"status": "FAIL", "error": "settlement_delay", "usdc_e_balance": usdc_e_bal, "address": wallet["address"]},
+                    )
+                    return 1
+            else:
+                output_result(
+                    f"FAIL — Insufficient USDC.e balance: ${usdc_e_bal:.2f} < ${amount:.2f} needed.\n"
+                    f"  Fund wallet: {wallet['address']}",
+                    args.json,
+                    {"status": "FAIL", "error": "insufficient_balance", "usdc_e_balance": usdc_e_bal, "address": wallet["address"]},
+                )
+                return 1
 
     # 6. Fetch market info
     market = fetch_market_info(args.market_id)
@@ -816,12 +859,42 @@ def cmd_buy(args):
     except Exception as e:
         err_str = str(e)
         if "insufficient" in err_str.lower() or "balance" in err_str.lower():
-            output_result(
-                f"FAIL — Insufficient balance. Fund wallet: {wallet['address']}",
-                args.json,
-                {"status": "FAIL", "error": "insufficient_balance", "address": wallet["address"]},
-            )
-            return 1
+            # Retry if a recent sell might still be settling
+            if had_recent_sell(seconds=60):
+                import time
+                for retry in range(3):
+                    print(f"Balance settling from recent sell... retrying in 10s ({retry + 1}/3)", file=sys.stderr)
+                    time.sleep(10)
+                    try:
+                        signed_order = client.create_order(order_args)
+                        resp = client.post_order(signed_order, order_type)
+                        break  # Success — fall through to response parsing
+                    except Exception as retry_e:
+                        retry_str = str(retry_e).lower()
+                        if "insufficient" in retry_str or "balance" in retry_str:
+                            continue
+                        # Different error — raise it
+                        output_result(
+                            f"FAIL — Order failed on retry: {retry_e}",
+                            args.json,
+                            {"status": "FAIL", "error": "order_failed", "detail": str(retry_e)},
+                        )
+                        return 1
+                else:
+                    output_result(
+                        f"FAIL — Balance still not available after 30 seconds. Recent sell may need more time to settle.\n"
+                        f"  Try again in a minute.",
+                        args.json,
+                        {"status": "FAIL", "error": "settlement_delay", "address": wallet["address"]},
+                    )
+                    return 1
+            else:
+                output_result(
+                    f"FAIL — Insufficient balance. Fund wallet: {wallet['address']}",
+                    args.json,
+                    {"status": "FAIL", "error": "insufficient_balance", "address": wallet["address"]},
+                )
+                return 1
         if "approval" in err_str.lower() or "allowance" in err_str.lower():
             output_result(
                 "FAIL — Token approvals needed. Run: python3 ~/scripts/polymarket-setup-creds.py approve",
