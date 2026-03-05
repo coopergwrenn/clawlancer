@@ -137,33 +137,72 @@ def get_rpc_url():
     return RPC_FALLBACKS[0]
 
 
-def get_clob_host():
-    """Read CLOB host from env."""
+def _read_env_var(name):
+    """Read a single env var from the .env file."""
     if ENV_FILE.exists():
         with open(ENV_FILE) as f:
             for line in f:
                 line = line.strip()
-                if line.startswith("CLOB_PROXY_URL="):
+                if line.startswith(f"{name}="):
                     val = line.split("=", 1)[1].strip().strip('"').strip("'")
                     if val:
                         return val
-    return CLOB_HOST_DEFAULT
+    return None
+
+
+def get_clob_hosts():
+    """Return (primary, backup, direct) CLOB hosts for failover chain."""
+    primary = _read_env_var("CLOB_PROXY_URL") or CLOB_HOST_DEFAULT
+    backup = _read_env_var("CLOB_PROXY_URL_BACKUP") or ""
+    direct = CLOB_HOST_DEFAULT
+    return primary, backup, direct
+
+
+def get_clob_host():
+    """Read CLOB host from env."""
+    primary, _, _ = get_clob_hosts()
+    return primary
+
+
+def _is_connection_error(exc):
+    """Check if an exception is a connection-level error."""
+    if isinstance(exc, (ConnectionRefusedError, ConnectionResetError, OSError)):
+        return True
+    err_str = str(exc).lower()
+    return any(kw in err_str for kw in ("connection", "refused", "unreachable", "timeout", "errno"))
 
 
 def init_clob_client(wallet):
-    """Initialize CLOB client."""
+    """Initialize CLOB client with proxy failover."""
     try:
         from py_clob_client.client import ClobClient
     except ImportError:
         return None, "py-clob-client not installed"
-    try:
-        host = get_clob_host()
-        client = ClobClient(host, key=wallet["private_key"], chain_id=CHAIN_ID)
-        api_creds = client.create_or_derive_api_creds()
-        client.set_api_creds(api_creds)
-        return client, None
-    except Exception as e:
-        return None, str(e)
+
+    primary, backup, direct = get_clob_hosts()
+    hosts = []
+    seen = set()
+    for h in [primary, backup, direct]:
+        if h and h not in seen:
+            hosts.append(h)
+            seen.add(h)
+
+    errors = []
+    for host in hosts:
+        try:
+            client = ClobClient(host, key=wallet["private_key"], chain_id=CHAIN_ID)
+            api_creds = client.create_or_derive_api_creds()
+            client.set_api_creds(api_creds)
+            if host != primary:
+                print(f"NOTE: Connected via fallback host {host} (primary {primary} was unreachable)", file=sys.stderr)
+            return client, None
+        except Exception as e:
+            errors.append(f"{host}: {e}")
+            if not _is_connection_error(e):
+                return None, f"CLOB client init failed at {host}: {e}"
+            continue
+
+    return None, f"All CLOB hosts unreachable: {'; '.join(errors)}"
 
 
 def check_usdc_balance(wallet_address):

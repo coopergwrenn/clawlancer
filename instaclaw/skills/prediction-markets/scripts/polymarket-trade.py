@@ -316,8 +316,20 @@ def _patch_clob_rounding():
         pass  # Non-fatal — if SDK changes, we just skip the patch
 
 
+def _is_connection_error(exc):
+    """Check if an exception is a connection-level error (proxy/network down)."""
+    if isinstance(exc, (ConnectionRefusedError, ConnectionResetError, OSError)):
+        return True
+    err_str = str(exc).lower()
+    return any(kw in err_str for kw in ("connection", "refused", "unreachable", "timeout", "errno"))
+
+
 def init_clob_client(wallet):
-    """Initialize and authenticate CLOB client."""
+    """Initialize and authenticate CLOB client with proxy failover.
+
+    Tries hosts in order: primary proxy → backup proxy → direct CLOB host.
+    Logs which host succeeded so the agent knows proxy state.
+    """
     try:
         from py_clob_client.client import ClobClient
     except ImportError:
@@ -325,21 +337,32 @@ def init_clob_client(wallet):
 
     _patch_clob_rounding()
 
-    host = get_clob_host()
-    try:
-        client = ClobClient(host, key=wallet["private_key"], chain_id=CHAIN_ID)
-        api_creds = client.create_or_derive_api_creds()
-        client.set_api_creds(api_creds)
-        return client, None
-    except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
-        if host != CLOB_HOST_DEFAULT:
-            return None, f"CLOB proxy unreachable at {host}. The proxy server may be down or misconfigured. Try again in a few minutes or contact support."
-        return None, f"CLOB client init failed: {e}"
-    except Exception as e:
-        err_str = str(e).lower()
-        if host != CLOB_HOST_DEFAULT and ("connection" in err_str or "refused" in err_str or "unreachable" in err_str or "timeout" in err_str):
-            return None, f"CLOB proxy unreachable at {host}. The proxy server may be down or misconfigured. Try again in a few minutes or contact support."
-        return None, f"CLOB client init failed: {e}"
+    primary, backup, direct = get_clob_hosts()
+    # Build ordered failover chain (skip empty/duplicate entries)
+    hosts = []
+    seen = set()
+    for h in [primary, backup, direct]:
+        if h and h not in seen:
+            hosts.append(h)
+            seen.add(h)
+
+    errors = []
+    for host in hosts:
+        try:
+            client = ClobClient(host, key=wallet["private_key"], chain_id=CHAIN_ID)
+            api_creds = client.create_or_derive_api_creds()
+            client.set_api_creds(api_creds)
+            if host != primary:
+                print(f"NOTE: Connected via fallback host {host} (primary {primary} was unreachable)", file=sys.stderr)
+            return client, None
+        except Exception as e:
+            errors.append(f"{host}: {e}")
+            if not _is_connection_error(e):
+                # Non-connection error (e.g. auth failure) — don't try other hosts
+                return None, f"CLOB client init failed at {host}: {e}"
+            continue
+
+    return None, f"All CLOB hosts unreachable: {'; '.join(errors)}"
 
 
 def log_trade(entry):
@@ -422,17 +445,31 @@ def get_rpc_url():
     return RPC_FALLBACKS[0]
 
 
-def get_clob_host():
-    """Read CLOB host from env. US VMs use proxy; non-US connect direct."""
+def _read_env_var(name):
+    """Read a single env var from the .env file."""
     if ENV_FILE.exists():
         with open(ENV_FILE) as f:
             for line in f:
                 line = line.strip()
-                if line.startswith("CLOB_PROXY_URL="):
+                if line.startswith(f"{name}="):
                     val = line.split("=", 1)[1].strip().strip('"').strip("'")
                     if val:
                         return val
-    return CLOB_HOST_DEFAULT
+    return None
+
+
+def get_clob_hosts():
+    """Return (primary, backup, direct) CLOB hosts for failover chain."""
+    primary = _read_env_var("CLOB_PROXY_URL") or CLOB_HOST_DEFAULT
+    backup = _read_env_var("CLOB_PROXY_URL_BACKUP") or ""
+    direct = CLOB_HOST_DEFAULT
+    return primary, backup, direct
+
+
+def get_clob_host():
+    """Read CLOB host from env. US VMs use proxy; non-US connect direct."""
+    primary, _, _ = get_clob_hosts()
+    return primary
 
 
 def check_usdc_balance(wallet_address):

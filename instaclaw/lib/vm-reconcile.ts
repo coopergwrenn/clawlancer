@@ -754,32 +754,49 @@ async function stepEnvVars(
     GATEWAY_TOKEN: vm.gateway_token,
     POLYGON_RPC_URL: manifest.envVarDefaults?.POLYGON_RPC_URL,
     AGENT_REGION: vmRegion ?? undefined,
-    // CLOB_PROXY_URL only for US-region VMs
+    // CLOB proxy vars only for US-region VMs
     ...(vmRegion?.startsWith("us-") || vmRegion?.startsWith("nyc")
-      ? { CLOB_PROXY_URL: manifest.envVarDefaults?.CLOB_PROXY_URL }
+      ? {
+          CLOB_PROXY_URL: manifest.envVarDefaults?.CLOB_PROXY_URL,
+          CLOB_PROXY_URL_BACKUP: manifest.envVarDefaults?.CLOB_PROXY_URL_BACKUP,
+        }
       : {}),
   };
 
+  // Env vars that are per-VM and should never be overwritten by the manifest
+  const perVmEnvVars = new Set(["GATEWAY_TOKEN", "AGENT_REGION"]);
+
   for (const envName of manifest.requiredEnvVars) {
-    const value = envValues[envName];
-    if (!value) continue; // No value available in DB — skip
+    const expectedValue = envValues[envName];
+    if (!expectedValue) continue; // No value available in DB — skip
 
+    // Read the current value on the VM
     const check = await ssh.execCommand(
-      `grep -q "^${envName}=" "$HOME/.openclaw/.env" 2>/dev/null && echo PRESENT || echo ABSENT`
+      `grep "^${envName}=" "$HOME/.openclaw/.env" 2>/dev/null | head -1 | cut -d= -f2-`
     );
+    const currentValue = check.stdout.trim();
 
-    if (check.stdout.trim() === 'PRESENT') {
+    if (!currentValue) {
+      // Missing — append
+      if (dryRun) {
+        result.fixed.push(`[dry-run] env: ${envName} (add)`);
+        continue;
+      }
+      await ssh.execCommand(`echo "${envName}=${expectedValue}" >> "$HOME/.openclaw/.env"`);
+      result.fixed.push(`env: ${envName} (added)`);
+    } else if (currentValue !== expectedValue && !perVmEnvVars.has(envName)) {
+      // Wrong value for platform-controlled var — fix it
+      if (dryRun) {
+        result.fixed.push(`[dry-run] env: ${envName} (correct: ${currentValue} → ${expectedValue})`);
+        continue;
+      }
+      await ssh.execCommand(
+        `sed -i "s|^${envName}=.*|${envName}=${expectedValue}|" "$HOME/.openclaw/.env"`
+      );
+      result.fixed.push(`env: ${envName} (corrected: ${currentValue} → ${expectedValue})`);
+    } else {
       result.alreadyCorrect.push(envName);
-      continue;
     }
-
-    if (dryRun) {
-      result.fixed.push(`[dry-run] env: ${envName}`);
-      continue;
-    }
-
-    await ssh.execCommand(`echo "${envName}=${value}" >> "$HOME/.openclaw/.env"`);
-    result.fixed.push(envName);
   }
 }
 

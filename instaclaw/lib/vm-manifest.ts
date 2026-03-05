@@ -276,12 +276,13 @@ export const VM_MANIFEST = {
 
   // ── Platform env vars that MUST exist in ~/.openclaw/.env ──
   // Actual values come from DB (instaclaw_vms.gateway_token, etc.)
-  requiredEnvVars: ["GATEWAY_TOKEN", "POLYGON_RPC_URL", "CLOB_PROXY_URL", "AGENT_REGION"],
+  requiredEnvVars: ["GATEWAY_TOKEN", "POLYGON_RPC_URL", "CLOB_PROXY_URL", "CLOB_PROXY_URL_BACKUP", "AGENT_REGION"],
 
   // Default values for env vars that don't come from the DB
   envVarDefaults: {
     POLYGON_RPC_URL: "https://1rpc.io/matic",
     CLOB_PROXY_URL: "http://172.105.22.90:8080",
+    CLOB_PROXY_URL_BACKUP: "",  // Populated when a backup proxy exists
   } as Record<string, string>,
 
   // ── openclaw.json initial settings (written by configureOpenClaw, NOT reconciler) ──

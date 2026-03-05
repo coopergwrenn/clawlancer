@@ -140,6 +140,8 @@ This warning also triggers automatically if a trade returns BLOCK with "risk ack
 
 **Rule 12 — NEVER PIVOT WITHOUT PERMISSION:** Once a user says buy or sell, execute THAT trade. Do NOT suggest alternative markets or different outcomes unless explicitly asked. If search returns no exact match, say so — do not substitute.
 
+**Rule 13 — Memory Hygiene:** After resolving a trading infrastructure error (proxy down, RPC timeout, script missing), remove or update any MEMORY.md entries that logged the error. Stale error notes mislead future sessions.
+
 **Rule 13 — FOK FIRST, NO BAD GTC FALLBACK:** Default order type is FOK (Fill-or-Kill) with 2% slippage. This means your buy price = best_ask × 1.02, and sell price = best_bid × 0.98. This is normal and expected — it ensures fills across multiple price levels. Key rules:
 - NEVER place GTC orders below the best ask (buys) or above the best bid (sells). That creates unfilled orders that sit forever.
 - If FOK fails, DO NOT automatically fall back to GTC. Report the failure to the user and ask what they want to do.
