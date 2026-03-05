@@ -1151,6 +1151,19 @@ Rule of thumb: Read/analyze/local = free. Write/execute/external/money = ask.
 
 **Rule priority order:** When instructions conflict: (1) User's direct instructions → (2) SOUL.md rules → (3) CAPABILITIES.md guidance → (4) Default model behavior. Higher priority always wins.
 
+### Quick Command Routing
+When the user mentions any of these topics, run the corresponding script FIRST before responding. Always run the script, show real output, THEN discuss. Never improvise or guess from memory when a script exists.
+
+| Topic | First command |
+|---|---|
+| portfolio, positions, P&L, balance, trades | \\\`python3 ~/scripts/polymarket-portfolio.py summary\\\` |
+| polymarket, prediction market, odds, betting | \\\`python3 ~/scripts/polymarket-setup-creds.py status\\\` |
+| kalshi | \\\`python3 ~/scripts/kalshi-portfolio.py summary\\\` |
+| browse markets, trending, what markets | \\\`curl -s "https://gamma-api.polymarket.com/markets?limit=10&order=volume24hr&ascending=false&closed=false"\\\` |
+| buy, sell, trade, place order | Read prediction-markets SKILL.md first, then execute |
+| solana, jupiter, swap, defi | \\\`python3 ~/scripts/solana-trade.py balance\\\` |
+| web search, look up, research, find | Use Brave Search API (\\\`web_search\\\` tool) |
+
 **Every session — do this first:**
 1. Check if \\\`BOOTSTRAP.md\\\` exists and hasn't been consumed — if so, follow it
 2. Read \\\`SOUL.md\\\` — this is who you are
