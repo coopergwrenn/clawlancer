@@ -135,14 +135,27 @@ def check_risk_limits(amount_usdc, config, daily_spend):
 
 
 def fetch_market_info(market_id):
-    """Fetch market info from Gamma API. Returns dict or None."""
-    url = f"{GAMMA_API}/markets/{market_id}"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "polymarket-trade/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None
+    """Fetch market info from Gamma API. Returns dict or None.
+    Handles both numeric IDs (path lookup) and condition_ids (query param)."""
+    # condition_ids start with "0x"
+    if str(market_id).startswith("0x"):
+        url = f"{GAMMA_API}/markets?condition_id={market_id}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "polymarket-trade/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+                markets = data if isinstance(data, list) else data.get("markets", data.get("data", []))
+                return markets[0] if markets else None
+        except Exception:
+            return None
+    else:
+        url = f"{GAMMA_API}/markets/{market_id}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "polymarket-trade/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read().decode())
+        except Exception:
+            return None
 
 
 def get_token_id(market, outcome):
@@ -196,6 +209,30 @@ def fetch_orderbook(token_id):
         return None
 
 
+def snap_size_for_clob(amount_usdc, price):
+    """Calculate shares so that shares*price has at most 2 decimal places.
+    The CLOB API requires maker_amount (USDC) to have max 2 decimal precision.
+    Uses Decimal to avoid floating-point drift."""
+    from decimal import Decimal, ROUND_DOWN
+    d_amount = Decimal(str(amount_usdc))
+    d_price = Decimal(str(price))
+
+    # Raw shares floored to 2 decimals (CLOB requires size ≤ 2 decimals)
+    raw_shares = d_amount / d_price
+    shares = raw_shares.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+
+    # Verify maker_amount = shares * price has ≤ 2 decimals; reduce if not
+    maker = shares * d_price
+    max_dec = Decimal("0.01")
+    attempts = 0
+    while maker != maker.quantize(max_dec) and attempts < 10 and shares > 0:
+        shares -= Decimal("0.01")
+        maker = shares * d_price
+        attempts += 1
+
+    return float(shares), float(maker.quantize(max_dec, rounding=ROUND_DOWN))
+
+
 def get_best_ask(orderbook):
     """Get best (lowest) ask price from orderbook."""
     asks = orderbook.get("asks", [])
@@ -218,12 +255,27 @@ def get_best_bid(orderbook):
         return None
 
 
+def _patch_clob_rounding():
+    """Patch py_clob_client ROUNDING_CONFIG so maker/taker amounts use max 2 decimals.
+    The CLOB API now enforces 'maker amount max 2 decimals' but the SDK's default
+    config allows up to 5-6, causing PolyApiException 400 on FOK/GTC orders."""
+    try:
+        from py_clob_client.order_builder.builder import ROUNDING_CONFIG, RoundConfig
+        for key in ROUNDING_CONFIG:
+            old = ROUNDING_CONFIG[key]
+            ROUNDING_CONFIG[key] = RoundConfig(price=old.price, size=old.size, amount=2)
+    except Exception:
+        pass  # Non-fatal — if SDK changes, we just skip the patch
+
+
 def init_clob_client(wallet):
     """Initialize and authenticate CLOB client."""
     try:
         from py_clob_client.client import ClobClient
     except ImportError:
         return None, "py-clob-client not installed. Run: pip3 install py-clob-client"
+
+    _patch_clob_rounding()
 
     host = get_clob_host()
     try:
@@ -616,8 +668,16 @@ def cmd_buy(args):
         )
         return 1
 
-    # FIX 2: Precision rounding on shares
-    shares = round(amount / price, 2)
+    # FIX 3: Snap shares so maker_amount (shares*price) has ≤ 2 decimals
+    # The CLOB API rejects orders where maker_amount exceeds 2 decimal precision.
+    shares, _ = snap_size_for_clob(amount, price)
+    if shares <= 0:
+        output_result(
+            f"FAIL — Amount ${amount:.2f} too small for price {price:.4f}.",
+            args.json,
+            {"status": "FAIL", "error": "amount_too_small"},
+        )
+        return 1
 
     # 10. Init CLOB client
     client, err = init_clob_client(wallet)
@@ -876,7 +936,7 @@ def cmd_sell(args):
         )
         return 1
 
-    # FIX 2: Precision rounding on shares
+    # Precision rounding on shares (2 decimals max for CLOB)
     sell_shares = round(float(args.shares), 2)
 
     # 5. Determine order type and price
@@ -912,8 +972,11 @@ def cmd_sell(args):
             )
             return 1
 
-    # FIX 2: Precision rounding on price
+    # FIX 3: Precision — snap sell_shares so taker_amount (shares*price) ≤ 2 decimals
     price = round(float(price), 4)
+    snapped, _ = snap_size_for_clob(sell_shares * price, price)
+    if snapped < sell_shares:
+        sell_shares = snapped
 
     # 6. Init CLOB client
     client, err = init_clob_client(wallet)
@@ -1515,6 +1578,14 @@ def cmd_convert_to_market(args):
             return 1
 
     fok_price = round(float(fok_price), 4)
+
+    # FIX 3: Snap remaining_size for CLOB precision
+    if side == "BUY" or side == "B":
+        remaining_size, _ = snap_size_for_clob(remaining_size * fok_price, fok_price)
+    else:
+        snapped, _ = snap_size_for_clob(remaining_size * fok_price, fok_price)
+        if snapped < remaining_size:
+            remaining_size = snapped
 
     # 4. Place FOK order
     try:
