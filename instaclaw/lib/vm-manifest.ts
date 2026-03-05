@@ -282,7 +282,7 @@ export const VM_MANIFEST = {
   envVarDefaults: {
     POLYGON_RPC_URL: "https://1rpc.io/matic",
     CLOB_PROXY_URL: "http://172.105.22.90:8080",
-    CLOB_PROXY_URL_BACKUP: "",  // Populated when a backup proxy exists
+    CLOB_PROXY_URL_BACKUP: "http://172.237.101.206:8080",  // London 2 (gb-lon) backup proxy
   } as Record<string, string>,
 
   // ── openclaw.json initial settings (written by configureOpenClaw, NOT reconciler) ──
