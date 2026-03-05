@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Get or create Stripe customer
     const { data: user } = await supabase
       .from("instaclaw_users")
-      .select("id, email, stripe_customer_id, deployment_lock_at, referred_by")
+      .select("id, email, stripe_customer_id, deployment_lock_at, referred_by, invited_by")
       .eq("id", session.user.id)
       .single();
 
@@ -106,6 +106,19 @@ export async function POST(req: NextRequest) {
 
     const origin = req.headers.get("origin") ?? process.env.NEXTAUTH_URL!;
 
+    // Check if user redeemed a promotional invite with extended trial
+    let trialDays = trial ? 3 : 0;
+    if (trial && user.invited_by) {
+      const { data: invite } = await supabase
+        .from("instaclaw_invites")
+        .select("created_by")
+        .eq("code", user.invited_by.trim().toUpperCase())
+        .single();
+      if (invite?.created_by === "renata-friends-trial") {
+        trialDays = 7;
+      }
+    }
+
     // If user was referred by an ambassador, ensure the coupon exists and apply it
     let discounts: { coupon: string }[] | undefined;
     if (user.referred_by) {
@@ -140,8 +153,8 @@ export async function POST(req: NextRequest) {
       success_url: `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: cancelUrl ? `${origin}${cancelUrl}` : `${origin}/plan`,
       ...(discounts ? { discounts } : {}),
-      ...(trial
-        ? { subscription_data: { trial_period_days: 3 } }
+      ...(trialDays > 0
+        ? { subscription_data: { trial_period_days: trialDays } }
         : {}),
       metadata: {
         instaclaw_user_id: user.id,
