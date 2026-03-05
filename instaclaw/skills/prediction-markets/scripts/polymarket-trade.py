@@ -255,6 +255,54 @@ def get_best_bid(orderbook):
         return None
 
 
+def compute_available_liquidity_asks(orderbook, max_price):
+    """Sum USDC available on the ask side up to max_price."""
+    asks = orderbook.get("asks", [])
+    total_usdc = 0.0
+    for a in sorted(asks, key=lambda x: float(x.get("price", 999))):
+        p = float(a.get("price", 0))
+        sz = float(a.get("size", 0))
+        if p <= 0 or p > max_price:
+            continue
+        total_usdc += p * sz
+    return round(total_usdc, 2)
+
+
+def compute_available_liquidity_bids(orderbook, min_price):
+    """Sum USDC available on the bid side down to min_price."""
+    bids = orderbook.get("bids", [])
+    total_usdc = 0.0
+    for b in sorted(bids, key=lambda x: -float(x.get("price", 0))):
+        p = float(b.get("price", 0))
+        sz = float(b.get("size", 0))
+        if p <= 0 or p < min_price:
+            continue
+        total_usdc += p * sz
+    return round(total_usdc, 2)
+
+
+def apply_slippage_buy(best_ask, slippage_pct, tick_size=0.001):
+    """Compute FOK limit price for buys: best_ask + slippage, snapped to tick, capped at 0.99."""
+    import math
+    raw = best_ask * (1 + slippage_pct / 100)
+    raw = min(raw, 0.99)
+    # Snap up to nearest tick
+    ticks = 1 / tick_size
+    price = math.ceil(raw * ticks) / ticks
+    return min(round(price, 4), 0.99)
+
+
+def apply_slippage_sell(best_bid, slippage_pct, tick_size=0.001):
+    """Compute FOK limit price for sells: best_bid - slippage, snapped to tick, floored at 0.01."""
+    import math
+    raw = best_bid * (1 - slippage_pct / 100)
+    raw = max(raw, 0.01)
+    # Snap down to nearest tick
+    ticks = 1 / tick_size
+    price = math.floor(raw * ticks) / ticks
+    return max(round(price, 4), 0.01)
+
+
 def _patch_clob_rounding():
     """Patch py_clob_client ROUNDING_CONFIG so maker/taker amounts use max 2 decimals.
     The CLOB API now enforces 'maker amount max 2 decimals' but the SDK's default
@@ -627,7 +675,7 @@ def cmd_buy(args):
     order_type_str = args.order_type  # default FOK
 
     if order_type_str == "FOK" and not args.price:
-        # FIX 1: For FOK orders, fetch orderbook to get best ask
+        # FOK acts as market order: sweep the book with slippage tolerance
         orderbook = fetch_orderbook(token_id)
         if not orderbook:
             output_result(
@@ -636,12 +684,34 @@ def cmd_buy(args):
                 {"status": "FAIL", "error": "orderbook_unavailable"},
             )
             return 1
-        price = get_best_ask(orderbook)
-        if not price or price <= 0:
+        best_ask = get_best_ask(orderbook)
+        if not best_ask or best_ask <= 0:
             output_result(
                 "FAIL — No asks in orderbook (no liquidity). Cannot place FOK buy.",
                 args.json,
                 {"status": "FAIL", "error": "no_liquidity", "detail": "No asks available in orderbook"},
+            )
+            return 1
+        slippage_pct = getattr(args, "slippage", 2.0) or 2.0
+        tick_size = float(market.get("orderPriceMinTickSize", 0.001) or 0.001)
+        price = apply_slippage_buy(best_ask, slippage_pct, tick_size)
+        # Check available liquidity within slippage range
+        avail = compute_available_liquidity_asks(orderbook, price)
+        if avail < amount * 0.9:
+            output_result(
+                f"FAIL — Not enough liquidity to fill ${amount:.2f}. "
+                f"Only ${avail:.2f} available within {slippage_pct:.0f}% of best ask (${best_ask:.4f}).\n"
+                f"  Try a smaller amount or increase slippage: --slippage 5",
+                args.json,
+                {
+                    "status": "FAIL",
+                    "error": "insufficient_liquidity",
+                    "best_ask": best_ask,
+                    "slippage_price": price,
+                    "available_usdc": avail,
+                    "requested_usdc": amount,
+                    "slippage_pct": slippage_pct,
+                },
             )
             return 1
     elif args.price:
@@ -771,11 +841,13 @@ def cmd_buy(args):
                 "tx_hashes": tx_hashes,
             }
             log_trade(log_entry)
+            slippage_used = getattr(args, "slippage", 2.0) or 2.0
             output_result(
-                f"FAIL — FOK order not filled. Status: {fill_status}. No shares acquired.\n"
+                f"FAIL — FOK order not filled even with {slippage_used:.0f}% slippage. No shares acquired.\n"
                 f"  Market: {market_question}\n"
-                f"  The order was not matched — likely insufficient liquidity at price ${price:.4f}.\n"
-                f"  Try: --order-type GTC for a limit order, or check liquidity with: price --market-id {args.market_id}",
+                f"  Limit price attempted: ${price:.4f}\n"
+                f"  This market has very thin liquidity.\n"
+                f"  Try: smaller amount, or increase slippage: --slippage 5",
                 args.json,
                 {
                     "status": "FAIL",
@@ -783,6 +855,7 @@ def cmd_buy(args):
                     "fill_status": fill_status,
                     "order_id": order_id,
                     "price_attempted": price,
+                    "slippage_pct": slippage_used,
                     "detail": fill_details.get("message", ""),
                 },
             )
@@ -943,7 +1016,7 @@ def cmd_sell(args):
     order_type_str = args.order_type  # default FOK
 
     if order_type_str == "FOK" and not args.price:
-        # FIX 1: For FOK sell orders, fetch orderbook to get best bid
+        # FOK acts as market order: sweep the book with slippage tolerance
         orderbook = fetch_orderbook(token_id)
         if not orderbook:
             output_result(
@@ -952,12 +1025,35 @@ def cmd_sell(args):
                 {"status": "FAIL", "error": "orderbook_unavailable"},
             )
             return 1
-        price = get_best_bid(orderbook)
-        if not price or price <= 0:
+        best_bid = get_best_bid(orderbook)
+        if not best_bid or best_bid <= 0:
             output_result(
                 "FAIL — No bids in orderbook (no liquidity). Cannot place FOK sell.",
                 args.json,
                 {"status": "FAIL", "error": "no_liquidity", "detail": "No bids available in orderbook"},
+            )
+            return 1
+        slippage_pct = getattr(args, "slippage", 2.0) or 2.0
+        tick_size = float(market.get("orderPriceMinTickSize", 0.001) or 0.001)
+        price = apply_slippage_sell(best_bid, slippage_pct, tick_size)
+        # Check available liquidity within slippage range
+        sell_value = sell_shares * best_bid
+        avail = compute_available_liquidity_bids(orderbook, price)
+        if avail < sell_value * 0.9:
+            output_result(
+                f"FAIL — Not enough liquidity to sell {sell_shares:.2f} shares (~${sell_value:.2f}). "
+                f"Only ${avail:.2f} available within {slippage_pct:.0f}% of best bid (${best_bid:.4f}).\n"
+                f"  Try fewer shares or increase slippage: --slippage 5",
+                args.json,
+                {
+                    "status": "FAIL",
+                    "error": "insufficient_liquidity",
+                    "best_bid": best_bid,
+                    "slippage_price": price,
+                    "available_usdc": avail,
+                    "sell_shares": sell_shares,
+                    "slippage_pct": slippage_pct,
+                },
             )
             return 1
     elif args.price:
@@ -1672,6 +1768,7 @@ def main():
     sp_buy.add_argument("--amount", required=True, type=float, help="USDC amount to spend")
     sp_buy.add_argument("--price", type=float, help="Limit price (0-1). For GTC orders or to override FOK auto-pricing.")
     sp_buy.add_argument("--order-type", default="FOK", choices=["GTC", "FOK"], help="Order type (default: FOK — fill-or-kill for immediate execution)")
+    sp_buy.add_argument("--slippage", type=float, default=2.0, help="Max slippage %% for FOK orders (default: 2). FOK sweeps the book up to best_ask*(1+slippage/100).")
     sp_buy.add_argument("--json", action="store_true", help="Output as JSON")
 
     # sell
@@ -1681,6 +1778,7 @@ def main():
     sp_sell.add_argument("--shares", required=True, type=float, help="Number of shares to sell")
     sp_sell.add_argument("--price", type=float, help="Limit price (0-1). For GTC orders or to override FOK auto-pricing.")
     sp_sell.add_argument("--order-type", default="FOK", choices=["GTC", "FOK"], help="Order type (default: FOK — fill-or-kill for immediate execution)")
+    sp_sell.add_argument("--slippage", type=float, default=2.0, help="Max slippage %% for FOK orders (default: 2). FOK sweeps the book down to best_bid*(1-slippage/100).")
     sp_sell.add_argument("--json", action="store_true", help="Output as JSON")
 
     # cancel
