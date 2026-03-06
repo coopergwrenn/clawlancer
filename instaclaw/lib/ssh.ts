@@ -2005,6 +2005,14 @@ export async function configureOpenClaw(
       );
     }
 
+    // Deploy INSTACLAW_MUAPI_PROXY for Higgsfield/Muapi video skill
+    scriptParts.push(
+      '# Deploy INSTACLAW_MUAPI_PROXY for Higgsfield video skill',
+      'grep -q "^INSTACLAW_MUAPI_PROXY=" "$HOME/.openclaw/agents/main/.env" 2>/dev/null || \\',
+      '  echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$HOME/.openclaw/agents/main/.env"',
+      ''
+    );
+
     // Install Clawlancer MCP tools via mcporter
     // mcporter is pre-installed globally on all VMs. Here we:
     // 1. Configure the clawlancer MCP server (API key will be empty until agent registers)
