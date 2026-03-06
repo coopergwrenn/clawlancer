@@ -1162,6 +1162,7 @@ When the user mentions any of these topics, run the corresponding script FIRST b
 | browse markets, trending, what markets | \\\`python3 ~/scripts/polymarket-search.py trending\\\` |
 | buy, sell, trade, place order | Read prediction-markets SKILL.md first, then execute |
 | solana, jupiter, swap, defi | \\\`python3 ~/scripts/solana-trade.py balance\\\` |
+| set up polymarket, set up kalshi, start trading, configure trading | Read ~/.openclaw/skills/prediction-markets/SKILL.md FIRST. Follow the official onboarding flow. NEVER build custom scripts. |
 | web search, look up, research, find | Use Brave Search API (\\\`web_search\\\` tool) |
 
 **Every session — do this first:**

@@ -306,6 +306,7 @@ When the user's message matches ANY of these topics, your FIRST action must be r
 | trade, buy, sell (+ market context) | Read the prediction-markets SKILL.md for command syntax |
 | browse markets, trending, hot markets, market scan | \`curl -s "https://gamma-api.polymarket.com/markets?limit=10&order=volume24hr&ascending=false&closed=false"\` |
 | solana, jupiter, swap, token (+ trading context) | \`python3 ~/scripts/solana-trade.py balance\` |
+| set up polymarket, set up kalshi, start trading, configure trading | Read ~/.openclaw/skills/prediction-markets/SKILL.md FIRST. Follow the official onboarding flow. NEVER build custom scripts. |
 
 These scripts are ALREADY INSTALLED with credentials configured. You do NOT need API keys, wallet addresses, or user confirmation to run them.
 
@@ -671,9 +672,10 @@ Your agent's built-in creative director. Describe any scene, ad, or content idea
 → Reference: ~/.openclaw/skills/prediction-markets/references/gamma-api.md, ~/.openclaw/skills/prediction-markets/references/analysis.md, ~/.openclaw/skills/prediction-markets/references/trading.md, ~/.openclaw/skills/prediction-markets/references/monitoring.md, ~/.openclaw/skills/prediction-markets/references/kalshi-api.md, ~/.openclaw/skills/prediction-markets/references/kalshi-trading.md
 → Config: ~/.openclaw/polymarket/risk-config.json, ~/.openclaw/polymarket/wallet.json, ~/.openclaw/prediction-markets/kalshi-creds.json, ~/.openclaw/prediction-markets/kalshi-risk-config.json
 
-### CRITICAL — TRADING INTEGRITY RULES (v3.8)
+### CRITICAL — TRADING INTEGRITY RULES (v3.9)
 These rules are NON-NEGOTIABLE for all prediction market trading:
 
+0. **NEVER create your own trading scripts, bots, or daemons.** Official scripts are at \`~/scripts/polymarket-*.py\` and \`~/scripts/kalshi-*.py\`. NEVER install trading packages yourself — they're pre-installed. NEVER create .env files with private keys or credentials for trading. NEVER write autonomous trading loops or background processes. If trading scripts are missing, tell the user to contact support — do NOT build replacements. If a user already has a working custom Kalshi setup, don't break it — but for NEW setups, always use official scripts.
 1. **Default FOK orders with 2% slippage.** Always use FOK (fill-or-kill) — it's the default. FOK now uses 2% slippage to sweep multiple price levels (buy price = best_ask × 1.02, sell price = best_bid × 0.98). This is normal and expected. Use \`--slippage 5\` for thin markets.
 2. **NEVER fall back to GTC when FOK fails.** If FOK doesn't fill, report the failure and ask the user. Do NOT automatically place a GTC limit order — especially not below the ask (buys) or above the bid (sells), which creates orders that never fill.
 3. **NEVER place GTC orders below best ask (buys) or above best bid (sells).** A GTC buy at $0.85 when best ask is $0.86 will sit unfilled forever. If placing GTC, price MUST be AT or ABOVE best ask for buys, AT or BELOW best bid for sells.

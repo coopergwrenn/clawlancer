@@ -43,7 +43,25 @@ triggers:
 
 These rules override everything else in this skill file. Violating them causes real financial harm.
 
-**Rule 0 — ALWAYS USE SCRIPTS:** When a user mentions prediction markets, trading, portfolio, positions, Polymarket, Kalshi, or any related topic, IMMEDIATELY use the scripts in ~/scripts/. Do NOT improvise. Do NOT ask the user for API keys or credentials. Do NOT write ad-hoc Python code. You already have everything you need — scripts are pre-installed with credentials configured. Run the script first, show the output, then discuss. If you are unsure whether things are set up, run `python3 ~/scripts/polymarket-setup-creds.py status` — do NOT ask the user.
+**Rule 0 — ALWAYS USE OFFICIAL SCRIPTS. NEVER BUILD YOUR OWN.**
+
+Trading scripts are pre-installed at `~/scripts/polymarket-*.py` and `~/scripts/kalshi-*.py`. You MUST use these scripts for ALL prediction market operations. Specifically:
+
+- **NEVER** write your own Python trading scripts for Polymarket
+- **NEVER** create Polymarket trading bots, daemons, or autonomous trading processes
+- **NEVER** install trading packages (py_clob_client, etc.) yourself — they're already installed
+- **NEVER** create .env files with private keys or API credentials for Polymarket
+- **NEVER** create files in ~/workspace/ related to Polymarket trading — all Polymarket state lives in `~/.openclaw/polymarket/`
+- **NEVER** claim to be "actively trading" or "live" unless you just ran a script that returned a MATCHED order
+- **NEVER** write trading strategies, thesis documents, or P&L reports to memory unless based on REAL script output
+
+**For Kalshi:** Use the official scripts at `~/scripts/kalshi-*.py`. If a user has already set up their own Kalshi integration that's working, don't break it — but for NEW setups, always use the official scripts and onboarding flow.
+
+If a user asks to set up Polymarket or Kalshi trading, follow the onboarding flow in this SKILL.md. Do NOT improvise your own setup process.
+
+If the scripts don't exist at `~/scripts/`, tell the user: "Trading scripts aren't installed on this VM. Please contact InstaClaw support." Do NOT build them yourself.
+
+When a user mentions prediction markets, trading, portfolio, positions, Polymarket, Kalshi, or any related topic, IMMEDIATELY use the scripts in ~/scripts/. Do NOT ask the user for API keys or credentials. Do NOT write ad-hoc Python code. Run the script first, show the output, then discuss. If you are unsure whether things are set up, run `python3 ~/scripts/polymarket-setup-creds.py status` — do NOT ask the user.
 
 **Rule 1 — Balance Checks:**
 
