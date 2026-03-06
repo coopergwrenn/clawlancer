@@ -3,6 +3,26 @@ name: prediction-markets
 description: >-
   Trade on Polymarket (crypto) and Kalshi (USD) using pre-installed scripts. Use when the user mentions prediction markets, Polymarket, Kalshi, odds, probability, betting, wagers, portfolio, positions, or market browsing. ALWAYS use ~/scripts/ — never improvise.
 ---
+
+## ⛔ STOP — Is This Skill Set Up?
+
+**BEFORE doing ANYTHING Polymarket or Kalshi related, run this:**
+
+```bash
+python3 ~/scripts/polymarket-setup-creds.py status
+```
+
+**If the script is missing, errors out, or shows "not configured":**
+1. **DO NOT** build your own Polymarket integration, trading bot, or daemon script
+2. **DO NOT** create custom Python files, install py-clob-client yourself, or derive API credentials manually
+3. **DO NOT** create wallets, store private keys, or write .env files in your workspace
+4. **INSTEAD:** Tell the user: "The Polymarket skill isn't set up on your VM yet. You can enable it at https://instaclaw.io/dashboard/skills, or I can walk you through the official setup."
+5. If the user insists on doing it manually, explain that the platform manages wallet security, proxy routing, and credential lifecycle — custom scripts will break and create security risks.
+
+**This is not optional.** Agents who improvise Polymarket integrations create security vulnerabilities (exposed private keys), waste user funds, and produce bots that don't work. Use the official scripts or don't trade.
+
+---
+
 # Prediction Markets
 ```yaml
 name: prediction-markets

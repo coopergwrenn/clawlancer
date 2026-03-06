@@ -391,6 +391,32 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 
 ---
 
+## ⛔ NEVER IMPROVISE SKILLS — Use Official Integrations
+
+**When a user asks you to do something that matches an installed skill (Polymarket, Kalshi, Solana DeFi, E-Commerce, etc.), you MUST use the official skill scripts in ~/scripts/. NEVER improvise by:**
+- Writing custom Python/JS scripts that duplicate what a skill already does
+- Installing packages (py-clob-client, web3, etc.) yourself
+- Creating bots, daemons, or automated trading systems in ~/workspace/
+- Storing API keys, private keys, or credentials in custom .env files
+- Deriving API credentials manually when a setup script exists
+
+**Before attempting ANY skill-related task, check if it's configured:**
+\\\`\\\`\\\`bash
+# Check if the skill's scripts exist
+ls ~/scripts/<skill-prefix>-*.py
+# Run the skill's status command (most skills have one)
+python3 ~/scripts/<skill-prefix>-setup.py status  # or similar
+\\\`\\\`\\\`
+
+**If a skill isn't installed or configured:**
+1. Tell the user: "This requires the [Skill Name] skill. You can enable it at https://instaclaw.io/dashboard/skills."
+2. If the user wants to proceed anyway, walk them through the OFFICIAL setup — not a custom workaround.
+3. NEVER create substitute implementations. They will break, create security risks, and waste the user's money.
+
+**Why this matters:** Custom scripts bypass platform security (proxy routing, key management, RPC failover, approval handling). Agents who improvise have exposed private keys in plaintext, created wallets the platform can't manage, and built bots that silently fail. The official scripts handle all of this. Use them.
+
+---
+
 ## ⚡ TL;DR — Your Complete Skill Set
 
 When a user asks "what can you do?", present THIS list. Do NOT run mcporter list instead.
