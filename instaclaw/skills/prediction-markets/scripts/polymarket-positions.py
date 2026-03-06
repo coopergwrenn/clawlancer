@@ -472,7 +472,8 @@ def cmd_pnl(args):
     # Calculate realized P&L from sells in trade log
     # ONLY count MATCHED fills — LIVE/PENDING/CANCELLED orders never executed
     realized_pnl = 0.0
-    total_invested = 0.0
+    total_buy_volume = 0.0
+    total_sell_volume = 0.0
 
     buys_by_token = {}  # token_id -> list of (shares, price)
     for t in trade_log:
@@ -483,13 +484,14 @@ def cmd_pnl(args):
             shares = t.get("shares", 0)
             price = t.get("price", 0)
             amount = t.get("amount_usdc", price * shares)
-            total_invested += amount
+            total_buy_volume += amount
             if token_id not in buys_by_token:
                 buys_by_token[token_id] = []
             buys_by_token[token_id].append({"shares": shares, "price": price})
         elif t.get("action") == "SELL":
             shares_sold = t.get("shares", 0)
             sell_price = t.get("price", 0)
+            total_sell_volume += sell_price * shares_sold
             # FIFO cost basis
             buy_list = buys_by_token.get(token_id, [])
             remaining = shares_sold
@@ -528,13 +530,23 @@ def cmd_pnl(args):
 
     total_pnl = realized_pnl + unrealized_pnl
 
+    # Cost basis of currently open positions (what's actually deployed now)
+    open_cost = 0.0
+    for p in positions:
+        shares = p.get("shares", 0)
+        avg_price = p.get("avg_price", 0)
+        if shares > 0:
+            open_cost += shares * avg_price
+
     result = {
         "status": "OK",
         "realized_pnl": round(realized_pnl, 2),
         "unrealized_pnl": round(unrealized_pnl, 2),
         "total_pnl": round(total_pnl, 2),
         "portfolio_value": round(portfolio_value, 2),
-        "total_invested": round(total_invested, 2),
+        "open_cost": round(open_cost, 2),
+        "total_buy_volume": round(total_buy_volume, 2),
+        "total_sell_volume": round(total_sell_volume, 2),
         "open_positions": len(positions),
         "total_trades": len(trade_log),
     }
@@ -547,12 +559,14 @@ def cmd_pnl(args):
         print(f"  Unrealized P&L: ${unrealized_pnl:+.2f}")
         print(f"  Total P&L:      ${total_pnl:+.2f}")
         print(f"  Portfolio Value: ${portfolio_value:.2f}")
-        print(f"  Total Invested:  ${total_invested:.2f}")
+        print(f"  Open Cost Basis: ${open_cost:.2f}")
+        print(f"  Buy Volume:      ${total_buy_volume:.2f}")
+        print(f"  Sell Volume:     ${total_sell_volume:.2f}")
         print(f"  Open Positions:  {len(positions)}")
         print(f"  Total Trades:    {len(trade_log)}")
 
-        if total_invested > 0:
-            roi = (total_pnl / total_invested) * 100
+        if open_cost > 0:
+            roi = (total_pnl / open_cost) * 100
             print(f"  ROI:             {roi:+.1f}%")
 
     return 0
