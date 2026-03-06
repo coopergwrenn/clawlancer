@@ -497,7 +497,7 @@ export async function GET(req: NextRequest) {
             });
             try {
               await loserSsh.execCommand(
-                `${NVM_PREAMBLE} && openclaw config set channels.telegram.enabled false 2>/dev/null || true && rm -f ~/.openclaw/openclaw.json.bak* /tmp/openclaw-backup.json 2>/dev/null || true`,
+                `${NVM_PREAMBLE} && openclaw config set channels.telegram.enabled false 2>/dev/null || true && sed -i 's/"botToken": "[^"]*"/"botToken": ""/' ~/.openclaw/openclaw.json 2>/dev/null || true && rm -f ~/.openclaw/openclaw.json.bak* /tmp/openclaw-backup.json 2>/dev/null || true && export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user restart openclaw-gateway 2>/dev/null || true`,
               );
             } finally {
               loserSsh.dispose();
@@ -561,13 +561,18 @@ export async function GET(req: NextRequest) {
           );
           const filesWithToken = (grepResult.stdout ?? "").trim();
           if (filesWithToken) {
-            // Auto-fix: purge all backup files and clear token from main config
+            // Auto-fix: purge backup files, blank token in live config, disable telegram, restart gateway
             await rvmSsh.execCommand(
               `rm -f ~/.openclaw/openclaw.json.bak* /tmp/openclaw-backup.json 2>/dev/null || true`,
             );
-            // Also clear telegram from main config if present
+            await rvmSsh.execCommand(
+              `sed -i 's/"botToken": "[^"]*"/"botToken": ""/' ~/.openclaw/openclaw.json 2>/dev/null || true`,
+            );
             await rvmSsh.execCommand(
               `${NVM_PREAMBLE} && openclaw config set channels.telegram.enabled false 2>/dev/null || true`,
+            );
+            await rvmSsh.execCommand(
+              `export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user restart openclaw-gateway 2>/dev/null || true`,
             );
             readyPoolTokensCleaned++;
             logger.warn("Ready pool VM had stale telegram token on disk — auto-fixed", {
