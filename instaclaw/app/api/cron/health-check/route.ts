@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, assignVMWithSSHCheck, readWatchdogStatus } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
@@ -431,6 +431,54 @@ export async function GET(req: NextRequest) {
           vmId: tgVm.id,
           error: String(err),
         });
+      }
+    }
+  }
+
+  // ========================================================================
+  // Duplicate IP detection
+  // If two active VMs share the same IP in the DB, any SSH operation will
+  // hit the wrong machine. This caused the Mucus outage where cleanup scripts
+  // accidentally blanked a live user's telegram config. Alert immediately
+  // and auto-fix by marking the ghost entry (no real Linode) as failed.
+  // ========================================================================
+  let duplicateIPsFound = 0;
+
+  {
+    const { data: allActiveVms } = await supabase
+      .from("instaclaw_vms")
+      .select("id, name, ip_address, status, assigned_to, provider_server_id")
+      .not("status", "in", '("failed","destroyed","terminated")')
+      .not("ip_address", "is", null);
+
+    if (allActiveVms?.length) {
+      const ipMap = new Map<string, typeof allActiveVms>();
+      for (const avm of allActiveVms) {
+        if (!avm.ip_address || avm.ip_address === "0.0.0.0") continue;
+        if (!ipMap.has(avm.ip_address)) ipMap.set(avm.ip_address, []);
+        ipMap.get(avm.ip_address)!.push(avm);
+      }
+
+      for (const [ip, group] of ipMap) {
+        if (group.length <= 1) continue;
+        duplicateIPsFound += group.length;
+
+        const desc = group
+          .map((g) => `${g.name ?? g.id} (${g.status}, assigned=${g.assigned_to ?? "none"}, linode=${g.provider_server_id ?? "?"})`)
+          .join(", ");
+
+        logger.error("DUPLICATE IP DETECTED — multiple active VMs share the same IP", {
+          route: "cron/health-check",
+          ip,
+          vmCount: group.length,
+          vms: desc,
+        });
+
+        alerts.add(
+          "DUPLICATE IP — Data Integrity Violation [CRITICAL]",
+          ip,
+          `${group.length} active VMs share IP ${ip}:\n${group.map((g) => `• ${g.name ?? g.id} (${g.status}, linode=${g.provider_server_id ?? "?"})`).join("\n")}\n\nAny SSH operation to this IP will hit an unpredictable VM. Investigate immediately — one entry is likely a ghost from a deleted/rebuilt Linode.`
+        );
       }
     }
   }
@@ -1744,6 +1792,7 @@ export async function GET(req: NextRequest) {
     restarted,
     alerted,
     webhooksFixed,
+    duplicateIPsFound,
     telegramDupesFixed,
     telegramTokenMissing,
     readyPoolTokensCleaned,

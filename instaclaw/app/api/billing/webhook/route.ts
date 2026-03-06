@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck } from "@/lib/ssh";
+import { assignVMWithSSHCheck, checkDuplicateIP } from "@/lib/ssh";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -349,6 +349,27 @@ async function processEvent(event: any) {
               telegram_chat_id: null,
             })
             .eq("id", userVm.id);
+        }
+
+        // Check for duplicate IPs before reclaim — log critical warning
+        if (userVm) {
+          const { data: vmForIp } = await supabase
+            .from("instaclaw_vms")
+            .select("ip_address")
+            .eq("id", userVm.id)
+            .single();
+          if (vmForIp?.ip_address) {
+            const { duplicates } = await checkDuplicateIP(vmForIp.ip_address, userVm.id);
+            if (duplicates.length > 0) {
+              logger.error("DUPLICATE IP on subscription cancel — VM reclaim proceeding but flagged", {
+                route: "billing/webhook",
+                userId: sub.user_id,
+                vmId: userVm.id,
+                ip: vmForIp.ip_address,
+                duplicates: duplicates.map((d: { name: string | null; id: string }) => d.name ?? d.id).join(", "),
+              });
+            }
+          }
         }
 
         // Reclaim the VM

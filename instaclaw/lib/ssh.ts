@@ -1668,11 +1668,57 @@ function buildOpenClawConfig(
   return ocConfig;
 }
 
+/**
+ * Check whether an IP address is used by multiple active VMs in the DB.
+ * Returns the list of conflicting VM names/ids if duplicates exist.
+ * Active = status NOT IN ('failed', 'destroyed', 'terminated').
+ */
+export async function checkDuplicateIP(
+  ipAddress: string,
+  currentVmId?: string,
+): Promise<{ duplicates: { id: string; name: string | null; status: string; assigned_to: string | null }[] }> {
+  const supabase = getSupabase();
+  const { data: vms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, status, assigned_to")
+    .eq("ip_address", ipAddress)
+    .not("status", "in", '("failed","destroyed","terminated")');
+
+  if (!vms || vms.length <= 1) return { duplicates: [] };
+
+  // If we know which VM we are, only flag if OTHER active VMs share our IP
+  const others = currentVmId ? vms.filter((v: { id: string }) => v.id !== currentVmId) : vms;
+  if (others.length === 0) return { duplicates: [] };
+
+  return { duplicates: vms };
+}
+
 // Dynamic import to avoid Turbopack bundling issues with ssh2's native crypto
-export async function connectSSH(vm: VMRecord) {
+export async function connectSSH(vm: VMRecord, opts?: { skipDuplicateIPCheck?: boolean }) {
   if (!process.env.SSH_PRIVATE_KEY_B64) {
     throw new Error("SSH_PRIVATE_KEY_B64 not set");
   }
+
+  // Guard: abort if multiple active VMs share this IP (prevents bricking the wrong VM)
+  if (!opts?.skipDuplicateIPCheck) {
+    const { duplicates } = await checkDuplicateIP(vm.ip_address, vm.id);
+    if (duplicates.length > 0) {
+      const desc = duplicates
+        .map((d: { name: string | null; id: string; status: string; assigned_to: string | null }) =>
+          `${d.name ?? d.id} (${d.status}, assigned=${d.assigned_to ?? "none"})`)
+        .join(", ");
+      logger.error("DUPLICATE IP DETECTED — aborting SSH to prevent wrong-VM operation", {
+        ip: vm.ip_address,
+        targetVm: vm.id,
+        duplicates: desc,
+      });
+      throw new Error(
+        `DUPLICATE_IP: ${vm.ip_address} is shared by ${duplicates.length} active VMs: ${desc}. ` +
+        `Aborting SSH to prevent operating on the wrong VM. Investigate and resolve the duplicate IP in the DB.`
+      );
+    }
+  }
+
   const { NodeSSH } = await import("node-ssh");
   const ssh = new NodeSSH();
   await ssh.connect({
@@ -1689,9 +1735,21 @@ export async function connectSSH(vm: VMRecord) {
  * Returns true if SSH is reachable, false otherwise.
  * Uses a 10-second timeout to avoid hanging on dead SSH daemons.
  */
-export async function checkSSHConnectivity(vm: VMRecord): Promise<boolean> {
+export async function checkSSHConnectivity(vm: VMRecord, opts?: { skipDuplicateIPCheck?: boolean }): Promise<boolean> {
   if (!process.env.SSH_PRIVATE_KEY_B64) return false;
   try {
+    // Guard: abort if multiple active VMs share this IP
+    if (!opts?.skipDuplicateIPCheck) {
+      const { duplicates } = await checkDuplicateIP(vm.ip_address, vm.id);
+      if (duplicates.length > 0) {
+        logger.error("DUPLICATE IP DETECTED — skipping SSH connectivity check", {
+          ip: vm.ip_address,
+          targetVm: vm.id,
+        });
+        return false;
+      }
+    }
+
     const { NodeSSH } = await import("node-ssh");
     const ssh = new NodeSSH();
     await ssh.connect({
@@ -2948,8 +3006,10 @@ export async function configureOpenClaw(
       ];
 
       scriptParts.push(
-        '# Deploy Higgsfield AI Video skill (Skill 16) — starts DISABLED',
-        'HF_SKILL_DIR="$HOME/.openclaw/skills/higgsfield-video.disabled"',
+        '# Deploy Higgsfield AI Video skill (Skill 16) — ENABLED by default',
+        '# Remove stale .disabled version if present (old deploys used disabled-by-default)',
+        'rm -rf "$HOME/.openclaw/skills/higgsfield-video.disabled" 2>/dev/null || true',
+        'HF_SKILL_DIR="$HOME/.openclaw/skills/higgsfield-video"',
         'mkdir -p "$HF_SKILL_DIR/references" "$HF_SKILL_DIR/scripts" "$HOME/.openclaw/workspace/higgsfield"',
       );
 

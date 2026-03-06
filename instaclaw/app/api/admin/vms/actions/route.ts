@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
-import { resetAgentMemory, restartGateway } from "@/lib/ssh";
+import { resetAgentMemory, restartGateway, checkDuplicateIP } from "@/lib/ssh";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -21,6 +22,30 @@ export async function POST(req: NextRequest) {
     }
 
     case "reclaim": {
+      // Check for duplicate IPs before reclaim — flag for investigation
+      const { data: reclaimVm } = await supabase
+        .from("instaclaw_vms")
+        .select("id, ip_address")
+        .eq("id", vmId)
+        .single();
+
+      if (reclaimVm?.ip_address) {
+        const { duplicates } = await checkDuplicateIP(reclaimVm.ip_address, reclaimVm.id);
+        if (duplicates.length > 0) {
+          const desc = duplicates.map((d: { name: string | null; id: string; status: string }) => `${d.name ?? d.id} (${d.status})`).join(", ");
+          logger.error("DUPLICATE IP on reclaim — flagging for investigation", {
+            route: "admin/vms/actions",
+            vmId,
+            ip: reclaimVm.ip_address,
+            duplicates: desc,
+          });
+          return NextResponse.json(
+            { error: `DUPLICATE_IP: ${reclaimVm.ip_address} is shared by multiple active VMs (${desc}). Resolve the duplicate before reclaiming.` },
+            { status: 409 }
+          );
+        }
+      }
+
       // Unassign VM from user
       await supabase
         .from("instaclaw_vms")
