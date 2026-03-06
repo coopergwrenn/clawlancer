@@ -5915,100 +5915,87 @@ export async function installHiggsfieldSkill(vm: VMRecord): Promise<void> {
   const ssh = await connectSSH(vm);
   try {
     const hfSkillDir = path.join(process.cwd(), "skills", "higgsfield-video");
-    const files: Array<{ localPath: string; remotePath: string; executable?: boolean }> = [
-      { localPath: path.join(hfSkillDir, "SKILL.md"), remotePath: "$HF_SKILL_DIR/SKILL.md" },
-      { localPath: path.join(hfSkillDir, "references", "muapi-api.md"), remotePath: "$HF_SKILL_DIR/references/muapi-api.md" },
-      { localPath: path.join(hfSkillDir, "references", "cinema-controls.md"), remotePath: "$HF_SKILL_DIR/references/cinema-controls.md" },
-      { localPath: path.join(hfSkillDir, "references", "model-selection-guide.md"), remotePath: "$HF_SKILL_DIR/references/model-selection-guide.md" },
-      { localPath: path.join(hfSkillDir, "references", "character-consistency.md"), remotePath: "$HF_SKILL_DIR/references/character-consistency.md" },
-      { localPath: path.join(hfSkillDir, "references", "storytelling-patterns.md"), remotePath: "$HF_SKILL_DIR/references/storytelling-patterns.md" },
-      { localPath: path.join(hfSkillDir, "references", "safety-patterns.md"), remotePath: "$HF_SKILL_DIR/references/safety-patterns.md" },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-setup.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-setup.py", executable: true },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-generate.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-generate.py", executable: true },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-character.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-character.py", executable: true },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-story.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-story.py", executable: true },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-audio.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-audio.py", executable: true },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-edit.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-edit.py", executable: true },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-status.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-status.py", executable: true },
-      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-upload-telegram-image.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-upload-telegram-image.py", executable: true },
-    ];
+    const HF_DIR = "/home/openclaw/.openclaw/skills/higgsfield-video";
+    const DBUS = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
 
-    const deployLines: string[] = [];
-    const chmodTargets: string[] = [];
-    for (const f of files) {
-      const content = fs.readFileSync(f.localPath, "utf-8");
-      const b64 = Buffer.from(content, "utf-8").toString("base64");
-      deployLines.push(`echo '${b64}' | base64 -d > "${f.remotePath}"`);
-      if (f.executable) chmodTargets.push(`"${f.remotePath}"`);
+    // --- Step 1: Create dirs, remove .disabled, deploy SKILL.md + env ---
+    const skillMd = fs.readFileSync(path.join(hfSkillDir, "SKILL.md"), "utf-8");
+    const skillMdB64 = Buffer.from(skillMd, "utf-8").toString("base64");
+
+    const step1 = await ssh.execCommand([
+      `mkdir -p "${HF_DIR}/references" "${HF_DIR}/scripts" "$HOME/.openclaw/workspace/higgsfield"`,
+      `rm -rf "${HF_DIR}.disabled" 2>/dev/null || true`,
+      `echo '${skillMdB64}' | base64 -d > "${HF_DIR}/SKILL.md"`,
+      // Proxy URL env
+      'ENV_FILE="$HOME/.openclaw/.env"',
+      'sed -i "/^MUAPI_API_KEY=/d" "$ENV_FILE" 2>/dev/null || true',
+      'grep -q "^INSTACLAW_MUAPI_PROXY=" "$ENV_FILE" 2>/dev/null || echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$ENV_FILE"',
+      'echo "STEP1_OK"',
+    ].join(' && '));
+
+    if (!step1.stdout?.includes("STEP1_OK")) {
+      throw new Error(`Higgsfield install failed at step 1 (dirs + SKILL.md). stderr: ${step1.stderr?.slice(-300) || "none"}`);
     }
 
-    // Write proxy URL to .env and remove any legacy MUAPI_API_KEY
-    const proxyEnvLines: string[] = [
-      '# Configure Muapi proxy URL (platform-provided, no user API key needed)',
-      'ENV_FILE="$HOME/.openclaw/.env"',
-      '# Remove legacy MUAPI_API_KEY if present',
-      'sed -i "/^MUAPI_API_KEY=/d" "$ENV_FILE" 2>/dev/null || true',
-      '# Add proxy URL if not already set',
-      'if ! grep -q "^INSTACLAW_MUAPI_PROXY=" "$ENV_FILE" 2>/dev/null; then',
-      '  echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$ENV_FILE"',
-      'fi',
+    // --- Step 2: Deploy Python scripts (one execCommand per file) ---
+    const scriptFiles = [
+      "higgsfield-setup.py",
+      "higgsfield-generate.py",
+      "higgsfield-character.py",
+      "higgsfield-story.py",
+      "higgsfield-audio.py",
+      "higgsfield-edit.py",
+      "higgsfield-status.py",
+      "higgsfield-upload-telegram-image.py",
     ];
 
-    const script = [
-      '#!/bin/bash',
-      'set -o pipefail',
-      NVM_PREAMBLE,
-      '',
-      'echo "STEP:start"',
-      '',
-      '# Ensure directories exist',
-      'HF_SKILL_DIR="$HOME/.openclaw/skills/higgsfield-video"',
-      'mkdir -p "$HF_SKILL_DIR/references" "$HF_SKILL_DIR/scripts" "$HOME/.openclaw/workspace/higgsfield"',
-      '',
-      '# Remove .disabled version if it exists (we are enabling)',
-      'if [ -d "$HF_SKILL_DIR.disabled" ]; then',
-      '  rm -rf "$HF_SKILL_DIR.disabled"',
-      'fi',
-      'echo "STEP:dirs_ready"',
-      '',
-      '# Deploy skill files',
-      ...deployLines,
-      `chmod +x ${chmodTargets.join(' ')}`,
-      'echo "STEP:files_deployed"',
-      '',
-      ...proxyEnvLines,
-      '',
-      '# Restart gateway',
+    for (const scriptName of scriptFiles) {
+      const content = fs.readFileSync(path.join(hfSkillDir, "scripts", scriptName), "utf-8");
+      const b64 = Buffer.from(content, "utf-8").toString("base64");
+      const r = await ssh.execCommand(
+        `echo '${b64}' | base64 -d > "${HF_DIR}/scripts/${scriptName}" && chmod +x "${HF_DIR}/scripts/${scriptName}"`
+      );
+      if (r.code !== 0) {
+        throw new Error(`Higgsfield install failed deploying script ${scriptName}. stderr: ${r.stderr?.slice(-200) || "none"}`);
+      }
+    }
+
+    // --- Step 3: Deploy reference docs (one per file) ---
+    const refFiles = [
+      "muapi-api.md",
+      "cinema-controls.md",
+      "model-selection-guide.md",
+      "character-consistency.md",
+      "storytelling-patterns.md",
+      "safety-patterns.md",
+    ];
+
+    for (const refName of refFiles) {
+      const content = fs.readFileSync(path.join(hfSkillDir, "references", refName), "utf-8");
+      const b64 = Buffer.from(content, "utf-8").toString("base64");
+      const r = await ssh.execCommand(
+        `echo '${b64}' | base64 -d > "${HF_DIR}/references/${refName}"`
+      );
+      if (r.code !== 0) {
+        throw new Error(`Higgsfield install failed deploying reference ${refName}. stderr: ${r.stderr?.slice(-200) || "none"}`);
+      }
+    }
+
+    // --- Step 4: Restart gateway ---
+    const step4 = await ssh.execCommand([
+      DBUS,
       'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'sleep 2',
       'systemctl --user start openclaw-gateway 2>/dev/null || true',
       'sleep 3',
-      'echo "STEP:gateway_restarted"',
-      '',
       'echo "HIGGSFIELD_INSTALL_DONE"',
-    ].join('\n');
+    ].join(' && '));
 
-    // CRITICAL: write + execute in ONE execCommand — ssh2 exec channels are isolated,
-    // so a file written in channel 1 may not exist when channel 2 runs.
-    const result = await ssh.execCommand(
-      `cat > /tmp/ic-hf-install.sh << 'ICEOF'\n${script}\nICEOF\nbash /tmp/ic-hf-install.sh; EC=$?; rm -f /tmp/ic-hf-install.sh; exit $EC`
-    );
-
-    const completedSteps = (result.stdout.match(/STEP:\w+/g) || []).map((s: string) => s.replace("STEP:", ""));
-    const lastStep = completedSteps[completedSteps.length - 1] || "none";
-
-    if (result.code !== 0 || !result.stdout.includes("HIGGSFIELD_INSTALL_DONE")) {
-      logger.error("Higgsfield install failed", {
-        error: result.stderr,
-        stdout: result.stdout.slice(-500),
-        lastStep,
-        completedSteps,
-        exitCode: result.code,
-        route: "lib/ssh",
-      });
-      throw new Error(`Higgsfield install failed at step "${lastStep}" (exit ${result.code}). stderr: ${result.stderr?.slice(-400) || "none"}`);
+    if (!step4.stdout?.includes("HIGGSFIELD_INSTALL_DONE")) {
+      throw new Error(`Higgsfield install failed at step 4 (gateway restart). stderr: ${step4.stderr?.slice(-300) || "none"}`);
     }
-    logger.info("Higgsfield install succeeded", { completedSteps, route: "lib/ssh" });
+
+    logger.info("Higgsfield install succeeded (batched)", { route: "lib/ssh" });
   } finally {
     ssh.dispose();
   }
