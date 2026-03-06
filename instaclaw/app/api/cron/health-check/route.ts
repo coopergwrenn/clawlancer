@@ -497,7 +497,7 @@ export async function GET(req: NextRequest) {
             });
             try {
               await loserSsh.execCommand(
-                `${NVM_PREAMBLE} && openclaw config set channels.telegram.enabled false 2>/dev/null || true`,
+                `${NVM_PREAMBLE} && openclaw config set channels.telegram.enabled false 2>/dev/null || true && rm -f ~/.openclaw/openclaw.json.bak* /tmp/openclaw-backup.json 2>/dev/null || true`,
               );
             } finally {
               loserSsh.dispose();
@@ -528,6 +528,66 @@ export async function GET(req: NextRequest) {
         winner.name ?? winner.id,
         `${group.length} VMs share token (${token.slice(0, 10)}...).\nWinner: ${winner.name ?? winner.id}\nLosers (disabled): ${losers.map((l) => l.name ?? l.id).join(", ")}`
       );
+    }
+  }
+
+  // ========================================================================
+  // Ready-pool stale backup token detection
+  // Pool VMs (status=ready) should have NO telegram bot tokens on disk.
+  // OpenClaw creates .bak files when updating config — if a reclaimed VM
+  // still has a token in a .bak file, the gateway will poll getUpdates
+  // on restart and fight the rightful owner. Sample up to 5 per cycle.
+  // ========================================================================
+  let readyPoolTokensCleaned = 0;
+
+  const { data: readyPoolVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, ip_address, ssh_port, ssh_user")
+    .eq("status", "ready")
+    .limit(5);
+
+  if (readyPoolVms?.length) {
+    for (const rvm of readyPoolVms) {
+      try {
+        const rvmSsh = await connectSSH({
+          id: rvm.id,
+          ip_address: rvm.ip_address,
+          ssh_port: rvm.ssh_port ?? 22,
+          ssh_user: rvm.ssh_user ?? "openclaw",
+        });
+        try {
+          const grepResult = await rvmSsh.execCommand(
+            `grep -rl "botToken" ~/.openclaw/openclaw.json* 2>/dev/null || true`,
+          );
+          const filesWithToken = (grepResult.stdout ?? "").trim();
+          if (filesWithToken) {
+            // Auto-fix: purge all backup files and clear token from main config
+            await rvmSsh.execCommand(
+              `rm -f ~/.openclaw/openclaw.json.bak* /tmp/openclaw-backup.json 2>/dev/null || true`,
+            );
+            // Also clear telegram from main config if present
+            await rvmSsh.execCommand(
+              `${NVM_PREAMBLE} && openclaw config set channels.telegram.enabled false 2>/dev/null || true`,
+            );
+            readyPoolTokensCleaned++;
+            logger.warn("Ready pool VM had stale telegram token on disk — auto-fixed", {
+              route: "cron/health-check",
+              vmId: rvm.id,
+              vmName: rvm.name,
+              filesWithToken,
+            });
+            alerts.add(
+              "Ready Pool VM Has Stale Telegram Token — AUTO-FIXED",
+              rvm.name ?? rvm.id,
+              `Files with stale token:\n${filesWithToken}\nBackup files purged and telegram disabled in config.`
+            );
+          }
+        } finally {
+          rvmSsh.dispose();
+        }
+      } catch {
+        // SSH may fail on some pool VMs — skip silently
+      }
     }
   }
 
@@ -1681,6 +1741,7 @@ export async function GET(req: NextRequest) {
     webhooksFixed,
     telegramDupesFixed,
     telegramTokenMissing,
+    readyPoolTokensCleaned,
     suspended,
     sessionsCleared,
     sessionsAlerted,

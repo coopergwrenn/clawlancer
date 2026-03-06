@@ -1928,6 +1928,11 @@ export async function configureOpenClaw(
       '# Write complete openclaw.json in one shot (replaces onboard + all config set calls)',
       'mkdir -p ~/.openclaw',
       `echo '${ocConfigB64}' | base64 -d > ~/.openclaw/openclaw.json`,
+      '',
+      '# Purge old config backups that may contain stale telegram bot tokens',
+      '# OpenClaw creates .bak, .bak.2, .bak.3 etc. when updating config',
+      'rm -f ~/.openclaw/openclaw.json.bak* 2>/dev/null || true',
+      'rm -f /tmp/openclaw-backup.json 2>/dev/null || true',
       ''
     );
 
@@ -2008,8 +2013,8 @@ export async function configureOpenClaw(
     // Deploy INSTACLAW_MUAPI_PROXY for Higgsfield/Muapi video skill
     scriptParts.push(
       '# Deploy INSTACLAW_MUAPI_PROXY for Higgsfield video skill',
-      'grep -q "^INSTACLAW_MUAPI_PROXY=" "$HOME/.openclaw/agents/main/.env" 2>/dev/null || \\',
-      '  echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$HOME/.openclaw/agents/main/.env"',
+      'grep -q "^INSTACLAW_MUAPI_PROXY=" "$HOME/.openclaw/.env" 2>/dev/null || \\',
+      '  echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$HOME/.openclaw/.env"',
       ''
     );
 
