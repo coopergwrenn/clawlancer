@@ -22,8 +22,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-SUPABASE_URL=$(grep '^NEXT_PUBLIC_SUPABASE_URL=' "$ENV_FILE" | cut -d= -f2-)
-SUPABASE_KEY=$(grep '^SUPABASE_SERVICE_ROLE_KEY=' "$ENV_FILE" | cut -d= -f2-)
+SUPABASE_URL=$(grep '^NEXT_PUBLIC_SUPABASE_URL=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')
+SUPABASE_KEY=$(grep '^SUPABASE_SERVICE_ROLE_KEY=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')
 
 if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_KEY" ]]; then
   echo "ERROR: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local"
@@ -31,16 +31,21 @@ if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_KEY" ]]; then
 fi
 
 # ── Load SSH key ──────────────────────────────────────────────────────────────
-SSH_KEY_FILE="$REPO_ROOT/.env.ssh-key"
-if [[ ! -f "$SSH_KEY_FILE" ]]; then
-  echo "ERROR: $SSH_KEY_FILE not found"
+SSH_ENV_FILE="$REPO_ROOT/.env.ssh-key"
+if [[ ! -f "$SSH_ENV_FILE" ]]; then
+  echo "ERROR: $SSH_ENV_FILE not found"
   exit 1
 fi
 
+SSH_PRIVATE_KEY_B64=$(grep "^SSH_PRIVATE_KEY_B64=" "$SSH_ENV_FILE" 2>/dev/null | head -1 | sed 's/^[^=]*=//' | tr -d '"' | tr -d "'" | tr -d '\n')
+if [[ -z "$SSH_PRIVATE_KEY_B64" ]]; then
+  echo "ERROR: SSH_PRIVATE_KEY_B64 not found in .env.ssh-key"
+  exit 1
+fi
 TEMP_KEY=$(mktemp)
-trap 'rm -f "$TEMP_KEY"' EXIT
-cp "$SSH_KEY_FILE" "$TEMP_KEY"
+echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$TEMP_KEY"
 chmod 600 "$TEMP_KEY"
+trap 'rm -f "$TEMP_KEY"' EXIT
 
 # ── Fetch VMs ─────────────────────────────────────────────────────────────────
 fetch_vms() {
