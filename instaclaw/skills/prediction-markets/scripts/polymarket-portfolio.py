@@ -248,11 +248,22 @@ def verify_on_chain_balance(wallet, token_id):
         return None
 
 
+def is_matched(trade):
+    """Check if a trade was actually filled. Only MATCHED fills count for P&L."""
+    status = trade.get("fill_status", trade.get("status", "")).upper()
+    if status == "MATCHED":
+        return True
+    # Backward compat: old entries without fill_status count if they have tx_hashes
+    if not status and trade.get("tx_hashes"):
+        return True
+    return False
+
+
 def compute_cost_basis(trade_log):
     """Compute FIFO cost basis per token_id. Returns {token_id: avg_entry_price}."""
     buys = {}  # token_id -> [(shares, price)]
     for t in trade_log:
-        if t.get("action") == "BUY":
+        if t.get("action") == "BUY" and is_matched(t):
             tid = t.get("token_id", "")
             if tid not in buys:
                 buys[tid] = []
@@ -317,8 +328,10 @@ def cmd_summary(args):
         else:
             print(f"OK — Portfolio for {wallet['address']}")
             if usdc_balance is not None:
-                print(f"  Cash: ${usdc_balance:.2f} USDC.e")
-            print("  No positions or trades yet.")
+                print(f"  Cash balance: ${usdc_balance:.2f} USDC.e (available for trading or withdrawal)")
+            else:
+                print(f"  Cash balance: could not read (RPC timeout — does NOT mean zero)")
+            print("  No open trading positions. Cash balance above is separate from positions.")
         return 0
 
     # Build enriched position data — FIX 8: only verified positions in P&L
@@ -386,17 +399,17 @@ def cmd_summary(args):
         }
         portfolio_rows.append(row)
 
-    # Realized P&L from sells
+    # Realized P&L from sells — ONLY count MATCHED fills
     realized_pnl = 0.0
     sell_buys = {}
     for t in trade_log:
-        if t.get("action") == "BUY":
+        if t.get("action") == "BUY" and is_matched(t):
             tid = t.get("token_id", "")
             if tid not in sell_buys:
                 sell_buys[tid] = []
             sell_buys[tid].append({"shares": t.get("shares", 0), "price": t.get("price", 0)})
     for t in trade_log:
-        if t.get("action") == "SELL":
+        if t.get("action") == "SELL" and is_matched(t):
             tid = t.get("token_id", "")
             sell_price = t.get("price", 0)
             remaining = t.get("shares", 0)
