@@ -134,20 +134,55 @@ def check_risk_limits(amount_usdc, config, daily_spend):
     return True, None
 
 
+def _clob_market_to_gamma_format(clob_data):
+    """Convert CLOB API market response to Gamma-compatible format for downstream code."""
+    tokens = clob_data.get("tokens", [])
+    outcomes = json.dumps([t.get("outcome", "") for t in tokens])
+    token_ids = json.dumps([t.get("token_id", "") for t in tokens])
+    prices = json.dumps([str(t.get("price", 0)) for t in tokens])
+    return {
+        "condition_id": clob_data.get("condition_id", ""),
+        "question": clob_data.get("question", ""),
+        "outcomes": outcomes,
+        "clobTokenIds": token_ids,
+        "outcomePrices": prices,
+        "minimum_order_size": clob_data.get("minimum_order_size", 1),
+        "active": clob_data.get("active", True),
+        "closed": clob_data.get("closed", False),
+        "neg_risk": clob_data.get("neg_risk", False),
+        "description": clob_data.get("description", ""),
+        "market_slug": clob_data.get("market_slug", ""),
+        "end_date_iso": clob_data.get("end_date_iso", ""),
+        "_source": "clob",
+    }
+
+
 def fetch_market_info(market_id):
-    """Fetch market info from Gamma API. Returns dict or None.
-    Handles both numeric IDs (path lookup) and condition_ids (query param)."""
-    # condition_ids start with "0x"
+    """Fetch market info. Uses CLOB API for condition_ids (reliable), Gamma for numeric IDs.
+    Gamma's condition_id filter is unreliable and can return wrong markets."""
+    # condition_ids start with "0x" — use CLOB API (always correct, not geoblocked)
     if str(market_id).startswith("0x"):
+        try:
+            clob_url = f"{CLOB_HOST_DEFAULT}/markets/{market_id}"
+            req = urllib.request.Request(clob_url, headers={"User-Agent": "polymarket-trade/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return _clob_market_to_gamma_format(json.loads(resp.read().decode()))
+        except Exception:
+            pass
+        # Fallback: try Gamma with condition_id match validation
         url = f"{GAMMA_API}/markets?condition_id={market_id}"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "polymarket-trade/1.0"})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
                 markets = data if isinstance(data, list) else data.get("markets", data.get("data", []))
-                return markets[0] if markets else None
+                # Validate: Gamma sometimes ignores the filter and returns wrong markets
+                for m in (markets or []):
+                    if m.get("conditionId", m.get("condition_id", "")).lower() == market_id.lower():
+                        return m
         except Exception:
-            return None
+            pass
+        return None
     else:
         url = f"{GAMMA_API}/markets/{market_id}"
         try:
