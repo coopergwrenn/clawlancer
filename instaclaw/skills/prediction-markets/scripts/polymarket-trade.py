@@ -209,13 +209,16 @@ def fetch_orderbook(token_id):
         return None
 
 
-def snap_size_for_clob(amount_usdc, price):
+def snap_size_for_clob(amount_usdc, price, min_maker=1.0):
     """Calculate shares so that shares*price has at most 2 decimal places.
-    The CLOB API requires maker_amount (USDC) to have max 2 decimal precision.
+    The CLOB API requires maker_amount (USDC) to have max 2 decimal precision
+    AND maker_amount >= market minimum (typically $1).
     Uses Decimal to avoid floating-point drift."""
-    from decimal import Decimal, ROUND_DOWN
+    from decimal import Decimal, ROUND_DOWN, ROUND_UP
     d_amount = Decimal(str(amount_usdc))
     d_price = Decimal(str(price))
+    d_min = Decimal(str(min_maker))
+    max_dec = Decimal("0.01")
 
     # Raw shares floored to 2 decimals (CLOB requires size ≤ 2 decimals)
     raw_shares = d_amount / d_price
@@ -223,12 +226,24 @@ def snap_size_for_clob(amount_usdc, price):
 
     # Verify maker_amount = shares * price has ≤ 2 decimals; reduce if not
     maker = shares * d_price
-    max_dec = Decimal("0.01")
     attempts = 0
     while maker != maker.quantize(max_dec) and attempts < 10 and shares > 0:
         shares -= Decimal("0.01")
         maker = shares * d_price
         attempts += 1
+
+    # If maker_amount fell below minimum, bump shares UP to meet it
+    if maker < d_min and d_price > 0:
+        min_shares = (d_min / d_price).quantize(Decimal("0.01"), rounding=ROUND_UP)
+        # Verify the bumped maker_amount has ≤ 2 decimals
+        bumped_maker = min_shares * d_price
+        bump_attempts = 0
+        while bumped_maker != bumped_maker.quantize(max_dec) and bump_attempts < 10:
+            min_shares += Decimal("0.01")
+            bumped_maker = min_shares * d_price
+            bump_attempts += 1
+        shares = min_shares
+        maker = bumped_maker
 
     return float(shares), float(maker.quantize(max_dec, rounding=ROUND_DOWN))
 
@@ -819,8 +834,20 @@ def cmd_buy(args):
         return 1
 
     # FIX 3: Snap shares so maker_amount (shares*price) has ≤ 2 decimals
-    # The CLOB API rejects orders where maker_amount exceeds 2 decimal precision.
-    shares, _ = snap_size_for_clob(amount, price)
+    # The CLOB API rejects orders where maker_amount exceeds 2 decimal precision
+    # and is below the market minimum (typically $1).
+    min_order = float(market.get("minimum_order_size", 1) or 1)
+    shares, maker_amt = snap_size_for_clob(amount, price, min_maker=min_order)
+    if maker_amt > amount * 1.05:
+        # snap_size bumped above user's requested amount to meet minimum — warn
+        output_result(
+            f"FAIL — Amount ${amount:.2f} is too small for this market at price ${price:.4f}.\n"
+            f"  Minimum order: ${min_order:.0f}. At this price, minimum spend is ${maker_amt:.2f}.\n"
+            f"  Try: --amount {max(amount, maker_amt + 1):.0f}",
+            args.json,
+            {"status": "FAIL", "error": "below_min_order_size", "min_order": min_order, "actual_maker": maker_amt, "price": price},
+        )
+        return 1
     if shares <= 0:
         output_result(
             f"FAIL — Amount ${amount:.2f} too small for price {price:.4f}.",

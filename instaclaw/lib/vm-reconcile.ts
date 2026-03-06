@@ -97,6 +97,9 @@ export async function reconcileVM(
     // ── Step 8d: sshd OOM protection (OOMScoreAdjust=-900 drop-in) ──
     await stepSSHDProtection(ssh, result, dryRun);
 
+    // ── Step 8e: Clean stale memory entries (proxy down, geoblock, etc.) ──
+    await stepCleanStaleMemory(ssh, result, dryRun);
+
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
     if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun) {
       result.gatewayRestartNeeded = true;
@@ -1100,5 +1103,69 @@ async function stepSSHDProtection(
     result.fixed.push("sshd OOM protection: deployed drop-in (OOMScoreAdjust=-900)");
   } else {
     result.errors.push(`sshd OOM protection failed: ${deployResult.stderr}`);
+  }
+}
+
+async function stepCleanStaleMemory(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Patterns that indicate stale infrastructure complaints agents should forget
+  const badPatterns = [
+    "proxy.*down",
+    "proxy.*unreachable",
+    "proxy.*offline",
+    "CLOB.*blocked",
+    "CLOB.*unreachable",
+    "geo.block",
+    "geoblock",
+    "trading.*restricted",
+    "Trading restricted",
+    "script.*broken",
+    "doesn.t.*work",
+    "can.t.*trade",
+    "cannot.*trade",
+    "wallet.*stuck",
+    "wallet.*broken",
+    "awaiting.*fix",
+    "awaiting.*support",
+    "403.*Forbidden",
+    "Gamma API.*403",
+    "blocked by geo",
+    "Execution blocked",
+    "insufficient.*balance.*stuck",
+  ];
+
+  const checkCmd = badPatterns
+    .map((p) => `grep -ci '${p}' "$f" 2>/dev/null`)
+    .join(" + ");
+
+  // Count stale lines across all memory files
+  const countResult = await ssh.execCommand(
+    `TOTAL=0; for f in $HOME/.openclaw/workspace/memory/*.md $HOME/workspace/memory/*.md $HOME/memory/*.md 2>/dev/null; do [ -f "$f" ] && TOTAL=$((TOTAL + $(${checkCmd} || echo 0))); done; echo $TOTAL`,
+  );
+
+  const staleCount = parseInt(countResult.stdout.trim(), 10) || 0;
+
+  if (staleCount === 0) {
+    result.alreadyCorrect.push("memory: no stale entries");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] memory: would clean ${staleCount} stale lines`);
+    return;
+  }
+
+  // Build sed command to delete all bad patterns
+  const sedParts = badPatterns.map((p) => `/${p}/Id`).join(";");
+  const cleanCmd = `for f in $HOME/.openclaw/workspace/memory/*.md $HOME/workspace/memory/*.md $HOME/memory/*.md 2>/dev/null; do [ -f "$f" ] && sed -i '${sedParts}' "$f"; done`;
+
+  const cleanResult = await ssh.execCommand(cleanCmd);
+  if (cleanResult.code === 0) {
+    result.fixed.push(`memory: cleaned ${staleCount} stale lines`);
+  } else {
+    result.errors.push(`memory cleanup failed: ${cleanResult.stderr}`);
   }
 }
