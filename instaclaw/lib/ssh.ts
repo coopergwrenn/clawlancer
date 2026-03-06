@@ -5921,8 +5921,11 @@ export async function installHiggsfieldSkill(vm: VMRecord): Promise<void> {
       'echo "HIGGSFIELD_INSTALL_DONE"',
     ].join('\n');
 
-    await ssh.execCommand(`cat > /tmp/ic-hf-install.sh << 'ICEOF'\n${script}\nICEOF`);
-    const result = await ssh.execCommand('bash /tmp/ic-hf-install.sh; EC=$?; rm -f /tmp/ic-hf-install.sh; exit $EC');
+    // CRITICAL: write + execute in ONE execCommand — ssh2 exec channels are isolated,
+    // so a file written in channel 1 may not exist when channel 2 runs.
+    const result = await ssh.execCommand(
+      `cat > /tmp/ic-hf-install.sh << 'ICEOF'\n${script}\nICEOF\nbash /tmp/ic-hf-install.sh; EC=$?; rm -f /tmp/ic-hf-install.sh; exit $EC`
+    );
 
     const completedSteps = (result.stdout.match(/STEP:\w+/g) || []).map((s: string) => s.replace("STEP:", ""));
     const lastStep = completedSteps[completedSteps.length - 1] || "none";
@@ -5972,8 +5975,9 @@ export async function uninstallHiggsfieldSkill(vm: VMRecord): Promise<void> {
       'echo "HIGGSFIELD_UNINSTALL_DONE"',
     ].join('\n');
 
-    await ssh.execCommand(`cat > /tmp/ic-hf-uninstall.sh << 'ICEOF'\n${script}\nICEOF`);
-    const result = await ssh.execCommand('bash /tmp/ic-hf-uninstall.sh; EC=$?; rm -f /tmp/ic-hf-uninstall.sh; exit $EC');
+    const result = await ssh.execCommand(
+      `cat > /tmp/ic-hf-uninstall.sh << 'ICEOF'\n${script}\nICEOF\nbash /tmp/ic-hf-uninstall.sh; EC=$?; rm -f /tmp/ic-hf-uninstall.sh; exit $EC`
+    );
 
     if (result.code !== 0 || !result.stdout.includes("HIGGSFIELD_UNINSTALL_DONE")) {
       logger.error("Higgsfield uninstall failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
