@@ -34,6 +34,7 @@ NEVER construct raw API calls, curl commands, or HTTP requests. ALWAYS use the p
 - `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py` — Video editing
 - `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-status.py` — Job tracking
 - `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py` — Status & credit checks
+- `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py` — Telegram/local image → CDN URL
 
 ### Rule 1: Max 3 Retries Per Operation
 If a generation fails 3 times, STOP and report the failure. Do NOT keep retrying indefinitely.
@@ -123,6 +124,8 @@ If the user has never used Higgsfield before:
 | Text-to-image | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-image --prompt "..." --model flux-schnell --json` |
 | Check status | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py status --id <request_id> --json` |
 | Upload file | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py upload-file --file <path> --json` |
+| Upload Telegram image | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py --telegram-file-id <id> --json` |
+| Upload local file to CDN | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py --file <path> --json` |
 
 ### Video Parameters
 
@@ -282,6 +285,48 @@ Reference: `~/.openclaw/skills/higgsfield-video/references/storytelling-patterns
 
 ---
 
+## Telegram Image Uploads (IMPORTANT)
+
+When a user sends you an image in Telegram and asks you to animate it, edit it, or use it as a reference:
+
+**The image-to-video command handles this automatically.** If you pass a Telegram `file_id` or local file path as `--image`, the script auto-detects it, downloads from Telegram, uploads to Muapi CDN, and uses the resulting URL. No extra steps needed:
+
+```bash
+# Telegram file_id — auto-resolved
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video \
+  --image "AgACAgIAAxkBAAI..." --prompt "make this dance" --json
+
+# Local file path — auto-resolved
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video \
+  --image "/tmp/user-photo.jpg" --prompt "cinematic zoom in" --json
+
+# HTTPS URL — passed through directly (no upload needed)
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video \
+  --image "https://example.com/photo.jpg" --prompt "animate" --json
+```
+
+**For other commands** (editing, face-swap, style transfer) that need an image URL, use the standalone upload script first:
+
+```bash
+# Upload a Telegram image and get the CDN URL
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py \
+  --telegram-file-id "AgACAgIAAxkBAAI..." --json
+# Output: { "status": "uploaded", "url": "https://cdn.muapi.ai/..." }
+
+# Upload a local file
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py \
+  --file "/tmp/user-photo.jpg" --json
+```
+
+Then pass the returned `url` to the editing command as `--video` or `--face-image`.
+
+**How it works behind the scenes:**
+1. Telegram `file_id` → `GET /bot{token}/getFile` → `GET /file/bot{token}/{path}` → raw bytes
+2. Raw bytes → `POST /api/v1/upload_file` (multipart FormData via proxy) → public CDN URL
+3. CDN URL → passed to I2V/editing endpoint as `image_url` or `images_list`
+
+---
+
 ## Telegram Delivery
 
 After generation completes, if the user has Telegram configured:
@@ -326,6 +371,7 @@ Reference: `~/.openclaw/skills/higgsfield-video/references/safety-patterns.md`
 | Audio script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-audio.py` |
 | Edit script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py` |
 | Status script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-status.py` |
+| Telegram upload | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py` |
 | API reference | `~/.openclaw/skills/higgsfield-video/references/muapi-api.md` |
 | Model guide | `~/.openclaw/skills/higgsfield-video/references/model-selection-guide.md` |
 | Cinema controls | `~/.openclaw/skills/higgsfield-video/references/cinema-controls.md` |

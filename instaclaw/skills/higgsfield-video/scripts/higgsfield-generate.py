@@ -15,6 +15,7 @@ import argparse
 import json
 import mimetypes
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -216,6 +217,104 @@ def submit_with_retry(endpoint: str, api_key: str, payload: dict) -> dict:
     raise last_error
 
 
+def is_telegram_file_id(value: str) -> bool:
+    """Detect Telegram file_id patterns. They are base64-like strings, NOT URLs or file paths."""
+    if value.startswith(("http://", "https://", "/", "~", "./")):
+        return False
+    # Telegram file_ids are typically 30-120 chars of alphanumerics, hyphens, underscores
+    return bool(re.match(r'^[A-Za-z0-9_-]{20,}$', value))
+
+
+def is_local_file(value: str) -> bool:
+    """Check if value looks like a local file path that exists."""
+    if value.startswith(("http://", "https://")):
+        return False
+    return Path(os.path.expanduser(value)).exists()
+
+
+def resolve_image_to_url(image_value: str, api_key: str, as_json: bool = False) -> str:
+    """Auto-resolve Telegram file_ids and local paths to public CDN URLs.
+
+    If `image_value` is already an HTTPS URL, returns it unchanged.
+    If it's a Telegram file_id, downloads from Telegram and uploads to Muapi CDN.
+    If it's a local file path, uploads to Muapi CDN.
+    """
+    # Already an HTTP(S) URL — pass through
+    if image_value.startswith(("http://", "https://")):
+        return image_value
+
+    # Telegram file_id — download from Telegram, upload to Muapi
+    if is_telegram_file_id(image_value):
+        bot_token = _load_env_var("TELEGRAM_BOT_TOKEN")
+        if not bot_token:
+            raise RuntimeError(
+                "Got a Telegram file_id but TELEGRAM_BOT_TOKEN is not configured. "
+                "Cannot download the image from Telegram."
+            )
+        if not as_json:
+            print(f"  Detected Telegram file_id — downloading from Telegram...")
+
+        # Step 1: getFile
+        url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={image_value}"
+        req = Request(url, method="GET")
+        with urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+        if not data.get("ok"):
+            raise RuntimeError(f"Telegram getFile failed: {data.get('description', 'unknown')}")
+        file_path = data["result"]["file_path"]
+        filename = file_path.split("/")[-1] if "/" in file_path else file_path
+
+        # Step 2: Download bytes
+        dl_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        req = Request(dl_url, method="GET")
+        with urlopen(req, timeout=60) as resp:
+            file_bytes = resp.read()
+
+        if not as_json:
+            print(f"  Downloaded {len(file_bytes)} bytes — uploading to CDN...")
+
+        return _upload_bytes_to_muapi(file_bytes, filename, api_key)
+
+    # Local file path
+    expanded = Path(os.path.expanduser(image_value))
+    if expanded.exists():
+        if not as_json:
+            print(f"  Detected local file — uploading to CDN...")
+        file_bytes = expanded.read_bytes()
+        return _upload_bytes_to_muapi(file_bytes, expanded.name, api_key)
+
+    # Unknown format — return as-is and let Muapi handle the error
+    return image_value
+
+
+def _upload_bytes_to_muapi(file_bytes: bytes, filename: str, api_key: str) -> str:
+    """Upload raw bytes to Muapi CDN via multipart FormData. Returns CDN URL."""
+    base = get_base_url()
+    boundary = f"----FormBoundary{int(time.time() * 1000)}"
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        f"Content-Type: {mime}\r\n\r\n"
+    ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+
+    url = f"{base}/api/v1/upload_file"
+    if "instaclaw" in base.lower():
+        headers = {"x-gateway-token": api_key, "Content-Type": f"multipart/form-data; boundary={boundary}"}
+    else:
+        headers = {"x-api-key": api_key, "Content-Type": f"multipart/form-data; boundary={boundary}"}
+
+    req = Request(url, data=body, headers=headers, method="POST")
+    with urlopen(req, timeout=120) as resp:
+        data = json.loads(resp.read().decode())
+
+    cdn_url = data.get("url") or data.get("file_url") or data.get("data", {}).get("url")
+    if not cdn_url:
+        raise RuntimeError(f"No URL in upload response: {json.dumps(data)[:300]}")
+    return cdn_url
+
+
 def poll_for_result(request_id: str, api_key: str, max_polls: int,
                     as_json: bool = False) -> dict:
     """Poll at /api/v1/predictions/{id}/result until completion or failure."""
@@ -331,12 +430,19 @@ def cmd_image_to_video(args: argparse.Namespace) -> int:
     endpoint = model_info["endpoint"]
     image_field = model_info.get("image_field", "image_url")
 
+    # Auto-resolve Telegram file_ids and local paths to public CDN URLs
+    try:
+        image_url = resolve_image_to_url(args.image, api_key, args.json)
+    except (HTTPError, URLError, RuntimeError) as e:
+        output({"error": f"Failed to resolve image: {e}"}, args.json)
+        return 1
+
     payload: dict = {}
     # Respect per-model imageField
     if image_field == "images_list":
-        payload["images_list"] = [args.image]
+        payload["images_list"] = [image_url]
     else:
-        payload[image_field] = args.image
+        payload[image_field] = image_url
 
     if args.prompt:
         payload["prompt"] = args.prompt

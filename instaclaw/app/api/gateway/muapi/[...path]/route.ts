@@ -133,13 +133,22 @@ async function handleProxy(
     const upstreamPath = "/" + path.join("/");
     const userTz = vm.user_timezone || "America/New_York";
 
-    // Parse body for POST requests
+    // Parse body for POST requests — detect multipart file uploads
+    const contentType = req.headers.get("content-type") || "";
+    const isMultipart = contentType.includes("multipart/form-data");
     let body: Record<string, unknown> = {};
+    let rawBody: ArrayBuffer | null = null;
+
     if (method === "POST") {
-      try {
-        body = await req.json();
-      } catch {
-        // Empty body is OK for some endpoints
+      if (isMultipart) {
+        // File upload — preserve raw body for passthrough to Muapi
+        rawBody = await req.arrayBuffer();
+      } else {
+        try {
+          body = await req.json();
+        } catch {
+          // Empty body is OK for some endpoints
+        }
       }
     }
 
@@ -229,7 +238,6 @@ async function handleProxy(
     const muapiUrl = `${MUAPI_BASE}${upstreamPath}`;
     const muapiHeaders: Record<string, string> = {
       "x-api-key": muapiKey,
-      "Content-Type": "application/json",
     };
 
     const fetchOptions: RequestInit = {
@@ -237,8 +245,19 @@ async function handleProxy(
       headers: muapiHeaders,
     };
 
-    if (method === "POST" && Object.keys(body).length > 0) {
-      fetchOptions.body = JSON.stringify(body);
+    if (method === "POST") {
+      if (isMultipart && rawBody) {
+        // Passthrough multipart FormData with original Content-Type (includes boundary)
+        muapiHeaders["Content-Type"] = contentType;
+        fetchOptions.body = rawBody;
+      } else if (Object.keys(body).length > 0) {
+        muapiHeaders["Content-Type"] = "application/json";
+        fetchOptions.body = JSON.stringify(body);
+      } else {
+        muapiHeaders["Content-Type"] = "application/json";
+      }
+    } else {
+      muapiHeaders["Content-Type"] = "application/json";
     }
 
     const muapiRes = await fetch(muapiUrl, fetchOptions);

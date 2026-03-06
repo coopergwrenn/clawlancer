@@ -66,6 +66,7 @@ SKILL_FILES=(
   "scripts/higgsfield-audio.py"
   "scripts/higgsfield-edit.py"
   "scripts/higgsfield-status.py"
+  "scripts/higgsfield-upload-telegram-image.py"
   "references/muapi-api.md"
   "references/cinema-controls.md"
   "references/model-selection-guide.md"

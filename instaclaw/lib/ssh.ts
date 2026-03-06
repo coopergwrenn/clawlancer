@@ -2939,6 +2939,7 @@ export async function configureOpenClaw(
         { name: "higgsfield-audio.py", subdir: "scripts" },
         { name: "higgsfield-edit.py", subdir: "scripts" },
         { name: "higgsfield-status.py", subdir: "scripts" },
+        { name: "higgsfield-upload-telegram-image.py", subdir: "scripts" },
       ];
 
       scriptParts.push(
@@ -5864,6 +5865,7 @@ export async function installHiggsfieldSkill(vm: VMRecord): Promise<void> {
       { localPath: path.join(hfSkillDir, "scripts", "higgsfield-audio.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-audio.py", executable: true },
       { localPath: path.join(hfSkillDir, "scripts", "higgsfield-edit.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-edit.py", executable: true },
       { localPath: path.join(hfSkillDir, "scripts", "higgsfield-status.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-status.py", executable: true },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-upload-telegram-image.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-upload-telegram-image.py", executable: true },
     ];
 
     const deployLines: string[] = [];
