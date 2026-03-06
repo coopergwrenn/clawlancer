@@ -5837,7 +5837,7 @@ export async function uninstallSolanaDefiSkill(vm: VMRecord): Promise<void> {
  * Install Higgsfield AI Video skill on a VM.
  * Deploys scripts, enables skill dir, optionally stores API key, restarts gateway.
  */
-export async function installHiggsfieldSkill(vm: VMRecord, apiKey?: string): Promise<void> {
+export async function installHiggsfieldSkill(vm: VMRecord): Promise<void> {
   const ssh = await connectSSH(vm);
   try {
     const hfSkillDir = path.join(process.cwd(), "skills", "higgsfield-video");
@@ -5867,19 +5867,17 @@ export async function installHiggsfieldSkill(vm: VMRecord, apiKey?: string): Pro
       if (f.executable) chmodTargets.push(`"${f.remotePath}"`);
     }
 
-    // Optionally write MUAPI_API_KEY to .env
-    const apiKeyLines: string[] = [];
-    if (apiKey) {
-      apiKeyLines.push(
-        '# Store MUAPI_API_KEY in .env',
-        'ENV_FILE="$HOME/.openclaw/.env"',
-        'if grep -q "^MUAPI_API_KEY=" "$ENV_FILE" 2>/dev/null; then',
-        `  sed -i "s|^MUAPI_API_KEY=.*|MUAPI_API_KEY=${apiKey}|" "$ENV_FILE"`,
-        'else',
-        `  echo "MUAPI_API_KEY=${apiKey}" >> "$ENV_FILE"`,
-        'fi',
-      );
-    }
+    // Write proxy URL to .env and remove any legacy MUAPI_API_KEY
+    const proxyEnvLines: string[] = [
+      '# Configure Muapi proxy URL (platform-provided, no user API key needed)',
+      'ENV_FILE="$HOME/.openclaw/.env"',
+      '# Remove legacy MUAPI_API_KEY if present',
+      'sed -i "/^MUAPI_API_KEY=/d" "$ENV_FILE" 2>/dev/null || true',
+      '# Add proxy URL if not already set',
+      'if ! grep -q "^INSTACLAW_MUAPI_PROXY=" "$ENV_FILE" 2>/dev/null; then',
+      '  echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$ENV_FILE"',
+      'fi',
+    ];
 
     const script = [
       '#!/bin/bash',
@@ -5903,7 +5901,7 @@ export async function installHiggsfieldSkill(vm: VMRecord, apiKey?: string): Pro
       `chmod +x ${chmodTargets.join(' ')}`,
       'echo "STEP:files_deployed"',
       '',
-      ...apiKeyLines,
+      ...proxyEnvLines,
       '',
       '# Restart gateway',
       'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',

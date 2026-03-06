@@ -9,6 +9,9 @@ const CREDIT_PACKS: Record<string, { credits: number; label: string; envKey: str
   "50": { credits: 50, label: "50 messages — $5", envKey: "STRIPE_PRICE_CREDIT_50" },
   "200": { credits: 200, label: "200 messages — $15", envKey: "STRIPE_PRICE_CREDIT_200" },
   "500": { credits: 500, label: "500 messages — $30", envKey: "STRIPE_PRICE_CREDIT_500" },
+  "media_500": { credits: 500, label: "500 credits — $4.99", envKey: "STRIPE_PRICE_MEDIA_500" },
+  "media_1200": { credits: 1200, label: "1200 credits — $9.99", envKey: "STRIPE_PRICE_MEDIA_1200" },
+  "media_3000": { credits: 3000, label: "3000 credits — $19.99", envKey: "STRIPE_PRICE_MEDIA_3000" },
 };
 
 export async function POST(req: NextRequest) {
@@ -23,7 +26,7 @@ export async function POST(req: NextRequest) {
     const packDef = CREDIT_PACKS[pack];
     if (!packDef) {
       return NextResponse.json(
-        { error: "Invalid credit pack. Choose 50, 200, or 500." },
+        { error: "Invalid credit pack. Choose 50, 200, 500, media_500, media_1200, or media_3000." },
         { status: 400 }
       );
     }

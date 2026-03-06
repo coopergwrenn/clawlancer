@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Higgsfield AI Video — API key management via Muapi.ai.
+"""Higgsfield AI Video — Setup & credit management (platform-provided).
 
 Usage:
-  python3 higgsfield-setup.py setup --key <MUAPI_API_KEY>
   python3 higgsfield-setup.py status [--json]
+  python3 higgsfield-setup.py credits --type video --model kling-3.0 --duration 5 [--json]
   python3 higgsfield-setup.py test [--json]
 
-Exit codes: 0=OK, 1=FAIL, 2=BLOCK (missing key)
+Exit codes: 0=OK, 1=FAIL, 2=BLOCK (no gateway token)
 """
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -23,86 +22,52 @@ ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
 CHARACTERS_FILE = WORKSPACE_DIR / "characters.json"
-MUAPI_BASE = "https://api.muapi.ai"
-TEST_ENDPOINT = "/api/v1/generate/image/flux/schnell"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def load_api_key() -> str | None:
-    """Read MUAPI_API_KEY from ~/.openclaw/.env."""
+def _load_env_var(key: str) -> str | None:
     if not ENV_FILE.exists():
         return None
     for line in ENV_FILE.read_text().splitlines():
         line = line.strip()
-        if line.startswith("MUAPI_API_KEY="):
+        if line.startswith(f"{key}="):
             val = line.split("=", 1)[1].strip().strip('"').strip("'")
             return val if val else None
     return None
 
 
-def save_api_key(key: str) -> None:
-    """Write or update MUAPI_API_KEY in ~/.openclaw/.env."""
-    ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
-    lines = []
-    found = False
-    if ENV_FILE.exists():
-        for line in ENV_FILE.read_text().splitlines():
-            if line.strip().startswith("MUAPI_API_KEY="):
-                lines.append(f"MUAPI_API_KEY={key}")
-                found = True
-            else:
-                lines.append(line)
-    if not found:
-        lines.append(f"MUAPI_API_KEY={key}")
-    ENV_FILE.write_text("\n".join(lines) + "\n")
+def load_gateway_token() -> str | None:
+    """Read GATEWAY_TOKEN (preferred) or legacy MUAPI_API_KEY from ~/.openclaw/.env."""
+    return _load_env_var("GATEWAY_TOKEN") or _load_env_var("MUAPI_API_KEY")
 
 
-def muapi_request(endpoint: str, api_key: str, payload: dict | None = None,
-                  method: str = "POST", timeout: int = 30) -> dict:
-    """Make a request to Muapi.ai with x-api-key header."""
-    url = f"{MUAPI_BASE}{endpoint}"
-    headers = {
-        "x-api-key": api_key,
-        "Content-Type": "application/json",
-    }
+def get_base_url() -> str:
+    """Get proxy base URL. Platform-provided via INSTACLAW_MUAPI_PROXY."""
+    proxy = _load_env_var("INSTACLAW_MUAPI_PROXY")
+    if proxy:
+        return proxy.rstrip("/") + "/api/gateway/muapi"
+    return "https://api.muapi.ai"
+
+
+def get_credits_url() -> str:
+    """Get credits check URL."""
+    proxy = _load_env_var("INSTACLAW_MUAPI_PROXY")
+    if proxy:
+        return proxy.rstrip("/") + "/api/gateway/muapi/credits"
+    return None
+
+
+def proxy_request(url: str, token: str, method: str = "GET", payload: dict | None = None,
+                  timeout: int = 30) -> dict:
+    """Make a request using gateway token auth."""
+    headers = {"x-gateway-token": token, "Content-Type": "application/json"}
     data = json.dumps(payload).encode() if payload else None
     req = Request(url, data=data, headers=headers, method=method)
     with urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode())
 
 
-def extract_request_id(resp: dict) -> str | None:
-    """Normalize request ID from submit response."""
-    return resp.get("request_id") or resp.get("id") or resp.get("data", {}).get("request_id")
-
-
-def extract_output_url(resp: dict) -> str | None:
-    """Normalize output URL from poll response."""
-    # Try outputs array first
-    outputs = resp.get("outputs") or resp.get("data", {}).get("outputs")
-    if outputs and isinstance(outputs, list) and len(outputs) > 0:
-        item = outputs[0]
-        if isinstance(item, str):
-            return item
-        if isinstance(item, dict):
-            return item.get("url") or item.get("video_url") or item.get("image_url")
-    # Try direct url fields
-    for key in ("url", "video_url", "image_url"):
-        if resp.get(key):
-            return resp[key]
-    # Try nested output
-    output = resp.get("output") or resp.get("data", {}).get("output")
-    if isinstance(output, dict):
-        return output.get("url") or output.get("video_url") or output.get("image_url")
-    # Try video.url
-    video = resp.get("video")
-    if isinstance(video, dict):
-        return video.get("url")
-    return None
-
-
 def output(data: dict, as_json: bool = False) -> None:
-    """Dual-mode output."""
     if as_json:
         print(json.dumps(data, indent=2))
     else:
@@ -112,81 +77,46 @@ def output(data: dict, as_json: bool = False) -> None:
 
 # ── Commands ───────────────────────────────────────────────────────────────────
 
-def cmd_setup(args: argparse.Namespace) -> int:
-    """Store Muapi API key."""
-    key = args.key.strip()
-    if not key:
-        print("ERROR: API key cannot be empty", file=sys.stderr)
-        return 1
-
-    # Validate the key by hitting the test endpoint
-    print("Validating API key...")
-    try:
-        resp = muapi_request(TEST_ENDPOINT, key, {
-            "prompt": "test validation",
-            "image_size": "square",
-        })
-        rid = extract_request_id(resp)
-        if not rid:
-            print("WARNING: Key accepted but no request_id returned. Saving anyway.")
-    except HTTPError as e:
-        if e.code in (401, 403):
-            print(f"ERROR: Invalid API key (HTTP {e.code})", file=sys.stderr)
-            return 1
-        # Other errors might be rate limits or server issues — key format may still be valid
-        print(f"WARNING: Validation request failed (HTTP {e.code}), saving key anyway.")
-    except URLError as e:
-        print(f"WARNING: Could not reach Muapi.ai ({e.reason}), saving key anyway.")
-
-    save_api_key(key)
-
-    # Create workspace directories
-    WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-
-    print(f"API key saved to {ENV_FILE}")
-    print("Higgsfield AI Video is ready. Restart your gateway to activate.")
-    return 0
-
-
 def cmd_status(args: argparse.Namespace) -> int:
-    """Check API key status and validate."""
-    key = load_api_key()
+    """Check gateway token status and proxy connectivity."""
+    token = load_gateway_token()
+    proxy_url = _load_env_var("INSTACLAW_MUAPI_PROXY")
+    base = get_base_url()
+
     result: dict = {
         "skill": "higgsfield-video",
-        "api_key_configured": key is not None,
-        "api_key_valid": False,
+        "mode": "platform-provided",
+        "gateway_token_configured": token is not None,
+        "proxy_url": proxy_url or "(not set — using direct Muapi)",
+        "base_url": base,
         "workspace_exists": WORKSPACE_DIR.exists(),
         "jobs_file_exists": JOBS_FILE.exists(),
         "characters_file_exists": CHARACTERS_FILE.exists(),
     }
 
-    if not key:
-        result["error"] = "MUAPI_API_KEY not found in ~/.openclaw/.env"
+    if not token:
+        result["error"] = "GATEWAY_TOKEN not found in ~/.openclaw/.env"
         output(result, args.json)
         return 2
 
-    result["api_key_preview"] = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "***"
+    result["gateway_token_preview"] = f"{token[:8]}...{token[-4:]}" if len(token) > 12 else "***"
 
-    # Validate key
-    try:
-        resp = muapi_request(TEST_ENDPOINT, key, {
-            "prompt": "status check",
-            "image_size": "square",
-        })
-        rid = extract_request_id(resp)
-        result["api_key_valid"] = True
-        if rid:
-            result["test_request_id"] = rid
-    except HTTPError as e:
-        if e.code in (401, 403):
-            result["api_key_valid"] = False
-            result["error"] = f"API key rejected (HTTP {e.code})"
-        else:
-            result["api_key_valid"] = "unknown"
-            result["warning"] = f"Could not validate (HTTP {e.code})"
-    except URLError as e:
-        result["api_key_valid"] = "unknown"
-        result["warning"] = f"Could not reach Muapi.ai: {e.reason}"
+    # Test proxy connectivity
+    credits_url = get_credits_url()
+    if credits_url:
+        try:
+            resp = proxy_request(f"{credits_url}?type=image&model=flux-schnell", token)
+            result["proxy_connected"] = True
+            result["credits_available"] = resp.get("credits_available", "unknown")
+            result["can_generate"] = resp.get("can_generate", "unknown")
+        except HTTPError as e:
+            result["proxy_connected"] = False
+            result["error"] = f"Proxy returned HTTP {e.code}"
+        except URLError as e:
+            result["proxy_connected"] = False
+            result["error"] = f"Cannot reach proxy: {e.reason}"
+    else:
+        result["proxy_connected"] = "skipped (no proxy URL)"
 
     # Count jobs and characters
     if JOBS_FILE.exists():
@@ -203,32 +133,75 @@ def cmd_status(args: argparse.Namespace) -> int:
             result["total_characters"] = "error reading file"
 
     output(result, args.json)
-    return 0 if result.get("api_key_valid") is True else 1
+    return 0 if result.get("gateway_token_configured") else 1
+
+
+def cmd_credits(args: argparse.Namespace) -> int:
+    """Pre-generation credit check."""
+    token = load_gateway_token()
+    if not token:
+        print("ERROR: No gateway token configured.", file=sys.stderr)
+        return 2
+
+    credits_url = get_credits_url()
+    if not credits_url:
+        output({"error": "No proxy URL configured — credit checks require platform proxy"}, args.json)
+        return 1
+
+    params = f"?type={args.type}"
+    if args.model:
+        params += f"&model={args.model}"
+    if args.duration:
+        params += f"&duration={args.duration}"
+
+    try:
+        resp = proxy_request(f"{credits_url}{params}", token)
+    except HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode()
+        except Exception:
+            pass
+        output({"error": f"Credit check failed (HTTP {e.code})", "details": body}, args.json)
+        return 1
+    except URLError as e:
+        output({"error": f"Cannot reach proxy: {e.reason}"}, args.json)
+        return 1
+
+    output(resp, args.json)
+    return 0 if resp.get("can_generate") else 1
 
 
 def cmd_test(args: argparse.Namespace) -> int:
-    """Quick test: generate a Flux Schnell image."""
-    key = load_api_key()
-    if not key:
-        print("ERROR: No API key configured. Run: python3 higgsfield-setup.py setup --key YOUR_KEY",
-              file=sys.stderr)
+    """Quick test: generate a Flux Schnell image via proxy."""
+    token = load_gateway_token()
+    if not token:
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
-    print("Submitting test image (Flux Schnell)...")
+    base = get_base_url()
+    test_endpoint = "/api/v1/generate/image/flux/schnell"
+    url = f"{base}{test_endpoint}"
+
+    print("Submitting test image (Flux Schnell) via proxy...")
     try:
-        resp = muapi_request(TEST_ENDPOINT, key, {
+        resp = proxy_request(url, token, method="POST", payload={
             "prompt": "a tiny cactus wearing a cowboy hat, pixel art style",
             "image_size": "square",
         })
     except HTTPError as e:
-        body = e.read().decode() if hasattr(e, 'read') else ""
+        body = ""
+        try:
+            body = e.read().decode()
+        except Exception:
+            pass
         print(f"ERROR: Submit failed (HTTP {e.code}): {body}", file=sys.stderr)
         return 1
     except URLError as e:
         print(f"ERROR: Network error: {e.reason}", file=sys.stderr)
         return 1
 
-    rid = extract_request_id(resp)
+    rid = resp.get("request_id") or resp.get("id") or resp.get("data", {}).get("request_id")
     if not rid:
         output({"error": "No request_id in response", "raw": resp}, args.json)
         return 1
@@ -236,28 +209,36 @@ def cmd_test(args: argparse.Namespace) -> int:
     print(f"Request ID: {rid}")
     print("Polling for result...")
 
-    # Poll up to 60 attempts × 2s = 2 min
-    poll_endpoint = f"/api/v1/requests/{rid}"
+    poll_url = f"{base}/api/v1/requests/{rid}"
     for i in range(60):
         time.sleep(2)
         try:
-            status_resp = muapi_request(poll_endpoint, key, method="GET")
-        except HTTPError:
-            continue
-        except URLError:
+            status_resp = proxy_request(poll_url, token)
+        except (HTTPError, URLError):
             continue
 
-        status = status_resp.get("status", "").lower()
+        status = (status_resp.get("status") or "").lower()
         if status in ("completed", "succeeded", "done"):
-            url = extract_output_url(status_resp)
+            # Extract output URL
+            outputs = status_resp.get("outputs") or status_resp.get("data", {}).get("outputs")
+            out_url = None
+            if outputs and isinstance(outputs, list) and len(outputs) > 0:
+                item = outputs[0]
+                out_url = item if isinstance(item, str) else (item.get("url") if isinstance(item, dict) else None)
+            if not out_url:
+                for key in ("url", "image_url", "video_url"):
+                    if status_resp.get(key):
+                        out_url = status_resp[key]
+                        break
+
             result = {
                 "status": "completed",
                 "request_id": rid,
-                "output_url": url,
+                "output_url": out_url,
                 "model": "flux-schnell",
             }
             output(result, args.json)
-            print(f"\nTest passed! Image URL: {url}")
+            print(f"\nTest passed! Image URL: {out_url}")
             return 0
         elif status in ("failed", "error", "cancelled"):
             result = {
@@ -267,9 +248,8 @@ def cmd_test(args: argparse.Namespace) -> int:
             }
             output(result, args.json)
             return 1
-        else:
-            if not args.json:
-                print(f"  [{i+1}/60] Status: {status or 'processing'}...")
+        elif not args.json:
+            print(f"  [{i+1}/60] Status: {status or 'processing'}...")
 
     print("ERROR: Timed out after 2 minutes", file=sys.stderr)
     return 1
@@ -278,20 +258,24 @@ def cmd_test(args: argparse.Namespace) -> int:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Higgsfield AI Video — API Key Management")
+    parser = argparse.ArgumentParser(description="Higgsfield AI Video — Setup & Credits")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_setup = sub.add_parser("setup", help="Store Muapi API key")
-    p_setup.add_argument("--key", required=True, help="Your Muapi.ai API key")
-
-    p_status = sub.add_parser("status", help="Check API key status")
+    p_status = sub.add_parser("status", help="Check gateway token and proxy status")
     p_status.add_argument("--json", action="store_true", help="JSON output")
 
-    p_test = sub.add_parser("test", help="Quick test (Flux Schnell image)")
+    p_credits = sub.add_parser("credits", help="Pre-generation credit check")
+    p_credits.add_argument("--type", required=True,
+                           help="Generation type (video, image, music, sfx, lipsync, effects, extend, upscale, face-swap, translate, style, sync, story)")
+    p_credits.add_argument("--model", help="Model name (e.g., kling-3.0, flux-schnell)")
+    p_credits.add_argument("--duration", help="Duration in seconds (e.g., 5, 10, 20)")
+    p_credits.add_argument("--json", action="store_true", help="JSON output")
+
+    p_test = sub.add_parser("test", help="Quick test (Flux Schnell image via proxy)")
     p_test.add_argument("--json", action="store_true", help="JSON output")
 
     args = parser.parse_args()
-    cmd_map = {"setup": cmd_setup, "status": cmd_status, "test": cmd_test}
+    cmd_map = {"status": cmd_status, "credits": cmd_credits, "test": cmd_test}
     sys.exit(cmd_map[args.command](args))
 
 

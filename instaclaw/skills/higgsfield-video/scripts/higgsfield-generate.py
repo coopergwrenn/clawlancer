@@ -26,7 +26,6 @@ import base64
 ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
-MUAPI_BASE = "https://api.muapi.ai"
 
 # Endpoint map for each generation type
 VIDEO_ENDPOINTS = {
@@ -83,21 +82,39 @@ RETRY_DELAYS = [5, 15, 45]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def load_api_key() -> str | None:
+def _load_env_var(key: str) -> str | None:
     if not ENV_FILE.exists():
         return None
     for line in ENV_FILE.read_text().splitlines():
         line = line.strip()
-        if line.startswith("MUAPI_API_KEY="):
+        if line.startswith(f"{key}="):
             val = line.split("=", 1)[1].strip().strip('"').strip("'")
             return val if val else None
     return None
 
 
+def load_gateway_token() -> str | None:
+    """Read GATEWAY_TOKEN (preferred) or legacy MUAPI_API_KEY from ~/.openclaw/.env."""
+    return _load_env_var("GATEWAY_TOKEN") or _load_env_var("MUAPI_API_KEY")
+
+
+def get_base_url() -> str:
+    """Get proxy base URL. Platform-provided via INSTACLAW_MUAPI_PROXY, fallback to direct Muapi."""
+    proxy = _load_env_var("INSTACLAW_MUAPI_PROXY")
+    if proxy:
+        return proxy.rstrip("/") + "/api/gateway/muapi"
+    return "https://api.muapi.ai"
+
+
 def muapi_request(endpoint: str, api_key: str, payload: dict | None = None,
                   method: str = "POST", timeout: int = 30) -> dict:
-    url = f"{MUAPI_BASE}{endpoint}"
-    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+    base = get_base_url()
+    url = f"{base}{endpoint}"
+    # Use x-gateway-token for proxy, x-api-key for direct Muapi
+    if "instaclaw" in base.lower():
+        headers = {"x-gateway-token": api_key, "Content-Type": "application/json"}
+    else:
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
     data = json.dumps(payload).encode() if payload else None
     req = Request(url, data=data, headers=headers, method=method)
     with urlopen(req, timeout=timeout) as resp:
@@ -211,9 +228,9 @@ def poll_for_result(request_id: str, api_key: str, max_polls: int,
 # ── Commands ───────────────────────────────────────────────────────────────────
 
 def cmd_text_to_video(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key. Run: python3 higgsfield-setup.py setup --key YOUR_KEY",
+        print("ERROR: No gateway token configured. Check higgsfield-setup.py status",
               file=sys.stderr)
         return 2
 
@@ -279,9 +296,9 @@ def cmd_text_to_video(args: argparse.Namespace) -> int:
 
 
 def cmd_image_to_video(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     model = args.model or "kling-3.0"
@@ -335,9 +352,9 @@ def cmd_image_to_video(args: argparse.Namespace) -> int:
 
 
 def cmd_text_to_image(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     model = args.model or "flux-schnell"
@@ -393,9 +410,9 @@ def cmd_text_to_image(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     poll_endpoint = f"/api/v1/requests/{args.id}"
@@ -417,9 +434,9 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_upload_file(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     file_path = Path(args.file)

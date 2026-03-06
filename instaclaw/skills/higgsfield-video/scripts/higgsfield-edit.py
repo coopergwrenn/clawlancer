@@ -24,7 +24,6 @@ from urllib.error import HTTPError, URLError
 ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
-MUAPI_BASE = "https://api.muapi.ai"
 
 EFFECTS_ENDPOINT = "/api/v1/generate/video/effects"
 EXTEND_ENDPOINT = "/api/v1/generate/video/extend"
@@ -40,21 +39,36 @@ RETRY_DELAYS = [5, 15, 45]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def load_api_key() -> str | None:
+def _load_env_var(key: str) -> str | None:
     if not ENV_FILE.exists():
         return None
     for line in ENV_FILE.read_text().splitlines():
         line = line.strip()
-        if line.startswith("MUAPI_API_KEY="):
+        if line.startswith(f"{key}="):
             val = line.split("=", 1)[1].strip().strip('"').strip("'")
             return val if val else None
     return None
 
 
+def load_gateway_token() -> str | None:
+    return _load_env_var("GATEWAY_TOKEN") or _load_env_var("MUAPI_API_KEY")
+
+
+def get_base_url() -> str:
+    proxy = _load_env_var("INSTACLAW_MUAPI_PROXY")
+    if proxy:
+        return proxy.rstrip("/") + "/api/gateway/muapi"
+    return "https://api.muapi.ai"
+
+
 def muapi_request(endpoint: str, api_key: str, payload: dict | None = None,
                   method: str = "POST", timeout: int = 30) -> dict:
-    url = f"{MUAPI_BASE}{endpoint}"
-    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+    base = get_base_url()
+    url = f"{base}{endpoint}"
+    if "instaclaw" in base.lower():
+        headers = {"x-gateway-token": api_key, "Content-Type": "application/json"}
+    else:
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
     data = json.dumps(payload).encode() if payload else None
     req = Request(url, data=data, headers=headers, method=method)
     with urlopen(req, timeout=timeout) as resp:
@@ -181,9 +195,9 @@ def generic_edit_cmd(endpoint: str, edit_type: str, payload: dict,
 # ── Commands ───────────────────────────────────────────────────────────────────
 
 def cmd_effects(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
     payload = {"video_url": args.video, "effect": args.effect}
     if args.intensity:
@@ -192,9 +206,9 @@ def cmd_effects(args: argparse.Namespace) -> int:
 
 
 def cmd_extend(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
     payload: dict = {"video_url": args.video}
     if args.prompt:
@@ -205,18 +219,18 @@ def cmd_extend(args: argparse.Namespace) -> int:
 
 
 def cmd_translate(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
     payload = {"video_url": args.video, "target_language": args.target_lang}
     return generic_edit_cmd(TRANSLATE_ENDPOINT, "translate", payload, api_key, args.json)
 
 
 def cmd_style(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
     payload: dict = {"video_url": args.video, "style": args.style}
     if args.ref_image:
@@ -225,9 +239,9 @@ def cmd_style(args: argparse.Namespace) -> int:
 
 
 def cmd_upscale(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
     payload: dict = {"video_url": args.video}
     if args.target_resolution:
@@ -236,9 +250,9 @@ def cmd_upscale(args: argparse.Namespace) -> int:
 
 
 def cmd_face_swap(args: argparse.Namespace) -> int:
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
     payload = {"video_url": args.video, "face_image_url": args.face_image}
     return generic_edit_cmd(FACE_SWAP_ENDPOINT, "face-swap", payload, api_key, args.json)

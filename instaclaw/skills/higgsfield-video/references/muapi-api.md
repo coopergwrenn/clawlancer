@@ -1,12 +1,28 @@
 # Muapi.ai API Reference
 
-## Base URL
+## Proxy Routing (Platform-Provided)
+
+Scripts talk to the InstaClaw proxy, NOT directly to muapi.ai:
+
+**Base URL**: `{INSTACLAW_MUAPI_PROXY}/api/gateway/muapi` (e.g., `https://instaclaw.io/api/gateway/muapi`)
+
+**Auth header**: `x-gateway-token: {GATEWAY_TOKEN}` (from `~/.openclaw/.env`)
+
+The proxy handles:
+1. Credit checking before each generation
+2. Forwarding to Muapi with the platform API key
+3. Credit deduction on success
+4. Rate limiting and error handling
+
+All endpoint paths below are relative — the scripts automatically prepend the proxy base URL.
+
+## Direct Base URL (Legacy/Fallback)
 `https://api.muapi.ai`
 
-## Authentication
-All requests use the `x-api-key` header (NOT `Authorization: Bearer`):
+## Authentication (Legacy)
+Direct requests use `x-api-key` header — but this is handled by the proxy now:
 ```
-x-api-key: YOUR_MUAPI_API_KEY
+x-api-key: MUAPI_API_KEY  (platform-level, server-side only)
 ```
 
 ## Async Pattern

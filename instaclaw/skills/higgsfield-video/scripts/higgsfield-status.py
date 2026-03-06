@@ -21,24 +21,38 @@ from urllib.error import HTTPError, URLError
 ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
-MUAPI_BASE = "https://api.muapi.ai"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def load_api_key() -> str | None:
+def _load_env_var(key: str) -> str | None:
     if not ENV_FILE.exists():
         return None
     for line in ENV_FILE.read_text().splitlines():
         line = line.strip()
-        if line.startswith("MUAPI_API_KEY="):
+        if line.startswith(f"{key}="):
             val = line.split("=", 1)[1].strip().strip('"').strip("'")
             return val if val else None
     return None
 
 
+def load_gateway_token() -> str | None:
+    return _load_env_var("GATEWAY_TOKEN") or _load_env_var("MUAPI_API_KEY")
+
+
+def get_base_url() -> str:
+    proxy = _load_env_var("INSTACLAW_MUAPI_PROXY")
+    if proxy:
+        return proxy.rstrip("/") + "/api/gateway/muapi"
+    return "https://api.muapi.ai"
+
+
 def muapi_request(endpoint: str, api_key: str, method: str = "GET", timeout: int = 30) -> dict:
-    url = f"{MUAPI_BASE}{endpoint}"
-    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+    base = get_base_url()
+    url = f"{base}{endpoint}"
+    if "instaclaw" in base.lower():
+        headers = {"x-gateway-token": api_key, "Content-Type": "application/json"}
+    else:
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
     req = Request(url, headers=headers, method=method)
     with urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode())
@@ -96,9 +110,9 @@ def output(data, as_json: bool = False) -> None:
 
 def cmd_check(args: argparse.Namespace) -> int:
     """Check status of a specific request."""
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     try:
@@ -136,7 +150,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 def cmd_active(args: argparse.Namespace) -> int:
     """List active (processing) jobs."""
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     jobs = load_jobs()
     active = [j for j in jobs if j.get("status") in ("processing", "pending", "submitted", None)]
 

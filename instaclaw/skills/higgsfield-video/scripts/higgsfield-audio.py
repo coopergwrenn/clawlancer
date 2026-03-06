@@ -22,7 +22,6 @@ from urllib.error import HTTPError, URLError
 ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
-MUAPI_BASE = "https://api.muapi.ai"
 
 MUSIC_ENDPOINTS = {
     "suno": "/api/v1/generate/audio/suno",
@@ -40,21 +39,36 @@ RETRY_DELAYS = [5, 15, 45]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def load_api_key() -> str | None:
+def _load_env_var(key: str) -> str | None:
     if not ENV_FILE.exists():
         return None
     for line in ENV_FILE.read_text().splitlines():
         line = line.strip()
-        if line.startswith("MUAPI_API_KEY="):
+        if line.startswith(f"{key}="):
             val = line.split("=", 1)[1].strip().strip('"').strip("'")
             return val if val else None
     return None
 
 
+def load_gateway_token() -> str | None:
+    return _load_env_var("GATEWAY_TOKEN") or _load_env_var("MUAPI_API_KEY")
+
+
+def get_base_url() -> str:
+    proxy = _load_env_var("INSTACLAW_MUAPI_PROXY")
+    if proxy:
+        return proxy.rstrip("/") + "/api/gateway/muapi"
+    return "https://api.muapi.ai"
+
+
 def muapi_request(endpoint: str, api_key: str, payload: dict | None = None,
                   method: str = "POST", timeout: int = 30) -> dict:
-    url = f"{MUAPI_BASE}{endpoint}"
-    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+    base = get_base_url()
+    url = f"{base}{endpoint}"
+    if "instaclaw" in base.lower():
+        headers = {"x-gateway-token": api_key, "Content-Type": "application/json"}
+    else:
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
     data = json.dumps(payload).encode() if payload else None
     req = Request(url, data=data, headers=headers, method=method)
     with urlopen(req, timeout=timeout) as resp:
@@ -154,9 +168,9 @@ def output(data: dict, as_json: bool = False) -> None:
 
 def cmd_music(args: argparse.Namespace) -> int:
     """Generate music from prompt."""
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     model = args.model or "suno"
@@ -201,9 +215,9 @@ def cmd_music(args: argparse.Namespace) -> int:
 
 def cmd_sfx(args: argparse.Namespace) -> int:
     """Generate sound effects."""
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     payload: dict = {"prompt": args.prompt}
@@ -236,9 +250,9 @@ def cmd_sfx(args: argparse.Namespace) -> int:
 
 def cmd_sync(args: argparse.Namespace) -> int:
     """Generate audio synchronized to video content."""
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     payload: dict = {"video_url": args.video}
@@ -271,9 +285,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 def cmd_lipsync(args: argparse.Namespace) -> int:
     """Lip-sync audio to video."""
-    api_key = load_api_key()
+    api_key = load_gateway_token()
     if not api_key:
-        print("ERROR: No API key.", file=sys.stderr)
+        print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
     payload: dict = {"video_url": args.video, "audio_url": args.audio}

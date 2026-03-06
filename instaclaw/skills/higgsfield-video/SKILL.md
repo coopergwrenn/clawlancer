@@ -1,14 +1,14 @@
 ---
 name: "Higgsfield AI Video"
-description: "AI video, image, and audio generation via 200+ models (Muapi.ai gateway)"
+description: "AI video, image, and audio generation via 200+ models — included in your plan"
 ---
 
 # Higgsfield AI Video Production
 
 ```yaml
 name: higgsfield-video
-version: "1.0.0"
-updated: "2026-03-06"
+version: "2.0.0"
+updated: "2026-03-07"
 author: InstaClaw
 phase: production
 triggers:
@@ -16,7 +16,6 @@ triggers:
   phrases: ["make me a video", "create a video of", "animate this image", "generate an image", "create a story video", "multi-shot video"]
   NOT: [the director, sjinn, motion graphics, remotion]
 dependencies:
-  env: [MUAPI_API_KEY]
   tools: [python3]
 ```
 
@@ -34,7 +33,7 @@ NEVER construct raw API calls, curl commands, or HTTP requests. ALWAYS use the p
 - `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-audio.py` — Audio generation
 - `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py` — Video editing
 - `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-status.py` — Job tracking
-- `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py` — API key management
+- `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py` — Status & credit checks
 
 ### Rule 1: Max 3 Retries Per Operation
 If a generation fails 3 times, STOP and report the failure. Do NOT keep retrying indefinitely.
@@ -47,25 +46,69 @@ Keep generation output under 50KB. Use `--json` flag and extract only relevant f
 - **PERMANENT** (stop): HTTP 400, 401, 403, invalid model → report error, do not retry
 - **DANGEROUS** (escalate): Unexpected charges, wallet errors → stop immediately, alert user
 
-### Rule 4: Confirm Before Expensive Operations
-Before generating video (costs credits): confirm the prompt, model, and settings with the user. Images are cheaper — confirm only if the user hasn't specified clearly.
+### Rule 4: Pre-Generation Credit Check
+Before ANY generation, check available credits:
+```bash
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py credits --type video --model kling-3.0 --duration 5 --json
+```
+Tell the user the cost: "This video will use about 80 credits. You have 420 remaining."
 
 ### Rule 5: Check Setup First
-Before any generation, verify the API key is configured:
+Before any generation, verify the gateway token is configured:
 ```bash
 python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py status --json
 ```
-If no key is found, guide the user through setup.
+If no gateway token, the skill is not properly installed.
 
 ---
 
-## First Contact — Setup Flow
+## Credit System
+
+Higgsfield is included in your plan. Generations consume credits from your daily pool (shared with LLM messages).
+
+### Credit Weights
+
+| Generation Type | Credits | Examples |
+|----------------|---------|----------|
+| **Images** | | |
+| Fast (Flux Schnell) | 10 | Quick drafts, thumbnails |
+| Standard (Flux Dev/Pro) | 20 | General images |
+| Premium (Ideogram 3, Recraft, Seedream, GPT Image) | 40 | High-quality images |
+| **Video** | | |
+| Short video (5s) | 80 | Quick clips |
+| Long video (10s) | 150 | Standard videos |
+| Extended video (20s, Sora) | 250 | Long-form |
+| Image-to-video (5s) | 100 | Animate an image |
+| Image-to-video (10s) | 180 | Longer animation |
+| **Audio** | | |
+| Music (Suno) | 40 | Song generation |
+| SFX (MMAudio) | 30 | Sound effects |
+| Video-to-audio sync | 50 | Audio matching |
+| Lip sync | 60 | Lip movement sync |
+| **Editing** | | |
+| Effects/style transfer | 60 | Visual effects |
+| Extend video | 80 | Add duration |
+| Upscale | 50 | Resolution increase |
+| Face swap | 100 | Face replacement |
+| Translate | 80 | Language translation |
+| **Multi-shot** | | |
+| Story (3 scenes) | ~400 | Full story pipeline |
+
+### Credit Exhaustion UX Rules
+
+1. **Pre-gen check feels helpful**: "This video will use about 80 credits. You have 420 remaining." — informative, not gatekeeping
+2. **Credit exhaustion leads with reset**: "Your credits reset at midnight" FIRST, then optionally mention packs
+3. **Max 1 upsell per session**: Track via `~/.openclaw/workspace/higgsfield/session_upsell_shown`. Never nag
+4. **No "you need to buy"**: Always frame as option, not requirement
+
+---
+
+## First Contact — Setup Check
 
 If the user has never used Higgsfield before:
 1. Check status: `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py status --json`
-2. If no API key: Ask user for their Muapi.ai API key (get one at https://muapi.ai)
-3. Store key: `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py setup --key <KEY>`
-4. Validate: `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py test --json`
+2. If `gateway_token_configured: true` and `proxy_connected: true` → ready to go
+3. If not → the skill needs reinstallation via the dashboard
 
 ---
 
@@ -90,6 +133,14 @@ If the user has never used Higgsfield before:
 | `--aspect-ratio` | 16:9, 9:16, 1:1, 4:3, 3:4 |
 | `--duration` | 5, 10 (seconds, model-dependent) |
 | `--resolution` | 720p, 1080p (model-dependent) |
+
+### Setup & Credits
+
+| Action | Command |
+|--------|---------|
+| Check status | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py status --json` |
+| Credit check | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py credits --type video --model kling-3.0 --duration 5 --json` |
+| Quick test | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py test --json` |
 
 ### Character System
 
@@ -245,15 +296,15 @@ After generation completes, if the user has Telegram configured:
 1. **No NSFW content**: Do not generate explicit, violent, or harmful content
 2. **No deepfakes**: Do not generate face-swap content without clear consent context
 3. **No impersonation**: Do not generate content impersonating real people
-4. **Credit awareness**: Warn users about credit costs before expensive operations
+4. **Credit awareness**: Always check credits before generation and inform the user
 5. **Rate limiting**: Respect API rate limits, use retry with backoff
 
 ---
 
 ## Error Handling
 
-1. **API key invalid**: Guide user to https://muapi.ai for a new key
-2. **Insufficient credits**: Alert user, suggest checking balance at muapi.ai
+1. **Gateway token missing**: Skill needs reinstallation via dashboard
+2. **Insufficient credits**: "Your credits reset at midnight — or grab a credit pack to keep going."
 3. **Model unavailable**: Fall back to next-best model in the same category
 4. **Generation failed**: Retry up to 3 times with exponential backoff
 5. **Timeout**: Report timeout, suggest checking status later with request ID
@@ -281,7 +332,7 @@ Reference: `~/.openclaw/skills/higgsfield-video/references/safety-patterns.md`
 | Characters | `~/.openclaw/workspace/higgsfield/characters.json` |
 | Jobs | `~/.openclaw/workspace/higgsfield/jobs.json` |
 | Stories | `~/.openclaw/workspace/higgsfield/stories/` |
-| API key | `~/.openclaw/.env` (MUAPI_API_KEY) |
+| Session upsell | `~/.openclaw/workspace/higgsfield/session_upsell_shown` |
 
 ---
 
@@ -291,5 +342,5 @@ Before delivering any generated content:
 - [ ] Output URL is accessible and valid
 - [ ] Content matches the user's request
 - [ ] No NSFW or policy-violating content
-- [ ] Credit cost was communicated
+- [ ] Credit cost was communicated before generation
 - [ ] Telegram delivery attempted (if configured)

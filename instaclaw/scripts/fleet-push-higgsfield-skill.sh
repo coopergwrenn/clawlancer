@@ -98,8 +98,18 @@ mkdir -p \"\$HF_DIR/scripts\" \"\$HF_DIR/references\" \"\$HOME/.openclaw/workspa
 "
   done
 
-  # chmod scripts
+  # chmod scripts + configure proxy URL + remove legacy MUAPI_API_KEY
   deploy_script+='chmod +x "$HF_DIR/scripts/"*.py
+
+# Remove legacy MUAPI_API_KEY from .env
+ENV_FILE="$HOME/.openclaw/.env"
+sed -i "/^MUAPI_API_KEY=/d" "$ENV_FILE" 2>/dev/null || true
+
+# Add proxy URL if not already set
+if ! grep -q "^INSTACLAW_MUAPI_PROXY=" "$ENV_FILE" 2>/dev/null; then
+  echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$ENV_FILE"
+fi
+
 echo "HIGGSFIELD_DEPLOY_DONE"
 '
 

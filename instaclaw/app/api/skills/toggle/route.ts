@@ -207,12 +207,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Special case: Higgsfield AI Video uses install/uninstall (BYOK API key) ──
+    // ── Special case: Higgsfield AI Video uses install/uninstall (platform-provided) ──
     if (skill.slug === "higgsfield-video") {
       try {
-        const apiKey = (body as Record<string, unknown>).apiKey as string | undefined;
         if (enabled) {
-          await installHiggsfieldSkill(vm, apiKey);
+          await installHiggsfieldSkill(vm);
 
           await supabase.from("instaclaw_vms").update({ higgsfield_enabled: true }).eq("id", vm.id);
           await supabase
@@ -222,7 +221,6 @@ export async function POST(req: NextRequest) {
           logger.info("Skill toggled (Higgsfield install)", {
             slug: skill.slug,
             enabled,
-            hasApiKey: !!apiKey,
             vmId: vm.id,
             userId: session.user.id,
             route: "api/skills/toggle",
