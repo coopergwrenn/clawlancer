@@ -550,21 +550,121 @@ export async function GET(req: NextRequest) {
   if (telegramEnabledVms?.length) {
     for (const tvm of telegramEnabledVms) {
       telegramTokenMissing++;
-      logger.error("Telegram enabled but bot token missing", {
-        route: "cron/health-check",
-        vmId: tvm.id,
-        vmName: tvm.name,
-        ipAddress: tvm.ip_address,
-        assignedTo: tvm.assigned_to,
-      });
-    }
 
-    // Alert admin (via digest) — one entry per affected VM
-    for (const tvm of telegramEnabledVms) {
+      // Auto-fix: look for the token on the user's previous VM
+      let autoFixed = false;
+      if (tvm.assigned_to) {
+        const { data: oldVms } = await supabase
+          .from("instaclaw_vms")
+          .select("id, name, telegram_bot_token, telegram_bot_username, telegram_chat_id")
+          .eq("last_assigned_to", tvm.assigned_to)
+          .not("telegram_bot_token", "is", null)
+          .neq("id", tvm.id)
+          .limit(1);
+
+        const oldVm = oldVms?.[0];
+        if (oldVm?.telegram_bot_token) {
+          // Clear token from old VM (releases unique constraint)
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              telegram_bot_token: null,
+              telegram_bot_username: null,
+              telegram_chat_id: null,
+            })
+            .eq("id", oldVm.id);
+
+          // Write token to current VM
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              telegram_bot_token: oldVm.telegram_bot_token,
+              telegram_bot_username: oldVm.telegram_bot_username,
+              telegram_chat_id: oldVm.telegram_chat_id,
+            })
+            .eq("id", tvm.id);
+
+          // Trigger reconfigure so the gateway picks up the token
+          try {
+            await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+              },
+              body: JSON.stringify({ userId: tvm.assigned_to, force: true }),
+              signal: AbortSignal.timeout(180_000),
+            });
+          } catch (configErr) {
+            logger.error("Telegram auto-fix: reconfigure failed", {
+              route: "cron/health-check",
+              vmId: tvm.id,
+              error: String(configErr),
+            });
+          }
+
+          autoFixed = true;
+          logger.info("Telegram token auto-fixed from old VM", {
+            route: "cron/health-check",
+            vmId: tvm.id,
+            oldVmId: oldVm.id,
+            assignedTo: tvm.assigned_to,
+          });
+        }
+      }
+
+      if (autoFixed) {
+        alerts.add(
+          "Telegram Token Missing — AUTO-FIXED",
+          tvm.name ?? tvm.id,
+          `User: ${tvm.assigned_to}\nToken recovered from previous VM and reconfigure triggered.`
+        );
+      } else {
+        logger.error("Telegram enabled but bot token missing — cannot auto-fix", {
+          route: "cron/health-check",
+          vmId: tvm.id,
+          vmName: tvm.name,
+          ipAddress: tvm.ip_address,
+          assignedTo: tvm.assigned_to,
+        });
+        alerts.add(
+          "Telegram Token Missing — CANNOT AUTO-FIX [HIGH]",
+          tvm.name ?? tvm.id,
+          `User: ${tvm.assigned_to}\nTelegram enabled but bot token is NULL. No previous VM with token found — manual intervention required.`
+        );
+      }
+    }
+  }
+
+  // ========================================================================
+  // Deaf agent detection: token present but no chat_id after 48h
+  // This catches bots that were configured but never received a Telegram
+  // message (user never started the bot, or the token is wrong).
+  // ========================================================================
+  const { data: deafAgentVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, assigned_to, assigned_at, telegram_bot_username")
+    .eq("status", "assigned")
+    .not("assigned_to", "is", null)
+    .contains("channels_enabled", ["telegram"])
+    .not("telegram_bot_token", "is", null)
+    .is("telegram_chat_id", null)
+    .lt("assigned_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString());
+
+  if (deafAgentVms?.length) {
+    for (const dvm of deafAgentVms) {
+      logger.warn("Deaf agent: telegram bot never contacted", {
+        route: "cron/health-check",
+        vmId: dvm.id,
+        vmName: dvm.name,
+        assignedTo: dvm.assigned_to,
+        assignedAt: dvm.assigned_at,
+        botUsername: dvm.telegram_bot_username,
+      });
       alerts.add(
-        "Telegram Token Missing",
-        tvm.name ?? tvm.id,
-        `User: ${tvm.assigned_to}\nTelegram enabled but bot token is NULL.`
+        "Deaf Agent: Telegram Bot Never Contacted [HIGH]",
+        dvm.name ?? dvm.id,
+        `User: ${dvm.assigned_to}\nBot: @${dvm.telegram_bot_username ?? "unknown"}\nAssigned: ${dvm.assigned_at}\nToken present but no chat_id after 48h — user may not have started the bot.`
       );
     }
   }
@@ -1262,7 +1362,7 @@ export async function GET(req: NextRequest) {
   // Re-query quarantined VMs that still have users (auto-recovery may have fixed some)
   const { data: deadAssignedVms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, name, assigned_to, tier, ssh_port, ssh_user, cloud_reboot_count")
+    .select("id, ip_address, name, assigned_to, tier, ssh_port, ssh_user, cloud_reboot_count, telegram_bot_token, telegram_bot_username, telegram_chat_id, channels_enabled")
     .eq("status", "failed")
     .not("assigned_to", "is", null)
     .not("ip_address", "is", null);
@@ -1322,16 +1422,29 @@ export async function GET(req: NextRequest) {
           userId,
         });
 
-        // Step 1: Unassign user from dead VM
+        // Save telegram fields from dead VM before unassigning
+        const savedTelegram = {
+          telegram_bot_token: deadVm.telegram_bot_token as string | null,
+          telegram_bot_username: deadVm.telegram_bot_username as string | null,
+          telegram_chat_id: deadVm.telegram_chat_id as string | null,
+          channels_enabled: deadVm.channels_enabled as string[] | null,
+        };
+
+        // Step 1: Unassign user from dead VM + clear telegram fields (releases unique constraint)
         await supabase
           .from("instaclaw_vms")
-          .update({ assigned_to: null })
+          .update({
+            assigned_to: null,
+            telegram_bot_token: null,
+            telegram_bot_username: null,
+            telegram_chat_id: null,
+          })
           .eq("id", deadVm.id);
 
         // Step 2: Assign fresh VM (Linode-only, SSH pre-checked)
         const newVm = await assignVMWithSSHCheck(userId);
         if (!newVm) {
-          // No healthy VMs available — roll back
+          // No healthy VMs available — roll back (restore telegram fields too)
           logger.error("Auto-migration failed: no healthy VMs in pool", {
             route: "cron/health-check",
             deadVmId: deadVm.id,
@@ -1339,9 +1452,34 @@ export async function GET(req: NextRequest) {
           });
           await supabase
             .from("instaclaw_vms")
-            .update({ assigned_to: userId })
+            .update({
+              assigned_to: userId,
+              telegram_bot_token: savedTelegram.telegram_bot_token,
+              telegram_bot_username: savedTelegram.telegram_bot_username,
+              telegram_chat_id: savedTelegram.telegram_chat_id,
+            })
             .eq("id", deadVm.id);
           continue;
+        }
+
+        // Transfer telegram fields to new VM
+        if (savedTelegram.telegram_bot_token) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({
+              telegram_bot_token: savedTelegram.telegram_bot_token,
+              telegram_bot_username: savedTelegram.telegram_bot_username,
+              telegram_chat_id: savedTelegram.telegram_chat_id,
+              channels_enabled: savedTelegram.channels_enabled,
+            })
+            .eq("id", newVm.id);
+
+          logger.info("Auto-migration: transferred telegram token", {
+            route: "cron/health-check",
+            deadVmId: deadVm.id,
+            newVmId: newVm.id,
+            userId,
+          });
         }
 
         // Step 3: Trigger configure via internal API call

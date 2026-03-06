@@ -29,7 +29,9 @@ export async function POST(req: NextRequest) {
           status: "ready",
           gateway_url: null,
           control_ui_url: null,
+          telegram_bot_token: null,
           telegram_bot_username: null,
+          telegram_chat_id: null,
           health_status: "unknown",
         })
         .eq("id", vmId);

@@ -338,9 +338,16 @@ async function processEvent(event: any) {
           .single();
 
         if (userVm) {
+          // Stamp last_assigned_to and clear telegram fields before reclaim
+          // (releases unique constraint so a future VM can reuse the token)
           await supabase
             .from("instaclaw_vms")
-            .update({ last_assigned_to: sub.user_id })
+            .update({
+              last_assigned_to: sub.user_id,
+              telegram_bot_token: null,
+              telegram_bot_username: null,
+              telegram_chat_id: null,
+            })
             .eq("id", userVm.id);
         }
 

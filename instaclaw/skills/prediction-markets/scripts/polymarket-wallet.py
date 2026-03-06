@@ -138,11 +138,20 @@ def output(msg, json_mode=False, data=None):
         print(msg)
 
 
-def get_token_balance(w3, token_addr, wallet_addr):
-    """Get ERC-20 token balance in human-readable units (6 decimals for USDC)."""
+def get_token_balance(w3, token_addr, wallet_addr, retries=3):
+    """Get ERC-20 token balance in human-readable units (6 decimals for USDC).
+    Retries on RPC timeout to prevent false-zero readings."""
     contract = w3.eth.contract(address=w3.to_checksum_address(token_addr), abi=ERC20_ABI)
-    raw = contract.functions.balanceOf(w3.to_checksum_address(wallet_addr)).call()
-    return raw / 1e6
+    last_err = None
+    for attempt in range(retries):
+        try:
+            raw = contract.functions.balanceOf(w3.to_checksum_address(wallet_addr)).call()
+            return raw / 1e6
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"Balance check failed after {retries} attempts: {last_err}")
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +211,20 @@ def cmd_transfer(args):
 
     address_cs = Web3.to_checksum_address(wallet["address"])
     private_key = wallet["private_key"]
-    nonce = w3.eth.get_transaction_count(address_cs)
+
+    # Retry nonce fetch — RPC timeouts at this step would crash the withdrawal
+    nonce = None
+    for attempt in range(3):
+        try:
+            nonce = w3.eth.get_transaction_count(address_cs)
+            break
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+            else:
+                output(f"FAIL — Could not fetch nonce after 3 attempts: {e}", args.json,
+                       {"status": "FAIL", "error": "nonce_fetch_failed", "detail": str(e)})
+                return 1
 
     token_name = args.token.lower()
 

@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -360,6 +361,8 @@ def cmd_status(args):
     checks["dependencies"] = deps
 
     # 4. Approvals (only if wallet + web3 available)
+    #    Uses retry with backoff — RPC calls (especially isApprovedForAll) can
+    #    return empty bytes on transient timeouts, causing decode errors.
     if wallet and deps.get("web3"):
         try:
             from web3 import Web3
@@ -371,14 +374,26 @@ def cmd_status(args):
                 for desc, token_addr, spender, approval_type in APPROVAL_PAIRS:
                     token_addr_cs = Web3.to_checksum_address(token_addr)
                     spender_cs = Web3.to_checksum_address(spender)
-                    if approval_type == "erc20":
-                        contract = w3.eth.contract(address=token_addr_cs, abi=ERC20_ABI)
-                        current = contract.functions.allowance(address_cs, spender_cs).call()
-                        approved = current >= MAX_UINT256 // 2
+                    approved = None
+                    last_err = None
+                    for attempt in range(3):
+                        try:
+                            if approval_type == "erc20":
+                                contract = w3.eth.contract(address=token_addr_cs, abi=ERC20_ABI)
+                                current = contract.functions.allowance(address_cs, spender_cs).call()
+                                approved = current >= MAX_UINT256 // 2
+                            else:
+                                contract = w3.eth.contract(address=token_addr_cs, abi=ERC1155_ABI)
+                                approved = contract.functions.isApprovedForAll(address_cs, spender_cs).call()
+                            break  # success
+                        except Exception as e:
+                            last_err = e
+                            if attempt < 2:
+                                time.sleep(2 * (attempt + 1))  # 2s, 4s backoff
+                    if approved is not None:
+                        approval_status.append({"pair": desc, "approved": approved})
                     else:
-                        contract = w3.eth.contract(address=token_addr_cs, abi=ERC1155_ABI)
-                        approved = contract.functions.isApprovedForAll(address_cs, spender_cs).call()
-                    approval_status.append({"pair": desc, "approved": approved})
+                        approval_status.append({"pair": desc, "approved": None, "rpc_error": str(last_err)})
                 checks["approvals"] = approval_status
             else:
                 checks["approvals"] = {"error": "rpc_not_connected"}
@@ -388,37 +403,44 @@ def cmd_status(args):
         checks["approvals"] = {"skipped": True, "reason": "wallet or web3 missing"}
 
     # 5. Balance check (only if wallet + web3 available)
+    #    Reuses w3 connection from approvals check when available.
+    #    Uses retry with backoff — same RPC flakiness that hits approvals can
+    #    cause balance to show "?" which misleads agents into thinking wallet is empty.
     if wallet and deps.get("web3"):
         try:
             from web3 import Web3
-            rpc_url = get_rpc_url()
-            w3 = Web3(Web3.HTTPProvider(rpc_url))
+            # Reuse existing w3 from approvals check, or create new one
+            if "w3" not in dir() or not w3.is_connected():
+                rpc_url = get_rpc_url()
+                w3 = Web3(Web3.HTTPProvider(rpc_url))
             if w3.is_connected():
                 address_cs = Web3.to_checksum_address(wallet["address"])
                 balances = {}
-                for label, token_addr in [("usdc_e", USDC_E), ("usdc_native", USDC_NATIVE)]:
-                    contract = w3.eth.contract(
-                        address=Web3.to_checksum_address(token_addr), abi=ERC20_ABI
-                    )
-                    try:
-                        raw = contract.functions.allowance(address_cs, address_cs).call()
-                        # Actually use balanceOf — need to add to ABI. Use raw eth_call instead.
-                    except Exception:
-                        pass
-                # Raw eth_call for balanceOf (0x70a08231)
+                # Raw eth_call for balanceOf (0x70a08231) with retry
                 addr_padded = wallet["address"][2:].lower().zfill(64)
                 call_data = "0x70a08231" + addr_padded
                 for label, token_addr in [("usdc_e", USDC_E), ("usdc_native", USDC_NATIVE)]:
+                    bal_value = None
+                    for attempt in range(3):
+                        try:
+                            result = w3.eth.call({"to": Web3.to_checksum_address(token_addr), "data": call_data})
+                            bal_value = int(result.hex(), 16) / 1e6
+                            break
+                        except Exception:
+                            if attempt < 2:
+                                time.sleep(2 * (attempt + 1))
+                    balances[label] = bal_value
+                # POL balance with retry
+                pol_value = None
+                for attempt in range(3):
                     try:
-                        result = w3.eth.call({"to": Web3.to_checksum_address(token_addr), "data": call_data})
-                        balances[label] = int(result.hex(), 16) / 1e6
+                        matic_wei = w3.eth.get_balance(address_cs)
+                        pol_value = matic_wei / 1e18
+                        break
                     except Exception:
-                        balances[label] = None
-                try:
-                    matic_wei = w3.eth.get_balance(address_cs)
-                    balances["pol_matic"] = matic_wei / 1e18
-                except Exception:
-                    balances["pol_matic"] = None
+                        if attempt < 2:
+                            time.sleep(2 * (attempt + 1))
+                balances["pol_matic"] = pol_value
                 checks["balances"] = balances
             else:
                 checks["balances"] = {"error": "rpc_not_connected"}
@@ -446,6 +468,33 @@ def cmd_status(args):
         print(json.dumps({"status": "OK", "checks": checks}, indent=2))
     else:
         print("=== Polymarket Setup Status ===\n")
+
+        # --- BALANCES FIRST (most important for agent decision-making) ---
+        bals = checks.get("balances", {})
+        if isinstance(bals, dict) and not bals.get("error") and not bals.get("skipped"):
+            usdc_e = bals.get("usdc_e")
+            usdc_n = bals.get("usdc_native")
+            pol = bals.get("pol_matic")
+            usdc_e_str = f"${usdc_e:.2f}" if usdc_e is not None else "? (RPC timeout — balance exists but couldn't be read)"
+            usdc_n_str = f"${usdc_n:.2f}" if usdc_n is not None else "? (RPC timeout)"
+            pol_str = f"{pol:.4f}" if pol is not None else "? (RPC timeout)"
+            print(f"  USDC.e (Polymarket collateral): {usdc_e_str}")
+            print(f"  USDC (native):                  {usdc_n_str}")
+            print(f"  POL/MATIC (gas):                {pol_str}")
+            if usdc_n and usdc_n > 0 and (not usdc_e or usdc_e == 0):
+                print("  NOTE: You have native USDC but Polymarket uses USDC.e.")
+                print("        Deposit via https://polymarket.com to auto-convert,")
+                print("        or swap on a DEX (e.g. Uniswap on Polygon).")
+            if pol is not None and pol < 0.01:
+                print("  WARN: Very low POL/MATIC — need gas to send approval txs.")
+        elif bals.get("skipped"):
+            print("  Balances: SKIPPED")
+        else:
+            print(f"  Balances: ERROR ({bals.get('error', 'unknown')})")
+
+        print()  # blank line separator
+
+        # --- Infrastructure checks ---
         # Wallet
         if checks["wallet"]["exists"]:
             print(f"  Wallet: OK ({checks['wallet']['address']})")
@@ -469,41 +518,28 @@ def cmd_status(args):
         # Approvals
         approvals = checks.get("approvals", {})
         if isinstance(approvals, list):
-            approved_count = sum(1 for a in approvals if a.get("approved"))
+            approved_count = sum(1 for a in approvals if a.get("approved") is True)
+            unknown_count = sum(1 for a in approvals if a.get("approved") is None)
             total = len(approvals)
             if approved_count == total:
                 print(f"  Approvals: OK ({approved_count}/{total})")
+            elif unknown_count > 0 and approved_count + unknown_count == total:
+                print(f"  Approvals: UNKNOWN ({approved_count}/{total} confirmed, {unknown_count} RPC timeout — try again in a minute)")
+                print("    NOTE: RPC timeout does NOT mean approvals are missing. They are likely fine.")
             else:
                 print(f"  Approvals: {approved_count}/{total} — run: python3 ~/scripts/polymarket-setup-creds.py approve")
                 for a in approvals:
-                    status = "OK" if a["approved"] else "NEEDED"
+                    if a.get("approved") is True:
+                        status = "OK"
+                    elif a.get("approved") is None:
+                        status = "UNKNOWN (RPC timeout)"
+                    else:
+                        status = "NEEDED"
                     print(f"    {a['pair']}: {status}")
         elif approvals.get("skipped"):
             print(f"  Approvals: SKIPPED ({approvals.get('reason', '')})")
         else:
             print(f"  Approvals: ERROR ({approvals.get('error', 'unknown')})")
-        # Balances
-        bals = checks.get("balances", {})
-        if isinstance(bals, dict) and not bals.get("error") and not bals.get("skipped"):
-            usdc_e = bals.get("usdc_e")
-            usdc_n = bals.get("usdc_native")
-            pol = bals.get("pol_matic")
-            usdc_e_str = f"${usdc_e:.2f}" if usdc_e is not None else "?"
-            usdc_n_str = f"${usdc_n:.2f}" if usdc_n is not None else "?"
-            pol_str = f"{pol:.4f}" if pol is not None else "?"
-            print(f"  USDC.e (Polymarket collateral): {usdc_e_str}")
-            print(f"  USDC (native):                  {usdc_n_str}")
-            print(f"  POL/MATIC (gas):                {pol_str}")
-            if usdc_n and usdc_n > 0 and (not usdc_e or usdc_e == 0):
-                print("  NOTE: You have native USDC but Polymarket uses USDC.e.")
-                print("        Deposit via https://polymarket.com to auto-convert,")
-                print("        or swap on a DEX (e.g. Uniswap on Polygon).")
-            if pol is not None and pol < 0.01:
-                print("  WARN: Very low POL/MATIC — need gas to send approval txs.")
-        elif bals.get("skipped"):
-            print("  Balances: SKIPPED")
-        else:
-            print(f"  Balances: ERROR ({bals.get('error', 'unknown')})")
         # Live API
         api = checks.get("api_live", {})
         if api.get("ok"):

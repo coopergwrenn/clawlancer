@@ -101,10 +101,11 @@ def collect_tx_hashes_for_position(trade_log, token_id):
 
 
 def compute_cost_basis(trade_log):
-    """Compute FIFO cost basis per token_id. Returns {token_id: avg_entry_price}."""
+    """Compute FIFO cost basis per token_id. Returns {token_id: avg_entry_price}.
+    Only counts MATCHED fills — LIVE/PENDING orders are not yet executed."""
     buys = {}  # token_id -> [(shares, price)]
     for t in trade_log:
-        if t.get("action") == "BUY":
+        if t.get("action") == "BUY" and t.get("status") == "matched":
             tid = t.get("token_id", "")
             if tid not in buys:
                 buys[tid] = []
@@ -219,17 +220,17 @@ def cmd_summary(args):
         }
         portfolio_rows.append(row)
 
-    # Realized P&L from sells
+    # Realized P&L from sells (only matched fills)
     realized_pnl = 0.0
     sell_buys = {}  # deep copy for FIFO
     for t in trade_log:
-        if t.get("action") == "BUY":
+        if t.get("action") == "BUY" and t.get("status") == "matched":
             tid = t.get("token_id", "")
             if tid not in sell_buys:
                 sell_buys[tid] = []
             sell_buys[tid].append({"shares": t.get("shares", 0), "price": t.get("price", 0)})
     for t in trade_log:
-        if t.get("action") == "SELL":
+        if t.get("action") == "SELL" and t.get("status") == "matched":
             tid = t.get("token_id", "")
             sell_price = t.get("price", 0)
             remaining = t.get("shares", 0)

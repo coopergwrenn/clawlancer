@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
+import { sendAmbassadorApprovedEmail, sendAmbassadorRejectedEmail } from "@/lib/email";
+import { mintAmbassadorNFT } from "@/lib/ambassador-nft";
 
 export const dynamic = "force-dynamic";
+// Mint waits for on-chain confirmation (~2-4s on Base) + email send
+export const maxDuration = 30;
 
 // ── GET: List all ambassador applications ──
 export async function GET() {
@@ -98,7 +102,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, ambassadorNumber: nextNumber, referralCode });
+    // Mint soulbound NFT to ambassador's wallet
+    let tokenId: number | null = null;
+    let txHash: string | null = null;
+    try {
+      if (ambassador.wallet_address?.startsWith("0x")) {
+        const mintResult = await mintAmbassadorNFT(
+          ambassador.wallet_address,
+          ambassador.ambassador_name || "Ambassador",
+          nextNumber,
+        );
+        tokenId = mintResult.tokenId;
+        txHash = mintResult.txHash;
+
+        // Save token_id and minted_at to DB
+        await supabase
+          .from("instaclaw_ambassadors")
+          .update({ token_id: tokenId, minted_at: new Date().toISOString() })
+          .eq("id", ambassadorId);
+      }
+    } catch (mintErr) {
+      // Don't fail the approval if mint fails — log and continue
+      console.error("Failed to mint ambassador NFT:", mintErr);
+    }
+
+    // Send approval email with referral link
+    try {
+      const { data: user } = await supabase
+        .from("instaclaw_users")
+        .select("email")
+        .eq("id", ambassador.user_id)
+        .single();
+      if (user?.email) {
+        await sendAmbassadorApprovedEmail(
+          user.email,
+          ambassador.ambassador_name,
+          referralCode,
+          nextNumber,
+        );
+      }
+    } catch (emailErr) {
+      // Don't fail the approval if email fails — log and continue
+      console.error("Failed to send ambassador approval email:", emailErr);
+    }
+
+    return NextResponse.json({ success: true, ambassadorNumber: nextNumber, referralCode, tokenId, txHash });
   }
 
   // ── REJECT ──
@@ -114,6 +162,20 @@ export async function POST(req: NextRequest) {
 
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
+
+    // Send rejection email
+    try {
+      const { data: user } = await supabase
+        .from("instaclaw_users")
+        .select("email")
+        .eq("id", ambassador.user_id)
+        .single();
+      if (user?.email) {
+        await sendAmbassadorRejectedEmail(user.email, ambassador.ambassador_name);
+      }
+    } catch (emailErr) {
+      console.error("Failed to send ambassador rejection email:", emailErr);
     }
 
     return NextResponse.json({ success: true });

@@ -474,6 +474,277 @@ export async function sendWaitlistUpdateEmail(
   };
 }
 
+// ── Ambassador Emails ──
+
+export function buildAmbassadorApprovedHtml(
+  ambassadorName: string,
+  referralCode: string,
+  ambassadorNumber: number,
+): string {
+  const baseUrl = getBaseUrl();
+  const referralLink = `${baseUrl}/signup?ref=${referralCode}`;
+  const dashboardUrl = `${baseUrl}/ambassador`;
+  const font = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
+  const mono = `'Courier New', Courier, monospace`;
+  const displayName = ambassadorName || "there";
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>You're an InstaClaw Ambassador</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style>
+:root { color-scheme: light dark; supported-color-schemes: light dark; }
+@media (prefers-color-scheme: dark) {
+  .email-body { background-color: #111111 !important; }
+  .email-card { background-color: #1a1a1a !important; }
+  .code-box { background-color: #000000 !important; border-color: #333333 !important; }
+  .text-primary { color: #ffffff !important; }
+  .text-secondary { color: #cccccc !important; }
+  .text-muted { color: #888888 !important; }
+  .text-faint { color: #666666 !important; }
+  .divider { border-color: #333333 !important; }
+  .btn-td { background-color: #ffffff !important; }
+  .btn-link { color: #000000 !important; }
+  .step-num { background-color: #333333 !important; color: #ffffff !important; }
+}
+</style>
+</head>
+<body class="email-body" style="margin:0;padding:0;background-color:#f2f2f2;">
+<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">You're officially an InstaClaw Ambassador. Here's your referral link.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-body" style="background-color:#f2f2f2;">
+<tr><td align="center" style="padding:24px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="email-card" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+
+<!-- HEADER -->
+<tr><td class="divider" style="padding:24px 32px 20px 32px;border-bottom:1px solid #e5e5e5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="text-primary" style="font-family:${font};font-size:20px;font-weight:700;color:#111111;letter-spacing:-0.3px;"><img src="https://instaclaw.io/logo.png" alt="" width="24" height="24" style="display:inline-block;vertical-align:middle;margin-right:8px;border:0;" />InstaClaw</td>
+  <td align="right" class="text-muted" style="font-family:${font};font-size:12px;color:#888888;">Ambassador Program</td></tr>
+  </table>
+</td></tr>
+
+<!-- THE HOOK -->
+<tr><td style="padding:32px 32px 0 32px;">
+  <h1 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:26px;font-weight:700;color:#111111;line-height:1.2;">Welcome aboard, ${displayName}.</h1>
+  <p class="text-secondary" style="margin:0 0 10px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    You've been approved as <strong>InstaClaw Ambassador #${ambassadorNumber}</strong>. You're now part of a small group helping bring autonomous AI agents to the world.
+  </p>
+  <p class="text-secondary" style="margin:0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    Here's everything you need to start referring people today.
+  </p>
+</td></tr>
+
+<!-- REFERRAL LINK BOX -->
+<tr><td style="padding:24px 32px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="code-box" style="background-color:#f7f7f7;border:2px solid #e0e0e0;border-radius:10px;">
+  <tr><td style="padding:24px 24px;text-align:center;">
+    <p class="text-muted" style="margin:0 0 8px 0;font-family:${font};font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:1.5px;">Your referral link</p>
+    <p class="text-primary" style="margin:0 0 12px 0;font-family:${mono};font-size:16px;font-weight:700;color:#111111;word-break:break-all;">${referralLink}</p>
+    <p class="text-muted" style="margin:0 0 18px 0;font-family:${font};font-size:12px;color:#888888;">Referral code: <strong>${referralCode}</strong></p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+    <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
+      <a href="${dashboardUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Open Ambassador Dashboard &#8594;</a>
+    </td></tr>
+    </table>
+  </td></tr>
+  </table>
+</td></tr>
+
+<!-- HOW IT WORKS -->
+<tr><td style="padding:0 32px 20px 32px;">
+  <h2 class="text-primary" style="margin:0 0 16px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">How it works:</h2>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td valign="top" style="width:28px;padding-top:1px;">
+      <div class="step-num" style="width:28px;height:28px;background-color:#f0f0f0;border-radius:50%;text-align:center;font-family:${font};font-size:13px;font-weight:700;color:#111111;line-height:28px;mso-line-height-rule:exactly;">1</div>
+    </td>
+    <td valign="top" style="padding-left:12px;"><p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><strong class="text-primary" style="color:#111111;">Share your link.</strong> Send it to friends, post it on social media, drop it in group chats &mdash; anywhere.</p></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td valign="top" style="width:28px;padding-top:1px;">
+      <div class="step-num" style="width:28px;height:28px;background-color:#f0f0f0;border-radius:50%;text-align:center;font-family:${font};font-size:13px;font-weight:700;color:#111111;line-height:28px;mso-line-height-rule:exactly;">2</div>
+    </td>
+    <td valign="top" style="padding-left:12px;"><p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><strong class="text-primary" style="color:#111111;">They get 25% off.</strong> Anyone who signs up with your link gets 25% off their first month.</p></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td valign="top" style="width:28px;padding-top:1px;">
+      <div class="step-num" style="width:28px;height:28px;background-color:#f0f0f0;border-radius:50%;text-align:center;font-family:${font};font-size:13px;font-weight:700;color:#111111;line-height:28px;mso-line-height-rule:exactly;">3</div>
+    </td>
+    <td valign="top" style="padding-left:12px;"><p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><strong class="text-primary" style="color:#111111;">You earn $10.</strong> For every signup that converts to a paid plan, you earn $10. No cap.</p></td>
+    </tr></table>
+  </td></tr>
+  </table>
+</td></tr>
+
+<!-- DIVIDER -->
+<tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="divider" style="border-top:1px solid #e5e5e5;height:1px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+
+<!-- TRACKING -->
+<tr><td style="padding:20px 32px;">
+  <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.7;">
+    Track your referrals and earnings anytime on your <a href="${dashboardUrl}" style="color:#111111;font-weight:600;text-decoration:underline;">Ambassador Dashboard</a>. You'll see every signup, every conversion, and your total earnings in real time.
+  </p>
+</td></tr>
+
+<!-- BOTTOM CTA -->
+<tr><td style="padding:8px 32px 28px 32px;text-align:center;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+  <tr><td class="btn-td" align="center" style="background-color:#111111;border-radius:8px;" bgcolor="#111111">
+    <a href="${dashboardUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:14px 36px;font-family:${font};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">View Your Dashboard &#8594;</a>
+  </td></tr>
+  </table>
+</td></tr>
+
+<!-- FOOTER -->
+<tr><td class="divider" style="padding:16px 32px 20px 32px;border-top:1px solid #e5e5e5;">
+  <p class="text-muted" style="margin:0 0 4px 0;font-family:${font};font-size:12px;color:#888888;">Questions? Reply to this email &mdash; we read every message.</p>
+  <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#bbbbbb;"><a href="https://instaclaw.io" style="color:#999999;text-decoration:underline;">instaclaw.io</a> &nbsp;&middot;&nbsp; <a href="https://x.com/instaclaws" style="color:#999999;text-decoration:underline;">@instaclaws</a></p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+export function buildAmbassadorApprovedText(
+  ambassadorName: string,
+  referralCode: string,
+  ambassadorNumber: number,
+): string {
+  const baseUrl = getBaseUrl();
+  const referralLink = `${baseUrl}/signup?ref=${referralCode}`;
+  const dashboardUrl = `${baseUrl}/ambassador`;
+  const displayName = ambassadorName || "there";
+
+  return `Welcome aboard, ${displayName}.
+
+You've been approved as InstaClaw Ambassador #${ambassadorNumber}. You're now part of a small group helping bring autonomous AI agents to the world.
+
+YOUR REFERRAL LINK: ${referralLink}
+
+REFERRAL CODE: ${referralCode}
+
+HOW IT WORKS:
+
+1. Share your link — send it to friends, post it on social media, drop it in group chats.
+2. They get 25% off — anyone who signs up with your link gets 25% off their first month.
+3. You earn $10 — for every signup that converts to a paid plan, you earn $10. No cap.
+
+Track your referrals and earnings anytime on your Ambassador Dashboard: ${dashboardUrl}
+
+Questions? Reply to this email — we read every message.
+
+— InstaClaw
+instaclaw.io | @instaclaws`;
+}
+
+export async function sendAmbassadorApprovedEmail(
+  email: string,
+  ambassadorName: string,
+  referralCode: string,
+  ambassadorNumber: number,
+): Promise<void> {
+  const resend = getResend();
+  await resend.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: email,
+    subject: `You're in - welcome to the InstaClaw Ambassador Program`,
+    html: buildAmbassadorApprovedHtml(ambassadorName, referralCode, ambassadorNumber),
+    text: buildAmbassadorApprovedText(ambassadorName, referralCode, ambassadorNumber),
+    headers: UNSUB_HEADERS,
+  });
+}
+
+export async function sendAmbassadorRejectedEmail(
+  email: string,
+  ambassadorName: string,
+): Promise<void> {
+  const resend = getResend();
+  const displayName = ambassadorName || "there";
+  const font = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
+
+  await resend.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to: email,
+    subject: "Your InstaClaw Ambassador Application",
+    html: `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+<style>
+:root { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .email-body { background-color: #111111 !important; }
+  .email-card { background-color: #1a1a1a !important; }
+  .text-primary { color: #ffffff !important; }
+  .text-secondary { color: #cccccc !important; }
+  .text-muted { color: #888888 !important; }
+  .divider { border-color: #333333 !important; }
+}
+</style>
+</head>
+<body class="email-body" style="margin:0;padding:0;background-color:#f2f2f2;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-body" style="background-color:#f2f2f2;">
+<tr><td align="center" style="padding:24px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="email-card" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+
+<tr><td class="divider" style="padding:24px 32px 20px 32px;border-bottom:1px solid #e5e5e5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="text-primary" style="font-family:${font};font-size:20px;font-weight:700;color:#111111;letter-spacing:-0.3px;"><img src="https://instaclaw.io/logo.png" alt="" width="24" height="24" style="display:inline-block;vertical-align:middle;margin-right:8px;border:0;" />InstaClaw</td>
+  <td align="right" class="text-muted" style="font-family:${font};font-size:12px;color:#888888;">Ambassador Program</td></tr>
+  </table>
+</td></tr>
+
+<tr><td style="padding:32px 32px 24px 32px;">
+  <h1 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:24px;font-weight:700;color:#111111;line-height:1.2;">Thanks for applying, ${displayName}.</h1>
+  <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    We really appreciate your interest in the InstaClaw Ambassador Program. After reviewing applications, we're not able to bring on new ambassadors right now.
+  </p>
+  <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    This isn't a reflection of you &mdash; we're keeping the program small as we scale, and we'll be opening more spots soon. We'll keep your application on file and reach out if a spot opens up.
+  </p>
+  <p class="text-secondary" style="margin:0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    In the meantime, keep using InstaClaw and building cool things with your agent. That's what matters most.
+  </p>
+</td></tr>
+
+<tr><td class="divider" style="padding:16px 32px 20px 32px;border-top:1px solid #e5e5e5;">
+  <p class="text-muted" style="margin:0 0 4px 0;font-family:${font};font-size:12px;color:#888888;">Questions? Reply to this email &mdash; we read every message.</p>
+  <p style="margin:0;font-family:${font};font-size:11px;color:#bbbbbb;"><a href="https://instaclaw.io" style="color:#999999;text-decoration:underline;">instaclaw.io</a> &nbsp;&middot;&nbsp; <a href="https://x.com/instaclaws" style="color:#999999;text-decoration:underline;">@instaclaws</a></p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`,
+    text: `Thanks for applying, ${displayName}.
+
+We really appreciate your interest in the InstaClaw Ambassador Program. After reviewing applications, we're not able to bring on new ambassadors right now.
+
+This isn't a reflection of you — we're keeping the program small as we scale, and we'll be opening more spots soon. We'll keep your application on file and reach out if a spot opens up.
+
+In the meantime, keep using InstaClaw and building cool things with your agent. That's what matters most.
+
+Questions? Reply to this email — we read every message.
+
+— InstaClaw
+instaclaw.io | @instaclaws`,
+    headers: UNSUB_HEADERS,
+  });
+}
+
 export { getResend, FROM, REPLY_TO, UNSUB_HEADERS };
 
 export async function sendAutoMigratedEmail(email: string): Promise<void> {
