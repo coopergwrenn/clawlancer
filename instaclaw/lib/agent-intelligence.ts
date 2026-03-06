@@ -162,6 +162,7 @@ Each capability in CAPABILITIES.md is tagged **(MCP)** or **(Skill)**:
 | prediction-markets | ~/.openclaw/skills/prediction-markets/SKILL.md |
 | language-teacher | ~/.openclaw/skills/language-teacher/SKILL.md |
 | solana-defi | ~/.openclaw/skills/solana-defi/SKILL.md |
+| higgsfield-video | ~/.openclaw/skills/higgsfield-video/SKILL.md |
 
 ## 1J-3 — Motion Graphics vs The Director (Video Routing)
 
@@ -187,6 +188,16 @@ This skill uses Remotion with React animation libraries (Framer Motion, GSAP, Re
 This skill uses AI video models (Seedance 2.0, Veo3, Sora2). Consumes daily credits.
 
 **Quick decision:** Can it be built with animated text, shapes, screenshots, and transitions? → Motion Graphics. Does it need realistic AI-generated footage? → The Director.
+
+**Higgsfield AI Video** (Skill: higgsfield-video) — Use for:
+- BYOK video generation (user brings their own Muapi.ai API key)
+- Access to 200+ models: Kling 3.0, Wan 2.2, Sora 2, Veo 3.1, Seedance 2.0, Hailuo, Luma, Runway Gen4, Pika, PixVerse, Hunyuan
+- Image generation: Flux, Ideogram, Recraft, Seedream, GPT Image 1
+- Multi-shot story videos with character consistency (Elements, LoRA, frame-forwarding)
+- Audio: music (Suno), SFX (MMAudio), video-to-audio sync, lip sync
+- Video editing: effects, extend, translate, style transfer, upscale, face swap
+
+**Higgsfield vs The Director:** The Director is InstaClaw's built-in proxy (no key needed, credit-based). Higgsfield is BYOK — user provides their own Muapi.ai key, more models, direct billing. If the user has a Muapi key, prefer Higgsfield. If not, use The Director.
 
 ## 1K — Rule Priority
 
@@ -427,6 +438,7 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 - **Motion Graphics** (Skill: motion-graphics) — Programmatic animated videos (Remotion + Framer Motion + GSAP + React Spring). Product demos, explainers, social ads, pitch decks. Full brand fidelity, surgical editing, zero credits.
 - **Voice & Audio** (Skill: voice-audio-production) — Text-to-speech (OpenAI/ElevenLabs), audio processing, sound effects
 - **Image Generation** (Skill: sjinn-video) — AI stills and thumbnails (Nano Banana, seedream 4.5) via The Director
+- **Higgsfield AI Video** (Skill: higgsfield-video) — BYOK video/image/audio generation via 200+ models (Kling 3.0, Wan 2.2, Sora 2, Veo 3.1, Flux, etc.). Requires Muapi.ai API key. Multi-shot stories, character consistency, cinema controls, audio generation, video editing.
 
 ### Research & Analysis
 - **Web Search & Browser** (Skill: web-search-browser) — Search the web (Brave), browse any page, screenshot, scrape data, fill forms
@@ -566,6 +578,26 @@ Your agent's built-in creative director. Describe any scene, ad, or content idea
 → Reference: ~/.openclaw/skills/sjinn-video/references/sjinn-api.md, video-prompting.md, video-production-pipeline.md
 
 **IMPORTANT:** When talking to the user about this capability, call it "The Director." Never mention internal provider names.
+
+## 🎥 HIGGSFIELD AI VIDEO PRODUCTION (Skill: higgsfield-video)
+
+BYOK video, image, and audio generation powered by 200+ models via Muapi.ai. User provides their own API key — no credit limits from InstaClaw.
+
+✅ Text-to-video — Kling 3.0, Wan 2.2, Sora 2, Veo 3.1, Seedance 2.0, Hailuo, Luma, Runway Gen4, Pika, PixVerse, Hunyuan
+✅ Image-to-video — Animate any image with Kling 3.0, Sora 2, Seedance, Runway, etc.
+✅ Image generation — Flux Schnell/Dev/Pro, Ideogram 3, Recraft v3, Seedream 4.5, GPT Image 1
+✅ Character consistency — Kling Elements, LoRA references, frame-forwarding between scenes
+✅ Multi-shot stories — Plan → generate → assemble with FFmpeg
+✅ Audio — Music (Suno), SFX (MMAudio), video-to-audio sync, lip sync
+✅ Video editing — Effects, extend, translate, style transfer, upscale, face swap
+✅ Cinema controls — Camera bodies, lenses, focal lengths, aperture in prompts
+✅ Job tracking — Local history, active job monitoring, request status checks
+⚠️ BYOK — requires MUAPI_API_KEY (user obtains from muapi.ai)
+→ Skills: higgsfield-video
+→ Scripts: ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-*.py
+→ Reference: ~/.openclaw/skills/higgsfield-video/references/muapi-api.md, model-selection-guide.md, cinema-controls.md
+
+**IMPORTANT:** Always use the installed scripts — NEVER construct raw API calls. Read \`~/.openclaw/skills/higgsfield-video/SKILL.md\` for the full command reference.
 
 ## 🎙️ VOICE & AUDIO PRODUCTION (Skill: voice-audio-production)
 ✅ Text-to-speech via OpenAI TTS (tts-openai.sh — always available)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { toggleSkillDir, toggleMcpServer, installAgdpSkill, uninstallAgdpSkill, installSolanaDefiSkill, uninstallSolanaDefiSkill } from "@/lib/ssh";
+import { toggleSkillDir, toggleMcpServer, installAgdpSkill, uninstallAgdpSkill, installSolanaDefiSkill, uninstallSolanaDefiSkill, installHiggsfieldSkill, uninstallHiggsfieldSkill } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 // SSH + gateway restart + pip install can take up to 45s
@@ -202,6 +202,60 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json(
           { error: `Solana DeFi toggle failed: ${String(solErr).slice(0, 200)}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // ── Special case: Higgsfield AI Video uses install/uninstall (BYOK API key) ──
+    if (skill.slug === "higgsfield-video") {
+      try {
+        const apiKey = (body as Record<string, unknown>).apiKey as string | undefined;
+        if (enabled) {
+          await installHiggsfieldSkill(vm, apiKey);
+
+          await supabase.from("instaclaw_vms").update({ higgsfield_enabled: true }).eq("id", vm.id);
+          await supabase
+            .from("instaclaw_vm_skills")
+            .upsert({ vm_id: vm.id, skill_id: skill.id, enabled: true }, { onConflict: "vm_id,skill_id" });
+
+          logger.info("Skill toggled (Higgsfield install)", {
+            slug: skill.slug,
+            enabled,
+            hasApiKey: !!apiKey,
+            vmId: vm.id,
+            userId: session.user.id,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({ success: true, restarted: true });
+        } else {
+          await uninstallHiggsfieldSkill(vm);
+
+          await supabase.from("instaclaw_vms").update({ higgsfield_enabled: false }).eq("id", vm.id);
+          await supabase
+            .from("instaclaw_vm_skills")
+            .upsert({ vm_id: vm.id, skill_id: skill.id, enabled: false }, { onConflict: "vm_id,skill_id" });
+
+          logger.info("Skill toggled (Higgsfield uninstall)", {
+            slug: skill.slug,
+            enabled,
+            vmId: vm.id,
+            userId: session.user.id,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({ success: true, restarted: true });
+        }
+      } catch (hfErr) {
+        logger.error("Higgsfield toggle failed", {
+          vmId: vm.id,
+          enabled,
+          error: String(hfErr),
+          route: "api/skills/toggle",
+        });
+        return NextResponse.json(
+          { error: `Higgsfield toggle failed: ${String(hfErr).slice(0, 200)}` },
           { status: 500 }
         );
       }

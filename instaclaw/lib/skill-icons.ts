@@ -26,6 +26,7 @@ const SKILL_ICON_MAP: Record<string, string> = {
   "trello": "/skill-icons/trello.svg",
   "slack": "/skill-icons/slack.svg",
   "solana-defi": "/skill-icons/solana-defi.svg",
+  "higgsfield-video": "/skill-icons/higgsfield-video.svg",
 };
 
 export function getSkillIconPath(slug: string): string | null {

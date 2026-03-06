@@ -2911,6 +2911,59 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Higgsfield AI Video skill (Skill 16) ──
+    // BYOK video/image/audio generation via 200+ models (Muapi.ai).
+    // Skill starts disabled — user opts in via dashboard toggle.
+    try {
+      const hfSkillDir = path.join(process.cwd(), "skills", "higgsfield-video");
+      const hfFiles: Array<{ name: string; subdir?: string }> = [
+        { name: "SKILL.md" },
+        { name: "muapi-api.md", subdir: "references" },
+        { name: "cinema-controls.md", subdir: "references" },
+        { name: "model-selection-guide.md", subdir: "references" },
+        { name: "character-consistency.md", subdir: "references" },
+        { name: "storytelling-patterns.md", subdir: "references" },
+        { name: "safety-patterns.md", subdir: "references" },
+        { name: "higgsfield-setup.py", subdir: "scripts" },
+        { name: "higgsfield-generate.py", subdir: "scripts" },
+        { name: "higgsfield-character.py", subdir: "scripts" },
+        { name: "higgsfield-story.py", subdir: "scripts" },
+        { name: "higgsfield-audio.py", subdir: "scripts" },
+        { name: "higgsfield-edit.py", subdir: "scripts" },
+        { name: "higgsfield-status.py", subdir: "scripts" },
+      ];
+
+      scriptParts.push(
+        '# Deploy Higgsfield AI Video skill (Skill 16) — starts DISABLED',
+        'HF_SKILL_DIR="$HOME/.openclaw/skills/higgsfield-video.disabled"',
+        'mkdir -p "$HF_SKILL_DIR/references" "$HF_SKILL_DIR/scripts" "$HOME/.openclaw/workspace/higgsfield"',
+      );
+
+      for (const f of hfFiles) {
+        const localPath = f.subdir
+          ? path.join(hfSkillDir, f.subdir, f.name)
+          : path.join(hfSkillDir, f.name);
+        const content = fs.readFileSync(localPath, "utf-8");
+        const b64 = Buffer.from(content, "utf-8").toString("base64");
+        const remotePath = f.subdir
+          ? `$HF_SKILL_DIR/${f.subdir}/${f.name}`
+          : `$HF_SKILL_DIR/${f.name}`;
+        scriptParts.push(`echo '${b64}' | base64 -d > "${remotePath}"`);
+      }
+
+      scriptParts.push(
+        'chmod +x "$HF_SKILL_DIR/scripts/"*.py',
+        ''
+      );
+
+      logger.info("Higgsfield AI Video skill deployment prepared (Skill 16)", { route: "lib/ssh" });
+    } catch (hfSkillErr) {
+      logger.warn("Higgsfield AI Video skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(hfSkillErr),
+      });
+    }
+
     // ── Deploy X/Twitter Search skill ──
     // Doc-only skill — uses built-in web_search (Brave) with site:x.com filters.
     try {
@@ -5772,6 +5825,153 @@ export async function uninstallSolanaDefiSkill(vm: VMRecord): Promise<void> {
     if (result.code !== 0 || !result.stdout.includes("SOLANA_UNINSTALL_DONE")) {
       logger.error("Solana DeFi uninstall failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
       throw new Error(`Solana DeFi uninstall failed: ${result.stderr || result.stdout}`);
+    }
+  } finally {
+    ssh.dispose();
+  }
+}
+
+// ── Higgsfield AI Video skill install/uninstall ──
+
+/**
+ * Install Higgsfield AI Video skill on a VM.
+ * Deploys scripts, enables skill dir, optionally stores API key, restarts gateway.
+ */
+export async function installHiggsfieldSkill(vm: VMRecord, apiKey?: string): Promise<void> {
+  const ssh = await connectSSH(vm);
+  try {
+    const hfSkillDir = path.join(process.cwd(), "skills", "higgsfield-video");
+    const files: Array<{ localPath: string; remotePath: string; executable?: boolean }> = [
+      { localPath: path.join(hfSkillDir, "SKILL.md"), remotePath: "$HF_SKILL_DIR/SKILL.md" },
+      { localPath: path.join(hfSkillDir, "references", "muapi-api.md"), remotePath: "$HF_SKILL_DIR/references/muapi-api.md" },
+      { localPath: path.join(hfSkillDir, "references", "cinema-controls.md"), remotePath: "$HF_SKILL_DIR/references/cinema-controls.md" },
+      { localPath: path.join(hfSkillDir, "references", "model-selection-guide.md"), remotePath: "$HF_SKILL_DIR/references/model-selection-guide.md" },
+      { localPath: path.join(hfSkillDir, "references", "character-consistency.md"), remotePath: "$HF_SKILL_DIR/references/character-consistency.md" },
+      { localPath: path.join(hfSkillDir, "references", "storytelling-patterns.md"), remotePath: "$HF_SKILL_DIR/references/storytelling-patterns.md" },
+      { localPath: path.join(hfSkillDir, "references", "safety-patterns.md"), remotePath: "$HF_SKILL_DIR/references/safety-patterns.md" },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-setup.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-setup.py", executable: true },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-generate.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-generate.py", executable: true },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-character.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-character.py", executable: true },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-story.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-story.py", executable: true },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-audio.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-audio.py", executable: true },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-edit.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-edit.py", executable: true },
+      { localPath: path.join(hfSkillDir, "scripts", "higgsfield-status.py"), remotePath: "$HF_SKILL_DIR/scripts/higgsfield-status.py", executable: true },
+    ];
+
+    const deployLines: string[] = [];
+    const chmodTargets: string[] = [];
+    for (const f of files) {
+      const content = fs.readFileSync(f.localPath, "utf-8");
+      const b64 = Buffer.from(content, "utf-8").toString("base64");
+      deployLines.push(`echo '${b64}' | base64 -d > "${f.remotePath}"`);
+      if (f.executable) chmodTargets.push(`"${f.remotePath}"`);
+    }
+
+    // Optionally write MUAPI_API_KEY to .env
+    const apiKeyLines: string[] = [];
+    if (apiKey) {
+      apiKeyLines.push(
+        '# Store MUAPI_API_KEY in .env',
+        'ENV_FILE="$HOME/.openclaw/.env"',
+        'if grep -q "^MUAPI_API_KEY=" "$ENV_FILE" 2>/dev/null; then',
+        `  sed -i "s|^MUAPI_API_KEY=.*|MUAPI_API_KEY=${apiKey}|" "$ENV_FILE"`,
+        'else',
+        `  echo "MUAPI_API_KEY=${apiKey}" >> "$ENV_FILE"`,
+        'fi',
+      );
+    }
+
+    const script = [
+      '#!/bin/bash',
+      'set -o pipefail',
+      NVM_PREAMBLE,
+      '',
+      'echo "STEP:start"',
+      '',
+      '# Ensure directories exist',
+      'HF_SKILL_DIR="$HOME/.openclaw/skills/higgsfield-video"',
+      'mkdir -p "$HF_SKILL_DIR/references" "$HF_SKILL_DIR/scripts" "$HOME/.openclaw/workspace/higgsfield"',
+      '',
+      '# Remove .disabled version if it exists (we are enabling)',
+      'if [ -d "$HF_SKILL_DIR.disabled" ]; then',
+      '  rm -rf "$HF_SKILL_DIR.disabled"',
+      'fi',
+      'echo "STEP:dirs_ready"',
+      '',
+      '# Deploy skill files',
+      ...deployLines,
+      `chmod +x ${chmodTargets.join(' ')}`,
+      'echo "STEP:files_deployed"',
+      '',
+      ...apiKeyLines,
+      '',
+      '# Restart gateway',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'sleep 2',
+      'systemctl --user start openclaw-gateway 2>/dev/null || true',
+      'sleep 3',
+      'echo "STEP:gateway_restarted"',
+      '',
+      'echo "HIGGSFIELD_INSTALL_DONE"',
+    ].join('\n');
+
+    await ssh.execCommand(`cat > /tmp/ic-hf-install.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-hf-install.sh; EC=$?; rm -f /tmp/ic-hf-install.sh; exit $EC');
+
+    const completedSteps = (result.stdout.match(/STEP:\w+/g) || []).map((s: string) => s.replace("STEP:", ""));
+    const lastStep = completedSteps[completedSteps.length - 1] || "none";
+
+    if (result.code !== 0 || !result.stdout.includes("HIGGSFIELD_INSTALL_DONE")) {
+      logger.error("Higgsfield install failed", {
+        error: result.stderr,
+        stdout: result.stdout.slice(-500),
+        lastStep,
+        completedSteps,
+        exitCode: result.code,
+        route: "lib/ssh",
+      });
+      throw new Error(`Higgsfield install failed at step "${lastStep}" (exit ${result.code}). stderr: ${result.stderr?.slice(-400) || "none"}`);
+    }
+    logger.info("Higgsfield install succeeded", { completedSteps, route: "lib/ssh" });
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Uninstall Higgsfield AI Video skill from a VM.
+ * Renames skill dir to .disabled, restarts gateway.
+ * Preserves character data + generated content in workspace.
+ */
+export async function uninstallHiggsfieldSkill(vm: VMRecord): Promise<void> {
+  const ssh = await connectSSH(vm);
+  try {
+    const script = [
+      '#!/bin/bash',
+      'set -eo pipefail',
+      NVM_PREAMBLE,
+      '',
+      '# Disable skill dir (rename to .disabled)',
+      'HF_SKILL_DIR="$HOME/.openclaw/skills/higgsfield-video"',
+      'if [ -d "$HF_SKILL_DIR" ]; then',
+      '  mv "$HF_SKILL_DIR" "$HF_SKILL_DIR.disabled"',
+      'fi',
+      '',
+      '# Restart gateway',
+      'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
+      'sleep 2',
+      'systemctl --user start openclaw-gateway 2>/dev/null || true',
+      'sleep 3',
+      '',
+      'echo "HIGGSFIELD_UNINSTALL_DONE"',
+    ].join('\n');
+
+    await ssh.execCommand(`cat > /tmp/ic-hf-uninstall.sh << 'ICEOF'\n${script}\nICEOF`);
+    const result = await ssh.execCommand('bash /tmp/ic-hf-uninstall.sh; EC=$?; rm -f /tmp/ic-hf-uninstall.sh; exit $EC');
+
+    if (result.code !== 0 || !result.stdout.includes("HIGGSFIELD_UNINSTALL_DONE")) {
+      logger.error("Higgsfield uninstall failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh" });
+      throw new Error(`Higgsfield uninstall failed: ${result.stderr || result.stdout}`);
     }
   } finally {
     ssh.dispose();
