@@ -180,8 +180,8 @@ def cmd_test(args: argparse.Namespace) -> int:
         return 2
 
     base = get_base_url()
-    test_endpoint = "/api/v1/generate/image/flux/schnell"
-    url = f"{base}{test_endpoint}"
+    # Verified endpoint: flux-schnell-image
+    url = f"{base}/api/v1/flux-schnell-image"
 
     print("Submitting test image (Flux Schnell) via proxy...")
     try:
@@ -209,7 +209,8 @@ def cmd_test(args: argparse.Namespace) -> int:
     print(f"Request ID: {rid}")
     print("Polling for result...")
 
-    poll_url = f"{base}/api/v1/requests/{rid}"
+    # Poll at /api/v1/predictions/{id}/result
+    poll_url = f"{base}/api/v1/predictions/{rid}/result"
     for i in range(60):
         time.sleep(2)
         try:
@@ -218,10 +219,10 @@ def cmd_test(args: argparse.Namespace) -> int:
             continue
 
         status = (status_resp.get("status") or "").lower()
-        if status in ("completed", "succeeded", "done"):
-            # Extract output URL
-            outputs = status_resp.get("outputs") or status_resp.get("data", {}).get("outputs")
+        if status in ("completed", "succeeded", "success"):
+            # 5-level fallback extraction
             out_url = None
+            outputs = status_resp.get("outputs") or status_resp.get("data", {}).get("outputs")
             if outputs and isinstance(outputs, list) and len(outputs) > 0:
                 item = outputs[0]
                 out_url = item if isinstance(item, str) else (item.get("url") if isinstance(item, dict) else None)
@@ -230,6 +231,14 @@ def cmd_test(args: argparse.Namespace) -> int:
                     if status_resp.get(key):
                         out_url = status_resp[key]
                         break
+            if not out_url:
+                output_obj = status_resp.get("output")
+                if isinstance(output_obj, dict):
+                    out_url = output_obj.get("url")
+            if not out_url:
+                image_obj = status_resp.get("image")
+                if isinstance(image_obj, dict):
+                    out_url = image_obj.get("url")
 
             result = {
                 "status": "completed",

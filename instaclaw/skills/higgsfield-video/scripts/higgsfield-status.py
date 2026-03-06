@@ -59,6 +59,7 @@ def muapi_request(endpoint: str, api_key: str, method: str = "GET", timeout: int
 
 
 def extract_output_url(resp: dict) -> str | None:
+    """5-level fallback for output URL extraction."""
     outputs = resp.get("outputs") or resp.get("data", {}).get("outputs")
     if outputs and isinstance(outputs, list) and len(outputs) > 0:
         item = outputs[0]
@@ -75,6 +76,9 @@ def extract_output_url(resp: dict) -> str | None:
     video = resp.get("video")
     if isinstance(video, dict):
         return video.get("url")
+    image = resp.get("image")
+    if isinstance(image, dict):
+        return image.get("url")
     return None
 
 
@@ -116,7 +120,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        resp = muapi_request(f"/api/v1/requests/{args.id}", api_key)
+        resp = muapi_request(f"/api/v1/predictions/{args.id}/result", api_key)
     except HTTPError as e:
         output({"error": f"Status check failed (HTTP {e.code})", "request_id": args.id}, args.json)
         return 1
@@ -145,7 +149,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     save_jobs(jobs)
 
     output(result, args.json)
-    return 0 if status in ("completed", "succeeded", "done") else 1
+    return 0 if status in ("completed", "succeeded", "success") else 1
 
 
 def cmd_active(args: argparse.Namespace) -> int:
@@ -164,13 +168,13 @@ def cmd_active(args: argparse.Namespace) -> int:
         rid = job.get("request_id")
         if rid and api_key:
             try:
-                resp = muapi_request(f"/api/v1/requests/{rid}", api_key)
+                resp = muapi_request(f"/api/v1/predictions/{rid}/result", api_key)
                 status = (resp.get("status") or "").lower()
                 job["status"] = status
                 url = extract_output_url(resp)
                 if url:
                     job["output_url"] = url
-                if status not in ("completed", "succeeded", "done", "failed", "error", "cancelled"):
+                if status not in ("completed", "succeeded", "success", "failed", "error", "cancelled"):
                     updated_active.append(job)
             except (HTTPError, URLError):
                 updated_active.append(job)

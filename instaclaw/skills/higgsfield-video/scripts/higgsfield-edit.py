@@ -25,12 +25,18 @@ ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
 
-EFFECTS_ENDPOINT = "/api/v1/generate/video/effects"
-EXTEND_ENDPOINT = "/api/v1/generate/video/extend"
-TRANSLATE_ENDPOINT = "/api/v1/generate/video/translate"
-STYLE_ENDPOINT = "/api/v1/generate/video/style-transfer"
-UPSCALE_ENDPOINT = "/api/v1/generate/video/upscale"
-FACE_SWAP_ENDPOINT = "/api/v1/generate/video/face-swap"
+# Verified endpoints — flat model names at /api/v1/{endpoint}
+EDIT_ENDPOINTS = {
+    "effects": "generate_wan_ai_effects",
+    "motion": "generate_wan_ai_effects",
+    "vfx": "generate_wan_ai_effects",
+    "video-effects": "video-effects",
+    "upscale": "ai-image-upscale",
+    "face-swap": "ai-image-face-swap",
+    "style-transfer": "higgsfield-soul-image-to-image",
+    "extend": "video-extend",
+    "translate": "video-translate",
+}
 
 POLL_MAX = 120
 POLL_INTERVAL = 2
@@ -64,7 +70,7 @@ def get_base_url() -> str:
 def muapi_request(endpoint: str, api_key: str, payload: dict | None = None,
                   method: str = "POST", timeout: int = 30) -> dict:
     base = get_base_url()
-    url = f"{base}{endpoint}"
+    url = f"{base}/api/v1/{endpoint}" if not endpoint.startswith("/") else f"{base}{endpoint}"
     if "instaclaw" in base.lower():
         headers = {"x-gateway-token": api_key, "Content-Type": "application/json"}
     else:
@@ -80,6 +86,7 @@ def extract_request_id(resp: dict) -> str | None:
 
 
 def extract_output_url(resp: dict) -> str | None:
+    """5-level fallback for output URL extraction."""
     outputs = resp.get("outputs") or resp.get("data", {}).get("outputs")
     if outputs and isinstance(outputs, list) and len(outputs) > 0:
         item = outputs[0]
@@ -87,7 +94,7 @@ def extract_output_url(resp: dict) -> str | None:
             return item
         if isinstance(item, dict):
             return item.get("url") or item.get("video_url")
-    for key in ("url", "video_url"):
+    for key in ("url", "video_url", "image_url"):
         if resp.get(key):
             return resp[key]
     output_obj = resp.get("output") or resp.get("data", {}).get("output")
@@ -96,6 +103,9 @@ def extract_output_url(resp: dict) -> str | None:
     video = resp.get("video")
     if isinstance(video, dict):
         return video.get("url")
+    image = resp.get("image")
+    if isinstance(image, dict):
+        return image.get("url")
     return None
 
 
@@ -121,7 +131,8 @@ def submit_with_retry(endpoint: str, api_key: str, payload: dict) -> dict:
 
 
 def poll_for_result(request_id: str, api_key: str, as_json: bool = False) -> dict:
-    poll_endpoint = f"/api/v1/requests/{request_id}"
+    """Poll at /api/v1/predictions/{id}/result."""
+    poll_endpoint = f"/api/v1/predictions/{request_id}/result"
     for i in range(POLL_MAX):
         time.sleep(POLL_INTERVAL)
         try:
@@ -129,7 +140,7 @@ def poll_for_result(request_id: str, api_key: str, as_json: bool = False) -> dic
         except (HTTPError, URLError):
             continue
         status = (resp.get("status") or "").lower()
-        if status in ("completed", "succeeded", "done"):
+        if status in ("completed", "succeeded", "success"):
             url = extract_output_url(resp)
             return {"status": "completed", "request_id": request_id, "output_url": url}
         elif status in ("failed", "error", "cancelled"):
@@ -164,7 +175,7 @@ def output(data: dict, as_json: bool = False) -> None:
 
 def generic_edit_cmd(endpoint: str, edit_type: str, payload: dict,
                      api_key: str, as_json: bool) -> int:
-    """Shared submit → poll → output flow for edit commands."""
+    """Shared submit -> poll -> output flow for edit commands."""
     if not as_json:
         print(f"Submitting {edit_type}...")
 
@@ -199,10 +210,14 @@ def cmd_effects(args: argparse.Namespace) -> int:
     if not api_key:
         print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
-    payload = {"video_url": args.video, "effect": args.effect}
+    endpoint = EDIT_ENDPOINTS["effects"]
+    payload: dict = {"image_url": args.video, "prompt": args.effect}
+    # The unified effects endpoint uses "name" to select the preset
+    if args.effect:
+        payload["name"] = args.effect
     if args.intensity:
         payload["intensity"] = args.intensity
-    return generic_edit_cmd(EFFECTS_ENDPOINT, "effects", payload, api_key, args.json)
+    return generic_edit_cmd(endpoint, "effects", payload, api_key, args.json)
 
 
 def cmd_extend(args: argparse.Namespace) -> int:
@@ -210,12 +225,13 @@ def cmd_extend(args: argparse.Namespace) -> int:
     if not api_key:
         print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
+    endpoint = EDIT_ENDPOINTS["extend"]
     payload: dict = {"video_url": args.video}
     if args.prompt:
         payload["prompt"] = args.prompt
     if args.duration:
         payload["duration"] = args.duration
-    return generic_edit_cmd(EXTEND_ENDPOINT, "extend", payload, api_key, args.json)
+    return generic_edit_cmd(endpoint, "extend", payload, api_key, args.json)
 
 
 def cmd_translate(args: argparse.Namespace) -> int:
@@ -223,8 +239,9 @@ def cmd_translate(args: argparse.Namespace) -> int:
     if not api_key:
         print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
+    endpoint = EDIT_ENDPOINTS["translate"]
     payload = {"video_url": args.video, "target_language": args.target_lang}
-    return generic_edit_cmd(TRANSLATE_ENDPOINT, "translate", payload, api_key, args.json)
+    return generic_edit_cmd(endpoint, "translate", payload, api_key, args.json)
 
 
 def cmd_style(args: argparse.Namespace) -> int:
@@ -232,10 +249,11 @@ def cmd_style(args: argparse.Namespace) -> int:
     if not api_key:
         print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
-    payload: dict = {"video_url": args.video, "style": args.style}
+    endpoint = EDIT_ENDPOINTS["style-transfer"]
+    payload: dict = {"image_url": args.video, "style": args.style}
     if args.ref_image:
         payload["ref_image_url"] = args.ref_image
-    return generic_edit_cmd(STYLE_ENDPOINT, "style-transfer", payload, api_key, args.json)
+    return generic_edit_cmd(endpoint, "style-transfer", payload, api_key, args.json)
 
 
 def cmd_upscale(args: argparse.Namespace) -> int:
@@ -243,10 +261,11 @@ def cmd_upscale(args: argparse.Namespace) -> int:
     if not api_key:
         print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
-    payload: dict = {"video_url": args.video}
+    endpoint = EDIT_ENDPOINTS["upscale"]
+    payload: dict = {"image_url": args.video}
     if args.target_resolution:
         payload["target_resolution"] = args.target_resolution
-    return generic_edit_cmd(UPSCALE_ENDPOINT, "upscale", payload, api_key, args.json)
+    return generic_edit_cmd(endpoint, "upscale", payload, api_key, args.json)
 
 
 def cmd_face_swap(args: argparse.Namespace) -> int:
@@ -254,8 +273,9 @@ def cmd_face_swap(args: argparse.Namespace) -> int:
     if not api_key:
         print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
-    payload = {"video_url": args.video, "face_image_url": args.face_image}
-    return generic_edit_cmd(FACE_SWAP_ENDPOINT, "face-swap", payload, api_key, args.json)
+    endpoint = EDIT_ENDPOINTS["face-swap"]
+    payload = {"image_url": args.video, "face_image_url": args.face_image}
+    return generic_edit_cmd(endpoint, "face-swap", payload, api_key, args.json)
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

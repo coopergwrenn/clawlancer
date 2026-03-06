@@ -23,14 +23,17 @@ ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
 
+# Audio endpoints — kept from V1 paths (audio models not in Open-Higgsfield-AI models.js).
+# Submit pattern: POST /api/v1/{endpoint}
+# Polling fixed to /api/v1/predictions/{id}/result
 MUSIC_ENDPOINTS = {
-    "suno": "/api/v1/generate/audio/suno",
-    "suno-v4": "/api/v1/generate/audio/suno/v4",
+    "suno": "suno-create-music",
+    "suno-v4": "suno-v4-create-music",
 }
 
-SFX_ENDPOINT = "/api/v1/generate/audio/mmaudio"
-SYNC_ENDPOINT = "/api/v1/generate/audio/video-to-audio"
-LIPSYNC_ENDPOINT = "/api/v1/generate/video/lipsync"
+SFX_ENDPOINT = "mmaudio-sfx"
+SYNC_ENDPOINT = "video-to-audio-sync"
+LIPSYNC_ENDPOINT = "lipsync-video"
 
 POLL_MAX = 120
 POLL_INTERVAL = 2
@@ -64,7 +67,7 @@ def get_base_url() -> str:
 def muapi_request(endpoint: str, api_key: str, payload: dict | None = None,
                   method: str = "POST", timeout: int = 30) -> dict:
     base = get_base_url()
-    url = f"{base}{endpoint}"
+    url = f"{base}/api/v1/{endpoint}" if not endpoint.startswith("/") else f"{base}{endpoint}"
     if "instaclaw" in base.lower():
         headers = {"x-gateway-token": api_key, "Content-Type": "application/json"}
     else:
@@ -80,6 +83,7 @@ def extract_request_id(resp: dict) -> str | None:
 
 
 def extract_output_url(resp: dict) -> str | None:
+    """5-level fallback for output URL extraction."""
     outputs = resp.get("outputs") or resp.get("data", {}).get("outputs")
     if outputs and isinstance(outputs, list) and len(outputs) > 0:
         item = outputs[0]
@@ -96,6 +100,9 @@ def extract_output_url(resp: dict) -> str | None:
     video = resp.get("video")
     if isinstance(video, dict):
         return video.get("url")
+    image = resp.get("image")
+    if isinstance(image, dict):
+        return image.get("url")
     return None
 
 
@@ -123,7 +130,8 @@ def submit_with_retry(endpoint: str, api_key: str, payload: dict) -> dict:
 
 
 def poll_for_result(request_id: str, api_key: str, as_json: bool = False) -> dict:
-    poll_endpoint = f"/api/v1/requests/{request_id}"
+    """Poll at /api/v1/predictions/{id}/result."""
+    poll_endpoint = f"/api/v1/predictions/{request_id}/result"
     for i in range(POLL_MAX):
         time.sleep(POLL_INTERVAL)
         try:
@@ -131,7 +139,7 @@ def poll_for_result(request_id: str, api_key: str, as_json: bool = False) -> dic
         except (HTTPError, URLError):
             continue
         status = (resp.get("status") or "").lower()
-        if status in ("completed", "succeeded", "done"):
+        if status in ("completed", "succeeded", "success"):
             url = extract_output_url(resp)
             return {"status": "completed", "request_id": request_id, "output_url": url}
         elif status in ("failed", "error", "cancelled"):

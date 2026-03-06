@@ -13,67 +13,78 @@ Exit codes: 0=OK, 1=FAIL, 2=BLOCK
 
 import argparse
 import json
+import mimetypes
 import os
 import sys
 import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-import base64
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 ENV_FILE = Path.home() / ".openclaw" / ".env"
 WORKSPACE_DIR = Path.home() / ".openclaw" / "workspace" / "higgsfield"
 JOBS_FILE = WORKSPACE_DIR / "jobs.json"
 
-# Endpoint map for each generation type
+# Verified endpoint map — flat model names at /api/v1/{endpoint}
+# Source: Open-Higgsfield-AI models.js (endpoint = model.endpoint || model.id)
 VIDEO_ENDPOINTS = {
-    "kling-3.0": "/api/v1/generate/video/kling/v3",
-    "kling-2.0": "/api/v1/generate/video/kling/v2",
-    "kling-1.6": "/api/v1/generate/video/kling",
-    "wan-2.2": "/api/v1/generate/video/wan",
-    "wan-2.1": "/api/v1/generate/video/wan/2.1",
-    "sora-2": "/api/v1/generate/video/sora",
-    "veo-3": "/api/v1/generate/video/veo3",
-    "veo-3.1": "/api/v1/generate/video/veo3.1",
-    "veo-2": "/api/v1/generate/video/veo2",
-    "seedance-2.0": "/api/v1/generate/video/seedance",
-    "hailuo": "/api/v1/generate/video/hailuo",
-    "hailuo-i2v": "/api/v1/generate/video/hailuo/i2v",
-    "luma": "/api/v1/generate/video/luma",
-    "runway-gen4": "/api/v1/generate/video/runway/gen4",
-    "pika-2.2": "/api/v1/generate/video/pika",
-    "pixverse-v4": "/api/v1/generate/video/pixverse",
-    "hunyuan": "/api/v1/generate/video/hunyuan",
+    "kling-3.0": "kling-v3.0-pro-text-to-video",
+    "kling-2.0": "kling-v2.5-turbo-pro-t2v",
+    "wan-2.2": "wan2.2-text-to-video",
+    "wan-2.5": "wan2.5-text-to-video",
+    "sora": "openai-sora-2-text-to-video",
+    "sora-2": "openai-sora-2-text-to-video",
+    "veo-3": "veo3-text-to-video",
+    "veo3": "veo3-text-to-video",
+    "veo-3.1": "veo3.1-text-to-video",
+    "veo3.1": "veo3.1-text-to-video",
+    "seedance-2.0": "seedance-v2.0-t2v",
+    "hailuo": "minimax-hailuo-2.3-pro-t2v",
+    "luma": "ltx-2-pro-text-to-video",
+    "runway": "runway-text-to-video",
+    "runway-gen4": "runway-text-to-video",
+    "pixverse": "pixverse-v5.5-t2v",
+    "pixverse-v4": "pixverse-v5.5-t2v",
+    "hunyuan": "hunyuan-text-to-video",
 }
 
+# I2V endpoints with per-model imageField (some use images_list, some image_url)
 I2V_ENDPOINTS = {
-    "kling-3.0": "/api/v1/generate/video/kling/v3/img2video",
-    "kling-2.0": "/api/v1/generate/video/kling/v2/img2video",
-    "wan-2.2": "/api/v1/generate/video/wan/img2video",
-    "sora-2": "/api/v1/generate/video/sora/img2video",
-    "veo-3": "/api/v1/generate/video/veo3/img2video",
-    "seedance-2.0": "/api/v1/generate/video/seedance/img2video",
-    "hailuo-i2v": "/api/v1/generate/video/hailuo/i2v",
-    "runway-gen4": "/api/v1/generate/video/runway/gen4/img2video",
-    "pika-2.2": "/api/v1/generate/video/pika/img2video",
-    "pixverse-v4": "/api/v1/generate/video/pixverse/img2video",
+    "kling-3.0": {"endpoint": "kling-v3.0-pro-image-to-video", "image_field": "image_url"},
+    "kling-2.0": {"endpoint": "kling-v2.5-turbo-pro-i2v", "image_field": "image_url"},
+    "wan-2.2": {"endpoint": "wan2.2-image-to-video", "image_field": "image_url"},
+    "veo-3": {"endpoint": "veo3-image-to-video", "image_field": "images_list"},
+    "veo3": {"endpoint": "veo3-image-to-video", "image_field": "images_list"},
+    "runway": {"endpoint": "runway-image-to-video", "image_field": "image_url"},
+    "runway-gen4": {"endpoint": "runway-image-to-video", "image_field": "image_url"},
+    "hailuo": {"endpoint": "minimax-hailuo-2.3-pro-i2v", "image_field": "image_url"},
+    "hailuo-i2v": {"endpoint": "minimax-hailuo-2.3-pro-i2v", "image_field": "image_url"},
+    "seedance-2.0": {"endpoint": "seedance-v2.0-i2v", "image_field": "images_list"},
+    "sora": {"endpoint": "openai-sora-2-image-to-video", "image_field": "images_list"},
+    "sora-2": {"endpoint": "openai-sora-2-image-to-video", "image_field": "images_list"},
+    "hunyuan": {"endpoint": "hunyuan-image-to-video", "image_field": "image_url"},
 }
 
 IMAGE_ENDPOINTS = {
-    "flux-schnell": "/api/v1/generate/image/flux/schnell",
-    "flux-dev": "/api/v1/generate/image/flux/dev",
-    "flux-pro": "/api/v1/generate/image/flux/pro",
-    "ideogram-3": "/api/v1/generate/image/ideogram/v3",
-    "recraft-v3": "/api/v1/generate/image/recraft/v3",
-    "seedream-4.5": "/api/v1/generate/image/seedream",
-    "gpt-image-1": "/api/v1/generate/image/gpt-image-1",
+    "flux-schnell": "flux-schnell-image",
+    "flux-dev": "flux-dev-image",
+    "flux-pro": "flux-dev-image",
+    "ideogram-3": "ideogram-v3-t2i",
+    "ideogram-v3": "ideogram-v3-t2i",
+    "gpt-image-1": "gpt4o-text-to-image",
+    "gpt-image-1.5": "gpt-image-1.5",
+    "seedream-4.5": "bytedance-seedream-v4.5",
+    "midjourney-v7": "midjourney-v7-text-to-image",
+    "recraft-v3": "reve-text-to-image",
+    "google-imagen4": "google-imagen4",
+    "hunyuan-image": "hunyuan-image-3.0",
+    "wan-image": "wan2.5-text-to-image",
 }
 
 # Polling config
-VIDEO_POLL_MAX = 120   # 120 × 2s = 4 min
-IMAGE_POLL_MAX = 60    # 60 × 2s = 2 min
+VIDEO_POLL_MAX = 120   # 120 x 2s = 4 min
+IMAGE_POLL_MAX = 60    # 60 x 2s = 2 min
 POLL_INTERVAL = 2
 
 # Retry config
@@ -109,7 +120,7 @@ def get_base_url() -> str:
 def muapi_request(endpoint: str, api_key: str, payload: dict | None = None,
                   method: str = "POST", timeout: int = 30) -> dict:
     base = get_base_url()
-    url = f"{base}{endpoint}"
+    url = f"{base}/api/v1/{endpoint}" if not endpoint.startswith("/") else f"{base}{endpoint}"
     # Use x-gateway-token for proxy, x-api-key for direct Muapi
     if "instaclaw" in base.lower():
         headers = {"x-gateway-token": api_key, "Content-Type": "application/json"}
@@ -126,6 +137,8 @@ def extract_request_id(resp: dict) -> str | None:
 
 
 def extract_output_url(resp: dict) -> str | None:
+    """5-level fallback for output URL extraction (verified from muapi.js)."""
+    # Level 1: outputs array
     outputs = resp.get("outputs") or resp.get("data", {}).get("outputs")
     if outputs and isinstance(outputs, list) and len(outputs) > 0:
         item = outputs[0]
@@ -133,15 +146,22 @@ def extract_output_url(resp: dict) -> str | None:
             return item
         if isinstance(item, dict):
             return item.get("url") or item.get("video_url") or item.get("image_url")
+    # Level 2: top-level url fields
     for key in ("url", "video_url", "image_url"):
         if resp.get(key):
             return resp[key]
+    # Level 3: output.url
     output_obj = resp.get("output") or resp.get("data", {}).get("output")
     if isinstance(output_obj, dict):
         return output_obj.get("url") or output_obj.get("video_url") or output_obj.get("image_url")
+    # Level 4: video.url (effects endpoints)
     video = resp.get("video")
     if isinstance(video, dict):
         return video.get("url")
+    # Level 5: image.url
+    image = resp.get("image")
+    if isinstance(image, dict):
+        return image.get("url")
     return None
 
 
@@ -198,8 +218,8 @@ def submit_with_retry(endpoint: str, api_key: str, payload: dict) -> dict:
 
 def poll_for_result(request_id: str, api_key: str, max_polls: int,
                     as_json: bool = False) -> dict:
-    """Poll until completion or failure."""
-    poll_endpoint = f"/api/v1/requests/{request_id}"
+    """Poll at /api/v1/predictions/{id}/result until completion or failure."""
+    poll_endpoint = f"/api/v1/predictions/{request_id}/result"
     for i in range(max_polls):
         time.sleep(POLL_INTERVAL)
         try:
@@ -208,7 +228,7 @@ def poll_for_result(request_id: str, api_key: str, max_polls: int,
             continue
 
         status = (resp.get("status") or "").lower()
-        if status in ("completed", "succeeded", "done"):
+        if status in ("completed", "succeeded", "success"):
             url = extract_output_url(resp)
             return {"status": "completed", "request_id": request_id, "output_url": url}
         elif status in ("failed", "error", "cancelled"):
@@ -302,13 +322,22 @@ def cmd_image_to_video(args: argparse.Namespace) -> int:
         return 2
 
     model = args.model or "kling-3.0"
-    endpoint = I2V_ENDPOINTS.get(model)
-    if not endpoint:
+    model_info = I2V_ENDPOINTS.get(model)
+    if not model_info:
         print(f"ERROR: Unknown I2V model '{model}'. Available: {', '.join(I2V_ENDPOINTS.keys())}",
               file=sys.stderr)
         return 1
 
-    payload: dict = {"image_url": args.image}
+    endpoint = model_info["endpoint"]
+    image_field = model_info.get("image_field", "image_url")
+
+    payload: dict = {}
+    # Respect per-model imageField
+    if image_field == "images_list":
+        payload["images_list"] = [args.image]
+    else:
+        payload[image_field] = args.image
+
     if args.prompt:
         payload["prompt"] = args.prompt
     if args.duration:
@@ -415,7 +444,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print("ERROR: No gateway token configured.", file=sys.stderr)
         return 2
 
-    poll_endpoint = f"/api/v1/requests/{args.id}"
+    poll_endpoint = f"/api/v1/predictions/{args.id}/result"
     try:
         resp = muapi_request(poll_endpoint, api_key, method="GET")
     except HTTPError as e:
@@ -430,7 +459,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     if resp.get("error"):
         result["error"] = resp["error"]
     output(result, args.json)
-    return 0 if status in ("completed", "succeeded", "done") else 1
+    return 0 if status in ("completed", "succeeded", "success") else 1
 
 
 def cmd_upload_file(args: argparse.Namespace) -> int:
@@ -444,33 +473,36 @@ def cmd_upload_file(args: argparse.Namespace) -> int:
         print(f"ERROR: File not found: {file_path}", file=sys.stderr)
         return 1
 
-    # Read file and base64 encode for upload
+    # Multipart FormData upload at /api/v1/upload_file
+    base = get_base_url()
+    boundary = f"----FormBoundary{int(time.time() * 1000)}"
+    filename = file_path.name
+    mime = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
     file_data = file_path.read_bytes()
-    b64_data = base64.b64encode(file_data).decode()
 
-    # Determine MIME type from extension
-    ext = file_path.suffix.lower()
-    mime_map = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-        ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4",
-        ".mov": "video/quicktime", ".avi": "video/x-msvideo",
-    }
-    mime_type = mime_map.get(ext, "application/octet-stream")
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        f"Content-Type: {mime}\r\n\r\n"
+    ).encode() + file_data + f"\r\n--{boundary}--\r\n".encode()
 
-    payload = {
-        "file": f"data:{mime_type};base64,{b64_data}",
-        "filename": file_path.name,
-    }
+    url = f"{base}/api/v1/upload_file"
+    if "instaclaw" in base.lower():
+        headers = {"x-gateway-token": api_key, "Content-Type": f"multipart/form-data; boundary={boundary}"}
+    else:
+        headers = {"x-api-key": api_key, "Content-Type": f"multipart/form-data; boundary={boundary}"}
 
     try:
-        resp = muapi_request("/api/v1/files/upload", api_key, payload)
+        req = Request(url, data=body, headers=headers, method="POST")
+        with urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode())
     except HTTPError as e:
-        body = e.read().decode() if hasattr(e, "read") else ""
-        output({"error": f"Upload failed (HTTP {e.code})", "details": body}, args.json)
+        body_text = e.read().decode() if hasattr(e, "read") else ""
+        output({"error": f"Upload failed (HTTP {e.code})", "details": body_text}, args.json)
         return 1
 
-    file_url = resp.get("url") or resp.get("file_url") or resp.get("data", {}).get("url")
-    result = {"status": "uploaded", "file_url": file_url, "filename": file_path.name}
+    file_url = data.get("url") or data.get("file_url") or data.get("data", {}).get("url")
+    result = {"status": "uploaded", "file_url": file_url, "filename": filename}
     output(result, args.json)
     return 0
 

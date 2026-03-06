@@ -128,8 +128,8 @@ If the user has never used Higgsfield before:
 
 | Parameter | Values |
 |-----------|--------|
-| `--model` (video) | kling-3.0, kling-2.0, wan-2.2, sora-2, veo-3, veo-3.1, seedance-2.0, hailuo, luma, runway-gen4, pika-2.2, pixverse-v4, hunyuan |
-| `--model` (image) | flux-schnell, flux-dev, flux-pro, ideogram-3, recraft-v3, seedream-4.5, gpt-image-1 |
+| `--model` (video) | kling-3.0, kling-2.0, wan-2.2, wan-2.5, sora, sora-2, veo-3, veo-3.1, seedance-2.0, hailuo, luma, runway, pixverse, hunyuan |
+| `--model` (image) | flux-schnell, flux-dev, flux-pro, ideogram-3, ideogram-v3, recraft-v3, seedream-4.5, gpt-image-1, gpt-image-1.5, midjourney-v7, google-imagen4, hunyuan-image, wan-image |
 | `--aspect-ratio` | 16:9, 9:16, 1:1, 4:3, 3:4 |
 | `--duration` | 5, 10 (seconds, model-dependent) |
 | `--resolution` | 720p, 1080p (model-dependent) |

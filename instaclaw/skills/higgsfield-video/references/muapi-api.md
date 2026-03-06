@@ -1,4 +1,4 @@
-# Muapi.ai API Reference
+# Muapi.ai API Reference (Verified)
 
 ## Proxy Routing (Platform-Provided)
 
@@ -25,12 +25,27 @@ Direct requests use `x-api-key` header — but this is handled by the proxy now:
 x-api-key: MUAPI_API_KEY  (platform-level, server-side only)
 ```
 
+## Verified API Patterns (from muapi.js source)
+
+```
+Base URL:    https://api.muapi.ai
+Auth:        x-api-key: {key}
+Submit:      POST /api/v1/{endpoint}                        → { request_id: "..." }
+Poll:        GET  /api/v1/predictions/{request_id}/result   → { status, outputs, ... }
+Upload:      POST /api/v1/upload_file                       (FormData multipart, NO Content-Type header)
+
+Endpoint resolution:  model.endpoint || model.id
+Image field:          model.imageField || 'image_url'
+```
+
 ## Async Pattern
+
 All generation endpoints follow the same pattern:
-1. **Submit**: POST to generation endpoint → returns `request_id`
-2. **Poll**: GET `/api/v1/requests/{request_id}` → returns status + output URL when done
+1. **Submit**: POST `/api/v1/{endpoint}` → returns `request_id`
+2. **Poll**: GET `/api/v1/predictions/{request_id}/result` → returns status + output URL when done
 
 ## Response Normalization
+
 Response structures vary by endpoint. Always check these fields in order:
 
 ### Request ID extraction:
@@ -38,40 +53,55 @@ Response structures vary by endpoint. Always check these fields in order:
 2. `response.id`
 3. `response.data.request_id`
 
-### Output URL extraction:
+### Output URL extraction (5-level fallback):
 1. `response.outputs[0]` (string) or `response.outputs[0].url`
 2. `response.url` / `response.video_url` / `response.image_url`
 3. `response.output.url`
-4. `response.video.url` (effects endpoint)
-5. `response.data.outputs[0]`
+4. `response.video.url` (effects endpoints)
+5. `response.image.url`
 
 ### Status values:
-- **Success**: `completed`, `succeeded`, `done`
-- **Failure**: `failed`, `error`, `cancelled`
+- **Success**: `completed`, `succeeded`, `success`
+- **Failure**: `failed`, `error`
 - **Processing**: `processing`, `pending`, `submitted`, `queued`
 
-## Endpoints
+### Poll timing:
+- Images: 60 attempts x 2s = 2 min
+- Videos: 120 attempts x 2s = 4 min
 
-### Video Generation (Text-to-Video)
+## File Upload
 
-| Model | Endpoint |
-|-------|----------|
-| Kling 3.0 | POST `/api/v1/generate/video/kling/v3` |
-| Kling 2.0 | POST `/api/v1/generate/video/kling/v2` |
-| Kling 1.6 | POST `/api/v1/generate/video/kling` |
-| Wan 2.2 | POST `/api/v1/generate/video/wan` |
-| Wan 2.1 | POST `/api/v1/generate/video/wan/2.1` |
-| Sora 2 | POST `/api/v1/generate/video/sora` |
-| Veo 3 | POST `/api/v1/generate/video/veo3` |
-| Veo 3.1 | POST `/api/v1/generate/video/veo3.1` |
-| Veo 2 | POST `/api/v1/generate/video/veo2` |
-| Seedance 2.0 | POST `/api/v1/generate/video/seedance` |
-| Hailuo | POST `/api/v1/generate/video/hailuo` |
-| Luma | POST `/api/v1/generate/video/luma` |
-| Runway Gen4 | POST `/api/v1/generate/video/runway/gen4` |
-| Pika 2.2 | POST `/api/v1/generate/video/pika` |
-| PixVerse v4 | POST `/api/v1/generate/video/pixverse` |
-| Hunyuan | POST `/api/v1/generate/video/hunyuan` |
+POST `/api/v1/upload_file` — **multipart FormData** (NOT base64 JSON)
+
+```python
+# Python example — do NOT set Content-Type header manually
+boundary = f"----FormBoundary{int(time.time()*1000)}"
+body = (
+    f"--{boundary}\r\n"
+    f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+    f"Content-Type: {mime_type}\r\n\r\n"
+).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+```
+
+Response: `{ "url": "https://..." }` or `{ "file_url": "..." }` or `{ "data": { "url": "..." } }`
+
+## Endpoints — Video Generation (Text-to-Video)
+
+| User Model Name | Muapi Endpoint |
+|----------------|----------------|
+| Kling 3.0 | `kling-v3.0-pro-text-to-video` |
+| Kling 2.0 | `kling-v2.5-turbo-pro-t2v` |
+| Wan 2.2 | `wan2.2-text-to-video` |
+| Wan 2.5 | `wan2.5-text-to-video` |
+| Sora 2 | `openai-sora-2-text-to-video` |
+| Veo 3 | `veo3-text-to-video` |
+| Veo 3.1 | `veo3.1-text-to-video` |
+| Seedance 2.0 | `seedance-v2.0-t2v` |
+| Hailuo | `minimax-hailuo-2.3-pro-t2v` |
+| Luma | `ltx-2-pro-text-to-video` |
+| Runway | `runway-text-to-video` |
+| PixVerse | `pixverse-v5.5-t2v` |
+| Hunyuan | `hunyuan-text-to-video` |
 
 **Common params:**
 ```json
@@ -88,33 +118,46 @@ Response structures vary by endpoint. Always check these fields in order:
 }
 ```
 
-### Image-to-Video
+## Endpoints — Image-to-Video
 
-Append `/img2video` to most video endpoints. Example:
-- Kling 3.0 I2V: POST `/api/v1/generate/video/kling/v3/img2video`
-- Hailuo I2V: POST `/api/v1/generate/video/hailuo/i2v`
+Each I2V model has a specific `imageField` — some use `image_url`, others use `images_list`:
 
-**Params:**
+| User Model Name | Muapi Endpoint | imageField |
+|----------------|----------------|------------|
+| Kling 3.0 I2V | `kling-v3.0-pro-image-to-video` | `image_url` |
+| Wan 2.2 I2V | `wan2.2-image-to-video` | `image_url` |
+| Veo 3 I2V | `veo3-image-to-video` | `images_list` |
+| Runway I2V | `runway-image-to-video` | `image_url` |
+| Hailuo I2V | `minimax-hailuo-2.3-pro-i2v` | `image_url` |
+| Seedance I2V | `seedance-v2.0-i2v` | `images_list` |
+| Sora I2V | `openai-sora-2-image-to-video` | `images_list` |
+| Hunyuan I2V | `hunyuan-image-to-video` | `image_url` |
+
+**IMPORTANT**: When `imageField` is `images_list`, send the image URL as an array:
 ```json
-{
-  "image_url": "string (required)",
-  "prompt": "string",
-  "duration": "5 | 10",
-  "aspect_ratio": "16:9 | 9:16 | 1:1"
-}
+{ "images_list": ["https://..."], "prompt": "..." }
+```
+When `imageField` is `image_url`, send as a string:
+```json
+{ "image_url": "https://...", "prompt": "..." }
 ```
 
-### Image Generation
+## Endpoints — Image Generation
 
-| Model | Endpoint |
-|-------|----------|
-| Flux Schnell | POST `/api/v1/generate/image/flux/schnell` |
-| Flux Dev | POST `/api/v1/generate/image/flux/dev` |
-| Flux Pro | POST `/api/v1/generate/image/flux/pro` |
-| Ideogram 3 | POST `/api/v1/generate/image/ideogram/v3` |
-| Recraft v3 | POST `/api/v1/generate/image/recraft/v3` |
-| Seedream 4.5 | POST `/api/v1/generate/image/seedream` |
-| GPT Image 1 | POST `/api/v1/generate/image/gpt-image-1` |
+| User Model Name | Muapi Endpoint |
+|----------------|----------------|
+| Flux Schnell | `flux-schnell-image` |
+| Flux Dev | `flux-dev-image` |
+| Flux Pro | `flux-dev-image` |
+| Ideogram 3 | `ideogram-v3-t2i` |
+| Recraft v3 | `reve-text-to-image` |
+| Seedream 4.5 | `bytedance-seedream-v4.5` |
+| GPT Image 1 | `gpt4o-text-to-image` |
+| GPT Image 1.5 | `gpt-image-1.5` |
+| Midjourney v7 | `midjourney-v7-text-to-image` |
+| Google Imagen 4 | `google-imagen4` |
+| Hunyuan Image | `hunyuan-image-3.0` |
+| Wan Image | `wan2.5-text-to-image` |
 
 **Params:**
 ```json
@@ -128,47 +171,38 @@ Append `/img2video` to most video endpoints. Example:
 }
 ```
 
-### Audio Generation
+## Endpoints — Audio Generation
+
+Audio endpoints not verified from Open-Higgsfield-AI source (only image/video models present).
+These are best-guess flat names following the same `/api/v1/{endpoint}` pattern:
 
 | Type | Endpoint |
 |------|----------|
-| Music (Suno) | POST `/api/v1/generate/audio/suno` |
-| Music (Suno v4) | POST `/api/v1/generate/audio/suno/v4` |
-| SFX (MMAudio) | POST `/api/v1/generate/audio/mmaudio` |
-| Video-to-Audio | POST `/api/v1/generate/audio/video-to-audio` |
-| Lip Sync | POST `/api/v1/generate/video/lipsync` |
+| Music (Suno) | `suno-create-music` |
+| Music (Suno v4) | `suno-v4-create-music` |
+| SFX (MMAudio) | `mmaudio-sfx` |
+| Video-to-Audio | `video-to-audio-sync` |
+| Lip Sync | `lipsync-video` |
 
-### Video Editing
+## Endpoints — Video Editing
 
-| Action | Endpoint |
-|--------|----------|
-| Effects | POST `/api/v1/generate/video/effects` |
-| Extend | POST `/api/v1/generate/video/extend` |
-| Translate | POST `/api/v1/generate/video/translate` |
-| Style Transfer | POST `/api/v1/generate/video/style-transfer` |
-| Upscale | POST `/api/v1/generate/video/upscale` |
-| Face Swap | POST `/api/v1/generate/video/face-swap` |
+| Action | Endpoint | Notes |
+|--------|----------|-------|
+| Effects (WanAI) | `generate_wan_ai_effects` | Unified endpoint, use `name` param for preset |
+| Upscale | `ai-image-upscale` | |
+| Face Swap | `ai-image-face-swap` | |
+| Style Transfer | `higgsfield-soul-image-to-image` | |
+| Extend | `video-extend` | |
+| Translate | `video-translate` | |
 
-### File Upload
+### Effects endpoint — `name` parameter
 
-POST `/api/v1/files/upload`
+The `generate_wan_ai_effects` endpoint uses a `name` parameter to select the effect preset:
 ```json
 {
-  "file": "data:mime/type;base64,<data>",
-  "filename": "string"
-}
-```
-
-### Status Check
-
-GET `/api/v1/requests/{request_id}`
-
-Response:
-```json
-{
-  "status": "completed|processing|failed",
-  "outputs": [{"url": "..."}],
-  "error": "string (if failed)"
+  "image_url": "https://...",
+  "prompt": "description",
+  "name": "Claw Zoom In"
 }
 ```
 

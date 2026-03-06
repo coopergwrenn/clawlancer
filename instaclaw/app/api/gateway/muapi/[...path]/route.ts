@@ -12,54 +12,49 @@ const MUAPI_BASE = "https://api.muapi.ai";
  */
 function determineCreditWeight(path: string, body: Record<string, unknown>): number {
   const p = path.replace(/^\/+/, "");
-
-  // ── Images ────────────────────────────────────────────────────────────────
-  if (p.includes("generate/image/flux/schnell")) return 10;
-  if (p.includes("generate/image/flux/")) return 20;
-  if (p.includes("generate/image/")) return 40; // Ideogram, Recraft, Seedream, GPT Image
-
-  // ── Video ─────────────────────────────────────────────────────────────────
-  if (p.includes("generate/video/") && p.includes("img2video")) {
-    const dur = String(body.duration || "5");
-    return dur === "10" ? 180 : 100;
-  }
-  if (p.includes("generate/video/sora") && !p.includes("img2video")) {
-    const dur = String(body.duration || "5");
-    if (dur === "20") return 250;
-    return dur === "10" ? 150 : 80;
-  }
-  // Text-to-video (non-sora)
-  if (
-    p.includes("generate/video/") &&
-    !p.includes("lipsync") &&
-    !p.includes("effects") &&
-    !p.includes("extend") &&
-    !p.includes("upscale") &&
-    !p.includes("face-swap") &&
-    !p.includes("translate") &&
-    !p.includes("style-transfer") &&
-    !p.includes("img2video")
-  ) {
-    const dur = String(body.duration || "5");
-    return dur === "10" ? 150 : 80;
-  }
-
-  // ── Editing ───────────────────────────────────────────────────────────────
-  if (p.includes("generate/video/lipsync")) return 60;
-  if (p.includes("generate/video/effects")) return 60;
-  if (p.includes("generate/video/style-transfer")) return 60;
-  if (p.includes("generate/video/extend")) return 80;
-  if (p.includes("generate/video/upscale")) return 50;
-  if (p.includes("generate/video/face-swap")) return 100;
-  if (p.includes("generate/video/translate")) return 80;
-
-  // ── Audio ─────────────────────────────────────────────────────────────────
-  if (p.includes("generate/audio/suno")) return 40;
-  if (p.includes("generate/audio/mmaudio")) return 30;
-  if (p.includes("generate/audio/video-to-audio")) return 50;
+  const duration = Number(body?.duration) || 5;
 
   // ── Status checks and file uploads are free ───────────────────────────────
-  if (p.includes("requests/") || p.includes("files/upload")) return 0;
+  if (p.includes("predictions/") || p.includes("upload_file")) return 0;
+
+  // ── Images ────────────────────────────────────────────────────────────────
+  if (p.includes("flux-schnell")) return 10;
+  if (p.includes("flux-dev") || p.includes("flux-pro")) return 20;
+  if (p.includes("ideogram") || p.includes("seedream") || p.includes("gpt4o") ||
+      p.includes("gpt-image") || p.includes("midjourney") || p.includes("recraft") ||
+      p.includes("google-imagen") || p.includes("reve-text-to-image")) return 40;
+
+  // ── Video T2V ─────────────────────────────────────────────────────────────
+  if (p.includes("text-to-video") || p.includes("-t2v")) {
+    if (duration >= 20) return 250;
+    if (duration >= 10) return 150;
+    return 80;
+  }
+
+  // ── Video I2V ─────────────────────────────────────────────────────────────
+  if (p.includes("image-to-video") || p.includes("-i2v") || p.includes("reference-to-video")) {
+    if (duration >= 10) return 180;
+    return 100;
+  }
+
+  // ── Effects / editing ─────────────────────────────────────────────────────
+  if (p.includes("effects") || p.includes("style-transfer") || p.includes("soul-image")) return 60;
+  if (p.includes("extend")) return 80;
+  if (p.includes("upscale")) return 50;
+  if (p.includes("face-swap")) return 100;
+  if (p.includes("translate")) return 80;
+
+  // ── Audio ─────────────────────────────────────────────────────────────────
+  if (p.includes("suno") || p.includes("music")) return 40;
+  if (p.includes("mmaudio") || p.includes("sfx")) return 30;
+  if (p.includes("video-to-audio")) return 50;
+  if (p.includes("lipsync")) return 60;
+
+  // ── Image editing (I2I models) ────────────────────────────────────────────
+  if (p.includes("edit") || p.includes("image-to-image") || p.includes("-i2i")) return 20;
+
+  // ── Wan/Hunyuan image generation ──────────────────────────────────────────
+  if (p.includes("text-to-image") || p.includes("hunyuan-image")) return 40;
 
   // Fallback: safe default
   return 40;
