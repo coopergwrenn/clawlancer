@@ -333,14 +333,14 @@ def main():
     p_music = sub.add_parser("music", help="Generate music")
     p_music.add_argument("--prompt", required=True, help="Music prompt/description")
     p_music.add_argument("--model", default="suno", help="Music model")
-    p_music.add_argument("--duration", help="Duration in seconds")
+    p_music.add_argument("--duration", type=int, help="Duration in seconds")
     p_music.add_argument("--instrumental", action="store_true", help="Instrumental only")
     p_music.add_argument("--style", help="Music style")
     p_music.add_argument("--json", action="store_true", help="JSON output")
 
     p_sfx = sub.add_parser("sfx", help="Generate sound effects")
     p_sfx.add_argument("--prompt", required=True, help="SFX description")
-    p_sfx.add_argument("--duration", help="Duration in seconds")
+    p_sfx.add_argument("--duration", type=int, help="Duration in seconds")
     p_sfx.add_argument("--json", action="store_true", help="JSON output")
 
     p_sync = sub.add_parser("sync", help="Video-to-audio sync")

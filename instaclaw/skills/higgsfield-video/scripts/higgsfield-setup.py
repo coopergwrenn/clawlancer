@@ -277,7 +277,7 @@ def main():
     p_credits.add_argument("--type", required=True,
                            help="Generation type (video, image, music, sfx, lipsync, effects, extend, upscale, face-swap, translate, style, sync, story)")
     p_credits.add_argument("--model", help="Model name (e.g., kling-3.0, flux-schnell)")
-    p_credits.add_argument("--duration", help="Duration in seconds (e.g., 5, 10, 20)")
+    p_credits.add_argument("--duration", type=int, help="Duration in seconds (e.g., 5, 10, 20)")
     p_credits.add_argument("--json", action="store_true", help="JSON output")
 
     p_test = sub.add_parser("test", help="Quick test (Flux Schnell image via proxy)")

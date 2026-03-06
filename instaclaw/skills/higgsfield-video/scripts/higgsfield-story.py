@@ -291,7 +291,7 @@ def main():
     p_plan.add_argument("--scenes", type=int, help="Number of scenes (default 3)")
     p_plan.add_argument("--model", help="Video model")
     p_plan.add_argument("--aspect-ratio", help="Aspect ratio")
-    p_plan.add_argument("--duration", help="Duration per scene")
+    p_plan.add_argument("--duration", type=int, help="Duration per scene")
     p_plan.add_argument("--json", action="store_true", help="JSON output")
 
     p_gen = sub.add_parser("generate", help="Generate scenes from plan")

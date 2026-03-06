@@ -293,7 +293,7 @@ def main():
     p_ext = sub.add_parser("extend", help="Extend video duration")
     p_ext.add_argument("--video", required=True, help="Video URL")
     p_ext.add_argument("--prompt", help="Continuation prompt")
-    p_ext.add_argument("--duration", help="Additional duration")
+    p_ext.add_argument("--duration", type=int, help="Additional duration")
     p_ext.add_argument("--json", action="store_true")
 
     p_tr = sub.add_parser("translate", help="Translate video dialogue")

@@ -181,49 +181,26 @@ async function handleProxy(
         );
       }
 
+      // The RPC already accounts for daily limit, credit balance, and buffer zone.
+      // Trust its `allowed` field — do NOT duplicate the check with different math.
       if (limitResult && !limitResult.allowed) {
-        // Calculate reset time (midnight in user's timezone)
         const now = new Date();
         const tomorrow = new Date(now);
         tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
         tomorrow.setUTCHours(5, 0, 0, 0); // Approximate midnight ET
 
+        const available = Math.max(
+          0,
+          (limitResult.display_limit || 0) -
+            (limitResult.count || 0)
+        ) + (limitResult.credits_remaining || 0);
+
         return NextResponse.json(
           {
             error: "credits_exhausted",
-            message:
-              "Your credits reset at midnight — or grab a credit pack to keep going.",
-            credits_required: creditWeight,
-            credits_available: Math.max(
-              0,
-              (limitResult.display_limit || 0) -
-                (limitResult.count || 0) +
-                (limitResult.credits_remaining || 0)
-            ),
-            resets_at: tomorrow.toISOString(),
-            packs_url: "/billing/credit-packs",
-          },
-          { status: 429 }
-        );
-      }
-
-      // Check if the specific credit weight would exceed remaining
-      const available =
-        Math.max(
-          0,
-          (limitResult?.display_limit || 600) - (limitResult?.count || 0)
-        ) + (limitResult?.credits_remaining || 0);
-
-      if (available < creditWeight) {
-        const now = new Date();
-        const tomorrow = new Date(now);
-        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-        tomorrow.setUTCHours(5, 0, 0, 0);
-
-        return NextResponse.json(
-          {
-            error: "insufficient_credits",
-            message: `This would use ${creditWeight} credits but you have ${Math.floor(available)} left. Your credits reset at midnight — or grab a credit pack to keep going.`,
+            message: available < creditWeight
+              ? `This would use ${creditWeight} credits but you have ${Math.floor(available)} left. Your credits reset at midnight — or grab a credit pack to keep going.`
+              : "Your credits reset at midnight — or grab a credit pack to keep going.",
             credits_required: creditWeight,
             credits_available: Math.floor(available),
             resets_at: tomorrow.toISOString(),
@@ -267,11 +244,22 @@ async function handleProxy(
       logger.error("Muapi upstream error", {
         route: "gateway/muapi",
         vmId: vm.id,
-        status: muapiRes.status,
+        upstream_status: muapiRes.status,
         path: upstreamPath,
         response: JSON.stringify(muapiData).slice(0, 500),
       });
-      return NextResponse.json(muapiData, {
+
+      // Tag upstream errors so agents/users can distinguish from our own credit checks.
+      // Our credit blocks return 429 with error="credits_exhausted".
+      // Muapi's own errors pass through with _upstream=true.
+      const taggedData = {
+        ...muapiData,
+        _upstream: true,
+        _upstream_status: muapiRes.status,
+        _endpoint: upstreamPath,
+      };
+
+      return NextResponse.json(taggedData, {
         status: muapiRes.status >= 400 ? muapiRes.status : 502,
       });
     }
