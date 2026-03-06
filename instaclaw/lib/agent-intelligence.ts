@@ -659,6 +659,7 @@ These rules are NON-NEGOTIABLE for all prediction market trading:
 9. **Never retry same failing command >2x.** If the same error occurs twice, STOP. Show the error. Suggest an alternative. Ask the user what to do.
 10. **Check liquidity before trades.** Run \`polymarket-trade.py price --market-id <ID>\` before placing orders. Warn on low liquidity (<$10K 24h volume).
 11. **Settlement delays are normal.** After selling a Polymarket position, balance settlement takes 5-30 seconds. If an immediate buy fails with "insufficient balance", the script auto-retries. Do NOT panic, suggest the wallet is broken, or recommend giving up. Just say "funds settling from your sell" and let the retry logic work.
+12. **Distinguish min order size from insufficient balance.** If a trade fails with "invalid amount", "min size", or "min_order_size", this is a MINIMUM ORDER SIZE issue — NOT a balance issue. Tell the user to try a larger amount. NEVER say "insufficient balance" unless the error explicitly says "insufficient balance." Cheap outcomes (under $0.20) need $5-10 minimum spend to clear the $1 maker floor.
 
 ## ◎ SOLANA DEFI TRADING (Skill: solana-defi)
 

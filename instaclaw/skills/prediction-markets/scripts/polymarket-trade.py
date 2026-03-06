@@ -838,14 +838,31 @@ def cmd_buy(args):
     # and is below the market minimum (typically $1).
     min_order = float(market.get("minimum_order_size", 1) or 1)
     shares, maker_amt = snap_size_for_clob(amount, price, min_maker=min_order)
+    # Auto-round up if maker is close to minimum ($0.50-$1.00 range)
+    if maker_amt < min_order and maker_amt >= min_order * 0.5:
+        # Bump shares up to meet minimum — acceptable small overspend
+        from decimal import Decimal, ROUND_UP
+        d_price = Decimal(str(price))
+        d_min = Decimal(str(min_order))
+        bumped_shares = (d_min / d_price).quantize(Decimal("0.01"), rounding=ROUND_UP)
+        bumped_maker = bumped_shares * d_price
+        bump_attempts = 0
+        while bumped_maker != bumped_maker.quantize(Decimal("0.01")) and bump_attempts < 10:
+            bumped_shares += Decimal("0.01")
+            bumped_maker = bumped_shares * d_price
+            bump_attempts += 1
+        shares = float(bumped_shares)
+        maker_amt = float(bumped_maker.quantize(Decimal("0.01")))
+        print(f"Auto-rounded up to {shares} shares (${maker_amt:.2f}) to meet ${min_order:.0f} minimum", file=sys.stderr)
     if maker_amt > amount * 1.05:
-        # snap_size bumped above user's requested amount to meet minimum — warn
+        # snap_size bumped well above user's requested amount — tell them to increase
         output_result(
-            f"FAIL — Amount ${amount:.2f} is too small for this market at price ${price:.4f}.\n"
-            f"  Minimum order: ${min_order:.0f}. At this price, minimum spend is ${maker_amt:.2f}.\n"
-            f"  Try: --amount {max(amount, maker_amt + 1):.0f}",
+            f"FAIL — Order too small for this market. At the current price of ${price:.4f} per share, "
+            f"you need to buy at least ${maker_amt:.2f} worth.\n"
+            f"  Polymarket requires a minimum order of ${min_order:.0f}. Try a larger amount.\n"
+            f"  Suggested: --amount {max(int(amount) + 1, int(min_order / price) + 2)}",
             args.json,
-            {"status": "FAIL", "error": "below_min_order_size", "min_order": min_order, "actual_maker": maker_amt, "price": price},
+            {"status": "FAIL", "error": "min_order_size", "min_order": min_order, "actual_maker": maker_amt, "price": price},
         )
         return 1
     if shares <= 0:
@@ -885,7 +902,19 @@ def cmd_buy(args):
         resp = client.post_order(signed_order, order_type)
     except Exception as e:
         err_str = str(e)
-        if "insufficient" in err_str.lower() or "balance" in err_str.lower():
+        err_lower = err_str.lower()
+        # Check for minimum order size errors FIRST — NOT a balance issue
+        if "invalid amount" in err_lower or "min size" in err_lower or "minimum_order_size" in err_lower or "minimum order" in err_lower:
+            output_result(
+                f"FAIL — Polymarket requires a minimum order of ${min_order:.0f}. "
+                f"Your order was ${maker_amt:.2f} after price calculation at ${price:.4f}/share.\n"
+                f"  Try increasing the amount: --amount {max(int(amount) + 1, int(min_order / price) + 2)}",
+                args.json,
+                {"status": "FAIL", "error": "min_order_size", "min_order": min_order, "actual_maker": maker_amt, "price": price},
+            )
+            return 1
+        if "insufficient" in err_lower or "balance" in err_lower:
+            # Only say "insufficient balance" if error SPECIFICALLY mentions balance
             # Retry if a recent sell might still be settling
             if had_recent_sell(seconds=60):
                 import time

@@ -155,6 +155,8 @@ This warning also triggers automatically if a trade returns BLOCK with "risk ack
 - Simply say: "Funds settling from your sell, retrying in a few seconds..."
 - If still failing after 30 seconds, say: "Settlement is taking longer than usual, try again in a minute."
 
+**Rule 17 — MINIMUM ORDER SIZE:** Polymarket requires minimum $1 maker amount per order. When trading cheap outcomes (under $0.20), you need at least $5-10 to clear the minimum after rounding. If a trade fails with "invalid amount" or "min size", tell the user to increase their amount — do NOT say "insufficient balance." The script auto-rounds up when the order is close to the minimum, but very small amounts will be rejected outright. Example: buying YES at $0.13 with $1 rounds to $0.99 maker — the script bumps it to $1.04 automatically. But $0.50 at $0.13 is too far below minimum.
+
 **Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. Telegram-friendly onboarding flow:
 
 1. Tell the user: "Go to kalshi.com → Settings → API → Create API Key"
