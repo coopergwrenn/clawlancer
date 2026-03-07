@@ -310,7 +310,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
     return (
       <>
         Trade on{" "}
-        <InlineBrand path={POLYMARKET_PATH} color="#2963DC" label="Polymarket" viewBox="100 85 286 340" />
+        <InlineImage src="/skill-icons/polymarket.png" label="Polymarket" />
         {" "}and{" "}
         <InlineImage src="/skill-icons/kalshi.png" label="Kalshi" />
         {" "}&mdash; the world&apos;s largest prediction markets
