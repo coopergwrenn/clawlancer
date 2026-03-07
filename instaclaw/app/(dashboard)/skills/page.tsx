@@ -450,24 +450,19 @@ export default function SkillsPage() {
                   toggling={togglingSlug === skill.slug}
                   onToggle={() => handleToggle(skill)}
                 >
-                  {/* Solana DeFi wallet accordion — compact trigger */}
+                  {/* Solana DeFi wallet trigger — absolutely positioned bottom-right */}
                   {skill.slug === "solana-defi" && skill.enabled && (
-                    <div>
+                    <>
                       <button
                         onClick={() => setSolanaWalletOpen(!solanaWalletOpen)}
-                        className="flex items-center gap-1 text-[10px] cursor-pointer mt-1"
+                        className="text-[10px] cursor-pointer"
                         style={{ color: "var(--accent)" }}
                       >
-                        <span
-                          className="transition-transform duration-200 inline-block text-[8px]"
-                          style={{ transform: solanaWalletOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-                        >
-                          ▼
-                        </span>
-                        Wallet
+                        Wallet {solanaWalletOpen ? "▲" : "▼"}
                       </button>
                       {solanaWalletOpen && (
-                        <div className="mt-2 max-h-32 overflow-y-auto">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setSolanaWalletOpen(false)}>
+                          <div className="glass rounded-xl p-5 w-80 max-h-64 overflow-y-auto" style={{ border: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="flex items-center gap-2">
                               {solanaWallet ? (
@@ -524,9 +519,10 @@ export default function SkillsPage() {
                               </button>
                             </>
                           )}
+                          </div>
                         </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </SkillCard>
               </motion.div>
@@ -843,7 +839,7 @@ function SkillCard({
 
   return (
     <div
-      className="glass rounded-xl p-5"
+      className="glass rounded-xl p-5 h-[120px] relative overflow-hidden"
       style={{ border: "1px solid var(--border)" }}
     >
       <div className="flex items-start gap-3.5">
@@ -889,16 +885,10 @@ function SkillCard({
             className="text-xs leading-relaxed line-clamp-2"
             style={{ color: "var(--muted)" }}
           >
-            {skill.description}
+            {skill.slug === "solana-defi"
+              ? "Trade tokens on Solana via Jupiter and PumpPortal with built-in safety rails."
+              : skill.description}
           </p>
-          {skill.requiresApiKey && (
-            <p className="text-[11px] mt-1.5" style={{ color: "var(--muted)" }}>
-              Requires API key —{" "}
-              <a href="/env-vars" className="underline" style={{ color: "var(--accent)" }}>
-                add in Environment Variables
-              </a>
-            </p>
-          )}
         </div>
 
         {/* Toggle */}
@@ -968,7 +958,12 @@ function SkillCard({
           </button>
         )}
       </div>
-      {children}
+      {/* Absolutely positioned children (e.g. wallet trigger) */}
+      {children && (
+        <div className="absolute bottom-2 right-3">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -994,7 +989,7 @@ function IntegrationCard({
 
   return (
     <div
-      className="glass rounded-xl p-5"
+      className="glass rounded-xl p-5 h-[120px] overflow-hidden"
       style={{
         border: "1px solid var(--border)",
         opacity: isComingSoon ? 0.65 : 1,
