@@ -1022,11 +1022,59 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ── Virtuals Protocol (ACP) Marketplace Toggle ── */}
+          {/* ── Marketplaces ── */}
           <div data-tour="dash-marketplace">
             <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5" style={{ fontFamily: "var(--font-serif)" }}>
               Marketplaces
             </h2>
+
+            {/* Clawlancer Bounties — always active */}
+            <div
+              className="glass rounded-xl p-6 mb-4"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                    style={{
+                      background: "rgba(34,197,94,0.08)",
+                      border: "1px solid rgba(34,197,94,0.15)",
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgb(34,197,94)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
+                      <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
+                      <path d="M12 3v6" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Clawlancer Bounties</p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                      Active — your agent picks up freelance work and gets paid automatically
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className="relative w-12 h-7 rounded-full shrink-0"
+                  style={{
+                    background: "linear-gradient(135deg, #22c55e, #16a34a)",
+                    boxShadow: "0 0 0 1px rgba(34,197,94,0.2), 0 2px 8px rgba(22,163,74,0.3), inset 0 1px 1px rgba(255,255,255,0.2)",
+                  }}
+                >
+                  <span
+                    className="absolute top-1 w-5 h-5 rounded-full"
+                    style={{
+                      left: "24px",
+                      background: "linear-gradient(145deg, rgba(255,255,255,0.98), rgba(245,245,245,0.9))",
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.15), 0 0 0 0.5px rgba(255,255,255,0.6), inset 0 1px 0 rgba(255,255,255,0.8)",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Virtuals Protocol (ACP) */}
             <div
               className="glass rounded-xl p-6"
               style={{ border: "1px solid var(--border)" }}
@@ -1066,26 +1114,29 @@ export default function DashboardPage() {
                     setAgdpConfirm(vm.agdpEnabled ? "disable" : "enable");
                   }}
                   disabled={togglingAgdp}
-                  className="relative w-12 h-7 rounded-full transition-all cursor-pointer shrink-0 disabled:opacity-50"
+                  className="relative w-12 h-7 rounded-full transition-all duration-300 cursor-pointer shrink-0 disabled:opacity-50"
                   style={{
                     background: vm.agdpEnabled
-                      ? "linear-gradient(135deg, rgba(22,22,22,0.7), rgba(40,40,40,0.8))"
-                      : "rgba(0,0,0,0.08)",
+                      ? "linear-gradient(135deg, #22c55e, #16a34a)"
+                      : "rgba(0,0,0,0.06)",
                     boxShadow: vm.agdpEnabled
-                      ? "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05)"
-                      : "0 0 0 1px rgba(0,0,0,0.08), inset 0 1px 2px rgba(0,0,0,0.06)",
+                      ? "0 0 0 1px rgba(34,197,94,0.2), 0 2px 8px rgba(22,163,74,0.3), inset 0 1px 1px rgba(255,255,255,0.2)"
+                      : "0 0 0 1px rgba(0,0,0,0.06), inset 0 2px 4px rgba(0,0,0,0.08)",
                     backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
                   }}
                 >
                   <span
-                    className="absolute top-1 w-5 h-5 rounded-full transition-all"
+                    className="absolute top-1 w-5 h-5 rounded-full"
                     style={{
                       left: vm.agdpEnabled ? "24px" : "4px",
                       background: vm.agdpEnabled
-                        ? "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,240,240,0.9))"
-                        : "linear-gradient(135deg, rgba(255,255,255,0.85), rgba(230,230,230,0.8))",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                      transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
+                        ? "linear-gradient(145deg, rgba(255,255,255,0.98), rgba(245,245,245,0.9))"
+                        : "linear-gradient(145deg, rgba(255,255,255,0.9), rgba(235,235,235,0.85))",
+                      boxShadow: vm.agdpEnabled
+                        ? "0 2px 6px rgba(0,0,0,0.15), 0 0 0 0.5px rgba(255,255,255,0.6), inset 0 1px 0 rgba(255,255,255,0.8)"
+                        : "0 1px 3px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+                      transition: "left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
                     }}
                   />
                 </button>
