@@ -261,8 +261,8 @@ export function hasSkillIcon(slug: string): boolean {
 function InlineBrand({ path, color, label, viewBox = "0 0 24 24" }: { path: string; color: string; label: string; viewBox?: string }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 15, height: 15, borderRadius: 4, background: color, verticalAlign: "middle", marginRight: 2 }}>
-        <svg width={10} height={10} viewBox={viewBox} fill="white" style={{ shapeRendering: "geometricPrecision" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: 4, background: color, verticalAlign: "middle", marginRight: 3, flexShrink: 0 }}>
+        <svg width={11} height={11} viewBox={viewBox} fill="white" style={{ display: "block", shapeRendering: "geometricPrecision" }}>
           <path d={path} />
         </svg>
       </span>
@@ -274,8 +274,8 @@ function InlineBrand({ path, color, label, viewBox = "0 0 24 24" }: { path: stri
 function InlineImage({ src, label }: { src: string; label: string }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ display: "inline-flex", width: 15, height: 15, borderRadius: 4, overflow: "hidden", verticalAlign: "middle", marginRight: 2 }}>
-        <img src={src} alt="" style={{ width: 15, height: 15, objectFit: "cover" }} />
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: 4, overflow: "hidden", verticalAlign: "middle", marginRight: 3, flexShrink: 0 }}>
+        <img src={src} alt="" style={{ display: "block", width: 16, height: 16, objectFit: "cover" }} />
       </span>
       {label}
     </span>
