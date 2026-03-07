@@ -435,7 +435,7 @@ export default function SkillsPage() {
 
       {/* ── My Skills tab ── */}
       {!loading && activeTab === "skills" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <AnimatePresence mode="popLayout">
             {filteredSkills.map((skill, i) => (
               <motion.div
@@ -450,21 +450,21 @@ export default function SkillsPage() {
                   toggling={togglingSlug === skill.slug}
                   onToggle={() => handleToggle(skill)}
                 >
-                  {/* Solana DeFi wallet accordion — contained INSIDE the card */}
+                  {/* Solana DeFi wallet accordion — compact trigger */}
                   {skill.slug === "solana-defi" && skill.enabled && (
-                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                    <div>
                       <button
                         onClick={() => setSolanaWalletOpen(!solanaWalletOpen)}
-                        className="flex items-center gap-1.5 text-xs font-medium cursor-pointer w-full"
-                        style={{ color: "var(--muted)" }}
+                        className="flex items-center gap-1 text-[10px] cursor-pointer mt-1"
+                        style={{ color: "var(--accent)" }}
                       >
                         <span
-                          className="transition-transform duration-200 inline-block text-[10px]"
+                          className="transition-transform duration-200 inline-block text-[8px]"
                           style={{ transform: solanaWalletOpen ? "rotate(180deg)" : "rotate(0deg)" }}
                         >
                           ▼
                         </span>
-                        Agent Wallet
+                        Wallet
                       </button>
                       {solanaWalletOpen && (
                         <div className="mt-2 max-h-32 overflow-y-auto">
@@ -547,7 +547,7 @@ export default function SkillsPage() {
 
       {/* ── Integrations tab ── */}
       {!loading && activeTab === "integrations" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <AnimatePresence mode="popLayout">
             {filteredIntegrations.map((skill, i) => (
               <motion.div
@@ -886,7 +886,7 @@ function SkillCard({
             )}
           </div>
           <p
-            className="text-xs leading-relaxed"
+            className="text-xs leading-relaxed line-clamp-2"
             style={{ color: "var(--muted)" }}
           >
             {skill.description}
@@ -1042,7 +1042,7 @@ function IntegrationCard({
             )}
           </div>
           <p
-            className="text-xs leading-relaxed"
+            className="text-xs leading-relaxed line-clamp-2"
             style={{ color: "var(--muted)" }}
           >
             {skill.description}
