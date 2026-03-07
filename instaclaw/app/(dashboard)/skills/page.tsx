@@ -371,11 +371,10 @@ export default function SkillsPage() {
       <div
         className="flex gap-1 p-1 rounded-xl"
         style={{
-          background: "rgba(255,255,255,0.4)",
+          background: "rgba(255,255,255,0.35)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
-          boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.5), inset 0 1px 0 rgba(255,255,255,0.4), 0 2px 8px rgba(0,0,0,0.04)",
+          border: "1px solid rgba(255,255,255,0.3)",
         }}
       >
         {TABS.map((tab) => (
@@ -393,11 +392,11 @@ export default function SkillsPage() {
                 layoutId="skills-tab-pill"
                 className="absolute inset-0 rounded-lg"
                 style={{
-                  background: "rgba(255,255,255,0.7)",
+                  background: "rgba(255,255,255,0.55)",
                   backdropFilter: "blur(12px)",
                   WebkitBackdropFilter: "blur(12px)",
-                  boxShadow:
-                    "0 0 0 1px rgba(255,255,255,0.6), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
+                  border: "1px solid rgba(255,255,255,0.4)",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.3)",
                 }}
                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
               />
@@ -420,20 +419,19 @@ export default function SkillsPage() {
                 style={
                   isActive
                     ? {
-                        background:
-                          "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.9))",
+                        background: "rgba(0,0,0,0.75)",
                         color: "#fff",
-                        backdropFilter: "blur(8px)",
-                        WebkitBackdropFilter: "blur(8px)",
-                        boxShadow:
-                          "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), 0 0 8px rgba(0,0,0,0.1)",
+                        backdropFilter: "blur(12px)",
+                        WebkitBackdropFilter: "blur(12px)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                       }
                     : {
                         background: "rgba(255,255,255,0.5)",
                         color: "var(--muted)",
                         backdropFilter: "blur(8px)",
                         WebkitBackdropFilter: "blur(8px)",
-                        boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
+                        border: "1px solid rgba(255,255,255,0.3)",
                       }
                 }
               >
@@ -442,10 +440,11 @@ export default function SkillsPage() {
                     layoutId="skills-category-pill"
                     className="absolute inset-0 rounded-full"
                     style={{
-                      background:
-                        "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.9))",
-                      boxShadow:
-                        "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), 0 0 8px rgba(0,0,0,0.1)",
+                      background: "rgba(0,0,0,0.75)",
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                     }}
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
@@ -1466,20 +1465,19 @@ function MarketplaceShell({ showToast }: { showToast: (message: string, type: "s
               style={
                 isActive
                   ? {
-                      background:
-                        "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.9))",
+                      background: "rgba(0,0,0,0.75)",
                       color: "#fff",
-                      backdropFilter: "blur(8px)",
-                      WebkitBackdropFilter: "blur(8px)",
-                      boxShadow:
-                        "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), 0 0 8px rgba(0,0,0,0.1)",
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                     }
                   : {
                       background: "rgba(255,255,255,0.5)",
                       color: "var(--muted)",
                       backdropFilter: "blur(8px)",
                       WebkitBackdropFilter: "blur(8px)",
-                      boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
+                      border: "1px solid rgba(255,255,255,0.3)",
                     }
               }
             >
