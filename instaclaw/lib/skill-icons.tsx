@@ -261,13 +261,21 @@ export function hasSkillIcon(slug: string): boolean {
 function InlineBrand({ path, color, label, viewBox = "0 0 24 24" }: { path: string; color: string; label: string; viewBox?: string }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span
-        className="rounded-full"
-        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, background: color, verticalAlign: "-2px", marginRight: 2 }}
-      >
-        <svg width={8} height={8} viewBox={viewBox} fill="white">
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 15, height: 15, borderRadius: 4, background: color, verticalAlign: "middle", marginRight: 2 }}>
+        <svg width={10} height={10} viewBox={viewBox} fill="white" style={{ shapeRendering: "geometricPrecision" }}>
           <path d={path} />
         </svg>
+      </span>
+      {label}
+    </span>
+  );
+}
+
+function InlineImage({ src, label }: { src: string; label: string }) {
+  return (
+    <span style={{ whiteSpace: "nowrap" }}>
+      <span style={{ display: "inline-flex", width: 15, height: 15, borderRadius: 4, overflow: "hidden", verticalAlign: "middle", marginRight: 2 }}>
+        <img src={src} alt="" style={{ width: 15, height: 15, objectFit: "cover" }} />
       </span>
       {label}
     </span>
@@ -290,17 +298,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Lists and sells products on{" "}
         <InlineBrand path={SHOPIFY_PATH} color="#7AB55C" label="Shopify" />
         ,{" "}
-        <span style={{ whiteSpace: "nowrap" }}>
-          <span
-            className="rounded-full"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, background: "#333", verticalAlign: "-2px", marginRight: 2 }}
-          >
-            <svg width={8} height={8} viewBox="0 0 24 24" fill="white">
-              <path d={EBAY_PATH} />
-            </svg>
-          </span>
-          eBay
-        </span>
+        <InlineBrand path={EBAY_PATH} color="#333" label="eBay" />
         , and marketplaces
       </>
     );
@@ -311,15 +309,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Trade on{" "}
         <InlineBrand path={POLYMARKET_PATH} color="#2963DC" label="Polymarket" viewBox="0 0 512 512" />
         {" "}and{" "}
-        <span style={{ whiteSpace: "nowrap" }}>
-          <span
-            className="rounded-full overflow-hidden"
-            style={{ display: "inline-flex", width: 13, height: 13, verticalAlign: "-2px", marginRight: 2 }}
-          >
-            <img src="/skill-icons/kalshi.png" alt="" style={{ width: 13, height: 13, objectFit: "cover" }} />
-          </span>
-          Kalshi
-        </span>
+        <InlineImage src="/skill-icons/kalshi.png" label="Kalshi" />
         {" "}&mdash; the world&apos;s largest prediction markets
       </>
     );
