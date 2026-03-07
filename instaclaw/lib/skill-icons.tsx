@@ -309,6 +309,12 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Trade on{" "}
         <InlineBrand path={POLYMARKET_PATH} color="#2963DC" label="Polymarket" viewBox="0 0 512 512" />
         {" "}and{" "}
+        <span
+          className="inline-flex items-center justify-center rounded-full align-[-4px] mr-0.5 overflow-hidden"
+          style={{ width: 16, height: 16 }}
+        >
+          <img src="/skill-icons/kalshi.png" alt="Kalshi" className="w-full h-full object-cover" />
+        </span>
         Kalshi — the world&apos;s largest prediction markets
       </>
     );
