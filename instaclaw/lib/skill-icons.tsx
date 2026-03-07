@@ -301,7 +301,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Lists and sells products on{" "}
         <InlineImage src="/skill-icons/shopify.png" label="Shopify" />
         ,{" "}
-        <InlineBrand path={EBAY_PATH} color="#333" label="eBay" viewBox="-1 3 26 16" />
+        <InlineImage src="/skill-icons/ebay.png" label="eBay" />
         , and marketplaces
       </>
     );
