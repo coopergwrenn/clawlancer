@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RotateCw, Loader2, Search, Download, Plus, Star, TrendingUp, Users, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSearchParams } from "next/navigation";
-import { SkillIcon, hasSkillIcon } from "@/lib/skill-icons";
+import { SkillIcon, hasSkillIcon, getRichDescription } from "@/lib/skill-icons";
 import { SkillOrb } from "@/components/skill-orb";
 import { resolveSkillOrb, CATEGORY_COLORS } from "@/lib/skill-orb-mapping";
 
@@ -885,9 +885,10 @@ function SkillCard({
             className="text-xs leading-relaxed line-clamp-2"
             style={{ color: "var(--muted)" }}
           >
-            {skill.slug === "solana-defi"
-              ? "Trade tokens on Solana via Jupiter and PumpPortal with built-in safety rails."
-              : skill.description}
+            {getRichDescription(skill.slug)
+              ?? (skill.slug === "solana-defi"
+                ? "Trade tokens on Solana via Jupiter and PumpPortal with built-in safety rails."
+                : skill.description)}
           </p>
         </div>
 
