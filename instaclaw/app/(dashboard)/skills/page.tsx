@@ -434,7 +434,7 @@ export default function SkillsPage() {
 
       {/* ── My Skills tab ── */}
       {!loading && activeTab === "skills" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <AnimatePresence mode="popLayout">
             {filteredSkills.map((skill, i) => (
               <motion.div
@@ -443,7 +443,7 @@ export default function SkillsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ delay: i * 0.04, duration: 0.25 }}
-                className="h-full"
+                layout
               >
                 <SkillCard
                   skill={skill}
@@ -452,70 +452,78 @@ export default function SkillsPage() {
                 />
                 {/* Solana DeFi wallet panel — shown when enabled */}
                 {skill.slug === "solana-defi" && skill.enabled && (
-                  <div
-                    className="glass rounded-xl p-4 mt-2"
-                    style={{ border: "1px solid var(--border)" }}
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium" style={{ color: "var(--muted)" }}>
-                        Agent Wallet
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => fetchSolanaBalance()}
-                          disabled={solanaBalanceLoading}
-                          className="text-xs px-2 py-0.5 rounded cursor-pointer"
-                          style={{ color: "var(--accent)", opacity: solanaBalanceLoading ? 0.5 : 1 }}
-                        >
-                          {solanaBalanceLoading ? <RotateCw className="w-3 h-3 animate-spin inline" /> : "Refresh"}
-                        </button>
-                      </div>
-                    </div>
-                    {solanaWallet ? (
-                      <>
-                        <div className="flex items-center gap-2 mb-2">
-                          <code className="text-xs font-mono truncate" style={{ color: "var(--foreground)" }}>
-                            {solanaWallet.slice(0, 6)}...{solanaWallet.slice(-4)}
-                          </code>
+                    <div
+                      className="glass rounded-xl p-4 mt-2"
+                      style={{ border: "1px solid var(--border)" }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+                          Agent Wallet
+                        </span>
+                        <div className="flex gap-2">
                           <button
-                            onClick={() => { navigator.clipboard.writeText(solanaWallet); showToast("Address copied", "success"); }}
-                            className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer"
-                            style={{ background: "rgba(255,255,255,0.05)", color: "var(--muted)" }}
+                            onClick={() => fetchSolanaBalance()}
+                            disabled={solanaBalanceLoading}
+                            className="text-xs px-2 py-0.5 rounded cursor-pointer"
+                            style={{ color: "var(--accent)", opacity: solanaBalanceLoading ? 0.5 : 1 }}
                           >
-                            Copy
+                            {solanaBalanceLoading ? <RotateCw className="w-3 h-3 animate-spin inline" /> : "Refresh"}
                           </button>
-                          <a
-                            href={`https://solscan.io/account/${solanaWallet}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[10px] underline"
-                            style={{ color: "var(--accent)" }}
-                          >
-                            Solscan
-                          </a>
                         </div>
-                        <p className="text-xs mb-2" style={{ color: "var(--foreground)" }}>
-                          Balance: {solanaBalance !== null ? `${solanaBalance.toFixed(4)} SOL` : "..."}
-                        </p>
-                        {solanaBalance === 0 && (
-                          <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>
-                            Fund your agent — send SOL to this address from Phantom, Coinbase, or any wallet.
+                      </div>
+                      {solanaWallet ? (
+                        <>
+                          <div className="flex items-center gap-2 mb-2">
+                            <code className="text-xs font-mono truncate" style={{ color: "var(--foreground)" }}>
+                              {solanaWallet.slice(0, 6)}...{solanaWallet.slice(-4)}
+                            </code>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(solanaWallet); showToast("Address copied", "success"); }}
+                              className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer"
+                              style={{ background: "rgba(255,255,255,0.05)", color: "var(--muted)" }}
+                            >
+                              Copy
+                            </button>
+                            <a
+                              href={`https://solscan.io/account/${solanaWallet}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] underline"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              Solscan
+                            </a>
+                          </div>
+                          <p className="text-xs mb-2" style={{ color: "var(--foreground)" }}>
+                            Balance: {solanaBalance !== null ? `${solanaBalance.toFixed(4)} SOL` : "..."}
                           </p>
-                        )}
-                        <button
-                          onClick={() => setSolanaImportModal(true)}
-                          className="text-[11px] underline cursor-pointer"
-                          style={{ color: "var(--muted)" }}
-                        >
-                          Import existing wallet
-                        </button>
-                      </>
-                    ) : (
-                      <p className="text-xs" style={{ color: "var(--muted)" }}>
-                        Wallet generating...
-                      </p>
-                    )}
-                  </div>
+                          {solanaBalance === 0 && (
+                            <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>
+                              Fund your agent — send SOL to this address from Phantom, Coinbase, or any wallet.
+                            </p>
+                          )}
+                          <button
+                            onClick={() => setSolanaImportModal(true)}
+                            className="text-[11px] underline cursor-pointer"
+                            style={{ color: "var(--muted)" }}
+                          >
+                            Import existing wallet
+                          </button>
+                        </>
+                      ) : (
+                        <p className="text-xs" style={{ color: "var(--muted)" }}>
+                          Wallet generating...
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
                 )}
               </motion.div>
             ))}
@@ -535,7 +543,7 @@ export default function SkillsPage() {
 
       {/* ── Integrations tab ── */}
       {!loading && activeTab === "integrations" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <AnimatePresence mode="popLayout">
             {filteredIntegrations.map((skill, i) => (
               <motion.div
@@ -544,7 +552,6 @@ export default function SkillsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ delay: i * 0.04, duration: 0.25 }}
-                className="h-full"
               >
                 <IntegrationCard
                   skill={skill}
@@ -830,7 +837,7 @@ function SkillCard({
 
   return (
     <div
-      className="glass rounded-xl p-5 h-full"
+      className="glass rounded-xl p-5"
       style={{ border: "1px solid var(--border)" }}
     >
       <div className="flex items-start gap-3.5">
@@ -986,7 +993,7 @@ function IntegrationCard({
 
   return (
     <div
-      className="glass rounded-xl p-5 h-full"
+      className="glass rounded-xl p-5"
       style={{
         border: "1px solid var(--border)",
         opacity: isComingSoon ? 0.65 : 1,
