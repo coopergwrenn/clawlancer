@@ -261,17 +261,14 @@ export function hasSkillIcon(slug: string): boolean {
 function InlineBrand({ path, color, label, viewBox = "0 0 24 24" }: { path: string; color: string; label: string; viewBox?: string }) {
   return (
     <>
-      <svg
-        width={14}
-        height={14}
-        viewBox={viewBox}
-        fill={color}
-        className="inline-block align-[-2px] mr-0.5"
-        role="img"
-        aria-label={label}
+      <span
+        className="inline-flex items-center justify-center rounded-full align-[-4px] mr-0.5"
+        style={{ width: 16, height: 16, background: color }}
       >
-        <path d={path} />
-      </svg>
+        <svg width={9} height={9} viewBox={viewBox} fill="white" role="img" aria-label={label}>
+          <path d={path} />
+        </svg>
+      </span>
       {label}
     </>
   );
@@ -293,15 +290,14 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Lists and sells products on{" "}
         <InlineBrand path={SHOPIFY_PATH} color="#7AB55C" label="Shopify" />
         ,{" "}
-        <svg width={16} height={16} viewBox="0 0 16 16" className="inline-block align-[-3px] mr-0.5" role="img" aria-label="eBay">
-          <circle cx="8" cy="8" r="8" fill="#1a1a1a" />
-          <text x="8" y="11" textAnchor="middle" fontSize="8" fontWeight="700" fontFamily="system-ui, sans-serif" letterSpacing="-0.5">
-            <tspan fill="#E53238">e</tspan>
-            <tspan fill="#0064D2">b</tspan>
-            <tspan fill="#F5AF02">a</tspan>
-            <tspan fill="#86B817">y</tspan>
-          </text>
-        </svg>
+        <span
+          className="inline-flex items-center justify-center rounded-full align-[-4px] mr-0.5"
+          style={{ width: 16, height: 16, background: "#333" }}
+        >
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="white" role="img" aria-label="eBay">
+            <path d={EBAY_PATH} />
+          </svg>
+        </span>
         eBay
         , and marketplaces
       </>
@@ -313,9 +309,6 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Trade on{" "}
         <InlineBrand path={POLYMARKET_PATH} color="#2963DC" label="Polymarket" viewBox="0 0 512 512" />
         {" "}and{" "}
-        <svg width={14} height={14} viewBox="0 0 24 24" className="inline-block align-[-2px] mr-0.5" role="img" aria-label="Kalshi">
-          <rect width="24" height="24" rx="5" fill="#00D26A" />
-        </svg>
         Kalshi — the world&apos;s largest prediction markets
       </>
     );
