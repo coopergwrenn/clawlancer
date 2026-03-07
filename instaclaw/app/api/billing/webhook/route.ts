@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck, checkDuplicateIP } from "@/lib/ssh";
+import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -372,10 +372,44 @@ async function processEvent(event: any) {
           }
         }
 
-        // Reclaim the VM
+        // Reclaim the VM (DB-level: clears assignment, tokens, config)
         await supabase.rpc("instaclaw_reclaim_vm", {
           p_user_id: sub.user_id,
         });
+
+        // Wipe VM filesystem in background (sessions, workspace, logs)
+        // This runs after the Stripe response is sent to avoid timeout.
+        if (userVm) {
+          const vmForWipe = await supabase
+            .from("instaclaw_vms")
+            .select("id, ip_address, ssh_port, ssh_user")
+            .eq("id", userVm.id)
+            .single();
+          if (vmForWipe.data) {
+            after(async () => {
+              const wipeResult = await wipeVMForNextUser(vmForWipe.data);
+              if (wipeResult.success) {
+                // Mark VM as ready for next user after successful wipe
+                await supabase
+                  .from("instaclaw_vms")
+                  .update({ status: "ready" })
+                  .eq("id", userVm.id);
+                logger.info("VM wiped and returned to ready pool", {
+                  route: "billing/webhook",
+                  vmId: userVm.id,
+                  userId: sub.user_id,
+                });
+              } else {
+                logger.error("VM wipe failed — VM left in provisioning state", {
+                  route: "billing/webhook",
+                  vmId: userVm.id,
+                  userId: sub.user_id,
+                  error: wipeResult.error,
+                });
+              }
+            });
+          }
+        }
 
         // Send cancellation email
         const { data: user } = await supabase

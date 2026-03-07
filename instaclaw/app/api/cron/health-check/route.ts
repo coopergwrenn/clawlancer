@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
   let sshChecked = 0;
   let sshFailed = 0;
   let sshQuarantined = 0;
+  let telegramConflictsHealed = 0;
 
   // ========================================================================
   // Pass 0: SSH connectivity check — catch dead SSH daemons before they
@@ -267,6 +268,60 @@ export async function GET(req: NextRequest) {
           health_fail_count: 0,
         })
         .eq("id", vm.id);
+
+      // ── Telegram 409 conflict self-heal ──
+      // Gateway reports healthy (HTTP 200) but Telegram polling is stuck in
+      // a 409 conflict loop. The gateway never self-heals from this — it
+      // backs off to 30s retries indefinitely. Fix: call deleteWebhook to
+      // clear the stale long-poll, then hard-restart the gateway.
+      if (result.telegramConflict) {
+        logger.warn("Telegram 409 conflict loop detected on healthy gateway — auto-healing", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+        });
+
+        try {
+          const healSsh = await connectSSH(vm);
+          try {
+            const DBUS = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
+            // Read bot token from config
+            const tokenResult = await healSsh.execCommand(
+              'python3 -c "import json; d=json.load(open(\'/home/openclaw/.openclaw/openclaw.json\')); print(d.get(\'channels\',{}).get(\'telegram\',{}).get(\'botToken\',\'\'))" 2>/dev/null'
+            );
+            const botToken = tokenResult.stdout?.trim();
+
+            if (botToken) {
+              // Clear pending long-poll connections on Telegram's side
+              await healSsh.execCommand(
+                `curl -s --max-time 10 "https://api.telegram.org/bot${botToken}/deleteWebhook" > /dev/null 2>&1`
+              );
+            }
+
+            // Hard restart: stop + pkill + start
+            await healSsh.execCommand(`${DBUS} && systemctl --user stop openclaw-gateway`);
+            await healSsh.execCommand('pkill -9 -f "openclaw.*gateway" 2>/dev/null || true');
+            // Wait for Telegram to release the stale long-poll
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            await healSsh.execCommand(`${DBUS} && systemctl --user start openclaw-gateway`);
+
+            telegramConflictsHealed++;
+            logger.info("Telegram 409 conflict auto-healed", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+            });
+          } finally {
+            healSsh.dispose();
+          }
+        } catch (err) {
+          logger.error("Failed to auto-heal Telegram 409 conflict", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            error: String(err),
+          });
+        }
+      }
     } else {
       unhealthy++;
       const newFailCount = currentFailCount + 1;
@@ -1796,6 +1851,7 @@ export async function GET(req: NextRequest) {
     telegramDupesFixed,
     telegramTokenMissing,
     readyPoolTokensCleaned,
+    telegramConflictsHealed,
     suspended,
     sessionsCleared,
     sessionsAlerted,

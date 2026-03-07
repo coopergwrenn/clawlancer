@@ -2170,6 +2170,20 @@ export async function configureOpenClaw(
       '# Install system prompt (with embedded memory if available)',
     );
 
+    // ── Pre-wipe: clear previous user's data before setting up new user ──
+    // PRIVACY: Ensures no data leaks between users when a VM is reused.
+    // Clears workspace files, session history, and old log files.
+    scriptParts.push(
+      '# PRIVACY: Wipe previous user data before configuring for new user',
+      'rm -rf $HOME/.openclaw/workspace/* $HOME/.openclaw/workspace/.* 2>/dev/null || true',
+      'rm -rf $HOME/.openclaw/agents/main/sessions/*.jsonl $HOME/.openclaw/agents/main/sessions/sessions.json 2>/dev/null || true',
+      'rm -rf $HOME/.openclaw/agents/main/sessions-backup/* 2>/dev/null || true',
+      'rm -f /tmp/openclaw/*.log 2>/dev/null || true',
+      'mkdir -p $HOME/.openclaw/workspace/memory',
+      'echo "# Memory" > $HOME/.openclaw/workspace/MEMORY.md',
+      '',
+    );
+
     // ── Write OpenClaw workspace files ──
     // OpenClaw reads SOUL.md, BOOTSTRAP.md, USER.md, MEMORY.md from ~/.openclaw/workspace/.
     // IDENTITY.md and AGENTS.md have been merged into SOUL.md (PRD Phase 1).
@@ -3105,6 +3119,23 @@ export async function configureOpenClaw(
       '  sed -i "s/^StartLimitAction=.*/StartLimitAction=stop/" "$UNIT"',
       '  grep -q "^StartLimitAction=" "$UNIT" || sed -i "/^\\[Unit\\]/a StartLimitAction=stop" "$UNIT"',
       '  grep -q "^ExecStartPre=" "$UNIT" || sed -i "/^ExecStart=/i ExecStartPre=/bin/bash -c \'pkill -9 -f \\\"[c]hrome.*remote-debugging-port\\\" 2>/dev/null || true\'" "$UNIT"',
+      '',
+      '  # Deploy telegram-pre-start.sh: calls deleteWebhook before gateway starts',
+      '  # to prevent 409 conflict loops where the gateway fights its own stale long-poll',
+      '  TG_PRESTARTSH="$HOME/.openclaw/telegram-pre-start.sh"',
+      '  cat > "$TG_PRESTARTSH" << \'TGEOF\'',
+      '#!/bin/bash',
+      '# Clear pending Telegram long-poll connections before gateway starts.',
+      '# Prevents 409 conflict loop where gateway fights its own stale getUpdates request.',
+      'BOT_TOKEN=$(python3 -c "import json; d=json.load(open(\'/home/openclaw/.openclaw/openclaw.json\')); print(d.get(\'channels\',{}).get(\'telegram\',{}).get(\'botToken\',\'\'))" 2>/dev/null)',
+      'if [ -n "$BOT_TOKEN" ]; then',
+      '  curl -s --max-time 10 "https://api.telegram.org/bot$BOT_TOKEN/deleteWebhook" > /dev/null 2>&1 || true',
+      '  sleep 2',
+      'fi',
+      'TGEOF',
+      '  chmod +x "$TG_PRESTARTSH"',
+      '  grep -q "telegram-pre-start" "$UNIT" || sed -i "/^ExecStart=/i ExecStartPre=/bin/bash $TG_PRESTARTSH" "$UNIT"',
+      '',
       '  systemctl --user daemon-reload',
       'fi',
       '',
@@ -3939,19 +3970,21 @@ export async function checkHealth(
 export async function checkHealthExtended(
   vm: VMRecord,
   gatewayToken?: string
-): Promise<{ healthy: boolean; largestSessionBytes: number }> {
+): Promise<{ healthy: boolean; largestSessionBytes: number; telegramConflict: boolean }> {
   try {
     const ssh = await connectSSH(vm);
     try {
-      // Single SSH command: HTTP health check + largest session file size.
-      // Uses curl instead of `openclaw gateway health` because the CLI
-      // command requires device pairing (WebSocket), but curl checks the
-      // HTTP endpoint directly — a more reliable health signal.
+      // Single SSH command: HTTP health check + largest session file size +
+      // Telegram 409 conflict detection (counts recent 409s in journal).
       const cmd = [
         `HTTP_CODE=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://localhost:${GATEWAY_PORT}/health)`,
         `; echo "HTTP:$HTTP_CODE"`,
         // Report largest .jsonl session file size in bytes (or 0 if none)
         '; du -b ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | sort -rn | head -1 | cut -f1 || echo "0"',
+        // Count 409 conflict lines in last 5 minutes of journal
+        '; export XDG_RUNTIME_DIR="/run/user/$(id -u)"',
+        '; CONFLICTS=$(journalctl --user -u openclaw-gateway --since "5 minutes ago" --no-pager 2>/dev/null | grep -c "409.*Conflict\\|getUpdates conflict" || echo 0)',
+        '; echo "CONFLICTS:$CONFLICTS"',
       ].join(' ');
       const result = await ssh.execCommand(cmd);
 
@@ -3962,19 +3995,25 @@ export async function checkHealthExtended(
       let largestSessionBytes = 0;
       const lines = result.stdout.split('\n');
       for (const line of lines) {
-        if (line.match(/HTTP:/)) continue;
+        if (line.match(/HTTP:|CONFLICTS:/)) continue;
         const sizeNum = parseInt(line.trim(), 10);
         if (!isNaN(sizeNum) && sizeNum > largestSessionBytes) {
           largestSessionBytes = sizeNum;
         }
       }
 
-      return { healthy, largestSessionBytes };
+      // Parse conflict count
+      const conflictMatch = result.stdout.match(/CONFLICTS:(\d+)/);
+      const conflictCount = conflictMatch ? parseInt(conflictMatch[1], 10) : 0;
+      // 3+ conflicts in 5 minutes = stuck in a conflict loop
+      const telegramConflict = conflictCount >= 3;
+
+      return { healthy, largestSessionBytes, telegramConflict };
     } finally {
       ssh.dispose();
     }
   } catch {
-    return { healthy: false, largestSessionBytes: 0 };
+    return { healthy: false, largestSessionBytes: 0, telegramConflict: false };
   }
 }
 
@@ -4055,7 +4094,7 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
       const wipeCmd = [
         // 1. Wipe ALL workspace files (user's memory, personality, projects)
         'rm -rf ~/.openclaw/workspace/*',
-        'rm -rf ~/.openclaw/workspace/.*', // hidden files like .bootstrap_consumed
+        'find ~/.openclaw/workspace/ -maxdepth 1 -name ".*" -not -name "." -not -name ".." -exec rm -rf {} + 2>/dev/null || true',
 
         // 2. Wipe ALL session/conversation files
         'rm -rf ~/.openclaw/agents/main/sessions/*',
@@ -4077,6 +4116,17 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
 
         // 7. Kill any lingering Chrome processes
         'pkill -9 -f "chrome.*remote-debugging-port" 2>/dev/null || true',
+
+        // 8. Purge config backups (may contain stale telegram bot tokens)
+        'rm -f ~/.openclaw/openclaw.json.bak* 2>/dev/null || true',
+        'rm -f /tmp/openclaw-backup.json 2>/dev/null || true',
+
+        // 9. Clear bash history (may contain user commands/secrets)
+        'rm -f ~/.bash_history 2>/dev/null || true',
+        'history -c 2>/dev/null || true',
+
+        // 10. Clear device pairing data
+        'rm -rf ~/.openclaw/devices/* 2>/dev/null || true',
       ].join(' && ');
 
       const result = await ssh.execCommand(wipeCmd);
@@ -4090,7 +4140,7 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
 
       logger.info("VM wiped for next user", {
         vmId: vm.id,
-        vmName: (vm as Record<string, unknown>).name,
+        vmName: (vm as unknown as Record<string, unknown>).name,
       });
 
       return { success: true };

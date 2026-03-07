@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
-import { resetAgentMemory, restartGateway, checkDuplicateIP } from "@/lib/ssh";
+import { resetAgentMemory, restartGateway, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -25,11 +25,15 @@ export async function POST(req: NextRequest) {
       // Check for duplicate IPs before reclaim — flag for investigation
       const { data: reclaimVm } = await supabase
         .from("instaclaw_vms")
-        .select("id, ip_address")
+        .select("*")
         .eq("id", vmId)
         .single();
 
-      if (reclaimVm?.ip_address) {
+      if (!reclaimVm) {
+        return NextResponse.json({ error: "VM not found" }, { status: 404 });
+      }
+
+      if (reclaimVm.ip_address) {
         const { duplicates } = await checkDuplicateIP(reclaimVm.ip_address, reclaimVm.id);
         if (duplicates.length > 0) {
           const desc = duplicates.map((d: { name: string | null; id: string; status: string }) => `${d.name ?? d.id} (${d.status})`).join(", ");
@@ -46,21 +50,45 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Unassign VM from user
-      await supabase
-        .from("instaclaw_vms")
-        .update({
-          assigned_to: null,
-          status: "ready",
-          gateway_url: null,
-          control_ui_url: null,
-          telegram_bot_token: null,
-          telegram_bot_username: null,
-          telegram_chat_id: null,
-          health_status: "unknown",
-        })
-        .eq("id", vmId);
-      return NextResponse.json({ success: true });
+      // Stamp last_assigned_to before reclaim (for data migration if user re-subscribes)
+      if (reclaimVm.assigned_to) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            last_assigned_to: reclaimVm.assigned_to,
+            telegram_bot_token: null,
+            telegram_bot_username: null,
+            telegram_chat_id: null,
+          })
+          .eq("id", vmId);
+
+        // Use the same RPC as billing webhook for complete DB cleanup
+        await supabase.rpc("instaclaw_reclaim_vm", { p_user_id: reclaimVm.assigned_to });
+      } else {
+        // VM has no user — just reset to ready
+        await supabase
+          .from("instaclaw_vms")
+          .update({ status: "provisioning", health_status: "unknown" })
+          .eq("id", vmId);
+      }
+
+      // Wipe filesystem (sessions, workspace, memory, config backups, etc.)
+      const wipeResult = await wipeVMForNextUser(reclaimVm);
+      if (wipeResult.success) {
+        // Mark as ready only after successful filesystem wipe
+        await supabase
+          .from("instaclaw_vms")
+          .update({ status: "ready" })
+          .eq("id", vmId);
+      } else {
+        logger.error("Admin reclaim: filesystem wipe failed", {
+          vmId,
+          error: wipeResult.error,
+        });
+        // Leave in 'provisioning' status so it doesn't get assigned with stale data
+      }
+
+      return NextResponse.json({ success: true, wiped: wipeResult.success });
     }
 
     case "reconfigure": {
