@@ -50,16 +50,52 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
     }
 
-    const path = req.nextUrl.searchParams.get("path") || "~/workspace";
+    const BROWSE_ROOT = "~/.openclaw/workspace";
+    const path = req.nextUrl.searchParams.get("path") || BROWSE_ROOT;
     const file = req.nextUrl.searchParams.get("file");
     const download = req.nextUrl.searchParams.get("download") === "1";
 
     // Block path traversal
     if (path.includes("..") || file?.includes("..")) {
       return NextResponse.json(
-        { error: "Path traversal not allowed: '..' is forbidden" },
+        { error: "Path traversal not allowed" },
         { status: 400 }
       );
+    }
+
+    // Directory browsing: only allow within ~/.openclaw/workspace
+    if (!path.startsWith(BROWSE_ROOT)) {
+      return NextResponse.json(
+        { error: "Access restricted to workspace" },
+        { status: 403 }
+      );
+    }
+
+    // File viewing/downloading: block protected system files
+    if (file) {
+      if (!file.startsWith(BROWSE_ROOT)) {
+        return NextResponse.json(
+          { error: "Access restricted to workspace" },
+          { status: 403 }
+        );
+      }
+      const fileName = file.split("/").pop()?.toLowerCase() || "";
+      const BLOCKED_FILES = [
+        "soul.md", "capabilities.md", "quick-reference.md", "tools.md",
+        "bootstrap.md", "user.md",
+        ".env", "auth-profiles.json", "wallet.json",
+      ];
+      const BLOCKED_DIRS = ["/skills/", "/.openclaw/"];
+      const isBlocked =
+        BLOCKED_FILES.includes(fileName) ||
+        BLOCKED_DIRS.some((d) => file.includes(d)) ||
+        fileName.startsWith(".env");
+      if (isBlocked) {
+        return NextResponse.json(
+          { error: "This file is protected" },
+          { status: 403 }
+        );
+      }
     }
 
     if (file) {

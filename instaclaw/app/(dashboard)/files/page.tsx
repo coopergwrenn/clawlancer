@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Folder, File, ArrowLeft, FolderOpen, Download, Image, Film, FileText } from "lucide-react";
+import { Folder, File, ArrowLeft, FolderOpen, Download, Image, Film, FileText, Lock } from "lucide-react";
 
 interface FileEntry {
   name: string;
@@ -27,6 +27,19 @@ const TEXT_EXTS = new Set([
 function getExt(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+}
+
+const PROTECTED_FILES = new Set([
+  "soul.md", "capabilities.md", "quick-reference.md", "tools.md",
+  "bootstrap.md", "user.md",
+  ".env", "auth-profiles.json", "wallet.json",
+]);
+const PROTECTED_DIRS = new Set(["skills", ".openclaw"]);
+
+function isProtected(name: string, type: string): boolean {
+  if (type === "directory" && PROTECTED_DIRS.has(name)) return true;
+  const lower = name.toLowerCase();
+  return PROTECTED_FILES.has(lower) || lower.startsWith(".env");
 }
 
 function getFileIcon(name: string) {
@@ -116,7 +129,7 @@ export default function FilesPage() {
     }
   }
 
-  const displayPath = (p: string) => p.replace("~/.openclaw/workspace", "~/workspace");
+  const displayPath = (p: string) => p.replace("~/.openclaw/workspace", "~/.openclaw/workspace");
 
   // File viewer content
   function renderFileViewer() {
@@ -244,27 +257,43 @@ export default function FilesPage() {
         </div>
       ) : (
         <div className="glass rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-          {files.map((file, i) => (
-            <button
-              key={file.name}
-              onClick={() => handleClick(file)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/3 cursor-pointer"
-              style={{
-                borderBottom:
-                  i < files.length - 1 ? "1px solid var(--border)" : undefined,
-              }}
-            >
-              {file.type === "directory" ? (
-                <Folder className="w-4 h-4 shrink-0" style={{ color: "#3b82f6" }} />
-              ) : (
-                getFileIcon(file.name)
-              )}
-              <span className="text-sm flex-1 truncate">{file.name}</span>
-              <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>
-                {file.type === "directory" ? "—" : formatSize(file.size)}
-              </span>
-            </button>
-          ))}
+          {files.map((file, i) => {
+            const locked = isProtected(file.name, file.type);
+            return locked ? (
+              <div
+                key={file.name}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left opacity-50"
+                style={{
+                  borderBottom:
+                    i < files.length - 1 ? "1px solid var(--border)" : undefined,
+                }}
+              >
+                <Lock className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
+                <span className="text-sm flex-1 truncate">{file.name}</span>
+                <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>System</span>
+              </div>
+            ) : (
+              <button
+                key={file.name}
+                onClick={() => handleClick(file)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/3 cursor-pointer"
+                style={{
+                  borderBottom:
+                    i < files.length - 1 ? "1px solid var(--border)" : undefined,
+                }}
+              >
+                {file.type === "directory" ? (
+                  <Folder className="w-4 h-4 shrink-0" style={{ color: "#3b82f6" }} />
+                ) : (
+                  getFileIcon(file.name)
+                )}
+                <span className="text-sm flex-1 truncate">{file.name}</span>
+                <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>
+                  {file.type === "directory" ? "—" : formatSize(file.size)}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
