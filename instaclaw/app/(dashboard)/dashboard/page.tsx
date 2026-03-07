@@ -993,25 +993,37 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </div>
-                <select
-                  value={vm.model ?? "claude-sonnet-4-5-20250929"}
-                  onChange={(e) => handleModelChange(e.target.value)}
-                  disabled={updatingModel}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer disabled:opacity-50"
-                  style={{
-                    background: "var(--card)",
-                    border: "1px solid var(--border)",
-                    color: "var(--foreground)",
-                  }}
-                >
-                  {MODEL_OPTIONS.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={vm.model ?? "claude-sonnet-4-5-20250929"}
+                    onChange={(e) => handleModelChange(e.target.value)}
+                    disabled={updatingModel}
+                    className="w-full pl-4 pr-10 py-3 rounded-xl text-sm font-medium outline-none cursor-pointer disabled:opacity-50 appearance-none"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.5))",
+                      border: "1px solid var(--border)",
+                      color: "var(--foreground)",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+                      backdropFilter: "blur(8px)",
+                      WebkitBackdropFilter: "blur(8px)",
+                    }}
+                  >
+                    {MODEL_OPTIONS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <svg
+                    className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    width="16" height="16" viewBox="0 0 24 24"
+                    fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </div>
                 <p
-                  className="text-xs mt-2"
+                  className="text-xs mt-2.5"
                   style={{ color: "var(--muted)" }}
                 >
                   {updatingModel
