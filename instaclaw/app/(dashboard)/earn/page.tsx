@@ -1293,6 +1293,17 @@ function VirtualsSection({
                 </button>
               )}
 
+              {/* Error feedback from activate attempt */}
+              {activateResult && activateResult !== "success" && (
+                <div
+                  className="flex items-center gap-2 rounded-lg px-4 py-3"
+                  style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.12)" }}
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "rgb(239,68,68)" }} />
+                  <span className="text-xs" style={{ color: "rgb(239,68,68)" }}>{activateResult}</span>
+                </div>
+              )}
+
               {/* Virtuals credit usage */}
               {(status.virtualsLimit ?? 0) > 0 && (
                 <div

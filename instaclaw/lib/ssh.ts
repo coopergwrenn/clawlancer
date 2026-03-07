@@ -6220,9 +6220,14 @@ export async function checkAcpStatus(vm: VMRecord & { tier?: string }): Promise<
     const apiKey = await readAcpApiKey(ssh);
     const authenticated = !!apiKey;
 
-    // 2. Check if acp-serve is running via systemd
-    const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
-    const serving = svcCheck.stdout.trim() === "active";
+    // 2. Check if seller process is running (systemd OR detached daemon)
+    // The systemd service is a oneshot launcher that exits after starting the
+    // seller daemon, so is-active always returns "inactive". Check the actual process.
+    const svcCheck = await ssh.execCommand(
+      'pgrep -f "seller\\.ts" > /dev/null 2>&1 && echo "running" || ' +
+      '(systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive")'
+    );
+    const serving = svcCheck.stdout.trim() === "running" || svcCheck.stdout.trim() === "active";
 
     // 3. If authenticated, get profile via HTTP API (replaces npx acp whoami)
     let walletAddress: string | null = null;
@@ -6280,13 +6285,19 @@ export async function startAcpServe(vm: VMRecord): Promise<{ success: boolean; e
       logger.warn("ACP offering registration failed (non-fatal)", { vmId: vm.id, error: String(err) });
     }
 
-    // 3. Start the systemd service
+    // 3. Check if seller daemon is already running (it persists beyond systemd service)
+    const alreadyRunning = await ssh.execCommand('pgrep -f "seller\\.ts" > /dev/null 2>&1 && echo "running" || echo "stopped"');
+    if (alreadyRunning.stdout.trim() === "running") {
+      return { success: true };
+    }
+
+    // 4. Start the systemd service
     await ssh.execCommand('systemctl --user start acp-serve.service 2>/dev/null || true');
 
-    // 4. Verify it's running
+    // 5. Verify it's running (check daemon process, not systemd service state)
     await new Promise((r) => setTimeout(r, 3000));
-    const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
-    const running = svcCheck.stdout.trim() === "active";
+    const svcCheck = await ssh.execCommand('pgrep -f "seller\\.ts" > /dev/null 2>&1 && echo "running" || echo "stopped"');
+    const running = svcCheck.stdout.trim() === "running";
 
     if (!running) {
       // Fallback: try starting directly — but tell the user this is degraded
@@ -6355,8 +6366,8 @@ export async function completeAcpAuth(
     // 5. Start acp-serve via systemd
     await ssh.execCommand('systemctl --user start acp-serve.service 2>/dev/null || true');
     await new Promise((r) => setTimeout(r, 2000));
-    const svcCheck = await ssh.execCommand('systemctl --user is-active acp-serve.service 2>/dev/null || echo "inactive"');
-    const running = svcCheck.stdout.trim() === "active";
+    const svcCheck = await ssh.execCommand('pgrep -f "seller\\.ts" > /dev/null 2>&1 && echo "running" || echo "stopped"');
+    const running = svcCheck.stdout.trim() === "running";
 
     if (!running) {
       logger.warn("completeAcpAuth: systemd service not active after start", { vmId: vm.id });
