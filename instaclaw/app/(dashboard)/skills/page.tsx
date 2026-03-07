@@ -698,13 +698,14 @@ export default function SkillsPage() {
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setShopifyModal(false)}
-                  className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+                  className="px-4 py-2 rounded-full text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer"
                   style={{
-                    background:
-                      "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
-                    color: "#000",
+                    background: "rgba(255,255,255,0.5)",
+                    backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
+                    color: "var(--foreground)",
                     boxShadow:
-                      "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                      "0 0 0 1px rgba(255,255,255,0.6), 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
                   }}
                 >
                   Cancel
@@ -716,13 +717,14 @@ export default function SkillsPage() {
                     !shopifyToken.trim() ||
                     connectingSlug === "shopify"
                   }
-                  className="px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50"
                   style={{
-                    background:
-                      "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
-                    color: "#fff",
+                    background: "rgba(255,255,255,0.65)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    color: "var(--foreground)",
                     boxShadow:
-                      "0 0 0 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+                      "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
                   }}
                 >
                   {connectingSlug === "shopify" ? (
@@ -799,11 +801,13 @@ export default function SkillsPage() {
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => { setSolanaImportModal(false); setSolanaImportKey(""); }}
-                  className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+                  className="px-4 py-2 rounded-full text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer"
                   style={{
-                    background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
-                    color: "#000",
-                    boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                    background: "rgba(255,255,255,0.5)",
+                    backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
+                    color: "var(--foreground)",
+                    boxShadow: "0 0 0 1px rgba(255,255,255,0.6), 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
                   }}
                 >
                   Cancel
@@ -811,11 +815,13 @@ export default function SkillsPage() {
                 <button
                   onClick={handleSolanaImport}
                   disabled={!solanaImportKey.trim() || connectingSlug === "solana-defi"}
-                  className="px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50"
                   style={{
-                    background: "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
-                    color: "#fff",
-                    boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.65)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    color: "var(--foreground)",
+                    boxShadow: "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
                   }}
                 >
                   {connectingSlug === "solana-defi" ? (
@@ -1098,11 +1104,14 @@ function IntegrationCard({
             <button
               onClick={onDisconnect}
               disabled={isBusy}
-              className="px-3.5 py-1.5 rounded-full text-[11px] font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-1.5 rounded-full text-[11px] font-medium transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50"
               style={{
-                background: "rgba(0,0,0,0.04)",
+                background: "rgba(255,255,255,0.5)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
                 color: "var(--muted)",
-                boxShadow: "0 0 0 1px rgba(0,0,0,0.08)",
+                boxShadow:
+                  "0 0 0 1px rgba(255,255,255,0.6), 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
               }}
             >
               {disconnecting ? (
@@ -1118,13 +1127,14 @@ function IntegrationCard({
             <button
               onClick={onConnect}
               disabled={isBusy}
-              className="px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50"
               style={{
-                background:
-                  "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
-                color: "#fff",
+                background: "rgba(255,255,255,0.65)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                color: "var(--foreground)",
                 boxShadow:
-                  "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
+                  "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
               }}
             >
               {connecting ? (
@@ -1424,13 +1434,14 @@ function MarketplaceShell({ showToast }: { showToast: (message: string, type: "s
         </div>
         <button
           onClick={() => setSubmitModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all active:scale-95"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 active:scale-95"
           style={{
-            background:
-              "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
-            color: "#fff",
+            background: "rgba(255,255,255,0.6)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            color: "var(--foreground)",
             boxShadow:
-              "0 0 0 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+              "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
           }}
         >
           <Plus className="w-4 h-4" />
@@ -1451,19 +1462,23 @@ function MarketplaceShell({ showToast }: { showToast: (message: string, type: "s
             <button
               key={cat}
               onClick={() => setMarketplaceCategory(cat)}
-              className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all cursor-pointer shrink-0"
+              className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200 cursor-pointer shrink-0"
               style={
                 isActive
                   ? {
                       background:
                         "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.9))",
                       color: "#fff",
+                      backdropFilter: "blur(8px)",
+                      WebkitBackdropFilter: "blur(8px)",
                       boxShadow:
-                        "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)",
+                        "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), 0 0 8px rgba(0,0,0,0.1)",
                     }
                   : {
-                      background: "rgba(0,0,0,0.04)",
+                      background: "rgba(255,255,255,0.5)",
                       color: "var(--muted)",
+                      backdropFilter: "blur(8px)",
+                      WebkitBackdropFilter: "blur(8px)",
                       boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
                     }
               }
@@ -1933,17 +1948,21 @@ function SubmitSkillModal({
                     key={cat}
                     type="button"
                     onClick={() => setCategory(cat)}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer"
+                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer"
                     style={
                       isSelected
                         ? {
                             background: `${catColor}22`,
                             color: catColor,
+                            backdropFilter: "blur(8px)",
+                            WebkitBackdropFilter: "blur(8px)",
                             boxShadow: `0 0 0 1px ${catColor}44`,
                           }
                         : {
-                            background: "rgba(0,0,0,0.04)",
+                            background: "rgba(255,255,255,0.5)",
                             color: "var(--muted)",
+                            backdropFilter: "blur(8px)",
+                            WebkitBackdropFilter: "blur(8px)",
                             boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
                           }
                     }
@@ -1967,13 +1986,14 @@ function SubmitSkillModal({
         <div className="flex gap-2 pt-1">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+            className="px-4 py-2 rounded-full text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer"
             style={{
-              background:
-                "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
-              color: "#000",
+              background: "rgba(255,255,255,0.5)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              color: "var(--foreground)",
               boxShadow:
-                "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                "0 0 0 1px rgba(255,255,255,0.6), 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
             }}
           >
             Cancel
@@ -1981,13 +2001,14 @@ function SubmitSkillModal({
           <button
             onClick={handleSubmit}
             disabled={!canSubmit}
-            className="px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
-              background:
-                "linear-gradient(135deg, rgba(22,22,22,0.85), rgba(40,40,40,0.95))",
-              color: "#fff",
+              background: "rgba(255,255,255,0.65)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              color: "var(--foreground)",
               boxShadow:
-                "0 0 0 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+                "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
             }}
           >
             {submitting ? (
