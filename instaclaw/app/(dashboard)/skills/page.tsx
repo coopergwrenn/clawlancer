@@ -1425,8 +1425,11 @@ function MarketplaceShell({ showToast }: { showToast: (message: string, type: "s
             placeholder="Search community skills..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none"
             style={{
-              background: "rgba(0,0,0,0.03)",
-              border: "1px solid var(--border)",
+              background: "rgba(255,255,255,0.45)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(255,255,255,0.3)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.3)",
               color: "var(--foreground)",
             }}
           />
