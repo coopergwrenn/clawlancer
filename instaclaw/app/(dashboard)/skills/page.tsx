@@ -845,7 +845,7 @@ function SkillCard({
       <div className="flex items-start gap-3.5">
         {/* Icon */}
         {hasSkillIcon(skill.slug) ? (
-          <SkillIcon slug={skill.slug} size={24} className="shrink-0 mt-0.5" />
+          <SkillIcon slug={skill.slug} className="mt-0.5" />
         ) : (
           <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
         )}
@@ -998,7 +998,7 @@ function IntegrationCard({
       <div className="flex items-start gap-3.5">
         {/* Icon */}
         {hasSkillIcon(skill.slug) ? (
-          <SkillIcon slug={skill.slug} size={24} className="shrink-0 mt-0.5" />
+          <SkillIcon slug={skill.slug} className="mt-0.5" />
         ) : (
           <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
         )}
