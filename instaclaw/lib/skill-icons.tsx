@@ -20,7 +20,7 @@ import {
   Languages,
   Code,
   FolderOpen,
-  MessageSquare,
+
   CandlestickChart,
   Briefcase,
 } from "lucide-react";
@@ -118,8 +118,8 @@ const SKILL_ORB_MAP: Record<string, SkillOrbEntry> = {
   "github":                { color: "#181717", type: "brand-svg", brandKey: "github" },
   "apple-notes":           { color: "#000000", type: "brand-svg", brandKey: "apple" },
   "apple-reminders":       { color: "#000000", type: "brand-svg", brandKey: "apple" },
-  "trello":                { color: "#0079BF", type: "brand-svg", brandKey: "trello" },
-  "slack":                 { color: "#5A8FA5", type: "lucide", Icon: MessageSquare },
+  "trello":                { color: "#0079BF", type: "brand-image", src: "/skill-icons/trello-color.svg" },
+  "slack":                 { color: "#4A154B", type: "brand-image", src: "/skill-icons/slack-color.svg" },
 
   // ── Brand image logos (image clipped inside orb) ──
   "higgsfield-video":      { color: "#E87461", type: "brand-image", src: "/skill-icons/higgsfield.jpg" },
