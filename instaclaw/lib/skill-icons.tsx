@@ -325,7 +325,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         ,{" "}
         <InlineImage src="/skill-icons/fiverr.png" label="Fiverr" />
         , and{" "}
-        <InlineBrand path={UPWORK_PATH} color="#6FDA44" label="Upwork" viewBox="-1 2 26 20" />
+        <InlineImage src="/skill-icons/upwork.png" label="Upwork" />
       </>
     );
   }
