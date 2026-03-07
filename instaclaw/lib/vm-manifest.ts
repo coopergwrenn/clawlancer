@@ -302,7 +302,7 @@ export const VM_MANIFEST = {
     "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
     "StartLimitIntervalSec": "300", // 5-minute window for burst counting
     "StartLimitAction": "stop",    // Stop unit after burst exceeded (was: none → infinite loop)
-    "ExecStartPre": "/bin/bash -c 'pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
+    "ExecStartPre": "/bin/bash -c 'for f in /tmp/openclaw/openclaw-*.log; do [ -f \"$f\" ] && mv \"$f\" \"${f%%.log}-$(date +%%H%%M%%S).log.bak\"; done; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
     "MemoryHigh": "3G",             // Soft limit: kernel throttles at 3GB (gateway slows, doesn't die)
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
     "TasksMax": "150",              // Max threads+processes (Node ~20 + Chrome ~50 + headroom)

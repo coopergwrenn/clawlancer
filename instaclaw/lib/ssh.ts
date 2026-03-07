@@ -3551,12 +3551,16 @@ else:
       isBYOK,
     });
 
-    // Update DB with new token
+    // Update DB with new token — preserve old token for grace period
+    // so in-flight requests using the old token don't get 401'd
     const supabase = getSupabase();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const oldToken = (vm as any).gateway_token as string | null;
     await supabase
       .from("instaclaw_vms")
       .update({
         gateway_token: newToken,
+        previous_gateway_token: oldToken ?? null,
         proxy_401_count: 0,
       })
       .eq("id", vm.id);

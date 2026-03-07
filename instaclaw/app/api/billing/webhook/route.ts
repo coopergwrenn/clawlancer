@@ -88,6 +88,7 @@ async function processEvent(event: any) {
           await supabase.rpc("instaclaw_add_credits", {
             p_vm_id: vmId,
             p_credits: credits,
+            p_reference_id: paymentIntent,
           });
 
           logger.info("Credit pack purchased", {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { logger } from "@/lib/logger";
 
 const SJINN_AGENT_CREATE_URL = "https://sjinn.ai/api/un-api/create_agent_task";
@@ -59,11 +60,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select("id, tier, api_mode, user_timezone")
-      .eq("gateway_token", gatewayToken)
-      .single();
+    const vm = await lookupVMByGatewayToken(
+      gatewayToken,
+      "id, tier, api_mode, user_timezone"
+    );
 
     if (!vm) {
       return NextResponse.json(

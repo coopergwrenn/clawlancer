@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { logger } from "@/lib/logger";
 
 /**
@@ -75,11 +76,10 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select("id, tier, user_timezone")
-      .eq("gateway_token", gatewayToken)
-      .single();
+    const vm = await lookupVMByGatewayToken(
+      gatewayToken,
+      "id, tier, user_timezone"
+    );
 
     if (!vm) {
       return NextResponse.json(

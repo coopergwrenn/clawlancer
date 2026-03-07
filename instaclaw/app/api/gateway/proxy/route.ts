@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
@@ -177,11 +178,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone")
-      .eq("gateway_token", gatewayToken)
-      .single();
+    const vm = await lookupVMByGatewayToken(
+      gatewayToken,
+      "id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone"
+    );
 
     if (!vm) {
       // Track proxy 401 for alerting — find VM by IP and alert if repeated
