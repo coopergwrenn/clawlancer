@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Folder, File, ArrowLeft, FolderOpen } from "lucide-react";
+import { Folder, File, ArrowLeft, FolderOpen, Download, Image, Film, FileText } from "lucide-react";
 
 interface FileEntry {
   name: string;
@@ -16,17 +16,41 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]);
+const VIDEO_EXTS = new Set([".mp4", ".webm", ".mov"]);
+const TEXT_EXTS = new Set([
+  ".md", ".txt", ".py", ".sh", ".ts", ".tsx", ".js", ".jsx", ".json",
+  ".yaml", ".yml", ".toml", ".cfg", ".conf", ".env", ".css", ".html",
+  ".xml", ".csv", ".log", ".sql", ".rs", ".go", ".rb", ".lua", ".bat",
+]);
+
+function getExt(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+}
+
+function getFileIcon(name: string) {
+  const ext = getExt(name);
+  if (IMAGE_EXTS.has(ext)) return <Image className="w-4 h-4 shrink-0" style={{ color: "#a855f7" }} />;
+  if (VIDEO_EXTS.has(ext)) return <Film className="w-4 h-4 shrink-0" style={{ color: "#f97316" }} />;
+  if (TEXT_EXTS.has(ext)) return <FileText className="w-4 h-4 shrink-0" style={{ color: "#22c55e" }} />;
+  return <File className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />;
+}
+
 export default function FilesPage() {
   const [currentPath, setCurrentPath] = useState("~/.openclaw/workspace");
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
+  const [binaryData, setBinaryData] = useState<{ content: string; mime: string } | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
 
   async function loadDirectory(path: string) {
     setLoading(true);
     setFileContent(null);
     setViewingFile(null);
+    setBinaryData(null);
     try {
       const res = await fetch(`/api/vm/files?path=${encodeURIComponent(path)}`);
       const data = await res.json();
@@ -41,15 +65,34 @@ export default function FilesPage() {
 
   async function viewFile(filePath: string) {
     setViewingFile(filePath);
+    setFileContent(null);
+    setBinaryData(null);
+    setFileLoading(true);
     try {
       const res = await fetch(
         `/api/vm/files?file=${encodeURIComponent(filePath)}`
       );
       const data = await res.json();
-      setFileContent(data.content ?? "");
+      if (data.binary) {
+        setBinaryData({ content: data.content, mime: data.mime });
+      } else {
+        setFileContent(data.content ?? "");
+      }
     } catch {
       setFileContent("Error loading file");
+    } finally {
+      setFileLoading(false);
     }
+  }
+
+  function downloadFile(filePath: string) {
+    const url = `/api/vm/files?file=${encodeURIComponent(filePath)}&download=1`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filePath.split("/").pop() || "file";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   useEffect(() => {
@@ -73,6 +116,95 @@ export default function FilesPage() {
     }
   }
 
+  const displayPath = (p: string) => p.replace("~/.openclaw/workspace", "~/workspace");
+
+  // File viewer content
+  function renderFileViewer() {
+    if (!viewingFile) return null;
+
+    const ext = getExt(viewingFile);
+    const fileName = viewingFile.split("/").pop() || "file";
+    const isImage = IMAGE_EXTS.has(ext);
+    const isVideo = VIDEO_EXTS.has(ext);
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => {
+              setViewingFile(null);
+              setFileContent(null);
+              setBinaryData(null);
+            }}
+            className="flex items-center gap-1.5 text-sm cursor-pointer"
+            style={{ color: "var(--muted)" }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to directory
+          </button>
+          <button
+            onClick={() => downloadFile(viewingFile)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer transition-colors hover:bg-white/5"
+            style={{ color: "var(--muted)", border: "1px solid var(--border)" }}
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download
+          </button>
+        </div>
+        <div className="glass rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+          <div className="px-4 py-2 text-xs font-mono flex items-center justify-between" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+            <span>{displayPath(viewingFile)}</span>
+            <span>{fileName}</span>
+          </div>
+
+          {fileLoading ? (
+            <div className="p-8 text-center">
+              <p className="text-sm" style={{ color: "var(--muted)" }}>Loading...</p>
+            </div>
+          ) : binaryData && isImage ? (
+            <div className="p-4 flex justify-center" style={{ background: "rgba(0,0,0,0.02)" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:${binaryData.mime};base64,${binaryData.content}`}
+                alt={fileName}
+                className="max-w-full max-h-[500px] rounded-lg object-contain"
+              />
+            </div>
+          ) : binaryData && isVideo ? (
+            <div className="p-4 flex justify-center" style={{ background: "rgba(0,0,0,0.02)" }}>
+              <video
+                controls
+                className="max-w-full max-h-[500px] rounded-lg"
+                src={`data:${binaryData.mime};base64,${binaryData.content}`}
+              />
+            </div>
+          ) : binaryData ? (
+            <div className="p-8 text-center">
+              <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+                Binary file — preview not available
+              </p>
+              <button
+                onClick={() => downloadFile(viewingFile)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm cursor-pointer transition-colors"
+                style={{ background: "rgba(0,0,0,0.06)", color: "var(--foreground)" }}
+              >
+                <Download className="w-4 h-4" />
+                Download {fileName}
+              </button>
+            </div>
+          ) : (
+            <pre
+              className="p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-words"
+              style={{ color: "var(--foreground)", maxHeight: 600, overflowY: "auto" }}
+            >
+              {fileContent}
+            </pre>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-10" data-tour="page-files">
       <div>
@@ -93,36 +225,12 @@ export default function FilesPage() {
           <ArrowLeft className="w-4 h-4" />
         </button>
         <code className="text-sm font-mono" style={{ color: "var(--muted)" }}>
-          {currentPath.replace("~/.openclaw/workspace", "~/workspace")}
+          {displayPath(currentPath)}
         </code>
       </div>
 
-      {viewingFile && fileContent !== null ? (
-        /* File viewer */
-        <div className="space-y-3">
-          <button
-            onClick={() => {
-              setViewingFile(null);
-              setFileContent(null);
-            }}
-            className="flex items-center gap-1.5 text-sm cursor-pointer"
-            style={{ color: "var(--muted)" }}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to directory
-          </button>
-          <div className="glass rounded-xl p-1" style={{ border: "1px solid var(--border)" }}>
-            <div className="px-4 py-2 text-xs font-mono" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
-              {viewingFile?.replace("~/.openclaw/workspace", "~/workspace")}
-            </div>
-            <pre
-              className="p-4 text-xs font-mono overflow-x-auto"
-              style={{ color: "var(--foreground)", maxHeight: 500, overflowY: "auto" }}
-            >
-              {fileContent}
-            </pre>
-          </div>
-        </div>
+      {viewingFile ? (
+        renderFileViewer()
       ) : loading ? (
         <div className="glass rounded-xl p-8 text-center">
           <p className="text-sm" style={{ color: "var(--muted)" }}>Loading...</p>
@@ -149,7 +257,7 @@ export default function FilesPage() {
               {file.type === "directory" ? (
                 <Folder className="w-4 h-4 shrink-0" style={{ color: "#3b82f6" }} />
               ) : (
-                <File className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
+                getFileIcon(file.name)
               )}
               <span className="text-sm flex-1 truncate">{file.name}</span>
               <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>

@@ -5109,7 +5109,26 @@ export async function readFile(
 
   const ssh = await connectSSH(vm);
   try {
-    const result = await ssh.execCommand(`head -c ${maxBytes} "${filePath}" 2>/dev/null`);
+    // Use eval to expand ~ to $HOME — tilde doesn't expand inside double quotes
+    const result = await ssh.execCommand(`head -c ${maxBytes} "$(eval echo ${filePath})" 2>/dev/null`);
+    return result.stdout;
+  } finally {
+    ssh.dispose();
+  }
+}
+
+export async function readFileBase64(
+  vm: VMRecord,
+  filePath: string,
+  maxBytes: number = 10_000_000
+): Promise<string> {
+  assertSafeShellArg(filePath, "filePath");
+
+  const ssh = await connectSSH(vm);
+  try {
+    const result = await ssh.execCommand(
+      `head -c ${maxBytes} "$(eval echo ${filePath})" 2>/dev/null | base64 -w0`
+    );
     return result.stdout;
   } finally {
     ssh.dispose();
