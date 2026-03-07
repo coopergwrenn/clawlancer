@@ -21,6 +21,8 @@ import {
   Code,
   FolderOpen,
   MessageSquare,
+  CandlestickChart,
+  Briefcase,
 } from "lucide-react";
 import { type LucideIcon } from "lucide-react";
 
@@ -96,6 +98,8 @@ const SKILL_ORB_MAP: Record<string, SkillOrbEntry> = {
   "competitive-intelligence": { color: "#64748B", type: "lucide", Icon: Crosshair },
   "social-media-content":  { color: "#E06B9E", type: "lucide", Icon: AtSign },
   "web-search":            { color: "#06B6D4", type: "lucide", Icon: Search },
+  "prediction-markets":    { color: "#F59E0B", type: "lucide", Icon: CandlestickChart },
+  "freelance-digital":     { color: "#8B5CF6", type: "lucide", Icon: Briefcase },
 
   // ── Brand SVG logos (white SVG path in orb) ──
   "solana-defi":           { color: "#7C3AED", type: "brand-svg", brandKey: "solana" },
