@@ -235,13 +235,16 @@ export function SkillIcon({
 
   if (config.type === "brand-image") {
     return (
-      <BrandShell className={className}>
+      <div
+        className={`w-7 h-7 rounded-full shrink-0 overflow-hidden ${className}`}
+        style={{ boxShadow: "0 0 0 1px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.08)" }}
+      >
         <img
           src={config.src}
           alt=""
-          className="w-5 h-5 rounded-full object-cover"
+          className="w-full h-full object-cover"
         />
-      </BrandShell>
+      </div>
     );
   }
 
