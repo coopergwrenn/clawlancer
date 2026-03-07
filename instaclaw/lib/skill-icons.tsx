@@ -336,7 +336,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         <InlineImage src="/skill-icons/polymarket.png" label="Polymarket" />
         {" "}and{" "}
         <InlineImage src="/skill-icons/kalshi.png" label="Kalshi" />
-        {" "}&mdash; the world&apos;s largest prediction markets
+        {" "}on the world&apos;s largest prediction markets
       </>
     );
   }
