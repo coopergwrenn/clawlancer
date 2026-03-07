@@ -293,7 +293,16 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Lists and sells products on{" "}
         <InlineBrand path={SHOPIFY_PATH} color="#7AB55C" label="Shopify" />
         ,{" "}
-        <InlineBrand path={EBAY_PATH} color="#E53238" label="eBay" />
+        <svg width={16} height={16} viewBox="0 0 16 16" className="inline-block align-[-3px] mr-0.5" role="img" aria-label="eBay">
+          <circle cx="8" cy="8" r="8" fill="#1a1a1a" />
+          <text x="8" y="11" textAnchor="middle" fontSize="8" fontWeight="700" fontFamily="system-ui, sans-serif" letterSpacing="-0.5">
+            <tspan fill="#E53238">e</tspan>
+            <tspan fill="#0064D2">b</tspan>
+            <tspan fill="#F5AF02">a</tspan>
+            <tspan fill="#86B817">y</tspan>
+          </text>
+        </svg>
+        eBay
         , and marketplaces
       </>
     );
