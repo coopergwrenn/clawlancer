@@ -103,15 +103,15 @@ const SKILL_ORB_MAP: Record<string, SkillOrbEntry> = {
 
   // ── Brand SVG logos (white SVG path in orb) ──
   "solana-defi":           { color: "#7C3AED", type: "brand-svg", brandKey: "solana" },
-  "x-twitter-search":      { color: "#1C1C1E", type: "brand-svg", brandKey: "x" },
+  "x-twitter-search":      { color: "#000000", type: "brand-svg", brandKey: "x" },
 
   // ── Integration brand SVGs ──
   "google-workspace":      { color: "#4285F4", type: "brand-svg", brandKey: "google" },
-  "notion":                { color: "#2D2D2D", type: "brand-svg", brandKey: "notion" },
+  "notion":                { color: "#000000", type: "brand-svg", brandKey: "notion" },
   "shopify":               { color: "#7AB55C", type: "brand-svg", brandKey: "shopify" },
-  "github":                { color: "#2D2D2D", type: "brand-svg", brandKey: "github" },
-  "apple-notes":           { color: "#2D2D2D", type: "brand-svg", brandKey: "apple" },
-  "apple-reminders":       { color: "#2D2D2D", type: "brand-svg", brandKey: "apple" },
+  "github":                { color: "#181717", type: "brand-svg", brandKey: "github" },
+  "apple-notes":           { color: "#000000", type: "brand-svg", brandKey: "apple" },
+  "apple-reminders":       { color: "#000000", type: "brand-svg", brandKey: "apple" },
   "trello":                { color: "#0079BF", type: "brand-svg", brandKey: "trello" },
   "slack":                 { color: "#5A8FA5", type: "lucide", Icon: MessageSquare },
 
@@ -162,6 +162,26 @@ function OrbShell({
   );
 }
 
+function BrandShell({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center ${className}`}
+      style={{
+        background: "#f3f4f6",
+        boxShadow: "0 0 0 1px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.08)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function SkillIcon({
   slug,
   className = "",
@@ -191,13 +211,13 @@ export function SkillIcon({
     if (!brand) return null;
     const gradientId = `orb-grad-${config.brandKey}`;
     return (
-      <OrbShell color={config.color} className={className}>
+      <BrandShell className={className}>
         <svg
           width={14}
           height={14}
           viewBox="0 0 24 24"
-          fill={brand.gradient ? `url(#${gradientId})` : "rgba(255,255,255,0.9)"}
-          className="relative z-[1]"
+          fill={brand.gradient ? `url(#${gradientId})` : config.color}
+          className="relative"
         >
           {brand.gradient && (
             <defs>
@@ -209,19 +229,19 @@ export function SkillIcon({
           )}
           <path d={brand.path} />
         </svg>
-      </OrbShell>
+      </BrandShell>
     );
   }
 
   if (config.type === "brand-image") {
     return (
-      <OrbShell color={config.color} className={className}>
+      <BrandShell className={className}>
         <img
           src={config.src}
           alt=""
-          className="w-5 h-5 rounded-full object-cover relative z-[1]"
+          className="w-5 h-5 rounded-full object-cover"
         />
-      </OrbShell>
+      </BrandShell>
     );
   }
 
