@@ -1461,7 +1461,7 @@ function MarketplaceShell({ showToast }: { showToast: (message: string, type: "s
             <button
               key={cat}
               onClick={() => setMarketplaceCategory(cat)}
-              className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200 cursor-pointer shrink-0"
+              className="relative px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200 cursor-pointer shrink-0"
               style={
                 isActive
                   ? {
@@ -1481,7 +1481,21 @@ function MarketplaceShell({ showToast }: { showToast: (message: string, type: "s
                     }
               }
             >
-              {cat}
+              {isActive && (
+                <motion.div
+                  layoutId="marketplace-category-pill"
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    background: "rgba(0,0,0,0.75)",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06)",
+                  }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10">{cat}</span>
             </button>
           );
         })}
