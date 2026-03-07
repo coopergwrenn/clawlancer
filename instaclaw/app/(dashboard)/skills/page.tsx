@@ -921,14 +921,16 @@ function SkillCard({
           <button
             onClick={onToggle}
             disabled={toggling}
-            className="relative w-12 h-7 rounded-full transition-all shrink-0 cursor-pointer disabled:opacity-50"
+            className="relative w-12 h-7 rounded-full transition-all duration-300 shrink-0 cursor-pointer disabled:opacity-50"
             style={{
               background: skill.enabled
                 ? "linear-gradient(135deg, #22c55e, #16a34a)"
-                : "rgba(0,0,0,0.08)",
+                : "rgba(0,0,0,0.06)",
               boxShadow: skill.enabled
-                ? "0 0 0 1px rgba(34,197,94,0.3), 0 2px 6px rgba(22,163,74,0.25), inset 0 1px 0 rgba(255,255,255,0.15)"
-                : "0 0 0 1px rgba(0,0,0,0.08), inset 0 1px 2px rgba(0,0,0,0.06)",
+                ? "0 0 0 1px rgba(34,197,94,0.2), 0 2px 8px rgba(22,163,74,0.3), inset 0 1px 1px rgba(255,255,255,0.2)"
+                : "0 0 0 1px rgba(0,0,0,0.06), inset 0 2px 4px rgba(0,0,0,0.08)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
             }}
             aria-label={
               skill.enabled
@@ -943,15 +945,16 @@ function SkillCard({
               />
             ) : (
               <span
-                className="absolute top-1 w-5 h-5 rounded-full transition-all"
+                className="absolute top-1 w-5 h-5 rounded-full"
                 style={{
                   left: skill.enabled ? "24px" : "4px",
                   background: skill.enabled
-                    ? "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,240,240,0.9))"
-                    : "linear-gradient(135deg, rgba(255,255,255,0.85), rgba(230,230,230,0.8))",
-                  boxShadow:
-                    "0 1px 3px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                  transition: "left 0.25s cubic-bezier(0.23, 1, 0.32, 1)",
+                    ? "linear-gradient(145deg, rgba(255,255,255,0.98), rgba(245,245,245,0.9))"
+                    : "linear-gradient(145deg, rgba(255,255,255,0.9), rgba(235,235,235,0.85))",
+                  boxShadow: skill.enabled
+                    ? "0 2px 6px rgba(0,0,0,0.15), 0 0 0 0.5px rgba(255,255,255,0.6), inset 0 1px 0 rgba(255,255,255,0.8)"
+                    : "0 1px 3px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+                  transition: "left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
                 }}
               />
             )}
