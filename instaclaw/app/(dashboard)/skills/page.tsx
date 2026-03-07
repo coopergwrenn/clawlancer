@@ -84,6 +84,7 @@ export default function SkillsPage() {
   const [solanaBalanceLoading, setSolanaBalanceLoading] = useState(false);
   const [solanaImportModal, setSolanaImportModal] = useState(false);
   const [solanaImportKey, setSolanaImportKey] = useState("");
+  const [solanaWalletOpen, setSolanaWalletOpen] = useState(false);
 
   const showToast = useCallback(
     (message: string, type: "success" | "error") => {
@@ -443,88 +444,91 @@ export default function SkillsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ delay: i * 0.04, duration: 0.25 }}
-                layout
               >
                 <SkillCard
                   skill={skill}
                   toggling={togglingSlug === skill.slug}
                   onToggle={() => handleToggle(skill)}
-                />
-                {/* Solana DeFi wallet panel — shown when enabled */}
-                {skill.slug === "solana-defi" && skill.enabled && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div
-                      className="glass rounded-xl p-4 mt-2"
-                      style={{ border: "1px solid var(--border)" }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium" style={{ color: "var(--muted)" }}>
-                          Agent Wallet
+                >
+                  {/* Solana DeFi wallet accordion — contained INSIDE the card */}
+                  {skill.slug === "solana-defi" && skill.enabled && (
+                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                      <button
+                        onClick={() => setSolanaWalletOpen(!solanaWalletOpen)}
+                        className="flex items-center gap-1.5 text-xs font-medium cursor-pointer w-full"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        <span
+                          className="transition-transform duration-200 inline-block text-[10px]"
+                          style={{ transform: solanaWalletOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                        >
+                          ▼
                         </span>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => fetchSolanaBalance()}
-                            disabled={solanaBalanceLoading}
-                            className="text-xs px-2 py-0.5 rounded cursor-pointer"
-                            style={{ color: "var(--accent)", opacity: solanaBalanceLoading ? 0.5 : 1 }}
-                          >
-                            {solanaBalanceLoading ? <RotateCw className="w-3 h-3 animate-spin inline" /> : "Refresh"}
-                          </button>
-                        </div>
-                      </div>
-                      {solanaWallet ? (
-                        <>
-                          <div className="flex items-center gap-2 mb-2">
-                            <code className="text-xs font-mono truncate" style={{ color: "var(--foreground)" }}>
-                              {solanaWallet.slice(0, 6)}...{solanaWallet.slice(-4)}
-                            </code>
+                        Agent Wallet
+                      </button>
+                      {solanaWalletOpen && (
+                        <div className="mt-2 max-h-32 overflow-y-auto">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              {solanaWallet ? (
+                                <>
+                                  <code className="text-[11px] font-mono" style={{ color: "var(--foreground)" }}>
+                                    {solanaWallet.slice(0, 6)}...{solanaWallet.slice(-4)}
+                                  </code>
+                                  <button
+                                    onClick={() => { navigator.clipboard.writeText(solanaWallet); showToast("Address copied", "success"); }}
+                                    className="text-[10px] px-1 py-0.5 rounded cursor-pointer"
+                                    style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)" }}
+                                  >
+                                    Copy
+                                  </button>
+                                  <a
+                                    href={`https://solscan.io/account/${solanaWallet}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[10px] underline"
+                                    style={{ color: "var(--accent)" }}
+                                  >
+                                    Solscan
+                                  </a>
+                                </>
+                              ) : (
+                                <span className="text-[11px]" style={{ color: "var(--muted)" }}>Generating...</span>
+                              )}
+                            </div>
                             <button
-                              onClick={() => { navigator.clipboard.writeText(solanaWallet); showToast("Address copied", "success"); }}
+                              onClick={() => fetchSolanaBalance()}
+                              disabled={solanaBalanceLoading}
                               className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer"
-                              style={{ background: "rgba(255,255,255,0.05)", color: "var(--muted)" }}
+                              style={{ color: "var(--accent)", opacity: solanaBalanceLoading ? 0.5 : 1 }}
                             >
-                              Copy
+                              {solanaBalanceLoading ? <RotateCw className="w-3 h-3 animate-spin inline" /> : "Refresh"}
                             </button>
-                            <a
-                              href={`https://solscan.io/account/${solanaWallet}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] underline"
-                              style={{ color: "var(--accent)" }}
-                            >
-                              Solscan
-                            </a>
                           </div>
-                          <p className="text-xs mb-2" style={{ color: "var(--foreground)" }}>
-                            Balance: {solanaBalance !== null ? `${solanaBalance.toFixed(4)} SOL` : "..."}
-                          </p>
-                          {solanaBalance === 0 && (
-                            <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>
-                              Fund your agent — send SOL to this address from Phantom, Coinbase, or any wallet.
-                            </p>
+                          {solanaWallet && (
+                            <>
+                              <p className="text-[11px] mb-1" style={{ color: "var(--foreground)" }}>
+                                Balance: {solanaBalance !== null ? `${solanaBalance.toFixed(4)} SOL` : "..."}
+                              </p>
+                              {solanaBalance === 0 && (
+                                <p className="text-[10px] mb-1" style={{ color: "var(--muted)" }}>
+                                  Send SOL to this address to fund your agent.
+                                </p>
+                              )}
+                              <button
+                                onClick={() => setSolanaImportModal(true)}
+                                className="text-[10px] underline cursor-pointer"
+                                style={{ color: "var(--muted)" }}
+                              >
+                                Import existing wallet
+                              </button>
+                            </>
                           )}
-                          <button
-                            onClick={() => setSolanaImportModal(true)}
-                            className="text-[11px] underline cursor-pointer"
-                            style={{ color: "var(--muted)" }}
-                          >
-                            Import existing wallet
-                          </button>
-                        </>
-                      ) : (
-                        <p className="text-xs" style={{ color: "var(--muted)" }}>
-                          Wallet generating...
-                        </p>
+                        </div>
                       )}
                     </div>
-                  </motion.div>
-                )}
+                  )}
+                </SkillCard>
               </motion.div>
             ))}
           </AnimatePresence>
@@ -828,10 +832,12 @@ function SkillCard({
   skill,
   toggling,
   onToggle,
+  children,
 }: {
   skill: Skill;
   toggling: boolean;
   onToggle: () => void;
+  children?: React.ReactNode;
 }) {
   const isBuiltIn = skill.itemType === "built_in";
 
@@ -968,6 +974,7 @@ function SkillCard({
           </button>
         )}
       </div>
+      {children}
     </div>
   );
 }
