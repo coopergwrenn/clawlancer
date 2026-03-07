@@ -3293,6 +3293,14 @@ export async function configureOpenClaw(
     // The health check reconfigure path may not have user config in its input,
     // but those values may still be valid in the DB. Only operational fields
     // (gateway URL, health status, counters) are written unconditionally.
+    // Fetch existing token to preserve as grace-period fallback when rotating
+    const { data: currentVmRow } = await supabase
+      .from("instaclaw_vms")
+      .select("gateway_token")
+      .eq("id", vm.id)
+      .single();
+    const oldToken = currentVmRow?.gateway_token as string | null;
+
     const vmUpdate: Record<string, unknown> = {
       gateway_url: gatewayUrl,
       gateway_token: gatewayToken,
@@ -3302,6 +3310,9 @@ export async function configureOpenClaw(
       ssh_fail_count: 0,
       health_fail_count: 0,
       config_version: 1,
+      // Preserve old token for grace period during rotation (prevents 401s
+      // if health cron resyncs before the gateway picks up the new token)
+      ...(oldToken && oldToken !== gatewayToken ? { previous_gateway_token: oldToken } : {}),
     };
 
     // TOKEN_AUDIT: log every token write to DB + VM for debugging future mismatches
@@ -3676,7 +3687,9 @@ export async function checkVMTokenDrift(
     );
 
     if (authRead.code !== 0 || !authRead.stdout.trim()) {
-      return { drifted: true, dbToken: vm.gateway_token, reason: 'auth-profiles.json missing or empty' };
+      // auth-profiles.json missing/empty = VM still bootstrapping or needs full reconfigure.
+      // resyncGatewayToken can't fix this (it patches an existing file), so don't report drift.
+      return { drifted: false, reason: 'auth-profiles.json missing or empty — needs configureOpenClaw, not resync' };
     }
 
     try {

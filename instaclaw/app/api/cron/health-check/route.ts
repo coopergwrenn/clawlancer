@@ -1030,6 +1030,9 @@ export async function GET(req: NextRequest) {
   let tokenDriftChecked = 0;
   let tokenDriftFixed = 0;
   const TOKEN_DRIFT_BATCH_SIZE = 10;
+  // Track VMs resynced by drift check — skip them in proxy round-trip to prevent
+  // double rotation that overwrites previous_gateway_token and breaks grace period
+  const driftResyncedVmIds = new Set<string>();
 
   const tokenDriftBatch = vms
     .filter(
@@ -1062,6 +1065,7 @@ export async function GET(req: NextRequest) {
 
           if (resyncResult.healthy) {
             tokenDriftFixed++;
+            driftResyncedVmIds.add(vm.id);
             logger.info("TOKEN_AUDIT: VM-side token drift auto-fixed", {
               route: "cron/health-check",
               vmId: vm.id,
@@ -1115,7 +1119,10 @@ export async function GET(req: NextRequest) {
         vm.api_mode === "all_inclusive" &&
         vm.gateway_token &&
         // Skip VMs already proxy-quarantined — require manual review
-        vm.health_status !== "proxy_quarantined"
+        vm.health_status !== "proxy_quarantined" &&
+        // Skip VMs just resynced by drift check — double rotation overwrites
+        // previous_gateway_token and breaks the grace period
+        !driftResyncedVmIds.has(vm.id)
     )
     .slice(0, PROXY_CHECK_BATCH_SIZE);
 
