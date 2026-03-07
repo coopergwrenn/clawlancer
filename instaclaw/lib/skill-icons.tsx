@@ -304,6 +304,9 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Trade on{" "}
         <InlineBrand path={POLYMARKET_PATH} color="#2963DC" label="Polymarket" viewBox="0 0 512 512" />
         {" "}and{" "}
+        <svg width={14} height={14} viewBox="0 0 24 24" className="inline-block align-[-2px] mr-0.5" role="img" aria-label="Kalshi">
+          <rect width="24" height="24" rx="5" fill="#00D26A" />
+        </svg>
         Kalshi — the world&apos;s largest prediction markets
       </>
     );
