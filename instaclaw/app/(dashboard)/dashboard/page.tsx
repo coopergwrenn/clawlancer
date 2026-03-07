@@ -1045,7 +1045,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm font-semibold">Clawlancer Bounties</p>
                     <p className="text-xs" style={{ color: "var(--muted)" }}>
-                      Active — your agent picks up freelance work and gets paid automatically
+                      Your agent picks up freelance work and gets paid automatically
                     </p>
                   </div>
                 </div>
@@ -1086,7 +1086,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-semibold">Virtuals Protocol (ACP)</p>
                     <p className="text-xs" style={{ color: "var(--muted)" }}>
                       {vm.agdpEnabled
-                        ? "Active — your bot can accept jobs from the Virtuals marketplace"
+                        ? "Your bot can accept jobs from the Virtuals marketplace"
                         : "Connect to the Virtuals Protocol marketplace to earn from AI jobs"}
                     </p>
                   </div>
@@ -1228,7 +1228,7 @@ export default function DashboardPage() {
                     <p className="text-sm" style={{ color: "var(--muted)" }}>
                       Open your bot on Telegram
                       {vm.telegramBotUsername && (
-                        <> — <a href={`https://t.me/${vm.telegramBotUsername}`} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#ea580c" }}>@{vm.telegramBotUsername}</a></>
+                        <> at <a href={`https://t.me/${vm.telegramBotUsername}`} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#ea580c" }}>@{vm.telegramBotUsername}</a></>
                       )}
                     </p>
                   </div>
@@ -1251,7 +1251,7 @@ export default function DashboardPage() {
                       3
                     </span>
                     <p className="text-sm" style={{ color: "var(--muted)" }}>
-                      Your bot will send you an auth link — open it in your browser to finish
+                      Your bot will send you an auth link. Open it in your browser to finish
                     </p>
                   </div>
                 </div>
