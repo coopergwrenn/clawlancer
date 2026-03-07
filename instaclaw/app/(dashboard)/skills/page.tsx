@@ -1438,12 +1438,12 @@ function MarketplaceShell({ showToast }: { showToast: (message: string, type: "s
           onClick={() => setSubmitModalOpen(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 active:scale-95"
           style={{
-            background: "rgba(255,255,255,0.6)",
+            background: "rgba(0,0,0,0.75)",
             backdropFilter: "blur(12px)",
             WebkitBackdropFilter: "blur(12px)",
-            color: "var(--foreground)",
-            boxShadow:
-              "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
+            color: "#fff",
+            border: "1px solid rgba(255,255,255,0.1)",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
           }}
         >
           <Plus className="w-4 h-4" />
