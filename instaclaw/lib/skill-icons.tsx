@@ -323,7 +323,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Sell services and digital products on{" "}
         <InlineImage src="/skill-icons/gumroad.png" label="Gumroad" />
         ,{" "}
-        <InlineBrand path={FIVERR_PATH} color="#1DBF73" label="Fiverr" viewBox="-1 7.5 25 9.5" />
+        <InlineImage src="/skill-icons/fiverr.png" label="Fiverr" />
         , and{" "}
         <InlineBrand path={UPWORK_PATH} color="#6FDA44" label="Upwork" viewBox="-1 2 26 20" />
       </>
