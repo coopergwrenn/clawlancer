@@ -708,111 +708,112 @@ export default function SettingsPage() {
       </div>
 
       {/* Channel Token Management */}
-      {vm.channelsEnabled?.includes("telegram") && (
-        <div>
-          <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
-            <Bot className="w-5 h-5" /> Telegram Bot Token
-          </h2>
-          <div className="glass rounded-xl p-6 space-y-3" style={{ border: telegramError ? "1px solid rgba(239,68,68,0.4)" : telegramSuccess ? "1px solid rgba(34,197,94,0.4)" : "1px solid var(--border)", transition: "border-color 0.3s ease" }}>
-            {vm.telegramBotUsername && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm" style={{ color: "var(--muted)" }}>
-                  Current bot:
-                </span>
-                <span className="text-sm font-mono">
-                  @{vm.telegramBotUsername}
-                </span>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <input
-                type="password"
-                placeholder="New Telegram bot token..."
-                value={telegramToken}
-                onChange={(e) => {
-                  setTelegramToken(e.target.value);
-                  if (telegramError) setTelegramError("");
-                  if (telegramSuccess) setTelegramSuccess(false);
-                  if (telegramWarning) setTelegramWarning("");
-                }}
-                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none"
-                style={{
-                  background: "var(--card)",
-                  border: telegramError ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border)",
-                  color: "var(--foreground)",
-                }}
-              />
-              <button
-                onClick={handleUpdateTelegram}
-                disabled={savingTelegram || !telegramToken.trim()}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-50 transition-all active:scale-95"
-                style={{
-                  background: savingTelegram
-                    ? "rgba(0,0,0,0.06)"
-                    : "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
-                  color: "#000000",
-                  boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
-                  backdropFilter: "blur(8px)",
-                }}
-              >
-                {savingTelegram ? (
-                  <RotateCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Save className="w-3.5 h-3.5" />
-                )}
-                {savingTelegram ? "Saving..." : "Save"}
-              </button>
+      {/* Telegram Bot Token — always visible so new users can set up */}
+      <div>
+        <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
+          <Bot className="w-5 h-5" /> Telegram Bot Token
+        </h2>
+        <div className="glass rounded-xl p-4 sm:p-6 space-y-3" style={{ border: telegramError ? "1px solid rgba(239,68,68,0.4)" : telegramSuccess ? "1px solid rgba(34,197,94,0.4)" : "1px solid var(--border)", transition: "border-color 0.3s ease" }}>
+          {vm.telegramBotUsername && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm" style={{ color: "var(--muted)" }}>
+                Current bot:
+              </span>
+              <span className="text-sm font-mono truncate">
+                @{vm.telegramBotUsername}
+              </span>
             </div>
-
-            {/* Inline feedback — always visible, never at top of page */}
-            {telegramSuccess && (
-              <div
-                className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium"
-                style={{
-                  background: "rgba(34,197,94,0.1)",
-                  border: "1px solid rgba(34,197,94,0.3)",
-                  color: "rgb(22,163,74)",
-                }}
-              >
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Token saved successfully!{vm.telegramBotUsername ? ` Bot: @${vm.telegramBotUsername}` : ""}</span>
-              </div>
-            )}
-            {telegramWarning && (
-              <div
-                className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm leading-relaxed"
-                style={{
-                  background: "rgba(234,179,8,0.1)",
-                  border: "1px solid rgba(234,179,8,0.3)",
-                  color: "rgb(161,98,7)",
-                }}
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{telegramWarning}</span>
-              </div>
-            )}
-            {telegramError && (
-              <div
-                className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm font-medium leading-relaxed"
-                style={{
-                  background: "rgba(239,68,68,0.1)",
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  color: "rgb(220,38,38)",
-                }}
-              >
-                <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{telegramError}</span>
-              </div>
-            )}
-
-            {!telegramSuccess && !telegramError && !telegramWarning && (
-              <p className="text-xs" style={{ color: "var(--muted)" }}>
-                Update your Telegram bot token. The gateway will restart with the new token immediately.
-              </p>
-            )}
+          )}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="password"
+              placeholder={vm.telegramBotUsername ? "New Telegram bot token..." : "Paste your Telegram bot token from @BotFather..."}
+              value={telegramToken}
+              onChange={(e) => {
+                setTelegramToken(e.target.value);
+                if (telegramError) setTelegramError("");
+                if (telegramSuccess) setTelegramSuccess(false);
+                if (telegramWarning) setTelegramWarning("");
+              }}
+              className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none min-w-0"
+              style={{
+                background: "var(--card)",
+                border: telegramError ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+            />
+            <button
+              onClick={handleUpdateTelegram}
+              disabled={savingTelegram || !telegramToken.trim()}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-50 transition-all active:scale-95 shrink-0"
+              style={{
+                background: savingTelegram
+                  ? "rgba(0,0,0,0.06)"
+                  : "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
+                color: "#000000",
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              {savingTelegram ? (
+                <RotateCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              {savingTelegram ? "Saving..." : "Save"}
+            </button>
           </div>
+
+          {/* Inline feedback — always visible, never at top of page */}
+          {telegramSuccess && (
+            <div
+              className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium"
+              style={{
+                background: "rgba(34,197,94,0.1)",
+                border: "1px solid rgba(34,197,94,0.3)",
+                color: "rgb(22,163,74)",
+              }}
+            >
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>Token saved successfully!{vm.telegramBotUsername ? ` Bot: @${vm.telegramBotUsername}` : ""}</span>
+            </div>
+          )}
+          {telegramWarning && (
+            <div
+              className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm leading-relaxed"
+              style={{
+                background: "rgba(234,179,8,0.1)",
+                border: "1px solid rgba(234,179,8,0.3)",
+                color: "rgb(161,98,7)",
+              }}
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{telegramWarning}</span>
+            </div>
+          )}
+          {telegramError && (
+            <div
+              className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm font-medium leading-relaxed"
+              style={{
+                background: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.3)",
+                color: "rgb(220,38,38)",
+              }}
+            >
+              <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{telegramError}</span>
+            </div>
+          )}
+
+          {!telegramSuccess && !telegramError && !telegramWarning && (
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              {vm.telegramBotUsername
+                ? "Update your Telegram bot token. The gateway will restart with the new token immediately."
+                : "Paste the token from @BotFather to connect your Telegram bot. Your bot will start responding to messages immediately."}
+            </p>
+          )}
         </div>
-      )}
+      </div>
 
       {vm.channelsEnabled?.includes("discord") && (
         <div>
@@ -824,14 +825,14 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
-            <div className="flex gap-2">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="password"
                 placeholder="New Discord bot token..."
                 value={discordToken}
                 onChange={(e) => setDiscordToken(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none min-w-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -841,7 +842,7 @@ export default function SettingsPage() {
               <button
                 onClick={handleUpdateDiscord}
                 disabled={savingDiscord || !discordToken.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors shrink-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -869,14 +870,14 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
-            <div className="flex gap-2">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="password"
                 placeholder="New Slack bot token (xoxb-...)..."
                 value={slackToken}
                 onChange={(e) => setSlackToken(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none min-w-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -886,7 +887,7 @@ export default function SettingsPage() {
               <button
                 onClick={handleUpdateSlack}
                 disabled={savingSlack || !slackToken.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors shrink-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -914,14 +915,14 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
-            <div className="flex gap-2">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="password"
                 placeholder="New WhatsApp access token..."
                 value={whatsappToken}
                 onChange={(e) => setWhatsappToken(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none min-w-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -931,7 +932,7 @@ export default function SettingsPage() {
               <button
                 onClick={handleUpdateWhatsapp}
                 disabled={savingWhatsapp || !whatsappToken.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors shrink-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -1044,22 +1045,22 @@ export default function SettingsPage() {
               </span>
             )}
           </h2>
-          <div className="glass rounded-xl p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-3" style={{ border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2">
               <span className="text-sm" style={{ color: "var(--muted)" }}>
                 Current key:
               </span>
-              <span className="text-sm font-mono" style={{ color: "var(--muted)" }}>
+              <span className="text-sm font-mono truncate" style={{ color: "var(--muted)" }}>
                 sk-ant-••••••••••••
               </span>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="password"
                 placeholder="New Anthropic API key"
                 value={newApiKey}
                 onChange={(e) => setNewApiKey(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+                className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none min-w-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -1069,7 +1070,7 @@ export default function SettingsPage() {
               <button
                 onClick={handleRotateKey}
                 disabled={rotatingKey || !newApiKey.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors shrink-0"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
