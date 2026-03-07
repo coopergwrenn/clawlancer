@@ -924,10 +924,10 @@ function SkillCard({
             className="relative w-12 h-7 rounded-full transition-all shrink-0 cursor-pointer disabled:opacity-50"
             style={{
               background: skill.enabled
-                ? "linear-gradient(135deg, rgba(22,22,22,0.7), rgba(40,40,40,0.8))"
+                ? "linear-gradient(135deg, #22c55e, #16a34a)"
                 : "rgba(0,0,0,0.08)",
               boxShadow: skill.enabled
-                ? "0 0 0 1px rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05)"
+                ? "0 0 0 1px rgba(34,197,94,0.3), 0 2px 6px rgba(22,163,74,0.25), inset 0 1px 0 rgba(255,255,255,0.15)"
                 : "0 0 0 1px rgba(0,0,0,0.08), inset 0 1px 2px rgba(0,0,0,0.06)",
             }}
             aria-label={
