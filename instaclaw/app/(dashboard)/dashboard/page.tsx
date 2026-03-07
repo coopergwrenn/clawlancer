@@ -194,7 +194,7 @@ export default function DashboardPage() {
       if (res.ok && data.repaired) {
         // Resync fixed it
         setRepairPhase("resync_done");
-        setResetToast({ message: "Quick repair succeeded — your agent is back online", type: "success" });
+        setResetToast({ message: "Quick repair succeeded. Your agent is back online", type: "success" });
         setTimeout(fetchStatus, 3000);
         setTimeout(() => { setRepairing(false); setRepairPhase("idle"); }, 3000);
         setTimeout(() => setResetToast(null), 5000);
@@ -215,7 +215,7 @@ export default function DashboardPage() {
       setRepairPhase("idle");
       setTimeout(() => setResetToast(null), 4000);
     } catch {
-      setResetToast({ message: "Network error — could not reach server", type: "error" });
+      setResetToast({ message: "Network error. Could not reach server", type: "error" });
       setRepairing(false);
       setRepairPhase("idle");
       setTimeout(() => setResetToast(null), 4000);
@@ -240,7 +240,7 @@ export default function DashboardPage() {
           ? ` Memory and personality restored (${data.restoredFiles?.length ?? 0} files).`
           : "";
         setResetToast({
-          message: `Deep repair complete — your agent is back online.${restoredMsg}`,
+          message: `Deep repair complete. Your agent is back online.${restoredMsg}`,
           type: "success",
         });
         setTimeout(fetchStatus, 3000);
@@ -248,7 +248,7 @@ export default function DashboardPage() {
         setResetToast({ message: data.error || "Deep repair failed", type: "error" });
       }
     } catch {
-      setResetToast({ message: "Network error — could not reach server", type: "error" });
+      setResetToast({ message: "Network error. Could not reach server", type: "error" });
     } finally {
       setTimeout(() => { setRepairing(false); setRepairPhase("idle"); }, 3000);
       setTimeout(() => setResetToast(null), 6000);
@@ -336,13 +336,13 @@ export default function DashboardPage() {
       const res = await fetch("/api/vm/reset-agent", { method: "POST" });
       const data = await res.json();
       if (res.ok && data.success) {
-        setResetToast({ message: `Memory reset — ${data.filesDeleted} files cleared`, type: "success" });
+        setResetToast({ message: `Memory reset. ${data.filesDeleted} files cleared`, type: "success" });
         setTimeout(fetchStatus, 3000);
       } else {
         setResetToast({ message: data.error || data.message || "Reset failed", type: "error" });
       }
     } catch {
-      setResetToast({ message: "Network error — could not reach server", type: "error" });
+      setResetToast({ message: "Network error. Could not reach server", type: "error" });
     } finally {
       setResetting(false);
       setTimeout(() => setResetToast(null), 4000);
@@ -404,9 +404,9 @@ export default function DashboardPage() {
             Your AI agent is live on a dedicated server. Here&apos;s what to know:
           </p>
           <div className="space-y-2 text-sm" style={{ color: "var(--muted)" }}>
-            <p><strong style={{ color: "var(--foreground)" }}>Daily units</strong> — Your plan includes a daily unit allowance that resets at midnight UTC. Haiku costs 1 unit, Sonnet 4, Opus 19. Background heartbeat checks have their own separate budget and won&apos;t eat into your daily units.</p>
-            <p><strong style={{ color: "var(--foreground)" }}>Switch models anytime</strong> — Just tell your bot &quot;use Sonnet&quot; or &quot;switch to Opus&quot; in chat.</p>
-            <p><strong style={{ color: "var(--foreground)" }}>Credit packs</strong> — Need more after your daily limit? Buy credits below — they kick in instantly.</p>
+            <p><strong style={{ color: "var(--foreground)" }}>Daily units</strong>: Your plan includes a daily unit allowance that resets at midnight UTC. Haiku costs 1 unit, Sonnet 4, Opus 19. Background heartbeat checks have their own separate budget and won&apos;t eat into your daily units.</p>
+            <p><strong style={{ color: "var(--foreground)" }}>Switch models anytime</strong>: Just tell your bot &quot;use Sonnet&quot; or &quot;switch to Opus&quot; in chat.</p>
+            <p><strong style={{ color: "var(--foreground)" }}>Credit packs</strong>: Need more after your daily limit? Buy credits below, they kick in instantly.</p>
           </div>
         </div>
       )}
@@ -597,7 +597,7 @@ export default function DashboardPage() {
                     Daily limit reached
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: "rgba(239,68,68,0.7)" }}>
-                    Buy credits to keep chatting — they kick in instantly.
+                    Buy credits to keep chatting. They kick in instantly.
                   </p>
                 </div>
               )}
@@ -890,8 +890,8 @@ export default function DashboardPage() {
                     className="text-xs"
                     style={{ color: "var(--muted)" }}
                   >
-                    {repairPhase === "resync" ? "Quick fix — resyncing gateway token (non-destructive)" :
-                     repairPhase === "deep" ? "Full reconfigure in progress — restoring memory after" :
+                    {repairPhase === "resync" ? "Quick fix: resyncing gateway token (non-destructive)" :
+                     repairPhase === "deep" ? "Full reconfigure in progress. Restoring memory after" :
                      "Fixes broken proxy, tokens, and config issues"}
                   </p>
                 </div>
