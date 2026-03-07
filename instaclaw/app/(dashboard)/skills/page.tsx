@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RotateCw, Loader2, Search, Download, Plus, Star, TrendingUp, Users, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSearchParams } from "next/navigation";
-import { getSkillIconPath } from "@/lib/skill-icons";
+import { SkillIcon, hasSkillIcon } from "@/lib/skill-icons";
 import { SkillOrb } from "@/components/skill-orb";
 import { resolveSkillOrb, CATEGORY_COLORS } from "@/lib/skill-orb-mapping";
 
@@ -848,14 +848,8 @@ function SkillCard({
     >
       <div className="flex items-start gap-3.5">
         {/* Icon */}
-        {getSkillIconPath(skill.slug) ? (
-          <img
-            src={getSkillIconPath(skill.slug)!}
-            alt=""
-            width={24}
-            height={24}
-            className="shrink-0 mt-0.5"
-          />
+        {hasSkillIcon(skill.slug) ? (
+          <SkillIcon slug={skill.slug} size={24} className="shrink-0 mt-0.5" />
         ) : (
           <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
         )}
@@ -1008,14 +1002,8 @@ function IntegrationCard({
     >
       <div className="flex items-start gap-3.5">
         {/* Icon */}
-        {getSkillIconPath(skill.slug) ? (
-          <img
-            src={getSkillIconPath(skill.slug)!}
-            alt=""
-            width={24}
-            height={24}
-            className="shrink-0 mt-0.5"
-          />
+        {hasSkillIcon(skill.slug) ? (
+          <SkillIcon slug={skill.slug} size={24} className="shrink-0 mt-0.5" />
         ) : (
           <span className="text-2xl shrink-0 mt-0.5">{skill.icon}</span>
         )}
