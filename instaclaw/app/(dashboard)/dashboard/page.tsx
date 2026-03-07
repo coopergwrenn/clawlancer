@@ -1036,17 +1036,11 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                    style={{
-                      background: "rgba(34,197,94,0.08)",
-                      border: "1px solid rgba(34,197,94,0.15)",
-                    }}
+                    className="w-10 h-10 rounded-full overflow-hidden shrink-0"
+                    style={{ boxShadow: "0 0 0 1px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.08)" }}
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgb(34,197,94)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
-                      <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
-                      <path d="M12 3v6" />
-                    </svg>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/skill-icons/clawlancer.png" alt="" className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <p className="text-sm font-semibold">Clawlancer Bounties</p>
@@ -1082,21 +1076,11 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                    style={{
-                      background: vm.agdpEnabled
-                        ? "linear-gradient(-75deg, rgba(220,103,67,0.1), rgba(220,103,67,0.2), rgba(220,103,67,0.1))"
-                        : "rgba(0,0,0,0.04)",
-                      border: vm.agdpEnabled
-                        ? "1px solid rgba(220,103,67,0.2)"
-                        : "1px solid var(--border)",
-                    }}
+                    className="w-10 h-10 rounded-full overflow-hidden shrink-0"
+                    style={{ boxShadow: "0 0 0 1px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.08)" }}
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={vm.agdpEnabled ? "#DC6743" : "var(--muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M2 12h20" />
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                    </svg>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/skill-icons/virtuals.png" alt="" className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <p className="text-sm font-semibold">Virtuals Protocol (ACP)</p>
