@@ -258,11 +258,14 @@ export function hasSkillIcon(slug: string): boolean {
 
 // ── Inline brand logos for rich descriptions ────────
 
+const INLINE_SIZE = 16;
+const INLINE_RADIUS = 4;
+
 function InlineBrand({ path, color, label, viewBox = "0 0 24 24" }: { path: string; color: string; label: string; viewBox?: string }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: 4, background: color, verticalAlign: "middle", marginRight: 3, flexShrink: 0 }}>
-        <svg width={11} height={11} viewBox={viewBox} fill="white" style={{ display: "block", shapeRendering: "geometricPrecision" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: INLINE_SIZE, height: INLINE_SIZE, minWidth: INLINE_SIZE, minHeight: INLINE_SIZE, borderRadius: INLINE_RADIUS, background: color, verticalAlign: "middle", marginRight: 3 }}>
+        <svg width={INLINE_SIZE * 0.65} height={INLINE_SIZE * 0.65} viewBox={viewBox} fill="white" style={{ display: "block", shapeRendering: "geometricPrecision" }}>
           <path d={path} />
         </svg>
       </span>
@@ -274,8 +277,8 @@ function InlineBrand({ path, color, label, viewBox = "0 0 24 24" }: { path: stri
 function InlineImage({ src, label }: { src: string; label: string }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: 4, overflow: "hidden", verticalAlign: "middle", marginRight: 3, flexShrink: 0 }}>
-        <img src={src} alt="" style={{ display: "block", width: 16, height: 16, objectFit: "cover" }} />
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: INLINE_SIZE, height: INLINE_SIZE, minWidth: INLINE_SIZE, minHeight: INLINE_SIZE, borderRadius: INLINE_RADIUS, overflow: "hidden", verticalAlign: "middle", marginRight: 3 }}>
+        <img src={src} alt="" style={{ display: "block", width: INLINE_SIZE, height: INLINE_SIZE, objectFit: "cover" }} />
       </span>
       {label}
     </span>
