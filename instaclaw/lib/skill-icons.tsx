@@ -298,7 +298,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Lists and sells products on{" "}
         <InlineBrand path={SHOPIFY_PATH} color="#7AB55C" label="Shopify" />
         ,{" "}
-        <InlineBrand path={EBAY_PATH} color="#333" label="eBay" />
+        <InlineBrand path={EBAY_PATH} color="#333" label="eBay" viewBox="-1 3 26 16" />
         , and marketplaces
       </>
     );
@@ -307,7 +307,7 @@ export function getRichDescription(slug: string): React.ReactNode | null {
     return (
       <>
         Trade on{" "}
-        <InlineBrand path={POLYMARKET_PATH} color="#2963DC" label="Polymarket" viewBox="0 0 512 512" />
+        <InlineBrand path={POLYMARKET_PATH} color="#2963DC" label="Polymarket" viewBox="100 85 286 340" />
         {" "}and{" "}
         <InlineImage src="/skill-icons/kalshi.png" label="Kalshi" />
         {" "}&mdash; the world&apos;s largest prediction markets
@@ -320,9 +320,9 @@ export function getRichDescription(slug: string): React.ReactNode | null {
         Sell services and digital products on{" "}
         <InlineBrand path={GUMROAD_PATH} color="#FF90E8" label="Gumroad" />
         ,{" "}
-        <InlineBrand path={FIVERR_PATH} color="#1DBF73" label="Fiverr" />
+        <InlineBrand path={FIVERR_PATH} color="#1DBF73" label="Fiverr" viewBox="-1 7.5 25 9.5" />
         , and{" "}
-        <InlineBrand path={UPWORK_PATH} color="#6FDA44" label="Upwork" />
+        <InlineBrand path={UPWORK_PATH} color="#6FDA44" label="Upwork" viewBox="-1 2 26 20" />
       </>
     );
   }
