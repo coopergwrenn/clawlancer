@@ -2695,25 +2695,34 @@ export async function configureOpenClaw(
     }
 
     // ── Deploy Web Search & Browser Automation skill ──
-    // Doc-only skill — no executable scripts. Browser and web_search are built-in tools.
+    // Browser and web_search are built-in tools. Crawlee adds stealth scraping as a fallback.
     try {
       const webSkillDir = path.join(process.cwd(), "skills", "web-search-browser");
       const webSkillMd = fs.readFileSync(path.join(webSkillDir, "SKILL.md"), "utf-8");
       const webBrowserPatterns = fs.readFileSync(path.join(webSkillDir, "references", "browser-patterns.md"), "utf-8");
+      const crawleeStealthDoc = fs.readFileSync(path.join(webSkillDir, "references", "crawlee-stealth-scraping.md"), "utf-8");
+      const crawleeScrapePy = fs.readFileSync(path.join(webSkillDir, "assets", "crawlee-scrape.py"), "utf-8");
 
       const webSkillB64 = Buffer.from(webSkillMd, "utf-8").toString("base64");
       const webPatternsB64 = Buffer.from(webBrowserPatterns, "utf-8").toString("base64");
+      const crawleeDocB64 = Buffer.from(crawleeStealthDoc, "utf-8").toString("base64");
+      const crawleeScriptB64 = Buffer.from(crawleeScrapePy, "utf-8").toString("base64");
 
       scriptParts.push(
-        '# Deploy Web Search & Browser Automation skill (doc-only — no API keys)',
+        '# Deploy Web Search & Browser Automation skill + Crawlee stealth scraping',
         'WEB_SKILL_DIR="$HOME/.openclaw/skills/web-search-browser"',
-        'mkdir -p "$WEB_SKILL_DIR/references"',
+        'mkdir -p "$WEB_SKILL_DIR/references" "$HOME/scripts"',
         `echo '${webSkillB64}' | base64 -d > "$WEB_SKILL_DIR/SKILL.md"`,
         `echo '${webPatternsB64}' | base64 -d > "$WEB_SKILL_DIR/references/browser-patterns.md"`,
+        `echo '${crawleeDocB64}' | base64 -d > "$WEB_SKILL_DIR/references/crawlee-stealth-scraping.md"`,
+        `echo '${crawleeScriptB64}' | base64 -d > "$HOME/scripts/crawlee-scrape.py"`,
+        'chmod +x "$HOME/scripts/crawlee-scrape.py"',
+        '# Install Crawlee stealth scraping library (uses existing Playwright + Chromium)',
+        'python3 -m pip install --quiet --break-system-packages "crawlee[beautifulsoup,playwright]" 2>/dev/null || true',
         ''
       );
 
-      logger.info("Web search skill deployment prepared", { route: "lib/ssh" });
+      logger.info("Web search skill deployment prepared (with Crawlee stealth)", { route: "lib/ssh" });
     } catch (webSkillErr) {
       // Web skill deployment is non-critical — don't block VM provisioning
       logger.warn("Web search skill files not found, skipping deployment", {
