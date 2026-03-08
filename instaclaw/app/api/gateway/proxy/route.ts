@@ -337,7 +337,43 @@ export async function POST(req: NextRequest) {
     const hbLastAt = vm.heartbeat_last_at ? new Date(vm.heartbeat_last_at) : null;
     const heartbeatDue = hbNextAt && now >= hbNextAt;
     const heartbeatRecent = hbLastAt && (now.getTime() - hbLastAt.getTime()) < 5 * 60 * 1000;
-    const isHeartbeat = !!(heartbeatDue || heartbeatRecent);
+
+    // Content-based fallback: when DB timing fields are NULL (uninitialized),
+    // detect heartbeats by checking if the request mentions HEARTBEAT.md.
+    // This prevents heartbeat calls from burning user message quota when the
+    // DB hasn't been initialized yet. (Bug: vm-050 burned 2,500 units in one day.)
+    let heartbeatByContent = false;
+    if (!hbNextAt && !hbLastAt && parsedBody) {
+      const sysPrompt = typeof parsedBody.system === "string" ? parsedBody.system : "";
+      const msgs = Array.isArray(parsedBody.messages) ? parsedBody.messages : [];
+      const lastUserMsg = msgs.filter((m: any) => m.role === "user").pop();
+      const lastUserText = typeof lastUserMsg?.content === "string"
+        ? lastUserMsg.content
+        : Array.isArray(lastUserMsg?.content)
+          ? (lastUserMsg.content as any[]).map((b: any) => b.text || "").join(" ")
+          : "";
+      heartbeatByContent = sysPrompt.includes("HEARTBEAT") ||
+        lastUserText.includes("HEARTBEAT.md") ||
+        lastUserText.includes("heartbeat") ||
+        sysPrompt.includes("proactive wake-up");
+
+      if (heartbeatByContent) {
+        // Auto-initialize the DB timing fields so future calls use the fast path
+        const interval = vm.heartbeat_interval ?? "3h";
+        const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
+        const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
+        supabase
+          .from("instaclaw_vms")
+          .update({
+            heartbeat_last_at: now.toISOString(),
+            heartbeat_next_at: new Date(now.getTime() + nextMs).toISOString(),
+          })
+          .eq("id", vm.id)
+          .then(() => {});
+      }
+    }
+
+    const isHeartbeat = !!(heartbeatDue || heartbeatRecent || heartbeatByContent);
 
     // --- Heartbeat model override: always use minimax-m2.5 for background tasks ---
     // Users shouldn't burn Sonnet/Opus credits on heartbeat check-ins.
@@ -815,6 +851,56 @@ export async function POST(req: NextRequest) {
           });
         }
       });
+
+    // --- Per-call usage log (fire-and-forget) ---
+    {
+      const logModel = finalModel || requestedModel || "unknown";
+      const logTier = routingDecision?.tier ?? (logModel.includes("haiku") ? 1 : logModel.includes("sonnet") ? 2 : logModel.includes("opus") ? 3 : 1);
+      const logBaseCost = logTier === 1 ? 1 : logTier === 2 ? 4 : logTier === 3 ? 19 : 1;
+      if (logModel.includes("minimax")) { /* minimax = 0.2 */ }
+      const logCost = logModel.includes("minimax") ? 0.2 : isToolContinuation ? logBaseCost * 0.2 : logBaseCost;
+      const callType = isHeartbeat ? "heartbeat" : isVirtuals ? "virtuals" : isToolContinuation ? "tool_continuation" : "user";
+
+      // Extract first 80 chars of user message for debugging
+      let promptHint: string | null = null;
+      if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
+        const userMsgs = (parsedBody.messages as any[]).filter((m: any) => m.role === "user");
+        const last = userMsgs[userMsgs.length - 1];
+        if (last) {
+          const text = typeof last.content === "string"
+            ? last.content
+            : Array.isArray(last.content)
+              ? (last.content as any[]).map((b: any) => b.text || "").join(" ")
+              : "";
+          promptHint = text.slice(0, 80) || null;
+        }
+      }
+
+      supabase
+        .from("instaclaw_usage_log")
+        .insert({
+          vm_id: vm.id,
+          model: logModel,
+          cost_weight: logCost,
+          call_type: callType,
+          is_tool_continuation: isToolContinuation,
+          routing_tier: logTier,
+          routing_reason: routingDecision?.reason ?? null,
+          prompt_hint: promptHint,
+        })
+        .then(({ error: logErr }) => {
+          if (logErr) {
+            // Don't log every insert failure — table might not exist yet during rollout
+            if (!logErr.message.includes("does not exist")) {
+              logger.error("Failed to insert usage log", {
+                route: "gateway/proxy",
+                vmId: vm.id,
+                error: String(logErr),
+              });
+            }
+          }
+        });
+    }
 
     // --- Increment tier usage (fire-and-forget) ---
     if (routingDecision && !isHeartbeat) {
