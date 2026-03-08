@@ -913,7 +913,7 @@ export async function POST(req: NextRequest) {
           p_cost_weight: costWeight,
           p_timezone: userTz,
         })
-        .then(({ error: tierErr }) => {
+        .then(({ data: tierResult, error: tierErr }) => {
           if (tierErr) {
             logger.error("Failed to increment tier usage", {
               route: "gateway/proxy",
@@ -921,6 +921,20 @@ export async function POST(req: NextRequest) {
               error: String(tierErr),
               tier: routingDecision!.tier,
             });
+          }
+          // Layer 4: Haiku anomaly detection — alert exactly once at 500 calls/day
+          if (!tierErr && tierResult && routingDecision!.tier === 1) {
+            const newCalls = tierResult?.new_calls ?? 0;
+            if (newCalls === 500) {
+              supabase.from("instaclaw_admin_alert_log").insert({
+                alert_key: `haiku_anomaly:${vm.id}:${new Date().toISOString().split("T")[0]}`,
+                vm_count: 1,
+                details: `VM ${vm.id} hit 500 Haiku calls/day. Possible heartbeat loop or runaway tool chain.`,
+              }).then(() => {});
+              logger.error("ANOMALY: VM exceeded 500 Haiku calls/day", {
+                route: "gateway/proxy", vmId: vm.id, tier1Calls: newCalls,
+              });
+            }
           }
         });
     }

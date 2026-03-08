@@ -1796,6 +1796,60 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // ── Layer 2: Nightly Heartbeat NULL Guard ──────────────────────────
+  // Auto-initialize any assigned VMs that have NULL heartbeat_next_at
+  // to prevent heartbeat calls from burning user message quota.
+  const { data: nullHbVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name")
+    .eq("status", "assigned")
+    .is("heartbeat_next_at", null);
+
+  let heartbeatNullsFixed = 0;
+  if (nullHbVms && nullHbVms.length > 0) {
+    const fixTime = new Date(Date.now() + 10_800_000).toISOString();
+    for (const hbVm of nullHbVms) {
+      await supabase.from("instaclaw_vms")
+        .update({ heartbeat_next_at: fixTime, heartbeat_interval: "3h", heartbeat_cycle_calls: 0 })
+        .eq("id", hbVm.id);
+      alerts.add("Heartbeat NULL Guard", hbVm.name ?? hbVm.id,
+        `heartbeat_next_at was NULL — auto-initialized to ${fixTime}`);
+      heartbeatNullsFixed++;
+    }
+  }
+
+  // ── Layer 3: Heartbeat Misclassification Detector ────────────────
+  // Flag VMs with high usage but zero heartbeat_count — indicates
+  // heartbeat calls are being misclassified as regular messages.
+  const todayStr = new Date().toISOString().split("T")[0];
+  const { data: suspectUsage } = await supabase
+    .from("instaclaw_daily_usage")
+    .select("vm_id, message_count, heartbeat_count")
+    .eq("usage_date", todayStr)
+    .eq("heartbeat_count", 0)
+    .gte("message_count", 480);
+
+  let heartbeatMisclassAlerts = 0;
+  if (suspectUsage && suspectUsage.length > 0) {
+    const suspectVmIds = suspectUsage.map(s => s.vm_id);
+    const { data: suspectVms } = await supabase
+      .from("instaclaw_vms")
+      .select("id, name, tier")
+      .in("id", suspectVmIds);
+    const nameMap = new Map((suspectVms || []).map(v => [v.id, v]));
+
+    for (const su of suspectUsage) {
+      const vmInfo = nameMap.get(su.vm_id);
+      if (!vmInfo) continue;
+      const limit = ({ starter: 600, pro: 1000, power: 2500, internal: 5000 } as Record<string, number>)[vmInfo.tier] ?? 600;
+      if (su.message_count >= limit * 0.8) {
+        alerts.add("Heartbeat Misclassification Suspect", vmInfo.name ?? vmInfo.id,
+          `${su.message_count}/${limit} (${((su.message_count / limit) * 100).toFixed(0)}%) with heartbeat_count=0`);
+        heartbeatMisclassAlerts++;
+      }
+    }
+  }
+
   // Flush all collected alerts as grouped digest emails (one per alert type)
   const alertResult = await alerts.flush();
 
@@ -1836,6 +1890,8 @@ export async function GET(req: NextRequest) {
     cloudRebooted,
     autoMigrated,
     metricsCollected,
+    heartbeatNullsFixed,
+    heartbeatMisclassAlerts,
     alertDigestsSent: alertResult.sent,
     alertDigestsSkipped: alertResult.skipped,
   });

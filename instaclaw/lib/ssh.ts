@@ -2731,6 +2731,34 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy skill auto-update checker ──
+    // Installs check-skill-updates.sh and a daily 3am UTC cron job.
+    try {
+      const updateScript = fs.readFileSync(
+        path.join(process.cwd(), "scripts", "check-skill-updates.sh"),
+        "utf-8",
+      );
+      const updateScriptB64 = Buffer.from(updateScript, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy skill auto-update checker (daily cron at 3am UTC)',
+        'mkdir -p "$HOME/scripts" "$HOME/.openclaw/logs"',
+        `echo '${updateScriptB64}' | base64 -d > "$HOME/scripts/check-skill-updates.sh"`,
+        'chmod +x "$HOME/scripts/check-skill-updates.sh"',
+        '# Install cron job (idempotent — removes old entry first)',
+        'CRON_LINE="0 3 * * * /bin/bash $HOME/scripts/check-skill-updates.sh >> $HOME/.openclaw/logs/skill-updates.log 2>&1"',
+        '(crontab -l 2>/dev/null | grep -v "check-skill-updates"; echo "$CRON_LINE") | crontab - 2>/dev/null || true',
+        '',
+      );
+
+      logger.info("Skill auto-update checker deployment prepared", { route: "lib/ssh" });
+    } catch (updateErr) {
+      logger.warn("Skill auto-update script not found, skipping", {
+        route: "lib/ssh",
+        error: String(updateErr),
+      });
+    }
+
     // ── Deploy Code Execution & Backend Development skill ──
     // Doc-only skill — runtimes (Python, Node.js, SQLite) are pre-installed on VMs.
     try {
@@ -3322,6 +3350,11 @@ export async function configureOpenClaw(
       // Preserve old token for grace period during rotation (prevents 401s
       // if health cron resyncs before the gateway picks up the new token)
       ...(oldToken && oldToken !== gatewayToken ? { previous_gateway_token: oldToken } : {}),
+      // Heartbeat quota guard: ensure heartbeat fields are always initialized
+      // so heartbeat calls use the separate 100-unit budget, not user message quota
+      heartbeat_next_at: new Date(Date.now() + 10_800_000).toISOString(),
+      heartbeat_interval: "3h",
+      heartbeat_cycle_calls: 0,
     };
 
     // TOKEN_AUDIT: log every token write to DB + VM for debugging future mismatches
@@ -3408,6 +3441,16 @@ export async function configureOpenClaw(
     if (vmError) {
       logger.error("Failed to update VM record", { error: String(vmError), route: "lib/ssh", vmId: vm.id, timeline });
       throw new Error("Failed to update VM record in database");
+    }
+
+    // Heartbeat quota guard: verify heartbeat_next_at was persisted
+    const { data: hbVerify } = await supabase
+      .from("instaclaw_vms")
+      .select("heartbeat_next_at")
+      .eq("id", vm.id)
+      .single();
+    if (!hbVerify?.heartbeat_next_at) {
+      throw new Error(`PROVISIONING_BLOCKED: VM ${vm.id} has NULL heartbeat_next_at after configure`);
     }
 
     // Log the full configure timeline for debugging
