@@ -46,7 +46,7 @@ interface UserConfig {
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
 // Bump this after fleet upgrades (separate from the SSH upgrade flow).
-export const OPENCLAW_PINNED_VERSION = "2026.3.2";
+export const OPENCLAW_PINNED_VERSION = "2026.3.7";
 
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
