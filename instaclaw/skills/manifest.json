@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "updated_at": "2026-03-08",
+  "skills": [
+    {
+      "name": "web-search-browser",
+      "pip_deps": ["crawlee[beautifulsoup,playwright]==1.5.0"],
+      "scripts": ["crawlee-scrape.py"],
+      "auto_update": true,
+      "source": "pypi"
+    },
+    {
+      "name": "solana-defi",
+      "pip_deps": ["solders==0.27.1"],
+      "scripts": [],
+      "auto_update": true,
+      "source": "pypi"
+    },
+    {
+      "name": "prediction-markets",
+      "pip_deps": [],
+      "scripts": [
+        "polymarket-portfolio.py",
+        "polymarket-positions.py",
+        "polymarket-search.py",
+        "polymarket-setup-creds.py",
+        "polymarket-trade.py",
+        "polymarket-verify.py",
+        "polymarket-wallet.py",
+        "kalshi-browse.py",
+        "kalshi-portfolio.py",
+        "kalshi-positions.py",
+        "kalshi-setup.py",
+        "kalshi-trade.py",
+        "setup-polymarket-wallet.sh"
+      ],
+      "auto_update": false,
+      "note": "Scripts deployed via fleet-push; wallet credentials require manual setup"
+    },
+    {
+      "name": "higgsfield-video",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "API changes deployed manually via configureOpenClaw()"
+    },
+    {
+      "name": "sjinn-video",
+      "pip_deps": [],
+      "scripts": ["setup-sjinn-video.sh"],
+      "auto_update": false,
+      "note": "Sjinn API versioned externally"
+    },
+    {
+      "name": "motion-graphics",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "Remotion installed via npm, not pip"
+    },
+    {
+      "name": "voice-audio-production",
+      "pip_deps": [],
+      "scripts": ["tts-elevenlabs.sh", "tts-openai.sh", "audio-toolkit.sh", "audio-usage-tracker.py"],
+      "auto_update": false,
+      "note": "Shell scripts only — no pip deps"
+    },
+    {
+      "name": "email-outreach",
+      "pip_deps": [],
+      "scripts": ["email-client.sh", "email-digest.py", "email-safety-check.py"],
+      "auto_update": false,
+      "note": "Shell/Python scripts with no external pip deps"
+    },
+    {
+      "name": "financial-analysis",
+      "pip_deps": [],
+      "scripts": ["market-analysis.py", "market-data.sh"],
+      "auto_update": false,
+      "note": "Uses Alpha Vantage API via stdlib"
+    },
+    {
+      "name": "competitive-intelligence",
+      "pip_deps": [],
+      "scripts": ["competitive-intel.py", "competitive-intel.sh"],
+      "auto_update": false,
+      "note": "No pip deps"
+    },
+    {
+      "name": "ecommerce-marketplace",
+      "pip_deps": [],
+      "scripts": ["ecommerce-ops.py", "ecommerce-setup.sh"],
+      "auto_update": false,
+      "note": "No pip deps"
+    },
+    {
+      "name": "social-media-content",
+      "pip_deps": [],
+      "scripts": ["social-content.py"],
+      "auto_update": false,
+      "note": "No pip deps"
+    },
+    {
+      "name": "language-teacher",
+      "pip_deps": [],
+      "scripts": ["setup-language-learning.sh"],
+      "auto_update": false,
+      "note": "No pip deps"
+    },
+    {
+      "name": "agent-status",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "Doc-only skill, uses mcporter"
+    },
+    {
+      "name": "brand-design",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "Doc-only skill, uses browser tool"
+    },
+    {
+      "name": "clawlancer",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "Doc-only skill, uses mcporter"
+    },
+    {
+      "name": "code-execution",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "Doc-only skill"
+    },
+    {
+      "name": "marketplace-earning",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "Doc-only skill"
+    },
+    {
+      "name": "x-twitter-search",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "Uses Twitter API v2 via stdlib"
+    }
+  ]
+}
