@@ -20,6 +20,7 @@ import {
   TrendingUp,
   Puzzle,
   Award,
+  Zap,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
@@ -41,6 +42,7 @@ const overflowNav = [
   { href: "/scheduled", label: "Scheduled", icon: Clock, tourKey: "nav-scheduled" },
   { href: "/env-vars", label: "API Keys", icon: Key, tourKey: "nav-api-keys" },
   { href: "/ambassador", label: "Ambassador", icon: Award, tourKey: "nav-ambassador" },
+  { href: "/dashboard/credits", label: "Credits", icon: Zap, tourKey: "nav-credits" },
   { href: "/settings", label: "Settings", icon: Settings, tourKey: "nav-settings" },
   { href: "/billing", label: "Billing", icon: CreditCard, tourKey: "nav-billing" },
 ];
