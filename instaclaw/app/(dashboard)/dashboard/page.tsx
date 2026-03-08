@@ -545,10 +545,10 @@ export default function DashboardPage() {
                   className="text-3xl font-semibold tracking-tight"
                   style={usagePct >= 100 ? { color: "#ef4444" } : undefined}
                 >
-                  {usage.today}
+                  {Math.round(usage.today)}
                 </span>
                 <span className="text-lg" style={{ color: "var(--muted)" }}>/</span>
-                <span className="text-lg" style={{ color: "var(--muted)" }}>{usage.dailyLimit}</span>
+                <span className="text-lg" style={{ color: "var(--muted)" }}>{Math.round(usage.dailyLimit)}</span>
                 <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>units used</span>
               </div>
 
@@ -571,11 +571,11 @@ export default function DashboardPage() {
               <div className="flex items-center gap-6 mb-0">
                 <div className="flex items-center gap-2">
                   <span className="text-xs" style={{ color: "var(--muted)" }}>7d</span>
-                  <span className="text-sm font-semibold">{usage.week}</span>
+                  <span className="text-sm font-semibold">{Math.round(usage.week)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs" style={{ color: "var(--muted)" }}>30d</span>
-                  <span className="text-sm font-semibold">{usage.month}</span>
+                  <span className="text-sm font-semibold">{Math.round(usage.month)}</span>
                 </div>
                 <div className="ml-auto flex items-center gap-1.5">
                   <span className="text-xs" style={{ color: "var(--muted)" }}>
