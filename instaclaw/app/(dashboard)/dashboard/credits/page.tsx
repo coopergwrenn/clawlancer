@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Zap, Film, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { Zap, Film, AlertCircle, ArrowLeft } from "lucide-react";
 
 /* ── Pack definitions ─────────────────────────────────────────────────────── */
 
@@ -16,25 +17,6 @@ const MEDIA_PACKS = [
   { id: "media_1200", credits: 1200, price: "$9.99", perCredit: "~0.8¢ each", note: "Enough for a full creative session", best: true },
   { id: "media_3000", credits: 3000, price: "$19.99", perCredit: "~0.7¢ each", note: "Best value for heavy media workflows" },
 ];
-
-/* ── Glass styles ─────────────────────────────────────────────────────────── */
-
-const glassCard: React.CSSProperties = {
-  background: "rgba(255,255,255,0.03)",
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.06)",
-};
-
-const glassButton: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  backdropFilter: "blur(8px)",
-  WebkitBackdropFilter: "blur(8px)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.04)",
-  transition: "all 0.2s ease",
-};
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -66,24 +48,24 @@ function UsageSkeleton() {
   return (
     <div className="space-y-3">
       <div className="flex items-baseline gap-2">
-        <Skeleton className="h-8 w-14" />
+        <Skeleton className="h-9 w-16" />
         <Skeleton className="h-5 w-8" />
-        <Skeleton className="h-5 w-10" />
+        <Skeleton className="h-5 w-12" />
       </div>
-      <Skeleton className="h-2 w-full" />
+      <Skeleton className="h-2.5 w-full rounded-full" />
       <div className="flex items-center gap-2 mt-2">
         <Skeleton className="h-4 w-4 rounded-full" />
-        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-4 w-32" />
       </div>
     </div>
   );
 }
 
-function PackSkeleton() {
+function PackSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="grid gap-3">
-      {[1, 2, 3].map((i) => (
-        <Skeleton key={i} className="h-16 w-full rounded-lg" />
+      {Array.from({ length: count }, (_, i) => (
+        <Skeleton key={i} className="h-[72px] w-full rounded-xl" />
       ))}
     </div>
   );
@@ -125,19 +107,28 @@ export default function CreditsPage() {
   }
 
   const usagePct = usage ? Math.min(100, (usage.today / usage.dailyLimit) * 100) : 0;
-  const barColor = usagePct >= 90 ? "#ef4444" : usagePct >= 70 ? "#f59e0b" : "var(--success)";
+  const barColor =
+    usagePct >= 90 ? "#ef4444" : usagePct >= 70 ? "#f59e0b" : "#22c55e";
 
   return (
-    <div className="space-y-10" data-tour="page-credits">
+    <div className="space-y-8" data-tour="page-credits">
       {/* ── Header ── */}
       <div>
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1.5 text-sm mb-4 transition-colors"
+          style={{ color: "var(--muted)" }}
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Dashboard
+        </Link>
         <h1
           className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
           style={{ fontFamily: "var(--font-serif)" }}
         >
           Credits
         </h1>
-        <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
+        <p className="text-sm mt-1.5" style={{ color: "var(--muted)" }}>
           Manage your message credits and media credits.
         </p>
       </div>
@@ -145,10 +136,18 @@ export default function CreditsPage() {
       {/* ── Two-column grid ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* ── Section 1: Daily Message Credits ── */}
-        <div className="rounded-xl p-6 space-y-5" style={glassCard}>
-          <div className="flex items-center gap-2.5">
-            <Zap className="w-5 h-5" style={{ color: "var(--accent)" }} />
+        {/* ━━━━ Section 1: Daily Message Credits ━━━━ */}
+        <div
+          className="glass rounded-xl p-6"
+          style={{ border: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center gap-2.5 mb-1">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: "rgba(59,130,246,0.08)" }}
+            >
+              <Zap className="w-4 h-4" style={{ color: "#3b82f6" }} />
+            </div>
             <h2
               className="text-lg font-normal"
               style={{ fontFamily: "var(--font-serif)" }}
@@ -157,35 +156,47 @@ export default function CreditsPage() {
             </h2>
           </div>
 
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Used for all conversations with your agent. Resets every day at midnight UTC.
+          <p className="text-xs mb-5 ml-[42px]" style={{ color: "var(--muted)" }}>
+            Used for conversations with your agent. Resets daily at midnight UTC.
           </p>
 
           {/* Usage bar — skeleton / error / loaded */}
           {usageError ? (
-            <div className="flex items-center gap-2 py-3">
-              <AlertCircle className="w-4 h-4" style={{ color: "var(--muted)" }} />
+            <div
+              className="flex items-center gap-2 rounded-lg p-4 mb-5"
+              style={{ background: "rgba(0,0,0,0.02)", border: "1px solid var(--border)" }}
+            >
+              <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
               <span className="text-sm" style={{ color: "var(--muted)" }}>
                 Usage data unavailable right now.
               </span>
             </div>
           ) : !usage ? (
-            <UsageSkeleton />
+            <div className="mb-5"><UsageSkeleton /></div>
           ) : (
-            <div>
-              <div className="flex items-baseline gap-1.5 mb-2">
+            <div
+              className="rounded-xl p-4 mb-5"
+              style={{ background: "rgba(0,0,0,0.02)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-baseline gap-1.5 mb-3">
                 <span
                   className="text-3xl font-semibold tracking-tight"
                   style={usagePct >= 100 ? { color: "#ef4444" } : undefined}
                 >
-                  {usage.today}
+                  {Math.round(usage.today)}
                 </span>
                 <span className="text-lg" style={{ color: "var(--muted)" }}>/</span>
-                <span className="text-lg" style={{ color: "var(--muted)" }}>{usage.dailyLimit}</span>
-                <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>units used</span>
+                <span className="text-lg" style={{ color: "var(--muted)" }}>
+                  {usage.dailyLimit}
+                </span>
+                <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>
+                  used today
+                </span>
               </div>
+
+              {/* Progress bar */}
               <div
-                className="h-2 rounded-full overflow-hidden"
+                className="h-2.5 rounded-full overflow-hidden mb-3"
                 style={{ background: "rgba(0,0,0,0.06)" }}
               >
                 <div
@@ -197,70 +208,127 @@ export default function CreditsPage() {
                   }}
                 />
               </div>
-              <div className="flex items-center gap-2 mt-3">
-                <Zap className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-                <span className="text-sm font-semibold">{usage.creditBalance} credits</span>
+
+              {/* Credit balance row */}
+              <div
+                className="flex items-center justify-between pt-3"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="w-3.5 h-3.5" style={{ color: "#3b82f6" }} />
+                  <span className="text-sm font-semibold">{usage.creditBalance} bonus credits</span>
+                </div>
                 <span className="text-xs" style={{ color: "var(--muted)" }}>
-                  {usage.creditBalance > 0 ? "available after daily limit" : "none remaining"}
+                  {usage.creditBalance > 0
+                    ? "kick in after daily limit"
+                    : "none remaining"}
                 </span>
               </div>
             </div>
           )}
 
           {/* Message credit packs */}
+          <p className="text-xs font-medium mb-3" style={{ color: "var(--muted)" }}>
+            Top up message credits
+          </p>
           {!usage && !usageError ? (
             <PackSkeleton />
           ) : (
-            <div className="grid gap-3">
+            <div className="grid gap-2.5">
               {MESSAGE_PACKS.map((pack) => (
                 <button
                   key={pack.id}
                   onClick={() => handleBuy(pack.id)}
                   disabled={buying !== null}
-                  className="rounded-lg p-4 text-left cursor-pointer disabled:opacity-50 flex items-center justify-between group"
-                  style={glassButton}
+                  className="glass rounded-xl p-4 text-left cursor-pointer transition-all disabled:opacity-50 flex items-center justify-between"
+                  style={{
+                    border: pack.best
+                      ? "1.5px solid rgba(59,130,246,0.3)"
+                      : "1px solid var(--border)",
+                    background: pack.best ? "rgba(59,130,246,0.03)" : undefined,
+                  }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.08)";
-                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                    e.currentTarget.style.boxShadow =
+                      "0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.08)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = glassButton.background as string;
-                    e.currentTarget.style.boxShadow = glassButton.boxShadow as string;
-                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                    e.currentTarget.style.boxShadow = "";
+                    e.currentTarget.style.transform = "";
                   }}
                 >
-                  <div>
-                    <span className="text-lg font-bold">{pack.credits}</span>
-                    <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
-                      message units
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold"
+                      style={{
+                        background: pack.best
+                          ? "rgba(59,130,246,0.1)"
+                          : "rgba(0,0,0,0.04)",
+                        color: pack.best ? "#3b82f6" : "var(--foreground)",
+                      }}
+                    >
+                      {pack.credits}
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold">
+                        {pack.credits} message units
+                      </span>
+                      <span className="text-xs block" style={{ color: "var(--muted)" }}>
+                        {pack.perCredit}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     {pack.best && (
                       <span
-                        className="text-[10px] font-semibold ml-2 px-1.5 py-0.5 rounded-full"
-                        style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6" }}
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                        style={{
+                          background: "rgba(59,130,246,0.1)",
+                          color: "#3b82f6",
+                        }}
                       >
                         Best Value
                       </span>
                     )}
+                    <span
+                      className="text-sm font-bold px-3 py-1.5 rounded-lg"
+                      style={{
+                        background: pack.best
+                          ? "linear-gradient(135deg, #3b82f6, #2563eb)"
+                          : "rgba(0,0,0,0.05)",
+                        color: pack.best ? "#fff" : "#3b82f6",
+                        boxShadow: pack.best
+                          ? "0 1px 3px rgba(59,130,246,0.3)"
+                          : undefined,
+                      }}
+                    >
+                      {buying === pack.id ? "..." : pack.price}
+                    </span>
                   </div>
-                  <span className="text-sm font-semibold shrink-0" style={{ color: "#3b82f6" }}>
-                    {buying === pack.id ? "Redirecting..." : pack.price}
-                  </span>
                 </button>
               ))}
             </div>
           )}
 
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
+          <p className="text-xs mt-4" style={{ color: "var(--muted)" }}>
             Credit packs don&apos;t expire and stack on top of your daily allowance.
           </p>
         </div>
 
-        {/* ── Section 2: Media Credits ── */}
-        <div className="rounded-xl p-6 space-y-5" style={glassCard}>
-          <div className="flex items-center gap-2.5">
-            <Film className="w-5 h-5" style={{ color: "var(--accent)" }} />
+        {/* ━━━━ Section 2: Media Credits ━━━━ */}
+        <div
+          className="glass rounded-xl p-6"
+          style={{ border: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center gap-2.5 mb-1">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{
+                background: "linear-gradient(135deg, rgba(199,90,52,0.1), rgba(220,103,67,0.1))",
+              }}
+            >
+              <Film className="w-4 h-4" style={{ color: "var(--accent)" }} />
+            </div>
             <h2
               className="text-lg font-normal"
               style={{ fontFamily: "var(--font-serif)" }}
@@ -269,99 +337,153 @@ export default function CreditsPage() {
             </h2>
           </div>
 
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Used exclusively for Higgsfield AI video, image, and audio generation.
-            Completely separate from your daily message credits. Never expire.
+          <p className="text-xs mb-5 ml-[42px]" style={{ color: "var(--muted)" }}>
+            For Higgsfield AI video, image, and audio generation. Never expire.
           </p>
 
           {/* Media balance */}
-          {!mediaBalance ? (
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-4 w-4 rounded-full" />
-              <Skeleton className="h-5 w-32" />
-            </div>
-          ) : mediaBalance.balance !== null ? (
-            <div className="flex items-center gap-2">
-              <Film className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-              <span className="text-sm font-semibold">
-                {mediaBalance.balance.toLocaleString()} credits
-              </span>
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                {mediaBalance.balance > 0 ? "available for media generation" : "none remaining"}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" style={{ color: "var(--muted)" }} />
-              <span className="text-sm" style={{ color: "var(--muted)" }}>
-                Balance unavailable right now.
-              </span>
-            </div>
-          )}
+          <div
+            className="rounded-xl p-4 mb-5"
+            style={{ background: "rgba(0,0,0,0.02)", border: "1px solid var(--border)" }}
+          >
+            {!mediaBalance ? (
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-4 rounded-full" />
+                <Skeleton className="h-6 w-36" />
+              </div>
+            ) : mediaBalance.balance !== null ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Film className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+                  <span className="text-2xl font-semibold tracking-tight">
+                    {mediaBalance.balance.toLocaleString()}
+                  </span>
+                  <span className="text-sm" style={{ color: "var(--muted)" }}>
+                    credits
+                  </span>
+                </div>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  {mediaBalance.balance > 0
+                    ? "available for generation"
+                    : "purchase below to get started"}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "var(--muted)" }} />
+                <span className="text-sm" style={{ color: "var(--muted)" }}>
+                  Balance unavailable right now.
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* Media credit packs */}
+          <p className="text-xs font-medium mb-3" style={{ color: "var(--muted)" }}>
+            Top up media credits
+          </p>
           {!mediaBalance ? (
             <PackSkeleton />
           ) : (
-            <div className="grid gap-3">
+            <div className="grid gap-2.5">
               {MEDIA_PACKS.map((pack) => (
                 <button
                   key={pack.id}
                   onClick={() => handleBuy(pack.id)}
                   disabled={buying !== null}
-                  className="rounded-lg p-4 text-left cursor-pointer disabled:opacity-50 group"
-                  style={glassButton}
+                  className="glass rounded-xl p-4 text-left cursor-pointer transition-all disabled:opacity-50"
+                  style={{
+                    border: pack.best
+                      ? "1.5px solid rgba(220,103,67,0.3)"
+                      : "1px solid var(--border)",
+                    background: pack.best ? "rgba(220,103,67,0.03)" : undefined,
+                  }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.08)";
-                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                    e.currentTarget.style.boxShadow =
+                      "0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.08)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = glassButton.background as string;
-                    e.currentTarget.style.boxShadow = glassButton.boxShadow as string;
-                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                    e.currentTarget.style.boxShadow = "";
+                    e.currentTarget.style.transform = "";
                   }}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <div>
-                      <span className="text-lg font-bold">{pack.credits.toLocaleString()}</span>
-                      <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
-                        media credits
-                      </span>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold"
+                        style={{
+                          background: pack.best
+                            ? "linear-gradient(135deg, rgba(199,90,52,0.12), rgba(220,103,67,0.12))"
+                            : "rgba(0,0,0,0.04)",
+                          color: pack.best ? "var(--accent)" : "var(--foreground)",
+                        }}
+                      >
+                        {pack.credits >= 1000
+                          ? `${(pack.credits / 1000).toFixed(pack.credits % 1000 ? 1 : 0)}k`
+                          : pack.credits}
+                      </div>
+                      <div>
+                        <span className="text-sm font-semibold">
+                          {pack.credits.toLocaleString()} media credits
+                        </span>
+                        <span className="text-xs block" style={{ color: "var(--muted)" }}>
+                          {pack.note}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
                       {pack.best && (
                         <span
-                          className="text-[10px] font-semibold ml-2 px-1.5 py-0.5 rounded-full"
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                           style={{
-                            background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                            background:
+                              "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
                             color: "#fff",
                           }}
                         >
                           Best Value
                         </span>
                       )}
+                      <span
+                        className="text-sm font-bold px-3 py-1.5 rounded-lg"
+                        style={{
+                          background: pack.best
+                            ? "linear-gradient(135deg, #c75a34, #DC6743)"
+                            : "rgba(0,0,0,0.05)",
+                          color: pack.best ? "#fff" : "var(--accent)",
+                          boxShadow: pack.best
+                            ? "0 1px 3px rgba(199,90,52,0.3)"
+                            : undefined,
+                        }}
+                      >
+                        {buying === pack.id ? "..." : pack.price}
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold shrink-0" style={{ color: "var(--accent)" }}>
-                      {buying === pack.id ? "Redirecting..." : pack.price}
+                  </div>
+                  <div className="ml-[52px]">
+                    <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+                      {pack.perCredit}
                     </span>
                   </div>
-                  <p className="text-xs" style={{ color: "var(--muted)" }}>
-                    {pack.note} &middot; {pack.perCredit}
-                  </p>
                 </button>
               ))}
             </div>
           )}
 
           <div
-            className="rounded-lg p-3"
+            className="rounded-lg p-3 mt-4 flex items-start gap-2"
             style={{
-              background: "rgba(0,0,0,0.03)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(0,0,0,0.02)",
+              border: "1px solid var(--border)",
             }}
           >
+            <Film
+              className="w-3.5 h-3.5 mt-0.5 shrink-0"
+              style={{ color: "var(--accent)" }}
+            />
             <p className="text-xs" style={{ color: "var(--muted)" }}>
-              <Film className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5" style={{ color: "var(--accent)" }} />
-              Completely separate from your daily message credits. Media credits are used
+              Media credits are completely separate from message credits and are used
               for Higgsfield video, image, and audio generation only.
             </p>
           </div>
