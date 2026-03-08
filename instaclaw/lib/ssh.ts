@@ -2877,7 +2877,7 @@ export async function configureOpenClaw(
         'rm -f "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
         '# Bootstrap pip if missing (common on minimal Ubuntu VMs)',
         'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
-        'python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets cryptography 2>/dev/null || true',
+        'python3 -m pip install --quiet --break-system-packages web3 py-clob-client eth-account websockets cryptography 2>/dev/null || true',
         ''
       );
 
