@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
-import { upgradeOpenClaw, connectSSH, NVM_PREAMBLE } from "@/lib/ssh";
+import { upgradeOpenClaw, connectSSH, NVM_PREAMBLE, OPENCLAW_PINNED_VERSION } from "@/lib/ssh";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
@@ -217,6 +217,21 @@ export async function POST(req: NextRequest) {
           totalVms: vms.length,
           detail: `Fleet upgrade complete: ${upgraded} upgraded, ${skipped} skipped, ${failed} failed`,
         });
+
+        // Update dependencies table if majority succeeded
+        if (upgraded + skipped > failed) {
+          await supabase
+            .from("instaclaw_dependencies")
+            .update({
+              our_version: version,
+              latest_version: version,
+              status: "current",
+              is_behind: false,
+              last_checked_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("name", "OpenClaw");
+        }
       } catch (err) {
         send({
           step: "error",
