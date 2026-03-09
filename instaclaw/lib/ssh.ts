@@ -2044,7 +2044,7 @@ export async function configureOpenClaw(
     scriptParts.push(
       '# Deploy POLYGON_RPC_URL for Polymarket',
       'grep -q "^POLYGON_RPC_URL=" "$HOME/.openclaw/.env" 2>/dev/null || \\',
-      '  echo "POLYGON_RPC_URL=https://1rpc.io/matic" >> "$HOME/.openclaw/.env"',
+      '  echo "POLYGON_RPC_URL=https://polygon-bor-rpc.publicnode.com" >> "$HOME/.openclaw/.env"',
       ''
     );
 

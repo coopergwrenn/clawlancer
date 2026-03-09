@@ -35,10 +35,9 @@ CLOB_HOST_DEFAULT = "https://clob.polymarket.com"
 CHAIN_ID = 137  # Polygon mainnet
 
 RPC_FALLBACKS = [
-    "https://api.zan.top/polygon-mainnet",
-    "https://1rpc.io/matic",
-    "https://polygon-rpc.com",
     "https://polygon-bor-rpc.publicnode.com",
+    "https://1rpc.io/matic",
+    "https://polygon.llamarpc.com",
 ]
 
 # Contract addresses (Polygon mainnet)
