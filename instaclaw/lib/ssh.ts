@@ -3153,10 +3153,15 @@ export async function configureOpenClaw(
       `  npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1`,
       '  INSTALL_EC=$?',
       '  echo "REINSTALL_EXIT_CODE=$INSTALL_EC"',
-      '  if ! node -e "require(\'openclaw\')" 2>/dev/null; then',
+      '  REQUIRE_ERR=$(node -e "require(\'openclaw\')" 2>&1)',
+      '  REQUIRE_EC=$?',
+      '  if [ "$REQUIRE_EC" -ne 0 ]; then',
       '    echo "OPENCLAW_REINSTALL_FAILED"',
+      '    echo "REQUIRE_ERROR=$REQUIRE_ERR"',
       '    # Dump diagnostic info',
       '    echo "LS_NM_DIR=$(ls -la "$NM_DIR/" 2>&1 | head -20)"',
+      '    echo "LS_OPENCLAW=$(ls -la "$NM_DIR/openclaw/" 2>&1 | head -10)"',
+      '    echo "OPENCLAW_PKG=$(cat "$NM_DIR/openclaw/package.json" 2>/dev/null | head -5)"',
       '    echo "DISK_SPACE=$(df -h / 2>&1 | tail -1)"',
       '    exit 1',
       '  fi',
@@ -3300,7 +3305,7 @@ export async function configureOpenClaw(
     if (result.stdout.includes("OPENCLAW_REINSTALL_FAILED")) {
       // Extract diagnostic lines from stdout for the error message
       const diagLines = result.stdout.split('\n')
-        .filter((l: string) => l.startsWith('NODE=') || l.startsWith('REINSTALL_') || l.startsWith('LS_NM_DIR') || l.startsWith('DISK_SPACE') || l.includes('npm error') || l.includes('npm ERR'))
+        .filter((l: string) => l.startsWith('NODE=') || l.startsWith('REINSTALL_') || l.startsWith('REQUIRE_') || l.startsWith('LS_NM_DIR') || l.startsWith('LS_OPENCLAW') || l.startsWith('OPENCLAW_PKG') || l.startsWith('DISK_SPACE') || l.includes('npm error') || l.includes('npm ERR'))
         .join(' | ');
       logger.error("PROVISIONING_BLOCKED: openclaw module broken and reinstall failed", {
         route: "lib/ssh", vmId: vm.id, stdout: result.stdout.slice(-1500), diag: diagLines,
