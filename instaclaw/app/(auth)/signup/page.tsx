@@ -26,6 +26,14 @@ function SignupInner() {
   const [referralValid, setReferralValid] = useState<boolean | null>(null);
   const [referralName, setReferralName] = useState("");
 
+  // When ?ref= is present, default to waitlist view instead of invite code gate
+  const hasRef = !!searchParams.get("ref");
+  const [showWaitlist, setShowWaitlist] = useState(hasRef);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistState, setWaitlistState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [waitlistPosition, setWaitlistPosition] = useState<number | null>(null);
+  const [waitlistError, setWaitlistError] = useState("");
+
   // Pre-fill referral code from ?ref= query param and persist to localStorage
   useEffect(() => {
     const ref = searchParams.get("ref");
@@ -111,6 +119,38 @@ function SignupInner() {
     }
   }
 
+  async function handleWaitlistSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!waitlistEmail) return;
+    setWaitlistState("loading");
+    setWaitlistError("");
+
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: waitlistEmail,
+          source: "signup_ref",
+          ...(referralCode ? { ref_code: referralCode } : {}),
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setWaitlistState("error");
+        setWaitlistError(data.message || "Something went wrong.");
+        return;
+      }
+
+      setWaitlistPosition(data.position ?? null);
+      setWaitlistState("success");
+    } catch {
+      setWaitlistState("error");
+      setWaitlistError("Network error. Please try again.");
+    }
+  }
+
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
@@ -140,11 +180,89 @@ function SignupInner() {
             Join Instaclaw
           </h1>
           <p className="text-base" style={{ color: "#6b6b6b" }}>
-            Enter your invite code to get started.
+            {showWaitlist
+              ? referralName
+                ? `${referralName} invited you — join the waitlist to get early access.`
+                : "Join the waitlist to get early access."
+              : "Enter your invite code to get started."}
           </p>
         </div>
 
-        {!validated ? (
+        {showWaitlist ? (
+          /* ── WAITLIST VIEW (shown by default when ?ref= present) ── */
+          <div className="space-y-5">
+            {referralValid === true && referralName && (
+              <div
+                className="px-5 py-4 rounded-lg text-center text-sm"
+                style={{
+                  background: "#ffffff",
+                  border: "2px solid #22c55e",
+                  color: "#22c55e",
+                }}
+              >
+                ✓ 25% off your first month when you subscribe — referred by {referralName}
+              </div>
+            )}
+
+            {waitlistState === "success" ? (
+              <div
+                className="px-5 py-4 rounded-lg text-center"
+                style={{
+                  background: "#ffffff",
+                  border: "2px solid #22c55e",
+                  color: "#22c55e",
+                }}
+              >
+                <p className="text-base font-medium">You&apos;re on the list!</p>
+                {waitlistPosition && (
+                  <p className="text-sm mt-1" style={{ color: "#6b6b6b" }}>
+                    You&apos;re #{waitlistPosition} in line. We&apos;ll email you when it&apos;s your turn.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <form onSubmit={handleWaitlistSubmit} className="space-y-5">
+                <div>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={waitlistEmail}
+                    onChange={(e) => setWaitlistEmail(e.target.value)}
+                    required
+                    className="w-full px-4 py-4 rounded-lg text-base outline-none transition-colors"
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid rgba(0, 0, 0, 0.1)",
+                      color: "#333334",
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={waitlistState === "loading"}
+                  className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer disabled:opacity-50"
+                  style={{
+                    background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                    backdropFilter: "blur(2px)",
+                    WebkitBackdropFilter: "blur(2px)",
+                    boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px, rgba(255,255,255,0.08) 0px 0px 1.6px 4px inset",
+                    color: "#ffffff",
+                  }}
+                >
+                  {waitlistState === "loading" ? "Joining..." : "Join the Waitlist"}
+                </button>
+
+                {waitlistState === "error" && (
+                  <p className="text-sm text-center" style={{ color: "#ef4444" }}>
+                    {waitlistError}
+                  </p>
+                )}
+              </form>
+            )}
+          </div>
+        ) : !validated ? (
+          /* ── INVITE CODE GATE ── */
           <form onSubmit={handleValidate} className="space-y-5">
             <div>
               <input
@@ -183,6 +301,7 @@ function SignupInner() {
             )}
           </form>
         ) : (
+          /* ── POST-VALIDATION: Google sign-in ── */
           <div className="space-y-5">
             {/* Success message */}
             <div
@@ -284,16 +403,41 @@ function SignupInner() {
           </div>
         )}
 
-        {/* Back to waitlist */}
+        {/* Bottom toggle link */}
         <p className="text-sm text-center" style={{ color: "#6b6b6b" }}>
-          Don&apos;t have a code?{" "}
-          <Link
-            href={referralCode ? `/?ref=${encodeURIComponent(referralCode)}` : "/"}
-            className="underline transition-opacity hover:opacity-70"
-            style={{ color: "#333334" }}
-          >
-            Join the waitlist
-          </Link>
+          {showWaitlist ? (
+            <>
+              Have an invite code?{" "}
+              <button
+                onClick={() => setShowWaitlist(false)}
+                className="underline transition-opacity hover:opacity-70 cursor-pointer"
+                style={{ color: "#333334" }}
+              >
+                Enter it here
+              </button>
+            </>
+          ) : (
+            <>
+              Don&apos;t have a code?{" "}
+              {hasRef ? (
+                <button
+                  onClick={() => setShowWaitlist(true)}
+                  className="underline transition-opacity hover:opacity-70 cursor-pointer"
+                  style={{ color: "#333334" }}
+                >
+                  Join the waitlist
+                </button>
+              ) : (
+                <Link
+                  href={referralCode ? `/?ref=${encodeURIComponent(referralCode)}` : "/"}
+                  className="underline transition-opacity hover:opacity-70"
+                  style={{ color: "#333334" }}
+                >
+                  Join the waitlist
+                </Link>
+              )}
+            </>
+          )}
         </p>
       </div>
     </div>

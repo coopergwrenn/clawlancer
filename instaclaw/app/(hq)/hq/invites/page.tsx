@@ -26,13 +26,14 @@ interface InvitesData {
     urgent: number;
     moderate: number;
     fresh: number;
-    details: { email: string; daysLeft: number; createdAt: string }[];
+    details: { email: string; daysLeft: number; createdAt: string; refCode: string | null }[];
   };
   activeUsers: {
     email: string;
     createdAt: string;
     vmName: string | null;
     healthStatus: string | null;
+    refCode: string | null;
   }[];
   fleet: {
     total: number;
@@ -251,12 +252,13 @@ export default function InvitesPage() {
             <div
               className="grid gap-2 text-xs px-3 py-1.5 sticky top-0"
               style={{
-                gridTemplateColumns: "1.5fr 0.5fr 0.8fr",
+                gridTemplateColumns: "1.5fr 0.8fr 0.5fr 0.8fr",
                 color: "var(--muted)",
                 background: "var(--background)",
               }}
             >
               <span>Email</span>
+              <span>Referred by</span>
               <span className="text-right">Days left</span>
               <span className="text-right">Sent</span>
             </div>
@@ -272,9 +274,12 @@ export default function InvitesPage() {
                   <div
                     key={d.email}
                     className="grid gap-2 items-center text-xs px-3 py-2 rounded-lg hover:bg-black/[0.02] transition-colors"
-                    style={{ gridTemplateColumns: "1.5fr 0.5fr 0.8fr" }}
+                    style={{ gridTemplateColumns: "1.5fr 0.8fr 0.5fr 0.8fr" }}
                   >
                     <span className="truncate">{d.email}</span>
+                    <span className="truncate" style={{ color: d.refCode ? "#8b5cf6" : "var(--muted)" }}>
+                      {d.refCode ?? "—"}
+                    </span>
                     <span className="text-right font-medium" style={{ color }}>
                       {d.daysLeft}d
                     </span>
@@ -310,12 +315,13 @@ export default function InvitesPage() {
             <div
               className="grid gap-2 text-xs px-3 py-1.5 sticky top-0"
               style={{
-                gridTemplateColumns: "1.5fr 0.8fr 0.6fr 0.8fr",
+                gridTemplateColumns: "1.5fr 0.8fr 0.8fr 0.6fr 0.8fr",
                 color: "var(--muted)",
                 background: "var(--background)",
               }}
             >
               <span>Email</span>
+              <span>Referred by</span>
               <span>VM</span>
               <span>Health</span>
               <span className="text-right">Signed up</span>
@@ -325,9 +331,12 @@ export default function InvitesPage() {
                 <div
                   key={u.email}
                   className="grid gap-2 items-center text-xs px-3 py-2 rounded-lg hover:bg-black/[0.02] transition-colors"
-                  style={{ gridTemplateColumns: "1.5fr 0.8fr 0.6fr 0.8fr" }}
+                  style={{ gridTemplateColumns: "1.5fr 0.8fr 0.8fr 0.6fr 0.8fr" }}
                 >
                   <span className="truncate">{u.email}</span>
+                  <span className="truncate" style={{ color: u.refCode ? "#8b5cf6" : "var(--muted)" }}>
+                    {u.refCode ?? "—"}
+                  </span>
                   <span style={{ color: u.vmName ? "inherit" : "var(--muted)" }}>
                     {u.vmName ?? "—"}
                   </span>

@@ -57,11 +57,25 @@ export async function GET() {
     });
     const fresh = activeUnused.filter((i) => daysLeft(i.expires_at) > 5);
 
-    // Follow-up details with email + days remaining
+    // Fetch waitlist entries to get ref_code by email
+    const { data: waitlistEntries } = await supabase
+      .from("instaclaw_waitlist")
+      .select("email, ref_code")
+      .not("ref_code", "is", null);
+
+    const refByEmail = new Map<string, string>();
+    for (const w of waitlistEntries ?? []) {
+      if (w.email && w.ref_code) {
+        refByEmail.set(w.email.toLowerCase(), w.ref_code);
+      }
+    }
+
+    // Follow-up details with email + days remaining + ref
     const followUpDetails = activeUnused.map((i) => ({
       email: i.email,
       daysLeft: daysLeft(i.expires_at),
       createdAt: i.created_at,
+      refCode: refByEmail.get(i.email?.toLowerCase()) ?? null,
     }));
 
     // Active users + VM assignments
@@ -90,6 +104,7 @@ export async function GET() {
         createdAt: u.created_at,
         vmName: vm?.name ?? null,
         healthStatus: vm?.health_status ?? null,
+        refCode: refByEmail.get(u.email?.toLowerCase()) ?? null,
       };
     });
 
