@@ -2718,7 +2718,8 @@ export async function configureOpenClaw(
         `echo '${crawleeScriptB64}' | base64 -d > "$HOME/scripts/crawlee-scrape.py"`,
         'chmod +x "$HOME/scripts/crawlee-scrape.py"',
         '# Install Crawlee stealth scraping library (uses existing Playwright + Chromium)',
-        'python3 -m pip install --quiet --break-system-packages "crawlee[beautifulsoup,playwright]" 2>/dev/null || true',
+        'python3 -m pip install --quiet --break-system-packages "crawlee[beautifulsoup,playwright]==1.5.0" 2>&1 | tail -5',
+        'if ! python3 -c "import crawlee" 2>/dev/null; then echo "CRAWLEE_INSTALL_FAILED"; fi',
         ''
       );
 

@@ -1983,6 +1983,48 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── Dependency version alerts ──
+  let depsBehind = 0;
+  let depsAnomalies = 0;
+  try {
+    // Trigger a fresh check via our own API (best-effort, 30s timeout)
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://instaclaw.io";
+    const controller = new AbortController();
+    const depTimeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      await fetch(`${baseUrl}/api/hq/dependencies/check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: `hq_session=${process.env.HQ_PASSWORD}` },
+        body: JSON.stringify({ all: true }),
+        signal: controller.signal,
+      });
+    } catch { /* non-critical */ }
+    clearTimeout(depTimeout);
+
+    // Read current state from DB
+    const { data: behindDeps } = await supabase
+      .from("instaclaw_dependencies")
+      .select("name, our_version, latest_version")
+      .eq("is_behind", true)
+      .eq("update_impact", "high");
+
+    for (const dep of behindDeps || []) {
+      depsBehind++;
+      alerts.add("Dependency Behind (HIGH)", dep.name,
+        `${dep.our_version || "?"} → ${dep.latest_version || "?"}`);
+    }
+
+    const { data: anomalyDeps } = await supabase
+      .from("instaclaw_dependencies")
+      .select("name")
+      .eq("status", "anomaly");
+
+    for (const dep of anomalyDeps || []) {
+      depsAnomalies++;
+      alerts.add("Dependency Anomaly", dep.name, "Health check failed");
+    }
+  } catch { /* dependency checks are non-critical */ }
+
   // Flush all collected alerts as grouped digest emails (one per alert type)
   const alertResult = await alerts.flush();
 
@@ -2027,6 +2069,8 @@ export async function GET(req: NextRequest) {
     crashLoopAlerts,
     heartbeatNullsFixed,
     heartbeatMisclassAlerts,
+    depsBehind,
+    depsAnomalies,
     alertDigestsSent: alertResult.sent,
     alertDigestsSkipped: alertResult.skipped,
   });
