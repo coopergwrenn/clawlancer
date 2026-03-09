@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS instaclaw_dependencies (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_deps_category ON instaclaw_dependencies (category);
-CREATE INDEX idx_deps_status ON instaclaw_dependencies (status);
+CREATE INDEX IF NOT EXISTS idx_deps_category ON instaclaw_dependencies (category);
+CREATE INDEX IF NOT EXISTS idx_deps_status ON instaclaw_dependencies (status);
 
 -- Seed all known dependencies
 INSERT INTO instaclaw_dependencies (name, description, category, check_type, check_target, repo_url, our_version, update_impact, notes) VALUES
@@ -33,10 +33,10 @@ INSERT INTO instaclaw_dependencies (name, description, category, check_type, che
   ('Resend', 'Transactional email SDK', 'npm', 'npm', 'resend', 'https://github.com/resend/resend-node', '6.9.1', 'low', 'Invite + alert emails.'),
   ('Sentry', 'Error tracking SDK', 'npm', 'npm', '@sentry/nextjs', 'https://github.com/getsentry/sentry-javascript', '10.38.0', 'low', 'Monitoring + error reporting.'),
   ('Crawlee', 'Stealth web scraping (Python, on VMs)', 'skill', 'pypi', 'crawlee', 'https://github.com/apify/crawlee-python', '1.5.0', 'medium', 'Pinned ==1.5.0 in provisioning. VM-side dependency.'),
-  ('Playwright', 'Browser automation (on VMs)', 'skill', 'pypi', 'playwright', 'https://github.com/microsoft/playwright-python', NULL, 'medium', 'Pre-installed on VM base image.'),
+  ('Playwright', 'Browser automation (on VMs)', 'skill', 'pypi', 'playwright', 'https://github.com/microsoft/playwright-python', '1.58.0', 'medium', 'Pre-installed on VM base image.'),
   ('Anthropic API', 'LLM backbone for all agents', 'api', 'http_health', 'https://status.anthropic.com/api/v2/us.json', NULL, NULL, 'high', 'Primary LLM provider. Outage = full service down.'),
   ('Hetzner API', 'VM provisioning (legacy)', 'api', 'http_health', 'https://api.hetzner.cloud/v1/servers', NULL, NULL, 'low', 'Legacy provider — migrating to Linode only.'),
   ('Linode API', 'VM provisioning (primary)', 'api', 'http_health', 'https://api.linode.com/v4/regions', NULL, NULL, 'high', 'Primary VM provider.'),
-  ('Supabase Platform', 'Hosted PostgreSQL + Auth', 'infra', 'http_health', 'https://api.supabase.com/platform/health', NULL, NULL, 'high', 'Database + auth backbone.'),
+  ('Supabase Platform', 'Hosted PostgreSQL + Auth', 'infra', 'http_health', 'https://status.supabase.com/api/v2/status.json', NULL, NULL, 'high', 'Database + auth backbone.'),
   ('Vercel', 'Hosting platform for instaclaw.io', 'infra', 'http_health', 'https://instaclaw.io/api/health', NULL, NULL, 'high', 'Production hosting.'),
   ('PostHog', 'Product analytics', 'npm', 'npm', 'posthog-js', 'https://github.com/PostHog/posthog-js', '1.347.1', 'low', 'Analytics tracking.');
