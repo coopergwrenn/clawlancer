@@ -1,7 +1,7 @@
 -- Dependencies tracking table for /hq/dependencies
 CREATE TABLE IF NOT EXISTS instaclaw_dependencies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   description TEXT,
   category TEXT NOT NULL CHECK (category IN ('core','skill','npm','api','infra')),
   check_type TEXT NOT NULL CHECK (check_type IN ('github_release','npm','pypi','http_health','manual')),
@@ -39,4 +39,5 @@ INSERT INTO instaclaw_dependencies (name, description, category, check_type, che
   ('Linode API', 'VM provisioning (primary)', 'api', 'http_health', 'https://api.linode.com/v4/regions', NULL, NULL, 'high', 'Primary VM provider.'),
   ('Supabase Platform', 'Hosted PostgreSQL + Auth', 'infra', 'http_health', 'https://status.supabase.com/api/v2/status.json', NULL, NULL, 'high', 'Database + auth backbone.'),
   ('Vercel', 'Hosting platform for instaclaw.io', 'infra', 'http_health', 'https://instaclaw.io/api/health', NULL, NULL, 'high', 'Production hosting.'),
-  ('PostHog', 'Product analytics', 'npm', 'npm', 'posthog-js', 'https://github.com/PostHog/posthog-js', '1.347.1', 'low', 'Analytics tracking.');
+  ('PostHog', 'Product analytics', 'npm', 'npm', 'posthog-js', 'https://github.com/PostHog/posthog-js', '1.347.1', 'low', 'Analytics tracking.')
+ON CONFLICT (name) DO NOTHING;
