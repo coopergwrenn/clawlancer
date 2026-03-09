@@ -24,7 +24,7 @@ CREATE INDEX idx_deps_status ON instaclaw_dependencies (status);
 
 -- Seed all known dependencies
 INSERT INTO instaclaw_dependencies (name, description, category, check_type, check_target, repo_url, our_version, update_impact, notes) VALUES
-  ('OpenClaw', 'AI agent gateway running on each VM', 'core', 'github_release', 'open-claw/open-claw', 'https://github.com/open-claw/open-claw', '2026.2.24', 'high', 'Fleet-wide upgrade required. Use /hq/fleet-upgrade.'),
+  ('OpenClaw', 'AI agent gateway running on each VM', 'core', 'npm', 'openclaw', 'https://github.com/open-claw/open-claw', '2026.2.24', 'high', 'Fleet-wide upgrade required. Use /hq/fleet-upgrade.'),
   ('Next.js', 'App framework', 'core', 'npm', 'next', 'https://github.com/vercel/next.js', '16.1.6', 'high', 'Major version bumps need full QA pass.'),
   ('Supabase JS', 'Database client SDK', 'core', 'npm', '@supabase/supabase-js', 'https://github.com/supabase/supabase-js', '2.95.2', 'high', 'Auth + realtime depends on this.'),
   ('React', 'UI library', 'core', 'npm', 'react', 'https://github.com/facebook/react', '19.2.3', 'high', 'Must match react-dom version.'),
@@ -34,7 +34,7 @@ INSERT INTO instaclaw_dependencies (name, description, category, check_type, che
   ('Sentry', 'Error tracking SDK', 'npm', 'npm', '@sentry/nextjs', 'https://github.com/getsentry/sentry-javascript', '10.38.0', 'low', 'Monitoring + error reporting.'),
   ('Crawlee', 'Stealth web scraping (Python, on VMs)', 'skill', 'pypi', 'crawlee', 'https://github.com/apify/crawlee-python', '1.5.0', 'medium', 'Pinned ==1.5.0 in provisioning. VM-side dependency.'),
   ('Playwright', 'Browser automation (on VMs)', 'skill', 'pypi', 'playwright', 'https://github.com/microsoft/playwright-python', NULL, 'medium', 'Pre-installed on VM base image.'),
-  ('Anthropic API', 'LLM backbone for all agents', 'api', 'http_health', 'https://api.anthropic.com/v1/messages', NULL, NULL, 'high', 'Primary LLM provider. Outage = full service down.'),
+  ('Anthropic API', 'LLM backbone for all agents', 'api', 'http_health', 'https://status.anthropic.com/api/v2/us.json', NULL, NULL, 'high', 'Primary LLM provider. Outage = full service down.'),
   ('Hetzner API', 'VM provisioning (legacy)', 'api', 'http_health', 'https://api.hetzner.cloud/v1/servers', NULL, NULL, 'low', 'Legacy provider — migrating to Linode only.'),
   ('Linode API', 'VM provisioning (primary)', 'api', 'http_health', 'https://api.linode.com/v4/regions', NULL, NULL, 'high', 'Primary VM provider.'),
   ('Supabase Platform', 'Hosted PostgreSQL + Auth', 'infra', 'http_health', 'https://api.supabase.com/platform/health', NULL, NULL, 'high', 'Database + auth backbone.'),
