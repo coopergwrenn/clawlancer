@@ -4,6 +4,7 @@
 Usage:
   python3 higgsfield-edit.py effects --video <url> --effect <name> [--json]
   python3 higgsfield-edit.py extend --video <url> --prompt "..." [--json]
+  python3 higgsfield-edit.py seedance-extend --request-id <id> [--prompt "..."] [--duration 5] [--quality basic] [--json]
   python3 higgsfield-edit.py translate --video <url> --target-lang <lang> [--json]
   python3 higgsfield-edit.py style --video <url> --style "..." [--json]
   python3 higgsfield-edit.py upscale --video <url> [--json]
@@ -35,6 +36,7 @@ EDIT_ENDPOINTS = {
     "face-swap": "ai-image-face-swap",
     "style-transfer": "higgsfield-soul-image-to-image",
     "extend": "video-extend",
+    "seedance-extend": "seedance-v2.0-extend",
     "translate": "video-translate",
 }
 
@@ -234,6 +236,23 @@ def cmd_extend(args: argparse.Namespace) -> int:
     return generic_edit_cmd(endpoint, "extend", payload, api_key, args.json)
 
 
+def cmd_seedance_extend(args: argparse.Namespace) -> int:
+    """Extend a Seedance 2.0 video by request_id (infinite chaining)."""
+    api_key = load_gateway_token()
+    if not api_key:
+        print("ERROR: No gateway token configured.", file=sys.stderr)
+        return 2
+    endpoint = EDIT_ENDPOINTS["seedance-extend"]
+    payload: dict = {"request_id": args.request_id}
+    if args.prompt:
+        payload["prompt"] = args.prompt
+    if args.duration:
+        payload["duration"] = args.duration
+    if args.quality:
+        payload["quality"] = args.quality
+    return generic_edit_cmd(endpoint, "seedance-extend", payload, api_key, args.json)
+
+
 def cmd_translate(args: argparse.Namespace) -> int:
     api_key = load_gateway_token()
     if not api_key:
@@ -290,11 +309,18 @@ def main():
     p_fx.add_argument("--intensity", help="Effect intensity (0-1)")
     p_fx.add_argument("--json", action="store_true")
 
-    p_ext = sub.add_parser("extend", help="Extend video duration")
+    p_ext = sub.add_parser("extend", help="Extend video duration (generic, requires video URL)")
     p_ext.add_argument("--video", required=True, help="Video URL")
     p_ext.add_argument("--prompt", help="Continuation prompt")
     p_ext.add_argument("--duration", type=int, help="Additional duration")
     p_ext.add_argument("--json", action="store_true")
+
+    p_sext = sub.add_parser("seedance-extend", help="Extend a Seedance 2.0 video by request_id (infinite chaining)")
+    p_sext.add_argument("--request-id", required=True, help="Request ID from a previous Seedance 2.0 generation")
+    p_sext.add_argument("--prompt", help="Optional prompt to guide extension")
+    p_sext.add_argument("--duration", type=int, choices=[5, 10, 15], default=5, help="Extension duration in seconds (5/10/15)")
+    p_sext.add_argument("--quality", choices=["high", "basic"], default="basic", help="Quality level")
+    p_sext.add_argument("--json", action="store_true")
 
     p_tr = sub.add_parser("translate", help="Translate video dialogue")
     p_tr.add_argument("--video", required=True, help="Video URL")
@@ -319,8 +345,8 @@ def main():
 
     args = parser.parse_args()
     cmd_map = {
-        "effects": cmd_effects, "extend": cmd_extend, "translate": cmd_translate,
-        "style": cmd_style, "upscale": cmd_upscale, "face-swap": cmd_face_swap,
+        "effects": cmd_effects, "extend": cmd_extend, "seedance-extend": cmd_seedance_extend,
+        "translate": cmd_translate, "style": cmd_style, "upscale": cmd_upscale, "face-swap": cmd_face_swap,
     }
     sys.exit(cmd_map[args.command](args))
 

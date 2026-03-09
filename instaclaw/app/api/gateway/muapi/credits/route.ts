@@ -40,6 +40,10 @@ function lookupCreditWeight(
 
   // Editing
   if (t === "effects" || t === "style-transfer" || t === "style") return 60;
+  if (t === "seedance-extend") {
+    if (d === "15") return 150;
+    return d === "10" ? 100 : 80;
+  }
   if (t === "extend") return 80;
   if (t === "upscale") return 50;
   if (t === "face-swap") return 100;

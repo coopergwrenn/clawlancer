@@ -7,8 +7,8 @@ description: "AI video, image, and audio generation via 200+ models — included
 
 ```yaml
 name: higgsfield-video
-version: "2.0.0"
-updated: "2026-03-07"
+version: "2.1.0"
+updated: "2026-03-09"
 author: InstaClaw
 phase: production
 triggers:
@@ -88,7 +88,10 @@ Higgsfield is included in your plan. Generations consume credits from your daily
 | Lip sync | 60 | Lip movement sync |
 | **Editing** | | |
 | Effects/style transfer | 60 | Visual effects |
-| Extend video | 80 | Add duration |
+| Extend video (generic) | 80 | Add duration via URL |
+| Seedance 2.0 extend (5s) | 80 | Chain by request_id |
+| Seedance 2.0 extend (10s) | 100 | Chain by request_id |
+| Seedance 2.0 extend (15s) | 150 | Chain by request_id |
 | Upscale | 50 | Resolution increase |
 | Face swap | 100 | Face replacement |
 | Translate | 80 | Language translation |
@@ -98,9 +101,10 @@ Higgsfield is included in your plan. Generations consume credits from your daily
 ### Credit Exhaustion UX Rules
 
 1. **Pre-gen check feels helpful**: "This video will use about 80 credits. You have 420 remaining." — informative, not gatekeeping
-2. **Credit exhaustion leads with reset**: "Your credits reset at midnight" FIRST, then optionally mention packs
+2. **Credit exhaustion leads with reset**: "Your credits reset at midnight" FIRST, then optionally mention packs with the exact URL: https://instaclaw.io/billing/credit-packs — clarify these are media credits, separate from daily message units
 3. **Max 1 upsell per session**: Track via `~/.openclaw/workspace/higgsfield/session_upsell_shown`. Never nag
 4. **No "you need to buy"**: Always frame as option, not requirement
+5. **NEVER send users to /dashboard?buy=credits for Higgsfield credit issues** — those are LLM message credits, not media credits. Always use https://instaclaw.io/billing/credit-packs
 
 ---
 
@@ -109,7 +113,7 @@ Higgsfield is included in your plan. Generations consume credits from your daily
 If the user has never used Higgsfield before:
 1. Check status: `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py status --json`
 2. If `gateway_token_configured: true` and `proxy_connected: true` → ready to go
-3. If not → the skill needs reinstallation via the dashboard
+3. If not → the skill needs reinstallation via https://instaclaw.io/dashboard/skills
 
 ---
 
@@ -131,10 +135,10 @@ If the user has never used Higgsfield before:
 
 | Parameter | Values |
 |-----------|--------|
-| `--model` (video) | kling-3.0, kling-2.0, wan-2.2, wan-2.5, sora, sora-2, veo-3, veo-3.1, seedance-2.0, hailuo, luma, runway, pixverse, hunyuan |
+| `--model` (video) | kling-3.0, kling-2.0, wan-2.2, wan-2.5, sora, sora-2, veo-3, veo-3.1, seedance-2.0, seedance-lite, seedance-pro, seedance-pro-fast, seedance-1.5-pro, seedance-1.5-pro-fast, hailuo, luma, runway, pixverse, hunyuan |
 | `--model` (image) | flux-schnell, flux-dev, flux-pro, ideogram-3, ideogram-v3, recraft-v3, seedream-4.5, gpt-image-1, gpt-image-1.5, midjourney-v7, google-imagen4, hunyuan-image, wan-image |
 | `--aspect-ratio` | 16:9, 9:16, 1:1, 4:3, 3:4 |
-| `--duration` | 5, 10 (seconds, model-dependent) |
+| `--duration` | 5, 10, 15 (seconds, model-dependent — Seedance 2.0 supports 15s) |
 | `--resolution` | 720p, 1080p (model-dependent) |
 
 ### Setup & Credits
@@ -177,7 +181,8 @@ If the user has never used Higgsfield before:
 | Action | Command |
 |--------|---------|
 | Apply effects | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py effects --video <url> --effect <name> --json` |
-| Extend video | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py extend --video <url> --prompt "..." --json` |
+| Extend video (generic) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py extend --video <url> --prompt "..." --json` |
+| **Seedance 2.0 extend** | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py seedance-extend --request-id <id> --duration 5 --json` |
 | Translate | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py translate --video <url> --target-lang <lang> --json` |
 | Style transfer | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py style --video <url> --style "..." --json` |
 | Upscale | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py upscale --video <url> --json` |
@@ -208,6 +213,49 @@ If the user has never used Higgsfield before:
 | **Motion control** | seedance-2.0 | Good camera control, precise motion |
 | **Budget-conscious** | pixverse-v4 | Lower cost, decent quality |
 | **Image animation** | kling-3.0 | Best I2V with Elements for consistency |
+
+### Seedance 2.0 Tiers
+
+| Tier | Speed | Quality | Use Case |
+|------|-------|---------|----------|
+| seedance-lite | Fastest | Good | Quick drafts, iteration |
+| seedance-pro | Fast | High | General production |
+| seedance-pro-fast | Faster | High | Production with speed priority |
+| seedance-1.5-pro | Medium | Very high | Premium quality |
+| seedance-1.5-pro-fast | Faster | Very high | Premium with speed |
+| seedance-2.0 | Medium | Best | Top quality, supports extend/chaining |
+
+### Seedance 2.0 Infinite-Length Workflow
+
+Seedance 2.0 supports **infinite-length video** via chained extensions. This is DIFFERENT from the generic `extend` command (which takes a video URL). Seedance extend takes a `request_id` and chains from the original generation.
+
+**Step 1: Generate the initial video**
+```bash
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video \
+  --prompt "A cowboy rides into the sunset" --model seedance-2.0 --duration 5 --json
+# Returns: { "request_id": "abc-123", "output_url": "https://..." }
+```
+
+**Step 2: Extend by request_id**
+```bash
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py seedance-extend \
+  --request-id abc-123 --duration 5 --json
+# Returns: { "request_id": "def-456", "output_url": "https://..." }
+```
+
+**Step 3: Chain again (infinite)**
+```bash
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py seedance-extend \
+  --request-id def-456 --prompt "He dismounts and walks into the saloon" --duration 10 --json
+# Returns: { "request_id": "ghi-789", "output_url": "https://..." }
+```
+
+**Key differences from generic extend:**
+- `seedance-extend` uses `--request-id` (not `--video` URL)
+- Each extension returns a new `request_id` for further chaining
+- Supports `--quality high|basic` and `--duration 5|10|15`
+- Optional `--prompt` to guide the extension direction
+- Only works with Seedance 2.0 generations (not other models)
 
 ### Image Models
 
@@ -348,8 +396,8 @@ After generation completes, if the user has Telegram configured:
 
 ## Error Handling
 
-1. **Gateway token missing**: Skill needs reinstallation via dashboard
-2. **Insufficient credits**: "Your credits reset at midnight — or grab a credit pack to keep going."
+1. **Gateway token missing**: Skill needs reinstallation via https://instaclaw.io/dashboard/skills
+2. **Insufficient credits**: "Your credits reset at midnight — or grab a Higgsfield credit pack at https://instaclaw.io/billing/credit-packs to keep going (these are separate from your daily message credits)."
 3. **Model unavailable**: Fall back to next-best model in the same category
 4. **Generation failed**: Retry up to 3 times with exponential backoff
 5. **Timeout**: Report timeout, suggest checking status later with request ID
