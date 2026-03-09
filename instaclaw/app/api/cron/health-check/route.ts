@@ -602,10 +602,35 @@ export async function GET(req: NextRequest) {
           vms: desc,
         });
 
+        // Auto-fix: query Linode API for each VM. The one that returns 404 (deleted) is the ghost.
+        let autoFixed = false;
+        try {
+          const { getLinodeStatus } = await import("@/lib/providers/linode");
+          for (const g of group) {
+            if (!g.provider_server_id) continue;
+            const linodeStatus = await getLinodeStatus(g.provider_server_id);
+            if (linodeStatus === null) {
+              // Linode is gone — this is the ghost record
+              logger.warn("Auto-fixing ghost VM (Linode deleted, DB record stale)", {
+                route: "cron/health-check", vmId: g.id, vmName: g.name, ip, linodeId: g.provider_server_id,
+              });
+              await supabase.from("instaclaw_vms")
+                .update({ status: "terminated", health_status: "unhealthy" })
+                .eq("id", g.id);
+              autoFixed = true;
+            }
+          }
+        } catch (fixErr) {
+          logger.error("Failed to auto-fix duplicate IP", {
+            route: "cron/health-check", ip, error: String(fixErr),
+          });
+        }
+
         alerts.add(
           "DUPLICATE IP — Data Integrity Violation [CRITICAL]",
           ip,
-          `${group.length} active VMs share IP ${ip}:\n${group.map((g) => `• ${g.name ?? g.id} (${g.status}, linode=${g.provider_server_id ?? "?"})`).join("\n")}\n\nAny SSH operation to this IP will hit an unpredictable VM. Investigate immediately — one entry is likely a ghost from a deleted/rebuilt Linode.`
+          `${group.length} active VMs share IP ${ip}:\n${group.map((g) => `• ${g.name ?? g.id} (${g.status}, linode=${g.provider_server_id ?? "?"})`).join("\n")}` +
+          (autoFixed ? `\n\nAuto-fix applied: ghost VM(s) marked as terminated.` : `\n\nAuto-fix could not resolve — both VMs appear alive on Linode. Manual investigation required.`)
         );
       }
     }

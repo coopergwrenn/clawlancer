@@ -13,6 +13,7 @@ import {
   getAllProviders,
 } from "@/lib/providers";
 import type { CloudProvider } from "@/lib/providers";
+import { checkDuplicateIP } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 export const maxDuration = 120;
@@ -80,6 +81,15 @@ export async function POST(req: NextRequest) {
       // Wait for IP
       const ready = await provider.waitForServer(created.providerId);
 
+      // Guard: check for duplicate IP before inserting (Linode recycles IPs)
+      const { duplicates } = await checkDuplicateIP(ready.ip);
+      if (duplicates.length > 0) {
+        const desc = duplicates.map((d: { name: string | null; id: string; status: string }) => `${d.name ?? d.id} (${d.status})`).join(", ");
+        errors.push({ name: vmName, error: `DUPLICATE_IP: ${ready.ip} already used by ${desc}` });
+        logger.error("DUPLICATE_IP: skipping insert", { route: "admin/provision", vmName, ip: ready.ip, existingVms: desc });
+        continue;
+      }
+
       // Insert into Supabase
       const vmStatus = isSnapshot ? "ready" : "provisioning";
       const { data: vm, error } = await supabase
@@ -128,6 +138,13 @@ export async function POST(req: NextRequest) {
 
             const created = await fallback.createServer({ name: vmName });
             const ready = await fallback.waitForServer(created.providerId);
+
+            // Guard: duplicate IP check on fallback path too
+            const { duplicates: fbDupes } = await checkDuplicateIP(ready.ip);
+            if (fbDupes.length > 0) {
+              logger.error("DUPLICATE_IP on fallback", { route: "admin/provision", vmName, ip: ready.ip });
+              continue;
+            }
 
             const { data: vm, error } = await supabase
               .from("instaclaw_vms")

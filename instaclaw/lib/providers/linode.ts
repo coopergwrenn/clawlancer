@@ -161,6 +161,20 @@ touch /tmp/.instaclaw-personalized
   return script;
 }
 
+/**
+ * Check if a Linode instance still exists. Returns the status string
+ * (e.g. "running", "offline") or null if the instance is gone (404).
+ */
+export async function getLinodeStatus(providerId: string): Promise<string | null> {
+  try {
+    const data = await linodeFetch(`/linode/instances/${providerId}`);
+    return data?.status ?? null;
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("404")) return null;
+    throw err;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CloudProvider implementation
 // ---------------------------------------------------------------------------

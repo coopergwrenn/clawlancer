@@ -12,6 +12,7 @@ import {
 } from "@/lib/providers";
 import type { CloudProvider } from "@/lib/providers";
 import { sendAdminAlertEmail } from "@/lib/email";
+import { checkDuplicateIP } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -134,6 +135,20 @@ export async function GET(req: NextRequest) {
     try {
       const created = await provider.createServer({ name: vmName });
       const readyServer = await provider.waitForServer(created.providerId);
+
+      // Guard: check for duplicate IP before inserting (Linode recycles IPs)
+      const { duplicates } = await checkDuplicateIP(readyServer.ip);
+      if (duplicates.length > 0) {
+        const desc = duplicates.map((d: { name: string | null; id: string; status: string }) => `${d.name ?? d.id} (${d.status})`).join(", ");
+        logger.error("DUPLICATE_IP: skipping insert — IP already in use", {
+          route: "cron/pool-monitor", vmName, ip: readyServer.ip, existingVms: desc,
+        });
+        sendAdminAlertEmail(
+          "Duplicate IP Blocked During Auto-Provision",
+          `Pool monitor tried to insert ${vmName} with IP ${readyServer.ip}, but it's already used by: ${desc}.\nThe new Linode was created but NOT inserted into the DB. Manual cleanup needed.`
+        ).catch(() => {});
+        continue;
+      }
 
       const vmStatus = isSnapshot ? "ready" : "provisioning";
       const { error } = await supabase.from("instaclaw_vms").insert({
