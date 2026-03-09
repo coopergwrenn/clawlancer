@@ -87,6 +87,59 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return false;
       }
 
+      // Record signup in ambassador referrals table
+      if (referralCode) {
+        try {
+          const decodedRef = decodeURIComponent(referralCode).trim().toLowerCase();
+          const { data: ambassador } = await supabase
+            .from("instaclaw_ambassadors")
+            .select("id")
+            .eq("referral_code", decodedRef)
+            .eq("status", "approved")
+            .single();
+
+          if (ambassador) {
+            // Get the newly created user's ID
+            const { data: newUser } = await supabase
+              .from("instaclaw_users")
+              .select("id")
+              .eq("google_id", account.providerAccountId)
+              .single();
+
+            if (newUser) {
+              // Try to update an existing waitlist referral row, otherwise insert a new one
+              const { data: existingRef } = await supabase
+                .from("instaclaw_ambassador_referrals")
+                .select("id")
+                .eq("ambassador_id", ambassador.id)
+                .eq("ref_code", decodedRef)
+                .is("referred_user_id", null)
+                .limit(1)
+                .single();
+
+              if (existingRef) {
+                await supabase
+                  .from("instaclaw_ambassador_referrals")
+                  .update({
+                    referred_user_id: newUser.id,
+                    signed_up_at: new Date().toISOString(),
+                  })
+                  .eq("id", existingRef.id);
+              } else {
+                await supabase.from("instaclaw_ambassador_referrals").insert({
+                  ambassador_id: ambassador.id,
+                  referred_user_id: newUser.id,
+                  ref_code: decodedRef,
+                  signed_up_at: new Date().toISOString(),
+                });
+              }
+            }
+          }
+        } catch (refErr) {
+          logger.error("Failed to record referral signup", { error: String(refErr), route: "auth/signIn" });
+        }
+      }
+
       // Send welcome email (fire and forget)
       if (user.email) {
         sendWelcomeEmail(user.email, user.name ?? "").catch((err) =>

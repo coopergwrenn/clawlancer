@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const email = (body.email ?? "").trim().toLowerCase();
     const source = body.source ?? "landing";
+    const refCode = (body.ref_code ?? "").trim() || null;
 
     if (!EMAIL_RE.test(email)) {
       return NextResponse.json(
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
         source,
         referrer: req.headers.get("referer") ?? null,
         ip_hash: ipHash,
+        ...(refCode ? { ref_code: refCode } : {}),
       })
       .select("position")
       .single();
@@ -91,6 +93,29 @@ export async function POST(req: NextRequest) {
         });
       }
       throw error;
+    }
+
+    // If ref_code provided, create a referral tracking record for the ambassador
+    if (refCode) {
+      try {
+        const { data: ambassador } = await supabase
+          .from("instaclaw_ambassadors")
+          .select("id")
+          .eq("referral_code", refCode)
+          .eq("status", "approved")
+          .single();
+
+        if (ambassador) {
+          await supabase.from("instaclaw_ambassador_referrals").insert({
+            ambassador_id: ambassador.id,
+            ref_code: refCode,
+            waitlisted_at: new Date().toISOString(),
+          });
+        }
+      } catch (refErr) {
+        // Non-critical — don't fail the waitlist signup
+        logger.error("Failed to create referral record", { error: String(refErr), route: "waitlist" });
+      }
     }
 
     return NextResponse.json({

@@ -46,8 +46,10 @@ function getBaseUrl(): string {
  * Build the invite email HTML. Exported separately so test endpoints can
  * preview the template without actually sending.
  */
-export function buildInviteEmailHtml(inviteCode: string): string {
-  const signupUrl = `${getBaseUrl()}/signup`;
+export function buildInviteEmailHtml(inviteCode: string, refCode?: string): string {
+  const signupUrl = refCode
+    ? `${getBaseUrl()}/signup?ref=${encodeURIComponent(refCode)}`
+    : `${getBaseUrl()}/signup`;
   const font = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
   const mono = `'Courier New', Courier, monospace`;
 
@@ -161,8 +163,10 @@ export function buildInviteEmailHtml(inviteCode: string): string {
 </html>`;
 }
 
-export function buildInviteEmailText(inviteCode: string): string {
-  const signupUrl = `${getBaseUrl()}/signup`;
+export function buildInviteEmailText(inviteCode: string, refCode?: string): string {
+  const signupUrl = refCode
+    ? `${getBaseUrl()}/signup?ref=${encodeURIComponent(refCode)}`
+    : `${getBaseUrl()}/signup`;
   return `You just got superpowers.
 
 We're giving you something that didn't exist a year ago — your own AI employee running on a dedicated server, working for you 24/7.
@@ -202,7 +206,8 @@ instaclaw.io | @instaclaws`;
 
 export async function sendInviteEmail(
   email: string,
-  inviteCode: string
+  inviteCode: string,
+  refCode?: string
 ): Promise<void> {
   const resend = getResend();
   await resend.emails.send({
@@ -210,8 +215,8 @@ export async function sendInviteEmail(
     replyTo: REPLY_TO,
     to: email,
     subject: "You're in - here's your InstaClaw invite 💫",
-    html: buildInviteEmailHtml(inviteCode),
-    text: buildInviteEmailText(inviteCode),
+    html: buildInviteEmailHtml(inviteCode, refCode),
+    text: buildInviteEmailText(inviteCode, refCode),
     headers: UNSUB_HEADERS,
   });
 }

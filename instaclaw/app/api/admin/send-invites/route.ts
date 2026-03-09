@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   // Get next waitlist entries that haven't been invited
   const { data: entries } = await supabase
     .from("instaclaw_waitlist")
-    .select("id, email, position")
+    .select("id, email, position, ref_code")
     .is("invite_sent_at", null)
     .order("position", { ascending: true })
     .limit(Math.min(count, 100));
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     // Send email
     try {
-      await sendInviteEmail(entry.email, code);
+      await sendInviteEmail(entry.email, code, entry.ref_code ?? undefined);
 
       // Update waitlist entry
       await supabase

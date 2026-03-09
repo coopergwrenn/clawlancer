@@ -10,6 +10,8 @@ import {
   Users,
   DollarSign,
   ExternalLink,
+  CheckCircle,
+  Clock,
 } from "lucide-react";
 import { motion } from "motion/react";
 import AmbassadorCard from "@/components/AmbassadorCard";
@@ -33,10 +35,20 @@ interface Ambassador {
   revoked_at: string | null;
 }
 
+interface ReferralStats {
+  waitlist_count: number;
+  signup_count: number;
+  paid_count: number;
+  pending_earnings: number;
+}
+
 // ── Page ────────────────────────────────────────────
 
 export default function AmbassadorPage() {
   const [ambassador, setAmbassador] = useState<Ambassador | null | undefined>(undefined);
+  const [referralStats, setReferralStats] = useState<ReferralStats>({
+    waitlist_count: 0, signup_count: 0, paid_count: 0, pending_earnings: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -56,6 +68,7 @@ export default function AmbassadorPage() {
       if (!res.ok) throw new Error("Failed to load");
       const data = await res.json();
       setAmbassador(data.ambassador);
+      if (data.referral_stats) setReferralStats(data.referral_stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -151,19 +164,43 @@ export default function AmbassadorPage() {
               <div className="glass rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Users className="w-4 h-4" style={{ color: "var(--muted)" }} />
-                  <span className="text-xs" style={{ color: "var(--muted)" }}>Referrals</span>
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>Waitlist Signups</span>
                 </div>
                 <p
                   className="text-2xl font-normal tracking-[-0.5px]"
                   style={{ fontFamily: "var(--font-serif)" }}
                 >
-                  {ambassador.referral_count}
+                  {referralStats.waitlist_count}
+                </p>
+              </div>
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="w-4 h-4" style={{ color: "var(--muted)" }} />
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>Paid Conversions</span>
+                </div>
+                <p
+                  className="text-2xl font-normal tracking-[-0.5px]"
+                  style={{ fontFamily: "var(--font-serif)" }}
+                >
+                  {referralStats.paid_count}
+                </p>
+              </div>
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-4 h-4" style={{ color: "var(--muted)" }} />
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>Pending Earnings</span>
+                </div>
+                <p
+                  className="text-2xl font-normal tracking-[-0.5px]"
+                  style={{ fontFamily: "var(--font-serif)" }}
+                >
+                  ${referralStats.pending_earnings.toFixed(2)}
                 </p>
               </div>
               <div className="glass rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <DollarSign className="w-4 h-4" style={{ color: "var(--muted)" }} />
-                  <span className="text-xs" style={{ color: "var(--muted)" }}>Earnings</span>
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>Total Earnings</span>
                 </div>
                 <p
                   className="text-2xl font-normal tracking-[-0.5px]"

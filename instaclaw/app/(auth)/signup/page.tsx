@@ -26,11 +26,12 @@ function SignupInner() {
   const [referralValid, setReferralValid] = useState<boolean | null>(null);
   const [referralName, setReferralName] = useState("");
 
-  // Pre-fill referral code from ?ref= query param
+  // Pre-fill referral code from ?ref= query param and persist to localStorage
   useEffect(() => {
     const ref = searchParams.get("ref");
     if (ref) {
       setReferralCode(ref);
+      try { localStorage.setItem("instaclaw_ref", ref); } catch {}
       // Auto-validate
       fetch("/api/ambassador/validate-referral", {
         method: "POST",
@@ -287,7 +288,7 @@ function SignupInner() {
         <p className="text-sm text-center" style={{ color: "#6b6b6b" }}>
           Don&apos;t have a code?{" "}
           <Link
-            href="/"
+            href={referralCode ? `/?ref=${encodeURIComponent(referralCode)}` : "/"}
             className="underline transition-opacity hover:opacity-70"
             style={{ color: "#333334" }}
           >

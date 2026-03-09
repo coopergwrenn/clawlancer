@@ -1,14 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 
 export function WaitlistForm() {
+  return (
+    <Suspense>
+      <WaitlistFormInner />
+    </Suspense>
+  );
+}
+
+function WaitlistFormInner() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">(
     "idle"
   );
   const [position, setPosition] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [refCode, setRefCode] = useState<string | null>(null);
+
+  // Resolve effective ref code: URL param takes priority, then localStorage
+  useEffect(() => {
+    const paramRef = searchParams.get("ref");
+    if (paramRef) {
+      setRefCode(paramRef);
+      try { localStorage.setItem("instaclaw_ref", paramRef); } catch {}
+    } else {
+      try {
+        const stored = localStorage.getItem("instaclaw_ref");
+        if (stored) setRefCode(stored);
+      } catch {}
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,7 +45,7 @@ export function WaitlistForm() {
       const res = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, source: "landing" }),
+        body: JSON.stringify({ email, source: "landing", ...(refCode ? { ref_code: refCode } : {}) }),
       });
       const data = await res.json();
 

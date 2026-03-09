@@ -140,6 +140,43 @@ async function processEvent(event: any) {
             })
             .eq("id", ambassador.id);
 
+          // Record paid conversion in referrals table
+          try {
+            const { data: existingRef } = await supabase
+              .from("instaclaw_ambassador_referrals")
+              .select("id")
+              .eq("ambassador_id", ambassador.id)
+              .eq("referred_user_id", userId)
+              .limit(1)
+              .single();
+
+            if (existingRef) {
+              await supabase
+                .from("instaclaw_ambassador_referrals")
+                .update({
+                  paid_at: new Date().toISOString(),
+                  converted_at: new Date().toISOString(),
+                  commission_amount: 10,
+                  commission_status: "pending",
+                })
+                .eq("id", existingRef.id);
+            } else {
+              // Edge case: no existing row (direct checkout without prior tracking)
+              await supabase.from("instaclaw_ambassador_referrals").insert({
+                ambassador_id: ambassador.id,
+                referred_user_id: userId,
+                ref_code: referralCode,
+                signed_up_at: new Date().toISOString(),
+                converted_at: new Date().toISOString(),
+                paid_at: new Date().toISOString(),
+                commission_amount: 10,
+                commission_status: "pending",
+              });
+            }
+          } catch (refErr) {
+            logger.error("Failed to record paid referral", { error: String(refErr), route: "billing/webhook" });
+          }
+
           logger.info("Ambassador referral credited", {
             route: "billing/webhook",
             ambassadorId: ambassador.id,
