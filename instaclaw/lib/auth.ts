@@ -107,31 +107,53 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               .single();
 
             if (newUser) {
-              // Try to update an existing waitlist referral row, otherwise insert a new one
-              const { data: existingRef } = await supabase
-                .from("instaclaw_ambassador_referrals")
-                .select("id")
-                .eq("ambassador_id", ambassador.id)
-                .eq("ref_code", decodedRef)
-                .is("referred_user_id", null)
-                .limit(1)
-                .single();
+              // Look up the user's waitlist row by email to find their specific referral record
+              const userEmail = user.email?.toLowerCase();
+              let matchedRefId: string | null = null;
 
-              if (existingRef) {
+              if (userEmail) {
+                const { data: waitlistRow } = await supabase
+                  .from("instaclaw_waitlist")
+                  .select("id, created_at")
+                  .ilike("email", userEmail)
+                  .eq("ref_code", decodedRef)
+                  .single();
+
+                if (waitlistRow) {
+                  // Find the referral row created at waitlist time for this ambassador
+                  const { data: waitlistRef } = await supabase
+                    .from("instaclaw_ambassador_referrals")
+                    .select("id")
+                    .eq("ambassador_id", ambassador.id)
+                    .eq("ref_code", decodedRef)
+                    .is("referred_user_id", null)
+                    .gte("waitlisted_at", new Date(new Date(waitlistRow.created_at).getTime() - 5000).toISOString())
+                    .lte("waitlisted_at", new Date(new Date(waitlistRow.created_at).getTime() + 5000).toISOString())
+                    .limit(1)
+                    .single();
+
+                  if (waitlistRef) matchedRefId = waitlistRef.id;
+                }
+              }
+
+              if (matchedRefId) {
+                // Update the specific waitlist referral row for this user
                 await supabase
                   .from("instaclaw_ambassador_referrals")
                   .update({
                     referred_user_id: newUser.id,
                     signed_up_at: new Date().toISOString(),
                   })
-                  .eq("id", existingRef.id);
+                  .eq("id", matchedRefId);
               } else {
-                await supabase.from("instaclaw_ambassador_referrals").insert({
+                // No waitlist row found — direct signup or waitlist without ref
+                // Upsert to handle race condition with webhook (Bug 3)
+                await supabase.from("instaclaw_ambassador_referrals").upsert({
                   ambassador_id: ambassador.id,
                   referred_user_id: newUser.id,
                   ref_code: decodedRef,
                   signed_up_at: new Date().toISOString(),
-                });
+                }, { onConflict: "ambassador_id,referred_user_id", ignoreDuplicates: false });
               }
             }
           }

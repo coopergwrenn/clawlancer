@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const email = (body.email ?? "").trim().toLowerCase();
     const source = body.source ?? "landing";
-    const refCode = (body.ref_code ?? "").trim() || null;
+    const refCode = (body.ref_code ?? "").trim().toLowerCase() || null;
 
     if (!EMAIL_RE.test(email)) {
       return NextResponse.json(

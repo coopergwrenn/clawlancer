@@ -12,9 +12,35 @@ import {
   Clock,
   XCircle,
   Ban,
+  ChevronDown,
+  ChevronRight,
+  Banknote,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────
+
+interface ReferralRow {
+  id: string;
+  ambassador_id: string;
+  referred_user_id: string | null;
+  ref_code: string;
+  waitlisted_at: string | null;
+  signed_up_at: string | null;
+  converted_at: string | null;
+  paid_at: string | null;
+  paid_out_at: string | null;
+  commission_amount: number;
+  commission_status: "pending" | "paid" | "void";
+  created_at: string;
+  instaclaw_users: { email: string; name: string | null } | null;
+}
+
+interface ReferralStats {
+  waitlist_count: number;
+  signup_count: number;
+  paid_count: number;
+  pending_earnings: number;
+}
 
 interface AmbassadorRow {
   id: string;
@@ -32,6 +58,8 @@ interface AmbassadorRow {
   approved_at: string | null;
   revoked_at: string | null;
   instaclaw_users: { email: string; name: string | null } | null;
+  referrals: ReferralRow[];
+  referral_stats: ReferralStats;
 }
 
 interface Stats {
@@ -40,6 +68,7 @@ interface Stats {
   pending: number;
   totalReferrals: number;
   totalEarnings: number;
+  totalPendingPayouts: number;
 }
 
 // ── Status badge ────────────────────────────────────
@@ -79,6 +108,35 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function CommissionBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    pending: { bg: "rgba(245,158,11,0.12)", color: "#d97706" },
+    paid: { bg: "rgba(34,197,94,0.12)", color: "#16a34a" },
+    void: { bg: "rgba(239,68,68,0.12)", color: "#dc2626" },
+  };
+  const s = map[status] ?? map.pending;
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+      style={{ background: s.bg, color: s.color }}
+    >
+      {status}
+    </span>
+  );
+}
+
+function formatDate(d: string | null) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatDateTime(d: string | null) {
+  if (!d) return "—";
+  return new Date(d).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
 // ── Page ────────────────────────────────────────────
 
 export default function HQAmbassadorsPage() {
@@ -90,6 +148,9 @@ export default function HQAmbassadorsPage() {
 
   // Filter
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected" | "revoked">("all");
+
+  // Expanded rows
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Detail modal
   const [selected, setSelected] = useState<AmbassadorRow | null>(null);
@@ -124,11 +185,28 @@ export default function HQAmbassadorsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Action failed");
-      // Refresh data
       await fetchData();
       setSelected(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handlePayCommission(referralId: string) {
+    setActionLoading(referralId);
+    try {
+      const res = await fetch("/api/hq/ambassadors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pay_commission", referralId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to mark as paid");
+      await fetchData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to mark as paid");
     } finally {
       setActionLoading(null);
     }
@@ -165,9 +243,9 @@ export default function HQAmbassadorsPage() {
   const kpis = [
     { label: "Total", value: stats?.total ?? 0, icon: Users },
     { label: "Approved", value: stats?.approved ?? 0, icon: CheckCircle2, color: "#16a34a" },
-    { label: "Pending", value: stats?.pending ?? 0, icon: Clock, color: "#d97706" },
+    { label: "Pending Apps", value: stats?.pending ?? 0, icon: Clock, color: "#d97706" },
     { label: "Referrals", value: stats?.totalReferrals ?? 0, icon: Award, color: "#DC6743" },
-    { label: "Earnings", value: `$${(stats?.totalEarnings ?? 0).toFixed(2)}`, icon: DollarSign },
+    { label: "Total Earnings", value: `$${(stats?.totalEarnings ?? 0).toFixed(2)}`, icon: DollarSign },
   ];
 
   return (
@@ -193,6 +271,27 @@ export default function HQAmbassadorsPage() {
           <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
+
+      {/* Pending Payouts Banner */}
+      {(stats?.totalPendingPayouts ?? 0) > 0 && (
+        <div
+          className="rounded-xl p-4 mb-6 flex items-center gap-3"
+          style={{
+            background: "linear-gradient(135deg, rgba(245,158,11,0.08), rgba(220,103,67,0.08))",
+            border: "1px solid rgba(245,158,11,0.2)",
+          }}
+        >
+          <Banknote className="w-5 h-5 shrink-0" style={{ color: "#d97706" }} />
+          <div>
+            <p className="text-sm font-medium">
+              ${(stats?.totalPendingPayouts ?? 0).toFixed(2)} in pending payouts
+            </p>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Expand ambassador rows below to mark individual commissions as paid
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
@@ -246,17 +345,19 @@ export default function HQAmbassadorsPage() {
         <div
           className="grid gap-2 text-xs px-4 py-2.5"
           style={{
-            gridTemplateColumns: "1.5fr 1fr 0.7fr 0.6fr 0.6fr 0.8fr",
+            gridTemplateColumns: "20px 1.2fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.7fr",
             color: "var(--muted)",
             borderBottom: "1px solid var(--border)",
           }}
         >
+          <span></span>
           <span>Name</span>
-          <span>Email</span>
-          <span>Status</span>
-          <span>Referrals</span>
-          <span>Earnings</span>
-          <span>Applied</span>
+          <span>Ref Slug</span>
+          <span>Waitlist</span>
+          <span>Paid</span>
+          <span>Pending $</span>
+          <span>Total $</span>
+          <span>Joined</span>
         </div>
 
         {/* Rows */}
@@ -266,30 +367,138 @@ export default function HQAmbassadorsPage() {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-            {filtered.map((amb) => (
-              <button
-                key={amb.id}
-                onClick={() => setSelected(amb)}
-                className="grid gap-2 items-center text-sm px-4 py-3 w-full text-left hover:bg-black/[0.02] transition-colors cursor-pointer"
-                style={{ gridTemplateColumns: "1.5fr 1fr 0.7fr 0.6fr 0.6fr 0.8fr" }}
-              >
-                <span className="truncate font-medium">{amb.ambassador_name}</span>
-                <span className="truncate" style={{ color: "var(--muted)" }}>
-                  {amb.instaclaw_users?.email ?? "—"}
-                </span>
-                <span><StatusBadge status={amb.status} /></span>
-                <span style={{ color: "var(--muted)" }}>{amb.referral_count}</span>
-                <span style={{ color: "var(--muted)" }}>${Number(amb.earnings_total).toFixed(2)}</span>
-                <span style={{ color: "var(--muted)" }}>
-                  {new Date(amb.applied_at).toLocaleDateString()}
-                </span>
-              </button>
-            ))}
+            {filtered.map((amb) => {
+              const isExpanded = expandedId === amb.id;
+              const paidRefs = amb.referrals.filter((r) => r.paid_at);
+
+              return (
+                <div key={amb.id}>
+                  {/* Main row */}
+                  <div
+                    className="grid gap-2 items-center text-sm px-4 py-3 hover:bg-black/[0.02] transition-colors cursor-pointer"
+                    style={{ gridTemplateColumns: "20px 1.2fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.7fr" }}
+                  >
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : amb.id)}
+                      className="cursor-pointer p-0 bg-transparent border-none"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={() => setSelected(amb)}
+                      className="truncate font-medium text-left cursor-pointer bg-transparent border-none p-0 hover:underline"
+                    >
+                      <span>{amb.ambassador_name}</span>
+                      <span className="ml-2 text-xs font-normal" style={{ color: "var(--muted)" }}>
+                        {amb.instaclaw_users?.email ?? ""}
+                      </span>
+                    </button>
+                    <span className="font-mono text-xs truncate" style={{ color: "var(--muted)" }}>
+                      {amb.referral_code ?? "—"}
+                    </span>
+                    <span style={{ color: "var(--muted)" }}>{amb.referral_stats.waitlist_count}</span>
+                    <span style={{ color: "var(--muted)" }}>{amb.referral_stats.paid_count}</span>
+                    <span style={{ color: amb.referral_stats.pending_earnings > 0 ? "#d97706" : "var(--muted)" }}>
+                      ${amb.referral_stats.pending_earnings.toFixed(2)}
+                    </span>
+                    <span style={{ color: "var(--muted)" }}>${Number(amb.earnings_total).toFixed(2)}</span>
+                    <span style={{ color: "var(--muted)" }}>{formatDate(amb.applied_at)}</span>
+                  </div>
+
+                  {/* Expanded referrals */}
+                  {isExpanded && (
+                    <div
+                      className="px-4 pb-4"
+                      style={{ background: "rgba(0,0,0,0.015)" }}
+                    >
+                      {amb.referrals.length === 0 ? (
+                        <p className="text-xs py-3" style={{ color: "var(--muted)" }}>
+                          No referrals yet
+                        </p>
+                      ) : (
+                        <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                          {/* Sub-header */}
+                          <div
+                            className="grid gap-2 text-xs px-3 py-2"
+                            style={{
+                              gridTemplateColumns: "1.5fr 1fr 1fr 1fr 0.7fr 0.8fr",
+                              color: "var(--muted)",
+                              background: "rgba(0,0,0,0.03)",
+                              borderBottom: "1px solid var(--border)",
+                            }}
+                          >
+                            <span>User</span>
+                            <span>Waitlisted</span>
+                            <span>Signed Up</span>
+                            <span>Paid</span>
+                            <span>Commission</span>
+                            <span>Status</span>
+                          </div>
+
+                          {/* Referral rows */}
+                          <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+                            {amb.referrals.map((ref) => (
+                              <div
+                                key={ref.id}
+                                className="grid gap-2 items-center text-xs px-3 py-2.5"
+                                style={{
+                                  gridTemplateColumns: "1.5fr 1fr 1fr 1fr 0.7fr 0.8fr",
+                                  background: "var(--card)",
+                                }}
+                              >
+                                <span className="truncate">
+                                  {ref.instaclaw_users?.email ?? ref.instaclaw_users?.name ?? (
+                                    <span style={{ color: "var(--muted)" }}>waitlist only</span>
+                                  )}
+                                </span>
+                                <span style={{ color: "var(--muted)" }}>{formatDateTime(ref.waitlisted_at)}</span>
+                                <span style={{ color: "var(--muted)" }}>{formatDateTime(ref.signed_up_at)}</span>
+                                <span style={{ color: "var(--muted)" }}>{formatDateTime(ref.paid_at)}</span>
+                                <span style={{ color: "var(--muted)" }}>
+                                  {Number(ref.commission_amount) > 0 ? `$${Number(ref.commission_amount).toFixed(2)}` : "—"}
+                                </span>
+                                <span className="flex items-center gap-2">
+                                  <CommissionBadge status={ref.commission_status} />
+                                  {ref.commission_status === "pending" && Number(ref.commission_amount) > 0 && (
+                                    <button
+                                      onClick={() => handlePayCommission(ref.id)}
+                                      disabled={actionLoading === ref.id}
+                                      className="px-2 py-1 rounded text-xs font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                                      style={{
+                                        background: "rgba(34,197,94,0.1)",
+                                        color: "#16a34a",
+                                        border: "1px solid rgba(34,197,94,0.25)",
+                                      }}
+                                    >
+                                      {actionLoading === ref.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        "Mark Paid"
+                                      )}
+                                    </button>
+                                  )}
+                                  {ref.commission_status === "paid" && ref.paid_out_at && (
+                                    <span className="text-xs" style={{ color: "var(--muted)" }}>
+                                      {formatDate(ref.paid_out_at)}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Detail Sheet */}
+      {/* Detail Sheet (for approve/reject/revoke) */}
       {selected && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
@@ -372,12 +581,18 @@ export default function HQAmbassadorsPage() {
               )}
 
               {/* Stats */}
-              <div className="flex gap-4 text-sm">
+              <div className="flex gap-4 text-sm flex-wrap">
                 <span style={{ color: "var(--muted)" }}>
-                  Referrals: <strong style={{ color: "var(--foreground)" }}>{selected.referral_count}</strong>
+                  Waitlist: <strong style={{ color: "var(--foreground)" }}>{selected.referral_stats.waitlist_count}</strong>
                 </span>
                 <span style={{ color: "var(--muted)" }}>
-                  Earnings: <strong style={{ color: "var(--foreground)" }}>${Number(selected.earnings_total).toFixed(2)}</strong>
+                  Paid: <strong style={{ color: "var(--foreground)" }}>{selected.referral_stats.paid_count}</strong>
+                </span>
+                <span style={{ color: "var(--muted)" }}>
+                  Pending: <strong style={{ color: "#d97706" }}>${selected.referral_stats.pending_earnings.toFixed(2)}</strong>
+                </span>
+                <span style={{ color: "var(--muted)" }}>
+                  Total: <strong style={{ color: "var(--foreground)" }}>${Number(selected.earnings_total).toFixed(2)}</strong>
                 </span>
               </div>
             </div>

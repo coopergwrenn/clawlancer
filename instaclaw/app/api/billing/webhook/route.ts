@@ -140,8 +140,11 @@ async function processEvent(event: any) {
             })
             .eq("id", ambassador.id);
 
-          // Record paid conversion in referrals table
+          // Record paid conversion in referrals table.
+          // Uses upsert on (ambassador_id, referred_user_id) unique constraint
+          // to handle the race condition where auth.ts may have already inserted a row.
           try {
+            const now = new Date().toISOString();
             const { data: existingRef } = await supabase
               .from("instaclaw_ambassador_referrals")
               .select("id")
@@ -151,27 +154,42 @@ async function processEvent(event: any) {
               .single();
 
             if (existingRef) {
+              // Update existing row (created by waitlist or auth.ts)
               await supabase
                 .from("instaclaw_ambassador_referrals")
                 .update({
-                  paid_at: new Date().toISOString(),
-                  converted_at: new Date().toISOString(),
+                  paid_at: now,
+                  converted_at: now,
                   commission_amount: 10,
                   commission_status: "pending",
                 })
                 .eq("id", existingRef.id);
             } else {
-              // Edge case: no existing row (direct checkout without prior tracking)
-              await supabase.from("instaclaw_ambassador_referrals").insert({
+              // No existing row — insert, but handle unique constraint violation gracefully
+              const { error: insertErr } = await supabase.from("instaclaw_ambassador_referrals").insert({
                 ambassador_id: ambassador.id,
                 referred_user_id: userId,
                 ref_code: referralCode,
-                signed_up_at: new Date().toISOString(),
-                converted_at: new Date().toISOString(),
-                paid_at: new Date().toISOString(),
+                signed_up_at: now,
+                converted_at: now,
+                paid_at: now,
                 commission_amount: 10,
                 commission_status: "pending",
               });
+
+              // If auth.ts raced us and inserted first, update the existing row instead
+              if (insertErr?.code === "23505") {
+                await supabase
+                  .from("instaclaw_ambassador_referrals")
+                  .update({
+                    paid_at: now,
+                    converted_at: now,
+                    commission_amount: 10,
+                    commission_status: "pending",
+                  })
+                  .eq("ambassador_id", ambassador.id)
+                  .eq("referred_user_id", userId);
+              }
             }
           } catch (refErr) {
             logger.error("Failed to record paid referral", { error: String(refErr), route: "billing/webhook" });
@@ -565,6 +583,69 @@ async function processEvent(event: any) {
                 logger.error("Failed to send VM restored email", { error: String(emailErr), route: "billing/webhook" });
               });
             }
+          }
+        }
+      }
+
+      break;
+    }
+
+    case "charge.refunded": {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const charge = event.data.object as any;
+      const customerId = charge.customer as string;
+
+      if (customerId) {
+        // Find the user via their subscription's stripe_customer_id
+        const { data: sub } = await supabase
+          .from("instaclaw_subscriptions")
+          .select("user_id")
+          .eq("stripe_customer_id", customerId)
+          .single();
+
+        if (sub) {
+          // Find and void the referral commission for this user
+          const { data: referralRow } = await supabase
+            .from("instaclaw_ambassador_referrals")
+            .select("id, ambassador_id, commission_amount, commission_status")
+            .eq("referred_user_id", sub.user_id)
+            .eq("commission_status", "pending")
+            .limit(1)
+            .single();
+
+          if (referralRow) {
+            // Void the commission
+            await supabase
+              .from("instaclaw_ambassador_referrals")
+              .update({ commission_status: "void" })
+              .eq("id", referralRow.id);
+
+            // Decrement ambassador's earnings_total
+            const commission = Number(referralRow.commission_amount ?? 0);
+            if (commission > 0) {
+              const { data: ambassador } = await supabase
+                .from("instaclaw_ambassadors")
+                .select("id, earnings_total")
+                .eq("id", referralRow.ambassador_id)
+                .single();
+
+              if (ambassador) {
+                await supabase
+                  .from("instaclaw_ambassadors")
+                  .update({
+                    earnings_total: Math.max(0, Number(ambassador.earnings_total ?? 0) - commission),
+                  })
+                  .eq("id", ambassador.id);
+              }
+            }
+
+            logger.info("Refund: ambassador commission voided", {
+              route: "billing/webhook",
+              userId: sub.user_id,
+              referralId: referralRow.id,
+              ambassadorId: referralRow.ambassador_id,
+              commission,
+            });
           }
         }
       }

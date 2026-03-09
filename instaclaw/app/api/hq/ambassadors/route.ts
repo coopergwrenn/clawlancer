@@ -25,16 +25,51 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Fetch all referral records with referred user info
+  const { data: allReferrals } = await supabase
+    .from("instaclaw_ambassador_referrals")
+    .select("*, instaclaw_users(email, name)")
+    .order("created_at", { ascending: false });
+
+  // Group referrals by ambassador_id
+  const referralsByAmbassador: Record<string, typeof allReferrals> = {};
+  for (const ref of allReferrals ?? []) {
+    if (!referralsByAmbassador[ref.ambassador_id]) {
+      referralsByAmbassador[ref.ambassador_id] = [];
+    }
+    referralsByAmbassador[ref.ambassador_id]!.push(ref);
+  }
+
+  // Compute per-ambassador referral stats
+  const ambassadorsWithReferrals = (ambassadors ?? []).map((a) => {
+    const refs = referralsByAmbassador[a.id] ?? [];
+    return {
+      ...a,
+      referrals: refs,
+      referral_stats: {
+        waitlist_count: refs.filter((r) => r.waitlisted_at).length,
+        signup_count: refs.filter((r) => r.signed_up_at).length,
+        paid_count: refs.filter((r) => r.paid_at).length,
+        pending_earnings: refs
+          .filter((r) => r.commission_status === "pending")
+          .reduce((sum, r) => sum + Number(r.commission_amount ?? 0), 0),
+      },
+    };
+  });
+
   // Compute stats
   const total = ambassadors?.length ?? 0;
   const approved = ambassadors?.filter((a) => a.status === "approved").length ?? 0;
   const pending = ambassadors?.filter((a) => a.status === "pending").length ?? 0;
   const totalReferrals = ambassadors?.reduce((sum, a) => sum + (a.referral_count ?? 0), 0) ?? 0;
   const totalEarnings = ambassadors?.reduce((sum, a) => sum + Number(a.earnings_total ?? 0), 0) ?? 0;
+  const totalPendingPayouts = (allReferrals ?? [])
+    .filter((r) => r.commission_status === "pending")
+    .reduce((sum, r) => sum + Number(r.commission_amount ?? 0), 0);
 
   return NextResponse.json({
-    ambassadors: ambassadors ?? [],
-    stats: { total, approved, pending, totalReferrals, totalEarnings },
+    ambassadors: ambassadorsWithReferrals,
+    stats: { total, approved, pending, totalReferrals, totalEarnings, totalPendingPayouts },
   });
 }
 
@@ -45,13 +80,39 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { action, ambassadorId } = body;
+  const { action, ambassadorId, referralId } = body;
+
+  const supabase = getSupabase();
+
+  // ── PAY COMMISSION (operates on referral row, not ambassador) ──
+  if (action === "pay_commission" && referralId) {
+    const { data: ref, error: refErr } = await supabase
+      .from("instaclaw_ambassador_referrals")
+      .select("id, commission_status, commission_amount")
+      .eq("id", referralId)
+      .single();
+
+    if (refErr || !ref) {
+      return NextResponse.json({ error: "Referral not found" }, { status: 404 });
+    }
+    if (ref.commission_status !== "pending") {
+      return NextResponse.json({ error: `Cannot pay: status is ${ref.commission_status}` }, { status: 400 });
+    }
+
+    await supabase
+      .from("instaclaw_ambassador_referrals")
+      .update({
+        commission_status: "paid",
+        paid_out_at: new Date().toISOString(),
+      })
+      .eq("id", referralId);
+
+    return NextResponse.json({ success: true });
+  }
 
   if (!ambassadorId || !action) {
     return NextResponse.json({ error: "ambassadorId and action required" }, { status: 400 });
   }
-
-  const supabase = getSupabase();
 
   // Fetch the ambassador record
   const { data: ambassador, error: fetchErr } = await supabase
