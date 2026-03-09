@@ -3140,15 +3140,24 @@ export async function configureOpenClaw(
       '# Verify openclaw module loads correctly before starting gateway',
       'if ! node -e "require(\'openclaw\')" 2>/dev/null; then',
       '  echo "OPENCLAW_MODULE_BROKEN — reinstalling..."',
+      '  echo "NODE=$(node -v) NPM=$(npm -v) NM_DIR=$(npm root -g)"',
       '  # Thorough cleanup: remove module dir, stale staging dirs, and npm cache',
       '  NM_DIR="$(npm root -g)"',
       '  rm -rf "$NM_DIR/openclaw" "$NM_DIR/.openclaw-"* "$NM_DIR/.openclaw" 2>/dev/null',
       '  # Also clean up any nvm-specific paths',
       '  find "$HOME/.nvm/versions" -maxdepth 5 -name ".openclaw*" -type d -exec rm -rf {} + 2>/dev/null || true',
+      '  # Remove package-lock in global dir that may block install',
+      '  rm -f "$NM_DIR/../package-lock.json" 2>/dev/null || true',
       '  npm cache clean --force 2>/dev/null',
-      '  npm install -g openclaw@latest 2>&1',
+      `  echo "REINSTALL_CMD: npm install -g openclaw@${OPENCLAW_PINNED_VERSION}"`,
+      `  npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1`,
+      '  INSTALL_EC=$?',
+      '  echo "REINSTALL_EXIT_CODE=$INSTALL_EC"',
       '  if ! node -e "require(\'openclaw\')" 2>/dev/null; then',
       '    echo "OPENCLAW_REINSTALL_FAILED"',
+      '    # Dump diagnostic info',
+      '    echo "LS_NM_DIR=$(ls -la "$NM_DIR/" 2>&1 | head -20)"',
+      '    echo "DISK_SPACE=$(df -h / 2>&1 | tail -1)"',
       '    exit 1',
       '  fi',
       '  echo "OPENCLAW_REINSTALL_OK"',
@@ -3289,10 +3298,14 @@ export async function configureOpenClaw(
     mark("script_exec_done");
 
     if (result.stdout.includes("OPENCLAW_REINSTALL_FAILED")) {
+      // Extract diagnostic lines from stdout for the error message
+      const diagLines = result.stdout.split('\n')
+        .filter((l: string) => l.startsWith('NODE=') || l.startsWith('REINSTALL_') || l.startsWith('LS_NM_DIR') || l.startsWith('DISK_SPACE') || l.includes('npm error') || l.includes('npm ERR'))
+        .join(' | ');
       logger.error("PROVISIONING_BLOCKED: openclaw module broken and reinstall failed", {
-        route: "lib/ssh", vmId: vm.id, stdout: result.stdout.slice(-500),
+        route: "lib/ssh", vmId: vm.id, stdout: result.stdout.slice(-1500), diag: diagLines,
       });
-      throw new Error(`PROVISIONING_BLOCKED: VM ${vm.id} has broken openclaw module — reinstall failed`);
+      throw new Error(`PROVISIONING_BLOCKED: VM ${vm.id} has broken openclaw module — reinstall failed. Diag: ${diagLines.slice(0, 300)}`);
     }
 
     if (result.stdout.includes("OPENCLAW_REINSTALL_OK")) {
