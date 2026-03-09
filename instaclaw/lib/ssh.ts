@@ -3133,10 +3133,23 @@ export async function configureOpenClaw(
     ].join('\n');
     const pairingB64 = Buffer.from(pairingPython, 'utf-8').toString('base64');
 
-    // Gateway start sequence: install → start → sleep → pair AFTER start.
+    // Gateway start sequence: verify → install → start → sleep → pair AFTER start.
     // IMPORTANT: Pairing must happen AFTER the final gateway start because
     // a restart invalidates previous pairings (new identity generated).
     scriptParts.push(
+      '# Verify openclaw module loads correctly before starting gateway',
+      'if ! node -e "require(\'openclaw\')" 2>/dev/null; then',
+      '  echo "OPENCLAW_MODULE_BROKEN — reinstalling..."',
+      '  rm -rf "$(npm root -g)/openclaw" "$(npm root -g)/.openclaw-"* 2>/dev/null',
+      '  npm cache clean --force 2>/dev/null',
+      '  npm install -g openclaw@latest 2>&1',
+      '  if ! node -e "require(\'openclaw\')" 2>/dev/null; then',
+      '    echo "OPENCLAW_REINSTALL_FAILED"',
+      '    exit 1',
+      '  fi',
+      '  echo "OPENCLAW_REINSTALL_OK"',
+      'fi',
+      '',
       '# Install gateway as systemd service and start',
       'openclaw gateway install 2>/dev/null || true',
       '',
@@ -3270,6 +3283,19 @@ export async function configureOpenClaw(
     mark("script_exec_start");
     const result = await ssh.execCommand('bash /tmp/ic-configure.sh; EC=$?; rm -f /tmp/ic-configure.sh; exit $EC');
     mark("script_exec_done");
+
+    if (result.stdout.includes("OPENCLAW_REINSTALL_FAILED")) {
+      logger.error("PROVISIONING_BLOCKED: openclaw module broken and reinstall failed", {
+        route: "lib/ssh", vmId: vm.id, stdout: result.stdout.slice(-500),
+      });
+      throw new Error(`PROVISIONING_BLOCKED: VM ${vm.id} has broken openclaw module — reinstall failed`);
+    }
+
+    if (result.stdout.includes("OPENCLAW_REINSTALL_OK")) {
+      logger.warn("openclaw module was broken but auto-reinstalled successfully", {
+        route: "lib/ssh", vmId: vm.id,
+      });
+    }
 
     if (result.code !== 0 || !result.stdout.includes("OPENCLAW_CONFIGURE_DONE")) {
       logger.error("OpenClaw configure failed", { error: result.stderr, stdout: result.stdout, route: "lib/ssh", timeline });

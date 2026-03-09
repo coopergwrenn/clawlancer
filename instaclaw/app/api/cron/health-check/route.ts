@@ -1796,6 +1796,25 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // ── Excessive Gateway Restart Monitor ──────────────────────────────
+  // Flag VMs with high health_fail_count (>5) that are still unhealthy.
+  // Indicates the gateway keeps crash-looping despite restart attempts.
+  const { data: crashLoopVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, health_fail_count, ip_address, assigned_to")
+    .eq("status", "assigned")
+    .eq("health_status", "unhealthy")
+    .gt("health_fail_count", 5);
+
+  let crashLoopAlerts = 0;
+  if (crashLoopVms && crashLoopVms.length > 0) {
+    for (const clVm of crashLoopVms) {
+      alerts.add("Gateway Crash-Loop Detected", clVm.name ?? clVm.id,
+        `${clVm.health_fail_count} consecutive failures. Gateway is not recovering after restarts.\nIP: ${clVm.ip_address}\nUser: ${clVm.assigned_to ?? "unassigned"}\nAction: SSH in and check openclaw module integrity (node -e "require('openclaw')").`);
+      crashLoopAlerts++;
+    }
+  }
+
   // ── Layer 2: Nightly Heartbeat NULL Guard ──────────────────────────
   // Auto-initialize any assigned VMs that have NULL heartbeat_next_at
   // to prevent heartbeat calls from burning user message quota.
@@ -1890,6 +1909,7 @@ export async function GET(req: NextRequest) {
     cloudRebooted,
     autoMigrated,
     metricsCollected,
+    crashLoopAlerts,
     heartbeatNullsFixed,
     heartbeatMisclassAlerts,
     alertDigestsSent: alertResult.sent,
