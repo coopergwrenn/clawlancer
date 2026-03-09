@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
   let unhealthy = 0;
   let alerted = 0;
   let restarted = 0;
+  let autoRecovered = 0;
   let sessionsCleared = 0;
   let sessionsAlerted = 0;
   let browsersKilled = 0;
@@ -385,6 +386,119 @@ export async function GET(req: NextRequest) {
           vm.name ?? vm.id,
           `Unhealthy for ~${downtimeMinutes}min (${newFailCount} failures).\nIP: ${vm.ip_address}\nUser: ${vm.assigned_to ?? "unassigned"}\nRestart attempted at failure #${ALERT_THRESHOLD} but gateway did not recover.`
         );
+      }
+
+      // ── Auto-Recovery: at 10 consecutive failures (~50 min), SSH in and
+      // attempt to fix the gateway automatically. Capped at 1 attempt per
+      // VM per 24h via dedup key to prevent infinite loops.
+      const AUTO_RECOVERY_THRESHOLD = 10;
+      if (newFailCount === AUTO_RECOVERY_THRESHOLD) {
+        const recoveryDedupKey = `auto_recovery:${vm.id}:${new Date().toISOString().split("T")[0]}`;
+        let alreadyAttempted = false;
+        try {
+          const { data: existing } = await supabase
+            .from("instaclaw_admin_alert_log")
+            .select("id")
+            .eq("alert_key", recoveryDedupKey)
+            .limit(1);
+          alreadyAttempted = (existing?.length ?? 0) > 0;
+        } catch {
+          // Table issue — proceed with recovery
+        }
+
+        if (!alreadyAttempted) {
+          // Record the attempt BEFORE executing to prevent races
+          await supabase.from("instaclaw_admin_alert_log").insert({
+            alert_key: recoveryDedupKey,
+            vm_count: 1,
+            details: `Auto-recovery attempt started for ${vm.name ?? vm.id}`,
+          }).then(() => {});
+
+          let recoveryResult = "UNKNOWN";
+          try {
+            logger.info("Auto-recovery: starting for VM", {
+              route: "cron/health-check", vmId: vm.id, vmName: vm.name, failCount: newFailCount,
+            });
+
+            const ssh = await connectSSH(vm);
+            try {
+              // Step 1: Check if openclaw module loads
+              const moduleCheck = await ssh.execCommand(
+                `${NVM_PREAMBLE} && node -e "require('openclaw')" 2>&1`
+              );
+              const moduleOk = moduleCheck.code === 0;
+
+              if (!moduleOk) {
+                // Step 2: Module broken — clear and reinstall
+                logger.warn("Auto-recovery: openclaw module broken, reinstalling", {
+                  route: "cron/health-check", vmId: vm.id, stderr: moduleCheck.stderr?.slice(0, 200),
+                });
+
+                const DBUS = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
+                await ssh.execCommand(`${DBUS} && systemctl --user stop openclaw-gateway 2>&1; systemctl --user reset-failed openclaw-gateway 2>&1`);
+                await ssh.execCommand(`${NVM_PREAMBLE} && rm -rf "$(npm root -g)/openclaw" "$(npm root -g)/.openclaw-"* && npm cache clean --force 2>&1`);
+                const installResult = await ssh.execCommand(`${NVM_PREAMBLE} && npm install -g openclaw@latest 2>&1`);
+
+                if (installResult.code !== 0) {
+                  recoveryResult = `REINSTALL_FAILED: ${installResult.stderr?.slice(0, 300)}`;
+                  throw new Error(recoveryResult);
+                }
+
+                // Verify module loads after reinstall
+                const verifyResult = await ssh.execCommand(`${NVM_PREAMBLE} && node -e "require('openclaw')" 2>&1`);
+                if (verifyResult.code !== 0) {
+                  recoveryResult = "MODULE_STILL_BROKEN_AFTER_REINSTALL";
+                  throw new Error(recoveryResult);
+                }
+
+                // Restart gateway
+                await ssh.execCommand(`${DBUS} && systemctl --user daemon-reload && systemctl --user start openclaw-gateway 2>&1`);
+              } else {
+                // Step 2b: Module fine — just restart gateway (different root cause)
+                logger.info("Auto-recovery: openclaw module OK, restarting gateway", {
+                  route: "cron/health-check", vmId: vm.id,
+                });
+                const DBUS = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
+                await ssh.execCommand(`${DBUS} && systemctl --user stop openclaw-gateway 2>&1; systemctl --user reset-failed openclaw-gateway 2>&1`);
+                await ssh.execCommand(`${DBUS} && systemctl --user daemon-reload && systemctl --user start openclaw-gateway 2>&1`);
+              }
+
+              // Step 3: Wait and verify health
+              await new Promise(r => setTimeout(r, 15000));
+              const healthCheck = await ssh.execCommand("curl -sf http://localhost:18789/health 2>&1");
+              const isHealthy = healthCheck.stdout?.includes('"ok":true') || healthCheck.stdout?.includes('"ok": true');
+
+              if (isHealthy) {
+                recoveryResult = moduleOk ? "GATEWAY_RESTARTED" : "MODULE_REINSTALLED_AND_HEALTHY";
+                await supabase.from("instaclaw_vms").update({
+                  health_status: "healthy",
+                  health_fail_count: 0,
+                  last_health_check: new Date().toISOString(),
+                }).eq("id", vm.id);
+                autoRecovered++;
+              } else {
+                recoveryResult = `STILL_UNHEALTHY_AFTER_${moduleOk ? "RESTART" : "REINSTALL"}`;
+              }
+            } finally {
+              ssh.dispose();
+            }
+          } catch (recoveryErr) {
+            if (recoveryResult === "UNKNOWN") {
+              recoveryResult = `ERROR: ${String(recoveryErr).slice(0, 300)}`;
+            }
+            logger.error("Auto-recovery failed", {
+              route: "cron/health-check", vmId: vm.id, vmName: vm.name, result: recoveryResult,
+            });
+          }
+
+          // Alert with result
+          const succeeded = recoveryResult.includes("HEALTHY") || recoveryResult.includes("RESTARTED");
+          alerts.add(
+            succeeded ? "Auto-Recovery Succeeded" : "Auto-Recovery FAILED — Manual SSH Required",
+            vm.name ?? vm.id,
+            `Result: ${recoveryResult}\nIP: ${vm.ip_address}\nUser: ${vm.assigned_to ?? "unassigned"}\nFail count at trigger: ${newFailCount}`
+          );
+        }
       }
     }
   }
@@ -1909,6 +2023,7 @@ export async function GET(req: NextRequest) {
     cloudRebooted,
     autoMigrated,
     metricsCollected,
+    autoRecovered,
     crashLoopAlerts,
     heartbeatNullsFixed,
     heartbeatMisclassAlerts,
