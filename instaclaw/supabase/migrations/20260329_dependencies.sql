@@ -39,5 +39,15 @@ INSERT INTO instaclaw_dependencies (name, description, category, check_type, che
   ('Linode API', 'VM provisioning (primary)', 'api', 'http_health', 'https://api.linode.com/v4/regions', NULL, NULL, 'high', 'Primary VM provider.'),
   ('Supabase Platform', 'Hosted PostgreSQL + Auth', 'infra', 'http_health', 'https://status.supabase.com/api/v2/status.json', NULL, NULL, 'high', 'Database + auth backbone.'),
   ('Vercel', 'Hosting platform for instaclaw.io', 'infra', 'http_health', 'https://instaclaw.io/api/health', NULL, NULL, 'high', 'Production hosting.'),
-  ('PostHog', 'Product analytics', 'npm', 'npm', 'posthog-js', 'https://github.com/PostHog/posthog-js', '1.347.1', 'low', 'Analytics tracking.')
+  ('PostHog', 'Product analytics', 'npm', 'npm', 'posthog-js', 'https://github.com/PostHog/posthog-js', '1.347.1', 'low', 'Analytics tracking.'),
+  ('Open-Higgsfield-AI', 'AI video generation skill (Seedance, Kling, Veo, etc.)', 'skill', 'github_release', 'Anil-matcha/Open-Higgsfield-AI', 'https://github.com/Anil-matcha/Open-Higgsfield-AI', NULL, 'high', 'Custom Python scripts wrap the Muapi API. New models/endpoints need manual script updates + fleet deploy.'),
+  ('Virtuals ACP', 'Agent commerce protocol — agents earn on marketplace', 'skill', 'github_release', 'Virtual-Protocol/openclaw-acp', 'https://github.com/Virtual-Protocol/openclaw-acp', NULL, 'medium', 'Cloned at HEAD with --depth 1 on each VM. New releases need manual fleet deploy.'),
+  ('Remotion', 'Motion graphics rendering on VMs', 'skill', 'npm', 'remotion', 'https://github.com/remotion-dev/remotion', '^4.0.0', 'medium', 'Installed once during provisioning. VMs provisioned at different times may have different patch versions.'),
+  ('AgentMail', 'Email outreach for agents', 'api', 'manual', NULL, 'https://agentmail.to', NULL, 'medium', 'Monitor for API changes. No versioning available.'),
+  ('ElevenLabs', 'Premium text-to-speech', 'api', 'manual', NULL, 'https://elevenlabs.io', NULL, 'medium', 'Monitor voice model deprecations.'),
+  ('OpenAI TTS', 'Text-to-speech for voice skill', 'api', 'manual', NULL, 'https://platform.openai.com', NULL, 'medium', 'Monitor tts-1/tts-2 model deprecations.'),
+  ('Kalshi', 'Prediction market trading', 'api', 'http_health', 'https://trading-api.kalshi.com/trade-api/v2/exchange/status', NULL, NULL, 'medium', '13 Python scripts depend on response schema. No API versioning.'),
+  ('Polymarket CLOB', 'Prediction market trading', 'api', 'http_health', 'https://clob.polymarket.com', NULL, NULL, 'medium', 'Python scripts deployed via fleet-push. No API version pinning.'),
+  ('DexScreener', 'Token prices for Solana trading', 'api', 'http_health', 'https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112', NULL, NULL, 'low', 'Used in solana-defi skill. Stable API.'),
+  ('Brave Search', 'Web search for competitive intelligence skill', 'api', 'http_health', 'https://api.search.brave.com/res/v1/web/search?q=test', NULL, NULL, 'low', 'Stable API, low risk.')
 ON CONFLICT (name) DO NOTHING;
