@@ -53,6 +53,28 @@ if [ "$COUNT" -lt 1 ] || [ "$COUNT" -gt 10 ]; then
   exit 1
 fi
 
+# --- Duplicate IP guard ---
+# Check if an IP is already used by a non-terminated VM before inserting.
+# Prevents stale DB records from causing fleet upgrade aborts.
+check_duplicate_ip() {
+  local ip="$1"
+  local dupes
+  dupes=$(curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?ip_address=eq.${ip}&status=not.in.(failed,destroyed,terminated)&select=name,status,assigned_to" \
+    -H "apikey: ${SUPABASE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_KEY}")
+  local count
+  count=$(echo "$dupes" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+  if [ "$count" -gt 0 ]; then
+    echo "  DUPLICATE_IP: ${ip} is already used by ${count} active VM(s):"
+    echo "$dupes" | python3 -c "
+import json,sys
+for v in json.load(sys.stdin):
+    print(f\"    - {v.get('name','?')} ({v.get('status','?')}, assigned={v.get('assigned_to','none')})\")" 2>/dev/null
+    return 1
+  fi
+  return 0
+}
+
 # --- Show current status ---
 echo "=== Current spots ==="
 curl -s "${SUPABASE_URL}/rest/v1/instaclaw_vms?status=eq.ready&assigned_to=is.null&select=id,name,status,provider" \
@@ -182,6 +204,11 @@ for i in $(seq 1 "$COUNT"); do
   fi
 
   echo "  IP: $IP"
+
+  if ! check_duplicate_ip "$IP"; then
+    echo "  SKIPPING ${VM_NAME} — duplicate IP, will not insert"
+    continue
+  fi
 
   # Insert into Supabase
   VM_STATUS="ready"
@@ -387,6 +414,11 @@ print(pub[0] if pub else '')
   fi
 
   echo "  IP: $IP"
+
+  if ! check_duplicate_ip "$IP"; then
+    echo "  SKIPPING ${VM_NAME} — duplicate IP, will not insert"
+    continue
+  fi
 
   # Insert into Supabase as provisioning (cloud-init still running)
   VM_STATUS="provisioning"
@@ -639,6 +671,11 @@ print(ipv4[0] if ipv4 else '')
   fi
 
   echo "  IP: $IP"
+
+  if ! check_duplicate_ip "$IP"; then
+    echo "  SKIPPING ${VM_NAME} — duplicate IP, will not insert"
+    continue
+  fi
 
   # Insert into Supabase as provisioning (cloud-init still running)
   VM_STATUS="provisioning"
