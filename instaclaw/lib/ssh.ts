@@ -3137,8 +3137,8 @@ export async function configureOpenClaw(
     // IMPORTANT: Pairing must happen AFTER the final gateway start because
     // a restart invalidates previous pairings (new identity generated).
     scriptParts.push(
-      '# Verify openclaw module loads correctly before starting gateway',
-      'if ! node -e "require(\'openclaw\')" 2>/dev/null; then',
+      '# Verify openclaw module is installed (check binary exists OR module loads)',
+      'if ! which openclaw >/dev/null 2>&1 && ! node -e "require(\'openclaw\')" 2>/dev/null; then',
       '  echo "OPENCLAW_MODULE_BROKEN — reinstalling..."',
       '  echo "NODE=$(node -v) NPM=$(npm -v) NM_DIR=$(npm root -g)"',
       '  # Thorough cleanup: remove module dir, stale staging dirs, and npm cache',
@@ -3153,9 +3153,13 @@ export async function configureOpenClaw(
       `  npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1`,
       '  INSTALL_EC=$?',
       '  echo "REINSTALL_EXIT_CODE=$INSTALL_EC"',
-      '  REQUIRE_ERR=$(node -e "require(\'openclaw\')" 2>&1)',
-      '  REQUIRE_EC=$?',
-      '  if [ "$REQUIRE_EC" -ne 0 ]; then',
+      '  # Verify: check binary first (ESM packages can\'t be require()\'d), fall back to require',
+      '  if ! which openclaw >/dev/null 2>&1; then',
+      '    REQUIRE_ERR=$(node -e "require(\'openclaw\')" 2>&1)',
+      '  else',
+      '    REQUIRE_ERR=""',
+      '  fi',
+      '  if ! which openclaw >/dev/null 2>&1 && [ -n "$REQUIRE_ERR" ]; then',
       '    echo "OPENCLAW_REINSTALL_FAILED"',
       '    echo "REQUIRE_ERROR=$REQUIRE_ERR"',
       '    # Dump diagnostic info',
