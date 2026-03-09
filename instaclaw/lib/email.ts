@@ -1,4 +1,6 @@
 import { Resend } from "resend";
+import { getSupabase } from "./supabase";
+import { logger } from "./logger";
 
 let _resend: Resend | null = null;
 
@@ -218,6 +220,39 @@ export async function sendVMReadyEmail(
   email: string,
   controlPanelUrl: string
 ): Promise<void> {
+  // Dedup guard: never send this email more than once per email per 24h.
+  // Uses instaclaw_admin_alert_log with a unique key to prevent spam.
+  const dedupKey = `vm_ready_email:${email}`;
+  try {
+    const supabase = getSupabase();
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: existing } = await supabase
+      .from("instaclaw_admin_alert_log")
+      .select("id")
+      .eq("alert_key", dedupKey)
+      .gte("sent_at", oneDayAgo)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      logger.warn("VM ready email suppressed (already sent in last 24h)", {
+        route: "lib/email", email: email.slice(0, 3) + "***",
+      });
+      return;
+    }
+
+    // Record the send BEFORE sending to prevent races
+    await supabase.from("instaclaw_admin_alert_log").insert({
+      alert_key: dedupKey,
+      vm_count: 1,
+      details: `VM ready email sent to ${email}`,
+    });
+  } catch (dedupErr) {
+    // If dedup check fails, still send the email (better to double-send than not send)
+    logger.error("VM ready email dedup check failed", {
+      route: "lib/email", error: String(dedupErr),
+    });
+  }
+
   const resend = getResend();
   await resend.emails.send({
     from: FROM,
