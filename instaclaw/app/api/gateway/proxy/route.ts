@@ -373,7 +373,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const isHeartbeat = !!(heartbeatDue || heartbeatRecent || heartbeatByContent);
+    // --- Ping detection: "ping" messages are health checks, not real user messages ---
+    // They should ALWAYS route as heartbeats (MiniMax, 0.2 cost) regardless of
+    // timing fields. This prevents runaway ping loops from burning user daily limits.
+    let isPingMessage = false;
+    if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
+      const msgs = parsedBody.messages as Array<{ role?: string; content?: unknown }>;
+      const lastUserMsg = msgs.filter((m) => m.role === "user").pop();
+      if (lastUserMsg) {
+        const text = typeof lastUserMsg.content === "string"
+          ? lastUserMsg.content
+          : Array.isArray(lastUserMsg.content)
+            ? (lastUserMsg.content as Array<{ type?: string; text?: string }>).map((b) => b.text || "").join(" ")
+            : "";
+        isPingMessage = text.trim().toLowerCase() === "ping";
+      }
+    }
+
+    const isHeartbeat = !!(heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage);
 
     // --- Heartbeat model override: always use minimax-m2.5 for background tasks ---
     // Users shouldn't burn Sonnet/Opus credits on heartbeat check-ins.
