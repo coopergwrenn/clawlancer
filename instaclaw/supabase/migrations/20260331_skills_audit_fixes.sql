@@ -12,7 +12,7 @@ WHERE slug = 'remotion-video';
 
 -- 2. Deactivate freelance-digital
 UPDATE instaclaw_skills
-SET is_active = false
+SET status = 'inactive'
 WHERE slug = 'freelance-digital';
 
 -- 3. Add marketplace-earning skill
