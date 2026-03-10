@@ -539,7 +539,7 @@ When user says: "run this code" or "write a script that..."
 ```
 STEP 1: Write the script
 ├── Determine language (Python default, Bash for shell tasks, Node for JS)
-├── Write to ~/workspace/scripts/<descriptive-name>.<ext>
+├── Write to ~/.openclaw/workspace/scripts/<descriptive-name>.<ext>
 └── Make executable (chmod +x for bash)
 
 STEP 2: Run
@@ -550,7 +550,7 @@ STEP 2: Run
 STEP 3: Return
 ├── Show output (truncated if > 500 lines)
 ├── Show errors with explanation
-└── Save output to ~/workspace/output/ if requested
+└── Save output to ~/.openclaw/workspace/output/ if requested
 ```
 
 ### Workflow 2: API Server (Scaffold, Start, Test, Return URL)
@@ -714,7 +714,7 @@ top -bn1 | head -5
 - [ ] Server binds to 0.0.0.0 if external access is needed
 - [ ] Background processes have PID tracking and log files
 - [ ] Error handling included (try/except, set -euo pipefail for bash)
-- [ ] Output files saved to predictable paths (~/output/ or ~/workspace/)
+- [ ] Output files saved to predictable paths (~/output/ or ~/.openclaw/workspace/)
 - [ ] Resource usage is reasonable (no unbounded memory, no fork bombs)
 
 ## Files

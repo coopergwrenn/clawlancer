@@ -2807,7 +2807,7 @@ export async function configureOpenClaw(
       scriptParts.push(
         '# Deploy Sjinn AI Video Production Studio skill',
         'SJINN_SKILL_DIR="$HOME/.openclaw/skills/sjinn-video"',
-        'mkdir -p "$SJINN_SKILL_DIR/references" "$SJINN_SKILL_DIR/scripts" "$HOME/scripts" "$HOME/workspace/videos" "$HOME/workspace/tmp-media" "$HOME/memory"',
+        'mkdir -p "$SJINN_SKILL_DIR/references" "$SJINN_SKILL_DIR/scripts" "$HOME/scripts" "$HOME/.openclaw/workspace/videos" "$HOME/.openclaw/workspace/tmp-media" "$HOME/memory"',
         `echo '${sjinnSkillB64}' | base64 -d > "$SJINN_SKILL_DIR/SKILL.md"`,
         `echo '${sjinnApiB64}' | base64 -d > "$SJINN_SKILL_DIR/references/sjinn-api.md"`,
         `echo '${sjinnPromptB64}' | base64 -d > "$SJINN_SKILL_DIR/references/video-prompting.md"`,

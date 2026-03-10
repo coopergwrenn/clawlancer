@@ -11,10 +11,10 @@ set -euo pipefail
 echo "=== Setting up Sjinn AI Video Production Studio ==="
 
 # Create workspace directories
-mkdir -p ~/workspace/videos
-mkdir -p ~/workspace/tmp-media
+mkdir -p ~/.openclaw/workspace/videos
+mkdir -p ~/.openclaw/workspace/tmp-media
 mkdir -p ~/memory
-echo "  [OK] Directories created: ~/workspace/videos, ~/workspace/tmp-media, ~/memory"
+echo "  [OK] Directories created: ~/.openclaw/workspace/videos, ~/.openclaw/workspace/tmp-media, ~/memory"
 
 # Create video-history.json template if it doesn't exist
 if [ ! -f ~/memory/video-history.json ]; then
@@ -37,8 +37,8 @@ else
 fi
 
 # Set up auto-cleanup cron for videos (7-day retention)
-CRON_VIDEO='0 3 * * * find ~/workspace/videos/ -type f -mtime +7 -delete 2>/dev/null'
-CRON_MEDIA='*/30 * * * * find ~/workspace/tmp-media/ -type f -mmin +60 -delete 2>/dev/null'
+CRON_VIDEO='0 3 * * * find ~/.openclaw/workspace/videos/ -type f -mtime +7 -delete 2>/dev/null'
+CRON_MEDIA='*/30 * * * * find ~/.openclaw/workspace/tmp-media/ -type f -mmin +60 -delete 2>/dev/null'
 
 # Add cron jobs if not already present
 CURRENT_CRON=$(crontab -l 2>/dev/null || true)
@@ -62,7 +62,7 @@ fi
 
 echo ""
 echo "=== Sjinn Video Setup Complete ==="
-echo "  Videos:      ~/workspace/videos/ (7-day retention)"
-echo "  Tmp media:   ~/workspace/tmp-media/ (1-hour retention)"
+echo "  Videos:      ~/.openclaw/workspace/videos/ (7-day retention)"
+echo "  Tmp media:   ~/.openclaw/workspace/tmp-media/ (1-hour retention)"
 echo "  History:     ~/memory/video-history.json"
 echo "  Auth:        ~/.openclaw/.env (GATEWAY_TOKEN)"

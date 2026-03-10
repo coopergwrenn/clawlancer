@@ -91,7 +91,7 @@ TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id')
 
 6. **Acknowledge:** "Generating your video now, this usually takes 2-5 minutes. I'll send it as soon as it's ready."
 7. **Poll** — See Async Workflow section below
-8. **Download** — `curl -sL "$CDN_URL" -o ~/workspace/videos/${SLUG}_$(date +%Y-%m-%d_%H-%M).mp4`
+8. **Download** — `curl -sL "$CDN_URL" -o ~/.openclaw/workspace/videos/${SLUG}_$(date +%Y-%m-%d_%H-%M).mp4`
 9. **Send via Telegram** — `sendVideo` (max 20MB reliable, 50MB hard limit). Include caption with prompt summary.
 10. **Log** — Append to `~/memory/video-history.json`
 
@@ -100,11 +100,11 @@ TASK_ID=$(echo "$RESPONSE" | jq -r '.data.task_id')
 **Flow:** User sends photo → Save locally → Serve via Caddy → Submit URL to Tool API → Poll → Download → Send
 
 1. User sends a photo via Telegram (with intent: "animate this", "make this move", "turn this into a video")
-2. Save image to `~/workspace/tmp-media/` with unique name:
+2. Save image to `~/.openclaw/workspace/tmp-media/` with unique name:
    ```bash
    UUID=$(cat /proc/sys/kernel/random/uuid)
    EXT="jpg"  # or png based on original
-   cp /path/to/received/image.jpg ~/workspace/tmp-media/${UUID}.${EXT}
+   cp /path/to/received/image.jpg ~/.openclaw/workspace/tmp-media/${UUID}.${EXT}
    ```
 3. Serve via Caddy: `https://{hostname}/tmp-media/${UUID}.${EXT}`
 4. Submit to Tool API (image-to-video requires Tool API):
@@ -259,7 +259,7 @@ VIDEO_URL=$(echo "$RESULT" | jq -r '.data.video_url')
 
 ```bash
 FILENAME="${SLUG}_$(date +%Y-%m-%d_%H-%M).mp4"
-curl -sL "$VIDEO_URL" -o ~/workspace/videos/$FILENAME
+curl -sL "$VIDEO_URL" -o ~/.openclaw/workspace/videos/$FILENAME
 # Send via Telegram sendVideo (< 20MB reliable, < 50MB hard limit)
 # If > 50MB: compress or send as document
 ```
@@ -295,7 +295,7 @@ If pending tasks exist, query their status and retrieve completed results. Updat
       "chat_id": "uuid",
       "prompt": "enhanced prompt",
       "result_url": "https://cdn.example.com/...",
-      "local_path": "~/workspace/videos/sunset_2026-02-25_14-30.mp4",
+      "local_path": "~/.openclaw/workspace/videos/sunset_2026-02-25_14-30.mp4",
       "submitted_at": "ISO",
       "completed_at": "ISO",
       "generation_time_seconds": 180,
@@ -481,7 +481,7 @@ Before delivering any video, verify:
 3. Async poll loop running with correct intervals (15s video, 10s image/audio)
 4. Progress updates sent at 2min, 5min milestones
 5. Timeout handled at 10min (video) or 5min (image/audio)
-6. Video downloaded to ~/workspace/videos/ with descriptive filename
+6. Video downloaded to ~/.openclaw/workspace/videos/ with descriptive filename
 7. Video size checked before Telegram delivery (20MB/50MB thresholds)
 8. Result logged to ~/memory/video-history.json
 9. Pending task removed from pending array after completion

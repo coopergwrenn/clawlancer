@@ -1031,8 +1031,8 @@ assets/template-basic/
 
 ```bash
 # 1. Copy template to workspace (includes pre-installed node_modules)
-cp -r ~/.openclaw/skills/motion-graphics/assets/template-basic ~/workspace/video-project
-cd ~/workspace/video-project
+cp -r ~/.openclaw/skills/motion-graphics/assets/template-basic ~/.openclaw/workspace/video-project
+cd ~/.openclaw/workspace/video-project
 
 # 2. Edit src/MyVideo.tsx with brand assets, scenes, and copy
 

@@ -242,7 +242,7 @@ while [ $ELAPSED -lt 600 ]; do
 done
 
 # 3. Download
-curl -sL "$VIDEO_URL" -o ~/workspace/videos/sunset_$(date +%Y-%m-%d_%H-%M).mp4
+curl -sL "$VIDEO_URL" -o ~/.openclaw/workspace/videos/sunset_$(date +%Y-%m-%d_%H-%M).mp4
 ```
 
 ### Complete Workflow: Image-to-Video via Tool API
@@ -284,5 +284,5 @@ while [ $ELAPSED -lt 600 ]; do
 done
 
 # 3. Download
-curl -sL "$VIDEO_URL" -o ~/workspace/videos/product_$(date +%Y-%m-%d_%H-%M).mp4
+curl -sL "$VIDEO_URL" -o ~/.openclaw/workspace/videos/product_$(date +%Y-%m-%d_%H-%M).mp4
 ```
