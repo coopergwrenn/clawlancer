@@ -23,6 +23,7 @@ import {
 
   CandlestickChart,
   Briefcase,
+  Film,
 } from "lucide-react";
 import { type LucideIcon } from "lucide-react";
 
@@ -109,6 +110,7 @@ const SKILL_ORB_MAP: Record<string, SkillOrbEntry> = {
   "web-search":            { color: "#06B6D4", type: "lucide", Icon: Search },
   "prediction-markets":    { color: "#F59E0B", type: "lucide", Icon: CandlestickChart },
   "freelance-digital":     { color: "#8B5CF6", type: "lucide", Icon: Briefcase },
+  "remotion-video":        { color: "#0B84F3", type: "lucide", Icon: Film },
 
   // ── Brand SVG logos (white SVG path in orb) ──
   "solana-defi":           { color: "#7C3AED", type: "brand-svg", brandKey: "solana" },
