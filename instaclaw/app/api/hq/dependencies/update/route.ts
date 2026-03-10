@@ -15,6 +15,7 @@ const REPO = "coopergwrenn/clawlancer";
 interface Dep {
   id: string;
   name: string;
+  category: string;
   check_type: string;
   check_target: string | null;
   latest_version: string | null;
@@ -41,15 +42,15 @@ export async function POST(req: Request) {
   // Fetch dep records
   const { data: deps, error } = await supabase
     .from("instaclaw_dependencies")
-    .select("id, name, check_type, check_target, latest_version, status")
+    .select("id, name, category, check_type, check_target, latest_version, status")
     .in("id", ids);
 
   if (error || !deps || deps.length === 0) {
     return NextResponse.json({ error: "Dependencies not found" }, { status: 404 });
   }
 
-  // Path B: Manual/API deps (non-npm) — single dep only
-  const nonNpmDeps = deps.filter((d: Dep) => d.check_type !== "npm");
+  // Path B: Manual/API deps (non-npm or skill category) — single dep only
+  const nonNpmDeps = deps.filter((d: Dep) => d.check_type !== "npm" || d.category === "skill");
   if (nonNpmDeps.length > 0) {
     if (deps.length > 1) {
       return NextResponse.json({ error: "Batch update only supported for npm deps" }, { status: 400 });

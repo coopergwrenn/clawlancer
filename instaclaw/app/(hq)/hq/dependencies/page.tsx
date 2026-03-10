@@ -251,6 +251,7 @@ export default function DependenciesPage() {
       (d) =>
         d.status === "behind" &&
         d.check_type === "npm" &&
+        d.category !== "skill" &&
         (d.update_impact === "low" || d.update_impact === "medium") &&
         d.name !== "Stripe",
     );
@@ -353,6 +354,7 @@ export default function DependenciesPage() {
     (d) =>
       d.status === "behind" &&
       d.check_type === "npm" &&
+      d.category !== "skill" &&
       (d.update_impact === "low" || d.update_impact === "medium") &&
       d.name !== "Stripe",
   ).length;
