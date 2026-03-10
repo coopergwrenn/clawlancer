@@ -195,6 +195,8 @@ This warning also triggers automatically if a trade returns BLOCK with "risk ack
 
 **Rule 17 — MINIMUM ORDER SIZE:** Polymarket requires minimum $1 maker amount per order. When trading cheap outcomes (under $0.20), you need at least $5-10 to clear the minimum after rounding. If a trade fails with "invalid amount" or "min size", tell the user to increase their amount — do NOT say "insufficient balance." The script auto-rounds up when the order is close to the minimum, but very small amounts will be rejected outright. Example: buying YES at $0.13 with $1 rounds to $0.99 maker — the script bumps it to $1.04 automatically. But $0.50 at $0.13 is too far below minimum.
 
+**Rule 18 — NEG_RISK (MULTI-OUTCOME) MARKETS:** Markets with multiple outcomes (e.g., "Democratic Presidential Nominee 2028" with 40+ candidates) use Polymarket's neg_risk system with a different exchange contract (NegRiskExchange). The py-clob-client SDK v0.34.6 auto-detects neg_risk via `GET /neg-risk?token_id=X` and routes orders to the correct contract — no manual handling needed. Key differences for neg_risk markets: minimum order size is typically $5 (not $1), and all sub-markets share a `negRiskMarketID`. When trading these markets, ensure the amount meets the higher $5 minimum shown in the market data's `orderMinSize` field.
+
 **Rule 8 — Kalshi BYOK (Bring Your Own Key):** Kalshi API keys are created by the user on kalshi.com. The agent NEVER creates Kalshi accounts. Telegram-friendly onboarding flow:
 
 1. Tell the user: "Go to kalshi.com → Settings → API → Create API Key"

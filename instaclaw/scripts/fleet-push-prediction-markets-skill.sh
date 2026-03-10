@@ -146,7 +146,9 @@ ln -sfn "\$SKILL_DIR" "\$HOME/.openclaw/skills/polymarket"
 
 # Bootstrap pip if missing
 python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true
-python3 -m pip install --quiet --break-system-packages py-clob-client eth-account websockets web3 cryptography 2>/dev/null || true
+# Pin py-clob-client to v0.34.6 — our ROUNDING_CONFIG patch in polymarket-trade.py
+# depends on SDK internals. Also: neg_risk auto-detection verified on this version.
+python3 -m pip install --quiet --break-system-packages 'py-clob-client==0.34.6' eth-account websockets web3 cryptography 2>/dev/null || true
 
 echo "  Prediction markets skill deployed (Polymarket + Kalshi)"
 REMOTE_SCRIPT

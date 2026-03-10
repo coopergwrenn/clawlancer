@@ -383,7 +383,7 @@ def init_clob_client(wallet):
     try:
         from py_clob_client.client import ClobClient
     except ImportError:
-        return None, "py-clob-client not installed. Run: pip3 install py-clob-client"
+        return None, "py-clob-client not installed. Run: pip3 install 'py-clob-client==0.34.6'"
 
     _patch_clob_rounding()
 
@@ -933,6 +933,12 @@ def cmd_buy(args):
             token_id=token_id,
         )
 
+        # NOTE: neg_risk markets (multi-outcome events) are auto-handled by py_clob_client.
+        # The SDK calls GET /neg-risk?token_id=X to detect neg_risk, caches the result,
+        # and routes to the correct exchange contract (NegRiskExchange vs CTFExchange)
+        # for EIP-712 signing. No manual neg_risk flag needed.
+        # Verified against py_clob_client v0.34.6 — pin this version to protect
+        # the ROUNDING_CONFIG patch in _patch_clob_rounding().
         signed_order = client.create_order(order_args)
         resp = client.post_order(signed_order, order_type)
     except Exception as e:
