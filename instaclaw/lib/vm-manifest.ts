@@ -104,11 +104,25 @@ export function getTemplateContent(key: string): string {
   return content;
 }
 
+// ── Push-based heartbeat script (deployed to every VM, runs hourly via cron) ──
+const PUSH_HEARTBEAT_SH = `#!/bin/bash
+# Push-based heartbeat — POSTs to instaclaw.io every hour via crontab
+TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env | cut -d= -f2)
+LOGFILE=~/.openclaw/logs/heartbeat.log
+mkdir -p ~/.openclaw/logs
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST \\
+  -H "Authorization: Bearer $TOKEN" \\
+  https://instaclaw.io/api/vm/heartbeat 2>/dev/null)
+echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') status=$STATUS" >> "$LOGFILE"
+# Keep log from growing forever — last 500 lines
+tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
+`;
+
 // ── The Manifest ──
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 28,
+  version: 29,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -229,6 +243,13 @@ export const VM_MANIFEST = {
       executable: true,
       useSFTP: true,
     },
+    {
+      remotePath: "~/.openclaw/scripts/push-heartbeat.sh",
+      source: "inline",
+      content: PUSH_HEARTBEAT_SH,
+      mode: "overwrite",
+      executable: true,
+    },
   ] as ManifestFileEntry[],
 
   // ── Skill files ──
@@ -265,6 +286,11 @@ export const VM_MANIFEST = {
       schedule: "* * * * *",
       command: "python3 ~/.openclaw/scripts/vm-watchdog.py > /dev/null 2>&1",
       marker: "vm-watchdog.py",
+    },
+    {
+      schedule: "0 * * * *",
+      command: "bash ~/.openclaw/scripts/push-heartbeat.sh",
+      marker: "push-heartbeat.sh",
     },
   ] as ManifestCronJob[],
 
