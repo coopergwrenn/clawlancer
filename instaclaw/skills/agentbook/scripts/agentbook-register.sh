@@ -6,13 +6,21 @@ set -euo pipefail
 #
 # 1. Validates the wallet address argument
 # 2. Checks if already registered
-# 3. Runs @worldcoin/agentkit-cli register (interactive — requires human QR scan)
-# 4. Reports result back to InstaClaw API
+# 3. Runs @worldcoin/agentkit-cli register --llms (outputs verification URL)
+# 4. Polls on-chain every 10s for up to 5 minutes waiting for registration to confirm
+# 5. Reports result back to InstaClaw API
+#
+# IMPORTANT: The CLI outputs a "HUMAN ACTION REQUIRED:" URL. The human must
+# open that URL in World App and complete verification. This script waits
+# until the on-chain state changes (nonce increments) before reporting success.
 
 source ~/.nvm/nvm.sh 2>/dev/null || true
 
 INSTACLAW_API="${INSTACLAW_API_URL:-https://instaclaw.io}"
 WALLET="${1:-}"
+AGENTBOOK_CONTRACT="0xE1D1D3526A6FAa37eb36bD10B933C1b77f4561a4"
+POLL_INTERVAL=10
+POLL_TIMEOUT=300  # 5 minutes
 
 echo "=== AgentBook Registration ==="
 echo ""
@@ -50,31 +58,58 @@ fi
 echo "Not yet registered. Starting registration..."
 echo ""
 
-# Step 3: Run the CLI with --llms flag (outputs URL instead of QR code, better for AI agent terminals)
-echo "HUMAN ACTION REQUIRED: A verification link will appear below."
-echo "The human operator must open it to verify with World App."
+# Step 3: Run the CLI — capture output to extract the verification URL
+CLI_OUTPUT=$(npx @worldcoin/agentkit-cli@0.1.3 --llms register "$WALLET" --network base 2>&1) || true
+
+echo "$CLI_OUTPUT"
 echo ""
 
-npx @worldcoin/agentkit-cli@0.1.3 --llms register "$WALLET" --network base
+# Extract the verification URL from CLI output (World Bridge connector URI)
+VERIFY_URL=$(echo "$CLI_OUTPUT" | grep -oE 'https://[^ ]+' | head -1 || true)
 
-CLI_EXIT=$?
-
-if [ $CLI_EXIT -ne 0 ]; then
+if [ -n "$VERIFY_URL" ]; then
+    echo "==========================================="
+    echo "HUMAN ACTION REQUIRED"
+    echo "==========================================="
     echo ""
-    echo "ERROR: Registration CLI exited with code $CLI_EXIT"
-    exit $CLI_EXIT
+    echo "Open this link on your phone to verify with World App:"
+    echo ""
+    echo "  $VERIFY_URL"
+    echo ""
+    echo "==========================================="
+    echo ""
+    echo "Waiting for on-chain confirmation (polling every ${POLL_INTERVAL}s, timeout ${POLL_TIMEOUT}s)..."
+else
+    echo "WARNING: Could not extract verification URL from CLI output."
+    echo "The CLI may have completed registration directly."
+    echo "Checking on-chain status..."
 fi
 
+# Step 4: Poll on-chain until registered or timeout
+ELAPSED=0
+CONFIRMED=false
+
+while [ $ELAPSED -lt $POLL_TIMEOUT ]; do
+    sleep $POLL_INTERVAL
+    ELAPSED=$((ELAPSED + POLL_INTERVAL))
+
+    CHECK=$(python3 ~/scripts/agentbook-check.py --json status 2>/dev/null || echo '{"registered":false}')
+    IS_REG=$(echo "$CHECK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('registered',False))" 2>/dev/null || echo "False")
+
+    if [ "$IS_REG" = "True" ]; then
+        CONFIRMED=true
+        STATUS="$CHECK"
+        break
+    fi
+
+    REMAINING=$((POLL_TIMEOUT - ELAPSED))
+    echo "  [${ELAPSED}s] Not yet registered on-chain. ${REMAINING}s remaining..."
+done
+
 echo ""
-echo "Registration submitted. Verifying on-chain..."
 
-# Step 4: Verify registration
-sleep 5  # Wait for tx confirmation
-STATUS=$(python3 ~/scripts/agentbook-check.py --json status 2>/dev/null || echo '{"registered":false}')
-REGISTERED=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('registered',False))" 2>/dev/null || echo "False")
-
-if [ "$REGISTERED" = "True" ]; then
-    echo "Registration confirmed on-chain!"
+if [ "$CONFIRMED" = "true" ]; then
+    echo "REGISTRATION CONFIRMED ON-CHAIN!"
     echo "$STATUS"
 
     # Extract nullifier_hash from status JSON
@@ -87,7 +122,18 @@ if [ "$REGISTERED" = "True" ]; then
         -H "Authorization: Bearer ${TOKEN}" \
         -d "{\"walletAddress\":\"${WALLET}\",\"nullifierHash\":\"${NULLIFIER}\"}" \
         >/dev/null 2>&1 || true
+
+    echo ""
+    echo "Registration reported to InstaClaw."
 else
-    echo "WARNING: Registration submitted but not yet confirmed on-chain."
-    echo "This may take a few more seconds. Run 'python3 ~/scripts/agentbook-check.py status' to check."
+    echo "REGISTRATION NOT CONFIRMED after ${POLL_TIMEOUT} seconds."
+    echo ""
+    echo "Possible reasons:"
+    echo "  1. The human has not yet opened the verification URL in World App"
+    echo "  2. The World App verification was not completed"
+    echo "  3. The gasless relay failed to submit the transaction"
+    echo ""
+    echo "To retry: ask the human to open the URL above in World App,"
+    echo "then run: python3 ~/scripts/agentbook-check.py --json status"
+    exit 1
 fi

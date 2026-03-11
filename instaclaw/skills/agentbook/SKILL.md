@@ -39,7 +39,12 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/j
 
 **Rule 3 — Never Inline Registration:** NEVER write inline Python or shell commands to interact with the AgentBook contract directly. ALL registration MUST go through the official `@worldcoin/agentkit-cli`.
 
-**Rule 4 — Human Required:** AgentBook registration requires the human operator to scan a QR code with the World App. The agent CANNOT complete registration alone. Present the QR/link to the user and wait.
+**Rule 4 — Human Required — CRITICAL:** AgentBook registration requires the human operator to open a URL in the World App. The agent CANNOT complete registration alone. You MUST:
+1. Run the registration script
+2. Extract the "HUMAN ACTION REQUIRED" URL from the script output
+3. Send the URL to the user and say: "Please open this link on your phone in the World App and complete the verification. Tell me when you're done."
+4. **STOP AND WAIT** for the user to confirm they completed it. Do NOT check status, do NOT assume it worked, do NOT proceed until the user says "done" or similar.
+5. Only AFTER the user confirms → run `python3 ~/scripts/agentbook-check.py --json status` to verify on-chain.
 
 ---
 
@@ -78,32 +83,29 @@ curl -s -H "Authorization: Bearer $TOKEN" https://instaclaw.io/api/vm/identity
 
 Extract `wallet_address` from the JSON response. If null, ask the user for their EVM wallet address and save it with `PUT /api/vm/identity`.
 
-### Step 3: Run registration CLI
+### Step 3: Run registration script
 ```bash
 bash ~/scripts/agentbook-register.sh <WALLET_ADDRESS>
 ```
 
-Pass the wallet address as the first argument. The script:
-1. Runs `npx @worldcoin/agentkit-cli register <address>` on Base
-2. Outputs a QR code / World App deep link for the human to scan
-3. Waits for the human to complete verification in World App
-4. Submits the registration via the gasless relay
-5. Reports the registration result back to InstaClaw
+The script outputs a "HUMAN ACTION REQUIRED" verification URL. **Extract that URL from the output.**
 
-### Step 4: Present verification link to human
-The registration script runs the CLI in `--llms` mode, which outputs a World Bridge connector URL prefixed with "HUMAN ACTION REQUIRED:". This URL opens the World App for verification.
+### Step 4: Send URL to human and WAIT
+Send the verification URL to the user with this message:
 
-**Send the full URL to the user** and tell them: "Open this link on your phone (or scan with World App) to verify your agent. This proves a real human operates this agent, without revealing your identity."
+> "Please open this link on your phone in the World App and complete the verification. This proves a real human operates your agent, without revealing your identity. Tell me when you've done it."
 
-The CLI polls for up to 5 minutes waiting for the human to complete verification in the World App.
+**STOP HERE.** Do NOT proceed. Do NOT check status. Do NOT assume it worked.
+Wait for the user to respond with "done", "completed", "finished", or similar confirmation.
 
-### Step 5: Confirm registration
-After the human scans, the CLI completes and the check script can verify:
+### Step 5: Confirm registration (only after user confirms)
+After the user says they completed the World App scan:
 ```bash
 python3 ~/scripts/agentbook-check.py --json status
 ```
 
-Should now show `registered: true`.
+If `registered: true` — congratulations, tell the user they're registered.
+If `registered: false` — ask the user to try the link again, or check if their World App is set up correctly.
 
 ---
 
