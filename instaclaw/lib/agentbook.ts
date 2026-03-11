@@ -8,7 +8,7 @@
  * Sepolia:  0xA23aB2712eA7BBa896930544C7d6636a96b944dA (Base Sepolia)
  */
 
-import { createPublicClient, http, type Address } from "viem";
+import { createPublicClient, http, fallback, type Address } from "viem";
 import { base, baseSepolia } from "viem/chains";
 
 const AGENTBOOK_ADDRESS = "0xE1D1D3526A6FAa37eb36bD10B933C1b77f4561a4" as const;
@@ -32,14 +32,21 @@ const AGENTBOOK_ABI = [
   },
 ] as const;
 
+// Base mainnet RPC endpoints with fallback (same as Python script)
+const BASE_RPC_URLS = [
+  "https://mainnet.base.org",
+  "https://base.llamarpc.com",
+  "https://base.drpc.org",
+];
+
 type Network = "base" | "base-sepolia";
 
 function getClient(network: Network = "base") {
   const chain = network === "base" ? base : baseSepolia;
-  return createPublicClient({
-    chain,
-    transport: http(),
-  });
+  const transport = network === "base"
+    ? fallback(BASE_RPC_URLS.map((url) => http(url, { timeout: 10_000 })))
+    : http();
+  return createPublicClient({ chain, transport });
 }
 
 function getContractAddress(network: Network = "base"): Address {

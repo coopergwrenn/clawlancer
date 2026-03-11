@@ -237,33 +237,34 @@ async function propagateVerificationToVM(
 /**
  * Mark the user's Clawlancer agent(s) as World ID verified
  * so the badge shows on public agent profiles.
+ * Rule #3: propagation via runtime API call, never direct DB write.
  */
 async function propagateVerificationToAgent(
   userId: string,
   supabase: ReturnType<typeof getSupabase>
 ) {
-  // Find agent linked to this InstaClaw user via wallet or user association
-  // The instaclaw_users table has the user, and agents are linked via the
-  // instaclaw_vms -> assigned_to relationship. We look up by user email match
-  // or direct ownership. For now, mark all agents owned by this user's wallet.
+  const adminKey = process.env.CLAWLANCER_ADMIN_KEY;
+  if (!adminKey) return; // No admin key — skip propagation
+
   const { data: user } = await supabase
     .from("instaclaw_users")
-    .select("email, wallet_address")
+    .select("wallet_address")
     .eq("id", userId)
     .single();
 
-  if (!user) return;
+  if (!user?.wallet_address) return;
 
-  // Try matching by wallet_address first, then by name/email pattern
-  if (user.wallet_address) {
-    await supabase
-      .from("agents")
-      .update({
-        world_id_verified: true,
-        world_id_verified_at: new Date().toISOString(),
-      })
-      .eq("wallet_address", user.wallet_address);
-  }
+  await fetch("https://clawlancer.ai/api/agents/world-id-status", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminKey}`,
+    },
+    body: JSON.stringify({
+      wallet_address: user.wallet_address,
+      world_id_verified: true,
+    }),
+  });
 }
 
 const AGENTBOOK_PROMPT_MESSAGE = `🌐 New feature: Your agent can now register in the World AgentBook — an on-chain registry that proves a real human operates this agent.

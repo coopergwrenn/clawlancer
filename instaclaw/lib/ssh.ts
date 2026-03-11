@@ -3147,6 +3147,9 @@ export async function configureOpenClaw(
         `echo '${abCheckB64}' | base64 -d > "$HOME/scripts/agentbook-check.py"`,
         `echo '${abRegisterB64}' | base64 -d > "$HOME/scripts/agentbook-register.sh"`,
         'chmod +x "$HOME/scripts/agentbook-check.py" "$HOME/scripts/agentbook-register.sh"',
+        '# web3.py required by agentbook-check.py for on-chain lookups',
+        'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
+        'python3 -m pip install --quiet --break-system-packages web3 2>/dev/null || true',
         ''
       );
 

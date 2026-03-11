@@ -49,8 +49,8 @@ AgentBook is an on-chain registry (Base mainnet) that ties AI agent wallets to v
 
 - **Contract (Base):** `0xE1D1D3526A6FAa37eb36bD10B933C1b77f4561a4`
 - **Contract (Sepolia):** `0xA23aB2712eA7BBa896930544C7d6636a96b944dA`
-- **SDK:** `@worldcoin/agentkit` v0.1.3
-- **CLI:** `@worldcoin/agentkit-cli` v0.1.3
+- **SDK:** `@worldcoin/agentkit` v0.1.2 (read-only lookups)
+- **CLI:** `@worldcoin/agentkit-cli` v0.1.3 (registration)
 
 ## Registration Flow
 
@@ -90,12 +90,12 @@ Pass the wallet address as the first argument. The script:
 4. Submits the registration via the gasless relay
 5. Reports the registration result back to InstaClaw
 
-### Step 4: Present QR to human
-The CLI will output either:
-- A QR code in the terminal (for Telegram, send as text)
-- A clickable link: `https://worldcoin.org/verify?...`
+### Step 4: Present verification link to human
+The registration script runs the CLI in `--llms` mode, which outputs a World Bridge connector URL prefixed with "HUMAN ACTION REQUIRED:". This URL opens the World App for verification.
 
-Tell the user: "Scan this QR code with your World App to verify your agent. This proves a real human operates this agent, without revealing your identity."
+**Send the full URL to the user** and tell them: "Open this link on your phone (or scan with World App) to verify your agent. This proves a real human operates this agent, without revealing your identity."
+
+The CLI polls for up to 5 minutes waiting for the human to complete verification in the World App.
 
 ### Step 5: Confirm registration
 After the human scans, the CLI completes and the check script can verify:

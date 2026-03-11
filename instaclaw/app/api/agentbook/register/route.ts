@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { getSupabase } from "@/lib/supabase";
-import { isAgentRegistered } from "@/lib/agentbook";
+import { isAgentRegistered, lookupHuman } from "@/lib/agentbook";
 import { logger } from "@/lib/logger";
 import type { Address } from "viem";
 
@@ -15,17 +16,52 @@ export const maxDuration = 30;
  * Records the registration result in instaclaw_vms and propagates
  * to Clawlancer via runtime API call (Rule #3: never direct DB write).
  *
- * Body: { walletAddress, txHash }
+ * Auth: Bearer gateway token (VM shell script) OR NextAuth session (dashboard).
+ * Body: { walletAddress, txHash?, nullifierHash? }
  */
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Dual auth: try Bearer gateway token first (VM path), then NextAuth session (web path)
+    const authHeader = req.headers.get("authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+    let vmId: string | null = null;
+    let authSource: "gateway_token" | "session" = "session";
+
+    if (bearerToken) {
+      // VM shell script path — look up VM by gateway token
+      const vm = await lookupVMByGatewayToken(bearerToken, "id");
+      if (vm) {
+        vmId = vm.id;
+        authSource = "gateway_token";
+      }
+    }
+
+    if (!vmId) {
+      // Dashboard/web path — look up VM by session user
+      const session = await auth();
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const supabase = getSupabase();
+      const { data: vm } = await supabase
+        .from("instaclaw_vms")
+        .select("id")
+        .eq("assigned_to", session.user.id)
+        .single();
+
+      if (!vm) {
+        return NextResponse.json(
+          { error: "No VM assigned to this user" },
+          { status: 404 }
+        );
+      }
+      vmId = vm.id;
     }
 
     const body = await req.json();
-    const { walletAddress, txHash } = body;
+    const { walletAddress, txHash, nullifierHash } = body;
 
     if (!walletAddress || typeof walletAddress !== "string") {
       return NextResponse.json(
@@ -36,24 +72,15 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    // Get user's VM
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select("id")
-      .eq("assigned_to", session.user.id)
-      .single();
-
-    if (!vm) {
-      return NextResponse.json(
-        { error: "No VM assigned to this user" },
-        { status: 404 }
-      );
-    }
-
     // Verify on-chain that the wallet is actually registered in AgentBook
     let verified = false;
+    let onChainNullifier: string | null = nullifierHash ?? null;
     try {
-      verified = await isAgentRegistered(walletAddress as Address);
+      const humanId = await lookupHuman(walletAddress as Address);
+      verified = humanId !== null;
+      if (humanId !== null && !onChainNullifier) {
+        onChainNullifier = humanId.toString();
+      }
     } catch (err) {
       logger.warn("AgentBook on-chain verification failed, storing anyway", {
         error: String(err),
@@ -70,14 +97,15 @@ export async function POST(req: NextRequest) {
         agentbook_registered: verified,
         agentbook_wallet_address: walletAddress,
         agentbook_tx_hash: txHash ?? null,
+        agentbook_nullifier_hash: onChainNullifier,
         agentbook_registered_at: new Date().toISOString(),
       })
-      .eq("id", vm.id);
+      .eq("id", vmId);
 
     if (updateError) {
       logger.error("Failed to update VM with AgentBook registration", {
         error: updateError.message,
-        vmId: vm.id,
+        vmId,
         route: "agentbook/register",
       });
       return NextResponse.json(
@@ -87,10 +115,11 @@ export async function POST(req: NextRequest) {
     }
 
     logger.info("AgentBook registration recorded", {
-      userId: session.user.id,
-      vmId: vm.id,
+      authSource,
+      vmId,
       walletAddress,
       verified,
+      nullifierHash: onChainNullifier,
       route: "agentbook/register",
     });
 

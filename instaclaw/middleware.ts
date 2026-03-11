@@ -62,6 +62,7 @@ export default auth((req) => {
     "/api/hq",
     "/api/ambassador/badge",
     "/api/agentbook/lookup",
+    "/api/agentbook/register",
     "/api/vm/heartbeat",
     "/api/vm/identity",
   ];

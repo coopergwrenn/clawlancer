@@ -50,12 +50,12 @@ fi
 echo "Not yet registered. Starting registration..."
 echo ""
 
-# Step 3: Run the CLI (interactive — will show QR/link for human to scan)
-echo "A QR code or link will appear below."
-echo "The human operator must scan it with World App to complete verification."
+# Step 3: Run the CLI with --llms flag (outputs URL instead of QR code, better for AI agent terminals)
+echo "HUMAN ACTION REQUIRED: A verification link will appear below."
+echo "The human operator must open it to verify with World App."
 echo ""
 
-npx @worldcoin/agentkit-cli@0.1.3 register "$WALLET" --network base
+npx @worldcoin/agentkit-cli@0.1.3 --llms register "$WALLET" --network base
 
 CLI_EXIT=$?
 
@@ -77,12 +77,15 @@ if [ "$REGISTERED" = "True" ]; then
     echo "Registration confirmed on-chain!"
     echo "$STATUS"
 
-    # Step 5: Report back to InstaClaw
+    # Extract nullifier_hash from status JSON
+    NULLIFIER=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('nullifier_hash',''))" 2>/dev/null || echo "")
+
+    # Step 5: Report back to InstaClaw (Bearer gateway token auth)
     TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env | cut -d= -f2 || true)
     curl -s -X POST "${INSTACLAW_API}/api/agentbook/register" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer ${TOKEN}" \
-        -d "{\"walletAddress\":\"${WALLET}\"}" \
+        -d "{\"walletAddress\":\"${WALLET}\",\"nullifierHash\":\"${NULLIFIER}\"}" \
         >/dev/null 2>&1 || true
 else
     echo "WARNING: Registration submitted but not yet confirmed on-chain."
