@@ -1,4 +1,5 @@
 {
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- app/ lib/ components/ supabase/ packages/ public/ vercel.json package.json",
   "crons": [
     {
       "path": "/api/cron/oracle-release",
