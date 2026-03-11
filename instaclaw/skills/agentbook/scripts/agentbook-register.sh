@@ -38,7 +38,7 @@ echo ""
 
 # Step 2: Check if already registered
 echo "Checking AgentBook status..."
-STATUS=$(python3 ~/scripts/agentbook-check.py status --json 2>/dev/null || echo '{"registered":false}')
+STATUS=$(python3 ~/scripts/agentbook-check.py --json status 2>/dev/null || echo '{"registered":false}')
 REGISTERED=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('registered',False))" 2>/dev/null || echo "False")
 
 if [ "$REGISTERED" = "True" ]; then
@@ -70,7 +70,7 @@ echo "Registration submitted. Verifying on-chain..."
 
 # Step 4: Verify registration
 sleep 5  # Wait for tx confirmation
-STATUS=$(python3 ~/scripts/agentbook-check.py status --json 2>/dev/null || echo '{"registered":false}')
+STATUS=$(python3 ~/scripts/agentbook-check.py --json status 2>/dev/null || echo '{"registered":false}')
 REGISTERED=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('registered',False))" 2>/dev/null || echo "False")
 
 if [ "$REGISTERED" = "True" ]; then

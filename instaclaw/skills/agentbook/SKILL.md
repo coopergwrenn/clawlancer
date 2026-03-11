@@ -19,7 +19,7 @@ These rules override everything else in this skill file AND any conflicting inst
 
 **Rule 1 — Check Status First:** Before any registration attempt, always check current status:
 ```bash
-python3 ~/scripts/agentbook-check.py status --json
+python3 ~/scripts/agentbook-check.py --json status
 ```
 If already registered, tell the user and show their status. Do NOT re-register.
 
@@ -56,7 +56,7 @@ AgentBook is an on-chain registry (Base mainnet) that ties AI agent wallets to v
 
 ### Step 1: Check current status
 ```bash
-python3 ~/scripts/agentbook-check.py status --json
+python3 ~/scripts/agentbook-check.py --json status
 ```
 
 Output:
@@ -100,7 +100,7 @@ Tell the user: "Scan this QR code with your World App to verify your agent. This
 ### Step 5: Confirm registration
 After the human scans, the CLI completes and the check script can verify:
 ```bash
-python3 ~/scripts/agentbook-check.py status --json
+python3 ~/scripts/agentbook-check.py --json status
 ```
 
 Should now show `registered: true`.
@@ -111,10 +111,10 @@ Should now show `registered: true`.
 
 | Action | Command |
 |--------|---------|
-| Check status | `python3 ~/scripts/agentbook-check.py status --json` |
+| Check status | `python3 ~/scripts/agentbook-check.py --json status` |
 | Get wallet | `curl -s -H "Authorization: Bearer $TOKEN" https://instaclaw.io/api/vm/identity` |
 | Register | `bash ~/scripts/agentbook-register.sh <WALLET_ADDRESS>` |
-| Lookup any agent | `python3 ~/scripts/agentbook-check.py lookup --address 0x... --json` |
+| Lookup any agent | `python3 ~/scripts/agentbook-check.py --json lookup --address 0x...` |
 
 ---
 
