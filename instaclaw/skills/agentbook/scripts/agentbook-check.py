@@ -8,7 +8,7 @@ Usage:
   python3 agentbook-check.py lookup --address 0x... [--json]
 
 Status mode:
-  1. Retrieves wallet address via MCP (mcporter call clawlancer.get_my_profile)
+  1. Retrieves wallet address from InstaClaw identity API (GATEWAY_TOKEN auth)
   2. Queries AgentBook contract lookupHuman(address) on Base
   3. Reports registration status
 
@@ -18,8 +18,10 @@ Lookup mode:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import urllib.request
 
 from web3 import Web3
 
@@ -74,37 +76,44 @@ def lookup_human(w3, address):
     ).call()
 
 
-def get_wallet_from_mcp():
-    """Retrieve wallet address via mcporter MCP call."""
+def get_wallet_from_identity_api():
+    """Retrieve wallet address from InstaClaw's identity API using GATEWAY_TOKEN."""
     try:
-        result = subprocess.run(
-            ["mcporter", "call", "clawlancer.get_my_profile"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        if result.returncode != 0:
+        # Read GATEWAY_TOKEN from .env
+        env_path = os.path.expanduser("~/.openclaw/.env")
+        token = None
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                for line in f:
+                    if line.startswith("GATEWAY_TOKEN="):
+                        token = line.strip().split("=", 1)[1]
+                        break
+        if not token:
             return None
-        data = json.loads(result.stdout.strip())
-        return data.get("wallet_address")
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+
+        url = "https://instaclaw.io/api/vm/identity"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("wallet_address")
+    except Exception:
         return None
 
 
 def cmd_status(args):
-    wallet = get_wallet_from_mcp()
+    wallet = get_wallet_from_identity_api()
     if not wallet:
         result = {
             "wallet_address": None,
             "registered": False,
             "nullifier_hash": None,
-            "error": "No wallet address found. Register on Clawlancer first.",
+            "error": "No wallet address set. Use PUT /api/vm/identity to set it.",
         }
         if args.json:
             print(json.dumps(result, indent=2))
         else:
             print("ERROR: No wallet address found.")
-            print("Register on Clawlancer first: mcporter call clawlancer.register_agent")
+            print("Set your wallet via: curl -X PUT -H 'Authorization: Bearer $TOKEN' -H 'Content-Type: application/json' -d '{\"wallet_address\":\"0x...\"}' https://instaclaw.io/api/vm/identity")
         return
 
     w3 = get_web3()

@@ -1,7 +1,7 @@
 # AgentBook Registration (World ID)
 ```yaml
 name: agentbook
-version: 1.0.0
+version: 1.1.0
 updated: 2026-03-11
 author: InstaClaw
 phase: 1  # Registration only. x402 access modes in Phase 2.
@@ -23,11 +23,19 @@ python3 ~/scripts/agentbook-check.py status --json
 ```
 If already registered, tell the user and show their status. Do NOT re-register.
 
-**Rule 2 — Wallet Retrieval:** The agent's wallet address is NOT stored on disk. Retrieve it at runtime:
+**Rule 2 — Wallet Retrieval:** Get the wallet address from InstaClaw's identity API:
 ```bash
-mcporter call clawlancer.get_my_profile
+TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env | cut -d= -f2)
+curl -s -H "Authorization: Bearer $TOKEN" https://instaclaw.io/api/vm/identity
 ```
-Extract `wallet_address` from the response. If null or missing, tell the user they must register on Clawlancer first (`mcporter call clawlancer.register_agent`).
+This returns `{"vm_name":"...","wallet_address":"0x...","agentbook_registered":false}`.
+
+If `wallet_address` is null, ask the user: "What is your EVM wallet address on Base? (the one you use on Clawlancer)" and save it:
+```bash
+curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"wallet_address":"0xUSER_PROVIDED_ADDRESS"}' \
+  https://instaclaw.io/api/vm/identity
+```
 
 **Rule 3 — Never Inline Registration:** NEVER write inline Python or shell commands to interact with the AgentBook contract directly. ALL registration MUST go through the official `@worldcoin/agentkit-cli`.
 
@@ -64,23 +72,23 @@ If `registered: true`, stop — already done.
 
 ### Step 2: Get wallet address
 ```bash
-mcporter call clawlancer.get_my_profile
+TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env | cut -d= -f2)
+curl -s -H "Authorization: Bearer $TOKEN" https://instaclaw.io/api/vm/identity
 ```
 
-Extract `wallet_address`. If null, the agent needs Clawlancer registration first.
+Extract `wallet_address` from the JSON response. If null, ask the user for their EVM wallet address and save it with `PUT /api/vm/identity`.
 
 ### Step 3: Run registration CLI
 ```bash
-bash ~/scripts/agentbook-register.sh
+bash ~/scripts/agentbook-register.sh <WALLET_ADDRESS>
 ```
 
-This script:
-1. Retrieves the wallet address via MCP
-2. Runs `npx @worldcoin/agentkit-cli register --agent` with the wallet
-3. Outputs a QR code / World App deep link for the human to scan
-4. Waits for the human to complete verification in World App
-5. Submits the registration via the gasless relay
-6. Reports the registration result back to InstaClaw
+Pass the wallet address as the first argument. The script:
+1. Runs `npx @worldcoin/agentkit-cli register <address>` on Base
+2. Outputs a QR code / World App deep link for the human to scan
+3. Waits for the human to complete verification in World App
+4. Submits the registration via the gasless relay
+5. Reports the registration result back to InstaClaw
 
 ### Step 4: Present QR to human
 The CLI will output either:
@@ -104,14 +112,15 @@ Should now show `registered: true`.
 | Action | Command |
 |--------|---------|
 | Check status | `python3 ~/scripts/agentbook-check.py status --json` |
-| Register | `bash ~/scripts/agentbook-register.sh` |
+| Get wallet | `curl -s -H "Authorization: Bearer $TOKEN" https://instaclaw.io/api/vm/identity` |
+| Register | `bash ~/scripts/agentbook-register.sh <WALLET_ADDRESS>` |
 | Lookup any agent | `python3 ~/scripts/agentbook-check.py lookup --address 0x... --json` |
 
 ---
 
 ## Troubleshooting
 
-**"No wallet address found"** — Agent not registered on Clawlancer yet. Run `mcporter call clawlancer.register_agent` first.
+**"No wallet address found"** — Ask the user for their EVM wallet address on Base and save it via `PUT /api/vm/identity`.
 
 **"Already registered"** — The wallet is already in AgentBook. No action needed.
 
