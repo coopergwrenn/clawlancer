@@ -2050,6 +2050,30 @@ export async function GET(req: NextRequest) {
     }
   } catch { /* dependency checks are non-critical */ }
 
+  // ── AgentBook registration monitoring (WDP 71) ──
+  // Log warnings for VMs that have a wallet but haven't registered in AgentBook
+  // after 7 days. Advisory only — no alerts or auto-actions.
+  let agentbookUnregistered = 0;
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: unregisteredVms } = await supabase
+      .from("instaclaw_vms")
+      .select("id, name, agentbook_wallet_address")
+      .eq("agentbook_registered", false)
+      .not("agentbook_wallet_address", "is", null)
+      .lt("created_at", sevenDaysAgo);
+
+    for (const vm of unregisteredVms || []) {
+      agentbookUnregistered++;
+      logger.warn("VM has wallet but no AgentBook registration after 7d", {
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+        wallet: vm.agentbook_wallet_address,
+      });
+    }
+  } catch { /* agentbook checks are non-critical */ }
+
   // Flush all collected alerts as grouped digest emails (one per alert type)
   const alertResult = await alerts.flush();
 
@@ -2096,6 +2120,7 @@ export async function GET(req: NextRequest) {
     heartbeatMisclassAlerts,
     depsBehind,
     depsAnomalies,
+    agentbookUnregistered,
     alertDigestsSent: alertResult.sent,
     alertDigestsSkipped: alertResult.skipped,
   });

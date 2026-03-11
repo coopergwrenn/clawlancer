@@ -1650,16 +1650,26 @@ function buildOpenClawConfig(
   // Configure Brave web search
   // Schema path is tools.web.search (NOT tools.webSearch — verified against
   // OpenClaw dist resolveSearchConfig() which reads cfg?.tools?.web?.search)
-  if (braveKey) {
-    ocConfig.tools = {
-      web: {
-        search: {
-          provider: "brave",
-          apiKey: braveKey,
-        },
-      },
-    };
-  }
+  // Also enable media understanding (image/audio/video) for all agents.
+  // Schema verified against OpenClaw v2026.3.8 redact-snapshot: tools.media.image.enabled,
+  // tools.media.audio.enabled, tools.media.video.enabled are valid config keys.
+  ocConfig.tools = {
+    ...(braveKey
+      ? {
+          web: {
+            search: {
+              provider: "brave",
+              apiKey: braveKey,
+            },
+          },
+        }
+      : {}),
+    media: {
+      image: { enabled: true },
+      audio: { enabled: true },
+      video: { enabled: true },
+    },
+  };
 
   // NOTE: memory search (OpenAI embeddings) requires auth-profiles.json,
   // NOT openclaw.json. The memory.provider/remote keys in openclaw.json
@@ -3111,6 +3121,40 @@ export async function configureOpenClaw(
       logger.warn("X/Twitter Search skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(xSearchSkillErr),
+      });
+    }
+
+    // ── Deploy AgentBook Registration skill (WDP 71) ──
+    // Enables agents to register in World ID AgentBook on Base mainnet.
+    // Scripts: agentbook-check.py (status/lookup) + agentbook-register.sh (full flow).
+    try {
+      const abSkillDir = path.join(process.cwd(), "skills", "agentbook");
+      const abSkillMd = fs.readFileSync(path.join(abSkillDir, "SKILL.md"), "utf-8");
+      const abCheckPy = fs.readFileSync(path.join(abSkillDir, "scripts", "agentbook-check.py"), "utf-8");
+      const abRegisterSh = fs.readFileSync(path.join(abSkillDir, "scripts", "agentbook-register.sh"), "utf-8");
+
+      const abSkillB64 = Buffer.from(abSkillMd, "utf-8").toString("base64");
+      const abCheckB64 = Buffer.from(abCheckPy, "utf-8").toString("base64");
+      const abRegisterB64 = Buffer.from(abRegisterSh, "utf-8").toString("base64");
+
+      scriptParts.push(
+        '# Deploy AgentBook Registration skill (WDP 71)',
+        'AB_SKILL_DIR="$HOME/.openclaw/skills/agentbook"',
+        'mkdir -p "$AB_SKILL_DIR/scripts" "$HOME/scripts"',
+        `echo '${abSkillB64}' | base64 -d > "$AB_SKILL_DIR/SKILL.md"`,
+        `echo '${abCheckB64}' | base64 -d > "$AB_SKILL_DIR/scripts/agentbook-check.py"`,
+        `echo '${abRegisterB64}' | base64 -d > "$AB_SKILL_DIR/scripts/agentbook-register.sh"`,
+        `echo '${abCheckB64}' | base64 -d > "$HOME/scripts/agentbook-check.py"`,
+        `echo '${abRegisterB64}' | base64 -d > "$HOME/scripts/agentbook-register.sh"`,
+        'chmod +x "$HOME/scripts/agentbook-check.py" "$HOME/scripts/agentbook-register.sh"',
+        ''
+      );
+
+      logger.info("AgentBook Registration skill deployment prepared", { route: "lib/ssh" });
+    } catch (abSkillErr) {
+      logger.warn("AgentBook skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(abSkillErr),
       });
     }
 
@@ -5371,7 +5415,7 @@ export async function setupTLS(
   const ssh = await connectSSH(vm);
   try {
     // Base64 encode the Caddyfile content to avoid heredoc injection
-    const caddyfile = `${hostname} {\n  handle /tmp-media/* {\n    root * /home/openclaw/workspace\n    file_server\n  }\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
+    const caddyfile = `${hostname} {\n  handle /.well-known/* {\n    root * /home/openclaw\n    file_server\n  }\n  handle /tmp-media/* {\n    root * /home/openclaw/workspace\n    file_server\n  }\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
     const b64Caddy = Buffer.from(caddyfile, "utf-8").toString("base64");
 
     const script = [
