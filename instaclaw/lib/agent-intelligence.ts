@@ -503,12 +503,17 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 → Tools: shell, file tools, mcporter
 → Reference: ~/.openclaw/skills/code-execution/references/code-patterns.md
 
-## 💰 FREELANCE & EARNING (MCP: clawlancer)
-✅ Claim bounties on Clawlancer (auto-polling every 2 min)
-✅ Submit deliverables and receive USDC
+## 💰 CLAWLANCER MARKETPLACE (MCP: clawlancer) — Base network, USDC
+Clawlancer is a two-sided marketplace. You can be SELLER (claim bounties, deliver work, get paid) and BUYER (post bounties to delegate work to other agents).
+✅ SELLER: Claim bounties — oracle-funded escrow, you need ZERO USDC to claim. Your wallet receives payment.
+✅ SELLER: Submit deliverables and receive USDC after 24h dispute window
+✅ BUYER: Post bounties to delegate research, writing, coding, data tasks to other agents on the network
+✅ BUYER: Review deliverables and release payment, or dispute
 ✅ Check wallet balance (CDP wallet on Base)
 ✅ Send XMTP messages to other agents
-⚠️ REGISTRATION RULE: When a user asks you to register on Clawlancer, ALWAYS ask them what they want your marketplace name/username to be BEFORE registering. Do not auto-register with a default name. The user chooses your identity on the marketplace.
+⚠️ REGISTRATION: ALWAYS call get_my_profile FIRST. Only register if not already registered. Never re-register — it creates a duplicate agent and strands funds.
+⚠️ REGISTRATION: If registering, ask the user what marketplace name they want BEFORE calling register_agent.
+⚠️ Clawlancer is on BASE (USDC). Completely separate from Solana DeFi (Jupiter/PumpPortal). Never conflate the two.
 → Tools: mcporter call clawlancer.<tool>
 
 ## 🏪 MARKETPLACE EARNING & DIGITAL PRODUCTS (Skill: marketplace-earning)

@@ -67,23 +67,67 @@ function checkCdpRateLimit(): boolean {
 const SHERIFF_CLAUDE_ID = 'bbd8f6e2-96ca-4fe0-b432-8fe60d181ebb'
 
 async function createWelcomeBounty(agentId: string, agentName: string) {
+  const BOUNTY_AMOUNT = '10000' // $0.01 USDC
   try {
+    // Credit Sheriff Claude's platform balance to cover this bounty
+    const { error: creditError } = await supabaseAdmin.rpc('increment_agent_balance', {
+      p_agent_id: SHERIFF_CLAUDE_ID,
+      p_amount_wei: BOUNTY_AMOUNT,
+    })
+    if (creditError) {
+      console.error(`[welcome-bounty] Failed to credit balance for ${agentName}:`, creditError)
+      return null
+    }
+
+    // Lock the balance (moves from available to locked)
+    const { data: lockResult, error: lockError } = await supabaseAdmin.rpc('lock_agent_balance', {
+      p_agent_id: SHERIFF_CLAUDE_ID,
+      p_amount_wei: BOUNTY_AMOUNT,
+    })
+    if (lockError || !lockResult) {
+      // Rollback the credit before returning
+      await supabaseAdmin.rpc('increment_agent_balance', {
+        p_agent_id: SHERIFF_CLAUDE_ID,
+        p_amount_wei: (-BigInt(BOUNTY_AMOUNT)).toString(),
+      })
+      console.error(`[welcome-bounty] Lock failed, credit rolled back for ${agentName}:`, lockError?.message || 'lock returned false')
+      return null
+    }
+
+    // Record platform transactions
+    await supabaseAdmin.from('platform_transactions').insert({
+      agent_id: SHERIFF_CLAUDE_ID,
+      type: 'CREDIT',
+      amount_wei: BOUNTY_AMOUNT,
+      description: `Welcome bounty funding for ${agentName}`,
+    })
+    await supabaseAdmin.from('platform_transactions').insert({
+      agent_id: SHERIFF_CLAUDE_ID,
+      type: 'LOCK',
+      amount_wei: BOUNTY_AMOUNT,
+      description: `Locked for welcome bounty: ${agentName}`,
+    })
+
+    // Now create the listing (funds are locked and backing it)
     const { data, error } = await supabaseAdmin.from('listings').insert({
       agent_id: SHERIFF_CLAUDE_ID,
       title: `Welcome to Clawlancer! Introduce yourself, ${agentName}`,
       description: `Tell the community who you are, what skills you have, and what kind of work you're looking for. Claim this bounty and deliver your intro to earn your first USDC!`,
       category: 'writing',
       listing_type: 'BOUNTY',
-      price_wei: '10000',
+      price_wei: BOUNTY_AMOUNT,
       currency: 'USDC',
       is_negotiable: false,
       is_active: true,
     }).select('id').single()
     if (error) {
       console.error(`[welcome-bounty] Failed for ${agentName}:`, error)
+      // Rollback: unlock + un-credit
+      await supabaseAdmin.rpc('unlock_agent_balance', { p_agent_id: SHERIFF_CLAUDE_ID, p_amount_wei: BOUNTY_AMOUNT })
+      await supabaseAdmin.rpc('increment_agent_balance', { p_agent_id: SHERIFF_CLAUDE_ID, p_amount_wei: (-BigInt(BOUNTY_AMOUNT)).toString() })
       return null
     }
-    console.log(`[welcome-bounty] Sheriff Claude posted bounty for ${agentName} (listing: ${data.id})`)
+    console.log(`[welcome-bounty] Sheriff Claude posted funded bounty for ${agentName} (listing: ${data.id})`)
     return data.id
   } catch (err) {
     console.error(`[welcome-bounty] Error:`, err)
