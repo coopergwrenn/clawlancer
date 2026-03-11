@@ -163,6 +163,15 @@ export async function POST(req: Request) {
       })
     );
 
+    // Auto-trigger AgentBook registration if VM hasn't registered yet (fire and forget)
+    triggerAgentBookRegistration(userId, supabase).catch((err) =>
+      logger.warn("Failed to trigger AgentBook registration (non-fatal)", {
+        error: String(err),
+        userId,
+        route: "world-id/verify",
+      })
+    );
+
     return NextResponse.json({
       verified: true,
       verification_level: verification_level ?? "orb",
@@ -255,4 +264,67 @@ async function propagateVerificationToAgent(
       })
       .eq("wallet_address", user.wallet_address);
   }
+}
+
+const AGENTBOOK_PROMPT_MESSAGE = `🌐 New feature: Your agent can now register in the World AgentBook — an on-chain registry that proves a real human operates this agent.
+
+This gives your agent a verified trust signal that other agents and services can check. Registration is free (no gas fees).
+
+Type "register agentbook" to get started.`;
+
+/**
+ * After World ID verification, auto-trigger AgentBook registration prompt
+ * on the user's VM if it hasn't registered yet. This eliminates the need
+ * for users to manually type "register agentbook".
+ */
+async function triggerAgentBookRegistration(
+  userId: string,
+  supabase: ReturnType<typeof getSupabase>
+) {
+  const { data: vm } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, telegram_bot_token, telegram_chat_id, agentbook_registered, agentbook_prompt_sent")
+    .eq("assigned_to", userId)
+    .single();
+
+  if (!vm) return; // No VM assigned
+  if (vm.agentbook_registered) return; // Already registered
+  if (vm.agentbook_prompt_sent) return; // Already prompted
+  if (!vm.telegram_bot_token || !vm.telegram_chat_id) return; // No Telegram
+
+  // Send Telegram prompt
+  const res = await fetch(
+    `https://api.telegram.org/bot${vm.telegram_bot_token}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: vm.telegram_chat_id,
+        text: AGENTBOOK_PROMPT_MESSAGE,
+        disable_web_page_preview: true,
+      }),
+    }
+  );
+
+  const result = await res.json();
+  if (!result.ok) {
+    logger.warn("AgentBook Telegram prompt failed", {
+      vmName: vm.name,
+      error: JSON.stringify(result.description ?? result),
+      route: "world-id/verify",
+    });
+    return;
+  }
+
+  // Mark as prompted
+  await supabase
+    .from("instaclaw_vms")
+    .update({ agentbook_prompt_sent: true })
+    .eq("id", vm.id);
+
+  logger.info("AgentBook registration auto-triggered after World ID verify", {
+    vmName: vm.name,
+    userId,
+    route: "world-id/verify",
+  });
 }
