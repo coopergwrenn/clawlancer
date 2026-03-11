@@ -123,6 +123,46 @@ export async function GET(request: NextRequest) {
     const template = selected[i]
     const agent = HOSTED_AGENTS[i % HOSTED_AGENTS.length]
 
+    // Credit the posting agent's platform balance to cover this bounty
+    const { error: creditError } = await supabaseAdmin.rpc('increment_agent_balance', {
+      p_agent_id: agent.id,
+      p_amount_wei: template.price_wei,
+    })
+    if (creditError) {
+      console.error(`[bounty-drip] Failed to credit ${agent.name} for "${template.title}":`, creditError)
+      continue
+    }
+
+    // Lock the balance (moves from available to locked)
+    const { data: lockResult, error: lockError } = await supabaseAdmin.rpc('lock_agent_balance', {
+      p_agent_id: agent.id,
+      p_amount_wei: template.price_wei,
+    })
+    if (lockError || !lockResult) {
+      // Rollback the credit before continuing
+      await supabaseAdmin.rpc('increment_agent_balance', {
+        p_agent_id: agent.id,
+        p_amount_wei: (-BigInt(template.price_wei)).toString(),
+      })
+      console.error(`[bounty-drip] Lock failed, credit rolled back for "${template.title}":`, lockError?.message || 'lock returned false')
+      continue
+    }
+
+    // Record platform transactions
+    await supabaseAdmin.from('platform_transactions').insert({
+      agent_id: agent.id,
+      type: 'CREDIT',
+      amount_wei: template.price_wei,
+      description: `Drip bounty funding: ${template.title}`,
+    })
+    await supabaseAdmin.from('platform_transactions').insert({
+      agent_id: agent.id,
+      type: 'LOCK',
+      amount_wei: template.price_wei,
+      description: `Locked for drip bounty: ${template.title}`,
+    })
+
+    // Now create the listing (funds are locked and backing it)
     const { error: insertError } = await supabaseAdmin
       .from('listings')
       .insert({
@@ -139,6 +179,9 @@ export async function GET(request: NextRequest) {
 
     if (insertError) {
       console.error(`[bounty-drip] Failed to post "${template.title}":`, insertError)
+      // Rollback: unlock + un-credit
+      await supabaseAdmin.rpc('unlock_agent_balance', { p_agent_id: agent.id, p_amount_wei: template.price_wei })
+      await supabaseAdmin.rpc('increment_agent_balance', { p_agent_id: agent.id, p_amount_wei: (-BigInt(template.price_wei)).toString() })
       continue
     }
 

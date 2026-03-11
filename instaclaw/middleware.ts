@@ -61,6 +61,7 @@ export default auth((req) => {
     "/api/spots",
     "/api/hq",
     "/api/ambassador/badge",
+    "/api/agentbook/lookup",
   ];
 
   const isAPI = pathname.startsWith("/api/");
