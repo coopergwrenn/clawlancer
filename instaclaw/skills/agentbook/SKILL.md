@@ -37,7 +37,7 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/j
   https://instaclaw.io/api/vm/identity
 ```
 
-**Rule 3 — Never Inline Registration:** NEVER write inline Python or shell commands to interact with the AgentBook contract directly. ALL registration MUST go through the official `@worldcoin/agentkit-cli`.
+**Rule 3 — Never Inline Registration:** NEVER write inline Python or shell commands to interact with the AgentBook contract directly. ALL registration MUST go through `bash ~/scripts/agentbook-register.sh`. Do NOT run `npx @worldcoin/agentkit-cli` directly — the wrapper script handles output parsing, on-chain verification, and reporting.
 
 **Rule 4 — Human Required — CRITICAL:** AgentBook registration requires the human operator to open a URL in the World App. The agent CANNOT complete registration alone. You MUST:
 1. Run the registration script
@@ -88,7 +88,7 @@ Extract `wallet_address` from the JSON response. If null, ask the user for their
 bash ~/scripts/agentbook-register.sh <WALLET_ADDRESS>
 ```
 
-The script outputs a "HUMAN ACTION REQUIRED" verification URL. **Extract that URL from the output.**
+The script launches the CLI, waits for the verification URL, and prints it clearly between `===` banners. **Extract the `https://world.org/verify?...` URL from the output.** The script then blocks waiting for the human to complete — do NOT wait for the script to finish before sending the URL.
 
 ### Step 4: Send URL to human and WAIT
 Send the verification URL to the user with this message:
