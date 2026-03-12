@@ -162,8 +162,16 @@ export function WorldIDSection() {
   // Fetch fresh rp_context then open the World ID widget
   async function handleVerifyClick() {
     setError("");
+    // Enable IDKit debug logging
+    if (typeof window !== "undefined") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).IDKIT_DEBUG = true;
+    }
     const ctx = await fetchRpContext();
     if (ctx) {
+      console.log("[WorldID] rp_context:", JSON.stringify(ctx));
+      console.log("[WorldID] app_id:", appId);
+      console.log("[WorldID] action: verify-instaclaw-agent");
       setWidgetOpen(true);
     }
   }
