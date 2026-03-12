@@ -689,10 +689,20 @@ export async function POST(req: NextRequest) {
         providerHeaders["anthropic-beta"] = betaHeader;
       }
 
-      // --- Normalize thinking parameter for Anthropic API ---
-      // OpenClaw sends thinking as string or { type: "adaptive" } object.
-      // Map to valid Anthropic format. Strip output_config.effort (not supported).
-      // Haiku does NOT support adaptive thinking — strip for non-Sonnet/Opus models.
+      // ================================================================
+      // CRITICAL: Thinking parameter normalization
+      // ================================================================
+      // OpenClaw sends thinking as a string ("adaptive", "off", "medium", etc.)
+      // or as an object { type: "adaptive" }. Anthropic's API expects:
+      //   - { type: "adaptive" } for adaptive mode (Sonnet 4.6+, Opus 4+ only)
+      //   - { type: "enabled", budget_tokens: N } for explicit budget
+      // Haiku and MiniMax don't support thinking at all — strip it entirely.
+      // Also strip output_config (effort param) — not supported on current API version.
+      //
+      // DO NOT REMOVE — removing this breaks every agent on the fleet.
+      // All 50+ VMs route through this proxy. No per-VM config needed.
+      // Last updated: March 2026 — see thinking block corruption incident
+      // ================================================================
       const modelStr = (parsedBody?.model as string || "").toLowerCase();
       const supportsAdaptiveThinking = modelStr.includes("sonnet-4") || modelStr.includes("opus-4");
       if (parsedBody?.thinking && !supportsAdaptiveThinking) {
