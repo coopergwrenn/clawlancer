@@ -216,9 +216,12 @@ export function routeModel(ctx: RoutingContext): RoutingDecision {
     return { model: TIER_MODELS[1], tier: 1, reason: "long message but sonnet budget exhausted" };
   }
 
-  // ── Default: Haiku ─────────────────────────────────────────
+  // ── Default: Sonnet (with budget-aware Haiku fallback) ─────
 
-  return { model: TIER_MODELS[1], tier: 1, reason: "default/haiku" };
+  if (ctx.tierBudget.sonnetRemaining > 0) {
+    return { model: TIER_MODELS[2], tier: 2, reason: "default/sonnet" };
+  }
+  return { model: TIER_MODELS[1], tier: 1, reason: "default/sonnet-budget-exhausted" };
 }
 
 /**
