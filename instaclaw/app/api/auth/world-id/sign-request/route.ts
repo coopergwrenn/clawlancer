@@ -11,11 +11,7 @@ export const dynamic = "force-dynamic";
  * Generates a signed RP context for IDKitRequestWidget (World ID 4.0).
  * Must be called server-side to keep the RP signing key secret.
  */
-export async function GET(req: Request) {
-  // Temporary diagnostic mode: ?diag=1 skips auth to test signRequest() in production
-  const url = new URL(req.url);
-  const isDiag = url.searchParams.get("diag") === "1";
-
+export async function GET() {
   try {
     const rpId = process.env.RP_ID;
     const signingKey = process.env.RP_SIGNING_KEY;
@@ -27,34 +23,33 @@ export async function GET(req: Request) {
         route: "world-id/sign-request",
       });
       return NextResponse.json(
-        { error: "World ID 4.0 not configured", hasRpId: !!rpId, hasSigningKey: !!signingKey },
+        { error: "World ID 4.0 not configured" },
         { status: 503 }
       );
     }
 
-    if (!isDiag) {
-      const session = await auth();
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     logger.info("sign-request: calling signRequest()", {
       rpId,
-      keyPrefix: signingKey.substring(0, 6),
-      isDiag,
       route: "world-id/sign-request",
     });
 
+    // Strip 0x prefix if present — signRequest() expects raw hex on some runtimes
+    const cleanKey = signingKey.startsWith("0x") ? signingKey.slice(2) : signingKey;
+
     const { sig, nonce, createdAt, expiresAt } = signRequest(
       "verify-instaclaw-agent",
-      signingKey
+      cleanKey
     );
 
     logger.info("sign-request: success", {
+      userId: session.user.id,
       createdAt,
       expiresAt,
-      isDiag,
       route: "world-id/sign-request",
     });
 
