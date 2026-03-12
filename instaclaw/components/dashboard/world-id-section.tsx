@@ -7,7 +7,7 @@ import { WorldIDBadge } from "@/components/icons/world-id-badge";
 import { WorldLogo } from "@/components/icons/world-logo";
 
 const QRCodeSVG = dynamic(
-  () => import("qrcode.react").then((mod) => mod.QRCodeSVG),
+  () => import("qrcode.react").then((mod) => ({ default: mod.QRCodeSVG })),
   { ssr: false }
 );
 
