@@ -68,20 +68,20 @@ export async function GET() {
         return NextResponse.json({ status: "waiting" });
       }
 
-      // Check for bridge URL
-      const bridgeMatch = stdout.match(
-        /https:\/\/bridge\.worldcoin\.org[^\s"')]+/
+      // Check for World ID verify URL (world.org/verify or bridge.worldcoin.org)
+      const urlMatch = stdout.match(
+        /https:\/\/(?:world\.org\/verify|bridge\.worldcoin\.org)[^\s"')]+/
       );
-      if (bridgeMatch) {
+      if (urlMatch) {
         return NextResponse.json({
           status: "ready",
-          bridgeUrl: bridgeMatch[0],
+          bridgeUrl: urlMatch[0],
         });
       }
 
-      // Broader pattern fallback
+      // Broader fallback — any worldcoin/world.org URL
       const broadMatch = stdout.match(
-        /https:\/\/[^\s"')]*worldcoin[^\s"')]+/
+        /https:\/\/[^\s"')]*(?:worldcoin|world\.org)[^\s"')]+/
       );
       if (broadMatch) {
         return NextResponse.json({

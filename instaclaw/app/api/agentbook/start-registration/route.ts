@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/agentbook/start-registration
  *
- * SSH into the user's VM, kick off `agentkit-cli register` in the background,
- * and return immediately. The CLI writes its output (including bridge URL)
- * to /tmp/agentbook-register.log. The frontend polls GET /api/agentbook/get-bridge-url
- * to read the log and extract the URL.
+ * SSH into the user's VM, kick off `agentkit-cli register` in a fully
+ * detached process (setsid), and return immediately. The CLI writes its
+ * output to /tmp/agentbook-register.log. The frontend polls
+ * GET /api/agentbook/get-bridge-url to read the log and extract the URL.
  */
 export async function POST() {
   try {
@@ -87,19 +87,27 @@ export async function POST() {
     }
 
     try {
-      // Clean up any previous log
-      await ssh.execCommand("rm -f /tmp/agentbook-register.log");
+      // Clean up any previous log and launcher script
+      await ssh.execCommand("rm -f /tmp/agentbook-register.log /tmp/agentbook-start.sh");
 
-      // Run agentkit-cli register in background — returns immediately
-      const cmd = [
+      // Write a launcher script to the VM — avoids shell escaping issues
+      const script = [
+        "#!/bin/bash",
         NVM_PREAMBLE,
-        `nohup npx --yes @worldcoin/agentkit-cli register ${wallet} --network base --auto > /tmp/agentbook-register.log 2>&1 &`,
-        "disown",
-      ].join(" && ");
+        `npx --yes @worldcoin/agentkit-cli register ${wallet} --network base --auto > /tmp/agentbook-register.log 2>&1`,
+      ].join("\n");
+      const b64 = Buffer.from(script, "utf-8").toString("base64");
 
-      await ssh.execCommand(cmd);
+      await ssh.execCommand(
+        `echo '${b64}' | base64 -d > /tmp/agentbook-start.sh && chmod +x /tmp/agentbook-start.sh`
+      );
 
-      logger.info("AgentBook registration CLI launched in background", {
+      // Launch fully detached via setsid — returns immediately, process survives SSH disconnect
+      await ssh.execCommand(
+        "setsid /tmp/agentbook-start.sh < /dev/null > /dev/null 2>&1 &"
+      );
+
+      logger.info("AgentBook registration CLI launched via setsid", {
         vmId: vm.id,
         wallet,
         route: "agentbook/start-registration",
