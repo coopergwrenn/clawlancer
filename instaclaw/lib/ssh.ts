@@ -1978,7 +1978,11 @@ export async function configureOpenClaw(
       '# Kill any existing gateway process (both the runner and the binary)',
       'pkill -f "openclaw-gateway" 2>/dev/null || true',
       'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
-      'sleep 2',
+      '# Poll until gateway process is dead (max 4s, replaces hard sleep 2)',
+      'for _KILL_WAIT in 1 2 3 4; do',
+      '  pgrep -f "openclaw-gateway" >/dev/null 2>&1 || break',
+      '  sleep 1',
+      'done',
       '',
       '# Clear stale device pairing state (OpenClaw >=2026.2.9 requires device pairing)',
       'rm -rf ~/.openclaw/devices 2>/dev/null || true',
@@ -2740,8 +2744,7 @@ export async function configureOpenClaw(
         `echo '${videoIdxB64}' | base64 -d > "$VIDEO_TMPL_DIR/index.ts"`,
         `echo '${videoRootB64}' | base64 -d > "$VIDEO_TMPL_DIR/Root.tsx"`,
         `echo '${videoMvB64}' | base64 -d > "$VIDEO_TMPL_DIR/MyVideo.tsx"`,
-        '# Install Remotion dependencies so template is ready to use',
-        'cd "$VIDEO_SKILL_DIR/assets/template-basic" && npm install --no-audit --no-fund 2>/dev/null || true',
+        '# Remotion deps installed in parallel block below (PARALLEL_INSTALL_REMOTION)',
         ''
       );
 
@@ -2806,9 +2809,7 @@ export async function configureOpenClaw(
         `echo '${crawleeDocB64}' | base64 -d > "$WEB_SKILL_DIR/references/crawlee-stealth-scraping.md"`,
         `echo '${crawleeScriptB64}' | base64 -d > "$HOME/scripts/crawlee-scrape.py"`,
         'chmod +x "$HOME/scripts/crawlee-scrape.py"',
-        '# Install Crawlee stealth scraping library (uses existing Playwright + Chromium)',
-        'python3 -m pip install --quiet --break-system-packages "crawlee[beautifulsoup,playwright]==1.5.0" 2>&1 | tail -5',
-        'if ! python3 -c "import crawlee" 2>/dev/null; then echo "CRAWLEE_INSTALL_FAILED"; fi',
+        '# Crawlee installed in parallel block below (PARALLEL_INSTALL_CRAWLEE)',
         ''
       );
 
@@ -3002,9 +3003,7 @@ export async function configureOpenClaw(
         'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py" "$HOME/scripts/kalshi-browse.py" "$HOME/scripts/polymarket-search.py"',
         '# Clean up legacy polymarket symlink (was double-counting skill budget)',
         'rm -f "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
-        '# Bootstrap pip if missing (common on minimal Ubuntu VMs)',
-        'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
-        'python3 -m pip install --quiet --break-system-packages web3 py-clob-client eth-account websockets cryptography 2>/dev/null || true',
+        '# Pip bootstrap + polymarket deps installed in parallel block below (PARALLEL_INSTALL_POLYMARKET)',
         ''
       );
 
@@ -3110,8 +3109,7 @@ export async function configureOpenClaw(
         `echo '${solPositionsB64}' | base64 -d > "$HOME/scripts/solana-positions.py"`,
         `echo '${solSnipeB64}' | base64 -d > "$HOME/scripts/solana-snipe.py"`,
         'chmod +x "$HOME/scripts/setup-solana-wallet.py" "$HOME/scripts/solana-trade.py" "$HOME/scripts/solana-balance.py" "$HOME/scripts/solana-positions.py" "$HOME/scripts/solana-snipe.py"',
-        '# Install Python deps for Solana trading',
-        'python3 -m pip install --quiet --break-system-packages solders base58 httpx websockets 2>/dev/null || true',
+        '# Solana deps installed in parallel block below (PARALLEL_INSTALL_SOLANA)',
         ''
       );
 
@@ -3226,11 +3224,7 @@ export async function configureOpenClaw(
         `echo '${abCheckB64}' | base64 -d > "$HOME/scripts/agentbook-check.py"`,
         `echo '${abRegisterB64}' | base64 -d > "$HOME/scripts/agentbook-register.sh"`,
         'chmod +x "$HOME/scripts/agentbook-check.py" "$HOME/scripts/agentbook-register.sh"',
-        '# web3.py required by agentbook-check.py for on-chain lookups',
-        'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
-        'python3 -m pip install --quiet --break-system-packages web3 2>/dev/null || true',
-        '# Pre-install agentkit-cli for faster AgentBook registration',
-        `${NVM_PREAMBLE} && npm install -g @worldcoin/agentkit-cli@0.1.3 2>/dev/null || true`,
+        '# web3 installed by polymarket block; agentkit-cli in parallel block below (PARALLEL_INSTALL_AGENTKIT)',
         ''
       );
 
@@ -3261,6 +3255,48 @@ export async function configureOpenClaw(
       'with open(af, "w") as f: json.dump(paired, f)',
     ].join('\n');
     const pairingB64 = Buffer.from(pairingPython, 'utf-8').toString('base64');
+
+    // ── Parallel package install block ──
+    // All 5 independent package installs run concurrently with & + wait.
+    // This replaces ~60-75s of sequential installs with ~20-25s (limited by slowest).
+    // pip bootstrap runs first (sequential) since all pip installs depend on it.
+    scriptParts.push(
+      '# ── PARALLEL PACKAGE INSTALL BLOCK ──',
+      '# Bootstrap pip once (all pip installs below depend on this)',
+      'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
+      '',
+      '# Run all package installs in parallel',
+      'echo "PARALLEL_INSTALL_START"',
+      '',
+      '# 1. Remotion npm install (motion-graphics skill)',
+      '(cd "$HOME/.openclaw/skills/motion-graphics/assets/template-basic" 2>/dev/null && npm install --no-audit --no-fund 2>/dev/null || true) &',
+      'PID_REMOTION=$!',
+      '',
+      '# 2. Crawlee pip install (web-search-browser skill)',
+      '(python3 -m pip install --quiet --break-system-packages "crawlee[beautifulsoup,playwright]==1.5.0" 2>/dev/null || true) &',
+      'PID_CRAWLEE=$!',
+      '',
+      '# 3. Polymarket + Kalshi pip deps (prediction-markets skill — includes web3 for agentbook)',
+      '(python3 -m pip install --quiet --break-system-packages web3 py-clob-client eth-account websockets cryptography 2>/dev/null || true) &',
+      'PID_POLYMARKET=$!',
+      '',
+      '# 4. Solana DeFi pip deps',
+      '(python3 -m pip install --quiet --break-system-packages solders base58 httpx websockets 2>/dev/null || true) &',
+      'PID_SOLANA=$!',
+      '',
+      '# 5. AgentBook agentkit-cli npm install',
+      `(${NVM_PREAMBLE} && npm install -g @worldcoin/agentkit-cli@0.1.3 2>/dev/null || true) &`,
+      'PID_AGENTKIT=$!',
+      '',
+      '# Wait for all parallel installs to complete',
+      'wait $PID_REMOTION $PID_CRAWLEE $PID_POLYMARKET $PID_SOLANA $PID_AGENTKIT 2>/dev/null',
+      '',
+      '# Verify Crawlee installed (critical for web scraping fallback)',
+      'if ! python3 -c "import crawlee" 2>/dev/null; then echo "CRAWLEE_INSTALL_FAILED"; fi',
+      '',
+      'echo "PARALLEL_INSTALL_DONE"',
+      ''
+    );
 
     // Gateway start sequence: verify → install → start → sleep → pair AFTER start.
     // IMPORTANT: Pairing must happen AFTER the final gateway start because
@@ -3331,7 +3367,7 @@ export async function configureOpenClaw(
       'BOT_TOKEN=$(python3 -c "import json; d=json.load(open(\'/home/openclaw/.openclaw/openclaw.json\')); print(d.get(\'channels\',{}).get(\'telegram\',{}).get(\'botToken\',\'\'))" 2>/dev/null)',
       'if [ -n "$BOT_TOKEN" ]; then',
       '  curl -s --max-time 10 "https://api.telegram.org/bot$BOT_TOKEN/deleteWebhook" > /dev/null 2>&1 || true',
-      '  sleep 2',
+      '  sleep 1',
       'fi',
       'TGEOF',
       '  chmod +x "$TG_PRESTARTSH"',
@@ -3347,8 +3383,11 @@ export async function configureOpenClaw(
       `  nohup openclaw gateway run --bind lan --port ${GATEWAY_PORT} --force > /tmp/openclaw-gateway.log 2>&1 &`,
       'fi',
       '',
-      '# Wait for gateway to initialize and bind to port',
-      'sleep 3',
+      '# Poll for gateway to bind to port (max 6s, replaces hard sleep 3)',
+      'for _GW_WAIT in 1 2 3 4 5 6; do',
+      `  curl -s -m 1 http://localhost:${GATEWAY_PORT}/health >/dev/null 2>&1 && break`,
+      '  sleep 1',
+      'done',
       '',
       '# Auto-approve local device pairing (OpenClaw >=2026.2.9 requires this)',
       '# Trigger a health check to generate a pairing request, then wait for pending.json.',
