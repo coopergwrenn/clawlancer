@@ -209,12 +209,18 @@ export function WorldIDSection() {
     setAbRegistering(true);
     try {
       const res = await fetch("/api/agentbook/start-registration", { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to start registration");
+      const text = await res.text();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.error("[AgentBook] Non-JSON response:", res.status, text.slice(0, 200));
+        throw new Error(`Server error (${res.status}). Please try again.`);
       }
-      const { bridgeUrl: url } = await res.json();
-      setBridgeUrl(url);
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to start registration");
+      }
+      setBridgeUrl(data.bridgeUrl as string);
       setAbPolling(true);
     } catch (err) {
       setAbError(err instanceof Error ? err.message : "Registration failed");
