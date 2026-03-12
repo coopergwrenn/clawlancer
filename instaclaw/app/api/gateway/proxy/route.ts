@@ -692,6 +692,12 @@ export async function POST(req: NextRequest) {
       // --- Normalize thinking parameter for Anthropic API ---
       // OpenClaw sends thinking as string or { type: "adaptive" } object.
       // Map to valid Anthropic format. Strip output_config.effort (not supported).
+      // Haiku does NOT support adaptive thinking — strip for non-Sonnet/Opus models.
+      const modelStr = (parsedBody?.model as string || "").toLowerCase();
+      const supportsAdaptiveThinking = modelStr.includes("sonnet-4") || modelStr.includes("opus-4");
+      if (parsedBody?.thinking && !supportsAdaptiveThinking) {
+        delete parsedBody.thinking;
+      }
       if (parsedBody?.thinking) {
         const THINKING_BUDGET: Record<string, number> = {
           low: 2048,
