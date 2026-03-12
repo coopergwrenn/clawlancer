@@ -683,6 +683,11 @@ export async function POST(req: NextRequest) {
         "x-api-key": apiKey,
         "anthropic-version": req.headers.get("anthropic-version") || "2023-06-01",
       };
+      // Forward anthropic-beta header so adaptive/extended thinking works
+      const betaHeader = req.headers.get("anthropic-beta");
+      if (betaHeader) {
+        providerHeaders["anthropic-beta"] = betaHeader;
+      }
       // Use parsedBody if model was rewritten by the router
       providerBody = parsedBody ? JSON.stringify(parsedBody) : body;
     }
