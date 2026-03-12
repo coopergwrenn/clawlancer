@@ -692,6 +692,26 @@ export async function POST(req: NextRequest) {
       providerBody = parsedBody ? JSON.stringify(parsedBody) : body;
     }
 
+    // --- DEBUG: log exact request payload for thinking investigation ---
+    if (parsedBody?.thinking || parsedBody?.output_config) {
+      const debugPayload = {
+        model: parsedBody?.model,
+        thinking: parsedBody?.thinking,
+        output_config: parsedBody?.output_config,
+        stream: parsedBody?.stream,
+        headers: {
+          "anthropic-version": providerHeaders["anthropic-version"],
+          "anthropic-beta": providerHeaders["anthropic-beta"] ?? "NOT SET",
+        },
+        message_count: parsedBody?.messages?.length,
+      };
+      logger.info("THINKING_DEBUG: request payload to Anthropic", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        payload: JSON.stringify(debugPayload),
+      });
+    }
+
     const providerRes = await fetch(providerUrl, {
       method: "POST",
       headers: providerHeaders,
@@ -775,6 +795,22 @@ export async function POST(req: NextRequest) {
           response: errBody.slice(0, 500),
           model: requestedModel,
         });
+
+        // --- DEBUG: log full thinking rejection details ---
+        if (errBody.includes("thinking")) {
+          logger.error("THINKING_DEBUG: rejection details", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            errorBody: errBody,
+            sentModel: parsedBody?.model,
+            sentThinking: JSON.stringify(parsedBody?.thinking),
+            sentOutputConfig: JSON.stringify(parsedBody?.output_config),
+            sentHeaders: JSON.stringify({
+              "anthropic-version": providerHeaders["anthropic-version"],
+              "anthropic-beta": providerHeaders["anthropic-beta"] ?? "NOT SET",
+            }),
+          });
+        }
 
         if (errBody.includes("Invalid signature in thinking block")) {
           logger.warn("Corrupted thinking block detected — repairing session", {
