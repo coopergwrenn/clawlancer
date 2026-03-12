@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { IDKitRequestWidget, orbLegacy, type IDKitResult, type RpContext } from "@worldcoin/idkit";
+import { IDKitRequestWidget, IDKitErrorCodes, orbLegacy, type IDKitResult, type RpContext } from "@worldcoin/idkit";
 import { Loader2, Shield, Search, Globe, Award, CheckCircle2 } from "lucide-react";
 import { WorldIDBadge } from "@/components/icons/world-id-badge";
 import { WorldLogo } from "@/components/icons/world-logo";
@@ -63,9 +63,13 @@ export function WorldIDSection() {
       if (res.ok) {
         const data = await res.json();
         setRpContext(data.rp_context);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error("[WorldID] sign-request failed:", res.status, data);
+        setError(`Sign request failed: ${data.error || res.status}`);
       }
-    } catch {
-      // Will retry on button click
+    } catch (err) {
+      console.error("[WorldID] sign-request fetch error:", err);
     }
   }, []);
 
@@ -108,6 +112,11 @@ export function WorldIDSection() {
   // Hide entirely if env var is not set
   if (!appId) return null;
   if (loading) return null;
+
+  function handleWidgetError(errorCode: IDKitErrorCodes) {
+    console.error("[WorldID] Widget error:", errorCode);
+    setError(`World ID error: ${errorCode}`);
+  }
 
   async function handleVerify(result: IDKitResult) {
     setVerifying(true);
@@ -378,6 +387,7 @@ export function WorldIDSection() {
                 onOpenChange={setWidgetOpen}
                 handleVerify={handleVerify}
                 onSuccess={() => {}}
+                onError={handleWidgetError}
               />
               <button
                 onClick={() => setWidgetOpen(true)}
