@@ -3149,6 +3149,8 @@ export async function configureOpenClaw(
         '# web3.py required by agentbook-check.py for on-chain lookups',
         'python3 -m pip --version >/dev/null 2>&1 || curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --quiet 2>/dev/null || true',
         'python3 -m pip install --quiet --break-system-packages web3 2>/dev/null || true',
+        '# Pre-install agentkit-cli for faster AgentBook registration',
+        `${NVM_PREAMBLE} && npm install -g @worldcoin/agentkit-cli@0.1.3 2>/dev/null || true`,
         ''
       );
 

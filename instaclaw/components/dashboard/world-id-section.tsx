@@ -6,6 +6,11 @@ import { Loader2, Shield, Search, Globe, Award, CheckCircle2 } from "lucide-reac
 import { WorldIDBadge } from "@/components/icons/world-id-badge";
 import { WorldLogo } from "@/components/icons/world-logo";
 
+const QRCodeSVG = dynamic(
+  () => import("qrcode.react").then((mod) => mod.QRCodeSVG),
+  { ssr: false }
+);
+
 // Dynamic import with ssr: false — IDKit 4.0 uses WASM that requires browser APIs
 const IDKitRequestWidget = dynamic(
   () => import("@worldcoin/idkit").then((mod) => mod.IDKitRequestWidget),
@@ -82,10 +87,11 @@ export function WorldIDSection() {
 
   // Phase 2: AgentBook registration
   const [agentbook, setAgentbook] = useState<AgentBookData | null>(null);
-  const [abWidgetOpen, setAbWidgetOpen] = useState(false);
   const [abRegistering, setAbRegistering] = useState(false);
   const [abError, setAbError] = useState("");
   const [abRegistered, setAbRegistered] = useState(false);
+  const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
+  const [abPolling, setAbPolling] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -176,12 +182,23 @@ export function WorldIDSection() {
     }
   }
 
-  // Fetch fresh rp_context then open the AgentBook widget
+  // Start AgentBook registration via VM CLI
   async function handleAgentBookClick() {
     setAbError("");
-    const ctx = await fetchRpContext();
-    if (ctx) {
-      setAbWidgetOpen(true);
+    setAbRegistering(true);
+    try {
+      const res = await fetch("/api/agentbook/start-registration", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to start registration");
+      }
+      const { bridgeUrl: url } = await res.json();
+      setBridgeUrl(url);
+      setAbPolling(true);
+    } catch (err) {
+      setAbError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setAbRegistering(false);
     }
   }
 
@@ -217,32 +234,26 @@ export function WorldIDSection() {
     }
   }
 
-  async function handleAgentBookVerify(result: IDKitResult) {
-    setAbRegistering(true);
-    setAbError("");
-    try {
-      const res = await fetch("/api/agentbook/register-proof", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          proof: result,
-          walletAddress: agentbook?.walletAddress,
-          nonce: agentbook?.nonce,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Registration failed");
+  // Poll for on-chain registration confirmation
+  useEffect(() => {
+    if (!abPolling) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/agentbook/check-registration");
+        if (res.ok) {
+          const { registered } = await res.json();
+          if (registered) {
+            setAbRegistered(true);
+            setBridgeUrl(null);
+            setAbPolling(false);
+          }
+        }
+      } catch {
+        // Non-fatal, keep polling
       }
-
-      setAbRegistered(true);
-    } catch (err) {
-      setAbError(err instanceof Error ? err.message : "Registration failed. Please try again.");
-    } finally {
-      setAbRegistering(false);
-    }
-  }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [abPolling]);
 
   // Verified state
   if (status?.verified) {
@@ -321,40 +332,53 @@ export function WorldIDSection() {
             </div>
 
             <div>
-              {abRegistering ? (
+              {bridgeUrl ? (
+                <div className="space-y-3">
+                  <div className="flex justify-center p-4 bg-white rounded-lg">
+                    <QRCodeSVG value={bridgeUrl} size={200} />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <p className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+                      Scan with World App to verify
+                    </p>
+                    <a
+                      href={bridgeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-95"
+                      style={{
+                        background: "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.85))",
+                        color: "#ffffff",
+                        boxShadow: "0 0 0 1px rgba(59,130,246,0.3), 0 2px 8px rgba(59,130,246,0.2)",
+                      }}
+                    >
+                      <WorldLogo className="w-3.5 h-3.5" />
+                      Open in World App
+                    </a>
+                    <div className="flex items-center justify-center gap-2 text-xs" style={{ color: "var(--muted)" }}>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Waiting for verification...
+                    </div>
+                  </div>
+                </div>
+              ) : abRegistering ? (
                 <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Registering in AgentBook...
+                  Starting registration on your VM...
                 </div>
               ) : (
-                <>
-                  {rpContext && (
-                    <IDKitRequestWidget
-                      app_id={agentbookAppId as `app_${string}`}
-                      action="agentbook-registration"
-                      rp_context={rpContext}
-                      preset={orbLegacy({ signal: agentbook.walletAddress })}
-                      allow_legacy_proofs={true}
-                      open={abWidgetOpen}
-                      onOpenChange={setAbWidgetOpen}
-                      handleVerify={handleAgentBookVerify}
-                      onSuccess={() => {}}
-                      onError={handleWidgetError}
-                    />
-                  )}
-                  <button
-                    onClick={handleAgentBookClick}
-                    className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.85))",
-                      color: "#ffffff",
-                      boxShadow: "0 0 0 1px rgba(59,130,246,0.3), 0 2px 8px rgba(59,130,246,0.2)",
-                    }}
-                  >
-                    <WorldLogo className="w-4 h-4" />
-                    Register in AgentBook
-                  </button>
-                </>
+                <button
+                  onClick={handleAgentBookClick}
+                  className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.85))",
+                    color: "#ffffff",
+                    boxShadow: "0 0 0 1px rgba(59,130,246,0.3), 0 2px 8px rgba(59,130,246,0.2)",
+                  }}
+                >
+                  <WorldLogo className="w-4 h-4" />
+                  Register in AgentBook
+                </button>
               )}
 
               {abError && (
