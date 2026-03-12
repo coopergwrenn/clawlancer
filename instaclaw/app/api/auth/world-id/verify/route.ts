@@ -11,7 +11,7 @@ const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export async function POST(req: Request) {
   try {
-    const RP_ID = process.env.RP_ID;
+    const RP_ID = process.env.RP_ID?.trim();
     if (!RP_ID) {
       return NextResponse.json(
         { error: "World ID verification not yet configured" },

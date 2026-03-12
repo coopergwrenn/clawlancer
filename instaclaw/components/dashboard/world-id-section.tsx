@@ -1,10 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { IDKitRequestWidget, IDKitErrorCodes, orbLegacy, type IDKitResult, type RpContext } from "@worldcoin/idkit";
+import dynamic from "next/dynamic";
 import { Loader2, Shield, Search, Globe, Award, CheckCircle2 } from "lucide-react";
 import { WorldIDBadge } from "@/components/icons/world-id-badge";
 import { WorldLogo } from "@/components/icons/world-logo";
+
+// Dynamic import with ssr: false — IDKit 4.0 uses WASM that requires browser APIs
+const IDKitRequestWidget = dynamic(
+  () => import("@worldcoin/idkit").then((mod) => mod.IDKitRequestWidget),
+  { ssr: false }
+);
+
+// Static imports for types and helpers (no WASM dependency)
+import { orbLegacy, IDKitErrorCodes, type IDKitResult, type RpContext } from "@worldcoin/idkit";
 
 interface WorldIDStatus {
   userId: string;
@@ -56,20 +65,23 @@ export function WorldIDSection() {
     }
   }, []);
 
-  // Fetch RP context for signed widget requests
-  const fetchRpContext = useCallback(async () => {
+  // Fetch fresh RP context — called on button click, not on mount (TTL = 5 min)
+  const fetchRpContext = useCallback(async (): Promise<RpContext | null> => {
     try {
       const res = await fetch("/api/auth/world-id/sign-request");
       if (res.ok) {
         const data = await res.json();
         setRpContext(data.rp_context);
+        return data.rp_context;
       } else {
         const data = await res.json().catch(() => ({}));
         console.error("[WorldID] sign-request failed:", res.status, data);
         setError(`Sign request failed: ${data.error || res.status}`);
+        return null;
       }
     } catch (err) {
       console.error("[WorldID] sign-request fetch error:", err);
+      return null;
     }
   }, []);
 
@@ -95,13 +107,6 @@ export function WorldIDSection() {
     fetchStatus();
   }, [appId, fetchStatus]);
 
-  // Fetch RP context for both unverified (World ID widget) and verified users (AgentBook widget)
-  useEffect(() => {
-    if (status && rpId) {
-      fetchRpContext();
-    }
-  }, [status, rpId, fetchRpContext]);
-
   // For verified users, check if they still need AgentBook registration
   useEffect(() => {
     if (status?.verified && agentbookAppId) {
@@ -116,6 +121,24 @@ export function WorldIDSection() {
   function handleWidgetError(errorCode: IDKitErrorCodes) {
     console.error("[WorldID] Widget error:", errorCode);
     setError(`World ID error: ${errorCode}`);
+  }
+
+  // Fetch fresh rp_context then open the World ID widget
+  async function handleVerifyClick() {
+    setError("");
+    const ctx = await fetchRpContext();
+    if (ctx) {
+      setWidgetOpen(true);
+    }
+  }
+
+  // Fetch fresh rp_context then open the AgentBook widget
+  async function handleAgentBookClick() {
+    setAbError("");
+    const ctx = await fetchRpContext();
+    if (ctx) {
+      setAbWidgetOpen(true);
+    }
   }
 
   async function handleVerify(result: IDKitResult) {
@@ -261,38 +284,32 @@ export function WorldIDSection() {
                 </div>
               ) : (
                 <>
-                  {rpContext ? (
-                    <>
-                      <IDKitRequestWidget
-                        app_id={agentbookAppId as `app_${string}`}
-                        action="agentbook-registration"
-                        rp_context={rpContext}
-                        preset={orbLegacy({ signal: agentbook.walletAddress })}
-                        allow_legacy_proofs={true}
-                        open={abWidgetOpen}
-                        onOpenChange={setAbWidgetOpen}
-                        handleVerify={handleAgentBookVerify}
-                        onSuccess={() => {}}
-                      />
-                      <button
-                        onClick={() => setAbWidgetOpen(true)}
-                        className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
-                        style={{
-                          background: "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.85))",
-                          color: "#ffffff",
-                          boxShadow: "0 0 0 1px rgba(59,130,246,0.3), 0 2px 8px rgba(59,130,246,0.2)",
-                        }}
-                      >
-                        <WorldLogo className="w-4 h-4" />
-                        Register in AgentBook
-                      </button>
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Loading...
-                    </div>
+                  {rpContext && (
+                    <IDKitRequestWidget
+                      app_id={agentbookAppId as `app_${string}`}
+                      action="agentbook-registration"
+                      rp_context={rpContext}
+                      preset={orbLegacy({ signal: agentbook.walletAddress })}
+                      allow_legacy_proofs={true}
+                      open={abWidgetOpen}
+                      onOpenChange={setAbWidgetOpen}
+                      handleVerify={handleAgentBookVerify}
+                      onSuccess={() => {}}
+                      onError={handleWidgetError}
+                    />
                   )}
+                  <button
+                    onClick={handleAgentBookClick}
+                    className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.85))",
+                      color: "#ffffff",
+                      boxShadow: "0 0 0 1px rgba(59,130,246,0.3), 0 2px 8px rgba(59,130,246,0.2)",
+                    }}
+                  >
+                    <WorldLogo className="w-4 h-4" />
+                    Register in AgentBook
+                  </button>
                 </>
               )}
 
@@ -375,22 +392,24 @@ export function WorldIDSection() {
               <Loader2 className="w-4 h-4 animate-spin" />
               Verifying with World ID...
             </div>
-          ) : rpContext ? (
+          ) : (
             <>
-              <IDKitRequestWidget
-                app_id={appId as `app_${string}`}
-                action="verify-instaclaw-agent"
-                rp_context={rpContext}
-                preset={orbLegacy({ signal: status?.userId })}
-                allow_legacy_proofs={true}
-                open={widgetOpen}
-                onOpenChange={setWidgetOpen}
-                handleVerify={handleVerify}
-                onSuccess={() => {}}
-                onError={handleWidgetError}
-              />
+              {rpContext && (
+                <IDKitRequestWidget
+                  app_id={appId as `app_${string}`}
+                  action="verify-instaclaw-agent"
+                  rp_context={rpContext}
+                  preset={orbLegacy({ signal: status?.userId })}
+                  allow_legacy_proofs={true}
+                  open={widgetOpen}
+                  onOpenChange={setWidgetOpen}
+                  handleVerify={handleVerify}
+                  onSuccess={() => {}}
+                  onError={handleWidgetError}
+                />
+              )}
               <button
-                onClick={() => setWidgetOpen(true)}
+                onClick={handleVerifyClick}
                 className="px-5 py-2.5 rounded-full text-sm font-semibold cursor-pointer transition-all active:scale-95 flex items-center gap-2"
                 style={{
                   background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,240,240,0.88))",
@@ -403,11 +422,6 @@ export function WorldIDSection() {
                 Verify with World ID
               </button>
             </>
-          ) : (
-            <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading verification...
-            </div>
           )}
 
           {error && (

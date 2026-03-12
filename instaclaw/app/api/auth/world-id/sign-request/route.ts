@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   try {
-    const rpId = process.env.RP_ID;
-    const signingKey = process.env.RP_SIGNING_KEY;
+    const rpId = process.env.RP_ID?.trim();
+    const signingKey = process.env.RP_SIGNING_KEY?.trim();
 
     if (!rpId || !signingKey) {
       logger.warn("World ID 4.0 sign-request: missing env vars", {

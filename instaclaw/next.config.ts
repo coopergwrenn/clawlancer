@@ -10,15 +10,6 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname, ".."),
   },
-  webpack(config) {
-    // Required for @worldcoin/idkit-core WASM module (World ID 4.0)
-    config.experiments = { ...config.experiments, asyncWebAssembly: true };
-    config.module?.rules?.push({
-      test: /\.wasm$/,
-      type: "asset/resource",
-    });
-    return config;
-  },
 };
 
 export default withSentryConfig(nextConfig, {

@@ -67,7 +67,7 @@ export async function POST(req: Request) {
 
     // Verify the proof with World ID v4 API using AgentBook's app_id
     const agentbookAppId = process.env.AGENTBOOK_APP_ID;
-    const rpId = process.env.RP_ID;
+    const rpId = process.env.RP_ID?.trim();
 
     if (!rpId) {
       return NextResponse.json(
