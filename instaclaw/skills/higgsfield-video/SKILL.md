@@ -146,8 +146,10 @@ python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-
 # Returns: {"status": "submitted", "request_id": "abc-123", "message": "Job submitted..."}
 ```
 
-2. **Immediately tell the user** — set expectations:
-> "Your video is generating now (Kling 3.0, ~2-4 minutes). I'll check back shortly and deliver the link when it's ready."
+2. **IMPORTANT: Immediately send the user a confirmation message BEFORE doing anything else.** Do NOT go silent. Respond right away with something like:
+> "On it! Submitted to Kling 3.0 — takes about 2-4 min, I'll ping you when it's ready 🎬"
+
+The user must hear from you within seconds of submitting. This is the whole point of async — you can talk while the video renders.
 
 3. **After ~3 minutes, check status:**
 ```bash
