@@ -38,8 +38,8 @@ export async function GET() {
       route: "world-id/sign-request",
     });
 
-    // Strip 0x prefix if present — signRequest() expects raw hex on some runtimes
-    const cleanKey = signingKey.startsWith("0x") ? signingKey.slice(2) : signingKey;
+    // Strip 0x prefix and any trailing whitespace/newline artifacts from env var
+    const cleanKey = signingKey.replace(/^0x/i, "").replace(/[\s\\n]+$/g, "").trim();
 
     const { sig, nonce, createdAt, expiresAt } = signRequest(
       "verify-instaclaw-agent",
