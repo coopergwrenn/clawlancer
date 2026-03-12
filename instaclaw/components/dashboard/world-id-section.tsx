@@ -156,7 +156,7 @@ export function WorldIDSection() {
 
   function handleWidgetError(errorCode: IDKitErrorCodes) {
     console.error("[WorldID] Widget error:", errorCode);
-    setError(`World ID error: ${errorCode}`);
+    setError(`World ID error code: ${errorCode}`);
   }
 
   // Fetch fresh rp_context then open the World ID widget
@@ -469,9 +469,13 @@ export function WorldIDSection() {
           )}
 
           {error && (
-            <p className="text-xs mt-2" style={{ color: "var(--error)" }}>
-              {error}
-            </p>
+            <div className="mt-3 p-3 rounded-lg text-sm" style={{
+              background: "rgba(239,68,68,0.1)",
+              border: "1px solid rgba(239,68,68,0.3)",
+              color: "#ef4444",
+            }}>
+              <p className="font-semibold">{error}</p>
+            </div>
           )}
         </div>
 
