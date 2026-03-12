@@ -690,28 +690,40 @@ export async function POST(req: NextRequest) {
       }
 
       // --- Normalize thinking parameter for Anthropic API ---
-      // OpenClaw sends thinking as a string ("adaptive", "off", "medium", etc.)
       // Anthropic's API only accepts: { type: "enabled", budget_tokens: N }
-      // "adaptive" is NOT a valid Anthropic API type — map to enabled+medium budget.
-      if (parsedBody && typeof parsedBody.thinking === "string") {
-        const thinkStr = parsedBody.thinking.toLowerCase().trim();
+      // OpenClaw may send thinking as a string OR as an object with invalid type.
+      // "adaptive" is NOT a valid Anthropic type — map to enabled+10k budget.
+      if (parsedBody?.thinking) {
         const THINKING_BUDGET: Record<string, number> = {
           low: 2048,
           adaptive: 10000,
           medium: 10000,
           high: 32000,
         };
+        const OFF_VALUES = new Set(["off", "disabled", "false"]);
 
-        if (thinkStr === "off" || thinkStr === "disabled" || thinkStr === "false") {
-          // Strip thinking entirely — Anthropic doesn't want it when disabled
+        // Extract the thinking "level" regardless of format
+        let thinkLevel: string | undefined;
+        if (typeof parsedBody.thinking === "string") {
+          thinkLevel = parsedBody.thinking.toLowerCase().trim();
+        } else if (typeof parsedBody.thinking === "object" && !Array.isArray(parsedBody.thinking)) {
+          const t = parsedBody.thinking as Record<string, unknown>;
+          if (typeof t.type === "string") {
+            thinkLevel = t.type.toLowerCase().trim();
+          }
+        }
+
+        if (!thinkLevel || OFF_VALUES.has(thinkLevel) || thinkLevel === "disabled") {
           delete parsedBody.thinking;
-        } else if (THINKING_BUDGET[thinkStr]) {
+        } else if (thinkLevel === "enabled" && typeof (parsedBody.thinking as Record<string, unknown>)?.budget_tokens === "number") {
+          // Already in correct format — leave as-is
+        } else if (THINKING_BUDGET[thinkLevel]) {
           parsedBody.thinking = {
             type: "enabled",
-            budget_tokens: THINKING_BUDGET[thinkStr],
+            budget_tokens: THINKING_BUDGET[thinkLevel],
           };
         } else {
-          // Unknown string — default to enabled with medium budget
+          // Unknown level — default to enabled with medium budget
           parsedBody.thinking = {
             type: "enabled",
             budget_tokens: 10000,
