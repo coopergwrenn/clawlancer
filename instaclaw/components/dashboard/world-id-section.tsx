@@ -156,6 +156,27 @@ export function WorldIDSection() {
     }
   }, [status, agentbookAppId, fetchAgentBookData]);
 
+  // Poll for on-chain registration confirmation
+  useEffect(() => {
+    if (!abPolling) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/agentbook/check-registration");
+        if (res.ok) {
+          const { registered } = await res.json();
+          if (registered) {
+            setAbRegistered(true);
+            setBridgeUrl(null);
+            setAbPolling(false);
+          }
+        }
+      } catch {
+        // Non-fatal, keep polling
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [abPolling]);
+
   // Hide entirely if env var is not set
   if (!appId) return null;
   if (loading) return null;
@@ -233,27 +254,6 @@ export function WorldIDSection() {
       setVerifying(false);
     }
   }
-
-  // Poll for on-chain registration confirmation
-  useEffect(() => {
-    if (!abPolling) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/agentbook/check-registration");
-        if (res.ok) {
-          const { registered } = await res.json();
-          if (registered) {
-            setAbRegistered(true);
-            setBridgeUrl(null);
-            setAbPolling(false);
-          }
-        }
-      } catch {
-        // Non-fatal, keep polling
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [abPolling]);
 
   // Verified state
   if (status?.verified) {
