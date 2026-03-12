@@ -15,6 +15,40 @@ const IDKitRequestWidget = dynamic(
 // Static imports for types and helpers (no WASM dependency)
 import { orbLegacy, IDKitErrorCodes, type IDKitResult, type RpContext } from "@worldcoin/idkit";
 
+/**
+ * IDKit uses CSS @media (max-width: 1024px) to switch between QR (desktop)
+ * and deep-link (mobile). On desktop browsers with narrow windows this shows
+ * the deep-link instead of QR. Inject a style override into the shadow DOM
+ * that uses pointer:fine (mouse) to always show QR on non-touch devices.
+ */
+function useForceDesktopQR() {
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const host = document.querySelector("[data-idkit-shadow-host]");
+      if (!host?.shadowRoot) return;
+      if (host.shadowRoot.querySelector("[data-idkit-qr-fix]")) return;
+
+      const style = document.createElement("style");
+      style.setAttribute("data-idkit-qr-fix", "true");
+      style.textContent = `
+        @media (pointer: fine) {
+          .idkit-mobile-only { display: none !important; }
+          .idkit-desktop-only { display: block !important; position: relative; }
+          .idkit-modal {
+            max-width: 400px;
+            border-radius: 24px;
+            animation: none;
+          }
+          .idkit-backdrop { align-items: center; padding: 16px; }
+        }
+      `;
+      host.shadowRoot.appendChild(style);
+    });
+    observer.observe(document.body, { childList: true, subtree: false });
+    return () => observer.disconnect();
+  }, []);
+}
+
 interface WorldIDStatus {
   userId: string;
   verified: boolean;
@@ -31,6 +65,8 @@ interface AgentBookData {
 }
 
 export function WorldIDSection() {
+  useForceDesktopQR();
+
   const appId = process.env.NEXT_PUBLIC_WORLD_APP_ID;
   const rpId = process.env.NEXT_PUBLIC_RP_ID;
   const agentbookAppId = process.env.NEXT_PUBLIC_AGENTBOOK_APP_ID;
