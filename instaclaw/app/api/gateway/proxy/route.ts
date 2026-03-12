@@ -688,6 +688,42 @@ export async function POST(req: NextRequest) {
       if (betaHeader) {
         providerHeaders["anthropic-beta"] = betaHeader;
       }
+
+      // --- Normalize thinking parameter for Anthropic API ---
+      // OpenClaw sends thinking as a string ("adaptive", "off", "medium", etc.)
+      // Anthropic's API expects an object: { type: "enabled", budget_tokens: N }
+      // or { type: "adaptive" } for adaptive mode.
+      if (parsedBody && typeof parsedBody.thinking === "string") {
+        const thinkStr = parsedBody.thinking.toLowerCase().trim();
+        const THINKING_BUDGET: Record<string, number> = {
+          low: 2048,
+          medium: 10000,
+          high: 32000,
+        };
+
+        if (thinkStr === "off" || thinkStr === "disabled" || thinkStr === "false") {
+          // Strip thinking entirely — Anthropic doesn't want it when disabled
+          delete parsedBody.thinking;
+        } else if (thinkStr === "adaptive") {
+          parsedBody.thinking = { type: "adaptive" };
+          // Set output_config effort for balanced speed/quality on Sonnet 4.6
+          if (!parsedBody.output_config) {
+            parsedBody.output_config = { effort: "medium" };
+          }
+        } else if (THINKING_BUDGET[thinkStr]) {
+          parsedBody.thinking = {
+            type: "enabled",
+            budget_tokens: THINKING_BUDGET[thinkStr],
+          };
+        } else {
+          // Unknown string — default to enabled with medium budget
+          parsedBody.thinking = {
+            type: "enabled",
+            budget_tokens: 10000,
+          };
+        }
+      }
+
       // Use parsedBody if model was rewritten by the router
       providerBody = parsedBody ? JSON.stringify(parsedBody) : body;
     }
