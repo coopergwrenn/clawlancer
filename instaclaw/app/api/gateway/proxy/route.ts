@@ -703,7 +703,7 @@ export async function POST(req: NextRequest) {
           "anthropic-version": providerHeaders["anthropic-version"],
           "anthropic-beta": providerHeaders["anthropic-beta"] ?? "NOT SET",
         },
-        message_count: parsedBody?.messages?.length,
+        message_count: Array.isArray(parsedBody?.messages) ? parsedBody.messages.length : 0,
       };
       logger.info("THINKING_DEBUG: request payload to Anthropic", {
         route: "gateway/proxy",
