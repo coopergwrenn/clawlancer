@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     // Verify the user owns this VM/wallet
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, wallet_address, agentbook_registered")
+      .select("id, agentbook_wallet_address, agentbook_registered")
       .eq("assigned_to", userId)
       .single();
 
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (vm.wallet_address !== walletAddress) {
+    if (vm.agentbook_wallet_address !== walletAddress) {
       return NextResponse.json(
         { error: "Wallet address mismatch" },
         { status: 403 }

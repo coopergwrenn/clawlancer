@@ -217,20 +217,20 @@ export async function POST(req: Request) {
     try {
       const { data: vmData } = await supabase
         .from("instaclaw_vms")
-        .select("wallet_address, agentbook_registered")
+        .select("agentbook_wallet_address, agentbook_registered")
         .eq("assigned_to", userId)
         .single();
 
-      if (vmData?.wallet_address) {
+      if (vmData?.agentbook_wallet_address) {
         const { getNextNonce, isAgentRegistered } = await import("@/lib/agentbook");
-        const alreadyRegistered = vmData.agentbook_registered || await isAgentRegistered(vmData.wallet_address);
+        const alreadyRegistered = vmData.agentbook_registered || await isAgentRegistered(vmData.agentbook_wallet_address);
         let nonce: string | null = null;
         if (!alreadyRegistered) {
-          const n = await getNextNonce(vmData.wallet_address);
+          const n = await getNextNonce(vmData.agentbook_wallet_address);
           nonce = n.toString();
         }
         agentbook = {
-          walletAddress: vmData.wallet_address,
+          walletAddress: vmData.agentbook_wallet_address,
           nonce,
           alreadyRegistered,
         };

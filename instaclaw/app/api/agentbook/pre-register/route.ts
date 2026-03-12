@@ -37,11 +37,11 @@ export async function GET() {
   // Get VM wallet address
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("wallet_address, agentbook_registered")
+    .select("agentbook_wallet_address, agentbook_registered")
     .eq("assigned_to", session.user.id)
     .single();
 
-  if (!vm?.wallet_address) {
+  if (!vm?.agentbook_wallet_address) {
     return NextResponse.json(
       { error: "No VM with wallet found" },
       { status: 404 }
@@ -50,16 +50,16 @@ export async function GET() {
 
   // Check on-chain status
   const alreadyRegistered = vm.agentbook_registered ||
-    await isAgentRegistered(vm.wallet_address as Address);
+    await isAgentRegistered(vm.agentbook_wallet_address as Address);
 
   let nonce: string | null = null;
   if (!alreadyRegistered) {
-    const n = await getNextNonce(vm.wallet_address as Address);
+    const n = await getNextNonce(vm.agentbook_wallet_address as Address);
     nonce = n.toString();
   }
 
   return NextResponse.json({
-    walletAddress: vm.wallet_address,
+    walletAddress: vm.agentbook_wallet_address,
     nonce,
     alreadyRegistered,
   });
