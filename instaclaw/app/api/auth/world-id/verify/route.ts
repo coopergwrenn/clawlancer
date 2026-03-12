@@ -44,34 +44,36 @@ export async function POST(req: Request) {
     // Accept the full IDKit result payload from the frontend
     const body = await req.json();
 
-    // v4 format: { protocol_version, nonce, action, environment, responses: [...] }
-    // v3 fallback: { merkle_root, nullifier_hash, proof, verification_level }
-    const isV4 = body.protocol_version === "4.0";
+    logger.info("World ID verify: incoming proof payload", {
+      protocol_version: body.protocol_version,
+      has_responses: !!body.responses,
+      responses_count: body.responses?.length,
+      top_level_keys: Object.keys(body),
+      first_response_keys: body.responses?.[0] ? Object.keys(body.responses[0]) : [],
+      userId,
+      route: "world-id/verify",
+    });
 
-    // Extract nullifier for uniqueness check
+    // IDKit 4.x always sends { protocol_version, responses: [...] }
+    // - v4 protocol: responses[].nullifier, responses[].proof (string[])
+    // - v3 protocol (allow_legacy_proofs): responses[].nullifier, responses[].proof (string), responses[].merkle_root
     let nullifier_hash: string | null = null;
     let verification_level: string = "orb";
 
-    if (isV4) {
-      const firstResponse = body.responses?.[0];
-      if (!firstResponse?.nullifier || !firstResponse?.proof) {
-        return NextResponse.json(
-          { error: "Missing required proof fields" },
-          { status: 400 }
-        );
-      }
+    const firstResponse = body.responses?.[0];
+    if (firstResponse?.nullifier && firstResponse?.proof) {
+      // IDKit 4.x format (both v3 and v4 protocol use responses[] array)
       nullifier_hash = firstResponse.nullifier;
       verification_level = firstResponse.identifier ?? "orb";
-    } else {
-      // Legacy v3 format
-      if (!body.merkle_root || !body.nullifier_hash || !body.proof) {
-        return NextResponse.json(
-          { error: "Missing required proof fields" },
-          { status: 400 }
-        );
-      }
+    } else if (body.merkle_root && body.nullifier_hash && body.proof) {
+      // Legacy flat format (IDKit 2.x — shouldn't happen with IDKit 4.x but kept as fallback)
       nullifier_hash = body.nullifier_hash;
       verification_level = body.verification_level ?? "orb";
+    } else {
+      return NextResponse.json(
+        { error: "Missing required proof fields" },
+        { status: 400 }
+      );
     }
 
     const supabase = getSupabase();
