@@ -44,7 +44,7 @@ export function WorldIDSection() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/world-id/status");
+      const res = await fetch("/api/auth/world-id/status", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
@@ -91,9 +91,9 @@ export function WorldIDSection() {
     fetchStatus();
   }, [appId, fetchStatus]);
 
-  // Fetch RP context once status is loaded and user isn't verified yet
+  // Fetch RP context for both unverified (World ID widget) and verified users (AgentBook widget)
   useEffect(() => {
-    if (status && !status.verified && rpId) {
+    if (status && rpId) {
       fetchRpContext();
     }
   }, [status, rpId, fetchRpContext]);
