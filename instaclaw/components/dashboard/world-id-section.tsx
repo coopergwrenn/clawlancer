@@ -92,6 +92,7 @@ export function WorldIDSection() {
   const [abRegistered, setAbRegistered] = useState(false);
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
   const [abPolling, setAbPolling] = useState(false);
+  const [bridgePolling, setBridgePolling] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -156,6 +157,31 @@ export function WorldIDSection() {
     }
   }, [status, agentbookAppId, fetchAgentBookData]);
 
+  // Poll VM log for bridge URL after CLI is kicked off
+  useEffect(() => {
+    if (!bridgePolling) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/agentbook/get-bridge-url");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === "ready" && data.bridgeUrl) {
+          setBridgeUrl(data.bridgeUrl);
+          setBridgePolling(false);
+          setAbRegistering(false);
+          setAbPolling(true); // start polling for on-chain confirmation
+        } else if (data.status === "error") {
+          setAbError(data.error || "Registration CLI failed");
+          setBridgePolling(false);
+          setAbRegistering(false);
+        }
+      } catch {
+        // Non-fatal, keep polling
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [bridgePolling]);
+
   // Poll for on-chain registration confirmation
   useEffect(() => {
     if (!abPolling) return;
@@ -203,7 +229,7 @@ export function WorldIDSection() {
     }
   }
 
-  // Start AgentBook registration via VM CLI
+  // Start AgentBook registration via VM CLI (non-blocking)
   async function handleAgentBookClick() {
     setAbError("");
     setAbRegistering(true);
@@ -220,11 +246,10 @@ export function WorldIDSection() {
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to start registration");
       }
-      setBridgeUrl(data.bridgeUrl as string);
-      setAbPolling(true);
+      // CLI is running on VM — poll for bridge URL
+      setBridgePolling(true);
     } catch (err) {
       setAbError(err instanceof Error ? err.message : "Registration failed");
-    } finally {
       setAbRegistering(false);
     }
   }

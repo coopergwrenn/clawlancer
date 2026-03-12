@@ -6,14 +6,14 @@ import { logger } from "@/lib/logger";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
 
 /**
  * POST /api/agentbook/start-registration
  *
- * SSH into the user's VM, run `agentkit-cli register` in the background,
- * capture the bridge URL from the log, and return it to the frontend
- * so the user can scan the QR code in World App.
+ * SSH into the user's VM, kick off `agentkit-cli register` in the background,
+ * and return immediately. The CLI writes its output (including bridge URL)
+ * to /tmp/agentbook-register.log. The frontend polls GET /api/agentbook/get-bridge-url
+ * to read the log and extract the URL.
  */
 export async function POST() {
   try {
@@ -90,77 +90,22 @@ export async function POST() {
       // Clean up any previous log
       await ssh.execCommand("rm -f /tmp/agentbook-register.log");
 
-      // Run agentkit-cli register in background
+      // Run agentkit-cli register in background — returns immediately
       const cmd = [
         NVM_PREAMBLE,
         `nohup npx --yes @worldcoin/agentkit-cli register ${wallet} --network base --auto > /tmp/agentbook-register.log 2>&1 &`,
+        "disown",
       ].join(" && ");
 
       await ssh.execCommand(cmd);
 
-      // Poll the log file for the bridge URL (up to 15s)
-      const bridgeUrlPattern = /https:\/\/bridge\.worldcoin\.org[^\s"')]+/;
-      let bridgeUrl: string | null = null;
-
-      for (let attempt = 0; attempt < 6; attempt++) {
-        // Wait 2.5s between reads
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-
-        const { stdout } = await ssh.execCommand("cat /tmp/agentbook-register.log 2>/dev/null || true");
-
-        if (stdout) {
-          const match = stdout.match(bridgeUrlPattern);
-          if (match) {
-            bridgeUrl = match[0];
-            break;
-          }
-
-          // Also try a broader pattern
-          const broadMatch = stdout.match(/https:\/\/[^\s"')]*worldcoin[^\s"')]+/);
-          if (broadMatch) {
-            bridgeUrl = broadMatch[0];
-            break;
-          }
-
-          // Check if CLI errored out
-          if (stdout.includes("Error") || stdout.includes("error:") || stdout.includes("ENOENT")) {
-            logger.warn("agentkit-cli errored during registration", {
-              vmId: vm.id,
-              log: stdout.slice(0, 500),
-              route: "agentbook/start-registration",
-            });
-            return NextResponse.json(
-              { error: "Registration CLI failed — check VM logs" },
-              { status: 500 }
-            );
-          }
-        }
-      }
-
-      if (!bridgeUrl) {
-        // Grab whatever is in the log for debugging
-        const { stdout: finalLog } = await ssh.execCommand(
-          "cat /tmp/agentbook-register.log 2>/dev/null || echo '(empty)'"
-        );
-        logger.warn("Bridge URL not found in agentkit-cli output", {
-          vmId: vm.id,
-          log: finalLog?.slice(0, 1000),
-          route: "agentbook/start-registration",
-        });
-        return NextResponse.json(
-          { error: "Could not capture bridge URL from CLI. Try again." },
-          { status: 504 }
-        );
-      }
-
-      logger.info("AgentBook registration started — bridge URL captured", {
+      logger.info("AgentBook registration CLI launched in background", {
         vmId: vm.id,
         wallet,
-        bridgeUrl: bridgeUrl.slice(0, 80) + "...",
         route: "agentbook/start-registration",
       });
 
-      return NextResponse.json({ bridgeUrl });
+      return NextResponse.json({ status: "starting" });
     } finally {
       ssh.dispose();
     }
