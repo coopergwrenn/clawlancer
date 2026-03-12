@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
 
     const effectiveTier = pending?.tier ?? subscription?.tier ?? vm.tier ?? "starter";
     const effectiveApiMode = pending?.api_mode ?? vm.api_mode ?? "all_inclusive";
-    const effectiveModel = pending?.default_model ?? vm.default_model ?? "claude-sonnet-4-6";
+    const effectiveModel = pending?.default_model ?? vm.default_model ?? "claude-sonnet-4-5-20241022";
     // Preserve existing tokens when reconfiguring (pending record is deleted after first setup)
     const effectiveTelegramToken = pending?.telegram_bot_token ?? vm.telegram_bot_token ?? undefined;
     const effectiveDiscordToken = pending?.discord_bot_token ?? vm.discord_bot_token ?? undefined;

@@ -7,7 +7,7 @@ import { logger } from "@/lib/logger";
 const BOT_TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
 const ALLOWED_MODELS = [
   "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-6",
+  "claude-sonnet-4-5-20241022",
   "claude-opus-4-6",
   "claude-opus-4-6",
 ];
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     const resolvedModel =
       (model && ALLOWED_MODELS.includes(model))
         ? model
-        : existing?.default_model ?? "claude-sonnet-4-6";
+        : existing?.default_model ?? "claude-sonnet-4-5-20241022";
 
     // Call Telegram getMe to resolve bot username (if we have a new token)
     let botUsername: string | null = existing?.telegram_bot_username ?? null;

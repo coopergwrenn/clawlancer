@@ -26,7 +26,7 @@ import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.5" },
+  { id: "claude-sonnet-4-5-20241022", label: "Claude Sonnet 4.5" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.5" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
 ];
@@ -995,7 +995,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="relative">
                   <select
-                    value={vm.model ?? "claude-sonnet-4-6"}
+                    value={vm.model ?? "claude-sonnet-4-5-20241022"}
                     onChange={(e) => handleModelChange(e.target.value)}
                     disabled={updatingModel}
                     className="w-full pl-4 pr-10 py-3 rounded-xl text-sm font-medium outline-none cursor-pointer disabled:opacity-50 appearance-none"

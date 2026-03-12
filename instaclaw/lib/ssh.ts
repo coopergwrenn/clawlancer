@@ -1058,10 +1058,10 @@ function toOpenClawModel(model: string): string {
   const map: Record<string, string> = {
     "minimax-m2.5": "anthropic/minimax-m2.5",
     "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",
-    "claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
+    "claude-sonnet-4-5-20241022": "anthropic/claude-sonnet-4-5-20241022",
     "claude-opus-4-6": "anthropic/claude-opus-4-6",
   };
-  return map[model] || "anthropic/claude-sonnet-4-6";
+  return map[model] || "anthropic/claude-sonnet-4-5-20241022";
 }
 
 // ── OpenClaw workspace file templates ──
@@ -1927,7 +1927,7 @@ export async function configureOpenClaw(
         ? (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway"
         : "";
 
-    const openclawModel = toOpenClawModel(config.model || "claude-sonnet-4-6");
+    const openclawModel = toOpenClawModel(config.model || "claude-sonnet-4-5-20241022");
     assertSafeShellArg(openclawModel, "model");
 
     // Determine active channels
