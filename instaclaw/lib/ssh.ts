@@ -42,6 +42,14 @@ interface UserConfig {
   elevenlabsApiKey?: string;
   /** Force generation of a new gateway token even if one exists in the DB. */
   forceNewToken?: boolean;
+  /** User's full name (from instaclaw_users.name) — used for IDENTITY.md + USER.md */
+  userName?: string;
+  /** User's email (from instaclaw_users.email) — used for USER.md */
+  userEmail?: string;
+  /** Bot's Telegram username (e.g., "Mucus09bot") — used for IDENTITY.md */
+  botUsername?: string;
+  /** User's timezone (e.g., "America/New_York") — used for USER.md */
+  userTimezone?: string;
 }
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
@@ -2288,6 +2296,78 @@ export async function configureOpenClaw(
       ''
     );
 
+    // ── Deploy IDENTITY.md and USER.md ──
+    // These must ALWAYS be written — even when Gmail is skipped.
+    // Without these, agents have no name and no user context, which causes
+    // the "I'm not [name]" identity crisis seen on 42/50 VMs in March 2026.
+    // The bot picks its display name from the Telegram username; the user
+    // info comes from instaclaw_users (name, email, timezone).
+    {
+      const botUsername = config.botUsername || "agent";
+      // Derive agent display name: "@Mucus09bot" → "Mucus", "@DanA7171_bot" → "DanA7171"
+      let agentName = botUsername.replace(/^@/, "").replace(/[_-]?[Bb]ot$/, "");
+      const stripped = agentName.replace(/\d+$/, "");
+      if (stripped.length >= 2) agentName = stripped;
+
+      const fullName = config.userName || "User";
+      const firstName = fullName.split(" ")[0];
+      const email = config.userEmail || "unknown";
+      const timezone = config.userTimezone || "America/New_York";
+
+      const identityMd = [
+        "# IDENTITY.md - Who Am I?",
+        "",
+        `- **Name:** ${agentName}`,
+        "- **Creature:** AI agent — resourceful, capable, always learning",
+        "- **Vibe:** Direct, helpful, genuine. Gets things done.",
+        `- **Telegram:** @${botUsername.replace(/^@/, "")}`,
+        "",
+        "---",
+        "",
+        `You are ${agentName}. That's your name.`,
+        `When someone asks who you are, you say "I'm ${agentName}" — not "I'm an AI assistant."`,
+        "You're a personal AI agent on InstaClaw.",
+        "",
+        "_Update this file as your personality develops. Make it yours._",
+      ].join("\n");
+
+      const identityB64 = Buffer.from(identityMd, "utf-8").toString("base64");
+      scriptParts.push(
+        "# Deploy IDENTITY.md — agent's name and personality seed",
+        `echo '${identityB64}' | base64 -d > "${workspaceDir}/IDENTITY.md"`,
+        ""
+      );
+
+      // Only write USER.md if Gmail branch didn't already write it
+      if (!config.gmailProfileSummary) {
+        const userMd = [
+          "# USER.md - About Your Human",
+          "",
+          `- **Name:** ${fullName}`,
+          `- **What to call them:** ${firstName}`,
+          `- **Timezone:** ${timezone}`,
+          `- **Email:** ${email}`,
+          "- **Platform:** InstaClaw (instaclaw.io)",
+          "",
+          "## Context",
+          "",
+          `${firstName} is your human. They set you up on InstaClaw and you work for them.`,
+          "You're their AI agent — help them with whatever they need.",
+          "",
+          "---",
+          "",
+          `Update this as you learn more about ${firstName}.`,
+        ].join("\n");
+
+        const userB64 = Buffer.from(userMd, "utf-8").toString("base64");
+        scriptParts.push(
+          "# Deploy USER.md — user profile (Gmail was skipped, using DB info)",
+          `echo '${userB64}' | base64 -d > "${workspaceDir}/USER.md"`,
+          ""
+        );
+      }
+    }
+
     // ── Deploy Voice & Audio Production skill ──
     // Reads skill files from the repo, base64-encodes, and deploys to the VM.
     // Non-blocking: if skill files are missing, VM provisioning still succeeds.
@@ -3031,7 +3111,7 @@ export async function configureOpenClaw(
         `echo '${solSnipeB64}' | base64 -d > "$HOME/scripts/solana-snipe.py"`,
         'chmod +x "$HOME/scripts/setup-solana-wallet.py" "$HOME/scripts/solana-trade.py" "$HOME/scripts/solana-balance.py" "$HOME/scripts/solana-positions.py" "$HOME/scripts/solana-snipe.py"',
         '# Install Python deps for Solana trading',
-        'python3 -m pip install --quiet --break-system-packages solders base58 httpx 2>/dev/null || true',
+        'python3 -m pip install --quiet --break-system-packages solders base58 httpx websockets 2>/dev/null || true',
         ''
       );
 
