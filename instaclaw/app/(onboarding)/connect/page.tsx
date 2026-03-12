@@ -835,7 +835,7 @@ export default function ConnectPage() {
                       },
                       {
                         id: "claude-sonnet-4-6",
-                        label: "Claude Sonnet 4.5",
+                        label: "Claude Sonnet 4.6",
                         tier: "Recommended for Power Users",
                         cost: "4 units/message",
                         desc: "Stronger reasoning for complex questions. Great balance of smarts and cost.",

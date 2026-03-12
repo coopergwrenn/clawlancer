@@ -24,8 +24,7 @@ import { WorldIDSection } from "@/components/dashboard/world-id-section";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.5" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.5" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
 ];
 

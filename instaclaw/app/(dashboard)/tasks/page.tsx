@@ -211,8 +211,7 @@ function ToolOrb({ tool, size = 28 }: { tool: string; size?: number }) {
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.5" },
-  { id: "claude-opus-4-6", label: "Opus 4.5" },
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
   { id: "claude-opus-4-6", label: "Opus 4.6" },
 ];
 
@@ -3640,14 +3639,14 @@ export default function CommandCenterPage() {
                             className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                             style={{ color: "var(--muted)" }}
                           >
-                            <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}</span>
+                            <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
                             <ChevronDown className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
                             className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
                             style={{ color: "var(--muted)" }}
-                            title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}
+                            title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
                           </button>
@@ -3816,14 +3815,14 @@ export default function CommandCenterPage() {
                   className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                   style={{ color: "var(--muted)" }}
                 >
-                  <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}</span>
+                  <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
                   <ChevronDown className="w-3 h-3" />
                 </button>
                 <button
                   onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
                   className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
                   style={{ color: "var(--muted)" }}
-                  title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.5"}
+                  title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>

@@ -78,7 +78,7 @@ const skillsItems = [
   {
     question: "What AI model does it use?",
     answer:
-      "InstaClaw runs on Claude by Anthropic — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can switch models anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users can configure any Claude model.",
+      "InstaClaw runs on Claude by Anthropic — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can upgrade to Sonnet 4.6 or Opus 4.6 anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users can configure any Claude model.",
   },
 ];
 

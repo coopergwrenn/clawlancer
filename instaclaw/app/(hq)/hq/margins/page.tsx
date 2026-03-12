@@ -109,7 +109,7 @@ function fmtCents(n: number): string {
 const MODEL_LABELS: Record<string, string> = {
   minimax: "MiniMax M2.5",
   haiku: "Haiku 4.5",
-  sonnet: "Sonnet 4.5",
+  sonnet: "Sonnet 4.6",
   opus: "Opus 4.6",
 };
 

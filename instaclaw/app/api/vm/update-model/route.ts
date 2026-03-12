@@ -8,7 +8,6 @@ const ALLOWED_MODELS = [
   "claude-haiku-4-5-20251001",
   "claude-sonnet-4-6",
   "claude-opus-4-6",
-  "claude-opus-4-6",
 ];
 
 export async function POST(req: NextRequest) {
