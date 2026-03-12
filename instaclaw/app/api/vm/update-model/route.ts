@@ -6,8 +6,8 @@ import { logger } from "@/lib/logger";
 
 const ALLOWED_MODELS = [
   "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-5-20250929",
-  "claude-opus-4-5-20250820",
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
   "claude-opus-4-6",
 ];
 

@@ -29,7 +29,7 @@ const supabase = createClient(
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 12000;
 
 // ── System prompt ────────────────────────────────────────────────────

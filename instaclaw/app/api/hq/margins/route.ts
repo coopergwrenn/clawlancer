@@ -30,7 +30,7 @@ const MODEL_COST_WEIGHT: Record<string, number> = {
   opus: 19,
 };
 
-/** Map a model ID (e.g. "claude-sonnet-4-5-20250929") to a bucket key. */
+/** Map a model ID (e.g. "claude-sonnet-4-6") to a bucket key. */
 function modelBucket(model: string): string {
   const m = model.toLowerCase();
   if (m.includes("minimax")) return "minimax";
