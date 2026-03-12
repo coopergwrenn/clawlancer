@@ -4513,6 +4513,54 @@ export async function checkSessionHealth(vm: VMRecord): Promise<{
 }
 
 /**
+ * Check for corrupted OpenClaw session files (filename/header ID mismatch).
+ * This is a known race condition in OpenClaw where archiveSessionTranscripts()
+ * renames a file while the QueuedFileWriter still has pending appends, causing
+ * a new session header to be written into the old filename.
+ *
+ * Returns the number of corrupted files found. The on-VM session-heal-cron.sh
+ * handles the actual fix; this is for telemetry/alerting.
+ */
+export async function checkSessionCorruption(vm: VMRecord): Promise<{
+  reachable: boolean;
+  corruptedCount: number;
+  corruptedFiles: string[];
+}> {
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const result = await ssh.execCommand(
+        `for f in ~/.openclaw/agents/main/sessions/*.jsonl; do
+          [ -f "$f" ] || continue
+          name=$(basename "$f" .jsonl)
+          hdr=$(head -1 "$f" 2>/dev/null | python3 -c 'import sys,json
+try:
+  d=json.loads(sys.stdin.read())
+  print(d.get("id","") if d.get("type")=="session" else "")
+except: print("FAIL")' 2>/dev/null || echo "FAIL")
+          [ -z "$hdr" ] && continue
+          [ "$hdr" = "FAIL" ] && continue
+          [ "$name" != "$hdr" ] && echo "CORRUPT:$name:$hdr"
+        done`
+      );
+
+      const corrupted: string[] = [];
+      for (const line of result.stdout.split("\n")) {
+        if (line.startsWith("CORRUPT:")) {
+          corrupted.push(line.replace("CORRUPT:", ""));
+        }
+      }
+
+      return { reachable: true, corruptedCount: corrupted.length, corruptedFiles: corrupted };
+    } finally {
+      ssh.dispose();
+    }
+  } catch {
+    return { reachable: false, corruptedCount: 0, corruptedFiles: [] };
+  }
+}
+
+/**
  * Check MEMORY.md health on a VM. Returns file size, last modified time,
  * and whether active-tasks.md exists. Used by the health-check cron to
  * detect empty or stale memory files that indicate context loss.

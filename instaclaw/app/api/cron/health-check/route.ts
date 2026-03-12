@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
@@ -1160,6 +1160,54 @@ export async function GET(req: NextRequest) {
   }
 
   // ========================================================================
+  // Session corruption detection — check for filename/header ID mismatches
+  // that cause the gateway to produce empty responses. The on-VM cron
+  // (session-heal-cron.sh) auto-fixes these, but this pass detects VMs
+  // where the cron isn't installed or hasn't fired yet.
+  // Batch of 5 healthy VMs per cycle (rotated via modular offset).
+  // ========================================================================
+  let sessionCorruptionChecked = 0;
+  let sessionCorruptionFound = 0;
+  const SESSION_CORRUPTION_BATCH = 5;
+
+  const corruptionCheckBatch = vms
+    .filter((vm) => healthyVmIds.has(vm.id))
+    .slice(0, SESSION_CORRUPTION_BATCH);
+
+  for (const vm of corruptionCheckBatch) {
+    try {
+      const result = await checkSessionCorruption(vm);
+      if (!result.reachable) continue;
+      sessionCorruptionChecked++;
+
+      if (result.corruptedCount > 0) {
+        sessionCorruptionFound += result.corruptedCount;
+        logger.error("Session file corruption detected", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          corruptedCount: result.corruptedCount,
+          corruptedFiles: result.corruptedFiles,
+          assignedTo: vm.assigned_to,
+        });
+
+        alerts.add(
+          "Session Corruption",
+          vm.name ?? vm.id,
+          `${result.corruptedCount} corrupted session file(s)\nFiles: ${result.corruptedFiles.join(", ")}\nUser: ${vm.assigned_to ?? "unknown"}\nThe on-VM cron should auto-heal this within 60s.`
+        );
+      }
+    } catch (err) {
+      logger.error("Session corruption check failed", {
+        error: String(err),
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+      });
+    }
+  }
+
+  // ========================================================================
   // VM-side token drift detection (runs every cycle for ALL healthy VMs)
   // SSHes into the VM, reads auth-profiles.json, compares token against DB.
   // Catches the Mucus scenario: DB token changed but VM still has old token.
@@ -2121,6 +2169,8 @@ export async function GET(req: NextRequest) {
     depsBehind,
     depsAnomalies,
     agentbookUnregistered,
+    sessionCorruptionChecked,
+    sessionCorruptionFound,
     alertDigestsSent: alertResult.sent,
     alertDigestsSkipped: alertResult.skipped,
   });
