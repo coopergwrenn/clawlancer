@@ -94,7 +94,7 @@ IMAGE_ENDPOINTS = {
 }
 
 # Polling config
-VIDEO_POLL_MAX = 120   # 120 x 2s = 4 min
+VIDEO_POLL_MAX = 240   # 240 x 2s = 8 min (safety net for slow models like Sora/Veo)
 IMAGE_POLL_MAX = 60    # 60 x 2s = 2 min
 POLL_INTERVAL = 2
 
@@ -413,6 +413,11 @@ def cmd_text_to_video(args: argparse.Namespace) -> int:
     }
     save_job(job)
 
+    if args.submit_only:
+        output({"status": "submitted", "request_id": rid,
+                "message": f"Job submitted. Use status --id {rid} to check progress."}, args.json)
+        return 0
+
     if not args.json:
         print(f"Request ID: {rid}")
         print("Polling for result...")
@@ -485,6 +490,11 @@ def cmd_image_to_video(args: argparse.Namespace) -> int:
         "status": "processing",
     }
     save_job(job)
+
+    if args.submit_only:
+        output({"status": "submitted", "request_id": rid,
+                "message": f"Job submitted. Use status --id {rid} to check progress."}, args.json)
+        return 0
 
     if not args.json:
         print(f"Request ID: {rid}")
@@ -641,6 +651,7 @@ def main():
     p_t2v.add_argument("--seed", type=int, help="Random seed")
     p_t2v.add_argument("--cfg-scale", type=float, help="CFG scale")
     p_t2v.add_argument("--elements-ref", nargs="*", help="Kling Elements references")
+    p_t2v.add_argument("--submit-only", action="store_true", help="Submit and return request_id immediately (no polling)")
     p_t2v.add_argument("--json", action="store_true", help="JSON output")
 
     # image-to-video
@@ -651,6 +662,7 @@ def main():
     p_i2v.add_argument("--duration", type=int, help="Duration")
     p_i2v.add_argument("--aspect-ratio", help="Aspect ratio")
     p_i2v.add_argument("--elements-ref", nargs="*", help="Kling Elements references")
+    p_i2v.add_argument("--submit-only", action="store_true", help="Submit and return request_id immediately (no polling)")
     p_i2v.add_argument("--json", action="store_true", help="JSON output")
 
     # text-to-image

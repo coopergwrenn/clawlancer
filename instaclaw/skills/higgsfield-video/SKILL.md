@@ -123,13 +123,45 @@ If the user has never used Higgsfield before:
 
 | Action | Command |
 |--------|---------|
-| Text-to-video | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video --prompt "..." --model kling-3.0 --json` |
-| Image-to-video | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video --image <url> --prompt "..." --model kling-3.0 --json` |
+| Text-to-video (async, preferred) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video --prompt "..." --model kling-3.0 --submit-only --json` |
+| Text-to-video (sync, short jobs) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video --prompt "..." --model kling-3.0 --json` |
+| Image-to-video (async, preferred) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video --image <url> --prompt "..." --model kling-3.0 --submit-only --json` |
+| Image-to-video (sync, short jobs) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video --image <url> --prompt "..." --model kling-3.0 --json` |
 | Text-to-image | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-image --prompt "..." --model flux-schnell --json` |
 | Check status | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py status --id <request_id> --json` |
 | Upload file | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py upload-file --file <path> --json` |
 | Upload Telegram image | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py --telegram-file-id <id> --json` |
 | Upload local file to CDN | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py --file <path> --json` |
+
+### Async Video Generation (PREFERRED for all video)
+
+**ALWAYS use `--submit-only` for video generation.** Video takes 2-8 minutes depending on the model. Polling synchronously freezes the conversation and leaves the user in silence.
+
+**The correct pattern:**
+
+1. **Submit with `--submit-only`** — returns instantly with a `request_id`
+```bash
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video \
+  --prompt "A cowboy rides into the sunset" --model kling-3.0 --submit-only --json
+# Returns: {"status": "submitted", "request_id": "abc-123", "message": "Job submitted..."}
+```
+
+2. **Immediately tell the user** — set expectations:
+> "Your video is generating now (Kling 3.0, ~2-4 minutes). I'll check back shortly and deliver the link when it's ready."
+
+3. **After ~3 minutes, check status:**
+```bash
+python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py status --id abc-123 --json
+```
+
+4. **If still processing**, wait another minute and check again. If completed, deliver the URL.
+
+5. **Never leave the user in silence** during generation. Always tell them:
+   - What model is being used
+   - How long it typically takes
+   - That you'll check back automatically
+
+**When to use sync mode (no `--submit-only`):** Only for images (flux-schnell takes <10s) or when the user explicitly says "wait for it."
 
 ### Video Parameters
 
