@@ -690,13 +690,11 @@ export async function POST(req: NextRequest) {
       }
 
       // --- Normalize thinking parameter for Anthropic API ---
-      // Anthropic's API only accepts: { type: "enabled", budget_tokens: N }
-      // OpenClaw may send thinking as a string OR as an object with invalid type.
-      // "adaptive" is NOT a valid Anthropic type — map to enabled+10k budget.
+      // OpenClaw sends thinking as string or { type: "adaptive" } object.
+      // Map to valid Anthropic format. Strip output_config.effort (not supported).
       if (parsedBody?.thinking) {
         const THINKING_BUDGET: Record<string, number> = {
           low: 2048,
-          adaptive: 10000,
           medium: 10000,
           high: 32000,
         };
@@ -713,8 +711,10 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        if (!thinkLevel || OFF_VALUES.has(thinkLevel) || thinkLevel === "disabled") {
+        if (!thinkLevel || OFF_VALUES.has(thinkLevel)) {
           delete parsedBody.thinking;
+        } else if (thinkLevel === "adaptive") {
+          parsedBody.thinking = { type: "adaptive" };
         } else if (thinkLevel === "enabled" && typeof (parsedBody.thinking as Record<string, unknown>)?.budget_tokens === "number") {
           // Already in correct format — leave as-is
         } else if (THINKING_BUDGET[thinkLevel]) {
@@ -731,8 +731,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Ensure interleaved-thinking beta header is present when thinking is enabled
-      if (parsedBody?.thinking && typeof parsedBody.thinking === "object" && (parsedBody.thinking as Record<string, unknown>).type === "enabled") {
+      // Strip effort parameter — not supported on current API version
+      if (parsedBody?.output_config) {
+        delete parsedBody.output_config;
+      }
+
+      // Ensure interleaved-thinking beta header is present when thinking is active
+      if (parsedBody?.thinking && typeof parsedBody.thinking === "object") {
         const existing = providerHeaders["anthropic-beta"] || "";
         if (!existing.includes("interleaved-thinking-2025-05-14")) {
           providerHeaders["anthropic-beta"] = existing
