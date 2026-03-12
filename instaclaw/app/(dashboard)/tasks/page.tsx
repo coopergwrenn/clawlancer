@@ -211,7 +211,7 @@ function ToolOrb({ tool, size = 28 }: { tool: string; size?: number }) {
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-  { id: "claude-sonnet-4-5-20241022", label: "Sonnet 4.5" },
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.5" },
   { id: "claude-opus-4-6", label: "Opus 4.5" },
   { id: "claude-opus-4-6", label: "Opus 4.6" },
 ];
@@ -2113,7 +2113,7 @@ export default function CommandCenterPage() {
   const [personalChips, setPersonalChips] = useState<{ label: string; prefill: string }[] | null>(null);
 
   // Model state
-  const [currentModel, setCurrentModel] = useState("claude-sonnet-4-5-20241022");
+  const [currentModel, setCurrentModel] = useState("claude-sonnet-4-6");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [updatingModel, setUpdatingModel] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);

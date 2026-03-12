@@ -32,7 +32,7 @@ interface RoutingDecision {
 
 const TIER_MODELS = {
   1: "claude-haiku-4-5-20251001",
-  2: "claude-sonnet-4-5-20241022",
+  2: "claude-sonnet-4-6",
   3: "claude-opus-4-6",
 } as const;
 
@@ -220,7 +220,7 @@ console.log("\n=== Layer 1: Static Overrides ===\n");
   assertEq(d.tier, 3, "explicit config opus → tier 3"); }
 
 // Explicit config sonnet, budget exhausted
-{ const d = routeModel(makeCtx({ explicitModelRequest: "claude-sonnet-4-5-20241022", tierBudget: EXHAUSTED_BUDGET }));
+{ const d = routeModel(makeCtx({ explicitModelRequest: "claude-sonnet-4-6", tierBudget: EXHAUSTED_BUDGET }));
   assertEq(d.tier, 1, "explicit config sonnet, exhausted → tier 1"); }
 
 console.log("\n=== Layer 2: Opus Signals (Original) ===\n");

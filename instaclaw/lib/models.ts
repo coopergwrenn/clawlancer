@@ -1,7 +1,7 @@
 /** Models that can be called directly via the Anthropic API */
 const ANTHROPIC_MODELS = new Set([
   "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-5-20241022",
+  "claude-sonnet-4-6",
   "claude-opus-4-6",
 ]);
 
@@ -15,7 +15,7 @@ export const FALLBACK_MODEL = "claude-haiku-4-5-20251001";
 /** Model tier classification (1=cheap, 2=mid, 3=expensive) */
 export const MODEL_TIERS: Record<string, 1 | 2 | 3> = {
   "claude-haiku-4-5-20251001": 1,
-  "claude-sonnet-4-5-20241022": 2,
+  "claude-sonnet-4-6": 2,
   "claude-opus-4-6": 3,
   "minimax-m2.5": 1,
 };
@@ -23,7 +23,7 @@ export const MODEL_TIERS: Record<string, 1 | 2 | 3> = {
 /** Canonical model ID for each tier */
 export const TIER_MODELS = {
   1: "claude-haiku-4-5-20251001",
-  2: "claude-sonnet-4-5-20241022",
+  2: "claude-sonnet-4-6",
   3: "claude-opus-4-6",
 } as const;
 

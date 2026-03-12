@@ -24,7 +24,7 @@ import { WorldIDSection } from "@/components/dashboard/world-id-section";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-5-20241022", label: "Claude Sonnet 4.5" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.5" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.5" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
 ];
@@ -963,7 +963,7 @@ export default function SettingsPage() {
           </h2>
           <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
             <select
-              value={vm.model ?? "claude-sonnet-4-5-20241022"}
+              value={vm.model ?? "claude-sonnet-4-6"}
               onChange={(e) => handleModelChange(e.target.value)}
               disabled={updatingModel}
               className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer disabled:opacity-50"

@@ -834,7 +834,7 @@ export default function ConnectPage() {
                         recommended: true,
                       },
                       {
-                        id: "claude-sonnet-4-5-20241022",
+                        id: "claude-sonnet-4-6",
                         label: "Claude Sonnet 4.5",
                         tier: "Recommended for Power Users",
                         cost: "4 units/message",
