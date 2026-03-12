@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
-import { verifyCloudProof, type IVerifyResponse } from "@worldcoin/idkit-core/backend";
 
 // In-memory rate limiting: max 5 attempts per user per hour
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -12,8 +11,8 @@ const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export async function POST(req: Request) {
   try {
-    const WORLD_APP_ID = process.env.WORLD_APP_ID;
-    if (!WORLD_APP_ID) {
+    const RP_ID = process.env.RP_ID;
+    if (!RP_ID) {
       return NextResponse.json(
         { error: "World ID verification not yet configured" },
         { status: 503 }
@@ -42,14 +41,37 @@ export async function POST(req: Request) {
       rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     }
 
+    // Accept the full IDKit result payload from the frontend
     const body = await req.json();
-    const { merkle_root, nullifier_hash, proof, verification_level } = body;
 
-    if (!merkle_root || !nullifier_hash || !proof) {
-      return NextResponse.json(
-        { error: "Missing required proof fields" },
-        { status: 400 }
-      );
+    // v4 format: { protocol_version, nonce, action, environment, responses: [...] }
+    // v3 fallback: { merkle_root, nullifier_hash, proof, verification_level }
+    const isV4 = body.protocol_version === "4.0";
+
+    // Extract nullifier for uniqueness check
+    let nullifier_hash: string | null = null;
+    let verification_level: string = "orb";
+
+    if (isV4) {
+      const firstResponse = body.responses?.[0];
+      if (!firstResponse?.nullifier || !firstResponse?.proof) {
+        return NextResponse.json(
+          { error: "Missing required proof fields" },
+          { status: 400 }
+        );
+      }
+      nullifier_hash = firstResponse.nullifier;
+      verification_level = firstResponse.identifier ?? "orb";
+    } else {
+      // Legacy v3 format
+      if (!body.merkle_root || !body.nullifier_hash || !body.proof) {
+        return NextResponse.json(
+          { error: "Missing required proof fields" },
+          { status: 400 }
+        );
+      }
+      nullifier_hash = body.nullifier_hash;
+      verification_level = body.verification_level ?? "orb";
     }
 
     const supabase = getSupabase();
@@ -68,7 +90,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if nullifier_hash is already linked to another user
+    // Check if nullifier is already linked to another user
     const { data: existing } = await supabase
       .from("instaclaw_users")
       .select("id")
@@ -82,17 +104,39 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verify proof with World ID cloud API via official SDK helper
-    let verifyResult: IVerifyResponse;
+    // Verify proof with World ID v4 API
+    let verifySuccess = false;
+    let verifyDetail: string | null = null;
     try {
-      verifyResult = await verifyCloudProof(
-        { merkle_root, nullifier_hash, proof, verification_level: verification_level ?? "orb" },
-        WORLD_APP_ID as `app_${string}`,
-        "verify-instaclaw-agent",
-        userId
+      const verifyRes = await fetch(
+        `https://developer.world.org/api/v4/verify/${RP_ID}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
       );
+
+      const verifyResult = await verifyRes.json();
+
+      if (verifyRes.ok && verifyResult.success) {
+        verifySuccess = true;
+        // Use the nullifier from the verified response if available
+        if (verifyResult.nullifier) {
+          nullifier_hash = verifyResult.nullifier;
+        }
+      } else {
+        verifyDetail = verifyResult.detail ?? "Verification failed";
+        logger.warn("World ID v4 verification failed", {
+          code: verifyResult.code,
+          detail: verifyDetail,
+          status: verifyRes.status,
+          userId,
+          route: "world-id/verify",
+        });
+      }
     } catch (err) {
-      logger.warn("World ID cloud verify call failed", {
+      logger.warn("World ID v4 verify call failed", {
         error: String(err),
         userId,
         route: "world-id/verify",
@@ -103,15 +147,9 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!verifyResult.success) {
-      logger.warn("World ID verification failed", {
-        code: verifyResult.code,
-        detail: verifyResult.detail,
-        userId,
-        route: "world-id/verify",
-      });
+    if (!verifySuccess) {
       return NextResponse.json(
-        { error: verifyResult.detail ?? "Verification failed" },
+        { error: verifyDetail ?? "Verification failed" },
         { status: 400 }
       );
     }
@@ -172,9 +210,37 @@ export async function POST(req: Request) {
       })
     );
 
+    // Fetch AgentBook pre-requisites for the response (Phase 2)
+    let agentbook: { walletAddress: string | null; nonce: string | null; alreadyRegistered: boolean } | null = null;
+    try {
+      const { data: vmData } = await supabase
+        .from("instaclaw_vms")
+        .select("wallet_address, agentbook_registered")
+        .eq("assigned_to", userId)
+        .single();
+
+      if (vmData?.wallet_address) {
+        const { getNextNonce, isAgentRegistered } = await import("@/lib/agentbook");
+        const alreadyRegistered = vmData.agentbook_registered || await isAgentRegistered(vmData.wallet_address);
+        let nonce: string | null = null;
+        if (!alreadyRegistered) {
+          const n = await getNextNonce(vmData.wallet_address);
+          nonce = n.toString();
+        }
+        agentbook = {
+          walletAddress: vmData.wallet_address,
+          nonce,
+          alreadyRegistered,
+        };
+      }
+    } catch {
+      // Non-fatal — AgentBook data is optional
+    }
+
     return NextResponse.json({
       verified: true,
-      verification_level: verification_level ?? "orb",
+      verification_level,
+      ...(agentbook ? { agentbook } : {}),
     });
   } catch (err) {
     logger.error("World ID verify error", {
