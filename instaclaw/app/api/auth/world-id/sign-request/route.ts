@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { signRequest } from "@worldcoin/idkit/signing";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -11,33 +12,63 @@ export const dynamic = "force-dynamic";
  * Must be called server-side to keep the RP signing key secret.
  */
 export async function GET() {
-  const rpId = process.env.RP_ID;
-  const signingKey = process.env.RP_SIGNING_KEY;
+  try {
+    const rpId = process.env.RP_ID;
+    const signingKey = process.env.RP_SIGNING_KEY;
 
-  if (!rpId || !signingKey) {
+    if (!rpId || !signingKey) {
+      logger.warn("World ID 4.0 sign-request: missing env vars", {
+        hasRpId: !!rpId,
+        hasSigningKey: !!signingKey,
+        route: "world-id/sign-request",
+      });
+      return NextResponse.json(
+        { error: "World ID 4.0 not configured" },
+        { status: 503 }
+      );
+    }
+
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    logger.info("sign-request: calling signRequest()", {
+      rpId,
+      keyPrefix: signingKey.substring(0, 6),
+      route: "world-id/sign-request",
+    });
+
+    const { sig, nonce, createdAt, expiresAt } = signRequest(
+      "verify-instaclaw-agent",
+      signingKey
+    );
+
+    logger.info("sign-request: success", {
+      userId: session.user.id,
+      createdAt,
+      expiresAt,
+      route: "world-id/sign-request",
+    });
+
+    return NextResponse.json({
+      rp_context: {
+        rp_id: rpId,
+        nonce,
+        created_at: createdAt,
+        expires_at: expiresAt,
+        signature: sig,
+      },
+    });
+  } catch (err) {
+    logger.error("sign-request: unhandled error", {
+      error: String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      route: "world-id/sign-request",
+    });
     return NextResponse.json(
-      { error: "World ID 4.0 not configured" },
-      { status: 503 }
+      { error: "Failed to generate signed request", detail: String(err) },
+      { status: 500 }
     );
   }
-
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { sig, nonce, createdAt, expiresAt } = signRequest(
-    "verify-instaclaw-agent",
-    signingKey
-  );
-
-  return NextResponse.json({
-    rp_context: {
-      rp_id: rpId,
-      nonce,
-      created_at: createdAt,
-      expires_at: expiresAt,
-      signature: sig,
-    },
-  });
 }
