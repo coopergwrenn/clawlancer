@@ -691,12 +691,13 @@ export async function POST(req: NextRequest) {
 
       // --- Normalize thinking parameter for Anthropic API ---
       // OpenClaw sends thinking as a string ("adaptive", "off", "medium", etc.)
-      // Anthropic's API expects an object: { type: "enabled", budget_tokens: N }
-      // or { type: "adaptive" } for adaptive mode.
+      // Anthropic's API only accepts: { type: "enabled", budget_tokens: N }
+      // "adaptive" is NOT a valid Anthropic API type — map to enabled+medium budget.
       if (parsedBody && typeof parsedBody.thinking === "string") {
         const thinkStr = parsedBody.thinking.toLowerCase().trim();
         const THINKING_BUDGET: Record<string, number> = {
           low: 2048,
+          adaptive: 10000,
           medium: 10000,
           high: 32000,
         };
@@ -704,12 +705,6 @@ export async function POST(req: NextRequest) {
         if (thinkStr === "off" || thinkStr === "disabled" || thinkStr === "false") {
           // Strip thinking entirely — Anthropic doesn't want it when disabled
           delete parsedBody.thinking;
-        } else if (thinkStr === "adaptive") {
-          parsedBody.thinking = { type: "adaptive" };
-          // Set output_config effort for balanced speed/quality on Sonnet 4.6
-          if (!parsedBody.output_config) {
-            parsedBody.output_config = { effort: "medium" };
-          }
         } else if (THINKING_BUDGET[thinkStr]) {
           parsedBody.thinking = {
             type: "enabled",
@@ -721,6 +716,16 @@ export async function POST(req: NextRequest) {
             type: "enabled",
             budget_tokens: 10000,
           };
+        }
+      }
+
+      // Ensure interleaved-thinking beta header is present when thinking is enabled
+      if (parsedBody?.thinking && typeof parsedBody.thinking === "object" && (parsedBody.thinking as Record<string, unknown>).type === "enabled") {
+        const existing = providerHeaders["anthropic-beta"] || "";
+        if (!existing.includes("interleaved-thinking-2025-05-14")) {
+          providerHeaders["anthropic-beta"] = existing
+            ? `${existing},interleaved-thinking-2025-05-14`
+            : "interleaved-thinking-2025-05-14";
         }
       }
 
