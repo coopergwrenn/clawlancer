@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
   let sshFailed = 0;
   let sshQuarantined = 0;
   let telegramConflictsHealed = 0;
+  let billingCachesCleared = 0;
 
   // ========================================================================
   // Pass 0: SSH connectivity check — catch dead SSH daemons before they
@@ -280,6 +281,68 @@ export async function GET(req: NextRequest) {
           route: "cron/health-check",
           vmId: vm.id,
           vmName: vm.name,
+        });
+      }
+
+      // ── Billing cache detection — clear poisoned auth-profiles.json ──
+      // Even when the gateway is "healthy" (systemd active, health 200), a cached
+      // billing error in auth-profiles.json disables the Anthropic provider silently.
+      // The gateway appears healthy but every message fails. Auto-clear here.
+      try {
+        const billingSSH = await connectSSH(vm);
+        try {
+          const authCheck = await billingSSH.execCommand(
+            "grep -c 'failureState\\|disabledUntil' ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null || echo 0"
+          );
+          if (parseInt(authCheck.stdout?.trim() || "0") > 0) {
+            const fix = await billingSSH.execCommand(`python3 -c "
+import json, os
+p = os.path.expanduser('~/.openclaw/agents/main/agent/auth-profiles.json')
+with open(p) as f: c = json.load(f)
+changed = False
+for key in list(c.get('profiles', {})):
+    if 'failureState' in c['profiles'][key]:
+        del c['profiles'][key]['failureState']
+        changed = True
+    if 'disabledUntil' in c['profiles'][key]:
+        del c['profiles'][key]['disabledUntil']
+        changed = True
+if 'usageStats' in c:
+    del c['usageStats']
+    changed = True
+if changed:
+    with open(p, 'w') as f: json.dump(c, f, indent=2)
+    print('FIXED')
+else:
+    print('CLEAN')
+"`);
+            if (fix.stdout?.includes("FIXED")) {
+              await billingSSH.execCommand(
+                "rm -f ~/.openclaw/agents/main/sessions/.session-degraded"
+              );
+              const DBUS = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
+              await billingSSH.execCommand(`${DBUS} && systemctl --user restart openclaw-gateway`);
+              billingCachesCleared++;
+              logger.warn("Billing cache cleared and gateway restarted", {
+                route: "cron/health-check",
+                vmId: vm.id,
+                vmName: vm.name,
+              });
+              alerts.add(
+                "Billing Cache Cleared",
+                vm.name ?? vm.id,
+                "Cached billing error in auth-profiles.json auto-cleared. Gateway restarted."
+              );
+            }
+          }
+        } finally {
+          billingSSH.dispose();
+        }
+      } catch (err) {
+        logger.error("Failed to check billing cache", {
+          error: String(err),
+          route: "cron/health-check",
+          vmId: vm.id,
         });
       }
     } else {
@@ -2144,6 +2207,7 @@ export async function GET(req: NextRequest) {
     telegramTokenMissing,
     readyPoolTokensCleaned,
     telegramConflictsHealed,
+    billingCachesCleared,
     suspended,
     sessionsCleared,
     sessionsAlerted,

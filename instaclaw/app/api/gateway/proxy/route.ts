@@ -911,6 +911,29 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        // --- Intercept billing/payment errors before OpenClaw caches them ---
+        // Anthropic billing errors (402 or "credit balance too low") get cached in
+        // auth-profiles.json usageStats/failureState, disabling the provider until
+        // manual SSH intervention. Return a friendly 200 response instead.
+        if (
+          providerRes.status === 402 ||
+          errBody.includes("credit balance is too low") ||
+          errBody.includes("credit balance too low") ||
+          (providerRes.status === 400 && errBody.includes("billing"))
+        ) {
+          logger.warn("Billing error intercepted — returning friendly response", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            status: providerRes.status,
+            error: errBody.slice(0, 200),
+          });
+          return friendlyAssistantResponse(
+            "I'm temporarily unavailable — please try again in a few minutes.",
+            requestedModel,
+            isStreaming
+          );
+        }
+
         return new NextResponse(errBody, {
           status: providerRes.status,
           headers: {
@@ -950,6 +973,26 @@ export async function POST(req: NextRequest) {
         }).catch(() => {});
         return friendlyAssistantResponse(
           "I ran into a conversation error and had to reset. Let's start fresh — what can I help you with?",
+          requestedModel,
+          isStreaming
+        );
+      }
+
+      // --- Intercept billing/payment errors before OpenClaw caches them ---
+      if (
+        finalProviderRes.status === 402 ||
+        errBody.includes("credit balance is too low") ||
+        errBody.includes("credit balance too low") ||
+        (finalProviderRes.status === 400 && errBody.includes("billing"))
+      ) {
+        logger.warn("Billing error intercepted — returning friendly response", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          status: finalProviderRes.status,
+          error: errBody.slice(0, 200),
+        });
+        return friendlyAssistantResponse(
+          "I'm temporarily unavailable — please try again in a few minutes.",
           requestedModel,
           isStreaming
         );
