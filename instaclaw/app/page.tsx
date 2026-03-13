@@ -11,6 +11,7 @@ import { AsSeenOn } from "@/components/landing/as-seen-on";
 import { LenisProvider } from "@/components/landing/lenis-provider";
 import { ScrollReveal } from "@/components/landing/scroll-reveal";
 import { NotificationBar } from "@/components/landing/notification-bar";
+import { SpotsProvider } from "@/components/landing/spots-counter";
 import { JsonLd } from "@/components/marketing/json-ld";
 
 const homepageJsonLd = [
@@ -193,7 +194,10 @@ export default function Home() {
         } as React.CSSProperties}
       >
         <NotificationBar />
-        <Hero />
+        <SpotsProvider>
+          <Hero />
+        </SpotsProvider>
+        <div id="learn-more" />
         <AsSeenOn />
         <hr className="section-divider" />
         <ScrollReveal text="We believe everyone deserves a *personal* *AI* that actually does ~things.~ Not just chat. Not just suggest. Actually _take_ _action_ on your behalf. Literally anything." />

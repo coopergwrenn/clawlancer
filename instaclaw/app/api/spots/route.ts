@@ -12,7 +12,8 @@ export async function GET() {
     const { count: available } = await supabase
       .from("instaclaw_vms")
       .select("*", { count: "exact", head: true })
-      .eq("status", "ready");
+      .eq("status", "ready")
+      .eq("provider", "linode");
 
     return NextResponse.json(
       { available: available ?? 0 },

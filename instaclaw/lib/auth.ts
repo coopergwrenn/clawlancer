@@ -32,43 +32,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       if (existing) return true;
 
-      logger.error("AUTH_DEBUG: user not found — falling through to invite check", {
-        route: "auth/signIn",
-        email: user.email,
-        googleId: account.providerAccountId,
-        existingData: JSON.stringify(existing),
-      });
-
-      // Read the invite code from the cookie set before OAuth redirect
+      // New user — read optional ambassador referral code from cookie
       const cookieStore = await cookies();
-      const inviteCode = cookieStore.get("instaclaw_invite_code")?.value;
-
-      // No invite code means the user came from /signin (not /signup).
-      // They authenticated with a Google account that has no InstaClaw account.
-      // Redirect to a specific error so the UI can tell them to try a different email.
-      if (!inviteCode) {
-        logger.warn("Sign-in with unregistered email", { email: user.email, route: "auth/signIn" });
-        return "/auth-error?error=NoAccount";
-      }
-
-      const normalizedCode = decodeURIComponent(inviteCode).trim().toUpperCase();
-      const { data: invite } = await supabase
-        .from("instaclaw_invites")
-        .select("id, max_uses, times_used, expires_at, is_active")
-        .eq("code", normalizedCode)
-        .single();
-
-      if (
-        !invite ||
-        !invite.is_active ||
-        invite.times_used >= invite.max_uses ||
-        (invite.expires_at && new Date(invite.expires_at) < new Date())
-      ) {
-        logger.error("Sign-up rejected: invalid invite code", { email: user.email, code: normalizedCode, route: "auth/signIn" });
-        return false;
-      }
-
-      // Read optional ambassador referral code from cookie
       const referralCode = cookieStore.get("instaclaw_referral_code")?.value ?? null;
 
       // Create the user row
@@ -76,7 +41,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: user.email?.toLowerCase(),
         name: user.name,
         google_id: account.providerAccountId,
-        invited_by: inviteCode ? decodeURIComponent(inviteCode) : null,
+        invited_by: null,
         referred_by: referralCode ? decodeURIComponent(referralCode).trim().toLowerCase() : null,
       });
 
@@ -167,42 +132,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         sendWelcomeEmail(user.email, user.name ?? "").catch((err) =>
           logger.error("Failed to send welcome email", { error: String(err), route: "auth/signIn" })
         );
-      }
-
-      // Consume the invite code: increment times_used, append user to used_by
-      if (inviteCode) {
-        const normalized = decodeURIComponent(inviteCode)
-          .trim()
-          .toUpperCase();
-
-        // Get the invite record
-        const { data: invite } = await supabase
-          .from("instaclaw_invites")
-          .select("id, times_used, used_by")
-          .eq("code", normalized)
-          .single();
-
-        if (invite) {
-          // Get the newly created user's ID for used_by
-          const { data: newUser } = await supabase
-            .from("instaclaw_users")
-            .select("id")
-            .eq("google_id", account.providerAccountId)
-            .single();
-
-          const updatedUsedBy = [
-            ...(invite.used_by ?? []),
-            ...(newUser ? [newUser.id] : []),
-          ];
-
-          await supabase
-            .from("instaclaw_invites")
-            .update({
-              times_used: (invite.times_used ?? 0) + 1,
-              used_by: updatedUsedBy,
-            })
-            .eq("id", invite.id);
-        }
       }
 
       return true;

@@ -4,16 +4,35 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { useSession } from "next-auth/react";
-import { WaitlistForm } from "./waitlist-form";
-import { SpotsCounter } from "./spots-counter";
+import { Suspense, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { SpotsCounter, useSpotsCount } from "./spots-counter";
+import { Cloud } from "lucide-react";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
 
 export function Hero() {
+  return (
+    <Suspense>
+      <HeroInner />
+    </Suspense>
+  );
+}
+
+function HeroInner() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
+
+  // Migrate ?ref=CODE to localStorage so it survives navigation to /signup
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) {
+      try { localStorage.setItem("instaclaw_ref", ref); } catch {}
+    }
+  }, [searchParams]);
 
   return (
-    <section className="relative min-h-[80vh] sm:min-h-screen flex flex-col items-center justify-center px-4 pt-28 sm:pt-0 pb-12 sm:pb-16 overflow-hidden">
+    <section className="relative min-h-[80vh] sm:min-h-[90vh] flex flex-col items-center justify-center px-4 pt-28 sm:pt-0 pb-12 sm:pb-16 overflow-hidden">
       {/* Top-left logo */}
       <motion.div
         className="absolute top-6 left-6 z-20"
@@ -74,15 +93,9 @@ export function Hero() {
             >
               Sign In
             </Link>
-            <button
-              onClick={() => {
-                const el = document.getElementById("waitlist-email");
-                if (el) {
-                  el.scrollIntoView({ behavior: "smooth", block: "center" });
-                  setTimeout(() => el.focus(), 400);
-                }
-              }}
-              className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
+            <Link
+              href="/signup"
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
               style={{
                 background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
                 backdropFilter: "blur(2px)",
@@ -96,8 +109,8 @@ export function Hero() {
                 color: "var(--foreground)",
               }}
             >
-              Sign Up
-            </button>
+              Get Started
+            </Link>
           </div>
         )}
       </motion.div>
@@ -191,35 +204,88 @@ export function Hero() {
           minutes. No technical experience required.
         </motion.p>
 
-        {/* Waitlist CTA */}
+        {/* CTA buttons */}
         <motion.div
+          className="flex flex-col items-center gap-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7, duration: 0.7, ease: SNAPPY }}
         >
-          <WaitlistForm />
+          <div className="flex items-center gap-3">
+            <div className="glow-wrap" style={{ width: "auto" }}>
+              <div className="glow-border" style={{ width: "auto" }}>
+                <div className="glow-spinner" />
+                <div className="glow-content" style={{ background: "transparent" }}>
+                  <Link
+                    href={session ? "/dashboard" : "/signup"}
+                    className="block px-14 py-4 rounded-lg text-lg font-semibold transition-all text-center"
+                    style={{
+                      background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
+                      color: "#ffffff",
+                      boxShadow: `
+                        rgba(255, 255, 255, 0.25) 0px 1px 1px 0px inset,
+                        rgba(220, 103, 67, 0.15) 0px -2px 4px 0px inset
+                      `,
+                    }}
+                  >
+                    {session ? "Go to Dashboard" : "Claim My Agent"}
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <a
+              href="#learn-more"
+              className="px-8 py-4 rounded-lg text-base font-medium transition-all"
+              style={{
+                background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+                backdropFilter: "blur(2px)",
+                WebkitBackdropFilter: "blur(2px)",
+                color: "var(--foreground)",
+                boxShadow: `
+                  rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+                  rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+                  rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+                  rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
+                `,
+              }}
+            >
+              Learn More
+            </a>
+          </div>
+
+          {/* Scarcity line */}
+          <ScarcityLine />
         </motion.div>
-
-        {/* Already have an invite? */}
-        <motion.p
-          className="text-sm"
-          style={{ color: "var(--muted)" }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1, duration: 0.7, ease: SNAPPY }}
-        >
-          Already have an invite code?{" "}
-          <Link
-            href="/signup"
-            className="underline hover:opacity-80 transition-opacity"
-            style={{ color: "var(--foreground)" }}
-          >
-            Sign up here
-          </Link>
-        </motion.p>
-
 
       </motion.div>
     </section>
+  );
+}
+
+function ScarcityLine() {
+  const spots = useSpotsCount();
+  if (spots === null) return null;
+  return (
+    <motion.span
+      className="inline-flex items-center px-4 py-1.5 rounded-full text-xs tracking-wide"
+      style={{
+        background: "linear-gradient(-75deg, rgba(255,255,255,0.03), rgba(255,255,255,0.12), rgba(255,255,255,0.03))",
+        backdropFilter: "blur(2px)",
+        WebkitBackdropFilter: "blur(2px)",
+        boxShadow: `
+          rgba(0,0,0,0.03) 0px 1px 2px 0px inset,
+          rgba(255,255,255,0.4) 0px -1px 2px 0px inset,
+          rgba(0,0,0,0.06) 0px 2px 4px -1px
+        `,
+        color: "var(--muted)",
+      }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 1.2, duration: 0.5, ease: SNAPPY }}
+    >
+      <Cloud size={14} strokeWidth={1.5} className="shrink-0 mr-1.5" style={{ opacity: 0.55 }} />
+      <span style={{ opacity: 0.55 }}>Limited cloud servers</span>
+      &nbsp;only&nbsp;<span className="font-bold shimmer-text text-sm" style={{ fontFamily: "var(--font-serif)" }}>{spots}</span>&nbsp;agents left
+    </motion.span>
   );
 }

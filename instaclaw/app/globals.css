@@ -271,12 +271,12 @@ html.lenis body {
   0%, 100% {
     box-shadow:
       0 0 10px 2px rgba(220, 103, 67, 0.25),
-      0 0 24px 6px rgba(220, 103, 67, 0.1);
+      0 0 22px 5px rgba(220, 103, 67, 0.1);
   }
   50% {
     box-shadow:
-      0 0 18px 6px rgba(220, 103, 67, 0.4),
-      0 0 40px 10px rgba(220, 103, 67, 0.15);
+      0 0 16px 5px rgba(220, 103, 67, 0.35),
+      0 0 36px 10px rgba(220, 103, 67, 0.12);
   }
 }
 
@@ -284,7 +284,7 @@ html.lenis body {
 .glow-wrap {
   position: relative;
   border-radius: 0.5rem;
-  animation: glow-pulse-orange 3s ease-in-out infinite;
+  animation: glow-pulse-orange 4s ease-in-out infinite;
   width: 100%;
 }
 
@@ -308,22 +308,22 @@ html.lenis body {
   background: conic-gradient(
     from 0deg,
     transparent 0%,
-    transparent 50%,
-    #DC6743 70%,
+    transparent 35%,
+    rgba(220, 103, 67, 0.7) 50%,
+    #f0976e 62%,
+    #ffffff 70%,
     #f0976e 78%,
-    #ffffff 82%,
-    #f0976e 86%,
-    #DC6743 92%,
+    rgba(220, 103, 67, 0.7) 90%,
     transparent 100%
   );
-  animation: glow-spin 3s linear infinite;
+  animation: glow-spin 4s linear infinite;
   z-index: 0;
 }
 
 .glow-border > .glow-content {
   position: relative;
   z-index: 1;
-  border-radius: calc(0.5rem - 1.5px);
+  border-radius: calc(0.5rem - 1px);
   background: #ffffff;
   width: 100%;
 }
@@ -372,6 +372,11 @@ html.lenis body {
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+@keyframes scarcity-ping {
+  0% { transform: scale(1); opacity: 0.6; }
+  75%, 100% { transform: scale(2.2); opacity: 0; }
 }
 
 @keyframes globe-shimmer {

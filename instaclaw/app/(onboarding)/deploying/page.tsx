@@ -12,10 +12,10 @@ interface DeployStep {
   status: StepStatus;
 }
 
-const MAX_POLL_ATTEMPTS = 180; // 180 seconds at 1s intervals
+const MAX_POLL_ATTEMPTS = 600; // 600 seconds (10 min) at 1s intervals
 const EARLY_CHECK_THRESHOLD = 30; // Check for issues at 30s
 const MID_CHECK_THRESHOLD = 90; // Check for issues at 90s
-const SOFT_TIMEOUT_THRESHOLD = 90; // Show recovery UI at 90s
+const SOFT_TIMEOUT_THRESHOLD = 180; // Show recovery UI at 3 min
 const CHECK_ANYWAY_THRESHOLD = 60; // Show "check anyway" button at 60s
 
 /** Safely parse JSON from a fetch response. Returns null if response is not JSON

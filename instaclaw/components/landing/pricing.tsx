@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import { WaitlistForm } from "./waitlist-form";
+import Link from "next/link";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
 
@@ -277,7 +277,16 @@ export function Pricing() {
           <p className="text-lg font-medium mb-4">
             Ready to get started?
           </p>
-          <WaitlistForm />
+          <Link
+            href="/signup"
+            className="inline-block px-8 py-4 text-base font-semibold text-center transition-all rounded-lg"
+            style={{
+              background: "var(--accent)",
+              color: "#ffffff",
+            }}
+          >
+            Get Started
+          </Link>
         </motion.div>
       </div>
     </section>

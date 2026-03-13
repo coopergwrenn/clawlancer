@@ -19,9 +19,9 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const MIN_POOL_SIZE = 2;
-const MAX_AUTO_PROVISION = 3;
-const MAX_TOTAL_VMS = parseInt(process.env.MAX_TOTAL_VMS ?? "20", 10);
+const MIN_POOL_SIZE = parseInt(process.env.MIN_POOL_SIZE ?? "20", 10);
+const MAX_AUTO_PROVISION = parseInt(process.env.MAX_AUTO_PROVISION ?? "10", 10);
+const MAX_TOTAL_VMS = parseInt(process.env.MAX_TOTAL_VMS ?? "250", 10);
 
 export async function GET(req: NextRequest) {
   // Verify cron secret
@@ -32,10 +32,11 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabase();
 
-  // Count total VMs — cost ceiling check
+  // Count total active VMs — cost ceiling check (exclude terminated/destroyed/failed)
   const { count: totalCount } = await supabase
     .from("instaclaw_vms")
-    .select("*", { count: "exact", head: true });
+    .select("*", { count: "exact", head: true })
+    .not("status", "in", "(terminated,destroyed,failed)");
 
   const total = totalCount ?? 0;
 

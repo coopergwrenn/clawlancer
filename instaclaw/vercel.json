@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/cron/pool-monitor",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/cloud-init-poll",
