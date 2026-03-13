@@ -28,6 +28,9 @@ Retrieve and read the content of a specific URL. Returns cleaned markdown text. 
 **Tier 3 — Browser Automation** (`browser` tool)
 Full headless Chromium control. Navigate pages, take screenshots, click buttons, fill forms, extract structured data from dynamic pages. Use only when Tier 1 and Tier 2 cannot accomplish the task.
 
+**Tier 3.5 — Crawlee Stealth Scraping** (`~/scripts/crawlee-scrape.py`)
+When Tier 2 or Tier 3 gets blocked by anti-bot systems (403, CAPTCHA, Cloudflare challenge, DataDome, PerimeterX), escalate to Crawlee. It uses TLS fingerprint impersonation and browser fingerprint randomization to bypass protections. Two modes: `--mode light` (fast HTTP with TLS stealth) and `--mode browser` (full Chromium with fingerprint randomization). See `references/crawlee-stealth-scraping.md` for full docs and examples.
+
 **You are a web research and automation assistant.**
 **You retrieve DATA and present FINDINGS.**
 **You do NOT submit payments, create accounts on behalf of users, or bypass security measures.**
@@ -43,7 +46,7 @@ web_search tool:    Built-in MCP tool (no script needed)
 web_fetch tool:     Built-in MCP tool (no script needed)
 ```
 
-No helper scripts are required for this skill. All three tools are built-in capabilities available on every VM. This is a doc-only skill that provides guidance on how to use those built-in tools effectively.
+The built-in tools (web_search, web_fetch, browser) require no helper scripts. For stealth scraping through anti-bot protections, `~/scripts/crawlee-scrape.py` is available on every VM — see `references/crawlee-stealth-scraping.md` for full usage.
 
 ## Tier 1 — Brave Search (`web_search`)
 
@@ -346,15 +349,17 @@ Step 8: Confirm success or report errors
 | Scrape a data table | `browser` | JS evaluation extracts structured data |
 | Multi-page workflow | `browser` | Maintains session across navigations |
 | Price comparison across sites | `web_search` + `browser` | Search finds URLs, browser extracts prices |
-| Research workflow (multi-step) | All 3 tiers | Search → Fetch → Browser as needed |
+| Site blocked by Cloudflare/WAF (403, CAPTCHA) | `crawlee-scrape.py --mode light` | TLS fingerprint impersonation bypasses bot detection |
+| Blocked even after light Crawlee | `crawlee-scrape.py --mode browser` | Full Chromium with fingerprint randomization |
+| Research workflow (multi-step) | All 3 tiers + Crawlee fallback | Search → Fetch → Browser → Crawlee as needed |
 
 ## Known Limitations
 
 ### 1. CAPTCHA & Bot Detection
 - CAPTCHAs cannot be solved automatically
 - If a CAPTCHA appears, screenshot it and inform the user
-- Some sites (Cloudflare-protected) may block headless browsers entirely
-- Do NOT attempt to bypass CAPTCHAs — this violates platform terms
+- Some sites (Cloudflare-protected) may block headless browsers — escalate to `crawlee-scrape.py --mode light` which uses TLS impersonation to bypass Cloudflare
+- Do NOT attempt to bypass CAPTCHAs manually — this violates platform terms (Crawlee handles Cloudflare challenges automatically)
 
 ### 2. Rate Limits
 - Brave Search: 1 query/second, 2000 queries/month (free tier) or 20,000/month (paid)
@@ -374,16 +379,27 @@ Step 8: Confirm success or report errors
 - Time-based OTP codes are time-sensitive — act quickly once provided
 
 ### 5. Anti-Bot Protections
-- Headless Chromium may be fingerprinted by advanced bot detection
-- Sites using DataDome, PerimeterX, or Akamai Bot Manager may block access
-- If blocked, inform the user and suggest alternative approaches
-- Do NOT modify browser fingerprints or use stealth plugins
+- Headless Chromium (browser tool) may be fingerprinted by advanced bot detection
+- Sites using DataDome, PerimeterX, or Akamai Bot Manager may block the browser tool
+- **Before giving up, escalate to Crawlee:** `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode light` (try light first, then `--mode browser`)
+- Crawlee uses TLS fingerprint impersonation and browser fingerprint randomization to bypass these protections
+- If Crawlee also fails, then inform the user the site has strong anti-bot protection
+- Do NOT modify the browser tool's fingerprints directly — use crawlee-scrape.py instead
+
+### 6. Browser Tool Crashes or Failures
+- If `browser → navigate(url)` returns "Browser failed" or any error, do NOT go silent.
+- First try: `web_fetch(url)` — may get partial content without JS.
+- Second try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode light`
+- Third try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode browser`
+- If all fail: Tell the user the site blocked automated access and suggest alternatives (e.g., "Can you share a screenshot of the page?" or "I can search for public information about this account instead").
+- NEVER go silent after a browser failure. The user is waiting for your response.
 
 ## Platform Access Status
 
 | Platform | Search | Fetch | Browser | Notes |
 |----------|--------|-------|---------|-------|
 | Reddit | Works | Works | Works | Old Reddit (old.reddit.com) more reliable for scraping |
+| Instagram | Works | Blocked | Blocked | Requires login for all content; aggressive bot detection. Use crawlee-scrape.py --mode browser or ask user to share a screenshot. |
 | Twitter/X | Works | Limited | Limited | Most content requires auth; search results available |
 | LinkedIn | Works | Blocked | Limited | Aggressive bot detection; public profiles only |
 | Amazon | Works | Works | Works | Product pages accessible; may trigger CAPTCHAs on bulk |
@@ -443,9 +459,10 @@ STEP 6: Deliver to user
 1. **Start with Search.** Always begin with `web_search` to discover URLs and context.
 2. **Try Fetch before Browser.** `web_fetch` is faster and lighter. Use it first.
 3. **Escalate to Browser only when needed.** JS rendering, interaction, or screenshots.
-4. **Cite your sources.** Every claim includes the URL where you found it.
-5. **Note data freshness.** Include the date you retrieved the data.
-6. **Cross-reference.** Check at least 2 sources for important facts.
+4. **Escalate to Crawlee when blocked.** If Tier 2/3 returns 403, CAPTCHA, or Cloudflare challenge, run `crawlee-scrape.py --mode light` before giving up. If light fails, try `--mode browser`.
+5. **Cite your sources.** Every claim includes the URL where you found it.
+6. **Note data freshness.** Include the date you retrieved the data.
+7. **Cross-reference.** Check at least 2 sources for important facts.
 
 ## Rate Limits & Budget
 
@@ -552,7 +569,8 @@ Always include the URL and retrieval date. Web data changes constantly.
 - [ ] Escalated to browser only when web_fetch couldn't handle JS-rendered content
 - [ ] Cited all sources with URLs
 - [ ] Took screenshots of key findings for visual evidence
-- [ ] Noted any sites that were blocked or inaccessible
+- [ ] Tried crawlee-scrape.py before reporting a site as blocked (403/CAPTCHA/Cloudflare)
+- [ ] Noted any sites that were blocked even after Crawlee escalation
 - [ ] Cross-referenced information across multiple sources
 - [ ] Flagged anything that seemed unreliable or outdated
 - [ ] Research is synthesis with insights, not just a list of links

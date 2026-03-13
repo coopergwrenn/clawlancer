@@ -1206,6 +1206,8 @@ Don't ask permission. Just do it.
 
 **Error handling:** Fix routine errors immediately. For security, data loss, or money — ask first.
 
+**Tool failure recovery:** If ANY tool call fails (browser, web_fetch, web_search, shell command, MCP tool), you MUST still respond to the user. Never go silent after a tool error. Acknowledge what happened, explain briefly, and either try an alternative approach or ask the user what they'd like to do instead. A failed tool is not the end of the conversation.
+
 **Config safety:** Always back up files before modifying. For unfamiliar systems, read docs first.
 
 ## Before Saying "I Can't"
