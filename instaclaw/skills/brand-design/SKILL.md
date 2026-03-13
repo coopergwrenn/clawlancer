@@ -282,3 +282,25 @@ Key learning: The white logo variant was the make-or-break discovery.
 
 - `~/.openclaw/skills/brand-design/SKILL.md` — This file (the complete skill)
 - `~/.openclaw/skills/brand-design/references/brand-extraction-guide.md` — Quick reference card
+
+---
+
+## Error Handling & Recovery
+
+### Browser Failure Protocol
+If the `browser` tool fails during brand extraction:
+1. **NEVER go silent.** The user is waiting for your response.
+2. First try: `web_fetch(url)` — may get partial CSS/HTML for color/font extraction.
+3. Second try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode light` — stealth fetch.
+4. Third try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode browser` — full browser with anti-detection.
+5. If all fail: Tell the user the site blocked automated access and suggest alternatives (e.g., "Can you share a screenshot of the website?" or "I can work with the colors/fonts you describe manually.").
+
+### Timeout Handling
+- If a browser page load takes more than 30 seconds, abort and try the next tier.
+- If JavaScript `evaluate` calls hang, kill the browser session and try `web_fetch` instead.
+- NEVER wait indefinitely for a page to load or a script to execute.
+
+### Retry Limits
+- Maximum 2 retries per extraction method.
+- After 2 failures, escalate to the next tier (browser → web_fetch → crawlee → manual).
+- NEVER enter a retry loop. NEVER go silent after an error.

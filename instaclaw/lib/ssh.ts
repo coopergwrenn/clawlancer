@@ -784,6 +784,11 @@ def restart_gateway():
     try:
         env = os.environ.copy()
         env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        # Clear start-limit-hit state first (otherwise restart fails after StartLimitBurst)
+        subprocess.run(
+            ["systemctl", "--user", "reset-failed", "openclaw-gateway"],
+            capture_output=True, timeout=10, env=env,
+        )
         subprocess.run(
             ["systemctl", "--user", "restart", "openclaw-gateway"],
             capture_output=True, timeout=30, env=env,
@@ -1669,14 +1674,18 @@ function buildOpenClawConfig(
             search: {
               provider: "brave",
               apiKey: braveKey,
+              timeoutSeconds: 30,
             },
           },
         }
       : {}),
     media: {
-      image: { enabled: true },
-      audio: { enabled: true },
-      video: { enabled: true },
+      image: { enabled: true, timeoutSeconds: 120 },
+      audio: { enabled: true, timeoutSeconds: 120 },
+      video: { enabled: true, timeoutSeconds: 120 },
+    },
+    links: {
+      timeoutSeconds: 30,
     },
   };
 
@@ -5739,6 +5748,8 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
       '  [ "$NEEDS_RELOAD" = "1" ] && systemctl --user daemon-reload',
       'fi',
       '',
+      '# Clear start-limit-hit state so restart is always possible (closes 47-min crash-loop gap)',
+      'systemctl --user reset-failed openclaw-gateway 2>/dev/null || true',
       '# Stop via systemd (keeps Restart=always working for future crashes)',
       'systemctl --user stop openclaw-gateway 2>/dev/null || pkill -9 -f "openclaw-gateway" 2>/dev/null || true',
       'pkill -f "acp serve" 2>/dev/null || true',

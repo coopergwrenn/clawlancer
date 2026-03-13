@@ -73,7 +73,7 @@ mkdir -p "$(dirname "$OUTPUT")"
 MAX_CHARS=4096
 if [ "$CHAR_COUNT" -le "$MAX_CHARS" ]; then
   # Single request
-  HTTP_CODE=$(curl -s -w "%{http_code}" -X POST "https://api.openai.com/v1/audio/speech" \
+  HTTP_CODE=$(curl -s -w "%{http_code}" --max-time 60 --connect-timeout 10 -X POST "https://api.openai.com/v1/audio/speech" \
     -H "Authorization: Bearer $OPENAI_API_KEY" \
     -H "Content-Type: application/json" \
     -d "$(python3 -c "import json; print(json.dumps({'model': '$MODEL', 'voice': '$VOICE', 'input': '''$TEXT'''}))" 2>/dev/null || echo "{\"model\":\"$MODEL\",\"voice\":\"$VOICE\",\"input\":$(echo "$TEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}")" \
@@ -123,7 +123,7 @@ print(len(segments))
     SEG_NAME=$(basename "$SEG_FILE" .txt)
     SEG_OUTPUT="$TMPDIR/${SEG_NAME}.mp3"
 
-    curl -s -X POST "https://api.openai.com/v1/audio/speech" \
+    curl -s --max-time 60 --connect-timeout 10 -X POST "https://api.openai.com/v1/audio/speech" \
       -H "Authorization: Bearer $OPENAI_API_KEY" \
       -H "Content-Type: application/json" \
       -d "$(echo "$SEG_TEXT" | python3 -c 'import json,sys; print(json.dumps({"model":"'"$MODEL"'","voice":"'"$VOICE"'","input":sys.stdin.read()}))')" \

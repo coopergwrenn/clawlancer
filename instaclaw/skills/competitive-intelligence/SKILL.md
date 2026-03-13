@@ -347,3 +347,29 @@ Allocation per scan type:
 - [ ] Rate limits respected — total API calls within daily budget
 - [ ] Competitor data is accurate (no hallucinated company details)
 - [ ] Delivery format matches user preference (Telegram/Discord/email)
+
+---
+
+## Error Handling & Recovery
+
+### Tool Failure Protocol
+If ANY tool or script fails during competitive intelligence gathering:
+1. **NEVER go silent.** The user is waiting for your response.
+2. Report what you were able to gather before the failure.
+3. If `competitive-intel.sh` or `competitive-intel.py` fails, fall back to `web_search` + `web_fetch` manually.
+4. If the Brave Search API is down, tell the user and suggest trying again later.
+
+### Heartbeat Digest Failures
+- If the daily/weekly digest fails during a heartbeat cycle, log the failure to MEMORY.md.
+- On the next user interaction, briefly mention: "Your latest competitive digest couldn't be generated due to [reason]. I'll retry on the next cycle."
+- NEVER silently skip a scheduled digest without logging.
+
+### Timeout Handling
+- If any API call takes more than 30 seconds, abort it and report partial results.
+- If `competitive-intel.py` analysis takes more than 120 seconds, kill it and deliver whatever was gathered.
+- NEVER wait indefinitely for a script to complete.
+
+### Retry Limits
+- Maximum 2 retries per data source.
+- If a source fails twice, skip it and note it as "[source] unavailable" in the report.
+- NEVER enter a retry loop. NEVER go silent after an error.

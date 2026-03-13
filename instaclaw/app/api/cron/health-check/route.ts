@@ -999,6 +999,47 @@ else:
   }
 
   // ========================================================================
+  // Silence detection: flag VMs with no proxy activity despite active Telegram
+  // Phase 1: Track last_proxy_call_at staleness. If a VM has Telegram configured
+  // and a user assigned, but no API call in 6+ hours, it may be silently dead.
+  // ========================================================================
+  const SILENCE_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
+  const { data: potentiallySilentVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, assigned_to, last_proxy_call_at, heartbeat_last_at, telegram_bot_username")
+    .eq("status", "assigned")
+    .not("assigned_to", "is", null)
+    .not("telegram_bot_token", "is", null)
+    .lt("last_proxy_call_at", new Date(Date.now() - SILENCE_THRESHOLD_MS).toISOString());
+
+  if (potentiallySilentVms?.length) {
+    for (const svm of potentiallySilentVms) {
+      const lastCall = svm.last_proxy_call_at ? new Date(svm.last_proxy_call_at) : null;
+      const hoursStale = lastCall ? Math.round((Date.now() - lastCall.getTime()) / 3_600_000) : 999;
+      const lastHb = svm.heartbeat_last_at ? new Date(svm.heartbeat_last_at) : null;
+      const hbStale = lastHb ? Math.round((Date.now() - lastHb.getTime()) / 3_600_000) : 999;
+
+      // Only alert if genuinely stale (not just a user who hasn't messaged recently)
+      // If heartbeat is also stale, the existing health checks will catch it.
+      // We care about: heartbeat OK (gateway alive) but no proxy calls (agent not responding to users)
+      if (hbStale < 6 && hoursStale >= 6) {
+        logger.warn("Silence detected: gateway alive but no proxy calls", {
+          route: "cron/health-check",
+          vmId: svm.id,
+          vmName: svm.name,
+          hoursStale,
+          hbStaleHours: hbStale,
+        });
+        alerts.add(
+          "Potential Silent Agent [HIGH]",
+          svm.name ?? svm.id,
+          `User: ${svm.assigned_to}\nBot: @${svm.telegram_bot_username ?? "unknown"}\nLast proxy call: ${hoursStale}h ago\nLast heartbeat: ${hbStale}h ago\nGateway appears alive but agent hasn't made an API call in ${hoursStale}+ hours.`
+        );
+      }
+    }
+  }
+
+  // ========================================================================
   // Third pass: Check for past_due subscriptions and suspend after grace period
   // ========================================================================
   let suspended = 0;

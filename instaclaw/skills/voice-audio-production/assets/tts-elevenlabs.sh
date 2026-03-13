@@ -86,7 +86,7 @@ print(json.dumps({
 }))
 " <<< "$TEXT")
 
-  HTTP_CODE=$(curl -s -w "%{http_code}" -X POST \
+  HTTP_CODE=$(curl -s -w "%{http_code}" --max-time 60 --connect-timeout 10 -X POST \
     "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}" \
     -H "xi-api-key: $ELEVENLABS_API_KEY" \
     -H "Content-Type: application/json" \
@@ -153,7 +153,7 @@ print(json.dumps({
 }))
 " <<< "$SEG_TEXT")
 
-    HTTP_CODE=$(curl -s -w "%{http_code}" -X POST \
+    HTTP_CODE=$(curl -s -w "%{http_code}" --max-time 60 --connect-timeout 10 -X POST \
       "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}" \
       -H "xi-api-key: $ELEVENLABS_API_KEY" \
       -H "Content-Type: application/json" \

@@ -1114,6 +1114,15 @@ export async function POST(req: NextRequest) {
         });
     }
 
+    // Update last_proxy_call_at for silence detection (fire-and-forget)
+    // Phase 1 silence detection: track when each VM last made an API call.
+    // The health cron flags VMs with stale last_proxy_call_at as potentially silent.
+    supabase
+      .from("instaclaw_vms")
+      .update({ last_proxy_call_at: now.toISOString() })
+      .eq("id", vm.id)
+      .then(() => {});
+
     // Update heartbeat timing + cycle counter (fire-and-forget)
     if (isHeartbeat) {
       if (heartbeatDue) {

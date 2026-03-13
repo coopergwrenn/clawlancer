@@ -326,3 +326,24 @@ Before delivering any audio:
 - [ ] Usage logged via `audio-usage-tracker.py track`
 - [ ] Within monthly budget (checked via `audio-usage-tracker.py check`)
 - [ ] Output format matches delivery channel (OGG for Telegram, MP3 general, AAC Apple)
+
+---
+
+## Error Handling & Recovery
+
+### Tool Failure Protocol
+If ANY tool or script fails during audio/voice production:
+1. **NEVER go silent.** The user is waiting for your response.
+2. Report the exact error message to the user.
+3. Try the fallback provider (ElevenLabs → OpenAI TTS, or vice versa).
+4. If both providers fail, tell the user: "Both TTS providers are temporarily unavailable. I can try again in a minute, or you can provide the text and I'll save it for when service resumes."
+
+### Timeout Handling
+- If `tts-elevenlabs.sh` or `tts-openai.sh` takes more than 60 seconds with no output, kill the process and switch to the fallback provider.
+- If `audio-toolkit.sh` (FFmpeg) hangs for more than 120 seconds, kill it and report the error.
+- NEVER wait indefinitely for a script to complete.
+
+### Retry Limits
+- Maximum 2 retries per provider, per request.
+- If a provider fails twice, switch to the fallback. If both fail twice, stop and tell the user.
+- NEVER enter a retry loop.

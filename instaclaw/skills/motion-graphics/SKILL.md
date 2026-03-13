@@ -1720,3 +1720,16 @@ From real InstaClaw video production:
 - `~/.openclaw/skills/motion-graphics/assets/template-basic/` — Starter template (renders out of the box)
 - `~/.openclaw/skills/motion-graphics/references/advanced-patterns.md` — Complex animations, audio sync, data-driven videos
 - `~/.openclaw/skills/motion-graphics/references/brand-assets-checklist.md` — Asset collection checklist
+
+---
+
+## Standard Error Handling (Platform Rule)
+
+**NEVER go silent after a tool error.** If ANY tool, script, API call, or shell command fails:
+1. Report the error to the user immediately — include the error message or exit code.
+2. Try an alternative approach if one exists.
+3. If no alternative works, tell the user what failed and ask what they'd like to do.
+4. Maximum 2 retries per operation. NEVER enter a retry loop.
+5. If a script hangs for more than 120 seconds with no output, kill it and report the timeout.
+
+A failed tool is not the end of the conversation. The user is waiting for your response.
