@@ -612,10 +612,39 @@ async function stepSkills(
       deployLines.push(`echo '${b64}' | base64 -d > "${remoteDir}/${ref.remotePath}"`);
     }
 
+    // Deploy ~/scripts/ executables from each skill's scripts/ directory
+    // This auto-heals missing scripts (e.g., polymarket-*.py, solana-*.py, kalshi-*.py)
+    // Note: higgsfield-video scripts go to ~/.openclaw/skills/higgsfield-video/scripts/
+    // (handled by installHiggsfield()), not ~/scripts/, so we skip it here.
+    const SKILLS_WITH_OWN_SCRIPT_DIR = new Set(["higgsfield-video"]);
+    let scriptFileCount = 0;
+    deployLines.push('mkdir -p "$HOME/scripts"');
+    for (const skillName of skillDirs) {
+      if (SKILLS_WITH_OWN_SCRIPT_DIR.has(skillName)) continue;
+
+      const scriptsDir = path.join(skillsBaseDir, skillName, "scripts");
+      if (!fs.existsSync(scriptsDir)) continue;
+
+      const scriptFiles = fs.readdirSync(scriptsDir).filter(
+        f => f.endsWith(".py") || f.endsWith(".sh"),
+      );
+      for (const scriptFile of scriptFiles) {
+        const scriptPath = path.join(scriptsDir, scriptFile);
+        const stat = fs.statSync(scriptPath);
+        if (!stat.isFile()) continue;
+
+        const content = fs.readFileSync(scriptPath, "utf-8");
+        const b64 = Buffer.from(content, "utf-8").toString("base64");
+        deployLines.push(`echo '${b64}' | base64 -d > "$HOME/scripts/${scriptFile}"`);
+        deployLines.push(`chmod +x "$HOME/scripts/${scriptFile}"`);
+        scriptFileCount++;
+      }
+    }
+
     if (skillCount === 0) return;
 
     if (dryRun) {
-      result.fixed.push(`[dry-run] skill SKILL.md files (${skillCount} skills)`);
+      result.fixed.push(`[dry-run] skill SKILL.md files (${skillCount} skills, ${scriptFileCount} scripts)`);
       return;
     }
 
@@ -629,7 +658,7 @@ async function stepSkills(
       fs.unlinkSync(tmpLocal);
     }
     await ssh.execCommand('bash /tmp/ic-skill-deploy.sh && rm -f /tmp/ic-skill-deploy.sh');
-    result.fixed.push(`skill SKILL.md files (${skillCount} skills)`);
+    result.fixed.push(`skill SKILL.md files (${skillCount} skills, ${scriptFileCount} scripts)`);
   } catch (err) {
     result.errors.push(`skills deployment: ${String(err)}`);
   }

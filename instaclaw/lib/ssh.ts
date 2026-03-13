@@ -2965,6 +2965,12 @@ export async function configureOpenClaw(
       const kalshiPortfolio = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-portfolio.py"), "utf-8");
       const kalshiBrowse = fs.readFileSync(path.join(predSkillDir, "scripts", "kalshi-browse.py"), "utf-8");
       const polySearch = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-search.py"), "utf-8");
+      const polySetupCreds = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-setup-creds.py"), "utf-8");
+      const polyTrade = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-trade.py"), "utf-8");
+      const polyWalletPy = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-wallet.py"), "utf-8");
+      const polyPortfolio = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-portfolio.py"), "utf-8");
+      const polyPositions = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-positions.py"), "utf-8");
+      const polyVerify = fs.readFileSync(path.join(predSkillDir, "scripts", "polymarket-verify.py"), "utf-8");
 
       const predSkillB64 = Buffer.from(predSkillMd, "utf-8").toString("base64");
       const polyGammaB64 = Buffer.from(polyGammaApi, "utf-8").toString("base64");
@@ -2980,6 +2986,12 @@ export async function configureOpenClaw(
       const kalshiPortfolioB64 = Buffer.from(kalshiPortfolio, "utf-8").toString("base64");
       const kalshiBrowseB64 = Buffer.from(kalshiBrowse, "utf-8").toString("base64");
       const polySearchB64 = Buffer.from(polySearch, "utf-8").toString("base64");
+      const polySetupCredsB64 = Buffer.from(polySetupCreds, "utf-8").toString("base64");
+      const polyTradeB64 = Buffer.from(polyTrade, "utf-8").toString("base64");
+      const polyWalletPyB64 = Buffer.from(polyWalletPy, "utf-8").toString("base64");
+      const polyPortfolioB64 = Buffer.from(polyPortfolio, "utf-8").toString("base64");
+      const polyPositionsB64 = Buffer.from(polyPositions, "utf-8").toString("base64");
+      const polyVerifyB64 = Buffer.from(polyVerify, "utf-8").toString("base64");
 
       scriptParts.push(
         '# Deploy Prediction Markets skill (Polymarket + Kalshi)',
@@ -3000,7 +3012,13 @@ export async function configureOpenClaw(
         `echo '${kalshiPortfolioB64}' | base64 -d > "$HOME/scripts/kalshi-portfolio.py"`,
         `echo '${kalshiBrowseB64}' | base64 -d > "$HOME/scripts/kalshi-browse.py"`,
         `echo '${polySearchB64}' | base64 -d > "$HOME/scripts/polymarket-search.py"`,
-        'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py" "$HOME/scripts/kalshi-browse.py" "$HOME/scripts/polymarket-search.py"',
+        `echo '${polySetupCredsB64}' | base64 -d > "$HOME/scripts/polymarket-setup-creds.py"`,
+        `echo '${polyTradeB64}' | base64 -d > "$HOME/scripts/polymarket-trade.py"`,
+        `echo '${polyWalletPyB64}' | base64 -d > "$HOME/scripts/polymarket-wallet.py"`,
+        `echo '${polyPortfolioB64}' | base64 -d > "$HOME/scripts/polymarket-portfolio.py"`,
+        `echo '${polyPositionsB64}' | base64 -d > "$HOME/scripts/polymarket-positions.py"`,
+        `echo '${polyVerifyB64}' | base64 -d > "$HOME/scripts/polymarket-verify.py"`,
+        'chmod +x "$HOME/scripts/kalshi-setup.py" "$HOME/scripts/kalshi-trade.py" "$HOME/scripts/kalshi-positions.py" "$HOME/scripts/kalshi-portfolio.py" "$HOME/scripts/kalshi-browse.py" "$HOME/scripts/polymarket-search.py" "$HOME/scripts/polymarket-setup-creds.py" "$HOME/scripts/polymarket-trade.py" "$HOME/scripts/polymarket-wallet.py" "$HOME/scripts/polymarket-portfolio.py" "$HOME/scripts/polymarket-positions.py" "$HOME/scripts/polymarket-verify.py"',
         '# Clean up legacy polymarket symlink (was double-counting skill budget)',
         'rm -f "$HOME/.openclaw/skills/polymarket" 2>/dev/null',
         '# Pip bootstrap + polymarket deps installed in parallel block below (PARALLEL_INSTALL_POLYMARKET)',
