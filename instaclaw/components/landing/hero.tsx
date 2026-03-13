@@ -7,7 +7,10 @@ import { useSession } from "next-auth/react";
 import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { SpotsCounter, useSpotsCount } from "./spots-counter";
+import { WaitlistForm } from "./waitlist-form";
 import { Cloud } from "lucide-react";
+
+const WAITLIST_MODE = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
 
@@ -204,57 +207,63 @@ function HeroInner() {
           minutes. No technical experience required.
         </motion.p>
 
-        {/* CTA buttons */}
+        {/* CTA — switches between waitlist form and direct signup */}
         <motion.div
           className="flex flex-col items-center gap-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7, duration: 0.7, ease: SNAPPY }}
         >
-          <div className="flex items-center gap-3">
-            <div className="glow-wrap" style={{ width: "auto" }}>
-              <div className="glow-border" style={{ width: "auto" }}>
-                <div className="glow-spinner" />
-                <div className="glow-content" style={{ background: "transparent" }}>
-                  <Link
-                    href={session ? "/dashboard" : "/signup"}
-                    className="block px-14 py-4 rounded-lg text-lg font-semibold transition-all text-center"
-                    style={{
-                      background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
-                      color: "#ffffff",
-                      boxShadow: `
-                        rgba(255, 255, 255, 0.25) 0px 1px 1px 0px inset,
-                        rgba(220, 103, 67, 0.15) 0px -2px 4px 0px inset
-                      `,
-                    }}
-                  >
-                    {session ? "Go to Dashboard" : "Claim My Agent"}
-                  </Link>
+          {WAITLIST_MODE ? (
+            <WaitlistForm />
+          ) : (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="glow-wrap" style={{ width: "auto" }}>
+                  <div className="glow-border" style={{ width: "auto" }}>
+                    <div className="glow-spinner" />
+                    <div className="glow-content" style={{ background: "transparent" }}>
+                      <Link
+                        href={session ? "/dashboard" : "/signup"}
+                        className="block px-14 py-4 rounded-lg text-lg font-semibold transition-all text-center"
+                        style={{
+                          background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
+                          color: "#ffffff",
+                          boxShadow: `
+                            rgba(255, 255, 255, 0.25) 0px 1px 1px 0px inset,
+                            rgba(220, 103, 67, 0.15) 0px -2px 4px 0px inset
+                          `,
+                        }}
+                      >
+                        {session ? "Go to Dashboard" : "Claim My Agent"}
+                      </Link>
+                    </div>
+                  </div>
                 </div>
+                <a
+                  href="#learn-more"
+                  className="px-8 py-4 rounded-lg text-base font-medium transition-all"
+                  style={{
+                    background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+                    backdropFilter: "blur(2px)",
+                    WebkitBackdropFilter: "blur(2px)",
+                    color: "var(--foreground)",
+                    boxShadow: `
+                      rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+                      rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+                      rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+                      rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
+                    `,
+                  }}
+                >
+                  Learn More
+                </a>
               </div>
-            </div>
-            <a
-              href="#learn-more"
-              className="px-8 py-4 rounded-lg text-base font-medium transition-all"
-              style={{
-                background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-                backdropFilter: "blur(2px)",
-                WebkitBackdropFilter: "blur(2px)",
-                color: "var(--foreground)",
-                boxShadow: `
-                  rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                  rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                  rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                  rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-                `,
-              }}
-            >
-              Learn More
-            </a>
-          </div>
 
-          {/* Scarcity line */}
-          <ScarcityLine />
+              {/* Scarcity line */}
+              <ScarcityLine />
+            </>
+          )}
         </motion.div>
 
       </motion.div>
