@@ -102,18 +102,27 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
-  // Smooth-scroll to hash target (e.g. #world-id from dashboard banner)
+  // Smooth-scroll to hash target (e.g. #human-verification from dashboard banner).
+  // The target element may render asynchronously after an API fetch, so we poll
+  // until it appears in the DOM rather than relying on a fixed timeout.
   useEffect(() => {
     const hash = window.location.hash.replace("#", "");
     if (!hash) return;
-    const t = setTimeout(() => {
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
       const el = document.getElementById(hash);
       if (el) {
-        const y = el.getBoundingClientRect().top + window.scrollY - 20;
-        window.scrollTo({ top: y, behavior: "smooth" });
+        clearInterval(interval);
+        // Small extra delay so layout fully settles
+        setTimeout(() => {
+          const y = el.getBoundingClientRect().top + window.scrollY - 20;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }, 100);
       }
-    }, 400);
-    return () => clearTimeout(t);
+      if (attempts > 30) clearInterval(interval); // give up after 6s
+    }, 200);
+    return () => clearInterval(interval);
   }, []);
 
   async function handleSavePrompt() {
