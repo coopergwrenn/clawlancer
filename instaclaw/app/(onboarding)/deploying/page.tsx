@@ -723,6 +723,11 @@ function DeployingPageContent() {
             <p className="text-base">
               <RotatingSubtitle messages={SUBTITLE_MESSAGES} />
             </p>
+            {polling && !configureFailed && (
+              <p className="text-xs mt-3" style={{ color: "#999999" }}>
+                This takes about a minute — please don&apos;t leave this screen.
+              </p>
+            )}
           </div>
 
           {/* Progress bar container — glass card */}
@@ -839,6 +844,17 @@ function DeployingPageContent() {
             </div>
           </div>
 
+          {/* ---- Contact Support ---- */}
+          <div className="max-w-lg w-full mb-6 flex justify-center">
+            <a
+              href="mailto:help@instaclaw.io"
+              className="text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ color: "#999999" }}
+            >
+              Having trouble? Contact help@instaclaw.io
+            </a>
+          </div>
+
           {/* ---- "Check anyway" escape hatch (60s) ---- */}
           {showCheckAnyway && !softTimeout && !configureFailed && !retrying && (
             <div className="max-w-lg w-full mb-4 flex justify-center">
@@ -883,7 +899,7 @@ function DeployingPageContent() {
               }}
             >
               <p className="text-base font-semibold" style={{ color: "#DC6743" }}>
-                Taking longer than expected
+                Something went wrong setting up your agent
               </p>
               {recoveryChecking ? (
                 <p className="text-sm" style={{ color: "#666666" }}>
@@ -892,7 +908,7 @@ function DeployingPageContent() {
               ) : (
                 <>
                   <p className="text-sm" style={{ color: "#666666" }}>
-                    Your agent is still setting up. You can refresh in a minute or go to your dashboard — it&apos;ll be ready when you get there.
+                    Our team has been automatically notified and will fix this shortly. You can try refreshing or go to your dashboard.
                   </p>
                   <div className="flex gap-3">
                     <button
