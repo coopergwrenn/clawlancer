@@ -64,7 +64,7 @@ export function WorldIDBanner() {
         </p>
       </div>
       <Link
-        href="/settings#world-id"
+        href="/settings#human-verification"
         className="px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 whitespace-nowrap transition-all"
         style={{
           background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05))",

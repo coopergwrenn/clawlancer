@@ -292,7 +292,7 @@ export function WorldIDSection() {
     const showAgentBook = agentbookAppId && agentbook && !abRegistered;
 
     return (
-      <div id="world-id">
+      <div id="human-verification">
         <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
           <Shield className="w-5 h-5" /> Human Verification
         </h2>
@@ -426,7 +426,7 @@ export function WorldIDSection() {
 
   // Unverified state
   return (
-    <div id="world-id">
+    <div id="human-verification">
       <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
         <Shield className="w-5 h-5" /> Human Verification
       </h2>

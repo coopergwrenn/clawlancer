@@ -102,6 +102,20 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
+  // Smooth-scroll to hash target (e.g. #world-id from dashboard banner)
+  useEffect(() => {
+    const hash = window.location.hash.replace("#", "");
+    if (!hash) return;
+    const t = setTimeout(() => {
+      const el = document.getElementById(hash);
+      if (el) {
+        const y = el.getBoundingClientRect().top + window.scrollY - 20;
+        window.scrollTo({ top: y, behavior: "smooth" });
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, []);
+
   async function handleSavePrompt() {
     setSavingPrompt(true);
     setError("");
