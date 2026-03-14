@@ -21,6 +21,7 @@ import {
   Puzzle,
   Award,
   Zap,
+  Mail,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
@@ -240,6 +241,14 @@ export default function DashboardLayout({
                     </Link>
                   ))}
                   <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+                  <a
+                    href="mailto:support@instaclaw.io"
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    <Mail className="w-4 h-4" />
+                    Support
+                  </a>
                   <button
                     onClick={() => signOut({ callbackUrl: "/" })}
                     className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors w-full cursor-pointer"
