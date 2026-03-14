@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
+  Globe,
+  Copy,
 } from "lucide-react";
 import { WorldIDSection } from "@/components/dashboard/world-id-section";
 
@@ -82,6 +84,9 @@ export default function SettingsPage() {
   const [agdpSuccess, setAgdpSuccess] = useState(false);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [disconnectingGmail, setDisconnectingGmail] = useState(false);
+  const [extensionConnected, setExtensionConnected] = useState<boolean | null>(null);
+  const [extensionChecking, setExtensionChecking] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -101,6 +106,23 @@ export default function SettingsPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Check extension relay status
+  useEffect(() => {
+    if (!vmStatus?.vm?.gatewayUrl) return;
+    setExtensionChecking(true);
+    fetch("/api/vm/extension-status")
+      .then((r) => r.json())
+      .then((data) => setExtensionConnected(data.connected ?? false))
+      .catch(() => setExtensionConnected(false))
+      .finally(() => setExtensionChecking(false));
+  }, [vmStatus?.vm?.gatewayUrl]);
+
+  function copyToClipboard(text: string, field: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  }
 
   async function handleSavePrompt() {
     setSavingPrompt(true);
@@ -627,6 +649,104 @@ export default function SettingsPage() {
               {vm.channelsEnabled?.join(", ") ?? "telegram"}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Browser Extension */}
+      <div data-tour="settings-extension">
+        <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
+          <Globe className="w-5 h-5" /> Browser Extension
+        </h2>
+        <div className="glass rounded-xl p-6 space-y-4" style={{ border: "1px solid var(--border)" }}>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Install the InstaClaw Browser Relay extension to let your agent browse sites using your real login sessions — Instagram, Facebook, banking, and more.
+          </p>
+
+          {/* Status indicator */}
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{
+                background: extensionChecking
+                  ? "#eab308"
+                  : extensionConnected
+                  ? "#22c55e"
+                  : "#ef4444",
+                animation: extensionChecking ? "pulse 1s infinite" : undefined,
+              }}
+            />
+            <span className="text-sm">
+              {extensionChecking
+                ? "Checking..."
+                : extensionConnected
+                ? "Extension connected"
+                : "Extension not connected"}
+            </span>
+            <button
+              onClick={() => {
+                setExtensionChecking(true);
+                fetch("/api/vm/extension-status")
+                  .then((r) => r.json())
+                  .then((data) => setExtensionConnected(data.connected ?? false))
+                  .catch(() => setExtensionConnected(false))
+                  .finally(() => setExtensionChecking(false));
+              }}
+              className="ml-auto text-xs px-2 py-1 rounded cursor-pointer"
+              style={{ color: "var(--muted)", background: "rgba(255,255,255,0.05)" }}
+            >
+              Refresh
+            </button>
+          </div>
+
+          {/* Gateway URL */}
+          {vm.gatewayUrl && (
+            <div className="space-y-3 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+              <div>
+                <label className="text-xs block mb-1" style={{ color: "var(--muted)" }}>Gateway URL</label>
+                <div className="flex items-center gap-2">
+                  <code className="text-sm font-mono flex-1 truncate">{`https://${vm.gatewayUrl}`}</code>
+                  <button
+                    onClick={() => copyToClipboard(`https://${vm.gatewayUrl}`, "url")}
+                    className="p-1.5 rounded cursor-pointer transition-colors"
+                    style={{ color: copiedField === "url" ? "#22c55e" : "var(--muted)" }}
+                    title="Copy"
+                  >
+                    {copiedField === "url" ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs block mb-1" style={{ color: "var(--muted)" }}>Gateway Token</label>
+                <div className="flex items-center gap-2">
+                  <code className="text-sm font-mono flex-1 truncate" style={{ color: "var(--muted)" }}>
+                    {"•".repeat(32)}
+                  </code>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/vm/status");
+                        const data = await res.json();
+                        if (data.vm?.gatewayToken) {
+                          copyToClipboard(data.vm.gatewayToken, "token");
+                        }
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="p-1.5 rounded cursor-pointer transition-colors"
+                    style={{ color: copiedField === "token" ? "#22c55e" : "var(--muted)" }}
+                    title="Copy token"
+                  >
+                    {copiedField === "token" ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs pt-2" style={{ color: "var(--muted)" }}>
+            Download the extension, open its options page, and paste the Gateway URL and Token above. Your agent will automatically detect the connection.
+          </p>
         </div>
       </div>
 

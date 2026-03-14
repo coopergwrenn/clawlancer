@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "InstaClaw Browser Relay",
+  "version": "1.0.0",
+  "description": "Connect your browser to your InstaClaw agent — browse any site with your real login sessions.",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "activeTab",
+    "storage",
+    "alarms",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "https://*.vm.instaclaw.io/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    },
+    "default_title": "InstaClaw Browser Relay"
+  },
+  "minimum_chrome_version": "116"
+}

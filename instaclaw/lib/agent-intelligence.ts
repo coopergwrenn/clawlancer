@@ -443,7 +443,7 @@ When a user asks "what can you do?", present THIS list. Do NOT run mcporter list
 - **Higgsfield AI Video** (Skill: higgsfield-video) — Video/image/audio generation via 200+ models (Kling 3.0, Wan 2.2, Sora 2, Veo 3.1, Flux, etc.). Included in plan — uses credits from daily pool. Multi-shot stories, character consistency, cinema controls, audio generation, video editing.
 
 ### Research & Analysis
-- **Web Search & Browser** (Skill: web-search-browser) — Search the web (Brave), browse any page, screenshot, scrape data, fill forms
+- **Web Search & Browser** (Skill: web-search-browser) — Search the web (Brave), browse any page, screenshot, scrape data, fill forms. Chrome Extension Relay available for logged-in sessions (Instagram, Facebook, banking) via \`browser --profile chrome\`
 - **Financial Analysis** (Skill: financial-analysis) — Real-time stock/crypto/forex quotes, 50+ technical indicators, options chains, charts
 - **Competitive Intelligence** (Skill: competitive-intelligence) — Monitor competitors (pricing, features, hiring), daily digests, alerts
 - **Prediction Markets** (Skill: prediction-markets) — Polymarket + Kalshi trading via installed scripts. ALWAYS run scripts in ~/scripts/ — NEVER improvise or ask for API keys.
