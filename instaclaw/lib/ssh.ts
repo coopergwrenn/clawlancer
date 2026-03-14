@@ -1575,7 +1575,6 @@ function buildOpenClawConfig(
       defaultProfile: "openclaw",
       profiles: {
         openclaw: { cdpPort: 18800, color: "#FF4500" },
-        chrome: { color: "#3B82F6" },
       },
     },
     agents: {

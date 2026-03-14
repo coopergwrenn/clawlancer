@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>InstaClaw Browser Relay — Settings</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 48px 16px;
+    }
+    .container {
+      max-width: 480px;
+      width: 100%;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #aaa;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #141414;
+      color: #e5e5e5;
+      font-size: 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus {
+      border-color: #FF4500;
+    }
+    .field {
+      margin-bottom: 20px;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 24px;
+    }
+    button {
+      padding: 10px 24px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    #save-btn {
+      background: #FF4500;
+      color: #fff;
+    }
+    #status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #888;
+    }
+    #status .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-connected { background: #22c55e; }
+    .dot-disconnected { background: #ef4444; }
+    .dot-checking { background: #eab308; animation: pulse 1s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .help {
+      margin-top: 32px;
+      padding: 16px;
+      border-radius: 8px;
+      background: #141414;
+      border: 1px solid #222;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.6;
+    }
+    .help strong { color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>InstaClaw Browser Relay</h1>
+    <p class="subtitle">Connect your browser to your InstaClaw agent so it can browse sites using your real login sessions.</p>
+
+    <div class="field">
+      <label for="gateway-url">Gateway URL</label>
+      <input type="text" id="gateway-url" placeholder="https://xxxxxxxx.vm.instaclaw.io" spellcheck="false" />
+    </div>
+
+    <div class="field">
+      <label for="gateway-token">Gateway Token</label>
+      <input type="password" id="gateway-token" placeholder="Paste from your InstaClaw dashboard" spellcheck="false" />
+    </div>
+
+    <div class="actions">
+      <button id="save-btn">Save & Connect</button>
+      <span id="status"></span>
+    </div>
+
+    <div class="help">
+      <strong>Where to find these values:</strong><br>
+      Go to <strong>instaclaw.io/settings</strong> → <strong>Browser Extension</strong> section. Copy the Gateway URL and Token from there.
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
