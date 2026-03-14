@@ -54,7 +54,7 @@ interface UserConfig {
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
 // Bump this after fleet upgrades (separate from the SSH upgrade flow).
-export const OPENCLAW_PINNED_VERSION = "2026.3.8";
+export const OPENCLAW_PINNED_VERSION = "2026.3.13";
 
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
@@ -1203,6 +1203,8 @@ Don't ask permission. Just do it.
 
 **Web tools:** Use \\\`web_search\\\` for factual queries (faster, cheaper). Use \\\`browser\\\` for interaction, screenshots, specific page content, or form filling.
 
+**Chrome Extension Relay:** Your user may have the InstaClaw Browser Relay extension installed, which lets you browse through their real Chrome browser with their login sessions. To use it, run \\\`browser --profile chrome\\\`. This gives you access to login-gated sites like Instagram, Facebook, banking, and corporate intranets. Before using the chrome profile, check if the extension is connected by visiting the relay status endpoint. If the extension is not connected, suggest the user install it from their InstaClaw dashboard (Settings → Browser Extension).
+
 **Vision:** You can see images. Use \\\`browser\\\` to navigate URLs, \\\`read\\\` for local files. Never say "I can't see images."
 
 **Rate limits:** On rate limit or API error: wait 30s, retry once. If it fails again, tell the user. Max 2 attempts — never enter a retry loop.
@@ -1573,6 +1575,7 @@ function buildOpenClawConfig(
       defaultProfile: "openclaw",
       profiles: {
         openclaw: { cdpPort: 18800, color: "#FF4500" },
+        chrome: { color: "#3B82F6" },
       },
     },
     agents: {
@@ -1665,7 +1668,7 @@ function buildOpenClawConfig(
   // Schema path is tools.web.search (NOT tools.webSearch — verified against
   // OpenClaw dist resolveSearchConfig() which reads cfg?.tools?.web?.search)
   // Also enable media understanding (image/audio/video) for all agents.
-  // Schema verified against OpenClaw v2026.3.8 redact-snapshot: tools.media.image.enabled,
+  // Schema verified against OpenClaw v2026.3.13 redact-snapshot: tools.media.image.enabled,
   // tools.media.audio.enabled, tools.media.video.enabled are valid config keys.
   ocConfig.tools = {
     ...(braveKey
@@ -5615,7 +5618,7 @@ export async function setupTLS(
   const ssh = await connectSSH(vm);
   try {
     // Base64 encode the Caddyfile content to avoid heredoc injection
-    const caddyfile = `${hostname} {\n  handle /.well-known/* {\n    root * /home/openclaw\n    file_server\n  }\n  handle /tmp-media/* {\n    root * /home/openclaw/workspace\n    file_server\n  }\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
+    const caddyfile = `${hostname} {\n  handle /.well-known/* {\n    root * /home/openclaw\n    file_server\n  }\n  handle /tmp-media/* {\n    root * /home/openclaw/workspace\n    file_server\n  }\n  handle /relay/* {\n    uri strip_prefix /relay\n    reverse_proxy localhost:18792\n  }\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
     const b64Caddy = Buffer.from(caddyfile, "utf-8").toString("base64");
 
     const script = [
