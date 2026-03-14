@@ -240,9 +240,12 @@ function HeroInner() {
                     </div>
                   </div>
                 </div>
-                <a
-                  href="#learn-more"
-                  className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg text-base sm:text-base font-medium transition-all whitespace-nowrap"
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    document.getElementById("learn-more")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg text-base sm:text-base font-medium transition-all whitespace-nowrap cursor-pointer"
                   style={{
                     background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
                     backdropFilter: "blur(2px)",
@@ -257,7 +260,7 @@ function HeroInner() {
                   }}
                 >
                   Learn More
-                </a>
+                </button>
               </div>
 
               {/* Scarcity line */}
