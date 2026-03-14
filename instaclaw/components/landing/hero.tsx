@@ -8,7 +8,7 @@ import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { SpotsCounter, useSpotsCount } from "./spots-counter";
 import { WaitlistForm } from "./waitlist-form";
-import { Cloud, Mail } from "lucide-react";
+import { Cloud } from "lucide-react";
 
 const WAITLIST_MODE = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
 
@@ -58,14 +58,6 @@ function HeroInner() {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.3, duration: 0.5, ease: SNAPPY }}
       >
-        <a
-          href="mailto:help@instaclaw.io"
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
-          style={{ color: "var(--foreground)" }}
-        >
-          <Mail size={14} strokeWidth={1.5} />
-          Support
-        </a>
         <Link
           href="/blog"
           className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
