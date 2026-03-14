@@ -30,7 +30,7 @@ const homepageJsonLd = [
     ],
     contactPoint: {
       "@type": "ContactPoint",
-      email: "support@instaclaw.io",
+      email: "help@instaclaw.io",
       contactType: "customer support",
     },
   },

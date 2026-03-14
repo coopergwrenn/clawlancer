@@ -28,9 +28,9 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 
 const dryRun = process.argv.includes("--dry-run");
 
-const REPLY_TO = "support@instaclaw.io";
+const REPLY_TO = "help@instaclaw.io";
 const UNSUB_HEADERS = {
-  "List-Unsubscribe": "<mailto:support@instaclaw.io?subject=Unsubscribe>",
+  "List-Unsubscribe": "<mailto:help@instaclaw.io?subject=Unsubscribe>",
   "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
 };
 

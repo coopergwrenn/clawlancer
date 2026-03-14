@@ -123,7 +123,7 @@ export function Footer() {
                 { href: "/faq", label: "FAQ" },
                 { href: "/blog", label: "Blog" },
                 { href: "/about", label: "About" },
-                { href: "mailto:support@instaclaw.io", label: "Contact" },
+                { href: "mailto:help@instaclaw.io", label: "Contact" },
               ].map((l) => (
                 <li key={l.href}><a href={l.href} className="text-xs hover:underline transition-colors" style={{ color: "var(--muted)" }}>{l.label}</a></li>
               ))}
@@ -151,7 +151,7 @@ export function Footer() {
                 { href: "/about", label: "About" },
                 { href: "/privacy", label: "Privacy" },
                 { href: "/terms", label: "Terms" },
-                { href: "mailto:support@instaclaw.io", label: "Contact" },
+                { href: "mailto:help@instaclaw.io", label: "Contact" },
               ].map((l) => (
                 <li key={l.href}><a href={l.href} className="text-xs hover:underline transition-colors" style={{ color: "var(--muted)" }}>{l.label}</a></li>
               ))}

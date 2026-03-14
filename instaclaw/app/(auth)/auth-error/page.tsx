@@ -79,8 +79,8 @@ function AuthErrorContent() {
 
           <p className="text-sm" style={{ color: "#6b6b6b" }}>
             If this keeps happening, contact{" "}
-            <a href="mailto:support@instaclaw.io" className="underline" style={{ color: "#333334" }}>
-              support@instaclaw.io
+            <a href="mailto:help@instaclaw.io" className="underline" style={{ color: "#333334" }}>
+              help@instaclaw.io
             </a>
           </p>
         </div>

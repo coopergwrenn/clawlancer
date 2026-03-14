@@ -59,7 +59,7 @@ function HeroInner() {
         transition={{ delay: 0.3, duration: 0.5, ease: SNAPPY }}
       >
         <a
-          href="mailto:support@instaclaw.io"
+          href="mailto:help@instaclaw.io"
           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--foreground)" }}
         >

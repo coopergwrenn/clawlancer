@@ -173,7 +173,7 @@ const communityItems = [
   {
     question: "How do I get support?",
     answer:
-      "Pro and Power plan users get priority support. All users can reach us at support@instaclaw.io or via the Discord community.",
+      "Pro and Power plan users get priority support. All users can reach us at help@instaclaw.io or via the Discord community.",
   },
 ];
 

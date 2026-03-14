@@ -307,11 +307,11 @@ export default function AboutPage() {
                 <li>
                   Email:{" "}
                   <a
-                    href="mailto:support@instaclaw.io"
+                    href="mailto:help@instaclaw.io"
                     className="underline hover:opacity-70"
                     style={{ color: "#DC6743" }}
                   >
-                    support@instaclaw.io
+                    help@instaclaw.io
                   </a>
                 </li>
                 <li>

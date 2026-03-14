@@ -973,11 +973,11 @@ function DeployingPageContent() {
                   <p className="text-sm" style={{ color: "#666666" }}>
                     {validationError || "Server assignment is taking longer than expected. This is unusual."} Please contact support at{" "}
                     <a
-                      href="mailto:support@instaclaw.io"
+                      href="mailto:help@instaclaw.io"
                       className="underline hover:opacity-80 transition-opacity"
                       style={{ color: "#DC6743" }}
                     >
-                      support@instaclaw.io
+                      help@instaclaw.io
                     </a>
                   </p>
                   <button
@@ -1002,11 +1002,11 @@ function DeployingPageContent() {
                       <p className="text-sm" style={{ color: "#666666" }}>
                         Please contact support at{" "}
                         <a
-                          href="mailto:support@instaclaw.io"
+                          href="mailto:help@instaclaw.io"
                           className="underline hover:opacity-80 transition-opacity"
                           style={{ color: "#DC6743" }}
                         >
-                          support@instaclaw.io
+                          help@instaclaw.io
                         </a>{" "}
                         and we&apos;ll get your instance running.
                       </p>
@@ -1041,11 +1041,11 @@ function DeployingPageContent() {
                   <p className="text-sm" style={{ color: "#666666" }}>
                     Deployment took longer than expected. Please contact support at{" "}
                     <a
-                      href="mailto:support@instaclaw.io"
+                      href="mailto:help@instaclaw.io"
                       className="underline hover:opacity-80 transition-opacity"
                       style={{ color: "#DC6743" }}
                     >
-                      support@instaclaw.io
+                      help@instaclaw.io
                     </a>
                   </p>
                   <button

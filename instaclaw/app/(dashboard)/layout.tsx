@@ -242,7 +242,7 @@ export default function DashboardLayout({
                   ))}
                   <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
                   <a
-                    href="mailto:support@instaclaw.io"
+                    href="mailto:help@instaclaw.io"
                     className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
                     style={{ color: "var(--muted)" }}
                   >

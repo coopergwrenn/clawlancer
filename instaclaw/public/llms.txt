@@ -41,7 +41,7 @@ All plans include a 3-day free trial. BYOK (Bring Your Own Key) lets users conne
 - About: https://instaclaw.io/about
 - Privacy: https://instaclaw.io/privacy
 - Terms: https://instaclaw.io/terms
-- Contact: support@instaclaw.io
+- Contact: help@instaclaw.io
 
 ## Comparisons
 
