@@ -225,7 +225,7 @@ function HeroInner() {
                     <div className="glow-content" style={{ background: "transparent" }}>
                       <Link
                         href={session ? "/dashboard" : "/signup"}
-                        className="block px-6 sm:px-14 py-3 sm:py-4 rounded-lg text-sm sm:text-lg font-semibold transition-all text-center whitespace-nowrap"
+                        className="block px-8 sm:px-14 py-3.5 sm:py-4 rounded-lg text-base sm:text-lg font-semibold transition-all text-center whitespace-nowrap"
                         style={{
                           background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
                           color: "#ffffff",
@@ -242,7 +242,7 @@ function HeroInner() {
                 </div>
                 <a
                   href="#learn-more"
-                  className="px-5 sm:px-8 py-3 sm:py-4 rounded-lg text-sm sm:text-base font-medium transition-all whitespace-nowrap"
+                  className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg text-base sm:text-base font-medium transition-all whitespace-nowrap"
                   style={{
                     background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
                     backdropFilter: "blur(2px)",
