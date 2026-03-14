@@ -31,6 +31,9 @@ Full headless Chromium control. Navigate pages, take screenshots, click buttons,
 **Tier 3.5 — Crawlee Stealth Scraping** (`~/scripts/crawlee-scrape.py`)
 When Tier 2 or Tier 3 gets blocked by anti-bot systems (403, CAPTCHA, Cloudflare challenge, DataDome, PerimeterX), escalate to Crawlee. It uses TLS fingerprint impersonation and browser fingerprint randomization to bypass protections. Two modes: `--mode light` (fast HTTP with TLS stealth) and `--mode browser` (full Chromium with fingerprint randomization). See `references/crawlee-stealth-scraping.md` for full docs and examples.
 
+**Tier 4 — Chrome Extension Relay** (`browser --profile chrome-relay`)
+When the user has the InstaClaw Browser Relay or OpenClaw Browser Relay Chrome extension installed and connected, you can browse through their real Chrome browser. This gives you access to sites the user is already logged into — Instagram, Facebook, banking, email, and more. The extension forwards CDP commands through a WebSocket relay. Use `browser --profile chrome-relay` to use the extension relay instead of the local headless browser. Check extension status first: if `/relay/extension/status` returns `{"connected":false}`, fall back to Tier 3.
+
 **You are a web research and automation assistant.**
 **You retrieve DATA and present FINDINGS.**
 **You do NOT submit payments, create accounts on behalf of users, or bypass security measures.**
@@ -335,6 +338,21 @@ Step 8: Confirm success or report errors
 - Cookies persist within a single browser session only
 - Sessions do not persist across conversations
 
+## Browser Profile Selection
+
+When the Chrome Extension Relay is connected, you can choose which browser profile to use:
+
+| Profile | Command | Use When |
+|---------|---------|----------|
+| `default` | `browser` (no flag) | Public pages, no login needed. Uses headless Chromium on the VM. |
+| `chrome-relay` | `browser --profile chrome-relay` | Login-gated sites (Instagram, Facebook, banking). Uses the user's real Chrome via extension relay. |
+
+**Decision flow:**
+1. Check if extension is connected: look for `{"connected":true}` from relay status
+2. If the task needs a logged-in session → use `--profile chrome-relay`
+3. If the task is public browsing → use default (faster, no user browser needed)
+4. If extension is not connected and login is needed → tell the user to install the extension, then fall back to Tier 3
+
 ## Tool Decision Matrix
 
 | Query Type | Tool | Why |
@@ -396,17 +414,18 @@ Step 8: Confirm success or report errors
 
 ## Platform Access Status
 
-| Platform | Search | Fetch | Browser | Notes |
-|----------|--------|-------|---------|-------|
-| Reddit | Works | Works | Works | Old Reddit (old.reddit.com) more reliable for scraping |
-| Instagram | Works | Blocked | Blocked | Requires login for all content; aggressive bot detection. Use crawlee-scrape.py --mode browser or ask user to share a screenshot. |
-| Twitter/X | Works | Limited | Limited | Most content requires auth; search results available |
-| LinkedIn | Works | Blocked | Limited | Aggressive bot detection; public profiles only |
-| Amazon | Works | Works | Works | Product pages accessible; may trigger CAPTCHAs on bulk |
-| Google | Works (via Brave) | Works | Works | Do not scrape Google directly; use Brave Search API |
-| GitHub | Works | Works | Works | Public repos fully accessible; API preferred for data |
-| YouTube | Works | Works | Works | Video metadata accessible; transcripts via page scraping |
-| eBay | Works | Works | Works | Product listings accessible; watch for pagination |
+| Platform | Search | Fetch | Browser | Extension | Notes |
+|----------|--------|-------|---------|-----------|-------|
+| Reddit | Works | Works | Works | Works | Old Reddit (old.reddit.com) more reliable for scraping |
+| Instagram | Works | Blocked | Blocked | **Works** | Extension relay uses user's logged-in session. Without extension: use crawlee or ask user for screenshot. |
+| Twitter/X | Works | Limited | Limited | **Works** | Extension relay uses user's logged-in session. Without extension: search results only. |
+| Facebook | Works | Blocked | Blocked | **Works** | Extension relay uses user's logged-in session. Without extension: completely blocked. |
+| LinkedIn | Works | Blocked | Limited | **Works** | Extension relay uses user's logged-in session. Without extension: public profiles only. |
+| Amazon | Works | Works | Works | Works | Product pages accessible; may trigger CAPTCHAs on bulk |
+| Google | Works (via Brave) | Works | Works | Works | Do not scrape Google directly; use Brave Search API |
+| GitHub | Works | Works | Works | Works | Public repos fully accessible; API preferred for data |
+| YouTube | Works | Works | Works | Works | Video metadata accessible; transcripts via page scraping |
+| eBay | Works | Works | Works | Works | Product listings accessible; watch for pagination |
 
 **General rule:** If a platform has a public API, prefer the API over scraping. Browser automation is the last resort.
 
@@ -492,6 +511,195 @@ Browser Sessions:
 - Prefer `web_fetch` over `web_search` + `browser` when possible
 - Cache results mentally — do not re-search the same query
 - For bulk research, plan the search strategy before executing
+
+## Dynamic SPA Handling Protocol
+
+Modern web apps (Instagram, LinkedIn, Facebook, Twitter, banking portals) are Single Page Applications that load content dynamically. The standard navigate → screenshot workflow fails on these because content loads asynchronously, element references go stale after interactions, and lazy-loaded content requires scrolling to appear. Follow this protocol for reliable SPA browsing.
+
+### Rule 1: Always Wait Before Acting
+
+After every `navigate` or `click` on an SPA, use `browser wait` with a selector before doing anything else. Never assume content has loaded.
+
+```
+WRONG:  browser → navigate("https://instagram.com/direct/inbox")
+        browser → screenshot(name="dms")        ← page still loading, blank or spinner
+
+RIGHT:  browser → navigate("https://instagram.com/direct/inbox")
+        browser → wait(selector="[role='listbox'], [class*='inbox'], [class*='thread']", timeout=10000)
+        browser → screenshot(name="dms")         ← content is loaded
+```
+
+Common wait selectors by platform:
+| Platform | Wait For |
+|----------|----------|
+| Instagram DMs | `[role='listbox']`, `div[class*='inbox']`, `div[class*='thread']` |
+| Instagram Feed | `article`, `div[role='feed']` |
+| LinkedIn Feed | `.feed-shared-update-v2`, `div[data-urn]` |
+| Facebook | `div[role='feed']`, `div[data-pagelet]` |
+| Twitter/X | `article[data-testid='tweet']`, `div[data-testid='cellInnerDiv']` |
+
+### Rule 2: Prefer Snapshots Over Screenshots for Data Extraction
+
+Use `browser snapshot` (ARIA/accessibility tree) instead of `browser screenshot` when you need to extract text, find elements, or understand page structure. Snapshots return structured data; screenshots return pixels.
+
+```
+WRONG:  browser → screenshot(name="feed")
+        # Then try to read text from the image — slow, error-prone
+
+RIGHT:  browser → snapshot()
+        # Returns structured text: links, buttons, headings, text content
+        # Element refs like [ref=42] for clicking
+```
+
+When to use each:
+- **`snapshot`**: Extracting text, finding clickable elements, reading lists/feeds, navigating menus
+- **`screenshot`**: Visual verification, showing the user what a page looks like, debugging layout issues
+- **Both**: Take a snapshot first to find the right elements, then screenshot for visual confirmation
+
+### Rule 3: Re-Snapshot After Every Interaction
+
+On SPAs, the DOM changes after clicks, scrolls, and form submissions. Element references (`[ref=N]`) from a previous snapshot are STALE after any interaction. Always take a fresh snapshot.
+
+```
+WRONG:  browser → snapshot()           → finds [ref=5] "Messages" button
+        browser → click(ref=5)         → click succeeds
+        browser → click(ref=12)        ← STALE! ref=12 may not exist anymore
+
+RIGHT:  browser → snapshot()           → finds [ref=5] "Messages" button
+        browser → click(ref=5)         → click succeeds
+        browser → wait(selector="...", timeout=5000)
+        browser → snapshot()           → FRESH refs after DOM update
+        browser → click(ref=18)        ← valid ref from new snapshot
+```
+
+### Rule 4: Use JavaScript Evaluation for Scroll-to-Load Content
+
+SPAs like Instagram and LinkedIn use infinite scroll. Content below the fold doesn't exist in the DOM until you scroll. Use `evaluate` to scroll and trigger lazy loading.
+
+```
+# Scroll down to load more content
+browser → evaluate("window.scrollTo(0, document.body.scrollHeight)")
+browser → wait(timeout=2000)    ← wait for new content to load
+browser → snapshot()            ← now includes newly loaded content
+
+# Scroll inside a specific container (e.g., Instagram DM thread)
+browser → evaluate("
+  const container = document.querySelector('[role=\"listbox\"]');
+  if (container) container.scrollTop = container.scrollHeight;
+")
+browser → wait(timeout=2000)
+browser → snapshot()
+
+# Load ALL messages in a thread (scroll to top repeatedly)
+browser → evaluate("
+  const container = document.querySelector('[role=\"listbox\"]');
+  if (container) {
+    container.scrollTop = 0;   // scroll to top to load older messages
+  }
+")
+browser → wait(timeout=3000)   ← wait for older messages to load
+```
+
+### Rule 5: Extract Data via DOM Queries When Snapshots Are Incomplete
+
+When `snapshot` returns truncated or incomplete content, use `evaluate` to extract data directly from the DOM.
+
+```
+# Extract all DM messages from Instagram thread
+browser → evaluate("
+  Array.from(document.querySelectorAll('[role=\"row\"], [class*=\"message\"]'))
+    .map(el => ({
+      text: el.textContent?.trim()?.substring(0, 500),
+      time: el.querySelector('time')?.getAttribute('datetime') || ''
+    }))
+    .filter(m => m.text)
+")
+
+# Extract LinkedIn feed posts
+browser → evaluate("
+  Array.from(document.querySelectorAll('.feed-shared-update-v2'))
+    .slice(0, 10)
+    .map(el => ({
+      author: el.querySelector('.update-components-actor__name')?.textContent?.trim(),
+      content: el.querySelector('.update-components-text')?.textContent?.trim()?.substring(0, 300),
+      reactions: el.querySelector('.social-details-social-counts__reactions-count')?.textContent?.trim()
+    }))
+")
+
+# Extract Facebook feed posts
+browser → evaluate("
+  Array.from(document.querySelectorAll('[data-pagelet*=\"FeedUnit\"], div[role=\"article\"]'))
+    .slice(0, 10)
+    .map(el => ({
+      text: el.textContent?.trim()?.substring(0, 500)
+    }))
+")
+```
+
+### Rule 6: Handle Navigation Failures Gracefully
+
+SPAs often break the standard page lifecycle. Handle these edge cases:
+
+```
+# Page navigated but spinner persists → wait longer with fallback
+browser → navigate("https://www.instagram.com/direct/inbox/")
+browser → wait(selector="[role='listbox']", timeout=10000)
+# If wait times out:
+browser → evaluate("document.readyState")              ← check if page loaded at all
+browser → evaluate("document.body.innerText.length")    ← check if any content rendered
+browser → screenshot(name="debug-state")                ← visual inspection
+
+# Element not found after wait → try alternate selectors
+browser → wait(selector="div.inbox-container", timeout=5000)
+# If fails:
+browser → wait(selector="div[role='main']", timeout=5000)
+# If still fails:
+browser → snapshot()   ← see what IS on the page, adapt selectors
+```
+
+### Instagram DMs — Complete Workflow
+
+This is the most common SPA task. Follow this exact pattern:
+
+```
+Step 1: Navigate to DM inbox
+  browser → navigate("https://www.instagram.com/direct/inbox/")
+  browser → wait(selector="[role='listbox'], div[class*='inbox']", timeout=15000)
+
+Step 2: Snapshot the inbox to find conversations
+  browser → snapshot()
+  # Look for conversation names/previews in the snapshot
+
+Step 3: Click into a specific conversation
+  browser → click(ref=N)   ← ref from snapshot for the conversation
+  browser → wait(selector="[role='row'], div[class*='message']", timeout=10000)
+
+Step 4: Snapshot the thread
+  browser → snapshot()
+  # If thread is long, scroll to load more:
+
+Step 5: Load older messages (if needed)
+  browser → evaluate("
+    const c = document.querySelector('[role=\"listbox\"], [class*=\"thread\"]');
+    if (c) c.scrollTop = 0;
+  ")
+  browser → wait(timeout=3000)
+  browser → snapshot()
+
+Step 6: Extract all visible messages
+  browser → evaluate("
+    Array.from(document.querySelectorAll('[role=\"row\"], [class*=\"message\"]'))
+      .map(el => el.textContent?.trim()?.substring(0, 500))
+      .filter(Boolean)
+  ")
+
+Step 7: Send a message (if requested)
+  browser → snapshot()   ← get fresh refs
+  browser → fill(ref=N, value="Your message here")   ← message input ref
+  browser → press(key="Enter")
+  browser → wait(timeout=2000)
+  browser → snapshot()   ← confirm message sent
+```
 
 ## Common Mistakes
 
