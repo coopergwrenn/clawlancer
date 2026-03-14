@@ -419,6 +419,9 @@ function DeployingPageContent() {
             softTimeoutFired.current = true;
             setSoftTimeout(true);
 
+            // Alert admin that deploy is stuck
+            fetch("/api/vm/deploy-stuck", { method: "POST" }).catch(() => {});
+
             // Fire one final health check to see if the agent is actually ready
             setRecoveryChecking(true);
             fetch("/api/vm/health-check-now", { method: "POST" })

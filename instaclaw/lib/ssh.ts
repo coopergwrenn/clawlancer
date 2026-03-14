@@ -1695,6 +1695,18 @@ function buildOpenClawConfig(
   // NOT openclaw.json. The memory.provider/remote keys in openclaw.json
   // crash the gateway on v2026.2.3-1. See fleet-enable-memory-v2.sh.
 
+  // Validate: every browser profile must have cdpPort or cdpUrl.
+  // This catches bad profiles BEFORE any SSH happens (prevented the browser.profiles.chrome outage).
+  const browserConfig = ocConfig.browser as Record<string, unknown> | undefined;
+  if (browserConfig?.profiles) {
+    const profiles = browserConfig.profiles as Record<string, Record<string, unknown>>;
+    for (const [name, profile] of Object.entries(profiles)) {
+      if (!profile.cdpPort && !profile.cdpUrl) {
+        throw new Error(`Invalid browser profile "${name}": must set cdpPort or cdpUrl`);
+      }
+    }
+  }
+
   return ocConfig;
 }
 
@@ -2017,12 +2029,16 @@ export async function configureOpenClaw(
     const ocConfigB64 = Buffer.from(JSON.stringify(ocConfig, null, 2), "utf-8").toString("base64");
 
     scriptParts.push(
+      '# Back up current config as last-known-good (for rollback if gateway crashes)',
+      'cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.last-known-good 2>/dev/null || true',
+      '',
       '# Write complete openclaw.json in one shot (replaces onboard + all config set calls)',
       'mkdir -p ~/.openclaw',
       `echo '${ocConfigB64}' | base64 -d > ~/.openclaw/openclaw.json`,
       '',
       '# Purge old config backups that may contain stale telegram bot tokens',
       '# OpenClaw creates .bak, .bak.2, .bak.3 etc. when updating config',
+      '# Keep .last-known-good for rollback safety',
       'rm -f ~/.openclaw/openclaw.json.bak* 2>/dev/null || true',
       'rm -f /tmp/openclaw-backup.json 2>/dev/null || true',
       ''
@@ -3368,6 +3384,12 @@ export async function configureOpenClaw(
       '  echo "OPENCLAW_REINSTALL_OK"',
       'fi',
       '',
+      '# Validate config with openclaw doctor (advisory — catches schema issues)',
+      'DOCTOR_OUT=$(openclaw doctor 2>&1) || true',
+      'if echo "$DOCTOR_OUT" | grep -qi "invalid\\|error\\|Profile must set"; then',
+      '  echo "CONFIG_VALIDATION_WARNING: $DOCTOR_OUT"',
+      'fi',
+      '',
       '# Install gateway as systemd service and start',
       'openclaw gateway install 2>/dev/null || true',
       '',
@@ -3458,6 +3480,19 @@ export async function configureOpenClaw(
       '  echo "GATEWAY_VERIFIED"',
       'else',
       '  echo "GATEWAY_NOT_RESPONDING"',
+      '  # Rollback: restore last-known-good config if gateway failed to start',
+      '  if [ -f ~/.openclaw/openclaw.json.last-known-good ]; then',
+      '    echo "GATEWAY_ROLLBACK_TRIGGERED"',
+      '    cp ~/.openclaw/openclaw.json.last-known-good ~/.openclaw/openclaw.json',
+      '    systemctl --user reset-failed openclaw-gateway 2>/dev/null || true',
+      '    systemctl --user restart openclaw-gateway 2>/dev/null || true',
+      '    sleep 5',
+      `    if curl -s -m 5 http://localhost:${GATEWAY_PORT}/health > /dev/null 2>&1; then`,
+      '      echo "GATEWAY_ROLLBACK_RECOVERED"',
+      '    else',
+      '      echo "GATEWAY_ROLLBACK_FAILED"',
+      '    fi',
+      '  fi',
       'fi',
       '',
       'echo "OPENCLAW_CONFIGURE_DONE"'
@@ -3527,8 +3562,20 @@ export async function configureOpenClaw(
       throw new Error(`VM configuration failed: ${result.stderr || result.stdout}`);
     }
 
+    // Detect config rollback events from the VM script
+    if (result.stdout.includes("GATEWAY_ROLLBACK_TRIGGERED")) {
+      const recovered = result.stdout.includes("GATEWAY_ROLLBACK_RECOVERED");
+      const logFn = recovered ? logger.warn : logger.error;
+      logFn.call(logger, `Config rollback ${recovered ? "recovered" : "FAILED"} — reverted to last-known-good config`, {
+        route: "lib/ssh",
+        vmId: vm.id,
+        rollbackRecovered: recovered,
+        timeline,
+      });
+    }
+
     // Check if gateway is actually alive (verified by localhost curl inside VM)
-    const gatewayVerified = result.stdout.includes("GATEWAY_VERIFIED");
+    const gatewayVerified = result.stdout.includes("GATEWAY_VERIFIED") || result.stdout.includes("GATEWAY_ROLLBACK_RECOVERED");
 
     // If gateway didn't respond to curl, try one more time via SSH before giving up.
     // This catches slow-start gateways that need a few extra seconds.

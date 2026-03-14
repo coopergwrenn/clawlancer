@@ -358,6 +358,38 @@ else:
         })
         .eq("id", vm.id);
 
+      // Detect crash-loop: systemd start-limit-hit (10 crashes in 5min)
+      // Check on every failure to catch it early, before the alert threshold
+      try {
+        const crashLoopSsh = await connectSSH(vm);
+        const sysResult = await crashLoopSsh.execCommand(
+          'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user show openclaw-gateway -p Result 2>&1'
+        );
+        if (sysResult.stdout.includes("start-limit-hit")) {
+          alerts.add(
+            "CRITICAL: Gateway Crash-Loop Detected",
+            vm.name ?? vm.id,
+            `SystemD start-limit-hit (10 crashes in 5min). Auto-recovering.\nIP: ${vm.ip_address}\nUser: ${vm.assigned_to ?? "unassigned"}`
+          );
+          // Auto-fix: reset-failed + restart
+          await crashLoopSsh.execCommand(
+            'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user reset-failed openclaw-gateway && systemctl --user start openclaw-gateway'
+          );
+          logger.warn("Auto-recovered crash-looping gateway (start-limit-hit)", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+          });
+        }
+        crashLoopSsh.dispose();
+      } catch (crashLoopErr) {
+        logger.warn("Failed to check crash-loop state", {
+          error: String(crashLoopErr),
+          route: "cron/health-check",
+          vmId: vm.id,
+        });
+      }
+
       // After ALERT_THRESHOLD consecutive failures, take action
       if (newFailCount === ALERT_THRESHOLD) {
         // Before restarting, verify the gateway is truly down via direct HTTP.
