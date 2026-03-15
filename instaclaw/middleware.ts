@@ -65,6 +65,7 @@ export default auth((req) => {
     "/api/agentbook/register",
     "/api/vm/heartbeat",
     "/api/vm/identity",
+    "/api/webhooks",
   ];
 
   const isAPI = pathname.startsWith("/api/");
