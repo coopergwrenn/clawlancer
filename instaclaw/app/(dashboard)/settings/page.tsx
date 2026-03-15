@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
+  Camera,
+  Unlink,
 } from "lucide-react";
 import { WorldIDSection } from "@/components/dashboard/world-id-section";
 import { BrowserExtensionSection } from "@/components/dashboard/browser-extension-section";
@@ -85,6 +87,15 @@ export default function SettingsPage() {
   const [disconnectingGmail, setDisconnectingGmail] = useState(false);
   const [error, setError] = useState("");
 
+  // Instagram integration state
+  const [igConnected, setIgConnected] = useState(false);
+  const [igUsername, setIgUsername] = useState<string | null>(null);
+  const [igTokenExpiry, setIgTokenExpiry] = useState<string | null>(null);
+  const [igStatus, setIgStatus] = useState<string | null>(null);
+  const [igLoading, setIgLoading] = useState(true);
+  const [igDisconnecting, setIgDisconnecting] = useState(false);
+  const [igMessage, setIgMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   useEffect(() => {
     fetch("/api/vm/status")
       .then((r) => r.json())
@@ -125,6 +136,85 @@ export default function SettingsPage() {
     }, 200);
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch Instagram connection status on mount
+  useEffect(() => {
+    fetch("/api/instagram/status")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.connected) {
+          setIgConnected(true);
+          setIgUsername(data.username ?? null);
+          setIgTokenExpiry(data.token_expires_at ?? null);
+          setIgStatus(data.status ?? "active");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIgLoading(false));
+  }, []);
+
+  // Handle OAuth callback redirect params (?ig_connected=true or ?ig_error=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("ig_connected") === "true") {
+      setIgMessage({ type: "success", text: "Instagram connected successfully!" });
+      setIgConnected(true);
+      // Refetch to get username
+      fetch("/api/instagram/status")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.connected) {
+            setIgUsername(data.username ?? null);
+            setIgTokenExpiry(data.token_expires_at ?? null);
+            setIgStatus(data.status ?? "active");
+          }
+        })
+        .catch(() => {});
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => setIgMessage(null), 5000);
+    }
+    const igError = params.get("ig_error");
+    if (igError) {
+      const errorMessages: Record<string, string> = {
+        denied: "You declined the Instagram permissions.",
+        unauthorized: "Please log in first.",
+        no_code: "No authorization code received from Instagram.",
+        state_mismatch: "Security check failed. Please try again.",
+        token_exchange: "Failed to exchange token with Instagram.",
+        long_lived_token: "Failed to get a long-lived token.",
+        save_failed: "Failed to save the connection. Please try again.",
+        unknown: "Something went wrong. Please try again.",
+      };
+      setIgMessage({ type: "error", text: errorMessages[igError] ?? errorMessages.unknown });
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => setIgMessage(null), 8000);
+    }
+  }, []);
+
+  async function handleDisconnectInstagram() {
+    setIgDisconnecting(true);
+    try {
+      const res = await fetch("/api/instagram/disconnect", { method: "POST" });
+      if (res.ok) {
+        setIgConnected(false);
+        setIgUsername(null);
+        setIgTokenExpiry(null);
+        setIgStatus(null);
+        setIgMessage({ type: "success", text: "Instagram disconnected." });
+        setTimeout(() => setIgMessage(null), 3000);
+      } else {
+        const data = await res.json();
+        setIgMessage({ type: "error", text: data.error || "Failed to disconnect." });
+        setTimeout(() => setIgMessage(null), 5000);
+      }
+    } catch {
+      setIgMessage({ type: "error", text: "Network error." });
+      setTimeout(() => setIgMessage(null), 5000);
+    } finally {
+      setIgDisconnecting(false);
+    }
+  }
 
   async function handleSavePrompt() {
     setSavingPrompt(true);
@@ -1113,6 +1203,101 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Instagram Automation */}
+      <div>
+        <h2 className="text-2xl font-normal tracking-[-0.5px] mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-serif)" }}>
+          <Camera className="w-5 h-5" /> Instagram Automation
+          {igMessage && (
+            <span
+              className="text-xs ml-auto font-normal"
+              style={{ color: igMessage.type === "success" ? "var(--success)" : "var(--error)" }}
+            >
+              {igMessage.text}
+            </span>
+          )}
+        </h2>
+        <div className="glass rounded-xl p-4 sm:p-6 space-y-4" style={{ border: "1px solid var(--border)" }}>
+          {igLoading ? (
+            <p className="text-sm" style={{ color: "var(--muted)" }}>Loading...</p>
+          ) : igConnected ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" style={{ color: "var(--success)" }} />
+                  <span className="text-sm font-medium">
+                    Connected{igUsername ? ` as @${igUsername}` : ""}
+                  </span>
+                </div>
+                <button
+                  onClick={handleDisconnectInstagram}
+                  disabled={igDisconnecting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 transition-colors"
+                  style={{
+                    background: "rgba(239,68,68,0.1)",
+                    color: "#ef4444",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                  }}
+                >
+                  <Unlink className="w-3 h-3" />
+                  {igDisconnecting ? "Disconnecting..." : "Disconnect"}
+                </button>
+              </div>
+              {igStatus === "token_expired" && (
+                <div className="flex items-center gap-2 text-xs p-2 rounded-lg" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444" }}>
+                  <AlertTriangle className="w-3 h-3" />
+                  Token expired. Please reconnect to restore Instagram automation.
+                </div>
+              )}
+              <div className="space-y-2">
+                {igTokenExpiry && (
+                  <div className="flex justify-between text-xs" style={{ color: "var(--muted)" }}>
+                    <span>Token expires</span>
+                    <span>{new Date(igTokenExpiry).toLocaleDateString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs" style={{ color: "var(--muted)" }}>
+                  <span>DM rate limit</span>
+                  <span>200/hr (Meta enforced)</span>
+                </div>
+              </div>
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Your agent can now reply to Instagram DMs, comments, and story replies. Tell your bot to &quot;check my Instagram DMs&quot; or set up keyword triggers in the Social Command Center.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm" style={{ color: "var(--muted)" }}>
+                Connect your Instagram Business or Creator account to let your agent reply to DMs, comments, and story replies automatically.
+              </p>
+              <a
+                href="/api/auth/instagram"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                style={{
+                  background: "linear-gradient(135deg, #833AB4, #C13584, #E1306C, #F77737)",
+                  color: "#fff",
+                  boxShadow: "0 2px 8px rgba(131,58,180,0.3)",
+                }}
+              >
+                <Camera className="w-4 h-4" />
+                Connect Instagram
+              </a>
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Requires an Instagram Business or Creator account.{" "}
+                <a
+                  href="https://help.instagram.com/502981923235522"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                  style={{ color: "var(--muted)" }}
+                >
+                  How to switch
+                </a>
+              </p>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Danger Zone */}
       <div>

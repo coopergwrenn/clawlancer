@@ -28,6 +28,10 @@
     {
       "path": "/api/cron/openclaw-update-check",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/instagram-token-refresh",
+      "schedule": "0 4 * * *"
     }
   ]
 }
