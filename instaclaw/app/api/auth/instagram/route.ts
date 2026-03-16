@@ -14,36 +14,31 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const clientId = process.env.META_APP_ID;
+  const clientId = process.env.INSTAGRAM_APP_ID;
   const redirectUri = process.env.NEXT_PUBLIC_APP_URL
     ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/instagram/callback`
     : "https://instaclaw.io/api/auth/instagram/callback";
 
   if (!clientId) {
     return NextResponse.json(
-      { error: "META_APP_ID not configured" },
+      { error: "INSTAGRAM_APP_ID not configured" },
       { status: 500 }
     );
   }
 
-  // New scopes mandatory since Jan 27, 2025
   const scopes = [
     "instagram_business_basic",
     "instagram_business_manage_messages",
     "instagram_business_manage_comments",
   ].join(",");
 
-  // Instagram Business Login requires enable_fb_login=0 and force_authentication=1
-  // to identify this as an Instagram-only OAuth flow (not Facebook Login).
-  // Without these, Meta returns "Invalid platform app".
-  const authUrl = new URL("https://www.instagram.com/oauth/authorize");
-  authUrl.searchParams.set("enable_fb_login", "0");
-  authUrl.searchParams.set("force_authentication", "1");
+  // "Instagram API with Instagram Login" flow — standalone Instagram OAuth
+  // Uses api.instagram.com (NOT www.instagram.com which is Business Login via Facebook)
+  const authUrl = new URL("https://api.instagram.com/oauth/authorize");
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("scope", scopes);
-  // Encode user ID in state for CSRF protection
   authUrl.searchParams.set("state", session.user.id);
 
   return NextResponse.redirect(authUrl.toString());
