@@ -69,9 +69,13 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args()
 
-    access_token = os.environ.get("INSTAGRAM_ACCESS_TOKEN")
-    if not access_token:
-        result = {"success": False, "error": "INSTAGRAM_ACCESS_TOKEN not set"}
+    try:
+        from importlib.machinery import SourceFileLoader
+        auth = SourceFileLoader("auth", os.path.expanduser("~/scripts/instagram-auth.py")).load_module()
+        creds = auth.get_credentials()
+        access_token = creds["access_token"]
+    except Exception as e:
+        result = {"success": False, "error": f"Auth failed: {e}"}
         print(json.dumps(result) if args.json else result["error"])
         sys.exit(1)
 
