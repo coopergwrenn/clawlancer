@@ -785,6 +785,152 @@ instaclaw.io | @instaclaws`,
   });
 }
 
+export function buildWaitlistOverHtml(): string {
+  const signupUrl = `${getBaseUrl()}/signup`;
+  const font = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>The Waitlist Is Over</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style>
+:root { color-scheme: light dark; supported-color-schemes: light dark; }
+@media (prefers-color-scheme: dark) {
+  .email-body { background-color: #111111 !important; }
+  .email-card { background-color: #1a1a1a !important; }
+  .text-primary { color: #ffffff !important; }
+  .text-secondary { color: #cccccc !important; }
+  .text-muted { color: #888888 !important; }
+  .text-faint { color: #666666 !important; }
+  .divider { border-color: #333333 !important; }
+  .btn-td { background-color: #DC6743 !important; }
+  .btn-link { color: #ffffff !important; }
+  .feature-box { background-color: #0a0a0a !important; border-color: #333333 !important; }
+}
+</style>
+</head>
+<body class="email-body" style="margin:0;padding:0;background-color:#f2f2f2;">
+<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">The waitlist is gone. Sign up now and your AI agent is live in 60 seconds.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-body" style="background-color:#f2f2f2;">
+<tr><td align="center" style="padding:24px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="email-card" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+
+<!-- HEADER -->
+<tr><td class="divider" style="padding:24px 32px 20px 32px;border-bottom:1px solid #e5e5e5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td class="text-primary" style="font-family:${font};font-size:20px;font-weight:700;color:#111111;letter-spacing:-0.3px;"><img src="https://instaclaw.io/logo.png" alt="" width="24" height="24" style="display:inline-block;vertical-align:middle;margin-right:8px;border:0;" />InstaClaw</td>
+  <td align="right" class="text-muted" style="font-family:${font};font-size:12px;color:#888888;">March 2026</td></tr>
+  </table>
+</td></tr>
+
+<!-- THE HOOK -->
+<tr><td style="padding:32px 32px 0 32px;">
+  <h1 class="text-primary" style="margin:0 0 16px 0;font-family:${font};font-size:28px;font-weight:700;color:#111111;line-height:1.2;">The waitlist is over.</h1>
+  <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    You signed up early. We remember that.
+  </p>
+  <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
+    InstaClaw is now open &mdash; <strong style="color:#111111;">no invite code, no waitlist, no hoops.</strong> Sign up and your personal AI agent is live in 60 seconds. Dedicated server. Always on. Getting smarter every day.
+  </p>
+</td></tr>
+
+<!-- CTA BUTTON -->
+<tr><td style="padding:24px 32px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+  <tr><td class="btn-td" align="center" style="background-color:#DC6743;border-radius:8px;" bgcolor="#DC6743">
+    <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:16px 48px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Claim Your Agent &rarr;</a>
+  </td></tr>
+  </table>
+  <p class="text-muted" style="margin:12px 0 0 0;font-family:${font};font-size:12px;color:#999999;text-align:center;">3-day free trial. No credit card required.</p>
+</td></tr>
+
+<!-- WHAT'S CHANGED -->
+<tr><td style="padding:0 32px 20px 32px;">
+  <h2 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">What you get:</h2>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:0 0 8px 0;">
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Your own dedicated server</strong> &mdash; not shared, not throttled, yours</p>
+    </td></tr>
+    <tr><td style="padding:0 0 8px 0;">
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Real web browser</strong> &mdash; browses sites, fills forms, pulls live data</p>
+    </td></tr>
+    <tr><td style="padding:0 0 8px 0;">
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Persistent memory</strong> &mdash; remembers every conversation, learns your preferences</p>
+    </td></tr>
+    <tr><td style="padding:0 0 8px 0;">
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Talk via Telegram, Discord, or dashboard</strong> &mdash; wherever you already are</p>
+    </td></tr>
+    <tr><td style="padding:0 0 8px 0;">
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Works while you sleep</strong> &mdash; research, monitoring, code, creative work, 24/7</p>
+    </td></tr>
+  </table>
+</td></tr>
+
+<!-- DIVIDER -->
+<tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="divider" style="border-top:1px solid #e5e5e5;height:1px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+
+<!-- SOCIAL PROOF -->
+<tr><td style="padding:20px 32px;">
+  <p class="text-secondary" style="margin:0 0 8px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.7;font-style:italic;">
+    &ldquo;I use my agent every single day. It's like having a co-founder that never gets tired.&rdquo;
+  </p>
+  <p class="text-muted" style="margin:0;font-family:${font};font-size:12px;color:#888888;">&mdash; Early beta user</p>
+</td></tr>
+
+<!-- BOTTOM CTA -->
+<tr><td style="padding:8px 32px 28px 32px;text-align:center;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+  <tr><td class="btn-td" align="center" style="background-color:#DC6743;border-radius:8px;" bgcolor="#DC6743">
+    <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:16px 48px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Get Started Free &rarr;</a>
+  </td></tr>
+  </table>
+</td></tr>
+
+<!-- FOOTER -->
+<tr><td class="divider" style="padding:16px 32px 20px 32px;border-top:1px solid #e5e5e5;">
+  <p class="text-muted" style="margin:0 0 4px 0;font-family:${font};font-size:12px;color:#888888;">Questions? Reply to this email &mdash; a human reads every one.</p>
+  <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#bbbbbb;"><a href="https://instaclaw.io" style="color:#999999;text-decoration:underline;">instaclaw.io</a> &nbsp;&middot;&nbsp; <a href="https://x.com/instaclaws" style="color:#999999;text-decoration:underline;">@instaclaws</a> &nbsp;&middot;&nbsp; <a href="https://discord.gg/instaclaw" style="color:#999999;text-decoration:underline;">Discord</a></p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+export function buildWaitlistOverText(): string {
+  const signupUrl = `${getBaseUrl()}/signup`;
+  return `THE WAITLIST IS OVER.
+
+You signed up early. We remember that.
+
+InstaClaw is now open — no invite code, no waitlist, no hoops. Sign up and your personal AI agent is live in 60 seconds. Dedicated server. Always on. Getting smarter every day.
+
+CLAIM YOUR AGENT: ${signupUrl}
+
+3-day free trial. No credit card required.
+
+WHAT YOU GET:
+- Your own dedicated server — not shared, not throttled, yours
+- Real web browser — browses sites, fills forms, pulls live data
+- Persistent memory — remembers every conversation, learns your preferences
+- Talk via Telegram, Discord, or dashboard — wherever you already are
+- Works while you sleep — research, monitoring, code, creative work, 24/7
+
+"I use my agent every single day. It's like having a co-founder that never gets tired." — Early beta user
+
+GET STARTED FREE: ${signupUrl}
+
+Questions? Reply to this email — a human reads every one.
+
+— InstaClaw
+instaclaw.io | @instaclaws | discord.gg/instaclaw`;
+}
+
 export { getResend, FROM, REPLY_TO, UNSUB_HEADERS };
 
 export async function sendAutoMigratedEmail(email: string): Promise<void> {
