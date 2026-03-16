@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 export function NotificationBar() {
   const [dismissed, setDismissed] = useState(false);
@@ -14,17 +15,8 @@ export function NotificationBar() {
       <p style={{ color: "var(--foreground)" }}>
         We&apos;re just getting started. Get updates as new features drop.
       </p>
-      <button
-        onClick={() => {
-          const input = document.getElementById("waitlist-email") as HTMLInputElement | null;
-          if (!input) return;
-          input.focus();
-          const form = input.closest(".rounded-xl");
-          if (form) {
-            form.classList.add("waitlist-pulse");
-            setTimeout(() => form.classList.remove("waitlist-pulse"), 800);
-          }
-        }}
+      <Link
+        href="/notify"
         className="shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-snappy hover:opacity-80 cursor-pointer"
         style={{
           border: "1px solid var(--foreground)",
@@ -32,7 +24,7 @@ export function NotificationBar() {
         }}
       >
         Get notified
-      </button>
+      </Link>
       <button
         onClick={() => setDismissed(true)}
         className="shrink-0 ml-2 p-1 rounded-full hover:opacity-60 transition-snappy cursor-pointer"
