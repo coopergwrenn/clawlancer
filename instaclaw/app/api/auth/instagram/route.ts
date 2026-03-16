@@ -33,7 +33,12 @@ export async function GET() {
     "instagram_business_manage_comments",
   ].join(",");
 
+  // Instagram Business Login requires enable_fb_login=0 and force_authentication=1
+  // to identify this as an Instagram-only OAuth flow (not Facebook Login).
+  // Without these, Meta returns "Invalid platform app".
   const authUrl = new URL("https://www.instagram.com/oauth/authorize");
+  authUrl.searchParams.set("enable_fb_login", "0");
+  authUrl.searchParams.set("force_authentication", "1");
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
