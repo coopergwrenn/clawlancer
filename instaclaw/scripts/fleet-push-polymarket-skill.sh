@@ -111,19 +111,19 @@ python3 -m pip install --quiet --break-system-packages py-clob-client eth-accoun
 echo "  Polymarket prediction markets skill deployed successfully (Phase 1-3 + trade scripts)"
 REMOTE_SCRIPT
 
-  # Set CLOB_PROXY_URL on US VMs (region starts with "us-" or "nyc")
-  if [ -n "$CLOB_PROXY_URL" ]; then
-    case "$region" in
-      us-*|nyc*)
-        echo "  Setting CLOB_PROXY_URL on US VM $vm_id..."
-        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" \
-          "grep -q CLOB_PROXY_URL ~/.openclaw/.env 2>/dev/null || echo 'CLOB_PROXY_URL=${CLOB_PROXY_URL}' >> ~/.openclaw/.env"
-        ;;
-      *)
-        echo "  Non-US region ($region) — skipping CLOB_PROXY_URL"
-        ;;
-    esac
-  fi
+  # CLOB Proxy — DISABLED 2026-03-16: both proxies dead, direct clob.polymarket.com works from US VMs.
+  # if [ -n "$CLOB_PROXY_URL" ]; then
+  #   case "$region" in
+  #     us-*|nyc*)
+  #       echo "  Setting CLOB_PROXY_URL on US VM $vm_id..."
+  #       ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes -i "$SSH_KEY_FILE" "${user}@${ip}" \
+  #         "grep -q CLOB_PROXY_URL ~/.openclaw/.env 2>/dev/null || echo 'CLOB_PROXY_URL=${CLOB_PROXY_URL}' >> ~/.openclaw/.env"
+  #       ;;
+  #     *)
+  #       echo "  Non-US region ($region) — skipping CLOB_PROXY_URL"
+  #       ;;
+  #   esac
+  # fi
 
   echo "  done: $vm_id"
 }
