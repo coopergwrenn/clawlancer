@@ -32,9 +32,8 @@ export async function GET() {
     "instagram_business_manage_comments",
   ].join(",");
 
-  // "Instagram API with Instagram Login" flow — standalone Instagram OAuth
-  // Uses api.instagram.com (NOT www.instagram.com which is Business Login via Facebook)
-  const authUrl = new URL("https://api.instagram.com/oauth/authorize");
+  // Instagram API with Instagram Login — authorization via www.instagram.com
+  const authUrl = new URL("https://www.instagram.com/oauth/authorize");
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
