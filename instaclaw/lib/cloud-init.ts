@@ -255,19 +255,25 @@ su - "\${OPENCLAW_USER}" -c '
 '
 
 # ── 7b. Install Playwright Chromium + create symlink (as openclaw user) ──
-if [ ! -d "\${OPENCLAW_HOME}/.cache/ms-playwright" ]; then
+# Check for actual chrome binary, not just the directory (which may exist but be empty/corrupt)
+EXISTING_CHROME=$(find "\${OPENCLAW_HOME}/.cache/ms-playwright" -name "chrome" -type f 2>/dev/null | grep chrome-linux64/chrome | head -1)
+if [ -z "\${EXISTING_CHROME}" ]; then
   su - "\${OPENCLAW_USER}" -c '
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
     npx playwright install chromium
   '
 fi
-if [ ! -L /usr/local/bin/chromium-browser ] || [ ! -x /usr/local/bin/chromium-browser ]; then
-  CHROME_BIN=$(find "\${OPENCLAW_HOME}/.cache/ms-playwright" -name "chrome" -type f 2>/dev/null | grep chrome-linux64/chrome | head -1)
-  if [ -n "\${CHROME_BIN}" ]; then
+# Always verify symlink points to a valid target (not just that it exists)
+CHROME_BIN=$(find "\${OPENCLAW_HOME}/.cache/ms-playwright" -name "chrome" -type f 2>/dev/null | grep chrome-linux64/chrome | head -1)
+if [ -n "\${CHROME_BIN}" ]; then
+  CURRENT_TARGET=$(readlink -f /usr/local/bin/chromium-browser 2>/dev/null)
+  if [ "\${CURRENT_TARGET}" != "\${CHROME_BIN}" ] || [ ! -x /usr/local/bin/chromium-browser ]; then
     ln -sf "\${CHROME_BIN}" /usr/local/bin/chromium-browser
     echo "Chromium symlinked: \${CHROME_BIN} -> /usr/local/bin/chromium-browser"
   fi
+else
+  echo "WARNING: Playwright Chrome not found after install — VM will need manual fix"
 fi
 
 # ── 7c. Create 2GB swap (skip if already active) ──

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Lock, Loader2, LayoutGrid, BarChart3, DollarSign, Mail, Server, Award, Package } from "lucide-react";
+import { Lock, Loader2, LayoutGrid, BarChart3, DollarSign, Mail, Server, Award, Package, Activity } from "lucide-react";
 
 const NAV_TABS = [
   { href: "/hq", label: "Board", icon: LayoutGrid },
@@ -14,6 +14,7 @@ const NAV_TABS = [
   { href: "/hq/fleet-upgrade", label: "Fleet", icon: Server },
   { href: "/hq/dependencies", label: "Deps", icon: Package },
   { href: "/hq/ambassadors", label: "Ambassadors", icon: Award },
+  { href: "/hq/fleet-health", label: "Health", icon: Activity },
 ] as const;
 
 export default function HQLayout({ children }: { children: React.ReactNode }) {

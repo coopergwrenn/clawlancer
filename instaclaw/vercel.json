@@ -32,6 +32,10 @@
     {
       "path": "/api/cron/instagram-token-refresh",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/fleet-validate",
+      "schedule": "0 5 * * *"
     }
   ]
 }
