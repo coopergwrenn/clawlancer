@@ -809,6 +809,7 @@ export function buildWaitlistOverHtml(): string {
   .btn-td { background-color: #DC6743 !important; }
   .btn-link { color: #ffffff !important; }
   .feature-box { background-color: #0a0a0a !important; border-color: #333333 !important; }
+  .logo-img { filter: invert(1) !important; }
 }
 </style>
 </head>
@@ -821,7 +822,7 @@ export function buildWaitlistOverHtml(): string {
 <!-- HEADER -->
 <tr><td class="divider" style="padding:24px 32px 20px 32px;border-bottom:1px solid #e5e5e5;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-  <tr><td class="text-primary" style="font-family:${font};font-size:20px;font-weight:700;color:#111111;letter-spacing:-0.3px;"><img src="https://instaclaw.io/logo.png" alt="" width="24" height="24" style="display:inline-block;vertical-align:middle;margin-right:8px;border:0;" />InstaClaw</td>
+  <tr><td class="text-primary" style="font-family:${font};font-size:20px;font-weight:700;color:#111111;letter-spacing:-0.3px;"><img src="https://instaclaw.io/logo.png" alt="" width="24" height="24" class="logo-img" style="display:inline-block;vertical-align:middle;margin-right:8px;border:0;" />InstaClaw</td>
   <td align="right" class="text-muted" style="font-family:${font};font-size:12px;color:#888888;">March 2026</td></tr>
   </table>
 </td></tr>
