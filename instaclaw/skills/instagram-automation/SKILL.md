@@ -1,3 +1,8 @@
+---
+name: instagram-automation
+description: >-
+  Instagram DM automation, conversation management, and comment replies via the Instagram Graph API. Use when the user mentions instagram, DMs, direct messages, check my DMs, instagram messages, reply to comments, send a DM, instagram automation, comment to DM, private reply, story mentions, or instagram conversations.
+---
 # InstaAgent — Instagram Automation
 ```yaml
 name: instagram-automation
