@@ -291,7 +291,8 @@ export async function resolveTelegramTarget(
         .from("instaclaw_vms")
         .update({ telegram_chat_id: chatId })
         .eq("id", vm.id)
-        .then(() => {});
+        .then(() => {})
+        .catch(() => {});
     }
   }
 

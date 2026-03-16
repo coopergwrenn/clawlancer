@@ -11,29 +11,53 @@ to the InstaClaw API. Applies guardrail actions returned by the server:
 Also checks for an active circuit breaker (server-side flag) and
 disables all cron jobs when it fires.
 
-Runs as a systemd timer every 60 seconds.
+Runs every 60 seconds via cron (one-shot mode).
 
 Usage:
   python3 ~/scripts/cron-guard.py           # one-shot check
   python3 ~/scripts/cron-guard.py --watch   # continuous (60s interval)
 """
 
+import fcntl
 import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
 import urllib.request
 import urllib.error
 
 JOBS_PATH = os.path.expanduser("~/.openclaw/cron/jobs.json")
 STATE_PATH = os.path.expanduser("~/.openclaw/cron/.cron-guard-state")
+LOCK_PATH = os.path.expanduser("~/.openclaw/cron/.cron-guard.lock")
 API_URL = os.environ.get("INSTACLAW_API_URL", "https://instaclaw.io")
 REPORT_ENDPOINT = f"{API_URL}/api/gateway/cron-report"
 CHECK_INTERVAL = 60  # seconds
 
 
-def read_gateway_token() -> str | None:
+def acquire_lock():
+    """Acquire an exclusive lock to prevent concurrent runs. Returns lock fd or None."""
+    try:
+        os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
+        fd = open(LOCK_PATH, "w")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except (IOError, OSError):
+        return None
+
+
+def release_lock(fd):
+    """Release the exclusive lock."""
+    if fd:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            fd.close()
+        except (IOError, OSError):
+            pass
+
+
+def read_gateway_token():
     """Read GATEWAY_TOKEN from .env files."""
     token = os.environ.get("GATEWAY_TOKEN")
     if token:
@@ -44,27 +68,37 @@ def read_gateway_token() -> str | None:
         os.path.expanduser("~/.env"),
     ]:
         if os.path.exists(env_path):
-            with open(env_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("GATEWAY_TOKEN="):
-                        return line.split("=", 1)[1].strip().strip('"').strip("'")
+            try:
+                with open(env_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("GATEWAY_TOKEN="):
+                            return line.split("=", 1)[1].strip().strip('"').strip("'")
+            except IOError:
+                pass
     return None
 
 
-def read_cron_jobs() -> list[dict] | None:
-    """Read and parse ~/.openclaw/cron/jobs.json."""
+def read_cron_jobs():
+    """Read and parse ~/.openclaw/cron/jobs.json. Returns list or None."""
     if not os.path.exists(JOBS_PATH):
         return None
 
     try:
         with open(JOBS_PATH, "r") as f:
-            data = json.load(f)
+            raw = f.read()
+
+        if not raw.strip():
+            return []
+
+        data = json.loads(raw)
 
         if isinstance(data, list):
             jobs = data
         elif isinstance(data, dict) and "jobs" in data:
             jobs = data["jobs"]
+        elif isinstance(data, dict):
+            return []
         else:
             return []
 
@@ -95,43 +129,81 @@ def read_cron_jobs() -> list[dict] | None:
                 schedule_expr = schedule
 
             result.append({
-                "name": name,
-                "intervalMs": interval_ms,
+                "name": str(name),
+                "intervalMs": int(interval_ms) if interval_ms else 0,
                 "scheduleExpr": schedule_expr,
-                "enabled": enabled,
+                "enabled": bool(enabled),
             })
 
         return result
-    except (json.JSONDecodeError, IOError) as e:
+    except json.JSONDecodeError as e:
+        print(f"[cron-guard] Corrupt jobs.json: {e}", file=sys.stderr)
+        return None
+    except IOError as e:
         print(f"[cron-guard] Failed to read jobs.json: {e}", file=sys.stderr)
         return None
 
 
-def estimate_cron_interval(expr: str) -> int:
-    """Rough estimate of cron expression interval in ms."""
+def estimate_cron_interval(expr):
+    """Estimate cron expression interval in ms. Conservative (errs toward longer intervals)."""
     parts = expr.strip().split()
     if len(parts) < 5:
         return 3600000  # default 1h if can't parse
 
     minute_part = parts[0]
-    if minute_part == "*":
-        return 60000  # every minute
-    if "/" in minute_part:
+    hour_part = parts[1]
+    dom_part = parts[2]
+    month_part = parts[3]
+    dow_part = parts[4]
+
+    # If specific days of week → at least daily
+    if dow_part not in ("*", "*/1"):
+        return 86400000  # daily (conservative)
+
+    # If specific day of month → at least daily
+    if dom_part not in ("*", "*/1"):
+        return 86400000
+
+    # If specific month → very infrequent
+    if month_part not in ("*", "*/1"):
+        return 86400000 * 30
+
+    # Hour field
+    if hour_part == "*":
+        # Runs every hour (at least), check minute field
+        if minute_part == "*":
+            return 60000  # every minute
+        if "/" in minute_part:
+            try:
+                step = int(minute_part.split("/")[1])
+                return step * 60000
+            except (ValueError, IndexError):
+                pass
+        # Specific minute(s) — runs once per hour at that minute
+        return 3600000
+    elif "/" in hour_part:
         try:
-            step = int(minute_part.split("/")[1])
-            return step * 60000
+            step = int(hour_part.split("/")[1])
+            return step * 3600000
         except (ValueError, IndexError):
-            pass
-    return 3600000  # default 1h
+            return 3600000
+    else:
+        # Specific hour(s) — count them
+        hours = [h for h in hour_part.split(",") if h.strip()]
+        if len(hours) <= 1:
+            return 86400000  # once a day
+        return 86400000 // len(hours)  # rough estimate
 
 
-def compute_jobs_hash(jobs: list[dict]) -> str:
+def compute_jobs_hash(jobs):
     """Compute a hash of job configs for change detection."""
-    normalized = json.dumps(sorted(jobs, key=lambda j: j["name"]), sort_keys=True)
+    normalized = json.dumps(
+        sorted(jobs, key=lambda j: j.get("name", "")), sort_keys=True
+    )
     return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
 
-def read_last_hash() -> str | None:
+def read_last_hash():
     """Read the last reported jobs hash."""
     if os.path.exists(STATE_PATH):
         try:
@@ -142,7 +214,7 @@ def read_last_hash() -> str | None:
     return None
 
 
-def write_hash(h: str):
+def write_hash(h):
     """Write the current jobs hash."""
     try:
         os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
@@ -152,7 +224,7 @@ def write_hash(h: str):
         print(f"[cron-guard] Failed to write state: {e}", file=sys.stderr)
 
 
-def report_to_server(gateway_token: str, jobs: list[dict]) -> dict | None:
+def report_to_server(gateway_token, jobs):
     """POST cron job configs to InstaClaw API and get back actions."""
     payload = json.dumps({"jobs": jobs}).encode()
 
@@ -178,16 +250,40 @@ def report_to_server(gateway_token: str, jobs: list[dict]) -> dict | None:
         return None
 
 
-def apply_actions(actions: list[dict], circuit_breaker_active: bool):
-    """Apply server-returned actions to jobs.json."""
+def write_jobs_atomic(data, is_list, jobs):
+    """Atomically write jobs.json using temp file + rename."""
+    content = data if not is_list else jobs
+    jobs_dir = os.path.dirname(JOBS_PATH)
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=jobs_dir, suffix=".tmp", prefix=".cron-guard-")
+        with os.fdopen(fd, "w") as f:
+            json.dump(content, f, indent=2)
+        os.replace(tmp_path, JOBS_PATH)
+        return True
+    except (IOError, OSError) as e:
+        print(f"[cron-guard] Failed to write jobs.json: {e}", file=sys.stderr)
+        # Clean up temp file if it exists
+        try:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except OSError:
+            pass
+        return False
+
+
+def apply_actions(actions, circuit_breaker_active):
+    """Apply server-returned actions to jobs.json. Returns True if write succeeded."""
     if not os.path.exists(JOBS_PATH):
-        return
+        return True  # nothing to do
 
     try:
         with open(JOBS_PATH, "r") as f:
-            data = json.load(f)
+            raw = f.read()
+        if not raw.strip():
+            return True
+        data = json.loads(raw)
     except (json.JSONDecodeError, IOError):
-        return
+        return False
 
     is_list = isinstance(data, list)
     jobs = data if is_list else data.get("jobs", [])
@@ -231,24 +327,19 @@ def apply_actions(actions: list[dict], circuit_breaker_active: bool):
                 print(f"[cron-guard] Re-enabled '{name}' (confirmed)")
 
     if modified:
-        try:
-            with open(JOBS_PATH, "w") as f:
-                json.dump(data if not is_list else jobs, f, indent=2)
-            print(f"[cron-guard] Updated jobs.json")
-        except IOError as e:
-            print(f"[cron-guard] Failed to write jobs.json: {e}", file=sys.stderr)
+        return write_jobs_atomic(data, is_list, jobs)
+    return True
 
 
 def run_once():
     """Run one guard check cycle."""
     gateway_token = read_gateway_token()
     if not gateway_token:
-        print("[cron-guard] No GATEWAY_TOKEN found, skipping", file=sys.stderr)
         return
 
     jobs = read_cron_jobs()
     if jobs is None:
-        return  # No jobs file
+        return  # No jobs file or corrupt
     if len(jobs) == 0:
         return  # No cron jobs configured
 
@@ -284,8 +375,11 @@ def run_once():
     actions = response.get("actions", [])
     circuit_breaker = response.get("circuitBreakerActive", False)
 
-    apply_actions(actions, circuit_breaker)
-    write_hash(current_hash)
+    write_ok = apply_actions(actions, circuit_breaker)
+
+    # Only save hash if apply succeeded — retry on next cycle otherwise
+    if write_ok:
+        write_hash(current_hash)
 
     # Summary
     suppressed = sum(1 for a in actions if a.get("action") == "suppress")
@@ -295,6 +389,8 @@ def run_once():
             f"[cron-guard] Result: {suppressed} suppressed, {warned} warned, "
             f"circuit_breaker={'ACTIVE' if circuit_breaker else 'off'}"
         )
+    else:
+        print(f"[cron-guard] All {len(actions)} jobs OK")
 
 
 def main():
@@ -307,13 +403,29 @@ def main():
     if args.watch:
         print(f"[cron-guard] Watching {JOBS_PATH} (every {CHECK_INTERVAL}s)")
         while True:
+            lock_fd = acquire_lock()
+            if lock_fd is None:
+                print("[cron-guard] Another instance running, skipping", file=sys.stderr)
+                time.sleep(CHECK_INTERVAL)
+                continue
             try:
                 run_once()
             except Exception as e:
                 print(f"[cron-guard] Error: {e}", file=sys.stderr)
+            finally:
+                release_lock(lock_fd)
             time.sleep(CHECK_INTERVAL)
     else:
-        run_once()
+        # One-shot mode via cron — acquire lock to prevent overlap
+        lock_fd = acquire_lock()
+        if lock_fd is None:
+            sys.exit(0)  # Another instance running, silently exit
+        try:
+            run_once()
+        except Exception as e:
+            print(f"[cron-guard] Error: {e}", file=sys.stderr)
+        finally:
+            release_lock(lock_fd)
 
 
 if __name__ == "__main__":

@@ -50,10 +50,10 @@ export async function POST(req: NextRequest) {
 
   const tier = vm.tier || "starter";
 
-  // Load confirmed jobs from DB
+  // Load existing guard rows (confirmed status + warned_at for dedup)
   const { data: guardRows } = await supabase
     .from("instaclaw_cron_guard")
-    .select("job_name, confirmed")
+    .select("job_name, confirmed, warned_at")
     .eq("vm_id", vm.id);
 
   const confirmedJobs = new Set<string>(
@@ -62,31 +62,45 @@ export async function POST(req: NextRequest) {
       .map((r: { job_name: string }) => r.job_name)
   );
 
+  // Build a map of already-warned jobs (for Telegram dedup)
+  const alreadyWarned = new Set<string>(
+    (guardRows ?? [])
+      .filter((r: { warned_at: string | null }) => r.warned_at !== null)
+      .map((r: { job_name: string }) => r.job_name)
+  );
+
   // Evaluate all jobs
   const result = evaluateCronJobs(body.jobs, tier, confirmedJobs);
   result.circuitBreakerActive = vm.cron_breaker_active ?? false;
 
-  // Upsert guard state for each job
-  for (const action of result.actions) {
-    const job = body.jobs.find((j) => j.name === action.name);
-    if (!job) continue;
+  // Batch upsert guard state for all jobs
+  const upsertRows = result.actions
+    .map((action) => {
+      const job = body.jobs.find((j) => j.name === action.name);
+      if (!job) return null;
 
-    const upsertData = {
-      vm_id: vm.id,
-      job_name: action.name,
-      interval_ms: job.intervalMs,
-      schedule_expr: job.scheduleExpr ?? null,
-      suppressed: action.action === "suppress",
-      projected_daily_credits: action.projectedDaily ?? 0,
-      updated_at: new Date().toISOString(),
-      ...(action.action === "suppress" && !confirmedJobs.has(action.name)
-        ? { warned_at: new Date().toISOString() }
-        : {}),
-    };
+      const isNewSuppression =
+        action.action === "suppress" && !confirmedJobs.has(action.name);
 
+      return {
+        vm_id: vm.id,
+        job_name: action.name,
+        interval_ms: job.intervalMs,
+        schedule_expr: job.scheduleExpr ?? null,
+        suppressed: action.action === "suppress",
+        projected_daily_credits: action.projectedDaily ?? 0,
+        updated_at: new Date().toISOString(),
+        ...(isNewSuppression && !alreadyWarned.has(action.name)
+          ? { warned_at: new Date().toISOString() }
+          : {}),
+      };
+    })
+    .filter(Boolean);
+
+  if (upsertRows.length > 0) {
     await supabase
       .from("instaclaw_cron_guard")
-      .upsert(upsertData, { onConflict: "vm_id,job_name" });
+      .upsert(upsertRows, { onConflict: "vm_id,job_name" });
   }
 
   // Clean up jobs that no longer exist on the VM
@@ -104,17 +118,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Send Telegram notifications for new suppressions and warnings
-  const suppressedActions = result.actions.filter(
-    (a) => a.action === "suppress" && !confirmedJobs.has(a.name)
+  // Send Telegram notifications — ONLY for NEW suppressions (not already warned)
+  const newSuppressions = result.actions.filter(
+    (a) =>
+      a.action === "suppress" &&
+      !confirmedJobs.has(a.name) &&
+      !alreadyWarned.has(a.name)
   );
-  const warnActions = result.actions.filter((a) => a.action === "warn");
 
-  if (suppressedActions.length > 0 || warnActions.length > 0 || result.warnings.length > 0) {
+  // Aggregate projection warning — only send once per 6 hours (check last warned time)
+  const shouldSendProjectionWarning =
+    result.warnings.length > 0 &&
+    !(guardRows ?? []).some((r: { warned_at: string | null }) => {
+      if (!r.warned_at) return false;
+      const age = Date.now() - new Date(r.warned_at).getTime();
+      return age < 6 * 60 * 60 * 1000; // 6 hours
+    });
+
+  if (newSuppressions.length > 0 || shouldSendProjectionWarning) {
     const tg = await resolveTelegramTarget(vm, supabase);
     if (tg) {
-      // Send frequency warnings for newly suppressed jobs
-      for (const action of suppressedActions) {
+      // Send frequency warnings for newly suppressed jobs (first time only)
+      for (const action of newSuppressions) {
         const job = body.jobs.find((j) => j.name === action.name);
         if (job) {
           sendFrequencyWarning(
@@ -128,8 +153,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Send aggregate projection warning if total is high
-      if (result.warnings.length > 0) {
+      // Send aggregate projection warning (max once per 6h)
+      if (shouldSendProjectionWarning) {
         const totalProjected = result.actions.reduce(
           (sum, a) => sum + (a.projectedDaily ?? 0),
           0
@@ -147,8 +172,8 @@ export async function POST(req: NextRequest) {
     route: "gateway/cron-report",
     vmId: vm.id,
     jobCount: body.jobs.length,
-    suppressed: suppressedActions.length,
-    warned: warnActions.length,
+    suppressed: newSuppressions.length,
+    warned: shouldSendProjectionWarning ? 1 : 0,
   });
 
   return NextResponse.json({
