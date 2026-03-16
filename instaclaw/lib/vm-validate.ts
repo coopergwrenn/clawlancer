@@ -160,10 +160,11 @@ echo -n "CHECK:scripts_home:"; ls ~/scripts/ 2>/dev/null | wc -l | tr -d ' '
   ).join("\n");
   parts.push(wsChecks);
 
-  // 14. Cron jobs
-  parts.push(`
-echo -n "CHECK:crontab:"; crontab -l 2>/dev/null || echo "EMPTY"
-`);
+  // 14. Cron jobs — check each marker individually
+  const cronChecks = REQUIRED_CRON_MARKERS.map(
+    (m) => `echo -n "CHECK:cron_${m.replace(/[^a-zA-Z0-9]/g, '_')}:"; crontab -l 2>/dev/null | grep -q "${m}" && echo "OK" || echo "MISSING"`
+  ).join("\n");
+  parts.push(cronChecks);
 
   // 15. Systemd override
   parts.push(`
@@ -308,9 +309,15 @@ export async function validateVM(
     }
 
     // 7. Gateway systemd
+    // NOTE: systemctl --user often fails over SSH due to missing DBUS session.
+    // If health endpoint is OK and port is listening, downgrade to warning.
     const gwSys = data.get("gw_systemd") ?? "INACTIVE";
+    const healthOk = (data.get("gw_health") ?? "").includes("ok");
+    const portOk = (data.get(`port_${GATEWAY_PORT}`) ?? "") === "OK";
     if (gwSys.trim() === "active") {
       checks.push({ category: "gateway", name: "systemd-status", status: "pass", severity: "critical" });
+    } else if (healthOk && portOk) {
+      checks.push({ category: "gateway", name: "systemd-status", status: "warning", severity: "warning", detail: `systemctl reports "${gwSys.trim()}" but health+port OK (DBUS SSH issue)` });
     } else {
       checks.push({ category: "gateway", name: "systemd-status", status: "fail", severity: "critical", detail: `Status: ${gwSys}` });
     }
@@ -399,15 +406,15 @@ export async function validateVM(
     }
 
     // 15. Cron jobs
-    const crontab = data.get("crontab") ?? "EMPTY";
     for (const marker of REQUIRED_CRON_MARKERS) {
-      const present = crontab.includes(marker);
+      const key = `cron_${marker.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const val = data.get(key) ?? "MISSING";
       checks.push({
         category: "cron",
         name: marker,
-        status: present ? "pass" : "fail",
+        status: val === "OK" ? "pass" : "fail",
         severity: "warning",
-        detail: present ? undefined : `Cron job missing: ${marker}`,
+        detail: val === "OK" ? undefined : `Cron job missing: ${marker}`,
         fixable: true,
       });
     }
