@@ -836,7 +836,7 @@ export function buildWaitlistOverHtml(): string {
     InstaClaw is now open &mdash; <strong class="text-primary" style="color:#111111;">no invite code, no waitlist, no hoops.</strong> Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
   </p>
   <p class="text-secondary" style="margin:0 0 0 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    Most AI tools cost you time. InstaClaw <strong class="text-primary" style="color:#111111;">pays for itself</strong> &mdash; it handles research, outreach, scheduling, and grunt work that would take you hours. We just partnered with <strong class="text-primary" style="color:#111111;">World</strong> to attach cryptographic proof of humanity to every agent, so yours is verified as human-backed in a sea of bots. That&rsquo;s a trust layer no one else has. This isn&rsquo;t another chatbot &mdash; it&rsquo;s infrastructure for how you&rsquo;ll work from now on.
+    Most AI tools cost you time. InstaClaw <strong class="text-primary" style="color:#111111;">pays for itself</strong> &mdash; it handles research, outreach, scheduling, and grunt work that would take you hours. We just partnered with <strong class="text-primary" style="color:#111111;">World</strong> to attach cryptographic proof of humanity to every agent &mdash; no KYC, no personal data, just a private biometric scan that proves there&rsquo;s a real human behind your agent. In a sea of bots, yours is verified. That&rsquo;s a trust layer no one else has. This isn&rsquo;t another chatbot &mdash; it&rsquo;s infrastructure for how you&rsquo;ll work from now on.
   </p>
 </td></tr>
 
@@ -912,7 +912,7 @@ You signed up early. We remember that.
 
 InstaClaw is now open — no invite code, no waitlist, no hoops. Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
 
-Most AI tools cost you time. InstaClaw pays for itself — it handles research, outreach, scheduling, and grunt work that would take you hours. We just partnered with World to attach cryptographic proof of humanity to every agent, so yours is verified as human-backed in a sea of bots. That's a trust layer no one else has. This isn't another chatbot — it's infrastructure for how you'll work from now on.
+Most AI tools cost you time. InstaClaw pays for itself — it handles research, outreach, scheduling, and grunt work that would take you hours. We just partnered with World to attach cryptographic proof of humanity to every agent — no KYC, no personal data, just a private biometric scan that proves there's a real human behind your agent. In a sea of bots, yours is verified. That's a trust layer no one else has. This isn't another chatbot — it's infrastructure for how you'll work from now on.
 
 CLAIM YOUR AGENT: ${signupUrl}
 
