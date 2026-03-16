@@ -80,39 +80,45 @@ export async function GET(req: NextRequest) {
     );
 
     const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) {
+    // Handle both flat response and {"data": [...]} array wrapper
+    const tokenObj = tokenData.data?.[0] ?? tokenData;
+    const shortLivedToken = tokenObj.access_token;
+    const igUserId = tokenObj.user_id ? String(tokenObj.user_id) : undefined;
+
+    if (!shortLivedToken) {
       logger.error("Instagram token exchange failed", {
         route: "auth/instagram/callback",
         userId: session.user.id,
         response: JSON.stringify(tokenData).slice(0, 500),
       });
+      console.error("Instagram token exchange failed. Full response:", JSON.stringify(tokenData));
       return NextResponse.redirect(
         new URL("/settings?ig_error=token_exchange", req.url)
       );
     }
-
-    const shortLivedToken = tokenData.access_token;
-    const igUserId = String(tokenData.user_id);
 
     // Step 2: Exchange for long-lived token (~60 days)
     const longLivedRes = await fetch(
       `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${clientSecret}&access_token=${shortLivedToken}`
     );
     const longLivedData = await longLivedRes.json();
+    // Handle both flat response and {"data": [...]} array wrapper
+    const longLivedObj = longLivedData.data?.[0] ?? longLivedData;
 
-    if (!longLivedData.access_token) {
+    if (!longLivedObj.access_token) {
       logger.error("Instagram long-lived token exchange failed", {
         route: "auth/instagram/callback",
         userId: session.user.id,
         response: JSON.stringify(longLivedData).slice(0, 500),
       });
+      console.error("Instagram long-lived token exchange failed. Full response:", JSON.stringify(longLivedData));
       return NextResponse.redirect(
         new URL("/settings?ig_error=long_lived_token", req.url)
       );
     }
 
-    const longLivedToken = longLivedData.access_token;
-    const expiresIn = longLivedData.expires_in ?? 5184000; // default 60 days
+    const longLivedToken = longLivedObj.access_token;
+    const expiresIn = longLivedObj.expires_in ?? 5184000; // default 60 days
     const tokenExpiresAt = new Date(
       Date.now() + expiresIn * 1000
     ).toISOString();
