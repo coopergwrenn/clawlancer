@@ -813,7 +813,7 @@ export function buildWaitlistOverHtml(): string {
 </style>
 </head>
 <body class="email-body" style="margin:0;padding:0;background-color:#f2f2f2;">
-<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">The waitlist is gone. Sign up now and your AI agent is live in 60 seconds.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2f2f2;">No more waitlist. No invite code. Your personal AI agent is ready.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-body" style="background-color:#f2f2f2;">
 <tr><td align="center" style="padding:24px 16px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="email-card" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;">
@@ -833,7 +833,7 @@ export function buildWaitlistOverHtml(): string {
     You signed up early. We remember that.
   </p>
   <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    InstaClaw is now open &mdash; <strong style="color:#111111;">no invite code, no waitlist, no hoops.</strong> Sign up and your personal AI agent is live in 60 seconds. Dedicated server. Always on. Getting smarter every day.
+    InstaClaw is now open &mdash; <strong class="text-primary" style="color:#111111;">no invite code, no waitlist, no hoops.</strong> Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
   </p>
 </td></tr>
 
@@ -852,19 +852,19 @@ export function buildWaitlistOverHtml(): string {
   <h2 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">What you get:</h2>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Your own dedicated server</strong> &mdash; not shared, not throttled, yours</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">A server that's only yours</strong> &mdash; not shared, not throttled, fully dedicated</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Real web browser</strong> &mdash; browses sites, fills forms, pulls live data</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Browses the real web</strong> &mdash; visits sites, fills forms, pulls live data</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Persistent memory</strong> &mdash; remembers every conversation, learns your preferences</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Remembers everything</strong> &mdash; every conversation builds on the last</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Talk via Telegram, Discord, or dashboard</strong> &mdash; wherever you already are</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Meets you where you are</strong> &mdash; Telegram, Discord, or web dashboard</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Works while you sleep</strong> &mdash; research, monitoring, code, creative work, 24/7</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Never clocks out</strong> &mdash; research, monitoring, writing, coding &mdash; 24/7</p>
     </td></tr>
   </table>
 </td></tr>
@@ -872,12 +872,11 @@ export function buildWaitlistOverHtml(): string {
 <!-- DIVIDER -->
 <tr><td style="padding:0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="divider" style="border-top:1px solid #e5e5e5;height:1px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
 
-<!-- SOCIAL PROOF -->
+<!-- SOCIAL PROOF / SCARCITY -->
 <tr><td style="padding:20px 32px;">
-  <p class="text-secondary" style="margin:0 0 8px 0;font-family:${font};font-size:14px;color:#555555;line-height:1.7;font-style:italic;">
-    &ldquo;I use my agent every single day. It's like having a co-founder that never gets tired.&rdquo;
+  <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.7;">
+    We're running on dedicated cloud servers, so spots are limited. Once they're full, signups close again. You were early to the waitlist &mdash; don't miss the window.
   </p>
-  <p class="text-muted" style="margin:0;font-family:${font};font-size:12px;color:#888888;">&mdash; Early beta user</p>
 </td></tr>
 
 <!-- BOTTOM CTA -->
@@ -908,20 +907,20 @@ export function buildWaitlistOverText(): string {
 
 You signed up early. We remember that.
 
-InstaClaw is now open — no invite code, no waitlist, no hoops. Sign up and your personal AI agent is live in 60 seconds. Dedicated server. Always on. Getting smarter every day.
+InstaClaw is now open — no invite code, no waitlist, no hoops. Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
 
 CLAIM YOUR AGENT: ${signupUrl}
 
 3-day free trial. No credit card required.
 
 WHAT YOU GET:
-- Your own dedicated server — not shared, not throttled, yours
-- Real web browser — browses sites, fills forms, pulls live data
-- Persistent memory — remembers every conversation, learns your preferences
-- Talk via Telegram, Discord, or dashboard — wherever you already are
-- Works while you sleep — research, monitoring, code, creative work, 24/7
+- A server that's only yours — not shared, not throttled, fully dedicated
+- Browses the real web — visits sites, fills forms, pulls live data
+- Remembers everything — every conversation builds on the last
+- Meets you where you are — Telegram, Discord, or web dashboard
+- Never clocks out — research, monitoring, writing, coding — 24/7
 
-"I use my agent every single day. It's like having a co-founder that never gets tired." — Early beta user
+We're running on dedicated cloud servers, so spots are limited. Once they're full, signups close again. You were early to the waitlist — don't miss the window.
 
 GET STARTED FREE: ${signupUrl}
 

@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       from: FROM,
       replyTo: REPLY_TO,
       to: entry.email,
-      subject: "The waitlist is over. Your agent is ready.",
+      subject: "The waitlist is over. You're in.",
       html,
       text,
       headers: UNSUB_HEADERS,
