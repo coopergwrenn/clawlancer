@@ -65,6 +65,7 @@ export default auth((req) => {
     "/api/agentbook/register",
     "/api/vm/heartbeat",
     "/api/vm/identity",
+    "/api/vm/validate",
     "/api/webhooks",
     "/api/instagram/token",
   ];
