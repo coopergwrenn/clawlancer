@@ -845,7 +845,7 @@ export function buildWaitlistOverHtml(): string {
     <a href="${signupUrl}" target="_blank" class="btn-link" style="display:inline-block;padding:16px 48px;font-family:${font};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Claim Your Agent &rarr;</a>
   </td></tr>
   </table>
-  <p class="text-muted" style="margin:12px 0 0 0;font-family:${font};font-size:12px;color:#999999;text-align:center;">3-day free trial. No credit card required.</p>
+  <p class="text-muted" style="margin:12px 0 0 0;font-family:${font};font-size:12px;color:#999999;text-align:center;">3-day free trial.</p>
 </td></tr>
 
 <!-- VALUE PROP -->
@@ -919,7 +919,7 @@ InstaClaw is now open. No invite code, no waitlist, no hoops. Sign up and your p
 
 CLAIM YOUR AGENT: ${signupUrl}
 
-3-day free trial. No credit card required.
+3-day free trial.
 
 Most AI tools cost you time. InstaClaw pays for itself. It writes code, trades crypto, manages your Shopify store, creates videos, drafts legal docs, monitors competitors, runs your social media, analyzes data, and handles anything else you throw at it. We just partnered with World to attach cryptographic proof of humanity to every agent. No KYC, no personal data, just a private biometric scan that proves there's a real human behind your agent. In a sea of bots, yours is verified. That's a trust layer no one else has. This isn't another chatbot. It's infrastructure for how you'll work from now on.
 
