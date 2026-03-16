@@ -7,6 +7,7 @@ import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
+import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
@@ -180,7 +181,7 @@ export async function POST(req: NextRequest) {
 
     const vm = await lookupVMByGatewayToken(
       gatewayToken,
-      "id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone"
+      "id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
     );
 
     if (!vm) {
@@ -391,6 +392,30 @@ export async function POST(req: NextRequest) {
     }
 
     const isHeartbeat = !!(heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage);
+
+    // --- Detect manual user message (for cron circuit breaker) ---
+    // A "manual message" is a real user-initiated chat message:
+    //   - NOT a heartbeat, tool_continuation, virtuals, or ping
+    //   - Has substantive content (> 20 chars)
+    // Used to determine if the user is actively chatting (vs only crons running).
+    let isManualMessage = false;
+    if (!isHeartbeat && !isToolContinuation && !isVirtuals && !isPingMessage) {
+      if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
+        const msgs = parsedBody.messages as Array<{ role?: string; content?: unknown }>;
+        const lastUserMsg = msgs.filter((m) => m.role === "user").pop();
+        if (lastUserMsg) {
+          const text = typeof lastUserMsg.content === "string"
+            ? lastUserMsg.content
+            : Array.isArray(lastUserMsg.content)
+              ? (lastUserMsg.content as Array<{ type?: string; text?: string }>)
+                  .filter((b) => b.type === "text")
+                  .map((b) => b.text || "")
+                  .join(" ")
+              : "";
+          isManualMessage = text.trim().length > 20;
+        }
+      }
+    }
 
     // --- Heartbeat model override: always use minimax-m2.5 for background tasks ---
     // Users shouldn't burn Sonnet/Opus credits on heartbeat check-ins.
@@ -1026,6 +1051,82 @@ export async function POST(req: NextRequest) {
           });
         }
       });
+
+    // --- Cron circuit breaker: track manual messages + check velocity ---
+    if (isManualMessage) {
+      // Record first manual message of the day
+      supabase
+        .from("instaclaw_daily_usage")
+        .update({ first_manual_at: now.toISOString() })
+        .eq("vm_id", vm.id)
+        .eq("usage_date", userTodayStr)
+        .is("first_manual_at", null)
+        .then(() => {});
+
+      // If circuit breaker was active, clear it — user is back
+      if (vm.cron_breaker_active) {
+        supabase
+          .from("instaclaw_vms")
+          .update({ cron_breaker_active: false })
+          .eq("id", vm.id)
+          .then(() => {});
+
+        // Notify user that crons are resumed
+        const tg = await resolveTelegramTarget(vm, supabase);
+        if (tg) {
+          sendCronResumedNotification(tg.botToken, tg.chatId).catch(() => {});
+        }
+
+        logger.info("Cron circuit breaker cleared — user sent manual message", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+        });
+      }
+    } else if (!isHeartbeat && !isVirtuals) {
+      // Non-manual, non-heartbeat call — check if circuit breaker should fire
+      // Read today's usage row to check first_manual_at and cron_breaker_fired
+      supabase
+        .from("instaclaw_daily_usage")
+        .select("message_count, first_manual_at, cron_breaker_fired")
+        .eq("vm_id", vm.id)
+        .eq("usage_date", userTodayStr)
+        .maybeSingle()
+        .then(({ data: usageRow }) => {
+          if (!usageRow) return;
+          const usage = usageRow.message_count ?? 0;
+          if (shouldFireCircuitBreaker(usage, tier, usageRow.first_manual_at, usageRow.cron_breaker_fired)) {
+            // Fire the circuit breaker
+            logger.warn("Cron circuit breaker FIRED — high usage without manual messages", {
+              route: "gateway/proxy",
+              vmId: vm.id,
+              usage,
+              tier,
+            });
+
+            // Mark as fired in daily_usage
+            supabase
+              .from("instaclaw_daily_usage")
+              .update({ cron_breaker_fired: true })
+              .eq("vm_id", vm.id)
+              .eq("usage_date", userTodayStr)
+              .then(() => {});
+
+            // Set VM-level flag (picked up by cron-guard.py on VM)
+            supabase
+              .from("instaclaw_vms")
+              .update({ cron_breaker_active: true })
+              .eq("id", vm.id)
+              .then(() => {});
+
+            // Send Telegram notification with upsell
+            resolveTelegramTarget(vm, supabase).then((tg) => {
+              if (tg) {
+                sendCircuitBreakerAlert(tg.botToken, tg.chatId, usage, tier).catch(() => {});
+              }
+            });
+          }
+        });
+    }
 
     // --- Per-call usage log (fire-and-forget) ---
     {
