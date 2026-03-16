@@ -66,6 +66,7 @@ export default auth((req) => {
     "/api/vm/heartbeat",
     "/api/vm/identity",
     "/api/webhooks",
+    "/api/instagram/token",
   ];
 
   const isAPI = pathname.startsWith("/api/");

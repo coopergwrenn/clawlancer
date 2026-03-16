@@ -44,17 +44,22 @@ def get_credentials() -> dict:
             "instagram_username": os.environ.get("INSTAGRAM_USERNAME", ""),
         }
 
-    # Read gateway token from .env
+    # Read gateway token from .env files
     gateway_token = os.environ.get("GATEWAY_TOKEN")
     if not gateway_token:
-        env_path = os.path.expanduser("~/.env")
-        if os.path.exists(env_path):
-            with open(env_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("GATEWAY_TOKEN="):
-                        gateway_token = line.split("=", 1)[1].strip().strip('"').strip("'")
-                        break
+        for env_path in [
+            os.path.expanduser("~/.openclaw/.env"),
+            os.path.expanduser("~/.env"),
+        ]:
+            if os.path.exists(env_path):
+                with open(env_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("GATEWAY_TOKEN="):
+                            gateway_token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            break
+            if gateway_token:
+                break
 
     if not gateway_token:
         raise RuntimeError(
