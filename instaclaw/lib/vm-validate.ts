@@ -321,7 +321,9 @@ export async function validateVM(
     if (gwSys.trim() === "active") {
       checks.push({ category: "gateway", name: "systemd-status", status: "pass", severity: "critical" });
     } else if (healthOk && portOk) {
-      checks.push({ category: "gateway", name: "systemd-status", status: "warning", severity: "warning", detail: `systemctl reports "${gwSys.trim()}" but health+port OK (DBUS SSH issue)` });
+      // DBUS issue: systemctl --user fails over SSH but gateway is confirmed running.
+      // Severity "info" so it doesn't count as a warning.
+      checks.push({ category: "gateway", name: "systemd-status", status: "pass", severity: "info", detail: `systemctl reports "${gwSys.trim()}" but health+port OK (DBUS SSH issue)` });
     } else {
       checks.push({ category: "gateway", name: "systemd-status", status: "fail", severity: "critical", detail: `Status: ${gwSys}` });
     }
