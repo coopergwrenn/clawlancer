@@ -833,7 +833,7 @@ export function buildWaitlistOverHtml(): string {
     You signed up early. We remember that.
   </p>
   <p class="text-secondary" style="margin:0 0 14px 0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    InstaClaw is now open &mdash; <strong class="text-primary" style="color:#111111;">no invite code, no waitlist, no hoops.</strong> Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
+    InstaClaw is now open. <strong class="text-primary" style="color:#111111;">No invite code, no waitlist, no hoops.</strong> Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
   </p>
 
 </td></tr>
@@ -851,7 +851,7 @@ export function buildWaitlistOverHtml(): string {
 <!-- VALUE PROP -->
 <tr><td style="padding:0 32px 20px 32px;">
   <p class="text-secondary" style="margin:0;font-family:${font};font-size:15px;color:#555555;line-height:1.7;">
-    Most AI tools cost you time. InstaClaw <strong class="text-primary" style="color:#111111;">pays for itself</strong> &mdash; it writes code, trades crypto, manages your Shopify store, creates videos, drafts legal docs, monitors competitors, runs your social media, analyzes data, and handles anything else you throw at it. We just partnered with <strong class="text-primary" style="color:#111111;">World</strong> to attach cryptographic proof of humanity to every agent &mdash; no KYC, no personal data, just a private biometric scan that proves there&rsquo;s a real human behind your agent. In a sea of bots, yours is verified. That&rsquo;s a trust layer no one else has. This isn&rsquo;t another chatbot &mdash; it&rsquo;s infrastructure for how you&rsquo;ll work from now on.
+    Most AI tools cost you time. InstaClaw <strong class="text-primary" style="color:#111111;">pays for itself.</strong> It writes code, trades crypto, manages your Shopify store, creates videos, drafts legal docs, monitors competitors, runs your social media, analyzes data, and handles anything else you throw at it. We just partnered with <strong class="text-primary" style="color:#111111;">World</strong> to attach cryptographic proof of humanity to every agent. No KYC, no personal data, just a private biometric scan that proves there&rsquo;s a real human behind your agent. In a sea of bots, yours is verified. That&rsquo;s a trust layer no one else has. This isn&rsquo;t another chatbot. It&rsquo;s infrastructure for how you&rsquo;ll work from now on.
   </p>
 </td></tr>
 
@@ -860,19 +860,19 @@ export function buildWaitlistOverHtml(): string {
   <h2 class="text-primary" style="margin:0 0 14px 0;font-family:${font};font-size:17px;font-weight:700;color:#111111;">What you get:</h2>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">A server that's only yours</strong> &mdash; not shared, not throttled, fully dedicated</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">A server that's only yours.</strong> Not shared, not throttled, fully dedicated</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Browses the real web</strong> &mdash; visits sites, fills forms, pulls live data</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Browses the real web.</strong> Visits sites, fills forms, pulls live data</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Remembers everything</strong> &mdash; every conversation builds on the last</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Remembers everything.</strong> Every conversation builds on the last</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Meets you where you are</strong> &mdash; Telegram, Discord, or web dashboard</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Meets you where you are.</strong> Telegram, Discord, or web dashboard</p>
     </td></tr>
     <tr><td style="padding:0 0 8px 0;">
-      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Never clocks out</strong> &mdash; research, monitoring, writing, coding &mdash; 24/7</p>
+      <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.6;"><span style="color:#DC6743;font-weight:600;margin-right:6px;">&#9632;</span> <strong class="text-primary" style="color:#111111;">Never clocks out.</strong> Research, monitoring, writing, coding. 24/7</p>
     </td></tr>
   </table>
 </td></tr>
@@ -883,7 +883,7 @@ export function buildWaitlistOverHtml(): string {
 <!-- SOCIAL PROOF / SCARCITY -->
 <tr><td style="padding:20px 32px;">
   <p class="text-secondary" style="margin:0;font-family:${font};font-size:14px;color:#555555;line-height:1.7;">
-    We're running on dedicated cloud servers, so spots are limited. Once they're full, signups close again. You were early to the waitlist &mdash; don't miss the window.
+    We're running on dedicated cloud servers, so spots are limited. Once they're full, signups close again. You were early to the waitlist. Don't miss the window.
   </p>
 </td></tr>
 
@@ -898,8 +898,8 @@ export function buildWaitlistOverHtml(): string {
 
 <!-- FOOTER -->
 <tr><td class="divider" style="padding:16px 32px 20px 32px;border-top:1px solid #e5e5e5;">
-  <p class="text-muted" style="margin:0 0 4px 0;font-family:${font};font-size:12px;color:#888888;">Questions? Reply to this email &mdash; a human reads every one.</p>
-  <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#bbbbbb;"><a href="https://instaclaw.io" style="color:#999999;text-decoration:underline;">instaclaw.io</a> &nbsp;&middot;&nbsp; <a href="https://x.com/instaclaws" style="color:#999999;text-decoration:underline;">@instaclaws</a> &nbsp;&middot;&nbsp; <a href="https://discord.gg/instaclaw" style="color:#999999;text-decoration:underline;">Discord</a></p>
+  <p class="text-muted" style="margin:0 0 4px 0;font-family:${font};font-size:12px;color:#888888;">Questions? Reply to this email. A human reads every one.</p>
+  <p class="text-faint" style="margin:0;font-family:${font};font-size:11px;color:#bbbbbb;"><a href="https://instaclaw.io" style="color:#999999;text-decoration:underline;">instaclaw.io</a> &nbsp;&middot;&nbsp; <a href="https://x.com/instaclaws" style="color:#999999;text-decoration:underline;">@instaclaws</a> &nbsp;&middot;&nbsp; <a href="https://discord.gg/EymJzdFK9t" style="color:#999999;text-decoration:underline;">Discord</a></p>
 </td></tr>
 
 </table>
@@ -915,29 +915,29 @@ export function buildWaitlistOverText(): string {
 
 You signed up early. We remember that.
 
-InstaClaw is now open — no invite code, no waitlist, no hoops. Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
-
-Most AI tools cost you time. InstaClaw pays for itself — it writes code, trades crypto, manages your Shopify store, creates videos, drafts legal docs, monitors competitors, runs your social media, analyzes data, and handles anything else you throw at it. We just partnered with World to attach cryptographic proof of humanity to every agent — no KYC, no personal data, just a private biometric scan that proves there's a real human behind your agent. In a sea of bots, yours is verified. That's a trust layer no one else has. This isn't another chatbot — it's infrastructure for how you'll work from now on.
+InstaClaw is now open. No invite code, no waitlist, no hoops. Sign up and your personal AI agent is live in under a minute. Your own dedicated server. Always on. Learning you every day.
 
 CLAIM YOUR AGENT: ${signupUrl}
 
 3-day free trial. No credit card required.
 
-WHAT YOU GET:
-- A server that's only yours — not shared, not throttled, fully dedicated
-- Browses the real web — visits sites, fills forms, pulls live data
-- Remembers everything — every conversation builds on the last
-- Meets you where you are — Telegram, Discord, or web dashboard
-- Never clocks out — research, monitoring, writing, coding — 24/7
+Most AI tools cost you time. InstaClaw pays for itself. It writes code, trades crypto, manages your Shopify store, creates videos, drafts legal docs, monitors competitors, runs your social media, analyzes data, and handles anything else you throw at it. We just partnered with World to attach cryptographic proof of humanity to every agent. No KYC, no personal data, just a private biometric scan that proves there's a real human behind your agent. In a sea of bots, yours is verified. That's a trust layer no one else has. This isn't another chatbot. It's infrastructure for how you'll work from now on.
 
-We're running on dedicated cloud servers, so spots are limited. Once they're full, signups close again. You were early to the waitlist — don't miss the window.
+WHAT YOU GET:
+- A server that's only yours. Not shared, not throttled, fully dedicated
+- Browses the real web. Visits sites, fills forms, pulls live data
+- Remembers everything. Every conversation builds on the last
+- Meets you where you are. Telegram, Discord, or web dashboard
+- Never clocks out. Research, monitoring, writing, coding. 24/7
+
+We're running on dedicated cloud servers, so spots are limited. Once they're full, signups close again. You were early to the waitlist. Don't miss the window.
 
 GET STARTED FREE: ${signupUrl}
 
-Questions? Reply to this email — a human reads every one.
+Questions? Reply to this email. A human reads every one.
 
-— InstaClaw
-instaclaw.io | @instaclaws | discord.gg/instaclaw`;
+InstaClaw
+instaclaw.io | @instaclaws | discord.gg/EymJzdFK9t`;
 }
 
 export { getResend, FROM, REPLY_TO, UNSUB_HEADERS };

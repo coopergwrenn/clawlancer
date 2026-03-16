@@ -169,7 +169,7 @@ export default function NotifyPage() {
             Want real-time updates and community chat?
           </p>
           <a
-            href="https://discord.gg/instaclaw"
+            href="https://discord.gg/EymJzdFK9t"
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleDiscordClick}
