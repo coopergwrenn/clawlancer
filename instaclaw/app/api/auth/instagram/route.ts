@@ -14,14 +14,14 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const clientId = process.env.INSTAGRAM_APP_ID;
+  const clientId = process.env.META_APP_ID;
   const redirectUri = process.env.NEXT_PUBLIC_APP_URL
     ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/instagram/callback`
     : "https://instaclaw.io/api/auth/instagram/callback";
 
   if (!clientId) {
     return NextResponse.json(
-      { error: "INSTAGRAM_APP_ID not configured" },
+      { error: "META_APP_ID not configured" },
       { status: 500 }
     );
   }

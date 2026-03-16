@@ -56,8 +56,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const clientId = process.env.INSTAGRAM_APP_ID!;
-  const clientSecret = process.env.INSTAGRAM_APP_SECRET!;
+  const clientId = process.env.META_APP_ID!;
+  const clientSecret = process.env.META_APP_SECRET!;
   const redirectUri = process.env.NEXT_PUBLIC_APP_URL
     ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/instagram/callback`
     : "https://instaclaw.io/api/auth/instagram/callback";
