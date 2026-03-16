@@ -326,6 +326,18 @@ def apply_actions(actions, circuit_breaker_active):
                 modified = True
                 print(f"[cron-guard] Re-enabled '{name}' (confirmed)")
 
+    # Cleanup pass: remove stale _cron_guard_* markers from jobs that are
+    # in a clean state. Don't leave internal markers in the user's config file.
+    for job in jobs:
+        if job.get("enabled", True):
+            # Job is enabled — no markers should remain
+            if "_cron_guard_suppressed" in job:
+                del job["_cron_guard_suppressed"]
+                modified = True
+            if "_cron_guard_paused" in job:
+                del job["_cron_guard_paused"]
+                modified = True
+
     if modified:
         return write_jobs_atomic(data, is_list, jobs)
     return True

@@ -7,8 +7,11 @@ import {
   sendFrequencyWarning,
   sendProjectionWarning,
   resolveTelegramTarget,
+  generateConfirmToken,
   type CronJobReport,
 } from "@/lib/cron-guard";
+
+const CONFIRM_SECRET = process.env.CRON_CONFIRM_SECRET || process.env.CRON_SECRET || "cron-guard-default-secret";
 
 /**
  * POST /api/gateway/cron-report
@@ -32,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const vm = await lookupVMByGatewayToken(
     gatewayToken,
-    "id, tier, telegram_bot_token, telegram_chat_id, cron_breaker_active"
+    "id, tier, default_model, telegram_bot_token, telegram_chat_id, cron_breaker_active"
   );
   if (!vm) {
     return NextResponse.json({ error: "Invalid gateway token" }, { status: 401 });
@@ -49,6 +52,7 @@ export async function POST(req: NextRequest) {
   }
 
   const tier = vm.tier || "starter";
+  const defaultModel = vm.default_model || "minimax-m2.5";
 
   // Load existing guard rows (confirmed status + warned_at for dedup)
   const { data: guardRows } = await supabase
@@ -69,8 +73,8 @@ export async function POST(req: NextRequest) {
       .map((r: { job_name: string }) => r.job_name)
   );
 
-  // Evaluate all jobs
-  const result = evaluateCronJobs(body.jobs, tier, confirmedJobs);
+  // Evaluate all jobs using the VM's actual default model for cost projection
+  const result = evaluateCronJobs(body.jobs, tier, confirmedJobs, defaultModel);
   result.circuitBreakerActive = vm.cron_breaker_active ?? false;
 
   // Batch upsert guard state for all jobs
@@ -126,22 +130,29 @@ export async function POST(req: NextRequest) {
       !alreadyWarned.has(a.name)
   );
 
-  // Aggregate projection warning — only send once per 6 hours (check last warned time)
+  // Aggregate projection warning — only send once per 6 hours
   const shouldSendProjectionWarning =
     result.warnings.length > 0 &&
     !(guardRows ?? []).some((r: { warned_at: string | null }) => {
       if (!r.warned_at) return false;
       const age = Date.now() - new Date(r.warned_at).getTime();
-      return age < 6 * 60 * 60 * 1000; // 6 hours
+      return age < 6 * 60 * 60 * 1000;
     });
 
   if (newSuppressions.length > 0 || shouldSendProjectionWarning) {
     const tg = await resolveTelegramTarget(vm, supabase);
     if (tg) {
-      // Send frequency warnings for newly suppressed jobs (first time only)
       for (const action of newSuppressions) {
         const job = body.jobs.find((j) => j.name === action.name);
         if (job) {
+          // Generate a confirmation URL for this job
+          const token = generateConfirmToken(vm.id, action.name, CONFIRM_SECRET);
+          const confirmUrl =
+            `https://instaclaw.io/api/cron/confirm` +
+            `?vm=${encodeURIComponent(vm.id)}` +
+            `&job=${encodeURIComponent(action.name)}` +
+            `&token=${encodeURIComponent(token)}`;
+
           sendFrequencyWarning(
             tg.botToken,
             tg.chatId,
@@ -149,11 +160,11 @@ export async function POST(req: NextRequest) {
             job.intervalMs,
             action.projectedDaily ?? 0,
             tier,
+            confirmUrl,
           ).catch(() => {});
         }
       }
 
-      // Send aggregate projection warning (max once per 6h)
       if (shouldSendProjectionWarning) {
         const totalProjected = result.actions.reduce(
           (sum, a) => sum + (a.projectedDaily ?? 0),
@@ -172,6 +183,7 @@ export async function POST(req: NextRequest) {
     route: "gateway/cron-report",
     vmId: vm.id,
     jobCount: body.jobs.length,
+    model: defaultModel,
     suppressed: newSuppressions.length,
     warned: shouldSendProjectionWarning ? 1 : 0,
   });

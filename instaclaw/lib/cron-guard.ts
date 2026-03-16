@@ -12,7 +12,7 @@
  */
 
 import { sendTelegramNotification, discoverTelegramChatId } from "@/lib/telegram";
-import { logger } from "@/lib/logger";
+import { TIER_DISPLAY_LIMITS, getModelCostWeight } from "@/lib/credit-constants";
 
 // --- Constants ---
 
@@ -27,17 +27,6 @@ const CIRCUIT_BREAKER_FRACTION = 0.50; // 50%
 
 /** Estimated API calls per cron execution (cron trigger + tool continuations). */
 const CALLS_PER_CRON_EXECUTION = 2;
-
-/** Default cost weight (MiniMax = 0.2 credits per call). */
-const DEFAULT_COST_WEIGHT = 0.2;
-
-/** Tier display limits. */
-const TIER_LIMITS: Record<string, number> = {
-  starter: 600,
-  pro: 1000,
-  power: 2500,
-  internal: 5000,
-};
 
 // --- Types ---
 
@@ -65,14 +54,16 @@ export interface CronGuardResult {
 
 /**
  * Evaluate a set of cron jobs against the guardrail rules.
- * Returns actions for each job and any warnings to send.
+ * @param defaultModel - VM's default model (e.g. "claude-sonnet-4-6") for accurate cost projection
  */
 export function evaluateCronJobs(
   jobs: CronJobReport[],
   tier: string,
   confirmedJobs: Set<string>,
+  defaultModel: string = "minimax-m2.5",
 ): CronGuardResult {
-  const dailyLimit = TIER_LIMITS[tier] ?? 600;
+  const dailyLimit = TIER_DISPLAY_LIMITS[tier] ?? 600;
+  const costWeight = getModelCostWeight(defaultModel);
   const actions: CronGuardAction[] = [];
   const warnings: string[] = [];
   let totalProjectedDaily = 0;
@@ -83,13 +74,12 @@ export function evaluateCronJobs(
       continue;
     }
 
-    const projectedDaily = projectDailyCredits(job.intervalMs);
+    const projectedDaily = projectDailyCredits(job.intervalMs, costWeight);
     totalProjectedDaily += projectedDaily;
 
     // Rule 1: Frequency warning for < 5 min intervals
     if (job.intervalMs > 0 && job.intervalMs < FREQUENCY_WARN_THRESHOLD_MS) {
       if (confirmedJobs.has(job.name)) {
-        // User already confirmed — allow but still track
         actions.push({
           name: job.name,
           action: "ok",
@@ -134,16 +124,16 @@ export function evaluateCronJobs(
 
 /**
  * Project how many credits a cron job will consume per day.
+ * @param costWeight - per-call cost weight for the VM's default model
  */
-export function projectDailyCredits(intervalMs: number): number {
+export function projectDailyCredits(intervalMs: number, costWeight: number = 0.2): number {
   if (intervalMs <= 0) return 0;
   const executionsPerDay = (24 * 60 * 60 * 1000) / intervalMs;
-  return executionsPerDay * CALLS_PER_CRON_EXECUTION * DEFAULT_COST_WEIGHT;
+  return executionsPerDay * CALLS_PER_CRON_EXECUTION * costWeight;
 }
 
 /**
  * Check if the credit circuit breaker should fire.
- * Fires when: usage > 50% of daily limit AND no manual message yet today.
  */
 export function shouldFireCircuitBreaker(
   currentUsage: number,
@@ -151,17 +141,54 @@ export function shouldFireCircuitBreaker(
   firstManualAt: string | null,
   cronBreakerFired: boolean,
 ): boolean {
-  if (cronBreakerFired) return false; // Already fired today
-  if (firstManualAt) return false; // User has sent a manual message
+  if (cronBreakerFired) return false;
+  if (firstManualAt) return false;
 
-  const dailyLimit = TIER_LIMITS[tier] ?? 600;
+  const dailyLimit = TIER_DISPLAY_LIMITS[tier] ?? 600;
   return currentUsage > dailyLimit * CIRCUIT_BREAKER_FRACTION;
+}
+
+// --- HMAC token for confirmation links ---
+
+/**
+ * Generate an HMAC-based confirmation token for a cron job.
+ * Used in clickable Telegram links so users can confirm suppressed crons.
+ */
+export function generateConfirmToken(vmId: string, jobName: string, secret: string): string {
+  // Simple HMAC: base64(sha256(vmId:jobName:secret))[:32]
+  const crypto = require("crypto");
+  const hmac = crypto.createHmac("sha256", secret);
+  hmac.update(`${vmId}:${jobName}`);
+  return hmac.digest("base64url").slice(0, 32);
+}
+
+/**
+ * Verify a confirmation token.
+ */
+export function verifyConfirmToken(
+  vmId: string,
+  jobName: string,
+  token: string,
+  secret: string,
+): boolean {
+  const expected = generateConfirmToken(vmId, jobName, secret);
+  // Constant-time comparison
+  const crypto = require("crypto");
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(token),
+      Buffer.from(expected),
+    );
+  } catch {
+    return false;
+  }
 }
 
 // --- Telegram notifications ---
 
 /**
  * Send a frequency warning with upsell when a cron is suppressed.
+ * Includes a clickable confirmation link.
  */
 export async function sendFrequencyWarning(
   botToken: string,
@@ -170,20 +197,27 @@ export async function sendFrequencyWarning(
   intervalMs: number,
   projectedDaily: number,
   tier: string,
+  confirmUrl?: string,
 ): Promise<boolean> {
-  const dailyLimit = TIER_LIMITS[tier] ?? 600;
+  const dailyLimit = TIER_DISPLAY_LIMITS[tier] ?? 600;
   const pct = Math.round((projectedDaily / dailyLimit) * 100);
   const nextTier = tier === "starter" ? "Pro" : tier === "pro" ? "Power" : null;
   const nextLimit = tier === "starter" ? 1000 : tier === "pro" ? 2500 : null;
 
   let msg =
     `Heads up! Your cron job "${jobName}" runs every ${formatInterval(intervalMs)}, ` +
-    `which would use ~${Math.round(projectedDaily)} of your ${dailyLimit} daily credits (${pct}%).\n\n` +
-    `I've paused it to protect your balance. Reply "yes" to enable it anyway.`;
+    `which would use ~${Math.round(projectedDaily)} of your ${dailyLimit} daily credits (${pct}%).` +
+    `\n\nI've paused it to protect your balance.`;
+
+  if (confirmUrl) {
+    msg += `\n\nTap here to enable it anyway:\n${confirmUrl}`;
+  } else {
+    msg += `\n\nReply "yes" to enable it anyway.`;
+  }
 
   if (nextTier && nextLimit) {
     msg +=
-      `\n\nWant more room? Upgrade to ${nextTier} (${nextLimit} credits/day) at:\nhttps://instaclaw.io/dashboard/billing`;
+      `\n\nWant more room? Upgrade to ${nextTier} (${nextLimit} credits/day):\nhttps://instaclaw.io/dashboard/billing`;
   }
 
   return sendTelegramNotification(botToken, chatId, msg);
@@ -198,7 +232,7 @@ export async function sendProjectionWarning(
   totalProjected: number,
   tier: string,
 ): Promise<boolean> {
-  const dailyLimit = TIER_LIMITS[tier] ?? 600;
+  const dailyLimit = TIER_DISPLAY_LIMITS[tier] ?? 600;
   const pct = Math.round((totalProjected / dailyLimit) * 100);
   const nextTier = tier === "starter" ? "Pro" : tier === "pro" ? "Power" : null;
   const nextLimit = tier === "starter" ? 1000 : tier === "pro" ? 2500 : null;
@@ -225,7 +259,7 @@ export async function sendCircuitBreakerAlert(
   currentUsage: number,
   tier: string,
 ): Promise<boolean> {
-  const dailyLimit = TIER_LIMITS[tier] ?? 600;
+  const dailyLimit = TIER_DISPLAY_LIMITS[tier] ?? 600;
   const pct = Math.round((currentUsage / dailyLimit) * 100);
   const nextTier = tier === "starter" ? "Pro" : tier === "pro" ? "Power" : null;
   const nextLimit = tier === "starter" ? 1000 : tier === "pro" ? 2500 : null;
@@ -274,7 +308,6 @@ function formatInterval(ms: number): string {
 
 /**
  * Resolve Telegram chat_id for a VM, discovering it lazily if needed.
- * Returns { botToken, chatId } or null if notifications can't be sent.
  */
 export async function resolveTelegramTarget(
   vm: { telegram_bot_token?: string | null; telegram_chat_id?: string | null; id: string },
@@ -286,7 +319,6 @@ export async function resolveTelegramTarget(
   if (!chatId) {
     chatId = await discoverTelegramChatId(vm.telegram_bot_token);
     if (chatId) {
-      // Cache it
       supabase
         .from("instaclaw_vms")
         .update({ telegram_chat_id: chatId })

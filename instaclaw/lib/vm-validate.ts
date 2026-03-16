@@ -166,10 +166,14 @@ echo -n "CHECK:scripts_home:"; ls ~/scripts/ 2>/dev/null | wc -l | tr -d ' '
   ).join("\n");
   parts.push(cronChecks);
 
-  // 15. Systemd override
+  // 15. Systemd override — check each required key individually
   parts.push(`
-echo -n "CHECK:systemd_override:"; cat ~/.config/systemd/user/openclaw-gateway.service.d/override.conf 2>/dev/null || echo "MISSING"
+echo -n "CHECK:systemd_override_exists:"; [ -f ~/.config/systemd/user/openclaw-gateway.service.d/override.conf ] && echo "OK" || echo "MISSING"
 `);
+  const sysdChecks = REQUIRED_SYSTEMD_KEYS.map(
+    (k) => `echo -n "CHECK:sysd_${k}:"; grep -q "${k}" ~/.config/systemd/user/openclaw-gateway.service.d/override.conf 2>/dev/null && echo "OK" || echo "MISSING"`
+  ).join("\n");
+  parts.push(sysdChecks);
 
   // 16. SSHD OOM protection
   parts.push(`
@@ -420,12 +424,11 @@ export async function validateVM(
     }
 
     // 16. Systemd override
-    const sysOverride = data.get("systemd_override") ?? "MISSING";
-    if (sysOverride === "MISSING") {
+    const sysOverrideExists = data.get("systemd_override_exists") ?? "MISSING";
+    if (sysOverrideExists === "MISSING") {
       checks.push({ category: "systemd", name: "override.conf", status: "fail", severity: "warning", detail: "systemd override.conf missing", fixable: true });
     } else {
-      // Check required keys are present
-      const missingKeys = REQUIRED_SYSTEMD_KEYS.filter((k) => !sysOverride.includes(k));
+      const missingKeys = REQUIRED_SYSTEMD_KEYS.filter((k) => (data.get(`sysd_${k}`) ?? "MISSING") !== "OK");
       if (missingKeys.length > 0) {
         checks.push({ category: "systemd", name: "override.conf", status: "warning", severity: "warning", detail: `Missing keys: ${missingKeys.join(", ")}` });
       } else {

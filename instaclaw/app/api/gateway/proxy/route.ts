@@ -8,6 +8,7 @@ import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
+import { TIER_DISPLAY_LIMITS, HEARTBEAT_CYCLE_CAP as HEARTBEAT_CYCLE_CAP_CONST } from "@/lib/credit-constants";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
@@ -429,7 +430,7 @@ export async function POST(req: NextRequest) {
     // --- Per-cycle heartbeat cap (max 10 API calls per heartbeat cycle) ---
     // Each heartbeat cycle should be a quick check-in, not 50-60 LLM calls.
     // This hard cap prevents runaway heartbeats from burning budget.
-    const HEARTBEAT_CYCLE_CAP = 10;
+    const HEARTBEAT_CYCLE_CAP = HEARTBEAT_CYCLE_CAP_CONST;
     if (isHeartbeat) {
       const cycleCallsSoFar = vm.heartbeat_cycle_calls ?? 0;
 
@@ -476,12 +477,6 @@ export async function POST(req: NextRequest) {
     // Tier-correct fallback: NEVER default to 600 (starter) when the VM is on a higher tier.
     // If the RPC returns null for display_limit (race condition, timeout, etc.),
     // use the tier's actual limit instead of a hardcoded 600.
-    const TIER_DISPLAY_LIMITS: Record<string, number> = {
-      starter: 600,
-      pro: 1000,
-      power: 2500,
-      internal: 5000,
-    };
     const tierFallbackLimit = TIER_DISPLAY_LIMITS[tier] ?? 600;
     const displayLimit = limitResult?.display_limit ?? tierFallbackLimit;
     const currentCount = limitResult?.count ?? 0;
