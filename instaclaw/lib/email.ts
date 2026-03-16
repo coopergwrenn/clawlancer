@@ -786,7 +786,7 @@ instaclaw.io | @instaclaws`,
 }
 
 export function buildWaitlistOverHtml(): string {
-  const signupUrl = `${getBaseUrl()}/signup`;
+  const signupUrl = getBaseUrl();
   const font = `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
 
   return `<!DOCTYPE html>
@@ -910,7 +910,7 @@ export function buildWaitlistOverHtml(): string {
 }
 
 export function buildWaitlistOverText(): string {
-  const signupUrl = `${getBaseUrl()}/signup`;
+  const signupUrl = getBaseUrl();
   return `THE WAITLIST IS OVER.
 
 You signed up early. We remember that.
