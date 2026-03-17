@@ -157,6 +157,29 @@ export async function POST(req: NextRequest) {
       ? await decryptApiKey(pending.api_key)
       : undefined;
 
+    // Acquire configure lock — prevents concurrent configures on the same VM.
+    // The lock expires after 5 minutes as a safety net.
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: lockResult } = await supabase
+      .from("instaclaw_vms")
+      .update({ configure_lock_at: new Date().toISOString() })
+      .eq("id", vm.id)
+      .eq("assigned_to", userId)
+      .or(`configure_lock_at.is.null,configure_lock_at.lt.${fiveMinAgo}`)
+      .select("id");
+
+    if (!lockResult?.length) {
+      logger.warn("Configure lock not acquired — concurrent configure in progress", {
+        route: "vm/configure",
+        userId,
+        vmId: vm.id,
+      });
+      return NextResponse.json(
+        { error: "VM is already being configured. Please wait." },
+        { status: 409 }
+      );
+    }
+
     // Configure OpenClaw on the VM
     const configureStart = Date.now();
     const result = await configureOpenClaw(vm, {
@@ -168,7 +191,33 @@ export async function POST(req: NextRequest) {
       discordBotToken: effectiveDiscordToken,
       channels,
       gmailProfileSummary,
-    });
+    }, userId);
+
+    // ── Post-configure ownership re-verification ──
+    // Verify the VM is still ours before writing supplemental updates, consuming
+    // pending records, or sending emails. This is the final safety net.
+    const { data: postConfigVm } = await supabase
+      .from("instaclaw_vms")
+      .select("assigned_to")
+      .eq("id", vm.id)
+      .single();
+
+    if (postConfigVm?.assigned_to !== userId) {
+      logger.error("CRITICAL: VM ownership changed during configure — aborting post-configure steps", {
+        route: "vm/configure",
+        userId,
+        vmId: vm.id,
+        currentOwner: postConfigVm?.assigned_to,
+      });
+      sendAdminAlertEmail(
+        "CRITICAL: VM Ownership Race Condition Detected",
+        `VM ${vm.id} was being configured for user ${userId} but is now assigned to ${postConfigVm?.assigned_to}.\n\nPost-configure steps (pending consumption, email) were NOT executed.`
+      ).catch(() => {});
+      return NextResponse.json(
+        { error: "VM ownership changed during configuration" },
+        { status: 403 }
+      );
+    }
 
     // ── Supplemental DB updates (configureOpenClaw already wrote the critical fields) ──
     // configureOpenClaw's atomic update already wrote: gateway_url, gateway_token,
@@ -177,6 +226,7 @@ export async function POST(req: NextRequest) {
     // Only write user-configured fields when a real value exists — never null-overwrite.
     const supplementalUpdate: Record<string, unknown> = {
       configure_attempts: 0,
+      configure_lock_at: null, // Clear configure lock on success
     };
     const effectiveUsername = pending?.telegram_bot_username ?? vm.telegram_bot_username;
     if (effectiveUsername) {
@@ -189,7 +239,8 @@ export async function POST(req: NextRequest) {
     await supabase
       .from("instaclaw_vms")
       .update(supplementalUpdate)
-      .eq("id", vm.id);
+      .eq("id", vm.id)
+      .eq("assigned_to", userId);
 
     // Mark user as onboarding complete + clean up pending record + clear deployment lock.
     // Do this BEFORE the health check so it's saved even if we time out.
@@ -324,7 +375,40 @@ export async function POST(req: NextRequest) {
       healthy: result.gatewayVerified, // based on localhost health ping inside VM
     });
   } catch (err) {
-    logger.error("VM configure error", { error: String(err), route: "vm/configure", userId });
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const isOwnershipChanged = errMsg.includes("OWNERSHIP_CHANGED");
+
+    logger.error("VM configure error", {
+      error: errMsg,
+      route: "vm/configure",
+      userId,
+      isOwnershipChanged,
+    });
+
+    // Clear configure lock on error (best-effort)
+    if (userId) {
+      try {
+        const sb = getSupabase();
+        await sb
+          .from("instaclaw_vms")
+          .update({ configure_lock_at: null })
+          .eq("assigned_to", userId);
+      } catch {
+        // Best-effort
+      }
+    }
+
+    // OWNERSHIP_CHANGED: return 403, alert admin, do NOT mark as configure_failed
+    if (isOwnershipChanged) {
+      sendAdminAlertEmail(
+        "CRITICAL: VM Ownership Race Condition (OWNERSHIP_CHANGED)",
+        `Configure for user ${userId} failed: ${errMsg}\n\nThis indicates a race condition where a VM was reassigned during configuration.`
+      ).catch(() => {});
+      return NextResponse.json(
+        { error: "VM ownership changed during configuration", detail: errMsg },
+        { status: 403 }
+      );
+    }
 
     // Mark VM as configure_failed so cron and user retry can pick it up
     if (userId) {
@@ -351,7 +435,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const errMsg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       { error: "Failed to configure VM", detail: errMsg },
       { status: 500 }

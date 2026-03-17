@@ -246,6 +246,28 @@ async function processEvent(event: any) {
       const vm = await assignVMWithSSHCheck(userId);
 
       if (vm) {
+        // Post-assignment verification: confirm the VM is actually assigned to this user.
+        // Guards against race conditions where two webhooks assign concurrently.
+        const { data: assignedVm } = await supabase
+          .from("instaclaw_vms")
+          .select("assigned_to")
+          .eq("id", vm.id)
+          .single();
+
+        if (assignedVm?.assigned_to !== userId) {
+          logger.error("CRITICAL: VM ownership mismatch after assignment — aborting configure", {
+            route: "billing/webhook",
+            userId,
+            vmId: vm.id,
+            actualOwner: assignedVm?.assigned_to,
+          });
+          sendAdminAlertEmail(
+            "CRITICAL: VM Assignment Race Condition in Webhook",
+            `VM ${vm.id} was assigned to user ${userId} but is now owned by ${assignedVm?.assigned_to}.\n\nConfigure was NOT triggered. User ${userId} needs manual intervention.`
+          ).catch(() => {});
+          break;
+        }
+
         // VM assigned — trigger configuration with retry.
         // This runs inside after() so the Stripe response is already sent.
         // Retry up to 2 times (3 attempts total) with 5s backoff to handle

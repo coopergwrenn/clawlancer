@@ -53,6 +53,7 @@ export default auth((req) => {
     "/api/vm/resync-token",
     "/api/admin/provision",
     "/api/admin/pool-audit",
+    "/api/admin/audit-identity",
     "/api/gateway",
     "/api/waitlist",
     "/api/invite/validate",

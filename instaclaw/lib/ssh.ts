@@ -91,10 +91,11 @@ export const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
 
 1. Strips thinking blocks from assistant messages (prevents "Invalid signature" errors)
 2. Truncates individual tool results larger than MAX_TOOL_RESULT_CHARS
-3. Archives sessions exceeding MAX_SESSION_BYTES (prevents context overflow)
-4. Layer 1: Pre-rotation memory write enforcement — injects urgent instructions into MEMORY.md
+3. Strips base64 image data from older messages (prevents session bloat from chart PNGs)
+4. Archives sessions exceeding MAX_SESSION_BYTES (prevents context overflow)
+5. Layer 1: Pre-rotation memory write enforcement — injects urgent instructions into MEMORY.md
    when sessions approach the archive threshold, giving agents a chance to save context
-5. Layer 2: Memory staleness check — detects when MEMORY.md hasn't been updated in 24+ hours
+6. Layer 2: Memory staleness check — detects when MEMORY.md hasn't been updated in 24+ hours
    and injects a maintenance reminder
 
 Uses atomic write (write to .tmp then os.replace) which is safe even if the
@@ -109,6 +110,7 @@ LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
 MAX_SESSION_BYTES = ${512 * 1024}  # 512KB — archive sessions larger than this
 MEMORY_WARN_BYTES = ${400 * 1024}  # 400KB (80% of max) — trigger memory write request
 MAX_TOOL_RESULT_CHARS = 8000       # Truncate individual tool results over this
+IMAGE_KEEP_RECENT = 3              # Keep images in last N toolResult messages only
 
 # Workspace paths
 WORKSPACE_DIR = os.path.expanduser("~/.openclaw/workspace")
@@ -138,7 +140,7 @@ MEM_STALE_START = "<!-- INSTACLAW:MEMORY_STALE:START -->"
 MEM_STALE_END = "<!-- INSTACLAW:MEMORY_STALE:END -->"
 
 MEM_URGENT_CONTENT = """
-## \\u26a0\\ufe0f SESSION ROTATION IMMINENT \\u2014 WRITE YOUR MEMORIES NOW
+## \u26a0\ufe0f SESSION ROTATION IMMINENT \u2014 WRITE YOUR MEMORIES NOW
 
 Your session file is at 80% capacity and WILL be archived soon (all context lost).
 
@@ -165,7 +167,7 @@ This section will be automatically removed after you update MEMORY.md.
 """
 
 MEM_STALE_CONTENT = """
-## \\u26a0\\ufe0f MEMORY MAINTENANCE REQUIRED
+## \u26a0\ufe0f MEMORY MAINTENANCE REQUIRED
 
 Your MEMORY.md has not been updated in over 24 hours. Memory loss is the #1
 complaint from users. Write a structured update NOW.
@@ -190,7 +192,7 @@ def inject_memory_section(path, marker_start, marker_end, content):
                 existing = f.read()
         if marker_start in existing:
             return  # already injected
-        new_content = existing.rstrip() + "\\n\\n" + marker_start + content + marker_end + "\\n"
+        new_content = existing.rstrip() + "\n\n" + marker_start + content + marker_end + "\n"
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             f.write(new_content)
@@ -214,7 +216,7 @@ def remove_memory_section(path, marker_start, marker_end):
         # Remove the section plus any surrounding blank lines
         before = content[:start_idx].rstrip()
         after = content[end_idx + len(marker_end):].lstrip()
-        new_content = before + ("\\n\\n" + after if after else "\\n")
+        new_content = before + ("\n\n" + after if after else "\n")
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             f.write(new_content)
@@ -282,15 +284,81 @@ def extract_session_summary(jsonl_file):
 
         summary_path = os.path.join(ARCHIVE_DIR, f"{os.path.basename(jsonl_file)}.context.txt")
         with open(summary_path, "w") as f:
-            f.write(f"# Session Context (auto-extracted {datetime.now(timezone.utc).isoformat()})\\n\\n")
+            f.write(f"# Session Context (auto-extracted {datetime.now(timezone.utc).isoformat()})\n\n")
             for i, msg in enumerate(user_msgs[-10:], 1):
-                f.write(f"{i}. {msg}\\n")
+                f.write(f"{i}. {msg}\n")
         return summary_path
     except Exception:
         return None
 
+def strip_images_from_older_messages(lines):
+    """Strip base64 image blocks from all but the most recent N toolResult messages.
+
+    When agents use the \`read\` tool on image files (PNGs, JPGs), the session accumulates
+    large base64-encoded image data that can consume 70%+ of the session. This strips
+    image blocks from older messages, keeping only the most recent IMAGE_KEEP_RECENT
+    toolResult messages with images intact.
+
+    Returns (cleaned_lines, image_strip_count).
+    """
+    # First pass: find indices of all toolResult messages containing image blocks
+    tool_result_image_indices = []
+    for i, line in enumerate(lines):
+        try:
+            d = json.loads(line)
+            msg = d.get("message", {})
+            if msg and msg.get("role") == "toolResult":
+                content = msg.get("content", [])
+                if isinstance(content, list):
+                    has_image = any(
+                        isinstance(b, dict) and b.get("type") == "image"
+                        for b in content
+                    )
+                    if has_image:
+                        tool_result_image_indices.append(i)
+        except (json.JSONDecodeError, Exception):
+            pass
+
+    if len(tool_result_image_indices) <= IMAGE_KEEP_RECENT:
+        return lines, 0  # Nothing to strip
+
+    # Strip images from all but the last IMAGE_KEEP_RECENT
+    indices_to_strip = set(tool_result_image_indices[:-IMAGE_KEEP_RECENT])
+    cleaned = []
+    strip_count = 0
+
+    for i, line in enumerate(lines):
+        if i not in indices_to_strip:
+            cleaned.append(line)
+            continue
+
+        try:
+            d = json.loads(line)
+            msg = d["message"]
+            content = msg["content"]
+            new_content = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "image":
+                    # Replace image block with a text placeholder
+                    source = block.get("source", {})
+                    media_type = source.get("mediaType", source.get("media_type", "unknown"))
+                    new_content.append({
+                        "type": "text",
+                        "text": f"[image stripped by session manager — was {media_type}]"
+                    })
+                    strip_count += 1
+                else:
+                    new_content.append(block)
+            d["message"]["content"] = new_content
+            cleaned.append(json.dumps(d, ensure_ascii=False))
+        except (json.JSONDecodeError, KeyError, Exception):
+            cleaned.append(line)  # Don't lose data on error
+
+    return cleaned, strip_count
+
 total_stripped = 0
 total_truncated = 0
+total_images_stripped = 0
 archived_sessions = []
 
 # Acquire exclusive lock to prevent concurrent runs
@@ -400,7 +468,7 @@ try:
                     "<!-- INSTACLAW:SESSION_DEGRADED:START -->",
                     "<!-- INSTACLAW:SESSION_DEGRADED:END -->",
                     """
-## \\u26a0\\ufe0f SESSION DEGRADED \\u2014 EMPTY RESPONSES DETECTED
+## \u26a0\ufe0f SESSION DEGRADED \u2014 EMPTY RESPONSES DETECTED
 
 Your last several responses returned empty content. This usually means your context
 is corrupted or a task is stuck in a failure loop.
@@ -471,7 +539,7 @@ is corrupted or a task is stuck in a failure loop.
                     remove_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END)
                 # else: still waiting, do nothing
 
-        # ── Phase 3: Normal processing (strip thinking + truncate) ──
+        # ── Phase 3: Normal processing (strip thinking + truncate + strip images) ──
         modified = False
         cleaned_lines = []
 
@@ -493,31 +561,37 @@ is corrupted or a task is stuck in a failure loop.
                                     total_stripped += len(content) - len(new_content)
                                     modified = True
 
-                        # Truncate oversized tool results
-                        if msg and msg.get("role") == "tool":
+                        # Truncate oversized tool results (both "tool" and "toolResult" roles)
+                        if msg and msg.get("role") in ("tool", "toolResult"):
                             content = msg.get("content", [])
                             if isinstance(content, list):
                                 for block in content:
                                     if isinstance(block, dict) and block.get("type") == "text":
                                         text = block.get("text", "")
                                         if len(text) > MAX_TOOL_RESULT_CHARS:
-                                            block["text"] = text[:MAX_TOOL_RESULT_CHARS] + "\\n... [truncated by session manager]"
+                                            block["text"] = text[:MAX_TOOL_RESULT_CHARS] + "\n... [truncated by session manager]"
                                             total_truncated += 1
                                             modified = True
                             elif isinstance(content, str) and len(content) > MAX_TOOL_RESULT_CHARS:
-                                d["message"]["content"] = content[:MAX_TOOL_RESULT_CHARS] + "\\n... [truncated by session manager]"
+                                d["message"]["content"] = content[:MAX_TOOL_RESULT_CHARS] + "\n... [truncated by session manager]"
                                 total_truncated += 1
                                 modified = True
 
                         cleaned_lines.append(json.dumps(d, ensure_ascii=False))
                     except json.JSONDecodeError:
-                        cleaned_lines.append(line.rstrip("\\n"))
+                        cleaned_lines.append(line.rstrip("\n"))
+
+            # ── Phase 3b: Strip base64 image data from older toolResult messages ──
+            cleaned_lines, img_count = strip_images_from_older_messages(cleaned_lines)
+            if img_count > 0:
+                total_images_stripped += img_count
+                modified = True
 
             if modified:
                 tmp = jsonl_file + ".tmp"
                 with open(tmp, "w") as f:
                     for cl in cleaned_lines:
-                        f.write(cl + "\\n")
+                        f.write(cl + "\n")
                 os.replace(tmp, jsonl_file)
         except Exception:
             pass  # never crash the cron
@@ -553,8 +627,8 @@ is corrupted or a task is stuck in a failure loop.
             print("Gateway restarted after session archive")
         except Exception as e:
             print(f"Gateway restart failed: {e}")
-    elif total_stripped > 0 or total_truncated > 0:
-        print(f"Stripped {total_stripped} thinking blocks, truncated {total_truncated} tool results")
+    elif total_stripped > 0 or total_truncated > 0 or total_images_stripped > 0:
+        print(f"Stripped {total_stripped} thinking blocks, truncated {total_truncated} tool results, stripped {total_images_stripped} image blocks")
         # Only restart for thinking strip if gateway has been up >60min
         try:
             r = subprocess.run(
@@ -679,6 +753,7 @@ from datetime import datetime, timezone
 STATUS_FILE = os.path.expanduser("~/.openclaw/watchdog-status.json")
 HEALTH_URL = "http://localhost:18789/health"
 HEALTH_FAIL_FILE = os.path.expanduser("~/.openclaw/.watchdog-health-fails")
+STALE_AGENT_FILE = os.path.expanduser("~/.openclaw/.watchdog-stale-agent")
 
 # Thresholds
 RAM_KILL_CHROME_PCT = 85
@@ -689,6 +764,8 @@ MAX_CHROME_PROCS = 6
 MAX_CHROME_RSS_MB = 1500
 GATEWAY_FAIL_THRESHOLD = 3
 GATEWAY_MAX_UPTIME_SEC = 48 * 3600  # 48 hours — restart to prevent memory bloat
+AGENT_STALE_MINUTES = 5   # Agent considered stuck if no session update in this many minutes
+AGENT_STALE_RESTARTS = 2  # Number of consecutive stale checks before restarting
 
 def get_ram_pct():
     """Get total RAM usage percentage."""
@@ -784,11 +861,6 @@ def restart_gateway():
     try:
         env = os.environ.copy()
         env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
-        # Clear start-limit-hit state first (otherwise restart fails after StartLimitBurst)
-        subprocess.run(
-            ["systemctl", "--user", "reset-failed", "openclaw-gateway"],
-            capture_output=True, timeout=10, env=env,
-        )
         subprocess.run(
             ["systemctl", "--user", "restart", "openclaw-gateway"],
             capture_output=True, timeout=30, env=env,
@@ -966,6 +1038,122 @@ def check_circuit_breaker():
         pass
     return None
 
+def check_agent_staleness(gateway_healthy):
+    """Detect when agent is stuck: gateway healthy but no session updates despite incoming messages.
+
+    Uses session file mtime as proxy for agent activity. If the session hasn't been
+    updated in AGENT_STALE_MINUTES but the gateway is healthy, the agent is likely stuck
+    (e.g., from accumulated base64 image data or context overflow).
+
+    Returns (is_stale: bool, stale_info: dict or None, action: str or None)
+    """
+    if not gateway_healthy:
+        # Gateway is down — health check handles this, not staleness
+        _reset_stale_state()
+        return False, None, None
+
+    sess_dir = os.path.expanduser("~/.openclaw/agents/main/sessions")
+    now = time.time()
+
+    # Find the most recently modified session file
+    latest_mtime = 0
+    latest_file = None
+    for f in glob.glob(os.path.join(sess_dir, "*.jsonl")):
+        try:
+            mt = os.path.getmtime(f)
+            if mt > latest_mtime:
+                latest_mtime = mt
+                latest_file = f
+        except Exception:
+            pass
+
+    if not latest_file:
+        # No active sessions — nothing to check
+        _reset_stale_state()
+        return False, None, None
+
+    session_age_sec = now - latest_mtime
+    stale_threshold_sec = AGENT_STALE_MINUTES * 60
+
+    if session_age_sec < stale_threshold_sec:
+        # Session was recently updated — agent is responsive
+        _reset_stale_state()
+        return False, None, None
+
+    # Session is stale. Check if there are recent incoming messages by looking
+    # at the gateway journal for Telegram message activity.
+    has_recent_messages = _check_recent_incoming_messages()
+
+    if not has_recent_messages:
+        # No incoming messages either — agent is idle, not stuck
+        # Don't reset stale state in case messages come in soon
+        return False, {"session_age_sec": round(session_age_sec), "reason": "idle_no_messages"}, None
+
+    # Agent IS stuck: gateway healthy, messages incoming, but no session updates
+    stale_state = _read_stale_state()
+    consecutive = stale_state.get("consecutive", 0) + 1
+    _write_stale_state(consecutive, latest_file, session_age_sec)
+
+    info = {
+        "session_file": os.path.basename(latest_file),
+        "session_age_sec": round(session_age_sec),
+        "consecutive_stale_checks": consecutive,
+        "has_recent_messages": True,
+    }
+
+    if consecutive >= AGENT_STALE_RESTARTS:
+        # Stuck for multiple checks — restart
+        _reset_stale_state()
+        return True, info, "restart_gateway(agent_stuck)"
+    else:
+        # First detection — wait one more cycle to confirm
+        return True, info, None
+
+def _check_recent_incoming_messages():
+    """Check if gateway received Telegram messages in the last AGENT_STALE_MINUTES minutes."""
+    try:
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        result = subprocess.run(
+            ["journalctl", "--user", "-u", "openclaw-gateway",
+             f"--since={AGENT_STALE_MINUTES} min ago",
+             "--no-pager", "-q"],
+            capture_output=True, text=True, timeout=10, env=env,
+        )
+        logs = result.stdout.lower()
+        # Look for indicators of incoming Telegram messages in gateway logs
+        message_indicators = ["incoming message", "telegram", "received message", "new message", "chat message"]
+        return any(indicator in logs for indicator in message_indicators)
+    except Exception:
+        # If we can't check logs, assume there might be messages (safer)
+        return False
+
+def _read_stale_state():
+    try:
+        with open(STALE_AGENT_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _write_stale_state(consecutive, session_file, age_sec):
+    try:
+        with open(STALE_AGENT_FILE, "w") as f:
+            json.dump({
+                "consecutive": consecutive,
+                "session_file": session_file,
+                "session_age_sec": age_sec,
+                "ts": time.time(),
+            }, f)
+    except Exception:
+        pass
+
+def _reset_stale_state():
+    try:
+        if os.path.exists(STALE_AGENT_FILE):
+            os.remove(STALE_AGENT_FILE)
+    except Exception:
+        pass
+
 def main():
     actions = []
     ram_pct = get_ram_pct()
@@ -1013,6 +1201,12 @@ def main():
             actions.append(restart_gateway())
             set_health_fail_count(0)
 
+    # --- Agent staleness check (gateway healthy but agent stuck) ---
+    is_stale, stale_info, stale_action = check_agent_staleness(gateway_healthy)
+    if stale_action:
+        actions.append(stale_action)
+        restart_gateway()
+
     # --- Session growth check ---
     session_growth_alert = check_session_growth()
     if session_growth_alert:
@@ -1037,6 +1231,7 @@ def main():
         "uptime_seconds": uptime_seconds,
         "session_growth_alert": session_growth_alert,
         "circuit_breaker": circuit_breaker,
+        "agent_stale": stale_info,
     }
 
     tmp = STATUS_FILE + ".tmp"
@@ -1628,9 +1823,9 @@ function buildOpenClawConfig(
         extraDirs: ["/home/openclaw/.openclaw/skills"],
       },
       limits: {
-        // DO NOT CHANGE — 18 skills total 328K chars. Below 350K they silently drop.
+        // DO NOT CHANGE — 17 skills total ~405K chars. Below 500K they silently drop.
         // Caused 3 fleet-wide outages. Also enforced by reconciler via configSettings.
-        maxSkillsPromptChars: 350000,
+        maxSkillsPromptChars: 500000,
       },
     },
     plugins: {
@@ -1764,14 +1959,44 @@ export async function connectSSH(vm: VMRecord, opts?: { skipDuplicateIPCheck?: b
   }
 
   const { NodeSSH } = await import("node-ssh");
-  const ssh = new NodeSSH();
-  await ssh.connect({
-    host: vm.ip_address,
-    port: vm.ssh_port,
-    username: vm.ssh_user,
-    privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64, 'base64').toString('utf-8'),
-  });
-  return ssh;
+  const privateKey = Buffer.from(process.env.SSH_PRIVATE_KEY_B64, 'base64').toString('utf-8');
+
+  // Try the configured ssh_user first (usually "root"), then fall back to "openclaw".
+  // Some older Linode VMs were provisioned with a different root SSH key but the openclaw
+  // user always has the correct key via cloud-init. This prevents fleet deploys from silently
+  // failing on those VMs.
+  const usersToTry = [vm.ssh_user];
+  if (vm.ssh_user !== "openclaw") usersToTry.push("openclaw");
+
+  let lastError: unknown;
+  for (const username of usersToTry) {
+    try {
+      const ssh = new NodeSSH();
+      await ssh.connect({
+        host: vm.ip_address,
+        port: vm.ssh_port,
+        username,
+        privateKey,
+      });
+      if (username !== vm.ssh_user) {
+        logger.warn("SSH connected with fallback user", {
+          vmId: vm.id,
+          ip: vm.ip_address,
+          configuredUser: vm.ssh_user,
+          fallbackUser: username,
+        });
+      }
+      return ssh;
+    } catch (err) {
+      lastError = err;
+      // Only retry on auth failures, not on network errors
+      const msg = String(err);
+      if (!msg.includes("authentication") && !msg.includes("publickey") && !msg.includes("Permission denied")) {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -1795,17 +2020,30 @@ export async function checkSSHConnectivity(vm: VMRecord, opts?: { skipDuplicateI
     }
 
     const { NodeSSH } = await import("node-ssh");
-    const ssh = new NodeSSH();
-    await ssh.connect({
-      host: vm.ip_address,
-      port: vm.ssh_port,
-      username: vm.ssh_user,
-      privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64, "base64").toString("utf-8"),
-      readyTimeout: 10_000,
-    });
-    const result = await ssh.execCommand("echo ok");
-    ssh.dispose();
-    return result.stdout.trim() === "ok";
+    const privateKey = Buffer.from(process.env.SSH_PRIVATE_KEY_B64, "base64").toString("utf-8");
+
+    // Try configured user first, fall back to openclaw (same as connectSSH)
+    const usersToTry = [vm.ssh_user];
+    if (vm.ssh_user !== "openclaw") usersToTry.push("openclaw");
+
+    for (const username of usersToTry) {
+      try {
+        const ssh = new NodeSSH();
+        await ssh.connect({
+          host: vm.ip_address,
+          port: vm.ssh_port,
+          username,
+          privateKey,
+          readyTimeout: 10_000,
+        });
+        const result = await ssh.execCommand("echo ok");
+        ssh.dispose();
+        return result.stdout.trim() === "ok";
+      } catch {
+        continue;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -1891,7 +2129,8 @@ export async function assignVMWithSSHCheck(
 
 export async function configureOpenClaw(
   vm: VMRecord,
-  config: UserConfig
+  config: UserConfig,
+  expectedUserId?: string
 ): Promise<{ gatewayUrl: string; gatewayToken: string; controlUiUrl: string; gatewayVerified: boolean }> {
   if (config.apiMode === "byok" && !config.apiKey) {
     throw new Error("API key required for BYOK mode");
@@ -1904,6 +2143,20 @@ export async function configureOpenClaw(
 
   const ssh = await connectSSH(vm);
   mark("ssh_connected");
+
+  // Ownership guard: verify VM is still assigned to the expected user before proceeding.
+  // This catches race conditions where another checkout reassigned the VM during SSH connect.
+  if (expectedUserId) {
+    const { data: ownerCheck } = await getSupabase()
+      .from("instaclaw_vms")
+      .select("assigned_to")
+      .eq("id", vm.id)
+      .single();
+    if (ownerCheck?.assigned_to !== expectedUserId) {
+      ssh.dispose();
+      throw new Error(`OWNERSHIP_CHANGED: VM ${vm.id} assigned_to is ${ownerCheck?.assigned_to}, expected ${expectedUserId}`);
+    }
+  }
 
   try {
     // Preserve existing gateway token from DB to prevent token mismatch on reconfigure.
@@ -3732,15 +3985,25 @@ export async function configureOpenClaw(
       }
     }
 
-    const { error: vmError } = await supabase
+    // Build the DB write query — add ownership guard if expectedUserId is set
+    let dbWriteQuery = supabase
       .from("instaclaw_vms")
       .update(vmUpdate)
       .eq("id", vm.id);
+    if (expectedUserId) {
+      dbWriteQuery = dbWriteQuery.eq("assigned_to", expectedUserId);
+    }
+    const { data: writeResult, error: vmError } = await dbWriteQuery.select("id");
     mark("db_write_done");
 
     if (vmError) {
       logger.error("Failed to update VM record", { error: String(vmError), route: "lib/ssh", vmId: vm.id, timeline });
       throw new Error("Failed to update VM record in database");
+    }
+
+    // If ownership guard was active and no rows were updated, the VM was reassigned
+    if (expectedUserId && (!writeResult || writeResult.length === 0)) {
+      throw new Error(`OWNERSHIP_CHANGED: VM ${vm.id} DB write matched 0 rows — assigned_to changed during configure`);
     }
 
     // Heartbeat quota guard: verify heartbeat_next_at was persisted
