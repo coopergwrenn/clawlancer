@@ -331,25 +331,25 @@ def compute_available_liquidity_bids(orderbook, min_price):
 
 
 def apply_slippage_buy(best_ask, slippage_pct, tick_size=0.001):
-    """Compute FOK limit price for buys: best_ask + slippage, snapped to tick, capped at 0.99."""
+    """Compute FOK limit price for buys: best_ask + slippage, snapped to tick, capped at 1.0."""
     import math
     raw = best_ask * (1 + slippage_pct / 100)
-    raw = min(raw, 0.99)
+    raw = min(raw, 1.0)
     # Snap up to nearest tick
     ticks = 1 / tick_size
     price = math.ceil(raw * ticks) / ticks
-    return min(round(price, 4), 0.99)
+    return min(round(price, 4), 1.0)
 
 
 def apply_slippage_sell(best_bid, slippage_pct, tick_size=0.001):
-    """Compute FOK limit price for sells: best_bid - slippage, snapped to tick, floored at 0.01."""
+    """Compute FOK limit price for sells: best_bid - slippage, snapped to tick, floored at 0.001."""
     import math
     raw = best_bid * (1 - slippage_pct / 100)
-    raw = max(raw, 0.01)
+    raw = max(raw, 0.001)
     # Snap down to nearest tick
     ticks = 1 / tick_size
     price = math.floor(raw * ticks) / ticks
-    return max(round(price, 4), 0.01)
+    return max(round(price, 4), 0.001)
 
 
 def _patch_clob_rounding():
