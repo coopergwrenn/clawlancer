@@ -421,7 +421,12 @@ async function readSseStream(
         if (data === "[DONE]") continue;
         try {
           const event = JSON.parse(data);
-          if (
+          // OpenAI SSE format (gateway proxy)
+          if (event.choices?.[0]?.delta?.content) {
+            onDelta(event.choices[0].delta.content);
+          }
+          // Anthropic SSE format (direct fallback)
+          else if (
             event.type === "content_block_delta" &&
             event.delta?.type === "text_delta"
           ) {
@@ -2116,6 +2121,7 @@ export default function CommandCenterPage() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [updatingModel, setUpdatingModel] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+  const modelPickerRef2 = useRef<HTMLDivElement>(null);
 
   // Plus menu
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -2269,7 +2275,10 @@ export default function CommandCenterPage() {
   // Close model picker on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
+      if (
+        modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node) &&
+        (!modelPickerRef2.current || !modelPickerRef2.current.contains(e.target as Node))
+      ) {
         setShowModelPicker(false);
       }
     }
@@ -3809,7 +3818,7 @@ export default function CommandCenterPage() {
               style={{ color: "var(--foreground)" }}
             />
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              <div className="relative" ref={modelPickerRef}>
+              <div className="relative" ref={modelPickerRef2}>
                 <button
                   onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
                   className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
