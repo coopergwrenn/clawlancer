@@ -766,6 +766,9 @@ GATEWAY_FAIL_THRESHOLD = 3
 GATEWAY_MAX_UPTIME_SEC = 48 * 3600  # 48 hours — restart to prevent memory bloat
 AGENT_STALE_MINUTES = 5   # Agent considered stuck if no session update in this many minutes
 AGENT_STALE_RESTARTS = 2  # Number of consecutive stale checks before restarting
+GATEWAY_RSS_RESTART_MB = 1024   # Restart gateway if its RSS exceeds 1GB
+PROCESS_MAX_AGE_MIN = 30        # Kill agent-spawned processes running longer than 30 min
+PROCESS_MAX_COUNT = 20          # Kill oldest non-gateway openclaw processes if count exceeds this
 
 def get_ram_pct():
     """Get total RAM usage percentage."""
@@ -1154,6 +1157,120 @@ def _reset_stale_state():
     except Exception:
         pass
 
+def get_gateway_rss_mb():
+    """Get gateway process RSS in MB."""
+    try:
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        result = subprocess.run(
+            ["systemctl", "--user", "show", "openclaw-gateway", "--property=ExecMainPID"],
+            capture_output=True, text=True, timeout=5, env=env,
+        )
+        pid_line = result.stdout.strip()
+        if "=" in pid_line:
+            pid = int(pid_line.split("=", 1)[1].strip())
+            if pid > 0:
+                with open(f"/proc/{pid}/status") as f:
+                    for line in f:
+                        if line.startswith("VmRSS:"):
+                            return int(line.split()[1]) / 1024  # KB → MB
+    except Exception:
+        pass
+    return 0.0
+
+def check_runaway_processes():
+    """Kill agent-spawned processes that exceed age or count limits.
+
+    Targets: bash, python3, node processes owned by openclaw (uid matching current user)
+    that are NOT the gateway process itself and NOT cron jobs (strip-thinking, watchdog).
+    """
+    actions = []
+    my_uid = os.getuid()
+    try:
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{my_uid}"
+        # Get gateway PID so we don't kill it
+        gw_result = subprocess.run(
+            ["systemctl", "--user", "show", "openclaw-gateway", "--property=ExecMainPID"],
+            capture_output=True, text=True, timeout=5, env=env,
+        )
+        gateway_pid = 0
+        if "=" in gw_result.stdout:
+            try:
+                gateway_pid = int(gw_result.stdout.strip().split("=", 1)[1])
+            except ValueError:
+                pass
+
+        # List all openclaw-owned processes with age
+        result = subprocess.run(
+            ["ps", "-u", str(my_uid), "-o", "pid,etimes,rss,comm", "--no-headers"],
+            capture_output=True, text=True, timeout=5,
+        )
+        procs = []
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 4:
+                pid = int(parts[0])
+                elapsed_sec = int(parts[1])
+                rss_kb = int(parts[2])
+                comm = parts[3]
+                procs.append((pid, elapsed_sec, rss_kb, comm))
+
+        # Protected processes: gateway, systemd, cron scripts, sshd
+        protected_comms = {"systemd", "dbus-daemon", "(sd-pam)", "sshd"}
+        protected_pids = {gateway_pid} if gateway_pid else set()
+
+        # Find killable processes (not gateway, not system, not our own cron scripts)
+        killable = []
+        for pid, elapsed_sec, rss_kb, comm in procs:
+            if pid in protected_pids:
+                continue
+            if comm in protected_comms:
+                continue
+            # Don't kill the watchdog or strip-thinking (python3 running our scripts)
+            try:
+                with open(f"/proc/{pid}/cmdline") as f:
+                    cmdline = f.read().replace("\\0", " ")
+                if "vm-watchdog.py" in cmdline or "strip-thinking.py" in cmdline:
+                    continue
+                if "cron" in cmdline.lower() or "/usr/sbin/" in cmdline:
+                    continue
+            except Exception:
+                continue
+            killable.append((pid, elapsed_sec, rss_kb, comm))
+
+        # Kill processes running longer than PROCESS_MAX_AGE_MIN
+        age_threshold_sec = PROCESS_MAX_AGE_MIN * 60
+        for pid, elapsed_sec, rss_kb, comm in killable:
+            if elapsed_sec > age_threshold_sec:
+                try:
+                    os.kill(pid, 9)
+                    actions.append(f"killed_runaway(pid={pid},comm={comm},age={elapsed_sec // 60}m)")
+                except ProcessLookupError:
+                    pass
+                except Exception:
+                    pass
+
+        # If too many non-gateway processes, kill the oldest ones
+        remaining = [(p, e, r, c) for p, e, r, c in killable
+                     if e <= age_threshold_sec]  # only count ones we didn't already kill
+        if len(remaining) > PROCESS_MAX_COUNT:
+            # Sort by elapsed time descending (oldest first)
+            remaining.sort(key=lambda x: -x[1])
+            excess = remaining[:len(remaining) - PROCESS_MAX_COUNT]
+            for pid, elapsed_sec, rss_kb, comm in excess:
+                try:
+                    os.kill(pid, 9)
+                    actions.append(f"killed_excess(pid={pid},comm={comm},age={elapsed_sec // 60}m)")
+                except ProcessLookupError:
+                    pass
+                except Exception:
+                    pass
+
+    except Exception:
+        pass
+    return actions
+
 def main():
     actions = []
     ram_pct = get_ram_pct()
@@ -1201,6 +1318,16 @@ def main():
             actions.append(restart_gateway())
             set_health_fail_count(0)
 
+    # --- Gateway RSS memory guard ---
+    gateway_rss_mb = get_gateway_rss_mb()
+    if gateway_rss_mb > GATEWAY_RSS_RESTART_MB:
+        actions.append(f"restart_gateway(rss={gateway_rss_mb:.0f}MB)")
+        actions.append(restart_gateway())
+
+    # --- Process guard: kill runaway agent-spawned processes ---
+    process_actions = check_runaway_processes()
+    actions.extend(process_actions)
+
     # --- Agent staleness check (gateway healthy but agent stuck) ---
     is_stale, stale_info, stale_action = check_agent_staleness(gateway_healthy)
     if stale_action:
@@ -1229,6 +1356,8 @@ def main():
         "gateway_uptime_hours": round(gateway_uptime / 3600, 1),
         "actions_taken": actions,
         "uptime_seconds": uptime_seconds,
+        "gateway_rss_mb": round(gateway_rss_mb, 1),
+        "process_guard_kills": len(process_actions),
         "session_growth_alert": session_growth_alert,
         "circuit_breaker": circuit_breaker,
         "agent_stale": stale_info,
@@ -4724,41 +4853,68 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
       );
 
       const wipeCmd = [
-        // 1. Wipe ALL workspace files (user's memory, personality, projects)
+        // ── USER DATA (highest priority — data privacy) ──
+
+        // 1. Wipe ALL workspace files (USER.md, IDENTITY.md, SOUL.md, MEMORY.md, BOOTSTRAP.md, projects)
         'rm -rf ~/.openclaw/workspace/*',
         'find ~/.openclaw/workspace/ -maxdepth 1 -name ".*" -not -name "." -not -name ".." -exec rm -rf {} + 2>/dev/null || true',
 
-        // 2. Wipe ALL session/conversation files
+        // 2. Wipe ALL session/conversation files (active, backup, AND archived)
         'rm -rf ~/.openclaw/agents/main/sessions/*',
         'rm -rf ~/.openclaw/agents/main/sessions-backup/*',
+        'rm -rf ~/.openclaw/agents/main/sessions-archive/* 2>/dev/null || true',
 
-        // 3. Wipe log files (contain conversation content)
+        // 3. Wipe agent-level user files (system-prompt.md contains user personality)
+        'rm -f ~/.openclaw/agents/main/agent/system-prompt.md 2>/dev/null || true',
+
+        // 4. Wipe ALL backups (contain copies of USER.md, sessions, workspace from previous user)
+        'rm -rf ~/.openclaw/backups/* 2>/dev/null || true',
+
+        // 5. Wipe ALL media files (inbound/outbound — may contain user documents, images)
+        'rm -rf ~/.openclaw/media/inbound/* 2>/dev/null || true',
+        'rm -rf ~/.openclaw/media/outbound/* 2>/dev/null || true',
+        'rm -rf ~/.openclaw/media/* 2>/dev/null || true',
+
+        // 6. Wipe separate memory directory (used by sjinn/video skill)
+        'rm -rf ~/memory/* 2>/dev/null || true',
+
+        // ── APPLICATION STATE ──
+
+        // 7. Wipe log files (contain conversation content)
         'rm -f /tmp/openclaw/*.log',
 
-        // 4. Wipe canvas data
+        // 8. Wipe canvas data
         'rm -rf ~/.openclaw/canvas/*',
 
-        // 5. Wipe cron jobs from previous user
+        // 9. Wipe cron jobs from previous user
         'echo \'{"jobs":[]}\' > ~/.openclaw/cron/jobs.json 2>/dev/null || true',
 
-        // 6. Clear browser data from previous user
+        // 10. Clear browser data from previous user
         'rm -rf ~/.config/chromium/Default/Session* 2>/dev/null || true',
         'rm -rf ~/.config/chromium/Default/History* 2>/dev/null || true',
         'rm -rf ~/.config/chromium/Default/Cookies* 2>/dev/null || true',
+        'rm -rf ~/.config/chromium/Default/Local\\ Storage/* 2>/dev/null || true',
+        'rm -rf ~/.config/chromium/Default/IndexedDB/* 2>/dev/null || true',
 
-        // 7. Kill any lingering Chrome processes
+        // 11. Kill any lingering Chrome processes
         'pkill -9 -f "chrome.*remote-debugging-port" 2>/dev/null || true',
 
-        // 8. Purge config backups (may contain stale telegram bot tokens)
+        // 12. Purge config backups (may contain stale telegram bot tokens)
         'rm -f ~/.openclaw/openclaw.json.bak* 2>/dev/null || true',
         'rm -f /tmp/openclaw-backup.json 2>/dev/null || true',
 
-        // 9. Clear bash history (may contain user commands/secrets)
+        // 13. Clear bash history (may contain user commands/secrets)
         'rm -f ~/.bash_history 2>/dev/null || true',
         'history -c 2>/dev/null || true',
 
-        // 10. Clear device pairing data
+        // 14. Clear device pairing data
         'rm -rf ~/.openclaw/devices/* 2>/dev/null || true',
+
+        // 15. Clear any other agent dirs (multi-agent setups)
+        'find ~/.openclaw/agents/ -mindepth 1 -maxdepth 1 -type d ! -name main -exec rm -rf {} + 2>/dev/null || true',
+
+        // 16. Clear notification state from previous user
+        'rm -f ~/.openclaw/notifications/* 2>/dev/null || true',
       ].join(' && ');
 
       const result = await ssh.execCommand(wipeCmd);
@@ -4770,9 +4926,22 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
         });
       }
 
+      // Post-wipe verification: confirm no user identity files remain
+      const verifyResult = await ssh.execCommand(
+        'ls ~/.openclaw/workspace/USER.md ~/.openclaw/workspace/IDENTITY.md ~/.openclaw/workspace/MEMORY.md 2>/dev/null | wc -l'
+      );
+      const remainingFiles = parseInt(verifyResult.stdout?.trim() ?? "0", 10);
+      if (remainingFiles > 0) {
+        logger.error("WIPE_INCOMPLETE: user identity files still exist after wipe", {
+          vmId: vm.id,
+          remainingFiles,
+        });
+      }
+
       logger.info("VM wiped for next user", {
         vmId: vm.id,
         vmName: (vm as unknown as Record<string, unknown>).name,
+        verified: remainingFiles === 0,
       });
 
       return { success: true };
