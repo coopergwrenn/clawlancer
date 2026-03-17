@@ -69,7 +69,8 @@ export default function FilesPage() {
       const data = await res.json();
       setFiles(data.files ?? []);
       setCurrentPath(path);
-    } catch {
+    } catch (err) {
+      console.error(`[FileBrowser] loadDirectory ${path} error:`, err);
       setFiles([]);
     } finally {
       setLoading(false);
@@ -85,13 +86,17 @@ export default function FilesPage() {
       const res = await fetch(
         `/api/vm/files?file=${encodeURIComponent(filePath)}`
       );
+      if (!res.ok) {
+        console.error(`[FileBrowser] viewFile ${filePath} failed: HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (data.binary) {
         setBinaryData({ content: data.content, mime: data.mime });
       } else {
         setFileContent(data.content ?? "");
       }
-    } catch {
+    } catch (err) {
+      console.error(`[FileBrowser] viewFile ${filePath} error:`, err);
       setFileContent("Error loading file");
     } finally {
       setFileLoading(false);

@@ -896,10 +896,14 @@ export default function PolymarketPanel({
   const fetchFile = useCallback(async (filePath: string) => {
     try {
       const res = await fetch(`/api/vm/files?file=${encodeURIComponent(filePath)}`);
-      if (!res.ok) return null;
+      if (!res.ok) {
+        console.error(`[PolymarketPanel] fetchFile ${filePath} failed: HTTP ${res.status}`);
+        return null;
+      }
       const data = await res.json();
       return data.content ? JSON.parse(data.content) : null;
-    } catch {
+    } catch (err) {
+      console.error(`[PolymarketPanel] fetchFile ${filePath} error:`, err);
       return null;
     }
   }, []);
