@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
+import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser, stopGateway, restartGateway } from "@/lib/ssh";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -213,34 +213,52 @@ async function processEvent(event: any) {
         .single();
 
       if (existingVm) {
-        logger.info("VM already assigned, skipping webhook assignment", {
-          route: "billing/webhook",
-          userId,
-          vmId: existingVm.id,
-        });
+        // Reactivate suspended VM on resubscription
+        const { data: vmDetail } = await supabase
+          .from("instaclaw_vms")
+          .select("*")
+          .eq("id", existingVm.id)
+          .single();
+
+        if (vmDetail?.health_status === "suspended") {
+          try {
+            await restartGateway(vmDetail);
+            await supabase.from("instaclaw_vms").update({
+              health_status: "unknown",
+              suspended_at: null,
+              last_health_check: new Date().toISOString(),
+            }).eq("id", vmDetail.id);
+
+            // Send welcome-back email
+            const { data: resubUser } = await supabase
+              .from("instaclaw_users").select("email").eq("id", userId).single();
+            if (resubUser?.email) {
+              sendVMReadyEmail(resubUser.email, `${process.env.NEXTAUTH_URL}/dashboard`).catch(() => {});
+            }
+
+            logger.info("Reactivated suspended VM on resubscription", {
+              route: "billing/webhook", userId, vmId: vmDetail.id,
+            });
+          } catch (err) {
+            logger.error("Failed to reactivate suspended VM on resubscription", {
+              error: String(err), route: "billing/webhook", userId, vmId: vmDetail.id,
+            });
+          }
+        } else {
+          logger.info("VM already assigned, skipping webhook assignment", {
+            route: "billing/webhook",
+            userId,
+            vmId: existingVm.id,
+          });
+        }
         break;
       }
 
-      // Check deployment lock — the verify endpoint may already be handling assignment.
-      // This prevents the race condition where both verify and webhook try to assign
-      // a VM simultaneously.
-      const { data: userLockCheck } = await supabase
-        .from("instaclaw_users")
-        .select("deployment_lock_at")
-        .eq("id", userId)
-        .single();
-
-      if (userLockCheck?.deployment_lock_at) {
-        const lockAge = Date.now() - new Date(userLockCheck.deployment_lock_at).getTime();
-        if (lockAge < 5 * 60 * 1000) {
-          logger.info("Deployment lock active (verify endpoint handling), skipping webhook assignment", {
-            route: "billing/webhook",
-            userId,
-            lockAge: `${Math.round(lockAge / 1000)}s`,
-          });
-          break;
-        }
-      }
+      // NOTE: We no longer skip on deployment_lock_at. The verify endpoint
+      // now runs configure inline, and the configure endpoint has its own
+      // idempotency guard (skips if VM is already healthy + recently configured).
+      // Letting the webhook proceed as a safety net ensures users don't get stuck
+      // if the verify endpoint's configure call fails silently.
 
       // Try to assign a VM (with SSH pre-check to avoid dead VMs)
       const vm = await assignVMWithSSHCheck(userId);
@@ -416,7 +434,7 @@ async function processEvent(event: any) {
           .single();
 
         if (userVm) {
-          // Stamp last_assigned_to and clear telegram fields before reclaim
+          // Stamp last_assigned_to and clear telegram fields
           // (releases unique constraint so a future VM can reuse the token)
           await supabase
             .from("instaclaw_vms")
@@ -427,64 +445,40 @@ async function processEvent(event: any) {
               telegram_chat_id: null,
             })
             .eq("id", userVm.id);
-        }
 
-        // Check for duplicate IPs before reclaim — log critical warning
-        if (userVm) {
-          const { data: vmForIp } = await supabase
+          // Suspend the VM (stop gateway, preserve data for 30 days)
+          // The 30-day reclaim pass in health-check cron will wipe + reclaim later.
+          const { data: fullVm } = await supabase
             .from("instaclaw_vms")
-            .select("ip_address")
+            .select("*")
             .eq("id", userVm.id)
             .single();
-          if (vmForIp?.ip_address) {
-            const { duplicates } = await checkDuplicateIP(vmForIp.ip_address, userVm.id);
-            if (duplicates.length > 0) {
-              logger.error("DUPLICATE IP on subscription cancel — VM reclaim proceeding but flagged", {
+
+          if (fullVm) {
+            try {
+              await stopGateway(fullVm);
+            } catch (err) {
+              logger.error("Failed to stop gateway on subscription cancel", {
+                error: String(err),
                 route: "billing/webhook",
-                userId: sub.user_id,
                 vmId: userVm.id,
-                ip: vmForIp.ip_address,
-                duplicates: duplicates.map((d: { name: string | null; id: string }) => d.name ?? d.id).join(", "),
+                userId: sub.user_id,
               });
             }
-          }
-        }
 
-        // Reclaim the VM (DB-level: clears assignment, tokens, config)
-        await supabase.rpc("instaclaw_reclaim_vm", {
-          p_user_id: sub.user_id,
-        });
+            await supabase
+              .from("instaclaw_vms")
+              .update({
+                health_status: "suspended",
+                suspended_at: new Date().toISOString(),
+                last_health_check: new Date().toISOString(),
+              })
+              .eq("id", userVm.id);
 
-        // Wipe VM filesystem in background (sessions, workspace, logs)
-        // This runs after the Stripe response is sent to avoid timeout.
-        if (userVm) {
-          const vmForWipe = await supabase
-            .from("instaclaw_vms")
-            .select("id, ip_address, ssh_port, ssh_user")
-            .eq("id", userVm.id)
-            .single();
-          if (vmForWipe.data) {
-            after(async () => {
-              const wipeResult = await wipeVMForNextUser(vmForWipe.data);
-              if (wipeResult.success) {
-                // Mark VM as ready for next user after successful wipe
-                await supabase
-                  .from("instaclaw_vms")
-                  .update({ status: "ready" })
-                  .eq("id", userVm.id);
-                logger.info("VM wiped and returned to ready pool", {
-                  route: "billing/webhook",
-                  vmId: userVm.id,
-                  userId: sub.user_id,
-                });
-              } else {
-                logger.error("VM wipe failed — VM left in provisioning state", {
-                  route: "billing/webhook",
-                  vmId: userVm.id,
-                  userId: sub.user_id,
-                  error: wipeResult.error,
-                });
-              }
+            logger.info("VM suspended on subscription cancel (data preserved 30 days)", {
+              route: "billing/webhook",
+              vmId: userVm.id,
+              userId: sub.user_id,
             });
           }
         }
@@ -582,17 +576,30 @@ async function processEvent(event: any) {
             .single();
 
           if (vm?.health_status === "suspended") {
-            // Fire-and-forget: restart VM + send email without blocking
-            fetch(`${process.env.NEXTAUTH_URL}/api/vm/restart`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-              },
-              body: JSON.stringify({ userId: sub.user_id }),
-            }).catch((err) => {
-              logger.error("Failed to restart suspended VM", { error: String(err), route: "billing/webhook", userId: sub.user_id });
-            });
+            // Restart gateway directly (replaces unreliable fire-and-forget fetch)
+            const { data: fullVm } = await supabase
+              .from("instaclaw_vms").select("*").eq("id", vm.id).single();
+
+            if (fullVm) {
+              try {
+                const restarted = await restartGateway(fullVm);
+                if (restarted) {
+                  await supabase.from("instaclaw_vms").update({
+                    health_status: "unknown",
+                    suspended_at: null,
+                    last_health_check: new Date().toISOString(),
+                  }).eq("id", fullVm.id);
+
+                  logger.info("Reactivated suspended VM on payment success", {
+                    route: "billing/webhook", userId: sub.user_id, vmId: fullVm.id,
+                  });
+                }
+              } catch (err) {
+                logger.error("Failed to restart suspended VM on payment success", {
+                  error: String(err), route: "billing/webhook", userId: sub.user_id, vmId: vm.id,
+                });
+              }
+            }
 
             const { data: user } = await supabase
               .from("instaclaw_users")

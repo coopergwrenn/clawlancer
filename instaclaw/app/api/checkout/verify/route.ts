@@ -1,9 +1,13 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
+
+// Configure now runs inline (not via after()) so we need enough time
+// for VM assignment (~10s) + configure (~120s) + retries.
+export const maxDuration = 180;
 
 /**
  * Verify Stripe checkout session and trigger VM assignment immediately
@@ -121,40 +125,42 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // VM assigned! Trigger configuration via after() to guarantee the
-    // request survives past the response. A bare non-awaited fetch() can
-    // be aborted when Vercel freezes the function after sending the response.
-    after(async () => {
-      // Retry up to 2 times (3 attempts total) with 5s backoff.
-      // If all attempts fail, process-pending cron will pick it up.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const configRes = await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-            },
-            body: JSON.stringify({ userId }),
-          });
-          if (configRes.ok) break;
-          logger.warn("VM configure returned non-OK, retrying", {
-            route: "checkout/verify",
-            userId,
-            attempt,
-            status: configRes.status,
-          });
-        } catch (err) {
-          logger.error("VM configure after() failed", {
-            error: String(err),
-            route: "checkout/verify",
-            userId,
-            attempt,
-          });
+    // VM assigned — trigger configuration inline (NOT via after()).
+    // Using after() was the root cause of stuck deployments: Vercel can
+    // freeze/kill the function before after() executes, leaving the user
+    // permanently stuck. The configure endpoint has its own 180s maxDuration
+    // and idempotency guards, so calling it inline is safe.
+    let configured = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const configRes = await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+          },
+          body: JSON.stringify({ userId }),
+        });
+        if (configRes.ok) {
+          configured = true;
+          break;
         }
-        if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
+        logger.warn("VM configure returned non-OK, retrying", {
+          route: "checkout/verify",
+          userId,
+          attempt,
+          status: configRes.status,
+        });
+      } catch (err) {
+        logger.error("VM configure failed", {
+          error: String(err),
+          route: "checkout/verify",
+          userId,
+          attempt,
+        });
       }
-    });
+      if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
+    }
 
     logger.info("Checkout verified and VM assigned", {
       route: "checkout/verify",
@@ -162,6 +168,7 @@ export async function POST(req: NextRequest) {
       vmId: vm.id,
       tier,
       apiMode,
+      configured,
     });
 
     return NextResponse.json({

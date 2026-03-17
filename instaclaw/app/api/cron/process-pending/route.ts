@@ -295,6 +295,82 @@ export async function GET(req: NextRequest) {
   }
 
   // -----------------------------------------------------------------
+  // Pass 3b: Catch-all for stuck deployments — VMs assigned >5 min with
+  // no gateway_url, regardless of configure_attempts or health_status.
+  // This is the ultimate safety net: if verify, webhook, AND all other
+  // passes failed, this will still trigger configure.
+  // -----------------------------------------------------------------
+  let stuckDeployFixed = 0;
+
+  const { data: stuckDeployVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, assigned_to, configure_attempts, assigned_at")
+    .eq("status", "assigned")
+    .not("assigned_to", "is", null)
+    .is("gateway_url", null)
+    .lt("assigned_at", fiveMinutesAgo)
+    .limit(10);
+
+  if (stuckDeployVms?.length) {
+    for (const vm of stuckDeployVms) {
+      // Verify user has an active subscription
+      const { data: sub } = await supabase
+        .from("instaclaw_subscriptions")
+        .select("status")
+        .eq("user_id", vm.assigned_to)
+        .single();
+
+      if (!sub || !["active", "trialing"].includes(sub.status)) continue;
+
+      logger.info("Stuck deployment detected — triggering configure (catch-all)", {
+        route: "cron/process-pending",
+        vmId: vm.id,
+        userId: vm.assigned_to,
+        configureAttempts: vm.configure_attempts,
+        assignedAt: vm.assigned_at,
+      });
+
+      try {
+        const configRes = await fetch(
+          `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+            },
+            body: JSON.stringify({ userId: vm.assigned_to }),
+          }
+        );
+
+        if (configRes.ok) {
+          stuckDeployFixed++;
+
+          const { data: user } = await supabase
+            .from("instaclaw_users")
+            .select("email")
+            .eq("id", vm.assigned_to)
+            .single();
+
+          if (user?.email) {
+            await sendVMReadyEmail(
+              user.email,
+              `${process.env.NEXTAUTH_URL}/dashboard`
+            );
+          }
+        }
+      } catch (err) {
+        logger.error("Failed to fix stuck deployment", {
+          error: String(err),
+          route: "cron/process-pending",
+          vmId: vm.id,
+          userId: vm.assigned_to,
+        });
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------
   // Pass 4: Clean up stale pending_users (stuck for more than 10 minutes)
   // -----------------------------------------------------------------
   const { data: stalePending } = await supabase
@@ -356,6 +432,7 @@ export async function GET(req: NextRequest) {
     retried,
     gatewayRetried,
     autoConfigured,
+    stuckDeployFixed,
     cleaned,
   });
 }

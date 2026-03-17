@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
@@ -1106,6 +1106,7 @@ else:
               .from("instaclaw_vms")
               .update({
                 health_status: "suspended",
+                suspended_at: new Date().toISOString(),
                 last_health_check: new Date().toISOString(),
               })
               .eq("id", vm.id);
@@ -1144,6 +1145,163 @@ else:
             });
           }
         }
+      }
+    }
+  }
+
+  // ========================================================================
+  // 3b: Suspend VMs assigned to users with NO active subscription
+  // Catches grandfathered users who never subscribed and any edge cases.
+  // Grace: skip VMs assigned < 3 days ago (mid-checkout protection).
+  // ========================================================================
+  let noSubSuspended = 0;
+  const NO_SUB_GRACE_DAYS = 3;
+
+  const { data: assignedVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, assigned_to, assigned_at, health_status, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, name, ssh_fail_count, health_fail_count, config_version, api_mode, proxy_401_count")
+    .eq("status", "assigned")
+    .not("assigned_to", "is", null)
+    .neq("health_status", "suspended");
+
+  if (assignedVms?.length) {
+    for (const vm of assignedVms) {
+      // Skip VMs assigned less than 3 days ago (mid-checkout grace)
+      if (vm.assigned_at) {
+        const daysSinceAssign = (Date.now() - new Date(vm.assigned_at).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceAssign < NO_SUB_GRACE_DAYS) continue;
+      }
+
+      // Check if user has an active or past_due subscription (both are "valid enough" — past_due has its own 7-day handler above)
+      const { data: userSub } = await supabase
+        .from("instaclaw_subscriptions")
+        .select("status")
+        .eq("user_id", vm.assigned_to)
+        .single();
+
+      // Skip if user has any active/trialing/past_due subscription
+      if (userSub && userSub.status !== "canceled") continue;
+
+      // No subscription or canceled — suspend
+      try {
+        const { data: fullVm } = await supabase
+          .from("instaclaw_vms")
+          .select("*")
+          .eq("id", vm.id)
+          .single();
+
+        if (fullVm) {
+          await stopGateway(fullVm);
+        }
+
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            health_status: "suspended",
+            suspended_at: new Date().toISOString(),
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", vm.id);
+
+        // Send suspension email
+        const { data: user } = await supabase
+          .from("instaclaw_users")
+          .select("email")
+          .eq("id", vm.assigned_to)
+          .single();
+
+        if (user?.email) {
+          try {
+            await sendSuspendedEmail(user.email);
+          } catch (emailErr) {
+            logger.error("Failed to send no-sub suspended email", {
+              error: String(emailErr),
+              route: "cron/health-check",
+              userId: vm.assigned_to,
+            });
+          }
+        }
+
+        noSubSuspended++;
+        logger.info("VM suspended — no active subscription", {
+          route: "cron/health-check",
+          userId: vm.assigned_to,
+          vmId: vm.id,
+          vmName: vm.name,
+          subStatus: userSub?.status ?? "none",
+        });
+      } catch (err) {
+        logger.error("Failed to suspend no-sub VM", {
+          error: String(err),
+          route: "cron/health-check",
+          userId: vm.assigned_to,
+          vmId: vm.id,
+        });
+      }
+    }
+  }
+
+  // ========================================================================
+  // 3c: Reclaim VMs suspended > 30 days (wipe data + return to pool)
+  // This is the ONLY path that wipes user data.
+  // ========================================================================
+  let reclaimed = 0;
+  const RECLAIM_AFTER_DAYS = 30;
+
+  const { data: staleSupended } = await supabase
+    .from("instaclaw_vms")
+    .select("id, assigned_to, suspended_at, ip_address, ssh_port, ssh_user, name")
+    .eq("health_status", "suspended")
+    .not("suspended_at", "is", null)
+    .not("assigned_to", "is", null);
+
+  if (staleSupended?.length) {
+    for (const vm of staleSupended) {
+      const daysSuspended = (Date.now() - new Date(vm.suspended_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSuspended < RECLAIM_AFTER_DAYS) continue;
+
+      try {
+        // Stamp last_assigned_to before reclaim
+        await supabase
+          .from("instaclaw_vms")
+          .update({ last_assigned_to: vm.assigned_to })
+          .eq("id", vm.id);
+
+        // Reclaim via DB (clears assignment, tokens, config)
+        await supabase.rpc("instaclaw_reclaim_vm", {
+          p_user_id: vm.assigned_to,
+        });
+
+        // Wipe filesystem
+        const wipeResult = await wipeVMForNextUser(vm);
+        if (wipeResult.success) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ status: "ready", suspended_at: null })
+            .eq("id", vm.id);
+        } else {
+          logger.error("VM wipe failed during 30-day reclaim", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            error: wipeResult.error,
+          });
+        }
+
+        reclaimed++;
+        logger.info("VM reclaimed after 30-day suspension", {
+          route: "cron/health-check",
+          userId: vm.assigned_to,
+          vmId: vm.id,
+          vmName: vm.name,
+          daysSuspended: Math.floor(daysSuspended),
+        });
+      } catch (err) {
+        logger.error("Failed to reclaim suspended VM", {
+          error: String(err),
+          route: "cron/health-check",
+          vmId: vm.id,
+          userId: vm.assigned_to,
+        });
       }
     }
   }
@@ -2234,6 +2392,76 @@ else:
     }
   } catch { /* dependency checks are non-critical */ }
 
+  // ── Stuck deployment detector ──
+  // Safety net: find VMs that are assigned but never configured (no gateway_url)
+  // for more than 5 minutes. This catches cases where verify, webhook, AND
+  // process-pending cron all failed to trigger configure.
+  let stuckDeploysFixed = 0;
+  try {
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: stuckVms } = await supabase
+      .from("instaclaw_vms")
+      .select("id, name, assigned_to, assigned_at")
+      .eq("status", "assigned")
+      .not("assigned_to", "is", null)
+      .is("gateway_url", null)
+      .lt("assigned_at", fiveMinAgo)
+      .limit(5);
+
+    if (stuckVms?.length) {
+      for (const svm of stuckVms) {
+        // Verify user has an active subscription before triggering
+        const { data: sub } = await supabase
+          .from("instaclaw_subscriptions")
+          .select("status")
+          .eq("user_id", svm.assigned_to)
+          .single();
+
+        if (!sub || !["active", "trialing"].includes(sub.status)) continue;
+
+        logger.warn("Stuck deployment detected by health cron — triggering configure", {
+          route: "cron/health-check",
+          vmId: svm.id,
+          vmName: svm.name,
+          userId: svm.assigned_to,
+          assignedAt: svm.assigned_at,
+        });
+
+        try {
+          const configRes = await fetch(
+            `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+              },
+              body: JSON.stringify({ userId: svm.assigned_to }),
+            }
+          );
+
+          if (configRes.ok) {
+            stuckDeploysFixed++;
+          }
+        } catch (err) {
+          logger.error("Failed to fix stuck deployment from health cron", {
+            error: String(err),
+            route: "cron/health-check",
+            vmId: svm.id,
+          });
+        }
+      }
+
+      if (stuckVms.length > 0) {
+        alerts.add(
+          "Stuck Deployments Detected",
+          `${stuckVms.length} VMs`,
+          `Found ${stuckVms.length} VMs assigned >5min with no gateway_url.\nAuto-fixed: ${stuckDeploysFixed}`
+        );
+      }
+    }
+  } catch { /* stuck deploy check is non-critical */ }
+
   // ── AgentBook registration monitoring (WDP 71) ──
   // Log warnings for VMs that have a wallet but haven't registered in AgentBook
   // after 7 days. Advisory only — no alerts or auto-actions.
@@ -2282,6 +2510,8 @@ else:
     telegramConflictsHealed,
     billingCachesCleared,
     suspended,
+    noSubSuspended,
+    reclaimed,
     sessionsCleared,
     sessionsAlerted,
     browsersKilled,
@@ -2306,6 +2536,7 @@ else:
     depsBehind,
     depsAnomalies,
     agentbookUnregistered,
+    stuckDeploysFixed,
     sessionCorruptionChecked,
     sessionCorruptionFound,
     alertDigestsSent: alertResult.sent,
