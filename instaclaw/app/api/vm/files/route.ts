@@ -73,28 +73,44 @@ export async function GET(req: NextRequest) {
 
     // File viewing/downloading: block protected system files
     if (file) {
-      if (!file.startsWith(BROWSE_ROOT)) {
+      // Dashboard panels (e.g. PolymarketPanel) need to read specific files
+      // outside of workspace. Allow exact paths that are safe to expose.
+      const DASHBOARD_ALLOWLIST = [
+        "~/.openclaw/polymarket/wallet.json",
+        "~/.openclaw/polymarket/positions.json",
+        "~/.openclaw/polymarket/risk-config.json",
+        "~/.openclaw/polymarket/trade-log.json",
+        "~/.openclaw/polymarket/polymarket-risk.json",
+        "~/.openclaw/polymarket/daily-spend.json",
+        "~/.openclaw/kalshi/credentials.json",
+        "~/memory/polymarket-watchlist.json",
+      ];
+      const isDashboardFile = DASHBOARD_ALLOWLIST.includes(file);
+
+      if (!isDashboardFile && !file.startsWith(BROWSE_ROOT)) {
         return NextResponse.json(
           { error: "Access restricted to workspace" },
           { status: 403 }
         );
       }
-      const fileName = file.split("/").pop()?.toLowerCase() || "";
-      const BLOCKED_FILES = [
-        "soul.md", "capabilities.md", "quick-reference.md", "tools.md",
-        "bootstrap.md", "user.md",
-        ".env", "auth-profiles.json", "wallet.json",
-      ];
-      const BLOCKED_DIRS = ["/skills/", "/.openclaw/"];
-      const isBlocked =
-        BLOCKED_FILES.includes(fileName) ||
-        BLOCKED_DIRS.some((d) => file.includes(d)) ||
-        fileName.startsWith(".env");
-      if (isBlocked) {
-        return NextResponse.json(
-          { error: "This file is protected" },
-          { status: 403 }
-        );
+      if (!isDashboardFile) {
+        const fileName = file.split("/").pop()?.toLowerCase() || "";
+        const BLOCKED_FILES = [
+          "soul.md", "capabilities.md", "quick-reference.md", "tools.md",
+          "bootstrap.md", "user.md",
+          ".env", "auth-profiles.json",
+        ];
+        const BLOCKED_DIRS = ["/skills/", "/.openclaw/"];
+        const isBlocked =
+          BLOCKED_FILES.includes(fileName) ||
+          BLOCKED_DIRS.some((d) => file.includes(d)) ||
+          fileName.startsWith(".env");
+        if (isBlocked) {
+          return NextResponse.json(
+            { error: "This file is protected" },
+            { status: 403 }
+          );
+        }
       }
     }
 

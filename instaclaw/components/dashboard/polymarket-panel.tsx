@@ -120,12 +120,26 @@ async function fetchBalances(address: string): Promise<Balances> {
   const balanceOfData =
     "0x70a08231" + address.slice(2).toLowerCase().padStart(64, "0");
 
-  const rpcCall = (method: string, params: unknown[]) =>
-    fetch("https://polygon-rpc.com", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
-    }).then((r) => r.json());
+  const RPC_URLS = [
+    "https://polygon.gateway.tenderly.co",
+    "https://api.zan.top/polygon-mainnet",
+  ];
+  const rpcCall = async (method: string, params: unknown[]) => {
+    for (const rpc of RPC_URLS) {
+      try {
+        const res = await fetch(rpc, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
+        });
+        const data = await res.json();
+        if (data.result !== undefined) return data;
+      } catch {
+        continue;
+      }
+    }
+    return { result: "0x0" };
+  };
 
   const [usdcRes, usdcERes, polRes] = await Promise.all([
     rpcCall("eth_call", [{ to: USDC, data: balanceOfData }, "latest"]),
