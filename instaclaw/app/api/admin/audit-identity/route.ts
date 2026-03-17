@@ -61,12 +61,14 @@ export async function GET(req: NextRequest) {
         try {
           const ssh = await connectSSH(vm, { skipDuplicateIPCheck: true });
           try {
-            const result = await ssh.execCommand("cat ~/workspace/USER.md 2>/dev/null || echo '__NO_USER_MD__'", {
-              execOptions: { timeout: SSH_TIMEOUT },
-            });
+            // Check multiple identity file locations — USER.md, SOUL.md, IDENTITY.md
+            const result = await ssh.execCommand(
+              "cat ~/.openclaw/workspace/USER.md 2>/dev/null || cat ~/.openclaw/workspace/IDENTITY.md 2>/dev/null || cat ~/.openclaw/workspace/SOUL.md 2>/dev/null || echo '__NO_IDENTITY__'",
+              { execOptions: { timeout: SSH_TIMEOUT } }
+            );
             const content = result.stdout?.trim() ?? "";
 
-            if (content === "__NO_USER_MD__" || !content) {
+            if (content === "__NO_IDENTITY__" || !content) {
               return {
                 vmId: vm.id,
                 vmName: vm.name,
@@ -74,12 +76,11 @@ export async function GET(req: NextRequest) {
                 assignedEmail,
                 configuredUser: null,
                 match: false,
-                error: "USER.md not found",
+                error: "No identity files found (USER.md/IDENTITY.md/SOUL.md)",
               };
             }
 
-            // Extract name/email from USER.md content
-            // Typical format: "# Name\nEmail: user@example.com" or similar
+            // Extract email from identity file content
             const emailMatch = content.match(/[\w.+-]+@[\w.-]+\.\w+/);
             const configuredEmail = emailMatch?.[0] ?? null;
 
