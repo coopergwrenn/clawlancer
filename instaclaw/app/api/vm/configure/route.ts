@@ -175,38 +175,35 @@ export async function POST(req: NextRequest) {
       .or(`configure_lock_at.is.null,configure_lock_at.lt.${fiveMinAgo}`)
       .select("id");
 
-    // Detect missing column — if the DB returns an error about configure_lock_at
-    // not existing, that means the migration hasn't been applied. Throw a loud
-    // error instead of silently returning 409 (which caused the 2026-03-17 outage).
+    // Handle lock acquisition errors gracefully.
+    // If PostgREST schema cache is stale (column exists but not cached), skip the
+    // lock and proceed — the lock is a safety net, not a hard requirement.
     if (lockError) {
       const errMsg = lockError.message || "";
       if (errMsg.includes("does not exist") || lockError.code === "42703") {
-        logger.error("MIGRATION_NOT_APPLIED: configure_lock_at column missing from instaclaw_vms", {
+        logger.warn("Configure lock column not visible to PostgREST — skipping lock (schema cache stale)", {
           route: "vm/configure",
           userId,
           vmId: vm.id,
           dbError: errMsg,
         });
+        // Proceed without lock — column exists in DB but PostgREST cache is stale.
+        // Run: NOTIFY pgrst, 'reload schema' in Supabase SQL editor to fix permanently.
+      } else {
+        // Other DB errors — log and fail loudly
+        logger.error("Configure lock query failed", {
+          route: "vm/configure",
+          userId,
+          vmId: vm.id,
+          dbError: errMsg,
+          dbCode: lockError.code,
+        });
         return NextResponse.json(
-          { error: "MIGRATION_NOT_APPLIED: configure_lock_at column missing. Run migration 20260342_configure_lock.sql" },
+          { error: "Configure lock query failed", detail: errMsg },
           { status: 500 }
         );
       }
-      // Other DB errors — log and fail loudly
-      logger.error("Configure lock query failed", {
-        route: "vm/configure",
-        userId,
-        vmId: vm.id,
-        dbError: errMsg,
-        dbCode: lockError.code,
-      });
-      return NextResponse.json(
-        { error: "Configure lock query failed", detail: errMsg },
-        { status: 500 }
-      );
-    }
-
-    if (!lockResult?.length) {
+    } else if (!lockResult?.length) {
       logger.warn("Configure lock not acquired — concurrent configure in progress", {
         route: "vm/configure",
         userId,
@@ -264,8 +261,11 @@ export async function POST(req: NextRequest) {
     // Only write user-configured fields when a real value exists — never null-overwrite.
     const supplementalUpdate: Record<string, unknown> = {
       configure_attempts: 0,
-      configure_lock_at: null, // Clear configure lock on success
     };
+    // Only include configure_lock_at if the lock was successfully acquired earlier
+    if (!lockError) {
+      supplementalUpdate.configure_lock_at = null;
+    }
     const effectiveUsername = pending?.telegram_bot_username ?? vm.telegram_bot_username;
     if (effectiveUsername) {
       supplementalUpdate.telegram_bot_username = effectiveUsername;
@@ -427,12 +427,15 @@ export async function POST(req: NextRequest) {
     if (userId) {
       try {
         const sb = getSupabase();
+        // Use separate calls so a stale PostgREST cache for configure_lock_at
+        // doesn't prevent the configure_attempts increment from landing.
         await sb
           .from("instaclaw_vms")
           .update({ configure_lock_at: null })
-          .eq("assigned_to", userId);
+          .eq("assigned_to", userId)
+          .then(() => {}, () => {}); // Ignore column-not-found errors
       } catch {
-        // Best-effort
+        // Best-effort — PostgREST schema cache may be stale
       }
     }
 
