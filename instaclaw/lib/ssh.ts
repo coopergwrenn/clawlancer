@@ -216,7 +216,7 @@ def remove_memory_section(path, marker_start, marker_end):
         # Remove the section plus any surrounding blank lines
         before = content[:start_idx].rstrip()
         after = content[end_idx + len(marker_end):].lstrip()
-        new_content = before + ("\n\n" + after if after else "\n")
+        new_content = before + ("\\n\\n" + after if after else "\\n")
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             f.write(new_content)
@@ -284,9 +284,9 @@ def extract_session_summary(jsonl_file):
 
         summary_path = os.path.join(ARCHIVE_DIR, f"{os.path.basename(jsonl_file)}.context.txt")
         with open(summary_path, "w") as f:
-            f.write(f"# Session Context (auto-extracted {datetime.now(timezone.utc).isoformat()})\n\n")
+            f.write(f"# Session Context (auto-extracted {datetime.now(timezone.utc).isoformat()})\\n\\n")
             for i, msg in enumerate(user_msgs[-10:], 1):
-                f.write(f"{i}. {msg}\n")
+                f.write(f"{i}. {msg}\\n")
         return summary_path
     except Exception:
         return None
@@ -619,17 +619,17 @@ try:
                                     if isinstance(block, dict) and block.get("type") == "text":
                                         text = block.get("text", "")
                                         if len(text) > MAX_TOOL_RESULT_CHARS:
-                                            block["text"] = text[:MAX_TOOL_RESULT_CHARS] + "\n... [truncated by session manager]"
+                                            block["text"] = text[:MAX_TOOL_RESULT_CHARS] + "\\n... [truncated by session manager]"
                                             total_truncated += 1
                                             modified = True
                             elif isinstance(content, str) and len(content) > MAX_TOOL_RESULT_CHARS:
-                                d["message"]["content"] = content[:MAX_TOOL_RESULT_CHARS] + "\n... [truncated by session manager]"
+                                d["message"]["content"] = content[:MAX_TOOL_RESULT_CHARS] + "\\n... [truncated by session manager]"
                                 total_truncated += 1
                                 modified = True
 
                         cleaned_lines.append(json.dumps(d, ensure_ascii=False))
                     except json.JSONDecodeError:
-                        cleaned_lines.append(line.rstrip("\n"))
+                        cleaned_lines.append(line.rstrip("\\n"))
 
             # ── Phase 3b: Strip base64 image data from older toolResult messages ──
             cleaned_lines, img_count = strip_images_from_older_messages(cleaned_lines)
@@ -641,7 +641,7 @@ try:
                 tmp = jsonl_file + ".tmp"
                 with open(tmp, "w") as f:
                     for cl in cleaned_lines:
-                        f.write(cl + "\n")
+                        f.write(cl + "\\n")
                 os.replace(tmp, jsonl_file)
         except Exception:
             pass  # never crash the cron
