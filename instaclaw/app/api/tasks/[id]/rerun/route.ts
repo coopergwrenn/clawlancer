@@ -136,7 +136,7 @@ async function executeRerun(
         user?.gmail_insights
       ) + TASK_EXECUTION_SUFFIX;
 
-    let model = vm.default_model || "claude-haiku-4-5-20251001";
+    let model = vm.default_model || "claude-sonnet-4-6";
     const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
     // ── Try gateway first, fall back to direct Anthropic ──────

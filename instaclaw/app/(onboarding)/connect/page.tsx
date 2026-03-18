@@ -71,7 +71,7 @@ export default function ConnectPage() {
     "all_inclusive"
   );
   const [apiKey, setApiKey] = useState("");
-  const [defaultModel, setDefaultModel] = useState("claude-haiku-4-5-20251001");
+  const [defaultModel, setDefaultModel] = useState("claude-sonnet-4-6");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -810,111 +810,8 @@ export default function ConnectPage() {
                 </div>
               )}
 
-              {/* Default Model Selection (all-inclusive only) */}
-              {apiMode === "all_inclusive" && (
-                <div>
-                  <label
-                    className="block text-sm font-medium mb-2"
-                    style={{ color: "#333334" }}
-                  >
-                    Default Model
-                  </label>
-                  <p className="text-xs mb-3" style={{ color: "#666" }}>
-                    Pick a starting model. You can switch anytime just by asking your bot.
-                  </p>
-
-                  <div className="space-y-2">
-                    {[
-                      {
-                        id: "claude-haiku-4-5-20251001",
-                        label: "Claude Haiku 4.5",
-                        tier: "Fast + Reliable",
-                        cost: "1 unit/message",
-                        desc: "Best all-rounder — fast, reliable, and great at tools, multi-step tasks, and following instructions.",
-                        recommended: true,
-                      },
-                      {
-                        id: "claude-sonnet-4-6",
-                        label: "Claude Sonnet 4.6",
-                        tier: "Recommended for Power Users",
-                        cost: "4 units/message",
-                        desc: "Stronger reasoning for complex questions. Great balance of smarts and cost.",
-                        recommended: false,
-                      },
-                      {
-                        id: "claude-opus-4-6",
-                        label: "Claude Opus 4.6",
-                        tier: "Most Powerful",
-                        cost: "19 units/message",
-                        desc: "Best for deep analysis, coding, and multi-step agent tasks. Top-tier intelligence.",
-                        recommended: false,
-                      },
-                    ].map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setDefaultModel(m.id)}
-                        className="w-full rounded-xl p-4 text-left transition-all flex items-start gap-3"
-                        style={defaultModel === m.id ? glassSelectedStyle : glassStyle}
-                      >
-                        {/* Radio indicator */}
-                        <div
-                          className="w-5 h-5 rounded-full shrink-0 mt-0.5 relative overflow-hidden"
-                          style={defaultModel === m.id ? {
-                            background: "radial-gradient(circle at 35% 30%, #e8845e, #DC6743 50%, #b84a2a 100%)",
-                            boxShadow: "rgba(220,103,67,0.35) 0px 2px 8px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
-                          } : {
-                            background: "linear-gradient(-75deg, rgba(255,255,255,0.05), rgba(255,255,255,0.2), rgba(255,255,255,0.05))",
-                            boxShadow: "rgba(0,0,0,0.05) 0px 1px 1px 0px inset, rgba(255,255,255,0.5) 0px -1px 1px 0px inset, rgba(0,0,0,0.08) 0px 1px 3px 0px, rgba(255,255,255,0.2) 0px 0px 1px 2px inset",
-                          }}
-                        >
-                          {defaultModel === m.id && (
-                            <div
-                              className="absolute inset-0 rounded-full"
-                              style={{
-                                background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.5) 0%, transparent 50%)",
-                              }}
-                            />
-                          )}
-                        </div>
-
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-semibold" style={{ color: "#333334" }}>
-                              {m.label}
-                            </p>
-                            <span
-                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                              style={m.recommended ? {
-                                background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-                                backdropFilter: "blur(2px)",
-                                WebkitBackdropFilter: "blur(2px)",
-                                boxShadow: "rgba(255,255,255,0.2) 0px 1px 1px 0px inset, rgba(255,255,255,0.25) 0px -1px 1px 0px inset, rgba(220,103,67,0.25) 0px 2px 6px 0px",
-                                color: "#ffffff",
-                              } : {
-                                background: "#f8f7f4",
-                                color: "#999",
-                              }}
-                            >
-                              {m.tier}
-                            </span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "#f8f7f4", color: "#666" }}>
-                              {m.cost}
-                            </span>
-                          </div>
-                          <p className="text-xs mt-1" style={{ color: "#666" }}>
-                            {m.desc}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  <p className="text-xs mt-3" style={{ color: "#999" }}>
-                    All models are always available — just tell your bot &quot;use Sonnet&quot; or &quot;switch to Opus&quot; anytime.
-                  </p>
-                </div>
-              )}
+              {/* Model is automatically set to Sonnet for all tiers.
+                 Intelligent routing escalates to Opus or drops to Haiku as needed. */}
 
               {/* FAQ */}
               <div>

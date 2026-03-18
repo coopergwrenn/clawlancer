@@ -109,7 +109,7 @@ export default function PlanPage() {
             botToken: data.pending.telegram_bot_token ?? "",
             channels: data.pending.telegram_bot_token ? ["telegram"] : data.pending.discord_bot_token ? ["discord"] : [],
             apiMode: data.pending.api_mode ?? "all_inclusive",
-            model: data.pending.default_model ?? "claude-haiku-4-5-20251001",
+            model: data.pending.default_model ?? "claude-sonnet-4-6",
           };
           sessionStorage.setItem("instaclaw_onboarding", JSON.stringify(restored));
           setApiMode(restored.apiMode as "all_inclusive" | "byok");

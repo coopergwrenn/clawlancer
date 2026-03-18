@@ -97,7 +97,7 @@ export async function POST(
     user?.gmail_insights
   );
 
-  let model = vm.default_model || "claude-haiku-4-5-20251001";
+  let model = vm.default_model || "claude-sonnet-4-6";
   const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
   const userMessage = `Original task: ${task.description}

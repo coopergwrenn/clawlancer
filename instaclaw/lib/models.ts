@@ -10,7 +10,7 @@ export function isAnthropicModel(model: string): boolean {
 }
 
 /** Safe default when falling back to direct Anthropic API */
-export const FALLBACK_MODEL = "claude-haiku-4-5-20251001";
+export const FALLBACK_MODEL = "claude-sonnet-4-6";
 
 /** Model tier classification (1=cheap, 2=mid, 3=expensive) */
 export const MODEL_TIERS: Record<string, 1 | 2 | 3> = {

@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
 
   const wasEmpty = (convMeta?.message_count ?? 0) === 0;
 
-  let model = vm.default_model || "claude-haiku-4-5-20251001";
+  let model = vm.default_model || "claude-sonnet-4-6";
 
   // ── Try gateway first, fall back to direct Anthropic ──────────
 
