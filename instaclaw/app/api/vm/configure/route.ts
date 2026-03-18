@@ -160,13 +160,44 @@ export async function POST(req: NextRequest) {
     // Acquire configure lock — prevents concurrent configures on the same VM.
     // The lock expires after 5 minutes as a safety net.
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: lockResult } = await supabase
+    const { data: lockResult, error: lockError } = await supabase
       .from("instaclaw_vms")
       .update({ configure_lock_at: new Date().toISOString() })
       .eq("id", vm.id)
       .eq("assigned_to", userId)
       .or(`configure_lock_at.is.null,configure_lock_at.lt.${fiveMinAgo}`)
       .select("id");
+
+    // Detect missing column — if the DB returns an error about configure_lock_at
+    // not existing, that means the migration hasn't been applied. Throw a loud
+    // error instead of silently returning 409 (which caused the 2026-03-17 outage).
+    if (lockError) {
+      const errMsg = lockError.message || "";
+      if (errMsg.includes("does not exist") || lockError.code === "42703") {
+        logger.error("MIGRATION_NOT_APPLIED: configure_lock_at column missing from instaclaw_vms", {
+          route: "vm/configure",
+          userId,
+          vmId: vm.id,
+          dbError: errMsg,
+        });
+        return NextResponse.json(
+          { error: "MIGRATION_NOT_APPLIED: configure_lock_at column missing. Run migration 20260342_configure_lock.sql" },
+          { status: 500 }
+        );
+      }
+      // Other DB errors — log and fail loudly
+      logger.error("Configure lock query failed", {
+        route: "vm/configure",
+        userId,
+        vmId: vm.id,
+        dbError: errMsg,
+        dbCode: lockError.code,
+      });
+      return NextResponse.json(
+        { error: "Configure lock query failed", detail: errMsg },
+        { status: 500 }
+      );
+    }
 
     if (!lockResult?.length) {
       logger.warn("Configure lock not acquired — concurrent configure in progress", {

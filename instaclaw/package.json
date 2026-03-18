@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
-    "build": "rm -rf .next/cache/.tsbuildinfo && next build",
+    "build": "npx tsx scripts/verify-migrations.ts && rm -rf .next/cache/.tsbuildinfo && next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -40,6 +40,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
