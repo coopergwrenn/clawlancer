@@ -20,7 +20,7 @@ const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
  * so the circuit breaker doesn't underestimate real API spend.
  */
 const COST_PER_UNIT = 0.004;
-const COST_SAFETY_FACTOR = 2.5;
+const COST_SAFETY_FACTOR = 1.5;
 
 /**
  * The RPC returns a 'source' field that tells the proxy how to handle
@@ -359,7 +359,7 @@ export async function POST(req: NextRequest) {
       }
 
       return friendlyAssistantResponse(
-        "Hey! The platform is at capacity for today. Service resets at midnight. In the meantime, you can switch to Haiku for basic tasks — just ask me to \"use Haiku\" and I'll switch models.\n\nSorry about the wait!",
+        "Daily platform limits reached — service resumes at midnight UTC. We're scaling up to handle increased demand. In the meantime, you can switch to Haiku for basic tasks — just ask me to \"use Haiku\".",
         requestedModel,
         isStreaming
       );
