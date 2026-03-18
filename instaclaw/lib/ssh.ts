@@ -2395,7 +2395,21 @@ export async function configureOpenClaw(
         ? (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim() + "/api/gateway"
         : "";
 
-    const openclawModel = toOpenClawModel(config.model || "claude-sonnet-4-6");
+    // Belt-and-suspenders: never provision a VM with haiku as primary model.
+    // Intelligent model routing handles tier-appropriate model selection at runtime.
+    // If haiku somehow gets passed in (frontend bug, stale pending record, etc.),
+    // override it to sonnet so users always get the correct default.
+    let resolvedModel = config.model || "claude-sonnet-4-6";
+    if (resolvedModel.includes("haiku")) {
+      logger.warn("configureOpenClaw: overriding haiku primary model to sonnet", {
+        route: "lib/ssh",
+        vmId: vm.id,
+        originalModel: resolvedModel,
+      });
+      resolvedModel = "claude-sonnet-4-6";
+    }
+
+    const openclawModel = toOpenClawModel(resolvedModel);
     assertSafeShellArg(openclawModel, "model");
 
     // Determine active channels

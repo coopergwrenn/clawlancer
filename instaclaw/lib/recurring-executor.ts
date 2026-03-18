@@ -112,7 +112,7 @@ Execute the task with the LATEST available information.
 Be thorough and provide current, actionable content.
 Return ONLY the result content — do NOT include any TASK_META block.`;
 
-  let rawModel = vm.default_model || "claude-haiku-4-5-20251001";
+  let rawModel = vm.default_model || "claude-sonnet-4-6";
   const canUseGateway = !!(vm.gateway_url && vm.gateway_token && vm.health_status === "healthy");
 
   let resultContent = "";

@@ -105,7 +105,14 @@ export async function POST(req: NextRequest) {
 
     const effectiveTier = pending?.tier ?? subscription?.tier ?? vm.tier ?? "starter";
     const effectiveApiMode = pending?.api_mode ?? vm.api_mode ?? "all_inclusive";
-    const effectiveModel = pending?.default_model ?? vm.default_model ?? "claude-sonnet-4-6";
+    let effectiveModel = pending?.default_model ?? vm.default_model ?? "claude-sonnet-4-6";
+    // Guard: never configure a VM with haiku as primary — intelligent routing handles model selection
+    if (effectiveModel.includes("haiku")) {
+      logger.warn("Configure endpoint: overriding haiku model to sonnet", {
+        route: "vm/configure", userId, vmId: vm.id, originalModel: effectiveModel,
+      });
+      effectiveModel = "claude-sonnet-4-6";
+    }
     // Preserve existing tokens when reconfiguring (pending record is deleted after first setup)
     const effectiveTelegramToken = pending?.telegram_bot_token ?? vm.telegram_bot_token ?? undefined;
     const effectiveDiscordToken = pending?.discord_bot_token ?? vm.discord_bot_token ?? undefined;
