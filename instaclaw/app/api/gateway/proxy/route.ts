@@ -269,6 +269,45 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- Truncate oversized tool results to prevent context overflow ---
+    // Web fetches can return hundreds of KB of page content. If this reaches
+    // the LLM context window, the agent produces empty responses and crash-loops.
+    // Truncate at the proxy level BEFORE forwarding to Anthropic.
+    const MAX_TOOL_RESULT_CHARS = 100_000; // 100KB — generous but prevents blowouts
+    if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
+      let toolResultsTruncated = 0;
+      for (const msg of parsedBody.messages as Array<{ role?: string; content?: unknown }>) {
+        if (msg.role === "user" && Array.isArray(msg.content)) {
+          for (const block of msg.content as Array<{ type?: string; content?: unknown }>) {
+            if (block.type === "tool_result" && typeof block.content === "string") {
+              if (block.content.length > MAX_TOOL_RESULT_CHARS) {
+                block.content = block.content.slice(0, MAX_TOOL_RESULT_CHARS) +
+                  "\n\n... [content truncated — original was " +
+                  Math.round(block.content.length / 1024) + "KB]";
+                toolResultsTruncated++;
+              }
+            } else if (block.type === "tool_result" && Array.isArray(block.content)) {
+              for (const inner of block.content as Array<{ type?: string; text?: string }>) {
+                if (inner.type === "text" && typeof inner.text === "string" && inner.text.length > MAX_TOOL_RESULT_CHARS) {
+                  inner.text = inner.text.slice(0, MAX_TOOL_RESULT_CHARS) +
+                    "\n\n... [content truncated — original was " +
+                    Math.round(inner.text.length / 1024) + "KB]";
+                  toolResultsTruncated++;
+                }
+              }
+            }
+          }
+        }
+      }
+      if (toolResultsTruncated > 0) {
+        logger.info("Truncated oversized tool results before forwarding to LLM", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          truncated: toolResultsTruncated,
+        });
+      }
+    }
+
     // --- Detect tool-use continuations ---
     // If the last message contains tool_result blocks, this is a continuation
     // call within an agent turn, not a new user message. Charged at 0.2x.
