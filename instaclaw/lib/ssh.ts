@@ -192,7 +192,7 @@ def inject_memory_section(path, marker_start, marker_end, content):
                 existing = f.read()
         if marker_start in existing:
             return  # already injected
-        new_content = existing.rstrip() + "\n\n" + marker_start + content + marker_end + "\n"
+        new_content = existing.rstrip() + "\\n\\n" + marker_start + content + marker_end + "\\n"
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             f.write(new_content)
