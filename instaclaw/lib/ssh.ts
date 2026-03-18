@@ -1718,6 +1718,10 @@ _As you learn what your owner likes, log them here. This section is yours to mai
 
 This is not optional. If you complete a task and don't log it, you WILL forget it next session.
 
+### Memory Hygiene
+
+Before appending new information to MEMORY.md, check its size. If it exceeds 20KB, consolidate first: remove stale or outdated entries, merge duplicate information, and keep only actively relevant facts. MEMORY.md should stay under 25KB. Critical information like wallet addresses, user preferences, and active project context should always be preserved during consolidation.
+
 ## Continuity
 
 Each session, you wake up fresh. These files _are_ your memory. Read them. Update them. They're how you persist.
