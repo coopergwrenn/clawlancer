@@ -1377,10 +1377,12 @@ else:
   // ========================================================================
   let memoryEmptyAlerts = 0;
   let memoryStaleWarnings = 0;
+  let memoryOversizedAlerts = 0;
   const MEMORY_EMPTY_THRESHOLD = 200;   // bytes — effectively empty
   const MEMORY_STALE_HOURS = 72;        // hours without update
   const MEMORY_MIN_SESSION_BYTES = 10 * 1024; // 10KB — VM must have meaningful session
   const MEMORY_ASSIGNED_HOURS = 48;     // VM must be assigned 48h+ for empty alert
+  const MEMORY_OVERSIZED_BYTES = 25 * 1024; // 25KB — MEMORY.md is getting too large for bootstrap injection
 
   const memoryHealthBatch = vms
     .filter((vm) => healthyVmIds.has(vm.id))
@@ -1442,6 +1444,27 @@ else:
           largestSessionBytes: sessionHealth.largestSessionBytes,
           assignedTo: vm.assigned_to,
         });
+      }
+
+      // MEMORY_OVERSIZED: MEMORY.md exceeds 25KB — risks truncation during bootstrap injection.
+      // bootstrapMaxChars is 30K, so 25KB is the warning threshold before content gets lost.
+      if (memHealth.memSizeBytes > MEMORY_OVERSIZED_BYTES) {
+        memoryOversizedAlerts++;
+        logger.warn("Memory oversized — bootstrap truncation risk", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          vmName: vm.name,
+          memSizeBytes: memHealth.memSizeBytes,
+          memSizeKB: Math.round(memHealth.memSizeBytes / 1024),
+          bootstrapMaxChars: 30000,
+          assignedTo: vm.assigned_to,
+        });
+
+        alerts.add(
+          "Memory Oversized",
+          vm.name ?? vm.id,
+          `MEMORY.md: ${Math.round(memHealth.memSizeBytes / 1024)}KB (limit: 25KB)\nAgent may lose context from truncated memory.\nUser: ${vm.assigned_to ?? "unknown"}\nAction: Review and trim MEMORY.md or extract critical info into WALLET.md.`
+        );
       }
     } catch (err) {
       logger.error("Memory health check failed", {
@@ -2520,6 +2543,7 @@ else:
     memoryFilesCreated,
     memoryEmptyAlerts,
     memoryStaleWarnings,
+    memoryOversizedAlerts,
     tokenDriftChecked,
     tokenDriftFixed,
     proxyChecked,
