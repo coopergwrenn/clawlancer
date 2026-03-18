@@ -47,6 +47,8 @@ const DAILY_SPEND_CAP =
 
 /** Track whether we've already sent a circuit-breaker alert today. */
 let circuitBreakerAlertDate = "";
+/** Track whether we've already sent an 80% warning today. */
+let circuitBreakerWarningDate = "";
 
 /**
  * Build a valid Anthropic Messages API response containing a friendly text
@@ -338,6 +340,15 @@ export async function POST(req: NextRequest) {
       0
     );
     const estimatedSpend = totalUnitsToday * COST_PER_UNIT * COST_SAFETY_FACTOR;
+
+    // 80% warning — alert admin before the breaker trips
+    if (estimatedSpend >= DAILY_SPEND_CAP * 0.8 && estimatedSpend < DAILY_SPEND_CAP && circuitBreakerWarningDate !== todayStr) {
+      circuitBreakerWarningDate = todayStr;
+      sendAdminAlertEmail(
+        "WARNING: Circuit Breaker at 80% — Approaching Daily Spend Cap",
+        `Estimated spend: $${estimatedSpend.toFixed(2)} / $${DAILY_SPEND_CAP} cap (${((estimatedSpend / DAILY_SPEND_CAP) * 100).toFixed(1)}%)\nTotal units today: ${totalUnitsToday}\nActive VMs: ${(totalUsageRows ?? []).length}\n\nThe circuit breaker will trip at $${DAILY_SPEND_CAP} and block all non-starter requests.\n\nRaise the cap: Set DAILY_SPEND_CAP_DOLLARS in Vercel env vars.`
+      ).catch(() => {});
+    }
 
     if (estimatedSpend >= DAILY_SPEND_CAP && tier !== "starter") {
       logger.error("Circuit breaker tripped — daily spend cap exceeded", {

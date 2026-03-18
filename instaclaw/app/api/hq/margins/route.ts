@@ -280,10 +280,37 @@ export async function GET() {
       };
     });
 
+    // --- Circuit breaker status ---
+    const todayStr = new Date().toISOString().split("T")[0];
+    const { data: todayUsageRows } = await supabase
+      .from("instaclaw_daily_usage")
+      .select("message_count")
+      .eq("usage_date", todayStr);
+    const todayTotalUnits = (todayUsageRows ?? []).reduce(
+      (sum: number, row: { message_count: number }) => sum + (Number(row.message_count) || 0), 0
+    );
+    const cbCostPerUnit = 0.004;
+    const cbSafetyFactor = 1.5;
+    const cbCap = parseFloat(process.env.DAILY_SPEND_CAP_DOLLARS ?? "500");
+    const cbEstimatedSpend = todayTotalUnits * cbCostPerUnit * cbSafetyFactor;
+    const cbPct = cbCap > 0 ? (cbEstimatedSpend / cbCap) * 100 : 0;
+
+    const circuitBreaker = {
+      dailySpendCap: cbCap,
+      estimatedSpend: Math.round(cbEstimatedSpend * 100) / 100,
+      realSpend: Math.round(todayTotalUnits * cbCostPerUnit * 100) / 100,
+      totalUnitsToday: Math.round(todayTotalUnits * 10) / 10,
+      safetyFactor: cbSafetyFactor,
+      pctOfCap: Math.round(cbPct * 10) / 10,
+      tripped: cbEstimatedSpend >= cbCap,
+      activeVmsToday: (todayUsageRows ?? []).length,
+    };
+
     return NextResponse.json({
       providers,
       tiers,
       apiCosts,
+      circuitBreaker,
       totals: {
         totalVms,
         activeSubscribers,

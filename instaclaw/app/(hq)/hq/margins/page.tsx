@@ -10,6 +10,7 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronUp,
+  Activity,
 } from "lucide-react";
 
 interface ProviderData {
@@ -71,10 +72,22 @@ interface ApiCosts {
   byVm: VmCostDetail[];
 }
 
+interface CircuitBreaker {
+  dailySpendCap: number;
+  estimatedSpend: number;
+  realSpend: number;
+  totalUnitsToday: number;
+  safetyFactor: number;
+  pctOfCap: number;
+  tripped: boolean;
+  activeVmsToday: number;
+}
+
 interface MarginsData {
   providers: ProviderData[];
   tiers: TierData[];
   apiCosts: ApiCosts;
+  circuitBreaker: CircuitBreaker;
   totals: {
     totalVms: number;
     activeSubscribers: number;
@@ -173,8 +186,9 @@ export default function MarginsPage() {
 
   if (!data) return null;
 
-  const { totals, providers, tiers, apiCosts, vms } = data;
+  const { totals, providers, tiers, apiCosts, circuitBreaker, vms } = data;
   const trueMarginPositive = totals.trueGrossMargin >= 0;
+  const cb = circuitBreaker;
 
   const kpis = [
     {
@@ -233,6 +247,69 @@ export default function MarginsPage() {
           <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
+
+      {/* Circuit Breaker Status */}
+      {cb && (
+        <div
+          className="glass rounded-xl p-4 sm:p-5 mb-6"
+          style={{
+            borderLeft: `4px solid ${cb.tripped ? "#dc2626" : cb.pctOfCap >= 80 ? "#f59e0b" : "#16a34a"}`,
+          }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4" style={{ color: cb.tripped ? "#dc2626" : cb.pctOfCap >= 80 ? "#f59e0b" : "#16a34a" }} />
+              <span className="text-sm font-semibold">Circuit Breaker</span>
+              {cb.tripped && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(239,68,68,0.1)", color: "#dc2626" }}>
+                  TRIPPED
+                </span>
+              )}
+              {!cb.tripped && cb.pctOfCap >= 80 && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(245,158,11,0.1)", color: "#ca8a04" }}>
+                  WARNING
+                </span>
+              )}
+              {!cb.tripped && cb.pctOfCap < 80 && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(34,197,94,0.1)", color: "#16a34a" }}>
+                  OK
+                </span>
+              )}
+            </div>
+            <span className="text-xs" style={{ color: "var(--muted)" }}>
+              DAILY_SPEND_CAP = ${cb.dailySpendCap}
+            </span>
+          </div>
+          {/* Progress bar */}
+          <div className="w-full h-3 rounded-full overflow-hidden mb-3" style={{ background: "rgba(0,0,0,0.06)" }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${Math.min(cb.pctOfCap, 100)}%`,
+                background: cb.tripped ? "#dc2626" : cb.pctOfCap >= 80 ? "#f59e0b" : "#16a34a",
+              }}
+            />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div>
+              <span style={{ color: "var(--muted)" }} className="text-xs">Est. Spend</span>
+              <p className="font-medium">${cb.estimatedSpend} <span className="text-xs" style={{ color: "var(--muted)" }}>({cb.pctOfCap}%)</span></p>
+            </div>
+            <div>
+              <span style={{ color: "var(--muted)" }} className="text-xs">Real Spend</span>
+              <p className="font-medium">${cb.realSpend}</p>
+            </div>
+            <div>
+              <span style={{ color: "var(--muted)" }} className="text-xs">Units Today</span>
+              <p className="font-medium">{cb.totalUnitsToday.toLocaleString()}</p>
+            </div>
+            <div>
+              <span style={{ color: "var(--muted)" }} className="text-xs">Active VMs</span>
+              <p className="font-medium">{cb.activeVmsToday}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
