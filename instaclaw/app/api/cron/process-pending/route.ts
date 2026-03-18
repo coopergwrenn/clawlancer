@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { assignVMWithSSHCheck } from "@/lib/ssh";
-import { sendVMReadyEmail } from "@/lib/email";
+import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -86,7 +86,8 @@ export async function GET(req: NextRequest) {
           if (userEmail?.email) {
             await sendVMReadyEmail(
               userEmail.email,
-              `${process.env.NEXTAUTH_URL}/dashboard`
+              `${process.env.NEXTAUTH_URL}/dashboard`,
+              p.telegram_bot_username ?? undefined
             );
           }
           assigned++;
@@ -102,7 +103,7 @@ export async function GET(req: NextRequest) {
   // -----------------------------------------------------------------
   const { data: failedVms } = await supabase
     .from("instaclaw_vms")
-    .select("assigned_to, configure_attempts")
+    .select("assigned_to, configure_attempts, telegram_bot_username")
     .eq("health_status", "configure_failed")
     .lt("configure_attempts", MAX_CONFIGURE_ATTEMPTS)
     .not("assigned_to", "is", null)
@@ -146,7 +147,8 @@ export async function GET(req: NextRequest) {
           if (user?.email) {
             await sendVMReadyEmail(
               user.email,
-              `${process.env.NEXTAUTH_URL}/dashboard`
+              `${process.env.NEXTAUTH_URL}/dashboard`,
+              vm.telegram_bot_username ?? undefined
             );
           }
         }
@@ -210,6 +212,41 @@ export async function GET(req: NextRequest) {
   }
 
   // -----------------------------------------------------------------
+  // Pass 2c: Release VMs that exhausted configure retries.
+  // Belt+suspenders for the auto-release in configure route — catches any
+  // exhausted VMs the configure endpoint missed.
+  // -----------------------------------------------------------------
+  let released = 0;
+  const { data: exhaustedVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, assigned_to, configure_attempts")
+    .eq("health_status", "configure_failed")
+    .gte("configure_attempts", MAX_CONFIGURE_ATTEMPTS)
+    .not("assigned_to", "is", null)
+    .limit(5);
+
+  if (exhaustedVms?.length) {
+    for (const evm of exhaustedVms) {
+      logger.error("Pass 2c: releasing exhausted VM", {
+        route: "cron/process-pending",
+        vmId: evm.id,
+        userId: evm.assigned_to,
+        configureAttempts: evm.configure_attempts,
+      });
+      await supabase.from("instaclaw_vms").update({
+        status: "failed", assigned_to: null, assigned_at: null,
+        gateway_url: null, gateway_token: null, configure_lock_at: null,
+      }).eq("id", evm.id);
+      await supabase.from("instaclaw_users").update({
+        onboarding_complete: false, deployment_lock_at: null,
+      }).eq("id", evm.assigned_to);
+      await supabase.from("instaclaw_pending_users")
+        .update({ consumed_at: null }).eq("user_id", evm.assigned_to);
+      released++;
+    }
+  }
+
+  // -----------------------------------------------------------------
   // Pass 3: Auto-configure orphaned VMs (assigned but never configured)
   // Users who paid but never completed the onboarding wizard end up with
   // a VM assigned but configure_attempts = 0 and no pending config.
@@ -220,7 +257,7 @@ export async function GET(req: NextRequest) {
 
   const { data: orphanedVms } = await supabase
     .from("instaclaw_vms")
-    .select("id, assigned_to, assigned_at")
+    .select("id, assigned_to, assigned_at, telegram_bot_username")
     .not("assigned_to", "is", null)
     .eq("configure_attempts", 0)
     .in("health_status", ["unknown", "unhealthy"])
@@ -280,7 +317,8 @@ export async function GET(req: NextRequest) {
           if (user?.email) {
             await sendVMReadyEmail(
               user.email,
-              `${process.env.NEXTAUTH_URL}/dashboard`
+              `${process.env.NEXTAUTH_URL}/dashboard`,
+              vm.telegram_bot_username ?? undefined
             );
           }
         }
@@ -304,7 +342,7 @@ export async function GET(req: NextRequest) {
 
   const { data: stuckDeployVms } = await supabase
     .from("instaclaw_vms")
-    .select("id, assigned_to, configure_attempts, assigned_at")
+    .select("id, assigned_to, configure_attempts, assigned_at, telegram_bot_username")
     .eq("status", "assigned")
     .not("assigned_to", "is", null)
     .is("gateway_url", null)
@@ -355,7 +393,8 @@ export async function GET(req: NextRequest) {
           if (user?.email) {
             await sendVMReadyEmail(
               user.email,
-              `${process.env.NEXTAUTH_URL}/dashboard`
+              `${process.env.NEXTAUTH_URL}/dashboard`,
+              vm.telegram_bot_username ?? undefined
             );
           }
         }
@@ -431,6 +470,7 @@ export async function GET(req: NextRequest) {
     assigned,
     retried,
     gatewayRetried,
+    released,
     autoConfigured,
     stuckDeployFixed,
     cleaned,

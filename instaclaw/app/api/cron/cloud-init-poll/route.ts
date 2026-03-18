@@ -114,8 +114,10 @@ export async function GET(req: NextRequest) {
           readyTimeout: 10_000,
         });
 
+        // Compound check: cloud-init sentinel + openclaw binary + ~/.openclaw dir
+        // Prevents marking VMs as "ready" when cloud-init finishes but npm install silently failed
         const result = await ssh.execCommand(
-          `test -f ${CLOUD_INIT_SENTINEL} && echo READY || echo PENDING`
+          `test -f ${CLOUD_INIT_SENTINEL} && su - openclaw -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && which openclaw >/dev/null 2>&1' && test -d /home/openclaw/.openclaw && echo READY || echo PENDING`
         );
 
         if (result.stdout.trim() === "READY") {

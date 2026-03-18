@@ -8,6 +8,8 @@ import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 // SSH + configure-vm.sh + health check + optional data migration can take 60-150s
 export const maxDuration = 180;
 
+const MAX_CONFIGURE_ATTEMPTS = 3;
+
 export async function POST(req: NextRequest) {
   // This endpoint is called internally by the billing webhook and cron jobs.
   // Require an admin API key for authentication.
@@ -383,7 +385,8 @@ export async function POST(req: NextRequest) {
           .single();
         if (user?.email) {
           try {
-            await sendVMReadyEmail(user.email, `${process.env.NEXTAUTH_URL}/dashboard`);
+            const botUsername = vm.telegram_bot_username ?? pending?.telegram_bot_username;
+            await sendVMReadyEmail(user.email, `${process.env.NEXTAUTH_URL}/dashboard`, botUsername ?? undefined);
           } catch (emailErr) {
             logger.error("Failed to send VM ready email", {
               error: String(emailErr),
@@ -462,14 +465,48 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (failedVm) {
+          const newAttempts = (failedVm.configure_attempts ?? 0) + 1;
+
           await sb
             .from("instaclaw_vms")
             .update({
               health_status: "configure_failed",
-              configure_attempts: (failedVm.configure_attempts ?? 0) + 1,
+              configure_attempts: newAttempts,
               last_health_check: new Date().toISOString(),
             })
             .eq("id", failedVm.id);
+
+          // Auto-release VM if configure retries exhausted — user gets re-queued for a fresh VM
+          if (newAttempts >= MAX_CONFIGURE_ATTEMPTS) {
+            logger.error("Configure exhausted — releasing VM for reassignment", {
+              route: "vm/configure", userId, vmId: failedVm.id,
+            });
+            await sb.from("instaclaw_vms").update({
+              status: "failed", health_status: "configure_failed",
+              assigned_to: null, assigned_at: null,
+              configure_lock_at: null, gateway_url: null, gateway_token: null,
+            }).eq("id", failedVm.id);
+            await sb.from("instaclaw_users").update({
+              onboarding_complete: false, deployment_lock_at: null,
+            }).eq("id", userId);
+            await sb.from("instaclaw_pending_users")
+              .update({ consumed_at: null }).eq("user_id", userId);
+          }
+
+          // Admin alert on every configure failure
+          sendAdminAlertEmail(
+            "VM Configure Failed",
+            [
+              `User: ${userId}`,
+              `VM: ${failedVm.id}`,
+              `Attempt: ${newAttempts}/${MAX_CONFIGURE_ATTEMPTS}`,
+              `Error: ${errMsg.substring(0, 500)}`,
+              "",
+              newAttempts >= MAX_CONFIGURE_ATTEMPTS
+                ? "EXHAUSTED — VM released, user queued for reassignment."
+                : `Will retry (${MAX_CONFIGURE_ATTEMPTS - newAttempts} left).`,
+            ].join("\n")
+          ).catch(() => {});
         }
       } catch {
         // Best-effort — don't mask the original error

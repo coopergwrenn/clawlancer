@@ -2220,9 +2220,18 @@ export async function checkSSHConnectivity(vm: VMRecord, opts?: { skipDuplicateI
           privateKey,
           readyTimeout: 10_000,
         });
-        const result = await ssh.execCommand("echo ok");
+        const result = await ssh.execCommand(
+          "echo ok && (test -d /home/openclaw/.openclaw && echo OC_OK || echo OC_MISSING)"
+        );
         ssh.dispose();
-        return result.stdout.trim() === "ok";
+        const output = result.stdout.trim();
+        if (output.includes("OC_MISSING")) {
+          logger.warn("SSH OK but OpenClaw missing — rejecting VM", {
+            vmId: vm.id, ip: vm.ip_address,
+          });
+          return false;
+        }
+        return output.includes("ok");
       } catch {
         continue;
       }

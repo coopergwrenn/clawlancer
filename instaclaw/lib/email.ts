@@ -223,7 +223,8 @@ export async function sendInviteEmail(
 
 export async function sendVMReadyEmail(
   email: string,
-  controlPanelUrl: string
+  controlPanelUrl: string,
+  telegramBotUsername?: string
 ): Promise<void> {
   // Dedup guard: never send this email more than once per email per 24h.
   // Uses instaclaw_admin_alert_log with a unique key to prevent spam.
@@ -269,13 +270,16 @@ export async function sendVMReadyEmail(
         <h1 style="font-size: 24px; margin-bottom: 16px;">You're Live!</h1>
         <p style="color: #888; line-height: 1.6;">
           Your OpenClaw instance has been deployed and is ready to use. Your Telegram bot is now active.
-        </p>
+        </p>${telegramBotUsername ? `
+        <p style="color: #ccc; line-height: 1.6; margin-top: 12px;">
+          Talk to your bot: <a href="https://t.me/${telegramBotUsername}" style="color: #4FC3F7;">@${telegramBotUsername}</a>
+        </p>` : ""}
         <a href="${controlPanelUrl}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #fff; color: #000; text-decoration: none; border-radius: 6px; font-weight: 600;">
           Open Dashboard
         </a>
       </div>
     `,
-    text: `You're Live!\n\nYour OpenClaw instance has been deployed and is ready to use. Your Telegram bot is now active.\n\nOpen Dashboard: ${controlPanelUrl}\n\n— InstaClaw`,
+    text: `You're Live!\n\nYour OpenClaw instance has been deployed and is ready to use. Your Telegram bot is now active.${telegramBotUsername ? `\n\nTalk to your bot: https://t.me/${telegramBotUsername}` : ""}\n\nOpen Dashboard: ${controlPanelUrl}\n\n— InstaClaw`,
     headers: UNSUB_HEADERS,
   });
 }
