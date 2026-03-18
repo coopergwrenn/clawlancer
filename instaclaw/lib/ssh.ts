@@ -107,8 +107,8 @@ SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
 SESSIONS_JSON = os.path.join(SESSIONS_DIR, "sessions.json")
 ARCHIVE_DIR = os.path.join(SESSIONS_DIR, "archive")
 LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
-MAX_SESSION_BYTES = ${512 * 1024}  # 512KB — archive sessions larger than this
-MEMORY_WARN_BYTES = ${400 * 1024}  # 400KB (80% of max) — trigger memory write request
+MAX_SESSION_BYTES = ${200 * 1024}  # 200KB — archive sessions larger than this (lowered from 512KB after web fetch blowouts)
+MEMORY_WARN_BYTES = ${160 * 1024}  # 160KB (80% of max) — trigger memory write request
 MAX_TOOL_RESULT_CHARS = 8000       # Truncate individual tool results over this
 IMAGE_KEEP_RECENT = 3              # Keep images in last N toolResult messages only
 
@@ -371,6 +371,42 @@ except (IOError, OSError):
 try:
     largest_active_session = 0
 
+    # ── Pre-flight: Auto-recover from stale .session-degraded flag ──
+    # If a previous run flagged degradation but the session wasn't archived
+    # (e.g., gateway restarted before cron could act), force-archive now.
+    if os.path.exists(DEGRADED_FLAG):
+        try:
+            with open(DEGRADED_FLAG) as f:
+                degraded_info = json.load(f)
+            degraded_sid = degraded_info.get("session_id", "")
+            degraded_file = os.path.join(SESSIONS_DIR, f"{degraded_sid}.jsonl")
+            if degraded_sid and os.path.exists(degraded_file):
+                os.makedirs(ARCHIVE_DIR, exist_ok=True)
+                archive_name = f"{degraded_sid}-autorecovery-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+                shutil.copy2(degraded_file, os.path.join(ARCHIVE_DIR, archive_name))
+                extract_session_summary(degraded_file)
+                os.remove(degraded_file)
+                archived_sessions.append(degraded_sid)
+                try:
+                    with open(SESSIONS_JSON) as f:
+                        sj = json.load(f)
+                    for key in list(sj.keys()):
+                        if sj[key].get("sessionId") == degraded_sid:
+                            del sj[key]
+                    with open(SESSIONS_JSON, "w") as f:
+                        json.dump(sj, f, indent=2)
+                except Exception:
+                    pass
+                inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
+                print(f"AUTO-RECOVERY: Force-archived degraded session {degraded_sid} from stale flag")
+            os.remove(DEGRADED_FLAG)
+        except Exception as e:
+            print(f"Auto-recovery from degraded flag failed: {e}")
+            try:
+                os.remove(DEGRADED_FLAG)
+            except Exception:
+                pass
+
     for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
         file_size = os.path.getsize(jsonl_file)
         session_id = os.path.basename(jsonl_file).replace(".jsonl", "")
@@ -459,28 +495,42 @@ try:
         # ── Phase 1.5: Session quality check (empty responses + error loops) ──
         quality_issue = check_session_quality(jsonl_file, session_id)
         if quality_issue == "empty_responses":
-            # Write degraded flag for watchdog/health check to pick up
+            # Force-archive the degraded session immediately — don't just set a flag.
+            # The old approach (flag only) caused crash loops: gateway reloads the same
+            # bloated session on restart → empty responses again → flag again → loop.
             try:
-                with open(DEGRADED_FLAG, "w") as f:
-                    json.dump({"session_id": session_id, "issue": "empty_responses", "ts": time.time()}, f)
-                # Inject warning into MEMORY.md
-                inject_memory_section(MEMORY_MD,
-                    "<!-- INSTACLAW:SESSION_DEGRADED:START -->",
-                    "<!-- INSTACLAW:SESSION_DEGRADED:END -->",
-                    """
-## \u26a0\ufe0f SESSION DEGRADED \u2014 EMPTY RESPONSES DETECTED
+                os.makedirs(ARCHIVE_DIR, exist_ok=True)
+                archive_name = f"{session_id}-degraded-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+                archive_path = os.path.join(ARCHIVE_DIR, archive_name)
+                shutil.copy2(jsonl_file, archive_path)
+                extract_session_summary(jsonl_file)
+                os.remove(jsonl_file)
+                archived_sessions.append(session_id)
 
-Your last several responses returned empty content. This usually means your context
-is corrupted or a task is stuck in a failure loop.
+                # Remove from sessions.json
+                try:
+                    with open(SESSIONS_JSON) as f:
+                        sj = json.load(f)
+                    for key in list(sj.keys()):
+                        if sj[key].get("sessionId") == session_id:
+                            del sj[key]
+                    with open(SESSIONS_JSON, "w") as f:
+                        json.dump(sj, f, indent=2)
+                except Exception:
+                    pass
 
-**Action required:**
-1. Stop any repeating/looping task immediately
-2. Write a summary of what you were working on to MEMORY.md
-3. Start a fresh approach to the task
-""")
-                print(f"SESSION DEGRADED: {session_id} — {EMPTY_RESPONSE_THRESHOLD}+ consecutive empty responses")
-            except Exception:
-                pass
+                # Clear degraded flag if it exists
+                try:
+                    if os.path.exists(DEGRADED_FLAG):
+                        os.remove(DEGRADED_FLAG)
+                except Exception:
+                    pass
+
+                inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
+                print(f"SESSION DEGRADED: {session_id} — {EMPTY_RESPONSE_THRESHOLD}+ empty responses, session FORCE-ARCHIVED (crash-loop prevention)")
+            except Exception as e:
+                print(f"Empty response archive failed: {e}")
+            continue
         elif quality_issue == "error_loop":
             # Force-archive the session and trip circuit breaker
             try:
