@@ -1601,32 +1601,47 @@ if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
   json_error "File too large: $((FILE_SIZE / 1024 / 1024))MB (max 50MB)"
 fi
 
-# Read bot token from auth-profiles.json
-AUTH_PROFILES="$HOME/.openclaw/agents/main/agent/auth-profiles.json"
-if [ ! -f "$AUTH_PROFILES" ]; then
-  json_error "Telegram not configured (auth-profiles.json missing)"
+# Read bot token from openclaw.json (channels.telegram.botToken)
+OPENCLAW_JSON="$HOME/.openclaw/openclaw.json"
+if [ ! -f "$OPENCLAW_JSON" ]; then
+  json_error "Telegram not configured (openclaw.json missing)"
 fi
 
 BOT_TOKEN=$(python3 -c "
 import json, sys
 try:
-    d = json.load(open('$AUTH_PROFILES'))
-    channels = d.get('profiles', {})
-    for k, v in channels.items():
-        if 'telegram' in k.lower():
-            print(v.get('key', v.get('token', '')))
-            sys.exit(0)
-    # Fallback: check channels section
-    ch = d.get('channels', {}).get('telegram', {})
-    print(ch.get('botToken', ch.get('token', '')))
-except Exception as e:
-    print('', file=sys.stderr)
+    d = json.load(open('$OPENCLAW_JSON'))
+    token = d.get('channels', {}).get('telegram', {}).get('botToken', '')
+    print(token)
+except Exception:
+    print('')
 " 2>/dev/null)
 
-[ -z "$BOT_TOKEN" ] && json_error "Telegram bot token not found in auth-profiles.json"
+[ -z "$BOT_TOKEN" ] && json_error "Telegram bot token not found in openclaw.json"
 
-# Discover chat_id — try env first, then getUpdates
+# Discover chat_id — try env, then sessions.json, then getUpdates
 CHAT_ID="\${TELEGRAM_CHAT_ID:-}"
+
+# Try sessions.json (OpenClaw stores "from": "telegram:<chat_id>")
+if [ -z "$CHAT_ID" ]; then
+  SESSIONS_JSON="$HOME/.openclaw/agents/main/sessions/sessions.json"
+  if [ -f "$SESSIONS_JSON" ]; then
+    CHAT_ID=$(python3 -c "
+import json, sys, re
+try:
+    d = json.load(open('$SESSIONS_JSON'))
+    for k, v in d.items():
+        origin = v.get('origin', {})
+        f = origin.get('from', '') or v.get('lastTo', '')
+        m = re.search(r'telegram:(\\d+)', f)
+        if m:
+            print(m.group(1)); sys.exit(0)
+except: pass
+" 2>/dev/null)
+  fi
+fi
+
+# Fallback: try getUpdates (works if gateway isn't long-polling)
 if [ -z "$CHAT_ID" ]; then
   CHAT_ID=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?timeout=0&limit=10" | python3 -c "
 import json, sys
