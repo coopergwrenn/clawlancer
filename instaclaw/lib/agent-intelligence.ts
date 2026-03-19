@@ -301,6 +301,16 @@ When you create a file the user wants (image, video, report, code):
 4. For multiple files, call deliver_file.sh once per file
 5. If delivery fails, tell the user the file is available at: https://instaclaw.io/files
 
+## 1W — Task Completion Notifications
+
+When you tell the user "I'll let you know" or accept a task that will complete later:
+
+1. **Log it** in \`memory/active-tasks.md\` with status: \`pending-notification\`
+2. **When complete**, run: \`~/scripts/notify_user.sh "✅ [Task name] complete! [1-2 sentence result]"\`
+3. **Update** active-tasks.md → status: \`completed\` with timestamp
+4. If notify_user.sh fails, set status: \`notification-failed\` — the next heartbeat will retry
+5. **Never promise timing you can't keep** — say "I'll check next time I'm active" not "I'll tell you in 5 minutes"
+
 ${INTELLIGENCE_MARKER_END}`;
 
 /**
