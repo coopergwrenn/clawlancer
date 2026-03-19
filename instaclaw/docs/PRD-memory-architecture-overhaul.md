@@ -2,7 +2,7 @@
 
 **Author:** Claude (Opus 4.6) + Cooper Wrenn
 **Date:** 2026-03-19
-**Status:** Phase 1 COMPLETE, Phase 2 REVISED (schema verification done 2026-03-19)
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE (deployed fleet-wide as manifest v35, 2026-03-19)
 **Sprint:** 30-day rollout (4 phases)
 
 ---
@@ -666,6 +666,31 @@ This is a net improvement of 62% more conversation headroom, even with a higher 
 **Rollback:** `openclaw config set agents.defaults.memorySearch.enabled false`
 **Effort:** 1-2 hours investigation
 **Risk:** Very low — feature already exists in the binary, just disabled
+
+#### Phase 2 Deployment Results (2026-03-19)
+
+**Manifest v35 deployed fleet-wide:**
+- 151/152 VMs updated successfully (vm-040 failed — health cron will recover)
+- 1964 config items fixed across fleet
+- Deployment time: 1628s (~27 min)
+- Both `memorySearch.enabled` and `memoryFlush.enabled` confirmed on spot-checked VMs
+
+**Verification results:**
+- `memory_search` tool confirmed available in agent tool list (found in session transcript)
+- Agent correctly chose NOT to use it when MEMORY.md (12KB) fit in context — used direct reading instead
+- Tool will activate automatically when agents have large memory files that benefit from semantic search
+- Memory index: FTS5 + OpenAI text-embedding-3-small (1536 dims), ready on all VMs
+- `memoryFlush.enabled` config hot-reloaded by gateway (confirmed in journalctl logs)
+- memoryFlush will fire when sessions approach compaction threshold — no manual trigger needed
+
+**Phase 2 final scorecard:**
+| Item | Status | Notes |
+|---|---|---|
+| P2.1 — Session Maintenance | ❌ NO-GO | `session.*` keys don't exist |
+| P2.2 — Memory Flush | ✅ DEPLOYED | `agents.defaults.compaction.memoryFlush.enabled: true` |
+| P2.3 — Cron Isolation | ❌ NO-GO | `cron.sessionRetention` keys don't exist |
+| P2.4 — Reserve Token Increase | ⏸️ BLOCKED | Waiting for P1.1 savings verification |
+| P2.5 — Memory Search | ✅ DEPLOYED | `agents.defaults.memorySearch.enabled: true` |
 
 ---
 
