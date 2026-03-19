@@ -71,112 +71,12 @@ npm i framer-motion@11 gsap@3.12 @react-spring/web three @react-three/fiber
 
 ### If the user provides a website URL
 
-Extract brand assets automatically before proceeding:
+Use `browser` evaluate to extract brand assets automatically:
+1. **Fonts:** Query computed styles on `body, h1-h3, p, button, .hero, [class*="title"]` — extract fontFamily, fontWeight, fontSize, letterSpacing
+2. **Colors:** Iterate all elements, collect backgroundColor and color values, sort by frequency, take top 8
+3. **Logos:** Query `img[alt*="logo" i]`, `[class*="logo"] img`, `header img/svg`, `nav img/svg` — collect src, dimensions
 
-**Font extraction:**
-```javascript
-browser.act({
-  request: {
-    kind: "evaluate",
-    fn: `() => {
-      const selectors = ['body', 'h1', 'h2', 'h3', 'p', 'button', '.hero', '[class*="title"]'];
-      const fonts = {};
-      selectors.forEach(sel => {
-        const el = document.querySelector(sel);
-        if (el) {
-          const style = window.getComputedStyle(el);
-          fonts[sel] = {
-            family: style.fontFamily,
-            weight: style.fontWeight,
-            size: style.fontSize,
-            letterSpacing: style.letterSpacing
-          };
-        }
-      });
-      return fonts;
-    }`
-  }
-});
-```
-
-**Color extraction:**
-```javascript
-browser.act({
-  request: {
-    kind: "evaluate",
-    fn: `() => {
-      const rgbToHex = (rgb) => {
-        const match = rgb.match(/\\d+/g);
-        if (!match) return null;
-        const [r, g, b] = match.map(Number);
-        return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
-      };
-      const colors = { backgrounds: {}, text: {}, accents: {} };
-      document.querySelectorAll('*').forEach(el => {
-        const s = getComputedStyle(el);
-        const bg = rgbToHex(s.backgroundColor);
-        const fg = rgbToHex(s.color);
-        if (bg && bg !== '#000000') colors.backgrounds[bg] = (colors.backgrounds[bg] || 0) + 1;
-        if (fg) colors.text[fg] = (colors.text[fg] || 0) + 1;
-      });
-      // Sort by frequency
-      const sortObj = (obj) => Object.entries(obj).sort((a,b) => b[1]-a[1]).slice(0,8);
-      return { backgrounds: sortObj(colors.backgrounds), text: sortObj(colors.text) };
-    }`
-  }
-});
-```
-
-**Logo discovery:**
-```javascript
-browser.act({
-  request: {
-    kind: "evaluate",
-    fn: `() => {
-      const logos = [];
-      ['img[alt*="logo" i]', '[class*="logo"] img', 'header img', 'nav img',
-       '.navbar-brand img', '[class*="brand"] img', 'a[href="/"] img'].forEach(sel => {
-        document.querySelectorAll(sel).forEach(img => {
-          logos.push({ src: img.src, alt: img.alt, w: img.naturalWidth, h: img.naturalHeight });
-        });
-      });
-      document.querySelectorAll('svg[class*="logo"], header svg, nav svg').forEach(svg => {
-        logos.push({ type: 'inline-svg', classes: svg.className?.baseVal, viewBox: svg.getAttribute('viewBox') });
-      });
-      return logos;
-    }`
-  }
-});
-```
-
-### Save brand assets as a theme file
-
-After extraction, save everything to `brand-config.json` so it's reusable across scenes:
-
-```json
-{
-  "brand": "Company Name",
-  "extracted_from": "https://example.com",
-  "extracted_at": "2026-02-27T00:00:00Z",
-  "typography": {
-    "heading": { "family": "\"Instrument Serif\", serif", "weights": [400, 700], "letterSpacing": "-0.02em" },
-    "body": { "family": "Inter, sans-serif", "weights": [400, 500, 600], "letterSpacing": "0" },
-    "mono": { "family": "\"JetBrains Mono\", monospace", "weights": [400, 500] }
-  },
-  "colors": {
-    "primary": "#e67e4d",
-    "secondary": "#d4634a",
-    "accent": "#4ecdc4",
-    "background": { "dark": "#0f1419", "light": "#f5f3ee", "gradient": "linear-gradient(135deg, #0f1419, #1a1a2e)" },
-    "text": { "primary": "#ffffff", "secondary": "rgba(255,255,255,0.7)", "dark": "#1a1a1a" }
-  },
-  "logos": {
-    "white": "path/to/logo-white.png",
-    "dark": "path/to/logo-dark.png",
-    "icon": "path/to/icon.svg"
-  }
-}
-```
+Save results to `brand-config.json` with typography (heading/body/mono families + weights), colors (primary/secondary/accent/background/text), and logo paths (white/dark/icon variants).
 
 ### Logo Contrast Rule (Critical)
 
@@ -371,7 +271,9 @@ Scene 5 (0:25–0:30) — CTA
 
 ## Section 3: Animation Library & Techniques
 
-### Entrance Animations
+### Core Pattern: Spring Entrance with Stagger
+
+This is the foundation for 90% of motion graphics scenes. Master this pattern:
 
 ```tsx
 import { spring, useCurrentFrame, useVideoConfig, interpolate } from "remotion";
@@ -379,263 +281,75 @@ import { spring, useCurrentFrame, useVideoConfig, interpolate } from "remotion";
 const frame = useCurrentFrame();
 const { fps } = useVideoConfig();
 
-// Fade in
-const fadeIn = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: "clamp" });
-
-// Slide in from bottom
+// Spring entrance — the core building block
 const slideUp = spring({ frame, fps, config: { damping: 15, stiffness: 120 } });
 const translateY = interpolate(slideUp, [0, 1], [40, 0]);
+const opacity = slideUp;
 
-// Slide in from left
-const slideRight = spring({ frame, fps, config: { damping: 15 } });
-const translateX = interpolate(slideRight, [0, 1], [-60, 0]);
-
-// Scale up (pop in)
-const scaleUp = spring({ frame, fps, config: { damping: 10, stiffness: 150, mass: 0.5 } });
-
-// Blur to sharp
-const blur = interpolate(frame, [0, 20], [12, 0], { extrapolateRight: "clamp" });
-// Apply as: filter: `blur(${blur}px)`
-```
-
-**Typewriter text:**
-```tsx
-const text = "Your message here";
-const charsShown = Math.floor(interpolate(frame, [0, text.length * 2], [0, text.length], {
-  extrapolateRight: "clamp"
-}));
-const displayText = text.slice(0, charsShown);
-const showCursor = frame % 16 < 8; // Blinking cursor
-```
-
-**Word-by-word reveal:**
-```tsx
-const words = "Ship faster with confidence".split(" ");
-{words.map((word, i) => {
-  const delay = i * 6; // 6 frames between words
-  const opacity = spring({ frame: frame - delay, fps, config: { damping: 20 } });
-  const y = interpolate(opacity, [0, 1], [15, 0]);
-  return (
-    <span key={i} style={{ opacity, transform: `translateY(${y}px)`, display: "inline-block", marginRight: 8 }}>
-      {word}
-    </span>
-  );
-})}
-```
-
-**Staggered list reveal:**
-```tsx
-const items = ["Feature 1", "Feature 2", "Feature 3", "Feature 4"];
+// Staggered list — delay each item by N frames
+const items = ["Feature 1", "Feature 2", "Feature 3"];
 {items.map((item, i) => {
   const delay = i * 8; // 8 frames = ~0.27s at 30fps
   const progress = spring({ frame: frame - delay, fps, config: { damping: 15, stiffness: 100 } });
-  const opacity = progress;
-  const x = interpolate(progress, [0, 1], [-30, 0]);
   return (
-    <div key={i} style={{ opacity, transform: `translateX(${x}px)` }}>
+    <div key={i} style={{ opacity: progress, transform: `translateX(${interpolate(progress, [0, 1], [-30, 0])}px)` }}>
       {item}
     </div>
   );
 })}
 ```
 
-### Transitions Between Scenes
+### Animation Toolkit Reference
 
-**Cross-fade:**
-```tsx
-// Scene A fades out as Scene B fades in
-const sceneAOpacity = interpolate(frame, [transitionStart, transitionEnd], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-const sceneBOpacity = interpolate(frame, [transitionStart, transitionEnd], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-```
-
-**Wipe transition:**
-```tsx
-const wipeProgress = interpolate(frame, [transitionStart, transitionEnd], [0, 100], { extrapolateRight: "clamp" });
-// Scene B clips in from left:
-<div style={{ clipPath: `inset(0 ${100 - wipeProgress}% 0 0)` }}>{sceneB}</div>
-```
-
-**Zoom transition:**
-```tsx
-const zoomOut = interpolate(frame, [transitionStart, transitionEnd], [1, 0.8], { extrapolateRight: "clamp" });
-const zoomIn = interpolate(frame, [transitionStart, transitionEnd], [1.2, 1], { extrapolateRight: "clamp" });
-// Scene A shrinks, Scene B grows into frame
-```
-
-**Color wash:**
-```tsx
-// Background color fills the screen as transition
-const washProgress = spring({ frame: frame - transitionStart, fps, config: { damping: 20 } });
-const bgColor = interpolateColors(washProgress, [0, 1], ["#0f1419", "#1a1a2e"]);
-```
-
-### Text Effects
-
-**Kinetic typography:**
-```tsx
-const scale = spring({ frame, fps, config: { damping: 8, stiffness: 200 } });
-const rotate = interpolate(frame, [0, 10], [-5, 0], { extrapolateRight: "clamp" });
-<span style={{
-  display: "inline-block",
-  transform: `scale(${scale}) rotate(${rotate}deg)`,
-  fontWeight: 900,
-  fontSize: 72
-}}>
-  BOLD TEXT
-</span>
-```
-
-**Gradient text:**
-```tsx
-<span style={{
-  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  fontSize: 64,
-  fontWeight: 800
-}}>
-  Gradient Headline
-</span>
-```
-
-**Animated counter:**
-```tsx
-const targetNumber = 50000;
-const progress = spring({ frame, fps, config: { damping: 30, stiffness: 40 } });
-const currentNumber = Math.floor(targetNumber * progress);
-const formatted = currentNumber.toLocaleString();
-<span style={{ fontVariantNumeric: "tabular-nums" }}>{formatted}+</span>
-```
-
-**Glow effect:**
-```tsx
-const glowPulse = Math.sin(frame * 0.1) * 0.3 + 0.7;
-<span style={{
-  textShadow: `0 0 ${20 * glowPulse}px rgba(78, 205, 196, ${glowPulse}),
-               0 0 ${40 * glowPulse}px rgba(78, 205, 196, ${glowPulse * 0.5})`,
-  color: "#4ecdc4"
-}}>
-  Glowing CTA
-</span>
-```
+| Effect | Technique | Key Code |
+|--------|-----------|----------|
+| Fade in | `interpolate(frame, [0, 15], [0, 1], { extrapolateRight: "clamp" })` |
+| Slide up/left | `spring()` → `interpolate(spring, [0,1], [offset, 0])` |
+| Scale pop | `spring({ config: { damping: 10, stiffness: 150, mass: 0.5 } })` |
+| Blur to sharp | `interpolate(frame, [0, 20], [12, 0])` → `filter: blur(${v}px)` |
+| Typewriter | `text.slice(0, Math.floor(interpolate(frame, ...)))` + cursor blink |
+| Word-by-word | `.split(" ").map()` with per-word delay spring |
+| Counter animation | `Math.floor(target * spring())` + `fontVariantNumeric: "tabular-nums"` |
+| Kinetic text | Combine `scale(spring)` + `rotate(interpolate)` |
+| Gradient text | `background: linear-gradient(...)` + `WebkitBackgroundClip: "text"` |
+| Glow pulse | `Math.sin(frame * 0.1)` driving `textShadow` radius |
+| Cross-fade | Two `interpolate` on same range: `[1,0]` and `[0,1]` |
+| Wipe | `clipPath: inset(0 ${100-progress}% 0 0)` |
+| Mask reveal | `overflow: hidden` + `translateY(${(1-spring)*100}%)` |
+| Particle BG | Array of objects with pseudo-random positions + frame-driven y offset |
+| Gradient shift | `hsl(${base + interpolate(frame,...)}, ...)` |
 
 ### Motion Principles
 
-**Easing — NEVER use linear.** Linear motion looks robotic and cheap. Always use:
-- `spring()` for organic, natural motion (primary choice)
-- Ease-out (`extrapolateRight: "clamp"`) for entrances — fast start, gentle landing
-- Ease-in for exits — gentle start, fast departure
-- Ease-in-out for transitions between states
+**NEVER use linear motion.** Always use `spring()` or eased `interpolate`.
 
-**Spring physics parameters:**
-| Feel | damping | stiffness | mass | Use Case |
-|------|---------|-----------|------|----------|
-| Snappy & professional | 15–20 | 100–150 | 0.5–1 | UI elements, text, buttons |
-| Bouncy & playful | 8–12 | 150–200 | 0.5 | Logos, icons, emphasis |
-| Smooth & premium | 20–30 | 40–80 | 1–1.5 | Background elements, slow reveals |
-| Punchy & energetic | 10–12 | 200–300 | 0.3 | Social media, TikTok, fast-paced |
+| Feel | damping | stiffness | Use Case |
+|------|---------|-----------|----------|
+| Snappy | 15–20 | 100–150 | UI elements, text, buttons |
+| Bouncy | 8–12 | 150–200 | Logos, icons, emphasis |
+| Premium | 20–30 | 40–80 | Background, slow reveals |
+| Punchy | 10–12 | 200–300 | Social media, TikTok |
 
-**Timing rhythm:**
-- If items enter at 0.25s intervals, maintain that interval throughout the scene.
-- Stagger delays: 0.1–0.15s for rapid lists, 0.3–0.5s for deliberate reveals.
-- Scene transitions: 0.3–0.6s. Faster feels energetic, slower feels premium.
-- Hold time: Let key messages sit for 2–4 seconds. Viewers need time to read.
-
-**Guide the eye:**
-- Animate ONE thing at a time. Sequential reveals > simultaneous chaos.
-- Use motion direction to create flow: left-to-right reads as "progress."
-- Larger elements attract attention first — animate them first, then supporting elements.
-
-### Advanced Techniques
-
-**Particle background:**
-```tsx
-const particles = Array.from({ length: 30 }, (_, i) => ({
-  x: (i * 73) % 100, // Pseudo-random distribution
-  y: (i * 47) % 100,
-  size: 2 + (i % 4),
-  speed: 0.2 + (i % 5) * 0.1
-}));
-
-{particles.map((p, i) => {
-  const y = (p.y + frame * p.speed) % 120 - 10;
-  const opacity = interpolate(y, [0, 50, 100], [0, 0.4, 0]);
-  return (
-    <div key={i} style={{
-      position: "absolute",
-      left: `${p.x}%`,
-      top: `${y}%`,
-      width: p.size,
-      height: p.size,
-      borderRadius: "50%",
-      backgroundColor: "rgba(255,255,255,0.3)",
-      opacity
-    }} />
-  );
-})}
-```
-
-**Mask reveal (text clips into view):**
-```tsx
-const revealProgress = spring({ frame, fps, config: { damping: 20 } });
-<div style={{ overflow: "hidden" }}>
-  <div style={{ transform: `translateY(${(1 - revealProgress) * 100}%)` }}>
-    <h1>Headline Text</h1>
-  </div>
-</div>
-```
-
-**3D perspective tilt:**
-```tsx
-const tiltX = interpolate(frame, [0, 30], [15, 0], { extrapolateRight: "clamp" });
-<div style={{
-  perspective: 1000,
-  perspectiveOrigin: "center"
-}}>
-  <div style={{
-    transform: `rotateX(${tiltX}deg)`,
-    transformOrigin: "bottom center"
-  }}>
-    {/* Content tilts into view */}
-  </div>
-</div>
-```
-
-**Gradient background animation:**
-```tsx
-const hueShift = interpolate(frame, [0, 150], [0, 30]);
-<div style={{
-  background: `linear-gradient(${135 + hueShift}deg,
-    hsl(${220 + hueShift}, 60%, 15%),
-    hsl(${260 + hueShift}, 50%, 20%))`,
-  width: "100%",
-  height: "100%"
-}} />
-```
+- Stagger children by 0.1–0.15s. NEVER bring everything in at once.
+- Hold scenes 2–4s after animations complete — let viewers read.
+- Transitions: 0.3–0.5s. Faster = more professional.
+- Animate ONE thing at a time. Sequential > simultaneous.
+- Exit animations should be faster than entrances (0.2–0.4s vs 0.4–0.8s).
 
 ---
 
 ## Advanced Animation Libraries
 
-Remotion's built-in `spring()` and `interpolate()` are good for basics, but premium output requires the right library for each effect. Use Remotion primitives for frame-level control and these libraries for complex choreography.
+Remotion's `spring()` + `interpolate()` handle basics. For premium output, pick the right library:
 
 ### Framer Motion — Declarative Animations (PRIMARY)
 
-`npm i framer-motion@11`
+`npm i framer-motion@11` — Best for entrances, layout transitions, staggered reveals.
 
-Best for: Entrance animations, layout transitions, staggered reveals, variants-based state machines.
-
-**Spring config presets:**
-
-| Preset | Config | Feel | Use Case |
-|--------|--------|------|----------|
-| Snappy | `{ type: "spring", stiffness: 400, damping: 30 }` | Fast, precise | UI elements, buttons, text |
-| Bouncy | `{ type: "spring", stiffness: 200, damping: 10 }` | Playful overshoot | Logos, icons, emphasis |
-| Premium | `{ type: "spring", stiffness: 120, damping: 14 }` | Smooth, elegant | Hero text, product reveals |
-| Punchy | `{ type: "spring", stiffness: 600, damping: 35 }` | Snappy with weight | Social media, TikTok, fast cuts |
-
-**Variants pattern (recommended for multi-element scenes):**
+**Complete Framer Motion variants pattern (use this for multi-element scenes):**
 ```tsx
+import { motion, AnimatePresence } from "framer-motion";
+
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -652,19 +366,17 @@ const itemVariants = {
   }
 };
 
+// Staggered entrance — items animate in one by one
 <motion.div variants={containerVariants} initial="hidden" animate="visible">
   {items.map((item, i) => (
     <motion.div key={i} variants={itemVariants}>{item}</motion.div>
   ))}
 </motion.div>
-```
 
-**AnimatePresence for scene transitions:**
-```tsx
+// Scene transitions with AnimatePresence
 <AnimatePresence mode="wait">
   {currentScene === 1 && (
-    <motion.div
-      key="scene1"
+    <motion.div key="scene1"
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 1.05 }}
@@ -676,198 +388,29 @@ const itemVariants = {
 </AnimatePresence>
 ```
 
-### GSAP — Complex Timelines & Sequencing
-
-`npm i gsap@3.12`
-
-Best for: Multi-element choreography, SVG morphing, particle systems, timeline-based sequencing, character-by-character text animation.
-
-**Timeline pattern (chained sequences):**
-```tsx
-import { gsap } from "gsap";
-import { useEffect, useRef } from "react";
-
-const tl = useRef<gsap.core.Timeline>();
-const containerRef = useRef<HTMLDivElement>(null);
-
-useEffect(() => {
-  const ctx = gsap.context(() => {
-    tl.current = gsap.timeline()
-      .from(".title", { opacity: 0, y: 40, duration: 0.8, ease: "power2.out" })
-      .from(".subtitle", { opacity: 0, y: 20, duration: 0.6, ease: "power2.out" }, "-=0.3")
-      .from(".feature-card", {
-        opacity: 0, y: 30, stagger: 0.15, duration: 0.6, ease: "back.out(1.2)"
-      }, "-=0.2")
-      .from(".cta", { opacity: 0, scale: 0.9, duration: 0.5, ease: "elastic.out(1, 0.5)" }, "+=0.3");
-  }, containerRef);
-
-  return () => ctx.revert();
-}, []);
-```
-
-**GSAP easing reference:**
-
-| Easing | Feel | Use Case |
-|--------|------|----------|
-| `power2.out` | Smooth deceleration | Entrances, slides |
-| `power2.inOut` | Smooth both directions | Transitions |
-| `back.out(1.7)` | Overshoot and settle | Bouncy entrances, playful |
-| `elastic.out(1, 0.3)` | Springy bounce | Emphasis, attention-grab |
-| `expo.out` | Fast start, very slow end | Dramatic reveals |
-| `circ.out` | Sharp deceleration | Snappy UI elements |
-
-**Character-by-character text animation:**
-```tsx
-useEffect(() => {
-  gsap.from(".char", {
-    opacity: 0,
-    y: 20,
-    rotateX: -90,
-    stagger: 0.03,
-    duration: 0.6,
-    ease: "back.out(1.7)"
-  });
-}, []);
-
-// Split text into spans with class "char"
-const text = "Your headline";
-{text.split("").map((char, i) => (
-  <span key={i} className="char" style={{ display: "inline-block" }}>
-    {char === " " ? "\u00A0" : char}
-  </span>
-))}
-```
-
-### React Spring — Physics-Based UI
-
-`npm i @react-spring/web`
-
-Best for: Bouncy reveals, fluid transitions, drag-like interactions, organic motion.
-
-**Config presets:**
-
-| Preset | Config | Feel |
-|--------|--------|------|
-| Snappy | `{ tension: 220, friction: 120 }` | Quick, responsive |
-| Floaty | `{ tension: 80, friction: 14 }` | Dreamy, slow |
-| Wobbly | `{ tension: 180, friction: 12 }` | Overshooty, playful |
-| Stiff | `{ tension: 300, friction: 20 }` | Fast, minimal overshoot |
-
-```tsx
-import { useSpring, animated } from "@react-spring/web";
-
-const props = useSpring({
-  from: { opacity: 0, transform: "translateY(40px) scale(0.95)" },
-  to: { opacity: 1, transform: "translateY(0px) scale(1)" },
-  config: { tension: 120, friction: 14 }
-});
-
-<animated.div style={props}>Content</animated.div>
-```
-
-### CSS Animations — GPU-Accelerated Simple Effects
-
-Best for: Background gradients, shimmer effects, breathing/pulse, continuous loops.
-
-**CRITICAL:** Only animate `transform` and `opacity` for GPU acceleration. NEVER animate `width`, `height`, `top`, `left`, `margin`, or `padding` — these trigger layout recalculation and cause jank.
-
-```css
-/* Shimmer effect */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-  background-size: 200% 100%;
-  animation: shimmer 2s ease-in-out infinite;
-}
-
-/* Subtle pulse for CTAs */
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.03); opacity: 0.9; }
-}
-.pulse { animation: pulse 2s ease-in-out infinite; }
-
-/* Gradient background shift */
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-.gradient-bg {
-  background: linear-gradient(-45deg, #0a0a0a, #1a1a2e, #0f1419, #12121a);
-  background-size: 400% 400%;
-  animation: gradientShift 10s ease infinite;
-}
-```
-
-### Raw Canvas — Custom Particle Effects
-
-Best for: Binary rain, floating particles, noise textures, CRT scanlines, star fields.
-
-```tsx
-import { useRef, useEffect } from "react";
-import { useCurrentFrame } from "remotion";
-
-const ParticleBackground: React.FC = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const frame = useCurrentFrame();
-
-  useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, 1920, 1080);
-
-    // Floating particles
-    for (let i = 0; i < 50; i++) {
-      const x = ((i * 73 + frame * 0.3) % 1920);
-      const y = ((i * 47 + frame * (0.2 + (i % 5) * 0.1)) % 1080);
-      const size = 1 + (i % 3);
-      const alpha = 0.05 + (Math.sin(frame * 0.02 + i) * 0.03);
-
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-      ctx.fill();
-    }
-  }, [frame]);
-
-  return <canvas ref={canvasRef} width={1920} height={1080} style={{ position: "absolute", inset: 0 }} />;
-};
-```
+**Spring presets:** Snappy `{stiffness:400, damping:30}` | Bouncy `{stiffness:200, damping:10}` | Premium `{stiffness:120, damping:14}` | Punchy `{stiffness:600, damping:35}`
 
 ### Library Selection Guide
 
-Pick the right tool for the job:
+| Effect | Library | Install |
+|--------|---------|---------|
+| Entrances, staggered reveals | Framer Motion | `npm i framer-motion@11` |
+| Complex timelines, char-by-char text | GSAP | `npm i gsap@3.12` |
+| Physics-based bouncy motion | React Spring | `npm i @react-spring/web` |
+| Continuous loops, shimmer, pulse | CSS @keyframes | Built-in (GPU-accelerated) |
+| Particles, binary rain, star fields | Canvas API | Built-in (`useCurrentFrame()` drives `ctx`) |
+| SVG path morphing | GSAP MorphSVG | GSAP plugin |
+| 3D scenes | React Three Fiber | `npm i @react-three/fiber` |
 
-| Effect | Best Library | Why |
-|--------|-------------|-----|
-| Entrance animations | Framer Motion | Declarative variants, cleanest API |
-| Staggered reveals | Framer Motion | `staggerChildren` built-in |
-| Complex multi-element timelines | GSAP | Timeline chaining, precise sequencing |
-| Character-by-character text | GSAP | SplitText + stagger is unmatched |
-| Particle backgrounds | Canvas or GSAP | Canvas for custom, GSAP for simple |
-| Physics-based bouncy motion | React Spring | Best spring physics engine |
-| Simple continuous loops | CSS | GPU-accelerated, zero JS overhead |
-| SVG path morphing | GSAP MorphSVG | Only real option for this |
-| 3D scenes | Three.js via React Three Fiber | Full 3D pipeline |
-| Frame-synced Remotion control | Remotion built-ins | `useCurrentFrame()` + `interpolate()` |
+**CSS GPU rule:** Only animate `transform` and `opacity`. NEVER animate width/height/top/left/margin/padding.
 
-**Integration with Remotion:** All these libraries work inside Remotion components. Use `useCurrentFrame()` to control when animations trigger:
-```tsx
-const frame = useCurrentFrame();
-// Trigger Framer Motion animation when frame reaches scene start
-const shouldAnimate = frame >= sceneStartFrame;
-```
+**Remotion integration:** All libraries work inside Remotion components. Use `useCurrentFrame()` to control trigger timing: `const shouldAnimate = frame >= sceneStartFrame;`
 
 ---
 
-## Section 4: Prompt Templates (Copy-Paste Starting Points)
+## Section 4: Prompt Template
 
-Use these as starting points. Fill in the bracketed values and hand to the storyboard step.
+Use as a starting point. Fill in bracketed values and hand to the storyboard step. Adapt this structure for explainers (add problem→solution arc), social ads (vertical 9:16, scroll-stopper first 1.5s), pitch decks (add traction metrics), or hero loops (seamless: last frame = first frame).
 
 ### Product Launch (30s, 16:9)
 
@@ -875,93 +418,15 @@ Use these as starting points. Fill in the bracketed values and hand to the story
 Create a 30-second product launch video for [PRODUCT NAME].
 
 5 scenes:
-1. (0-3s) Bold product name animates in with spring physics on dark background.
-   Tagline fades in 0.5s after. Text: "[TAGLINE]"
-2. (3-10s) 3 key features animate in as icon + text pairs with 0.4s stagger delay.
-   Features: [FEATURE 1], [FEATURE 2], [FEATURE 3]
-3. (10-18s) Product screenshot slides in from right with subtle parallax effect.
-   Use real screenshot, not a mockup.
-4. (18-25s) Social proof — animated counter "[NUMBER]+ [METRIC]" counts up with
-   spring physics. Customer quote fades in below.
-5. (25-30s) CTA "[CTA TEXT]" pulses with glow effect. URL "[URL]" fades in below.
-   Logo anchored bottom-right.
+1. (0-3s) Bold product name + spring physics on dark bg. Tagline fades in 0.5s after.
+2. (3-10s) 3 key features as icon + text pairs, 0.4s stagger. Features: [F1], [F2], [F3]
+3. (10-18s) Product screenshot slides in from right with parallax. Real screenshot, not mockup.
+4. (18-25s) Social proof — animated counter "[NUMBER]+ [METRIC]" + customer quote below.
+5. (25-30s) CTA "[CTA TEXT]" with glow pulse. URL + logo bottom-right.
 
 Brand: Primary [HEX], Background [HEX], Text [HEX]
 Font: Headings "[FONT]", Body "[FONT]"
 Tone: [professional/playful/premium/energetic]
-```
-
-### Explainer (45s, 16:9)
-
-```
-Create a 45-second explainer video for [CONCEPT/PRODUCT].
-
-Structure: Hook question → Problem visualization → Solution intro → How it works (3 steps) → CTA
-
-1. (0-3s) HOOK: Text "[HOOK QUESTION]?" animates in large, centered.
-2. (3-10s) PROBLEM: Visualize [PAIN POINT]. Red accent color, X marks or
-   frustrated iconography. Text: "[PROBLEM STATEMENT]"
-3. (10-18s) SOLUTION: Clean transition to brand colors. Product name + logo
-   animate in. Text: "[SOLUTION STATEMENT]"
-4. (18-35s) HOW IT WORKS: 3 numbered steps with icons. Each step gets 5s.
-   Step 1: [STEP], Step 2: [STEP], Step 3: [STEP]
-   Stagger entrance, each slides in from left with number badge.
-5. (35-45s) CTA: "[CTA TEXT]" + "[URL]" + logo. Hold 5+ seconds.
-
-Style: Clean, minimal, generous whitespace. Slide-in and fade transitions only.
-```
-
-### Social Ad — TikTok/Reels (15s, 9:16 vertical)
-
-```
-Create a 15-second VERTICAL (9:16, 1080x1920) social ad for [PRODUCT].
-
-CRITICAL: First 1.5 seconds must stop the scroll. Bold, full-screen kinetic text.
-
-1. (0-2s) SCROLL-STOPPER: "[HOOK TEXT]" fills the screen in bold, oversized type.
-   Animates with punch: fast scale-up with slight overshoot.
-2. (2-6s) EXPAND: "[SECONDARY TEXT]" — explain the hook. Slide in from bottom.
-3. (6-11s) VALUE: Show the key benefit. Use [PRODUCT SCREENSHOT or ICON + TEXT].
-   Keep it to ONE thing. Don't overcrowd.
-4. (11-15s) CTA: "[CTA TEXT]" + subtle arrow animation pointing down.
-   Logo centered below.
-
-Style: Fast-paced, bold typography, high contrast. Text IS the visual.
-Colors: [BRAND COLORS]. Font: [BOLD FONT NAME] for headlines.
-```
-
-### Pitch Deck Video (60s, 16:9)
-
-```
-Create a 60-second pitch deck video for [COMPANY].
-
-1. (0-5s) HOOK: "[MARKET STAT or BOLD CLAIM]" — large text, dramatic entrance.
-2. (5-15s) PROBLEM: Animated stats showing the pain. Counter animations.
-   Stats: [STAT 1], [STAT 2]. Red/orange accent for urgency.
-3. (15-30s) SOLUTION: Product demo sequence. Real screenshots sliding in with
-   parallax. 2-3 screens showing key flows.
-4. (30-45s) TRACTION: Metrics dashboard animation. Counters animate up:
-   "[NUMBER] users", "[NUMBER] revenue", "[PERCENT]% growth"
-5. (45-55s) VISION: "[ONE-LINE VISION STATEMENT]". Minimal, aspirational.
-6. (55-60s) CTA: "[CTA TEXT]" + "[EMAIL/URL]" + logo. Hold 5s.
-
-Tone: Confident, data-driven, premium. Dark background, clean type.
-```
-
-### Website Hero Loop (12s, 16:9, seamless)
-
-```
-Create a 12-second SEAMLESS LOOPING hero video for [BRAND] website.
-
-1. (0-4s) Brand name + tagline fade in with spring physics.
-2. (4-9s) [KEY VISUAL — abstract shapes, product mockup, or feature highlight].
-   Subtle continuous motion — floating particles, gentle parallax, color shift.
-3. (9-12s) Elements gracefully fade/transition back to starting state.
-   Frame 360 must match frame 0 exactly for seamless loop.
-
-Style: Premium, subtle, not distracting. This plays behind other content.
-Keep motion minimal — it's atmosphere, not the main event.
-Must render as a loop: last frame transitions cleanly to first frame.
 ```
 
 ---
@@ -1048,53 +513,9 @@ npx remotion render src/index.ts MyVideo out/final.mp4 --crf 18 --codec h264
 
 ### Composition Registration
 
-`src/Root.tsx` registers three compositions for different aspect ratios. **DO NOT rename this export** — `src/index.ts` imports `Root` by name.
+`src/Root.tsx` registers three compositions. **DO NOT rename the Root export** — `src/index.ts` imports it by name. `src/index.ts` — **never modify.**
 
-```tsx
-import React from "react";
-import { Composition } from "remotion";
-import { MyVideo } from "./MyVideo";
-
-export const Root: React.FC = () => {
-  const defaultProps = {
-    brandName: "Your Brand",
-    tagline: "Your Tagline Here",
-    primaryColor: "#e67e4d",
-    bgDark: "#0f1419",
-    bgLight: "#f5f3ee",
-    textLight: "#ffffff",
-    headingFont: '"Instrument Serif", serif',
-    bodyFont: "Inter, sans-serif",
-    ctaText: "Get Started",
-    ctaUrl: "https://example.com",
-  };
-
-  return (
-    <>
-      {/* 16:9 landscape (YouTube, website) — 15s @ 30fps */}
-      <Composition id="MyVideo" component={MyVideo} durationInFrames={450} fps={30}
-        width={1920} height={1080} defaultProps={defaultProps} />
-
-      {/* 9:16 vertical (TikTok, Reels, Stories) — 15s @ 30fps */}
-      <Composition id="Vertical" component={MyVideo} durationInFrames={450} fps={30}
-        width={1080} height={1920} defaultProps={defaultProps} />
-
-      {/* 1:1 square (Instagram feed) — 15s @ 30fps */}
-      <Composition id="Square" component={MyVideo} durationInFrames={450} fps={30}
-        width={1080} height={1080} defaultProps={defaultProps} />
-    </>
-  );
-};
-```
-
-`src/index.ts` — **Never modify this file:**
-```ts
-import { registerRoot } from "remotion";
-import { Root } from "./Root";
-registerRoot(Root);
-```
-
-**Composition IDs for render commands:** `MyVideo` (16:9), `Vertical` (9:16), `Square` (1:1)
+**Composition IDs for render commands:** `MyVideo` (16:9, 1920x1080), `Vertical` (9:16, 1080x1920), `Square` (1:1, 1080x1080). All 15s @ 30fps. Edit `defaultProps` in Root.tsx to set brand colors, fonts, copy.
 
 ---
 
@@ -1140,438 +561,87 @@ npx remotion render src/index.ts Square out/square.mp4 --crf 18 --codec h264
 npx remotion render src/index.ts MyVideo out/preview.gif --every-nth-frame 2
 ```
 
-### Premium FFmpeg Encoding
+### FFmpeg Re-Encoding
 
-For final delivery, re-encode the Remotion output through FFmpeg with optimized flags:
+Always re-encode Remotion output for delivery. Key flags: `-movflags +faststart` (web playback), `-pix_fmt yuv420p` (compatibility), `-profile:v high -level 4.1`.
 
-**Maximum quality (slower encode, premium compression):**
 ```bash
-ffmpeg -i out/final.mp4 \
-  -c:v libx264 \
-  -preset veryslow \
-  -crf 18 \
-  -movflags +faststart \
-  -pix_fmt yuv420p \
-  -profile:v high \
-  -level 4.1 \
-  out/delivery.mp4
+# Premium delivery: ffmpeg -i out/final.mp4 -c:v libx264 -preset veryslow -crf 18 -movflags +faststart -pix_fmt yuv420p -profile:v high -level 4.1 out/delivery.mp4
+# Web-optimized: add -maxrate 5M -bufsize 10M, use -crf 22 -preset slow
+# Mix audio: ffmpeg -i video.mp4 -i voiceover.mp3 -c:v copy -c:a aac -b:a 192k -shortest out/with-audio.mp4
 ```
 
-**Fast iteration (quick preview):**
-```bash
-ffmpeg -i out/draft.mp4 -c:v libx264 -preset fast -crf 23 out/preview.mp4
-```
-
-**Web-optimized (small file, instant playback):**
-```bash
-ffmpeg -i out/final.mp4 \
-  -c:v libx264 \
-  -preset slow \
-  -crf 22 \
-  -movflags +faststart \
-  -pix_fmt yuv420p \
-  -maxrate 5M \
-  -bufsize 10M \
-  out/web.mp4
-```
-
-**Key flags explained:**
-| Flag | Purpose |
-|------|---------|
-| `-preset veryslow` | Best compression ratio — smaller file, same quality. Worth the extra encode time for delivery. |
-| `-crf 18` | Visually lossless. 18 = premium, 23 = good, 28 = draft. |
-| `-movflags +faststart` | Moves metadata to file start — enables instant web playback without full download. Always use for web delivery. |
-| `-pix_fmt yuv420p` | Maximum device compatibility. Without this, some players show black screen. |
-| `-profile:v high -level 4.1` | H.264 High profile — best quality, supported by all modern devices. |
-
-**Mixing audio with video:**
-```bash
-ffmpeg -i video.mp4 -i voiceover.mp3 -c:v copy -c:a aac -b:a 192k -shortest out/with-audio.mp4
-```
+CRF guide: 18 = premium, 23 = good, 28 = draft.
 
 ---
 
 ## Deterministic Rendering
 
-On VMs without GPU acceleration, Remotion renders can stutter — frames arrive at inconsistent intervals because Chrome's compositor runs on background threads that compete with CPU load. Deterministic rendering eliminates this entirely.
+On VMs without GPU, Chrome's compositor can skip/duplicate frames under CPU load. Fix: launch with `--deterministic-mode` which forces synchronous frame-by-frame rendering.
 
-### The Problem
-
-Standard Remotion rendering uses Chrome's default compositor, which:
-- Runs animation threads in the background
-- Can produce partial frame renders under CPU pressure
-- May skip or duplicate frames when the VM is under load
-- Produces different output on different hardware (non-deterministic)
-
-### The Solution: Chrome's Deterministic Mode
-
-Launch the browser with `--deterministic-mode`, which expands to these flags:
-- `--enable-begin-frame-control` — Manual frame trigger via DevTools Protocol
-- `--run-all-compositor-stages-before-draw` — No partial renders
-- `--disable-new-content-rendering-timeout` — No timeout on slow frames
-- `--disable-threaded-animation` — All animation on main thread
-- `--disable-checker-imaging` — No async image decoding
-- `--disable-image-animation-resync` — No frame skipping to "catch up"
-
-This forces Chrome into fully synchronous mode — every frame is complete before the next begins.
-
-### Warmup Frames
-
-**Always render 10 discarded warmup frames before starting capture.** This:
-- Fills the compositor buffer pipeline
-- Ensures all fonts/images are loaded and decoded
-- Prevents first-frame glitches (blank frames, half-loaded assets, flash of unstyled content)
-
-```typescript
-// Pseudo-code for deterministic capture pipeline
-const WARMUP_FRAMES = 10;
-const totalFrames = durationInFrames + WARMUP_FRAMES;
-
-for (let i = 0; i < totalFrames; i++) {
-  // Advance virtual time by exactly 1000/fps ms
-  await page.evaluate((frameTime) => {
-    // Set virtual clock to exact frame time
-    window.__REMOTION_VIRTUAL_TIME = frameTime;
-  }, (i - WARMUP_FRAMES) * (1000 / fps));
-
-  // Trigger frame render via BeginFrame API
-  await cdpSession.send('HeadlessExperimental.beginFrame', {
-    frameTimeTicks: performance.now(),
-    interval: 1000 / fps,
-    noDisplayUpdates: false,
-    screenshot: i >= WARMUP_FRAMES ? { format: 'png' } : undefined,
-  });
-
-  // Only capture after warmup
-  if (i >= WARMUP_FRAMES) {
-    // Save frame PNG → pipe to ffmpeg
-  }
-}
-```
-
-### Frame-by-Frame Capture Pipeline
-
-For maximum quality, capture individual PNGs and encode with FFmpeg:
-
-```bash
-# Pipe captured PNGs to ffmpeg
-ffmpeg -framerate 30 -i frames/frame_%04d.png \
-  -c:v libx264 -preset veryslow -crf 18 \
-  -pix_fmt yuv420p -movflags +faststart \
-  out/deterministic.mp4
-```
-
-This produces **identical output regardless of VM CPU load** — no jitter, no dropped frames, no compositor glitches. The render takes longer but the output is frame-perfect.
-
-### When to Use Deterministic Mode
-
-- **Always** for final/delivery renders
-- **Always** when the video has complex animations (particles, 3D, many concurrent elements)
-- **Skip** for quick draft renders (CRF 28 previews) — standard rendering is fine for review
+**Key rules:**
+- Always render 10 warmup frames before capture (fills pipeline, loads fonts/images)
+- Use `HeadlessExperimental.beginFrame` API for manual frame control
+- Capture PNGs → pipe to ffmpeg: `ffmpeg -framerate 30 -i frames/frame_%04d.png -c:v libx264 -preset veryslow -crf 18 -pix_fmt yuv420p -movflags +faststart out/deterministic.mp4`
+- **Always** use for final/delivery renders and complex animations
+- **Skip** for draft renders (CRF 28 previews)
 
 ---
 
 ## Audio & Voiceover Sync
 
-For videos with narration, music, or sound effects, audio must be tightly synced to visual keyframes. Misaligned audio makes professional video feel amateur.
-
 ### Workflow
+1. Generate voiceover FIRST (ElevenLabs skill) → get word-level timestamps
+2. Map timestamps to frames: `frameNumber = Math.round(timestampSeconds * fps)`
+3. Align visuals to audio: text appears as narrator says it, scene transitions on sentence boundaries, emphasis animations on key words, pauses = hold time
 
-1. **Generate voiceover FIRST** using the ElevenLabs skill
-2. **Get word-level timestamps** from the ElevenLabs response
-3. **Map timestamps to frame numbers**: `frameNumber = Math.round(timestampSeconds * fps)`
-4. **Align animation keyframes to audio events:**
-   - Text appears on screen as the narrator says it
-   - Scene transitions land on sentence boundaries
-   - Emphasis animations (scale, glow, color) trigger on key words
-   - Pauses in narration = hold time for the viewer to absorb
+### Key pattern
+For each word timestamp, compute `startFrame = Math.round(w.start * fps)`, use `spring({ frame: frame - startFrame, ... })` for per-word entrance. Scene transitions: `sentenceEndFrame + 5` (5-frame buffer after sentence end).
 
-### Timestamp-to-Frame Mapping
-
-```tsx
-import { useCurrentFrame, useVideoConfig } from "remotion";
-
-// Word timestamps from ElevenLabs (seconds)
-const wordTimestamps = [
-  { word: "Introducing", start: 0.2, end: 0.8 },
-  { word: "InstaClaw", start: 0.9, end: 1.5 },
-  { word: "the", start: 1.6, end: 1.7 },
-  { word: "fastest", start: 1.8, end: 2.2 },
-  { word: "way", start: 2.3, end: 2.5 },
-  { word: "to", start: 2.5, end: 2.6 },
-  { word: "ship", start: 2.7, end: 3.0 },
-];
-
-const frame = useCurrentFrame();
-const { fps } = useVideoConfig();
-
-// Show each word as narrator says it
-{wordTimestamps.map((w, i) => {
-  const startFrame = Math.round(w.start * fps);
-  const isVisible = frame >= startFrame;
-  const entryProgress = spring({
-    frame: frame - startFrame,
-    fps,
-    config: { damping: 20, stiffness: 150 }
-  });
-
-  return (
-    <span key={i} style={{
-      opacity: isVisible ? entryProgress : 0,
-      transform: `translateY(${(1 - entryProgress) * 10}px)`,
-      display: "inline-block",
-      marginRight: 8
-    }}>
-      {w.word}
-    </span>
-  );
-})}
-```
-
-### Scene Transitions on Sentence Boundaries
-
-```tsx
-// Map sentence ends to scene transitions
-const sentenceBreaks = [
-  { sentence: "Introducing InstaClaw.", endTime: 1.5, nextScene: 2 },
-  { sentence: "The fastest way to ship AI agents.", endTime: 3.0, nextScene: 3 },
-];
-
-// Each scene starts at the sentence boundary + small buffer
-const scene2Start = Math.round(sentenceBreaks[0].endTime * fps) + 5; // 5 frame buffer
-const scene3Start = Math.round(sentenceBreaks[1].endTime * fps) + 5;
-```
-
-### Emphasis Animations on Key Words
-
-```tsx
-// Bold/scale key words for emphasis
-const emphasisWords = ["fastest", "ship", "AI agents"];
-
-{wordTimestamps.map((w, i) => {
-  const isEmphasis = emphasisWords.includes(w.word);
-  const startFrame = Math.round(w.start * fps);
-  const scale = isEmphasis
-    ? spring({ frame: frame - startFrame, fps, config: { damping: 8, stiffness: 200 } })
-    : 1;
-
-  return (
-    <span key={i} style={{
-      transform: `scale(${0.95 + scale * 0.05})`,
-      fontWeight: isEmphasis ? 700 : 400,
-      color: isEmphasis ? "#4ecdc4" : "#ffffff"
-    }}>
-      {w.word}
-    </span>
-  );
-})}
-```
-
-### Mixing Audio with Final Video
-
-After rendering the visual track, combine with audio:
-
+### Mixing audio with video
 ```bash
-# Basic audio mix
-ffmpeg -i video.mp4 -i voiceover.mp3 \
-  -c:v copy -c:a aac -b:a 192k \
-  -shortest \
-  out/final-with-audio.mp4
-
-# With background music (ducked under voiceover)
-ffmpeg -i video.mp4 -i voiceover.mp3 -i bg-music.mp3 \
-  -filter_complex "[2:a]volume=0.15[bg];[1:a][bg]amix=inputs=2:duration=first[aout]" \
-  -map 0:v -map "[aout]" \
-  -c:v copy -c:a aac -b:a 192k \
-  -shortest \
-  out/final-with-music.mp4
+# Basic: ffmpeg -i video.mp4 -i voiceover.mp3 -c:v copy -c:a aac -b:a 192k -shortest out/final-with-audio.mp4
+# With ducked bg music: add -i bg-music.mp3, filter_complex "[2:a]volume=0.15[bg];[1:a][bg]amix=inputs=2:duration=first[aout]"
 ```
 
 ---
 
 ## Premium Design Patterns
 
-These specific techniques are what separate "decent" videos from "this looks expensive." Apply these patterns to elevate any video from good to premium.
-
-### Typography That Looks Expensive
-
-```tsx
-// Headlines
-const headlineStyle = {
-  fontFamily: '"Inter", "SF Pro Display", system-ui, sans-serif',
-  fontSize: 72,
-  fontWeight: 800,
-  letterSpacing: "-0.03em",           // Tighter tracking for headlines
-  lineHeight: 1.1,
-  color: "#FFFFFF",
-  textShadow: "0 2px 40px rgba(0,0,0,0.3)",  // Subtle depth
-};
-
-// Body / supporting text
-const bodyStyle = {
-  fontFamily: '"Inter", sans-serif',
-  fontSize: 24,
-  fontWeight: 400,
-  letterSpacing: "0.01em",            // Slightly open for readability
-  lineHeight: 1.5,
-  color: "rgba(255,255,255,0.7)",     // Not pure white — softer
-};
-
-// Accent / labels
-const labelStyle = {
-  fontFamily: '"Inter", sans-serif',
-  fontSize: 14,
-  fontWeight: 600,
-  letterSpacing: "0.08em",            // Wide tracking for small caps feel
-  textTransform: "uppercase" as const,
-  color: "rgba(255,255,255,0.5)",
-};
-```
-
-**Font pairing rules:**
-- Use 2 fonts maximum (one for headlines, one for body)
-- Weight contrast is more important than font contrast: Bold 800 headline + Regular 400 body
-- Premium fonts: Inter, Poppins, Space Grotesk, Satoshi, General Sans, Cabinet Grotesk
-- Never use Arial, Helvetica, Times New Roman, or Calibri
-
-### Color That Looks Expensive
-
-```tsx
-// Premium dark backgrounds — NOT pure black
-const bg = {
-  deep: "#0A0A0A",      // Almost black, warmer than #000
-  surface: "#121212",    // Slightly lighter for cards/containers
-  elevated: "#1A1A1A",   // For hover states and elevated elements
-  subtle: "#09090B",     // Cool-tinted near-black
-};
-
-// Text opacity hierarchy
-const text = {
-  primary: "#FFFFFF",                    // Headlines only
-  secondary: "rgba(255,255,255,0.7)",    // Body text
-  tertiary: "rgba(255,255,255,0.5)",     // Labels, captions
-  muted: "rgba(255,255,255,0.3)",        // Decorative text
-};
-
-// Gradients — never flat fills for backgrounds
-const gradients = {
-  hero: "linear-gradient(135deg, #0A0A0A 0%, #1a1a2e 50%, #0A0A0A 100%)",
-  accent: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  subtle: "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%)",
-};
-
-// Glow effects behind key elements
-const glow = (color: string, intensity = 0.3) =>
-  `0 0 60px rgba(${color}, ${intensity}), 0 0 120px rgba(${color}, ${intensity * 0.5})`;
-```
-
-### Glass/Frosted UI Elements
-
-```tsx
-const glassCard = {
-  background: "rgba(255, 255, 255, 0.05)",
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
-  border: "1px solid rgba(255, 255, 255, 0.1)",
-  borderRadius: 16,
-  padding: "24px 28px",
-  boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
-};
-```
-
-### Motion Rhythm Rules
-
-- **Stagger children by 0.1–0.15s** — NEVER bring everything in at once
-- **Hold each scene 1–2s AFTER all elements finish animating** — let it breathe. The worst mistake is cutting to the next scene immediately after the last element finishes.
-- **Transitions between scenes: 0.3–0.5s** — faster feels more professional than slower
-- **Use the same easing across all elements in a scene** — mixing spring configs in one scene looks chaotic
-- **Entrance animations: 0.4–0.8s.** Shorter = snappy, longer = premium
-- **Exit animations: 0.2–0.4s.** Always faster than entrances — viewers don't need to watch things leave
-
-### Background Motion (Subtle Life)
-
-Add subtle constant motion to backgrounds so the video never feels "still":
-
-**Gradient shift (slow hue rotation):**
-```tsx
-const frame = useCurrentFrame();
-const hueShift = interpolate(frame, [0, 300], [0, 15]); // Very subtle over 10s
-<div style={{
-  background: `linear-gradient(${135 + hueShift * 0.5}deg,
-    hsl(${230 + hueShift}, 30%, 8%),
-    hsl(${250 + hueShift}, 25%, 12%))`,
-  position: "absolute", inset: 0
-}} />
-```
-
-**Floating particles (very low opacity):**
-```tsx
-// Use the Canvas particle system from the Animation Libraries section
-// but set alpha to 0.03–0.08 range. They should be felt, not seen.
-```
-
-**Noise texture overlay:**
-```tsx
-// Apply a semi-transparent noise PNG over the entire video
-<div style={{
-  position: "absolute", inset: 0,
-  backgroundImage: "url('/noise.png')",
-  backgroundRepeat: "repeat",
-  opacity: 0.04,          // 3-5% opacity — barely visible
-  mixBlendMode: "overlay",
-  pointerEvents: "none"
-}} />
-```
-
-**Vignette (darkened edges):**
-```tsx
-<div style={{
-  position: "absolute", inset: 0,
-  background: "radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%)",
-  pointerEvents: "none"
-}} />
-```
-
 ### The "Expensive Video" Formula
 
 Apply ALL of these to any video and it will look premium:
-1. Dark background (#0A0A0A, not #000000) with subtle gradient
-2. Inter or equivalent modern sans-serif, bold/regular weight contrast
-3. Text hierarchy: white headline, 70% opacity body, 50% opacity label
-4. Glass cards for feature sections (blur + border + shadow)
-5. Spring animations with Premium preset (stiffness: 120, damping: 14)
-6. 0.15s stagger between sibling elements
-7. 1–2s hold time after animations complete before transitioning
-8. Subtle background motion (gradient shift or particles at 3–5% opacity)
-9. Noise texture overlay at 4% opacity
-10. Vignette at edges
+
+1. **Dark bg:** `#0A0A0A` (not #000) with subtle gradient (`linear-gradient(135deg, #0A0A0A, #1a1a2e, #0A0A0A)`)
+2. **Typography:** Inter/Poppins/Space Grotesk, weight 800 headline + 400 body, `letterSpacing: "-0.03em"` headlines
+3. **Text hierarchy:** `#FFF` headline, `rgba(255,255,255,0.7)` body, `rgba(255,255,255,0.5)` labels
+4. **Glass cards:** `backdrop-filter: blur(12px)`, `border: 1px solid rgba(255,255,255,0.1)`, `boxShadow: 0 8px 32px rgba(0,0,0,0.3)`
+5. **Spring preset:** `stiffness: 120, damping: 14` (Premium feel)
+6. **Stagger:** 0.15s between sibling elements — NEVER everything at once
+7. **Hold time:** 1–2s after animations complete before scene transition
+8. **Background motion:** Gradient hue shift or particles at 3–5% opacity
+9. **Noise overlay:** PNG at 4% opacity, `mixBlendMode: "overlay"`
+10. **Vignette:** `radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%)`
+
+### Motion Rhythm Rules
+- Entrance: 0.4–0.8s | Exit: 0.2–0.4s (always faster than entrance)
+- Scene transitions: 0.3–0.5s | Same easing across all elements in a scene
+- Never use Arial, Helvetica, Times New Roman, or Calibri
+- 2 fonts max. Weight contrast > font contrast
 
 ---
 
-## Section 8: Common Mistakes to Avoid
+## Section 8: Common Mistakes
 
-### Animation Mistakes
-
-- **Linear easing.** Everything looks robotic and cheap. Use `spring()` for every animation. No exceptions.
-- **Animating everything at once.** The eye can't track 5 things moving simultaneously. Stagger entrances. Guide the viewer's attention sequentially.
-- **Transitions too fast or too slow.** 0.3–0.6s is the sweet spot. Under 0.2s feels jumpy. Over 0.8s feels sluggish.
-- **No hold time on key messages.** If text appears for less than 2 seconds, nobody will read it. Important messages need 3–4 seconds minimum.
-- **Inconsistent rhythm.** If items enter at 0.3s intervals in Scene 2, don't switch to 0.1s intervals in Scene 3 for no reason. Maintain a consistent tempo.
-
-### Design Mistakes
-
-- **Too much text per scene.** Maximum 5–7 words on screen at once for social content. 10–15 for explainers. If you're writing paragraphs, you're making a presentation, not a video.
-- **Default fonts.** Typography is 50% of perceived quality. Arial, Helvetica, Times New Roman scream "low effort." Use the brand's actual fonts, or choose a modern pair (e.g., Inter + Instrument Serif).
-- **Ignoring mobile viewers.** 60%+ of video views are on phones. Text must be readable at mobile size. Minimum 48px for body text in 1080p. Minimum 72px for headlines.
-- **Wrong logo contrast.** Dark logo on dark background = invisible. Always check.
-- **Busy backgrounds competing with content.** Background animation should be subtle (opacity 0.1–0.3). If the background distracts from the text, tone it down.
-
-### Process Mistakes
-
-- **Skipping the storyboard.** "Just make me a video" → 5 rounds of "that's not what I wanted." Always present scenes for approval first.
-- **Regenerating the entire video for small changes.** This is code. Change the one line that needs changing.
-- **Not doing a draft render first.** Always render at CRF 28 for quick review before the final CRF 18 render. A 20-second draft render saves a 3-minute production render.
-- **Forgetting platform constraints.** A horizontal video cropped to vertical looks terrible. Design for the target platform from scene 1.
+- **Linear easing** → Always use `spring()`. No exceptions.
+- **Everything animates at once** → Stagger entrances, guide attention sequentially
+- **No hold time** → Key messages need 3–4s minimum on screen
+- **Too much text** → Max 5–7 words/scene (social), 10–15 (explainer)
+- **Min font sizes** → 48px body, 72px headlines at 1080p (mobile viewers = 60%+ of views)
+- **Wrong logo contrast** → Dark on dark = invisible. Always verify.
+- **Skipping storyboard** → Always get scene approval before coding
+- **Regenerating for small changes** → This is code. Change the one line.
+- **No draft render** → CRF 28 draft first (20s), then CRF 18 final (3min)
 
 ---
 
@@ -1705,31 +775,8 @@ curl -F "chat_id=$CHAT_ID" \
 
 ---
 
-## Production Lessons Learned
-
-From real InstaClaw video production:
-
-- **v1 was trash** ("like a 5 year old made them") — basic text overlays, no brand assets, amateur hour
-- **v2 added real UI screenshots** — immediately looked 10x better. Real product > mockups, always.
-- **v3 fixed logo contrast** (dark logo on dark background was invisible → switched to white logo). This single change made it look professional.
-- **v4 fixed mobile layout** (side-by-side screens were cramped → single centered screen). Less is more.
-- Each iteration took 2–3 minutes. Total time from brief to polished video: 15–30 minutes across 3–5 iterations.
-
 ## Scripts & References
 
 - `~/.openclaw/skills/motion-graphics/assets/template-basic/` — Starter template (renders out of the box)
 - `~/.openclaw/skills/motion-graphics/references/advanced-patterns.md` — Complex animations, audio sync, data-driven videos
 - `~/.openclaw/skills/motion-graphics/references/brand-assets-checklist.md` — Asset collection checklist
-
----
-
-## Standard Error Handling (Platform Rule)
-
-**NEVER go silent after a tool error.** If ANY tool, script, API call, or shell command fails:
-1. Report the error to the user immediately — include the error message or exit code.
-2. Try an alternative approach if one exists.
-3. If no alternative works, tell the user what failed and ask what they'd like to do.
-4. Maximum 2 retries per operation. NEVER enter a retry loop.
-5. If a script hangs for more than 120 seconds with no output, kill it and report the timeout.
-
-A failed tool is not the end of the conversation. The user is waiting for your response.

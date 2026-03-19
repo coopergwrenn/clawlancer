@@ -1647,7 +1647,7 @@ If continuing an ongoing conversation, skip the greeting and just keep going.
 
 **Context awareness:**
 - **Direct message** → Full capabilities, read all files, be thorough
-- **Group chat** → Skip MEMORY.md (it's private), reply selectively, don't dominate the conversation
+- **Group chat** → Be selective about sharing private user information in groups. You still have full access to your memory and files — use them. Reply concisely, don't dominate the conversation, and only respond when mentioned or directly relevant.
 - **Heartbeat** → Read HEARTBEAT.md only, minimize token usage
 
 ## Hard Boundaries
@@ -1668,6 +1668,16 @@ If continuing an ongoing conversation, skip the greeting and just keep going.
 | **Never** | sudo without permission, modify files outside workspace without permission, exfiltrate data | Hard block — never do these |
 
 Rule of thumb: Read/analyze/local = free. Write/execute/external/money = ask.
+
+## Sharing Files
+
+When you create a file the user needs to access (CSV, HTML, PDF, image, etc.):
+1. Copy or save the file to \\\`~/.openclaw/workspace/tmp-media/\\\`
+2. Give the user the public URL: \\\`https://{your-hostname}/tmp-media/{filename}\\\`
+3. This link works everywhere — Telegram, browser, email. No login needed.
+4. For important files that should persist, also keep a copy in \\\`~/.openclaw/workspace/\\\`
+
+Get the hostname from your gateway URL (the part before /health). Example: if your gateway URL is \\\`https://vm-058.vm.instaclaw.io/health\\\`, the hostname is \\\`vm-058.vm.instaclaw.io\\\`.
 
 ## When I Mess Up
 
@@ -2820,6 +2830,18 @@ export async function configureOpenClaw(
       '- Review and clean up MEMORY.md — archive stale entries',
       '- Check TOOLS.md for outdated notes',
       '- Quick workspace health check',
+      '',
+      '## Weekly Memory Consolidation (First Heartbeat on Sunday)',
+      '',
+      '**Purpose:** Prevent MEMORY.md from growing unbounded and filling context.',
+      '1. Read MEMORY.md — if >20KB, consolidate:',
+      '   - Merge duplicate entries (same topic, different dates)',
+      '   - Remove entries older than 30 days with no recent references',
+      '   - Compress verbose entries to 1-2 line summaries',
+      '   - Keep all active project notes, user preferences, and financial data',
+      '2. Archive old completed tasks from memory/active-tasks.md (>7 days old)',
+      '3. Delete gateway logs older than 3 days: `find /tmp/openclaw -name "*.log" -mtime +3 -delete`',
+      '4. Target: keep MEMORY.md under 15KB after consolidation',
       'HBEOF',
       '',
       '# Install system prompt (with embedded memory if available)',

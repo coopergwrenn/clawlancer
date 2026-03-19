@@ -153,190 +153,18 @@ Use the browser tool when:
 | `snapshot`  | Get accessible tree of page elements with refs     |
 | `console`   | Read browser console logs (info, error, warning)   |
 
-### Pattern 1: Navigate + Screenshot
+### Browser Patterns
 
-Capture a visual snapshot of any web page.
+| Pattern | Steps |
+|---------|-------|
+| **Navigate + Screenshot** | `navigate(url)` → `screenshot(name)` → deliver with context |
+| **Form Fill** | `navigate` → `fill(selector, value)` → `click(submit)` → `screenshot` → `evaluate` to extract results |
+| **Table Scraping** | `navigate` → `evaluate("Array.from(querySelectorAll('tbody tr')).map(row => ...)")` → format as markdown table |
+| **Multi-page** | `navigate` → `evaluate` to extract links → `navigate` each → `evaluate` + `screenshot` → compile findings |
+| **Visual Comparison** | `navigate(site1)` → `screenshot` → `navigate(site2)` → `screenshot` → analyze + compare |
+| **Login Flow** | `navigate(login)` → `fill(email)` → **ASK user for password** → `fill(password)` → `click(submit)` → `screenshot` |
 
-```
-User: "Take a screenshot of https://news.ycombinator.com"
-
-Step 1: Navigate to the URL
-  browser → navigate("https://news.ycombinator.com")
-
-Step 2: Take screenshot
-  browser → screenshot(name="hackernews-front-page")
-
-Step 3: Deliver
-  Return the screenshot image to the user with context:
-  "Here is the Hacker News front page as of Feb 22, 2026."
-```
-
-Use cases: Visual audits, design reviews, capturing page state before/after changes, documenting errors.
-
-### Pattern 2: Form Fill + Submit
-
-Automate form interactions on public pages.
-
-```
-User: "Search for 'headless browser testing' on MDN Web Docs"
-
-Step 1: Navigate to MDN
-  browser → navigate("https://developer.mozilla.org")
-
-Step 2: Fill search field
-  browser → fill(selector="input[type='search']", value="headless browser testing")
-
-Step 3: Submit form (press Enter or click search button)
-  browser → click(selector="button[type='submit']")
-
-Step 4: Wait for results and screenshot
-  browser → screenshot(name="mdn-search-results")
-
-Step 5: Extract result titles
-  browser → evaluate("
-    Array.from(document.querySelectorAll('.search-results h3'))
-      .slice(0, 10)
-      .map(el => ({ title: el.textContent, url: el.closest('a')?.href }))
-  ")
-
-Step 6: Deliver structured results to user
-```
-
-### Pattern 3: Data Extraction (Table Scraping)
-
-Extract structured data from HTML tables.
-
-```
-User: "Get the list of S&P 500 companies from Wikipedia"
-
-Step 1: Navigate
-  browser → navigate("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
-
-Step 2: Extract table data via JavaScript
-  browser → evaluate("
-    const rows = document.querySelectorAll('#constituents tbody tr');
-    Array.from(rows).slice(0, 20).map(row => {
-      const cells = row.querySelectorAll('td');
-      return {
-        symbol: cells[0]?.textContent?.trim(),
-        company: cells[1]?.textContent?.trim(),
-        sector: cells[3]?.textContent?.trim(),
-        headquarters: cells[4]?.textContent?.trim()
-      };
-    }).filter(r => r.symbol);
-  ")
-
-Step 3: Format as table and deliver
-  Present the data in a clean markdown table.
-```
-
-Use cases: Price comparison tables, leaderboards, financial data tables, product spec sheets, directory listings.
-
-### Pattern 4: Multi-page Navigation
-
-Navigate through a sequence of pages to gather information.
-
-```
-User: "Go to Product Hunt and get today's top 5 products"
-
-Step 1: Navigate to Product Hunt
-  browser → navigate("https://www.producthunt.com")
-
-Step 2: Extract top 5 product names and links
-  browser → evaluate("
-    Array.from(document.querySelectorAll('[data-test=product-item]'))
-      .slice(0, 5)
-      .map(el => ({
-        name: el.querySelector('h3')?.textContent?.trim(),
-        tagline: el.querySelector('[data-test=tagline]')?.textContent?.trim(),
-        url: el.querySelector('a')?.href
-      }))
-  ")
-
-Step 3: Visit first product for details
-  browser → navigate(firstProductUrl)
-
-Step 4: Extract details
-  browser → evaluate("
-    ({
-      title: document.querySelector('h1')?.textContent?.trim(),
-      description: document.querySelector('[class*=description]')?.textContent?.trim(),
-      upvotes: document.querySelector('[class*=vote]')?.textContent?.trim()
-    })
-  ")
-
-Step 5: Screenshot the product page
-  browser → screenshot(name="top-product-detail")
-
-Step 6: Compile and deliver findings
-```
-
-### Pattern 5: Screenshot-based Visual Analysis
-
-Use screenshots for visual comparison and analysis.
-
-```
-User: "Compare the homepage design of stripe.com and square.com"
-
-Step 1: Navigate to Stripe
-  browser → navigate("https://stripe.com")
-  browser → screenshot(name="stripe-homepage", width=1280, height=900)
-
-Step 2: Navigate to Square
-  browser → navigate("https://square.com")
-  browser → screenshot(name="square-homepage", width=1280, height=900)
-
-Step 3: Analyze both screenshots
-  Compare visual elements:
-  - Layout structure (hero section, navigation, CTA placement)
-  - Color palette and typography
-  - Content hierarchy
-  - Call-to-action prominence
-  - Mobile-friendliness indicators
-
-Step 4: Deliver comparison report with both screenshots
-```
-
-Use cases: Competitive design audits, A/B test visual verification, accessibility checks, responsive design testing.
-
-### Pattern 6: Login Flow (with Cookie Persistence)
-
-Handle authenticated sessions on platforms where the user provides credentials.
-
-```
-User: "Log into my dashboard at https://app.example.com — my username is demo@test.com"
-
-Step 1: Navigate to login page
-  browser → navigate("https://app.example.com/login")
-
-Step 2: Screenshot the login form
-  browser → screenshot(name="login-page")
-
-Step 3: Fill username
-  browser → fill(selector="input[name='email']", value="demo@test.com")
-
-Step 4: ASK the user for password (NEVER guess or assume)
-  "I've entered your email. Please provide your password and I'll complete the login."
-
-Step 5: After user provides password, fill it
-  browser → fill(selector="input[name='password']", value="USER_PROVIDED_PASSWORD")
-
-Step 6: Click login button
-  browser → click(selector="button[type='submit']")
-
-Step 7: Screenshot the result
-  browser → screenshot(name="post-login-state")
-
-Step 8: Confirm success or report errors
-```
-
-**CRITICAL RULES for Login Flows:**
-- NEVER store, log, or repeat passwords back to the user
-- ALWAYS ask the user for credentials — never assume or guess
-- If 2FA is required, screenshot the 2FA prompt and ask the user for the code
-- Do NOT attempt to bypass CAPTCHAs or bot detection
-- Cookies persist within a single browser session only
-- Sessions do not persist across conversations
+**Login rules:** NEVER store/log/repeat passwords. ALWAYS ask user for credentials. Screenshot 2FA prompts. Cookies persist within session only.
 
 ## Browser Profile Selection
 
@@ -429,59 +257,11 @@ When the Chrome Extension Relay is connected, you can choose which browser profi
 
 **General rule:** If a platform has a public API, prefer the API over scraping. Browser automation is the last resort.
 
-## Chained Research Workflow
+## Research Workflow
 
-Multi-step research combining all three tiers.
+**Escalation ladder:** `web_search` (discover URLs) → `web_fetch` (read content) → `browser` (JS rendering/interaction) → `crawlee-scrape.py --mode light` (anti-bot) → `crawlee-scrape.py --mode browser` (last resort).
 
-```
-User: "Research the top 3 AI code editors and compare their pricing"
-
-STEP 1: Discover candidates (Tier 1 — Search)
-  web_search("best AI code editors 2026 comparison")
-  web_search("AI code editor pricing plans 2026")
-  → Identify top 3: e.g., Cursor, Windsurf, Zed AI
-
-STEP 2: Gather pricing pages (Tier 2 — Fetch)
-  web_fetch("https://cursor.com/pricing")
-  web_fetch("https://windsurf.com/pricing")
-  web_fetch("https://zed.dev/pricing")
-  → Extract pricing tiers from clean markdown
-
-STEP 3: Handle JS-rendered pages (Tier 3 — Browser)
-  If any pricing page requires JS to render:
-  browser → navigate(pricing_url)
-  browser → evaluate("
-    Array.from(document.querySelectorAll('[class*=pricing], [class*=plan]'))
-      .map(el => ({
-        plan: el.querySelector('h2, h3')?.textContent?.trim(),
-        price: el.querySelector('[class*=price]')?.textContent?.trim(),
-        features: Array.from(el.querySelectorAll('li'))
-          .map(li => li.textContent.trim())
-      }))
-  ")
-
-STEP 4: Visual capture for comparison
-  browser → screenshot each pricing page (name="cursor-pricing", etc.)
-
-STEP 5: Compile comparison report
-  - Markdown table: Editor | Free Tier | Pro Price | Team Price | Key Features
-  - Pros/cons for each
-  - Source URLs for verification
-  - Date of data capture
-
-STEP 6: Deliver to user
-  Structured comparison with screenshots attached.
-```
-
-### Research Workflow Rules
-
-1. **Start with Search.** Always begin with `web_search` to discover URLs and context.
-2. **Try Fetch before Browser.** `web_fetch` is faster and lighter. Use it first.
-3. **Escalate to Browser only when needed.** JS rendering, interaction, or screenshots.
-4. **Escalate to Crawlee when blocked.** If Tier 2/3 returns 403, CAPTCHA, or Cloudflare challenge, run `crawlee-scrape.py --mode light` before giving up. If light fails, try `--mode browser`.
-5. **Cite your sources.** Every claim includes the URL where you found it.
-6. **Note data freshness.** Include the date you retrieved the data.
-7. **Cross-reference.** Check at least 2 sources for important facts.
+Always: search first, fetch before browser, cite sources with URLs + dates, cross-reference 2+ sources.
 
 ## Rate Limits & Budget
 
@@ -514,283 +294,36 @@ Browser Sessions:
 
 ## Dynamic SPA Handling Protocol
 
-Modern web apps (Instagram, LinkedIn, Facebook, Twitter, banking portals) are Single Page Applications that load content dynamically. The standard navigate → screenshot workflow fails on these because content loads asynchronously, element references go stale after interactions, and lazy-loaded content requires scrolling to appear. Follow this protocol for reliable SPA browsing.
+SPAs (Instagram, LinkedIn, Facebook, Twitter, banking) load content dynamically. Standard navigate→screenshot fails. Follow these 6 rules:
 
-### Rule 1: Always Wait Before Acting
+**Rule 1 — Always Wait Before Acting:** After every `navigate` or `click`, use `wait(selector, timeout=10000)` before doing anything. Never assume content loaded.
 
-After every `navigate` or `click` on an SPA, use `browser wait` with a selector before doing anything else. Never assume content has loaded.
+Wait selectors: Instagram DMs `[role='listbox']` | Instagram Feed `article` | LinkedIn `.feed-shared-update-v2` | Facebook `div[role='feed']` | Twitter `article[data-testid='tweet']`
 
-```
-WRONG:  browser → navigate("https://instagram.com/direct/inbox")
-        browser → screenshot(name="dms")        ← page still loading, blank or spinner
+**Rule 2 — Prefer Snapshots for Data:** Use `snapshot()` (ARIA tree) to extract text and find clickable `[ref=N]` elements. Use `screenshot` only for visual verification or showing the user.
 
-RIGHT:  browser → navigate("https://instagram.com/direct/inbox")
-        browser → wait(selector="[role='listbox'], [class*='inbox'], [class*='thread']", timeout=10000)
-        browser → screenshot(name="dms")         ← content is loaded
-```
+**Rule 3 — Re-Snapshot After Every Interaction:** Element refs go STALE after clicks/scrolls. Always: `click(ref)` → `wait(selector)` → `snapshot()` → use new refs.
 
-Common wait selectors by platform:
-| Platform | Wait For |
-|----------|----------|
-| Instagram DMs | `[role='listbox']`, `div[class*='inbox']`, `div[class*='thread']` |
-| Instagram Feed | `article`, `div[role='feed']` |
-| LinkedIn Feed | `.feed-shared-update-v2`, `div[data-urn]` |
-| Facebook | `div[role='feed']`, `div[data-pagelet]` |
-| Twitter/X | `article[data-testid='tweet']`, `div[data-testid='cellInnerDiv']` |
+**Rule 4 — Scroll-to-Load:** SPAs use infinite scroll. Content below fold doesn't exist until scrolled. Use `evaluate("window.scrollTo(0, document.body.scrollHeight)")` → `wait(2000)` → `snapshot()`. For containers: `evaluate("document.querySelector('[role=\"listbox\"]').scrollTop = container.scrollHeight")`.
 
-### Rule 2: Prefer Snapshots Over Screenshots for Data Extraction
+**Rule 5 — DOM Queries for Incomplete Snapshots:** When `snapshot` is truncated, use `evaluate` with `querySelectorAll` to extract structured data directly. Pattern: `Array.from(document.querySelectorAll('SELECTOR')).map(el => ({ text: el.textContent?.trim(), ... }))`.
 
-Use `browser snapshot` (ARIA/accessibility tree) instead of `browser screenshot` when you need to extract text, find elements, or understand page structure. Snapshots return structured data; screenshots return pixels.
+**Rule 6 — Handle Navigation Failures:** If wait times out: check `document.readyState`, check `document.body.innerText.length`, take debug screenshot, try alternate selectors, then `snapshot()` to see what IS on the page.
 
-```
-WRONG:  browser → screenshot(name="feed")
-        # Then try to read text from the image — slow, error-prone
+### Instagram DMs Workflow
 
-RIGHT:  browser → snapshot()
-        # Returns structured text: links, buttons, headings, text content
-        # Element refs like [ref=42] for clicking
-```
+1. `navigate("instagram.com/direct/inbox/")` → `wait("[role='listbox']", 15000)`
+2. `snapshot()` → find conversation refs
+3. `click(ref=N)` → `wait("[role='row']", 10000)` → `snapshot()`
+4. Scroll to load older: `evaluate("querySelector('[role=\"listbox\"]').scrollTop = 0")` → `wait(3000)` → `snapshot()`
+5. Extract: `evaluate("querySelectorAll('[role=\"row\"]').map(el => el.textContent?.trim()?.substring(0,500))")`
+6. Send: `snapshot()` → `fill(ref=N, value)` → `press("Enter")` → `wait(2000)` → `snapshot()`
 
-When to use each:
-- **`snapshot`**: Extracting text, finding clickable elements, reading lists/feeds, navigating menus
-- **`screenshot`**: Visual verification, showing the user what a page looks like, debugging layout issues
-- **Both**: Take a snapshot first to find the right elements, then screenshot for visual confirmation
+## Key Rules
 
-### Rule 3: Re-Snapshot After Every Interaction
-
-On SPAs, the DOM changes after clicks, scrolls, and form submissions. Element references (`[ref=N]`) from a previous snapshot are STALE after any interaction. Always take a fresh snapshot.
-
-```
-WRONG:  browser → snapshot()           → finds [ref=5] "Messages" button
-        browser → click(ref=5)         → click succeeds
-        browser → click(ref=12)        ← STALE! ref=12 may not exist anymore
-
-RIGHT:  browser → snapshot()           → finds [ref=5] "Messages" button
-        browser → click(ref=5)         → click succeeds
-        browser → wait(selector="...", timeout=5000)
-        browser → snapshot()           → FRESH refs after DOM update
-        browser → click(ref=18)        ← valid ref from new snapshot
-```
-
-### Rule 4: Use JavaScript Evaluation for Scroll-to-Load Content
-
-SPAs like Instagram and LinkedIn use infinite scroll. Content below the fold doesn't exist in the DOM until you scroll. Use `evaluate` to scroll and trigger lazy loading.
-
-```
-# Scroll down to load more content
-browser → evaluate("window.scrollTo(0, document.body.scrollHeight)")
-browser → wait(timeout=2000)    ← wait for new content to load
-browser → snapshot()            ← now includes newly loaded content
-
-# Scroll inside a specific container (e.g., Instagram DM thread)
-browser → evaluate("
-  const container = document.querySelector('[role=\"listbox\"]');
-  if (container) container.scrollTop = container.scrollHeight;
-")
-browser → wait(timeout=2000)
-browser → snapshot()
-
-# Load ALL messages in a thread (scroll to top repeatedly)
-browser → evaluate("
-  const container = document.querySelector('[role=\"listbox\"]');
-  if (container) {
-    container.scrollTop = 0;   // scroll to top to load older messages
-  }
-")
-browser → wait(timeout=3000)   ← wait for older messages to load
-```
-
-### Rule 5: Extract Data via DOM Queries When Snapshots Are Incomplete
-
-When `snapshot` returns truncated or incomplete content, use `evaluate` to extract data directly from the DOM.
-
-```
-# Extract all DM messages from Instagram thread
-browser → evaluate("
-  Array.from(document.querySelectorAll('[role=\"row\"], [class*=\"message\"]'))
-    .map(el => ({
-      text: el.textContent?.trim()?.substring(0, 500),
-      time: el.querySelector('time')?.getAttribute('datetime') || ''
-    }))
-    .filter(m => m.text)
-")
-
-# Extract LinkedIn feed posts
-browser → evaluate("
-  Array.from(document.querySelectorAll('.feed-shared-update-v2'))
-    .slice(0, 10)
-    .map(el => ({
-      author: el.querySelector('.update-components-actor__name')?.textContent?.trim(),
-      content: el.querySelector('.update-components-text')?.textContent?.trim()?.substring(0, 300),
-      reactions: el.querySelector('.social-details-social-counts__reactions-count')?.textContent?.trim()
-    }))
-")
-
-# Extract Facebook feed posts
-browser → evaluate("
-  Array.from(document.querySelectorAll('[data-pagelet*=\"FeedUnit\"], div[role=\"article\"]'))
-    .slice(0, 10)
-    .map(el => ({
-      text: el.textContent?.trim()?.substring(0, 500)
-    }))
-")
-```
-
-### Rule 6: Handle Navigation Failures Gracefully
-
-SPAs often break the standard page lifecycle. Handle these edge cases:
-
-```
-# Page navigated but spinner persists → wait longer with fallback
-browser → navigate("https://www.instagram.com/direct/inbox/")
-browser → wait(selector="[role='listbox']", timeout=10000)
-# If wait times out:
-browser → evaluate("document.readyState")              ← check if page loaded at all
-browser → evaluate("document.body.innerText.length")    ← check if any content rendered
-browser → screenshot(name="debug-state")                ← visual inspection
-
-# Element not found after wait → try alternate selectors
-browser → wait(selector="div.inbox-container", timeout=5000)
-# If fails:
-browser → wait(selector="div[role='main']", timeout=5000)
-# If still fails:
-browser → snapshot()   ← see what IS on the page, adapt selectors
-```
-
-### Instagram DMs — Complete Workflow
-
-This is the most common SPA task. Follow this exact pattern:
-
-```
-Step 1: Navigate to DM inbox
-  browser → navigate("https://www.instagram.com/direct/inbox/")
-  browser → wait(selector="[role='listbox'], div[class*='inbox']", timeout=15000)
-
-Step 2: Snapshot the inbox to find conversations
-  browser → snapshot()
-  # Look for conversation names/previews in the snapshot
-
-Step 3: Click into a specific conversation
-  browser → click(ref=N)   ← ref from snapshot for the conversation
-  browser → wait(selector="[role='row'], div[class*='message']", timeout=10000)
-
-Step 4: Snapshot the thread
-  browser → snapshot()
-  # If thread is long, scroll to load more:
-
-Step 5: Load older messages (if needed)
-  browser → evaluate("
-    const c = document.querySelector('[role=\"listbox\"], [class*=\"thread\"]');
-    if (c) c.scrollTop = 0;
-  ")
-  browser → wait(timeout=3000)
-  browser → snapshot()
-
-Step 6: Extract all visible messages
-  browser → evaluate("
-    Array.from(document.querySelectorAll('[role=\"row\"], [class*=\"message\"]'))
-      .map(el => el.textContent?.trim()?.substring(0, 500))
-      .filter(Boolean)
-  ")
-
-Step 7: Send a message (if requested)
-  browser → snapshot()   ← get fresh refs
-  browser → fill(ref=N, value="Your message here")   ← message input ref
-  browser → press(key="Enter")
-  browser → wait(timeout=2000)
-  browser → snapshot()   ← confirm message sent
-```
-
-## Common Mistakes
-
-### 1. Using Browser When Search Would Suffice
-```
-WRONG:  browser → navigate("https://google.com")
-        browser → fill(selector="input", value="Python list comprehension")
-        browser → click(selector="button")
-
-RIGHT:  web_search("Python list comprehension syntax")
-```
-Search is 10x faster and does not consume browser resources.
-
-### 2. Scraping Google Directly
-```
-WRONG:  browser → navigate("https://www.google.com/search?q=...")
-        browser → evaluate("extract results")
-
-RIGHT:  web_search("your query here")
-```
-Google blocks headless browsers aggressively. Brave Search API exists for this purpose.
-
-### 3. Not Waiting for Dynamic Content
-```
-WRONG:  browser → navigate(spa_url)
-        browser → evaluate("document.querySelector('.results').innerHTML")
-        // Returns null because React hasn't rendered yet
-
-RIGHT:  browser → navigate(spa_url)
-        browser → evaluate("
-          await new Promise(resolve => {
-            const check = setInterval(() => {
-              if (document.querySelector('.results')) {
-                clearInterval(check);
-                resolve();
-              }
-            }, 500);
-            setTimeout(() => { clearInterval(check); resolve(); }, 10000);
-          });
-          document.querySelector('.results').innerHTML;
-        ")
-```
-Always wait for elements to appear before extracting data from SPAs.
-
-### 4. Ignoring Failed Fetches
-```
-WRONG:  web_fetch(url) → gets error/empty → report "I couldn't find information"
-
-RIGHT:  web_fetch(url) → gets error → escalate to browser
-        browser → navigate(url)
-        browser → screenshot(name="page-state")
-        browser → evaluate("document.body.innerText")
-```
-A failed fetch often means the page needs JS. Escalate, do not give up.
-
-### 5. Not Citing Sources
-```
-WRONG:  "The iPhone 16 Pro starts at $999."
-
-RIGHT:  "The iPhone 16 Pro starts at $999 (source: https://apple.com/iphone-16-pro/, retrieved Feb 22, 2026)."
-```
-Always include the URL and retrieval date. Web data changes constantly.
-
-## Priority Deployment Actions
-
-1. **CRITICAL: Deploy Brave Search API key to all VMs** — Single biggest capability unlock. Without it, agents cannot search the web. Cost: $5/month for Pro tier (10,000 queries). Shared key for All-Inclusive users.
-2. **Add web search to heartbeat cycle** — Once Brave Search is live, agents can search for mentions, news, and opportunities during heartbeat. This powers proactive work-finding.
-3. **Pre-build the brand asset extraction workflow** — Most common browser task (used by Remotion skill). Make it a callable sub-workflow that any skill can invoke.
-4. **Document the Cloudflare problem** — Agents need to know which sites they can't access and have a pre-written response for users: "This site has bot protection. You'll need to [alternative]."
-
-## Quality Checklist
-
-- [ ] Used web_search for discovery (didn't rely only on URLs user provided)
-- [ ] Tried web_fetch first for content (faster than browser)
-- [ ] Escalated to browser only when web_fetch couldn't handle JS-rendered content
-- [ ] Cited all sources with URLs
-- [ ] Took screenshots of key findings for visual evidence
-- [ ] Tried crawlee-scrape.py before reporting a site as blocked (403/CAPTCHA/Cloudflare)
-- [ ] Noted any sites that were blocked even after Crawlee escalation
-- [ ] Cross-referenced information across multiple sources
-- [ ] Flagged anything that seemed unreliable or outdated
-- [ ] Research is synthesis with insights, not just a list of links
-
-## Future Improvements (Roadmap)
-
-1. **Brave Search API fleet deployment** (CRITICAL — immediate)
-2. **CAPTCHA solving service** (2Captcha integration) — unlocks 50%+ more sites
-3. **Session persistence** (save/restore browser cookies) — enables authenticated workflows
-4. **Residential proxy network** — avoid bot detection
-5. **Parallel browser tabs** — faster data collection
-6. **Credential vault** — encrypted storage for platform credentials (not plaintext)
-7. **Platform connector library** — pre-built integrations for common platforms (GitHub, Stripe, etc.)
-8. **Screenshot annotations** — highlight elements, draw boxes for visual debugging
-9. **Rate limit handling** — exponential backoff, request queuing, per-domain tracking
+- Use `web_search` first (10x faster than browser). Never scrape Google directly — use Brave API.
+- Try `web_fetch` before `browser`. If fetch fails (JS-rendered page), escalate to browser.
+- If browser gets 403/CAPTCHA/Cloudflare: try `crawlee-scrape.py --mode light`, then `--mode browser`.
+- Always cite sources with URL + retrieval date.
+- Always wait for SPA elements before extracting — `evaluate` with polling or `wait(selector)`.
+- Cross-reference at least 2 sources for important facts.

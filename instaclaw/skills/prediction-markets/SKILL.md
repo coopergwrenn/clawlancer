@@ -304,351 +304,76 @@ When a user asks to trade or check positions, determine the platform:
 
 ## Gamma API Reference (Polymarket — Read-Only)
 
-Base URL: `https://gamma-api.polymarket.com`
+Base URL: `https://gamma-api.polymarket.com` — No auth required, all public.
 
-No authentication required. All endpoints are public and read-only.
+| Endpoint | Usage |
+|----------|-------|
+| `GET /markets?limit=10&closed=false&order=volume24hr&ascending=false` | List markets (params: `limit`, `offset`, `closed`, `order`, `ascending`) |
+| `GET /markets/{id}` | Single market detail |
+| `GET /events?limit=10&closed=false&order=volume&ascending=false` | Grouped markets (events contain related sub-markets) |
 
-### List Markets
+**Key response fields:** `id`, `question`, `outcomes` (JSON string — MUST `json.loads`), `outcomePrices` (JSON string — MUST `json.loads`), `volumeNum`, `volume24hr`, `liquidityNum`, `endDate`, `description`, `closed`, `bestAsk`, `lastTradePrice`, `slug`, `events[0].slug` (for URLs).
 
-```bash
-curl -s "https://gamma-api.polymarket.com/markets?limit=10&closed=false&order=volume24hr&ascending=false"
-```
+**Sometimes-missing fields** (always use `.get()` with defaults): `bestBid` (~15%), `oneDayPriceChange` (~30%), `oneWeekPriceChange` (~25%), `endDateIso` (~5%).
 
-**Key parameters:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `limit` | int | Number of results (default 100, max 100) |
-| `offset` | int | Pagination offset |
-| `closed` | bool | `false` = open markets only |
-| `order` | string | Sort field: `volume24hr`, `volumeNum`, `liquidityNum`, `endDate` |
-| `ascending` | bool | Sort direction (`false` = highest first) |
+**No server-side search.** Fetch `limit=100` and filter client-side by keyword on `question` field.
 
-**Searching/filtering by topic:** The Gamma API does NOT support server-side text search or category filtering. To find markets on a specific topic, fetch a large batch (`limit=100`) and filter client-side by keyword matching on the `question` field. See the "Searching for Markets" section below.
-
-### Get Market Details
-
-```bash
-curl -s "https://gamma-api.polymarket.com/markets/{id}"
-```
-
-### List Events (grouped markets)
-
-```bash
-curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=volume&ascending=false"
-```
-
-Events group related markets (e.g., "2028 Democratic Nominee" contains 128+ candidate markets). Supports `limit`, `offset`, `closed`, `order` (use `volume`, `volume24hr`, `endDate`, `createdAt`), `ascending`.
-
-### Key Response Fields (Markets)
-
-```
-id              — Market ID (use for /markets/{id})
-question        — The prediction question (e.g., "Will Bitcoin hit $200k by June?")
-outcomes        — JSON string: ["Yes", "No"] or multi-outcome (MUST parse with json.loads)
-outcomePrices   — JSON string: ["0.65", "0.35"] (prices = implied probabilities, MUST parse)
-volumeNum       — Total all-time trading volume (USD)
-volume24hr      — 24-hour trading volume (USD)
-liquidityNum    — Current market liquidity (USD)
-endDate         — Resolution deadline (ISO 8601)
-endDateIso      — Short date format (e.g., "2026-03-18") — sometimes missing
-description     — Full market description with resolution criteria
-closed          — Whether market has closed
-bestAsk         — Best ask price
-lastTradePrice  — Most recent trade price
-slug            — URL-friendly market identifier
-events          — Array of associated event objects (use events[0].slug for URLs)
-```
-
-**Sometimes-missing fields** (use `.get()` with defaults, never assume present):
-- `bestBid` — missing on ~15% of markets
-- `oneDayPriceChange` — missing on ~30% of markets
-- `oneWeekPriceChange` — missing on ~25% of markets
-- `endDateIso` — missing on ~5% of markets
-
-### Rate Limits
-
-Be respectful. No auth = no rate limit enforcement, but:
-- **Max 1 request per second** for browsing flows
-- **Batch where possible** — fetch 20 markets in one call, not 20 individual calls
-- If API returns errors or empty responses, back off for 30 seconds
-- **Never loop aggressively** — a market scan should be 3-5 API calls total, not 50
-
-### Graceful Degradation
-
-If the Gamma API is unreachable (timeout, 500 error, empty response):
-1. Tell the user: "Polymarket data is temporarily unavailable. The Gamma API may be experiencing issues."
-2. Suggest trying again in a few minutes
-3. Do NOT crash, retry infinitely, or hallucinate market data
+**Rate limits:** Max 1 req/sec, batch with `limit=20`, back off 30s on errors. Market scans = 3-5 API calls total. If API unreachable, tell user and do NOT hallucinate data.
 
 ---
 
 ## Kalshi API Reference (Authenticated)
 
-Base URL: `https://trading-api.kalshi.com/trade-api/v2`
+Base URL: `https://trading-api.kalshi.com/trade-api/v2` — RSA key-pair auth. See `references/kalshi-api.md` for full details.
 
-All endpoints require RSA key-pair authentication. See `references/kalshi-api.md` for full details.
+**Key concepts:** Prices in cents (1-99), YES at 45 = $0.45 = 45% probability. Balances in cents. Binary settlement ($1.00 if correct). Ticker format: `KXBTC-26MAR14-B90000`.
 
-### Key Concepts
+**Endpoints:** `GET /markets`, `GET /markets/{ticker}`, `GET /portfolio/balance`, `GET /portfolio/positions`, `GET /portfolio/orders`, `POST /portfolio/orders`, `DELETE /portfolio/orders/{id}`.
 
-- **Prices:** Cents (1-99). YES at 45 = $0.45 = 45% implied probability
-- **Balances:** Cents. `50000` = $500.00
-- **Settlement:** Binary — pays $1.00 (100c) if correct, $0.00 if wrong
-- **Ticker format:** `KXBTC-26MAR14-B90000` = event-date-strike
-
-### Key Endpoints
-
-```
-GET /markets                — List markets (paginated)
-GET /markets/{ticker}       — Single market by ticker
-GET /portfolio/balance      — Cash balance + portfolio value
-GET /portfolio/positions    — Open positions
-GET /portfolio/orders       — Order history
-POST /portfolio/orders      — Place order
-DELETE /portfolio/orders/{id} — Cancel order
-```
-
-### Order Format
-
-```json
-{
-  "ticker": "KXBTC-26MAR14-B90000",
-  "action": "buy",
-  "side": "yes",
-  "type": "limit",
-  "count": 10,
-  "yes_price": 45
-}
-```
-
-Fields: `ticker` (required), `action` (`buy`/`sell`), `side` (`yes`/`no`), `type` (`limit`/`market`), `count` (contracts), `yes_price`/`no_price` (cents 1-99), `time_in_force` (`fill_or_kill`, `good_till_canceled`, `immediate_or_cancel`).
+**Order fields:** `ticker`, `action` (buy/sell), `side` (yes/no), `type` (limit/market), `count` (contracts), `yes_price`/`no_price` (cents 1-99), `time_in_force` (fill_or_kill/good_till_canceled/immediate_or_cancel).
 
 ---
 
 ## Output Formatting
 
-When presenting market data, always use this structure:
+**Single market:** Question + polymarket.com link + outcome/price/probability table + 24h vol, total vol, liquidity, resolution date, 24h change + brief news context.
 
-### Single Market Report
-```
-**[Market Question]**
-https://polymarket.com/event/[event_slug]/[market_slug]
+**Kalshi market:** Title + ticker + bid/ask/last table + volume, open interest, expiry.
 
-| Outcome | Price | Implied Probability |
-|---------|-------|-------------------|
-| Yes     | $0.65 | 65%               |
-| No      | $0.35 | 35%               |
+**Multi-market scan:** Table with `# | Market | Yes | No | 24h Vol | Total Vol` + brief volume analysis.
 
-Volume (24h): $1,234,567
-Total Volume: $45,678,901
-Liquidity: $890,123
-Resolution: March 15, 2026
-24h Change: +3.2%
+**Multi-outcome:** All candidates with price/probability. Note: prices may not sum to 100% (vig/spread is normal).
 
-[Brief context from web search if relevant]
-```
-
-### Kalshi Market Report
-```
-**[Market Title]**
-Ticker: KXBTC-26MAR14-B90000
-
-| Side | Bid | Ask | Last |
-|------|-----|-----|------|
-| YES  | 43c | 45c | 44c  |
-| NO   | 55c | 57c | 56c  |
-
-Volume (24h): $123,456
-Open Interest: 5,000 contracts
-Expires: March 14, 2026
-```
-
-### Multi-Market Report (Top Markets / Scan)
-```
-**Top Prediction Markets by 24h Volume**
-Updated: Mar 4, 2026
-
-| # | Market | Yes | No | 24h Vol | Total Vol |
-|---|--------|-----|-----|---------|-----------|
-| 1 | Will the Fed cut rates in March? | 72% | 28% | $5.2M | $69.3M |
-| 2 | Bitcoin above $150k by April? | 41% | 59% | $3.1M | $22.7M |
-| 3 | US strikes Iran by March? | 18% | 82% | $2.6M | $394.5M |
-
-[Brief analysis of what's driving volume]
-```
-
-### Multi-Outcome Markets
-
-Some markets have more than 2 outcomes (e.g., "Who will win the election?"). For these:
-```
-**Who will be the 2028 Democratic nominee?**
-
-| Candidate | Price | Implied Probability |
-|-----------|-------|-------------------|
-| Gavin Newsom | $0.28 | 28% |
-| Gretchen Whitmer | $0.15 | 15% |
-| Pete Buttigieg | $0.12 | 12% |
-| Josh Shapiro | $0.09 | 9% |
-| Other | $0.36 | 36% |
-
-Total Volume: $707M | Liquidity: $12.3M
-```
-
-Note: Multi-outcome prices may not sum to exactly 100% (due to vig/spread). This is normal.
+Always include: polymarket.com link, prices AS both dollar amounts AND implied probabilities, source attribution.
 
 ## Analysis Framework
 
-When a user asks for analysis on a market (not just prices), follow this process:
+When a user asks for analysis (not just prices):
+1. **Get data:** Fetch markets via Gamma API (`limit=100`), filter client-side by keywords
+2. **Cross-reference news:** Use `web_search` for 3-5 recent articles on the topic
+3. **Compare market vs news:** Is market pricing consistent with latest developments? Any unpriced events?
+4. **Cross-platform:** If both Polymarket and Kalshi have the event, compare prices (>3% diff = potential arbitrage, but check settlement rules)
+5. **Present:** Market question + current prices + recent developments + cross-platform comparison + assessment
+6. **Disclaimer (ALWAYS):** *"This is market analysis based on publicly available data, not financial advice. Prediction market prices reflect crowd consensus, not guaranteed outcomes."*
 
-### Step 1: Get Market Data
-```bash
-# Fetch top markets and filter client-side for the topic
-curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
-  python3 -c "
-import json, sys
-markets = json.load(sys.stdin)
-# Filter by keyword (adjust search terms for the topic)
-matches = [m for m in markets if 'fed' in m['question'].lower() or 'rate' in m['question'].lower()]
-for m in matches[:5]:
-    prices = json.loads(m['outcomePrices'])
-    print(f\"{m['question']} — Yes: {float(prices[0])*100:.0f}%\")
-"
-```
+## Searching & Browsing Markets
 
-### Step 2: Cross-Reference with News
-Use `web_search` to find 3-5 recent news articles related to the market topic.
+Gamma API has NO server-side search. Fetch `limit=100` sorted by `volume24hr` and filter client-side by keyword on `question` field. Parse `outcomes` and `outcomePrices` with `json.loads()` — they're JSON strings, not arrays.
 
-### Step 3: Compare Market vs. News Sentiment
-- Is the market pricing consistent with the latest news?
-- Has something happened that the market hasn't priced in yet?
-- Are experts or data sources suggesting a different probability?
+**Common keyword sets:** Politics: `trump, biden, election, fed`. Crypto: `bitcoin, btc, ethereum, crypto`. Sports: `nba, nfl, super bowl`. Tech: `apple, openai, ai`.
 
-### Step 4: Cross-Platform Comparison
-If both Polymarket and Kalshi have the same event, compare prices:
-- Price differences > 3% may indicate an arbitrage opportunity
-- Note: different settlement rules mean "same event" may resolve differently
-- Always check resolution criteria on both platforms
-
-### Step 5: Present Analysis
-```
-**Market Analysis: Will the Fed Cut Rates in March?**
-
-Current Market: Polymarket 72% Yes | Kalshi 68% Yes
-
-**Recent Developments:**
-- Feb 21: CPI came in at 2.8% (above 2.6% expected)
-- Feb 23: Fed Governor Waller speech hinted at "patience"
-- Feb 24: CME FedWatch tool shows 68% probability of hold
-
-**Cross-Platform Note:**
-Polymarket at 72% is 4 points above Kalshi at 68%. CME FedWatch aligns closer to Kalshi.
-
-**Assessment:**
-The market at 72% for a cut appears slightly optimistic given the hotter-than-expected CPI.
-
-*This is market analysis based on publicly available data, not financial advice.
-Prediction market prices reflect crowd consensus, not guaranteed outcomes.*
-```
-
-### Step 6: Disclaimer
-ALWAYS include at the end of any analysis:
-> *This is market analysis based on publicly available data, not financial advice. Prediction market prices reflect crowd consensus, not guaranteed outcomes.*
-
-## Searching for Markets
-
-The Gamma API has **no server-side text search or category filter**. To find markets on a specific topic, fetch a batch and filter client-side:
-
-```bash
-# Search by keyword in the question field
-curl -s "https://gamma-api.polymarket.com/markets?limit=100&closed=false&order=volume24hr&ascending=false" | \
-  python3 -c "
-import json, sys
-markets = json.load(sys.stdin)
-# Change the keywords for your topic
-keywords = ['bitcoin', 'btc', 'crypto']
-matches = [m for m in markets if any(kw in m['question'].lower() for kw in keywords)]
-for m in matches[:10]:
-    prices = json.loads(m['outcomePrices'])
-    print(f\"{m['question'][:60]} — Yes: {float(prices[0])*100:.0f}% — Vol: \${m.get('volume24hr',0):,.0f}\")
-"
-```
-
-**Common keyword sets for filtering:**
-- Politics: `['trump', 'biden', 'election', 'president', 'congress', 'senate', 'fed ', 'supreme court']`
-- Crypto: `['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'token', 'defi']`
-- Sports: `['win the', 'nba', 'nfl', 'premier league', 'champions league', 'super bowl', 'world cup']`
-- Tech: `['apple', 'google', 'openai', 'ai ', 'launch', 'release']`
-
-## Common Queries (Quick Reference)
-
-```bash
-# Top markets by 24h volume (most active right now)
-curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=volume24hr&ascending=false"
-
-# Biggest events (grouped markets)
-curl -s "https://gamma-api.polymarket.com/events?limit=10&closed=false&order=volume&ascending=false"
-
-# Markets closing soon (next 7 days)
-curl -s "https://gamma-api.polymarket.com/markets?limit=20&closed=false&order=endDate&ascending=true"
-
-# Single market by ID
-curl -s "https://gamma-api.polymarket.com/markets/654415"
-
-# Single event by ID (with all associated markets)
-curl -s "https://gamma-api.polymarket.com/events/30829"
-```
-
-## Parsing API Responses
-
-The `outcomes` and `outcomePrices` fields are JSON strings, not arrays. Parse them:
-
-```bash
-# Using Python for richer formatting
-curl -s "https://gamma-api.polymarket.com/markets?limit=5&closed=false&order=volume24hr&ascending=false" | \
-  python3 -c "
-import json, sys
-markets = json.load(sys.stdin)
-for m in markets:
-    outcomes = json.loads(m['outcomes'])
-    prices = json.loads(m['outcomePrices'])
-    print(f\"Q: {m['question']}\")
-    for o, p in zip(outcomes, prices):
-        pct = float(p) * 100
-        print(f\"  {o}: {pct:.1f}%\")
-    print(f\"  Vol 24h: \${m.get('volume24hr', 0):,.0f}\")
-    print(f\"  Total:   \${m['volumeNum']:,.0f}\")
-    print()
-"
-```
+**Quick queries:** Top by volume: `order=volume24hr`. Events (grouped): `/events?order=volume`. Closing soon: `order=endDate&ascending=true`. Single: `/markets/{id}`, `/events/{id}`.
 
 ## Cross-Skill Integration
 
-### With competitive-intelligence
-When researching a competitor or industry event, check if there's a related prediction market. Include market probabilities in competitive intelligence reports for quantitative forecasting.
-
-### With financial-analysis
-When analyzing stocks or crypto, check related prediction markets for event risk. Fed rate decision markets directly impact stock/bond outlooks.
-
-### With web-search-browser
-Every market analysis should include a web search step. The analysis framework above shows this pattern. Never present market prices without context.
-
-### With recurring tasks (heartbeat system)
-For monitoring use cases, the agent can set up a recurring task via the heartbeat/cron system:
-```
-"Check the Bitcoin $200k market every morning and alert me if probability changes by >5%"
-→ Recurring task: curl the market by ID, compare to saved price, alert via message if delta > 5%
-```
+- **competitive-intelligence:** Include prediction market probabilities in competitive reports
+- **financial-analysis:** Check event risk markets (Fed rate decisions impact stock/bond outlook)
+- **web-search-browser:** Every market analysis should include a web search for context
+- **heartbeat/cron:** Set up recurring market monitoring tasks (e.g., "alert if probability changes >5%")
 
 ## Opportunities Report
 
-When user asks for a "market scan" or "opportunities report", produce:
-
-1. **Top 10 by 24h volume** — What's hot right now
-2. **Biggest movers (24h)** — Markets with largest price swings
-3. **High-volume, close-to-resolution** — Markets ending within 7 days with >$100k volume
-4. **Cross-reference top 3 with news** — Quick analysis on whether prices seem right
-5. **Cross-platform comparison** — If Kalshi is configured, compare prices on overlapping events
-
-Use 3-5 API calls total. Don't fetch individually — use `limit=20` and filter client-side.
+When user asks for "market scan": (1) Top 10 by 24h volume, (2) Biggest movers (24h), (3) Markets ending within 7 days with >$100k volume, (4) Cross-reference top 3 with news, (5) Cross-platform comparison if Kalshi configured. Use 3-5 API calls total with `limit=20`.
 
 ---
 
@@ -759,58 +484,11 @@ To enable trading, the agent updates `enabled` to `true` after user confirms. Ad
 
 ## Tier 2: Portfolio & Monitoring
 
-### Market Watchlist
+**Watchlist:** `~/memory/polymarket-watchlist.json` — tracks markets with alert thresholds, last price, and notes.
 
-The watchlist file at `~/memory/polymarket-watchlist.json` tracks markets the user wants to monitor:
+**Monitoring cadence:** 4-hour market check (compare vs `lastPrice`, alert on threshold), daily summary (9am local, all positions + 24h changes), weekly P&L report (Sunday).
 
-```json
-{
-  "version": 1,
-  "markets": [
-    {
-      "id": "654415",
-      "question": "Will Bitcoin hit $200k by June 2026?",
-      "alertThreshold": 0.05,
-      "lastPrice": 0.41,
-      "lastChecked": "2026-02-24T10:00:00Z",
-      "notes": "User is bullish, watching for entry",
-      "alerts": [
-        { "type": "price_above", "value": 0.50, "triggered": false },
-        { "type": "price_below", "value": 0.30, "triggered": false }
-      ],
-      "positionRef": null
-    }
-  ]
-}
-```
-
-### Recurring Monitoring
-
-Monitoring integrates with the heartbeat/cron system for automated checks:
-
-**4-Hour Market Check:**
-- Fetch all watched markets via Gamma API
-- Compare current price to `lastPrice`
-- If price changed by more than `alertThreshold`, trigger alert
-
-**Daily Summary (9am user-local time):**
-- Compile all watched markets with current prices and 24h changes
-- Include any open positions on both platforms with unrealized P&L
-
-**Weekly P&L Report (Sunday):**
-- Aggregate all trading activity for the week across both platforms
-- Calculate realized P&L from closed positions
-- Compare performance to simple hold strategies
-
-### Alert System
-
-Supported alert types:
-| Type | Description | Example |
-|------|-------------|---------|
-| `price_above` | Triggers when YES price exceeds value | "Alert me if Bitcoin 200k goes above 60%" |
-| `price_below` | Triggers when YES price drops below value | "Alert me if Fed rate cut drops below 50%" |
-| `resolution` | Triggers when market resolves | "Tell me when the election market resolves" |
-| `volume_spike` | Triggers when 24h volume increases by >2x | "Alert me if there's unusual activity" |
+**Alert types:** `price_above`, `price_below`, `resolution`, `volume_spike` (>2x 24h volume).
 
 ---
 
@@ -818,35 +496,11 @@ Supported alert types:
 
 > **All mandatory rules are at the top of this file.** See "MANDATORY RULES" section above.
 
-### Safety First
+**NEVER auto-trade without explicit user opt-in.** Risk configs at:
+- **Polymarket:** `~/.openclaw/polymarket/risk-config.json` (fields: `enabled`, `dailySpendCapUSDC`, `confirmationThresholdUSDC`, `dailyLossLimitUSDC`, `maxPositionSizeUSDC`)
+- **Kalshi:** `~/.openclaw/prediction-markets/kalshi-risk-config.json` (fields: `enabled`, `daily_spend_cap`, `max_position_size`, `daily_loss_limit`)
 
-**NEVER auto-trade without explicit user opt-in.** Before every trade, the agent checks the risk config:
-
-**Polymarket:** `~/.openclaw/polymarket/risk-config.json`
-```json
-{
-  "enabled": false,
-  "dailySpendCapUSDC": 50,
-  "confirmationThresholdUSDC": 25,
-  "dailyLossLimitUSDC": 100,
-  "maxPositionSizeUSDC": 100
-}
-```
-
-**Kalshi:** `~/.openclaw/prediction-markets/kalshi-risk-config.json`
-```json
-{
-  "enabled": false,
-  "daily_spend_cap": 50.00,
-  "max_position_size": 100.00,
-  "daily_loss_limit": 100.00
-}
-```
-
-- **enabled** — `false` by default. Must be explicitly set to `true` by the user.
-- **daily spend cap** — Maximum total spending per day. Agent refuses trades that would exceed this.
-- **max position size** — Maximum size for any single position.
-- **daily loss limit** — If losses exceed this, trading halts automatically.
+Both default to `enabled: false`. User must explicitly enable. Agent refuses trades exceeding daily spend cap, halts on daily loss limit exceeded.
 
 ### Trade Execution Flow (6-Step Mandatory Process)
 
@@ -946,51 +600,14 @@ Token IDs for trading come from the Gamma API `clobTokenIds` field:
 
 ---
 
-## Cross-Platform Portfolio
+## Cross-Platform Portfolio & Withdrawals
 
-When a user says "show my portfolio" or "how are my trades doing" and BOTH platforms are configured:
+**Portfolio:** Run both `polymarket-portfolio.py summary --json` and `kalshi-portfolio.py summary --json`, present side-by-side (cash + positions + P&L). If only one configured, show that one.
 
-1. Run both portfolio scripts:
-   - `python3 ~/scripts/polymarket-portfolio.py summary --json`
-   - `python3 ~/scripts/kalshi-portfolio.py summary --json`
-2. Present side by side:
+**Key:** Polymarket (USDC.e crypto) and Kalshi (USD) accounts are completely separate — money can't move between them directly.
 
-```
-Your Prediction Markets Portfolio
-
-POLYMARKET:
-  Cash: $XX.XX USDC.e
-  Open Positions: X
-  Realized P&L: +/- $XX.XX
-
-KALSHI:
-  Cash: $XX.XX USD
-  Open Positions: X
-  Realized P&L: +/- $XX.XX
-
-Combined Value: ~$XX.XX (approximate — USDC.e ≈ USD)
-```
-
-If only ONE platform is configured, just show that one. Don't mention the other.
-
-## Users With Both Platforms
-
-When a user has both Polymarket and Kalshi configured, be clear about separate funding:
-
-"Your Polymarket and Kalshi accounts are completely separate:
-- **Polymarket:** funded with USDC.e (crypto) in your agent wallet on Polygon
-- **Kalshi:** funded with USD (real dollars) in your Kalshi account on kalshi.com
-- Money can't move between them directly."
-
-## Withdrawing Funds
-
-**Polymarket:** To withdraw USDC.e from the Polymarket wallet:
-```bash
-python3 ~/scripts/polymarket-wallet.py transfer --token usdc.e --to <USER_EXTERNAL_WALLET> --amount <AMOUNT>
-```
-
-**Kalshi:** Kalshi withdrawals must be done on kalshi.com — the API does not support withdrawals.
-Tell the user: "To withdraw from Kalshi, log into kalshi.com → Account → Withdraw. Funds go back to your linked bank account. I can't do this through the API."
+**Polymarket withdrawal:** `python3 ~/scripts/polymarket-wallet.py transfer --token usdc.e --to <WALLET> --amount <AMT>`
+**Kalshi withdrawal:** Must be done on kalshi.com → Account → Withdraw. API does not support withdrawals.
 
 ---
 
@@ -1045,45 +662,14 @@ Tell the user: "To withdraw from Kalshi, log into kalshi.com → Account → Wit
 
 ---
 
-## Safety Rules
+## Safety & Quality Checklist
 
-- **No financial advice** — Always frame as "market analysis" with the disclaimer
-- **Respect rate limits** — Max 1 req/sec for Gamma API, 1 req/sec for Kalshi API, 1 order/sec for CLOB
-- **No hallucinated data** — If you can't reach the API, say so. Never invent prices.
-- **Source attribution** — Always link to `https://polymarket.com/event/[event_slug]/[market_slug]` for Polymarket markets
-- **Price = probability** — Always explain that $0.65 = 65% implied probability
-- **Private key security** — NEVER log, display, or include private keys (Polygon or Kalshi PEM) in any output, memory file, or chat message
-- **Risk config required** — Check risk config before every trade on either platform. If `enabled !== true`, refuse the trade.
-- **User opt-in** — Trading must be explicitly enabled by the user. Never auto-enable.
-- **Trade logging** — Every trade must be logged with full details and reasoning
-
-## Quality Checklist
-
-- [ ] Market data includes question, all outcomes with prices, volume, liquidity, end date
-- [ ] Prices presented as both dollar amounts AND implied probabilities
-- [ ] Analysis includes web search cross-reference (not just raw API data)
-- [ ] Multi-outcome markets show all outcomes (not just top 2)
-- [ ] Disclaimer included on all analysis outputs
-- [ ] API errors handled gracefully (no crashes, no hallucinated data)
-- [ ] Null/missing fields handled with `.get()` defaults
-- [ ] Source link included for every market referenced
-- [ ] Rate limits respected (1 req/sec max, 3-5 calls per scan)
-- [ ] Private keys NEVER logged, NEVER in MEMORY.md, NEVER in chat messages
-- [ ] Risk config validated before every trade — `enabled` must be `true`
-- [ ] Every trade logged with timestamp, amount, reasoning
-- [ ] Trades above confirmation threshold require explicit user approval
-- [ ] Opt-in verification — agent confirms user has explicitly enabled trading before first trade
-
----
-
-## Standard Error Handling (Platform Rule)
-
-**NEVER go silent after a tool error.** If ANY tool, script, API call, or shell command fails:
-1. Report the error to the user immediately — include the error message or exit code.
-2. Try an alternative approach if one exists.
-3. If no alternative works, tell the user what failed and ask what they'd like to do.
-4. Maximum 2 retries per operation. NEVER enter a retry loop.
-5. If a script hangs for more than 120 seconds with no output, kill it and report the timeout.
-
-A failed tool is not the end of the conversation. The user is waiting for your response.
-- [ ] Cross-platform: correct platform selected based on user intent
+- No financial advice — frame as "market analysis" + disclaimer on every analysis
+- Rate limits: 1 req/sec Gamma, 1 req/sec Kalshi, 1 order/sec CLOB
+- Never hallucinate data — if API unreachable, say so
+- Always link `polymarket.com/event/[slug]/[slug]` + show prices as both $ and implied probability
+- NEVER log/display private keys (Polygon wallet or Kalshi PEM)
+- Risk config `enabled: true` required before every trade
+- Every trade logged with timestamp, amount, reasoning
+- Use `.get()` defaults for nullable API fields
+- Multi-outcome: show ALL outcomes, not just top 2

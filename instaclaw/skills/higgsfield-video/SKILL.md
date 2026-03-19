@@ -119,116 +119,37 @@ If the user has never used Higgsfield before:
 
 ## Commands Reference
 
-### Core Generation
+All scripts at `~/.openclaw/skills/higgsfield-video/scripts/`. Always use `--json` flag.
 
-| Action | Command |
-|--------|---------|
-| Text-to-video (async, preferred) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video --prompt "..." --model kling-3.0 --submit-only --json` |
-| Text-to-video (sync, short jobs) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video --prompt "..." --model kling-3.0 --json` |
-| Image-to-video (async, preferred) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video --image <url> --prompt "..." --model kling-3.0 --submit-only --json` |
-| Image-to-video (sync, short jobs) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video --image <url> --prompt "..." --model kling-3.0 --json` |
-| Text-to-image | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-image --prompt "..." --model flux-schnell --json` |
-| Check status | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py status --id <request_id> --json` |
-| Upload file | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py upload-file --file <path> --json` |
-| Upload Telegram image | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py --telegram-file-id <id> --json` |
-| Upload local file to CDN | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py --file <path> --json` |
+**Base:** `python3 ~/.openclaw/skills/higgsfield-video/scripts/`
 
-### Async Video Generation (PREFERRED for all video)
+### Core Generation (`higgsfield-generate.py`)
+- `text-to-video --prompt "..." --model kling-3.0 --submit-only --json` (ALWAYS use `--submit-only` for video)
+- `image-to-video --image <url|file_id|path> --prompt "..." --model kling-3.0 --submit-only --json`
+- `text-to-image --prompt "..." --model flux-schnell --json` (sync OK for images)
+- `status --id <request_id> --json`
+- `upload-file --file <path> --json`
 
-**ALWAYS use `--submit-only` for video generation.** Video takes 2-8 minutes depending on the model. Polling synchronously freezes the conversation and leaves the user in silence.
+### Async Pattern (MANDATORY for video)
+1. Submit with `--submit-only` → get `request_id`
+2. **Immediately message user**: "Submitted to [model] — takes ~2-4 min, I'll ping you when ready"
+3. After ~3 min: `status --id <id> --json` → if processing, wait 1 min and recheck
+4. Sync mode (no `--submit-only`) only for images (<10s) or explicit user request
 
-**The correct pattern:**
+### Parameters
+- `--model` (video): kling-3.0, wan-2.2, wan-2.5, sora-2, veo-3.1, seedance-2.0, seedance-lite/pro/pro-fast, hailuo, luma, runway, pixverse, hunyuan
+- `--model` (image): flux-schnell/dev/pro, ideogram-3, recraft-v3, seedream-4.5, gpt-image-1/1.5, midjourney-v7, google-imagen4
+- `--aspect-ratio`: 16:9, 9:16, 1:1, 4:3, 3:4
+- `--duration`: 5, 10, 15 (model-dependent)
 
-1. **Submit with `--submit-only`** — returns instantly with a `request_id`
-```bash
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py text-to-video \
-  --prompt "A cowboy rides into the sunset" --model kling-3.0 --submit-only --json
-# Returns: {"status": "submitted", "request_id": "abc-123", "message": "Job submitted..."}
-```
-
-2. **IMPORTANT: Immediately send the user a confirmation message BEFORE doing anything else.** Do NOT go silent. Respond right away with something like:
-> "On it! Submitted to Kling 3.0 — takes about 2-4 min, I'll ping you when it's ready 🎬"
-
-The user must hear from you within seconds of submitting. This is the whole point of async — you can talk while the video renders.
-
-3. **After ~3 minutes, check status:**
-```bash
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py status --id abc-123 --json
-```
-
-4. **If still processing**, wait another minute and check again. If completed, deliver the URL.
-
-5. **Never leave the user in silence** during generation. Always tell them:
-   - What model is being used
-   - How long it typically takes
-   - That you'll check back automatically
-
-**When to use sync mode (no `--submit-only`):** Only for images (flux-schnell takes <10s) or when the user explicitly says "wait for it."
-
-### Video Parameters
-
-| Parameter | Values |
-|-----------|--------|
-| `--model` (video) | kling-3.0, kling-2.0, wan-2.2, wan-2.5, sora, sora-2, veo-3, veo-3.1, seedance-2.0, seedance-lite, seedance-pro, seedance-pro-fast, seedance-1.5-pro, seedance-1.5-pro-fast, hailuo, luma, runway, pixverse, hunyuan |
-| `--model` (image) | flux-schnell, flux-dev, flux-pro, ideogram-3, ideogram-v3, recraft-v3, seedream-4.5, gpt-image-1, gpt-image-1.5, midjourney-v7, google-imagen4, hunyuan-image, wan-image |
-| `--aspect-ratio` | 16:9, 9:16, 1:1, 4:3, 3:4 |
-| `--duration` | 5, 10, 15 (seconds, model-dependent — Seedance 2.0 supports 15s) |
-| `--resolution` | 720p, 1080p (model-dependent) |
-
-### Setup & Credits
-
-| Action | Command |
-|--------|---------|
-| Check status | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py status --json` |
-| Credit check | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py credits --type video --model kling-3.0 --duration 5 --json` |
-| Quick test | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py test --json` |
-
-### Character System
-
-| Action | Command |
-|--------|---------|
-| Create character | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-character.py create --name "..." --description "..." --ref-image <url> --json` |
-| List characters | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-character.py list --json` |
-| Use in generation | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-character.py use --name "..." --json` |
-| Delete character | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-character.py delete --name "..." --json` |
-
-### Story Mode (Multi-Scene)
-
-| Action | Command |
-|--------|---------|
-| Plan story | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-story.py plan --outline "..." --scenes 3 --json` |
-| Generate scenes | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-story.py generate --plan-file <path> --json` |
-| Assemble video | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-story.py assemble --plan-file <path> --json` |
-| Check status | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-story.py status --plan-file <path> --json` |
-
-### Audio
-
-| Action | Command |
-|--------|---------|
-| Generate music | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-audio.py music --prompt "..." --json` |
-| Sound effects | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-audio.py sfx --prompt "..." --json` |
-| Video-to-audio sync | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-audio.py sync --video <url> --json` |
-| Lip sync | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-audio.py lipsync --video <url> --audio <url> --json` |
-
-### Video Editing
-
-| Action | Command |
-|--------|---------|
-| Apply effects | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py effects --video <url> --effect <name> --json` |
-| Extend video (generic) | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py extend --video <url> --prompt "..." --json` |
-| **Seedance 2.0 extend** | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py seedance-extend --request-id <id> --duration 5 --json` |
-| Translate | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py translate --video <url> --target-lang <lang> --json` |
-| Style transfer | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py style --video <url> --style "..." --json` |
-| Upscale | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py upscale --video <url> --json` |
-| Face swap | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py face-swap --video <url> --face-image <url> --json` |
-
-### Job Tracking
-
-| Action | Command |
-|--------|---------|
-| Check job | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-status.py check --id <request_id> --json` |
-| Active jobs | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-status.py active --json` |
-| Job history | `python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-status.py history --limit 10 --json` |
+### Other Scripts
+- **Setup:** `higgsfield-setup.py status|credits|test --json`
+- **Character:** `higgsfield-character.py create|list|use|delete --name "..." --json`
+- **Story:** `higgsfield-story.py plan|generate|assemble|status --plan-file <path> --json`
+- **Audio:** `higgsfield-audio.py music|sfx|sync|lipsync --prompt/--video/--audio "..." --json`
+- **Edit:** `higgsfield-edit.py effects|extend|seedance-extend|translate|style|upscale|face-swap --json`
+- **Status:** `higgsfield-status.py check|active|history --id <id> --json`
+- **Upload:** `higgsfield-upload-telegram-image.py --telegram-file-id <id>|--file <path> --json`
 
 ---
 
@@ -327,18 +248,7 @@ Reference: `~/.openclaw/skills/higgsfield-video/references/character-consistency
 
 ## Cinema Controls
 
-For cinematic video generation, use prompt engineering with camera specifications:
-
-- **Camera bodies**: ARRI Alexa 35, RED V-RAPTOR, Sony VENICE 2, Blackmagic URSA
-- **Lenses**: Cooke S7/i, Zeiss Supreme Prime, Canon CN-E, Panavision Primo 70
-- **Focal lengths**: 24mm (wide), 35mm (standard), 50mm (portrait), 85mm (telephoto)
-- **Aperture**: f/1.4 (shallow DOF), f/2.8 (balanced), f/5.6 (deep focus)
-- **Camera movements**: dolly in/out, crane up/down, steadicam tracking, handheld
-
-Example prompt enhancement:
-> "A cowboy walking into a saloon. Shot on ARRI Alexa 35, Cooke S7/i 50mm at f/2, dolly tracking shot, golden hour, film grain"
-
-Reference: `~/.openclaw/skills/higgsfield-video/references/cinema-controls.md`
+Enhance prompts with camera specs: "Shot on ARRI Alexa 35, Cooke S7/i 50mm at f/2, dolly tracking, golden hour, film grain". See `references/cinema-controls.md` for camera bodies, lenses, focal lengths, apertures, and movements.
 
 ---
 
@@ -367,45 +277,11 @@ Reference: `~/.openclaw/skills/higgsfield-video/references/storytelling-patterns
 
 ---
 
-## Telegram Image Uploads (IMPORTANT)
+## Telegram Image Uploads
 
-When a user sends you an image in Telegram and asks you to animate it, edit it, or use it as a reference:
+**For image-to-video:** `--image` accepts Telegram file_id, local path, or HTTPS URL — script auto-detects and handles upload. No extra steps.
 
-**The image-to-video command handles this automatically.** If you pass a Telegram `file_id` or local file path as `--image`, the script auto-detects it, downloads from Telegram, uploads to Muapi CDN, and uses the resulting URL. No extra steps needed:
-
-```bash
-# Telegram file_id — auto-resolved
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video \
-  --image "AgACAgIAAxkBAAI..." --prompt "make this dance" --json
-
-# Local file path — auto-resolved
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video \
-  --image "/tmp/user-photo.jpg" --prompt "cinematic zoom in" --json
-
-# HTTPS URL — passed through directly (no upload needed)
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py image-to-video \
-  --image "https://example.com/photo.jpg" --prompt "animate" --json
-```
-
-**For other commands** (editing, face-swap, style transfer) that need an image URL, use the standalone upload script first:
-
-```bash
-# Upload a Telegram image and get the CDN URL
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py \
-  --telegram-file-id "AgACAgIAAxkBAAI..." --json
-# Output: { "status": "uploaded", "url": "https://cdn.muapi.ai/..." }
-
-# Upload a local file
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py \
-  --file "/tmp/user-photo.jpg" --json
-```
-
-Then pass the returned `url` to the editing command as `--video` or `--face-image`.
-
-**How it works behind the scenes:**
-1. Telegram `file_id` → `GET /bot{token}/getFile` → `GET /file/bot{token}/{path}` → raw bytes
-2. Raw bytes → `POST /api/v1/upload_file` (multipart FormData via proxy) → public CDN URL
-3. CDN URL → passed to I2V/editing endpoint as `image_url` or `images_list`
+**For editing/face-swap/style:** Upload first with `higgsfield-upload-telegram-image.py --telegram-file-id <id>` or `--file <path>`, get CDN URL, pass to editing command.
 
 ---
 
@@ -443,24 +319,9 @@ Reference: `~/.openclaw/skills/higgsfield-video/references/safety-patterns.md`
 
 ## File Paths
 
-| File | Path |
-|------|------|
-| SKILL.md | `~/.openclaw/skills/higgsfield-video/SKILL.md` |
-| Setup script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py` |
-| Generate script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-generate.py` |
-| Character script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-character.py` |
-| Story script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-story.py` |
-| Audio script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-audio.py` |
-| Edit script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-edit.py` |
-| Status script | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-status.py` |
-| Telegram upload | `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-upload-telegram-image.py` |
-| API reference | `~/.openclaw/skills/higgsfield-video/references/muapi-api.md` |
-| Model guide | `~/.openclaw/skills/higgsfield-video/references/model-selection-guide.md` |
-| Cinema controls | `~/.openclaw/skills/higgsfield-video/references/cinema-controls.md` |
-| Characters | `~/.openclaw/workspace/higgsfield/characters.json` |
-| Jobs | `~/.openclaw/workspace/higgsfield/jobs.json` |
-| Stories | `~/.openclaw/workspace/higgsfield/stories/` |
-| Session upsell | `~/.openclaw/workspace/higgsfield/session_upsell_shown` |
+**Scripts:** `~/.openclaw/skills/higgsfield-video/scripts/higgsfield-{generate,character,story,audio,edit,status,setup,upload-telegram-image}.py`
+**References:** `references/{muapi-api,model-selection-guide,cinema-controls,character-consistency,storytelling-patterns,safety-patterns}.md`
+**Data:** `~/.openclaw/workspace/higgsfield/{characters.json,jobs.json,stories/,session_upsell_shown}`
 
 ---
 
