@@ -70,8 +70,44 @@ export async function GET(
       return new NextResponse("This link has expired", { status: 410 });
     }
 
-    // Look up VM
     const supabase = getSupabase();
+    const fileName = payload.filePath.split("/").pop() || "file";
+    const ext = fileName.lastIndexOf(".") >= 0
+      ? fileName.slice(fileName.lastIndexOf(".")).toLowerCase()
+      : "";
+    const mime = MIME_MAP[ext] || "application/octet-stream";
+
+    // V2: Try Supabase Storage first (fast CDN, works even if VM is offline)
+    const { data: delivery } = await supabase
+      .from("delivered_files")
+      .select("storage_path")
+      .eq("user_id", payload.userId)
+      .eq("vm_id", payload.vmId)
+      .ilike("filename", fileName)
+      .not("storage_path", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (delivery?.storage_path) {
+      const { data: storageData, error: storageErr } = await supabase.storage
+        .from("delivered-files")
+        .download(delivery.storage_path);
+
+      if (!storageErr && storageData) {
+        const buf = Buffer.from(await storageData.arrayBuffer());
+        return new NextResponse(buf, {
+          headers: {
+            "Content-Type": mime,
+            "Content-Disposition": `inline; filename="${fileName}"`,
+            "Content-Length": String(buf.length),
+            "Cache-Control": "private, max-age=3600",
+          },
+        });
+      }
+    }
+
+    // Fallback: SSH into VM (V1 behavior)
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("id, ip_address, ssh_port, ssh_user")
@@ -82,7 +118,6 @@ export async function GET(
       return new NextResponse("File not available", { status: 404 });
     }
 
-    // Read file via SSH
     let b64Content: string;
     try {
       b64Content = await readFileBase64(vm, payload.filePath);
@@ -95,11 +130,6 @@ export async function GET(
     }
 
     const buf = Buffer.from(b64Content, "base64");
-    const fileName = payload.filePath.split("/").pop() || "file";
-    const ext = fileName.lastIndexOf(".") >= 0
-      ? fileName.slice(fileName.lastIndexOf(".")).toLowerCase()
-      : "";
-    const mime = MIME_MAP[ext] || "application/octet-stream";
 
     return new NextResponse(buf, {
       headers: {

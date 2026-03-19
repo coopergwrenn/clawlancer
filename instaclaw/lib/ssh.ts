@@ -1707,11 +1707,116 @@ print(fid)
 REL_PATH=\${FILEPATH#$HOME/.openclaw/workspace/}
 DASHBOARD_URL="https://instaclaw.io/files?file=~/.openclaw/workspace/$REL_PATH"
 
-# Audit log
+# Log delivery to instaclaw.io (V2: uploads to Supabase Storage + DB)
+GW_TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env 2>/dev/null | cut -d= -f2)
+if [ -n "$GW_TOKEN" ]; then
+  MIME_TYPE=$(file --mime-type -b "$FILEPATH" 2>/dev/null || echo "application/octet-stream")
+  curl -s --max-time 15 -X POST \\
+    -H "Authorization: Bearer $GW_TOKEN" \\
+    -H "Content-Type: application/json" \\
+    -d "{\\"filename\\":\\"$FILENAME\\",\\"file_path\\":\\"$FILEPATH\\",\\"size\\":$FILE_SIZE,\\"mime\\":\\"$MIME_TYPE\\",\\"telegram_file_id\\":\\"$FILE_ID\\",\\"telegram_method\\":\\"$METHOD\\",\\"caption\\":\\"$CAPTION\\",\\"dashboard_url\\":\\"$DASHBOARD_URL\\"}" \\
+    "https://instaclaw.io/api/vm/files/delivered" > /dev/null 2>&1 || true
+fi
+
+# Local audit log
 mkdir -p "$HOME/.openclaw/workspace"
 echo "{\\"ts\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"file\\":\\"$FILEPATH\\",\\"method\\":\\"$METHOD\\",\\"size\\":$FILE_SIZE}" >> "$HOME/.openclaw/workspace/delivery-log.jsonl"
 
 echo "{\\"success\\": true, \\"method\\": \\"$METHOD\\", \\"telegram_file_id\\": \\"$FILE_ID\\", \\"dashboard_url\\": \\"$DASHBOARD_URL\\"}"
+`;
+
+export const NOTIFY_USER_SCRIPT = `#!/bin/bash
+# notify_user.sh — Send a text notification to the user's Telegram chat
+# Usage: notify_user.sh "Your task is complete! Here are the results..."
+set -euo pipefail
+
+MESSAGE="\${1:-}"
+
+json_error() { echo "{\\"success\\": false, \\"error\\": \\"\$1\\"}"; exit 1; }
+
+# Validate args
+[ -z "$MESSAGE" ] && json_error "Usage: notify_user.sh \\"message text\\""
+
+# Truncate to 4000 chars (Telegram limit is 4096)
+MESSAGE="\${MESSAGE:0:4000}"
+
+# Read bot token from openclaw.json (channels.telegram.botToken)
+OPENCLAW_JSON="$HOME/.openclaw/openclaw.json"
+if [ ! -f "$OPENCLAW_JSON" ]; then
+  json_error "Telegram not configured (openclaw.json missing)"
+fi
+
+BOT_TOKEN=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$OPENCLAW_JSON'))
+    token = d.get('channels', {}).get('telegram', {}).get('botToken', '')
+    print(token)
+except Exception:
+    print('')
+" 2>/dev/null)
+
+[ -z "$BOT_TOKEN" ] && json_error "Telegram bot token not found in openclaw.json"
+
+# Discover chat_id — try env, then sessions.json, then getUpdates
+CHAT_ID="\${TELEGRAM_CHAT_ID:-}"
+
+# Try sessions.json (OpenClaw stores "from": "telegram:<chat_id>")
+if [ -z "$CHAT_ID" ]; then
+  SESSIONS_JSON="$HOME/.openclaw/agents/main/sessions/sessions.json"
+  if [ -f "$SESSIONS_JSON" ]; then
+    CHAT_ID=$(python3 -c "
+import json, sys, re
+try:
+    d = json.load(open('$SESSIONS_JSON'))
+    for k, v in d.items():
+        origin = v.get('origin', {})
+        f = origin.get('from', '') or v.get('lastTo', '')
+        m = re.search(r'telegram:(\\\\d+)', f)
+        if m:
+            print(m.group(1)); sys.exit(0)
+except: pass
+" 2>/dev/null)
+  fi
+fi
+
+# Fallback: try getUpdates (works if gateway isn't long-polling)
+if [ -z "$CHAT_ID" ]; then
+  CHAT_ID=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?timeout=0&limit=10" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    if data.get('ok') and data.get('result'):
+        for u in reversed(data['result']):
+            chat = (u.get('message') or u.get('edited_message') or {}).get('chat')
+            if chat and chat.get('type') == 'private':
+                print(chat['id']); sys.exit(0)
+        chat = (data['result'][0].get('message') or data['result'][0].get('edited_message') or {}).get('chat')
+        if chat: print(chat['id']); sys.exit(0)
+except: pass
+" 2>/dev/null)
+fi
+
+[ -z "$CHAT_ID" ] && json_error "Could not discover Telegram chat_id. Send any message to your bot first."
+
+# Send message via Telegram sendMessage API
+RESPONSE=$(curl -s -X POST --max-time 15 \\
+  -H "Content-Type: application/json" \\
+  -d "{\\"chat_id\\":\\"$CHAT_ID\\",\\"text\\":\\"$MESSAGE\\",\\"parse_mode\\":\\"Markdown\\"}" \\
+  "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" 2>/dev/null)
+
+# Parse response
+OK=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('ok',''))" 2>/dev/null)
+if [ "$OK" != "True" ]; then
+  ERR=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('description','Send failed'))" 2>/dev/null || echo "Send failed")
+  json_error "$ERR"
+fi
+
+# Audit log
+mkdir -p "$HOME/.openclaw/workspace"
+echo "{\\"ts\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"chat_id\\":\\"$CHAT_ID\\",\\"length\\":\${#MESSAGE}}" >> "$HOME/.openclaw/workspace/notification-log.jsonl"
+
+echo "{\\"success\\": true, \\"chat_id\\": \\"$CHAT_ID\\"}"
 `;
 
 // Register scripts with the template registry so vm-reconcile.ts can access them.
@@ -1720,6 +1825,7 @@ registerTemplate("STRIP_THINKING_SCRIPT", STRIP_THINKING_SCRIPT);
 registerTemplate("AUTO_APPROVE_PAIRING_SCRIPT", AUTO_APPROVE_PAIRING_SCRIPT);
 registerTemplate("VM_WATCHDOG_SCRIPT", VM_WATCHDOG_SCRIPT);
 registerTemplate("DELIVER_FILE_SCRIPT", DELIVER_FILE_SCRIPT);
+registerTemplate("NOTIFY_USER_SCRIPT", NOTIFY_USER_SCRIPT);
 
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
@@ -2019,6 +2125,14 @@ This is not optional. If you complete a task and don't log it, you WILL forget i
 ### Memory Hygiene
 
 Before appending new information to MEMORY.md, check its size. If it exceeds 20KB, consolidate first: remove stale or outdated entries, merge duplicate information, and keep only actively relevant facts. MEMORY.md should stay under 25KB. Critical information like wallet addresses, user preferences, and active project context should always be preserved during consolidation.
+
+## Task Completion Notifications
+
+When you promise to follow up or accept an async task:
+1. Log it in \\\`memory/active-tasks.md\\\` with status: \\\`pending-notification\\\`
+2. When done: \\\`~/scripts/notify_user.sh "✅ [Task] complete! [summary]"\\\`
+3. Update active-tasks.md to \\\`completed\\\`
+4. During heartbeats, check for any \\\`pending-notification\\\` items and deliver them
 
 ## Continuity
 
@@ -2921,6 +3035,14 @@ export async function configureOpenClaw(
       '- Include: active project statuses, recent conversation summaries, user preferences learned',
       '- Also update memory/active-tasks.md if any tasks are in progress',
       '- This is NOT optional — memory loss affects your ability to serve the user',
+      '',
+      '### Phase 0.5: DELIVER PENDING NOTIFICATIONS',
+      '- Read `memory/active-tasks.md`',
+      '- For any task with status `pending-notification` or `notification-failed`:',
+      '  - Run `~/scripts/notify_user.sh "✅ [task name]: [result summary]"`',
+      '  - If successful, update status to `completed`',
+      '  - If failed 3+ times, mark `notification-abandoned` and move on',
+      '- This ensures no promised follow-ups are dropped',
       '',
       '### Phase 1: SCAN (first 2-3 min)',
       '- Check for unread messages across all channels',

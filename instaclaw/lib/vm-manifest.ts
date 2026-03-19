@@ -122,7 +122,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 35,
+  version: 36,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -258,6 +258,13 @@ export const VM_MANIFEST = {
       remotePath: "~/scripts/deliver_file.sh",
       source: "template",
       templateKey: "DELIVER_FILE_SCRIPT",
+      mode: "overwrite",
+      executable: true,
+    },
+    {
+      remotePath: "~/scripts/notify_user.sh",
+      source: "template",
+      templateKey: "NOTIFY_USER_SCRIPT",
       mode: "overwrite",
       executable: true,
     },
