@@ -121,9 +121,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             error: "video_limit_reached",
-            message: `You've hit your daily ${generationType} limit (${limitResult.used}/${limitResult.limit}). Resets at midnight.`,
+            message: `You've hit your daily ${generationType} limit (${limitResult.used}/${limitResult.limit}). Resets at midnight — or grab a media credit pack to keep generating.`,
             used: limitResult.used,
             limit: limitResult.limit,
+            packs_url: "/billing/credit-packs",
           },
           { status: 429 }
         );

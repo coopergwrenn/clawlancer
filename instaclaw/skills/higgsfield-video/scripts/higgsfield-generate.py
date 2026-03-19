@@ -191,6 +191,21 @@ def save_job(job: dict) -> None:
     JOBS_FILE.write_text(json.dumps(jobs, indent=2))
 
 
+def update_job(request_id: str, updates: dict) -> None:
+    """Update an existing job in jobs.json by request_id."""
+    if not JOBS_FILE.exists():
+        return
+    try:
+        jobs = json.loads(JOBS_FILE.read_text())
+    except Exception:
+        return
+    for job in jobs:
+        if job.get("request_id") == request_id:
+            job.update(updates)
+            break
+    JOBS_FILE.write_text(json.dumps(jobs, indent=2))
+
+
 def output(data: dict, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps(data, indent=2))
@@ -425,6 +440,12 @@ def cmd_text_to_video(args: argparse.Namespace) -> int:
     result = poll_for_result(rid, api_key, VIDEO_POLL_MAX, args.json)
     result["model"] = model
     result["type"] = "text-to-video"
+    update_job(rid, {
+        "status": result["status"],
+        "output_url": result.get("output_url"),
+        "error": result.get("error"),
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
     output(result, args.json)
     return 0 if result["status"] == "completed" else 1
 
@@ -502,6 +523,12 @@ def cmd_image_to_video(args: argparse.Namespace) -> int:
     result = poll_for_result(rid, api_key, VIDEO_POLL_MAX, args.json)
     result["model"] = model
     result["type"] = "image-to-video"
+    update_job(rid, {
+        "status": result["status"],
+        "output_url": result.get("output_url"),
+        "error": result.get("error"),
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
     output(result, args.json)
     return 0 if result["status"] == "completed" else 1
 
@@ -560,6 +587,12 @@ def cmd_text_to_image(args: argparse.Namespace) -> int:
     result = poll_for_result(rid, api_key, IMAGE_POLL_MAX, args.json)
     result["model"] = model
     result["type"] = "text-to-image"
+    update_job(rid, {
+        "status": result["status"],
+        "output_url": result.get("output_url"),
+        "error": result.get("error"),
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
     output(result, args.json)
     return 0 if result["status"] == "completed" else 1
 
@@ -584,6 +617,16 @@ def cmd_status(args: argparse.Namespace) -> int:
         result["output_url"] = url
     if resp.get("error"):
         result["error"] = resp["error"]
+
+    # Update jobs.json with the latest status
+    if status in ("completed", "succeeded", "success", "failed", "error", "cancelled"):
+        update_job(args.id, {
+            "status": "completed" if status in ("completed", "succeeded", "success") else status,
+            "output_url": url,
+            "error": resp.get("error"),
+            "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+
     output(result, args.json)
     return 0 if status in ("completed", "succeeded", "success") else 1
 

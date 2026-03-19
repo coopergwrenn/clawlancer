@@ -318,14 +318,15 @@ If pending tasks exist, query their status and retrieve completed results. Updat
 | Power | 30 | 100 |
 | BYOK | 5 | 15 |
 
-The proxy enforces these limits automatically. If you hit the limit, the proxy returns a 429 error with `video_limit_reached`.
+The proxy enforces these limits automatically. If you hit the limit, the proxy returns a 429 error with `video_limit_reached` and a `packs_url` field.
 
 ### Budget Guardrails
 
 **Before every generation:**
 1. The proxy checks daily limits automatically
-2. If the proxy returns 429 (`video_limit_reached`), tell the user: "You've hit your daily video limit. Resets at midnight."
-3. If user is close to limit → suggest cheap mode proactively
+2. If the proxy returns 429 (`video_limit_reached`), tell the user: "You've hit your daily video limit (X/X). Your limit resets at midnight — or you can grab a media credit pack to keep generating: https://instaclaw.io/billing/credit-packs"
+3. **ALWAYS include the credit pack link** when a user hits their limit. Do NOT just say "resets at midnight" without offering the purchase option.
+4. If user is close to limit → suggest cheap mode proactively
 
 ---
 
@@ -405,7 +406,35 @@ When a generation fails after exhausting retries:
    - "Want me to try a different model?" (if one model is failing)
 4. **Do NOT retry automatically more than once** — ask the user first
 
-### 6. Pre-Flight Checklist
+### 6. Failed Generation Refund
+
+When a video generation **fails** (status `2` or `-1` from Sjinn), you can refund the daily video count so the user isn't penalized for a failed render.
+
+**How to refund:**
+
+```bash
+curl -s -X POST "$PROXY_URL/api/gateway/sjinn/refund" \
+  -H "x-gateway-token: $GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"request_id\": \"$REQUEST_ID\", \"api\": \"$API_TYPE\"}"
+```
+
+- `request_id`: The `chat_id` (agent) or `task_id` (tool) from the original submission
+- `api`: `"agent"` or `"tool"` — must match the API type used for creation
+
+**Response:**
+```json
+{"refunded": true, "new_count": 3, "message": "Refund applied. You now have 3 videos used today."}
+```
+
+**Rules:**
+- **ALWAYS request a refund when a video fails** — do not let failed renders count against the user's daily limit
+- Only works for today's usage (cannot refund yesterday's)
+- The endpoint verifies with Sjinn that the job actually failed before issuing a refund
+- If the job completed successfully, the refund will be denied
+- Tell the user: "That generation failed, so I've refunded your daily video credit. You still have X/Y videos remaining today."
+
+### 7. Pre-Flight Checklist
 
 Before EVERY video generation, verify:
 
@@ -459,7 +488,7 @@ Tell the user when falling back: "The default model had an issue, trying Veo3 in
 
 | Error Code | Meaning | User-Facing Response |
 |------------|---------|---------------------|
-| 429 (video_limit_reached) | Daily limit hit | "You've hit your daily video limit. Resets at midnight." |
+| 429 (video_limit_reached) | Daily limit hit | "You've hit your daily video limit. Resets at midnight — or grab a media credit pack to keep generating: https://instaclaw.io/billing/credit-packs" |
 | 503 (service_unavailable) | Backend at capacity | "Video generation is temporarily at capacity. Please try again later." |
 | 401 | Invalid gateway token | "Video generation is temporarily unavailable. I'll let the team know." |
 | 403 | Unauthorized | "Video generation is temporarily unavailable." |
