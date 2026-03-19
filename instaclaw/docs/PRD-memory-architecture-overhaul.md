@@ -2,7 +2,7 @@
 
 **Author:** Claude (Opus 4.6) + Cooper Wrenn
 **Date:** 2026-03-19
-**Status:** Draft — Pending Phase 0 verification
+**Status:** Phase 1 COMPLETE, Phase 2 REVISED (schema verification done 2026-03-19)
 **Sprint:** 30-day rollout (4 phases)
 
 ---
@@ -552,79 +552,77 @@ If today is Sunday and you haven't done this in the past 7 days:
 
 **Critical rule:** For every native feature we enable, we MUST simultaneously disable the custom equivalent to prevent racing systems.
 
-#### P2.1 — Native Session Maintenance (IF keys exist)
+#### P2.1 — Native Session Maintenance ~~(IF keys exist)~~ — NO-GO
 
-**Proposed config (pending verification):**
-```
-session.maintenance.enabled: true
-session.maintenance.maxSessionAge: 7d
-session.maintenance.maxSessions: 50
-session.maintenance.cleanupInterval: 6h
-session.maintenance.archiveBeforeDelete: true
-```
+**Schema verification result (2026-03-19):** REJECTED. None of the proposed keys exist in OpenClaw v2026.3.13:
 
-**If keys are ACCEPTED:**
-1. Add to `VM_MANIFEST.configSettings`
-2. Remove session cleanup steps from `daily_hygiene()` (keep browser/log/media cleanup)
-3. Remove `rotateOversizedSession()` call from health cron (let native maintenance handle it)
-4. Bump manifest version
+| Key Tested | Result |
+|---|---|
+| `session.maintenance.enabled` | `Config path not found: session` |
+| `session.maintenance.maxAgeDays` | `Config path not found: session` |
+| `agents.defaults.session.maxAgeDays` | `Config path not found: agents.` → validation failed |
+| `agents.defaults.session.maintenance.enabled` | `Config path not found: agents.` → validation failed |
 
-**If keys are REJECTED:**
-- Skip this item entirely
-- Our custom `daily_hygiene()` remains the session management system
-- Optionally: tighten daily_hygiene to run every 12 hours instead of 23 hours
+The entire `session.*` namespace does not exist in the OpenClaw config schema. There is no native session maintenance.
 
-**Rollback:** Remove config keys from manifest, re-enable custom code, bump version
-**Blast radius if wrong:** `|| true` means invalid keys are silently ignored — no crash risk
-**Effort:** 2 hours (if keys exist), 0 (if they don't)
+**Decision:** SKIP. Our custom `daily_hygiene()` + `strip-thinking.py` remain the session management system. Consider tightening daily_hygiene from 23h to 12h in Phase 3.
 
-#### P2.2 — Pre-Compaction Memory Flush (IF keys exist)
+**Effort:** 0
 
-**Proposed config (pending verification):**
-```
-compaction.memoryFlush.enabled: true
-```
+#### P2.2 — Pre-Compaction Memory Flush — CORRECTED: GO
 
-**If key is ACCEPTED:**
-1. Add to `VM_MANIFEST.configSettings`
-2. Disable strip-thinking.py Layer 1 (memory write enforcement at 160KB) — the native flush is more reliable because it fires inline with compaction, not on a 60-second cron cadence
-3. Keep strip-thinking.py Layer 2 (staleness detection) as a backup
-4. Bump manifest version
+**Schema verification result (2026-03-19, CORRECTED):** Initial test used wrong path (`compaction.memoryFlush.enabled` without `agents.defaults.` prefix). The correct path `agents.defaults.compaction.memoryFlush.enabled` IS ACCEPTED.
 
-**If key is REJECTED:**
-- Skip this item
-- strip-thinking.py Layer 1 remains our memory persistence mechanism
-- Consider lowering `MEMORY_WARN_BYTES` from 160KB to 140KB for earlier warning
+| Key Tested | Result |
+|---|---|
+| `compaction.memoryFlush.enabled` (top-level) | ❌ `Config validation failed: <root>` (wrong path) |
+| `agents.defaults.compaction.memoryFlush.enabled` | ✅ ACCEPTED on all 3 test VMs |
 
-**Rollback:** Remove config key, re-enable Layer 1
-**Effort:** 1 hour (if key exists), 0 (if it doesn't)
+**Implementation exists in OpenClaw v2026.3.13 dist:**
+- `resolveMemoryFlushSettings()` — reads config from `agents.defaults.compaction.memoryFlush`
+- `softThresholdTokens` — token threshold for triggering flush (default 4000)
+- `session_before_compact` event + `before_compaction` hook
+- `memoryFlushWritePath` — writes flushed memory to workspace file
+- `memoryFlushCompactionCount` — tracks flush history per session
+- Full pre-compaction flow: check threshold → run flush agent turn → write to MEMORY.md → proceed with compaction
 
-#### P2.3 — Cron Session Isolation (IF flag works)
+**Caveat:** Some VMs running older OpenClaw versions (pre-v2026.3.13) have 0 mentions of memoryFlush in their dist files. The feature will be silently ignored on those VMs until they're upgraded.
 
-**Test in Phase 0:** Run `openclaw run --session isolated --message "test"` on one VM.
+**Decision:** ENABLE fleet-wide. Added `agents.defaults.compaction.memoryFlush.enabled: "true"` to VM_MANIFEST v35. The gateway hot-reloads this setting — no restart needed.
 
-**If it works:**
-1. Update VM_MANIFEST.cronJobs to use `openclaw run --session isolated` wrapper for Python scripts
-2. Add weekly memory consolidation cron:
-   ```
-   schedule: "0 4 * * 0"
-   command: openclaw run --session isolated --message "Consolidate MEMORY.md..."
-   marker: "memory-consolidation"
-   ```
-3. Bump manifest version
+**What this means:** Before OpenClaw compacts a session (discarding older messages), it will first run a memory flush — asking the agent to save important context to MEMORY.md. This directly addresses the "agent forgets" problem by ensuring critical information is persisted before being discarded.
 
-**If it doesn't work:**
-- Skip this item
-- Heartbeat-driven consolidation from P1.3 remains the mechanism
+**Rollback:** Remove config key from manifest, bump version
+**Effort:** Already done (added to v35 manifest)
 
-**Rollback:** Revert cron commands to current (no `--session isolated`)
-**Effort:** 2 hours (if flag works), 0 (if it doesn't)
+#### P2.3 — Cron Session Isolation ~~(IF flag works)~~ — NO-GO
 
-#### P2.4 — Modest Reserve Token Increase (ONLY after P1.1 ships)
+**Schema verification result (2026-03-19):** REJECTED. No cron session isolation config exists:
 
-**Prerequisite:** P1.1 (skill trim) must be deployed and verified, reducing static overhead by ~25K tokens.
+| Key Tested | Result |
+|---|---|
+| `cron.sessionRetention` | `Config path not found: cron.se` |
+| `cron.session.retention` | `Config validation failed: cron: U` (unknown key) |
+| `agents.defaults.cron.sessionRetention` | validation failed |
 
-**Change:**
+The `cron` namespace does not accept session-related keys. The `openclaw run --session isolated` flag was not tested (separate from config), but the config-based approach is dead.
+
+**Decision:** SKIP. Heartbeat-driven consolidation from P1.3 remains the mechanism. The `--session isolated` CLI flag should still be tested in Phase 3 as a possible improvement for cron wrappers.
+
+**Effort:** 0
+
+#### P2.4 — Modest Reserve Token Increase — POSSIBLE, BLOCKED
+
+**Schema verification result (2026-03-19):** CONFIRMED. `agents.defaults.compaction.reserveTokensFloor` exists with current value 30000.
+
+**Status:** BLOCKED until we verify P1.1 skill trim savings are live on fleet. The CAPABILITIES.md compression (-59%, 36K→15K) shipped with v33 but we need to measure actual token savings before increasing the reserve.
+
+**Verification needed:**
+1. SSH into 3 VMs, measure total skill/workspace bytes loaded into context
+2. Compare against pre-v33 baseline (~138K tokens)
+3. If savings confirmed (>20K tokens freed), proceed with increase
+
+**Change (when unblocked):**
 ```typescript
 // vm-manifest.ts configSettings
 "agents.defaults.compaction.reserveTokensFloor": "35000"  // was 30000
@@ -641,6 +639,33 @@ This is a net improvement of 62% more conversation headroom, even with a higher 
 **Rollback:** Set back to 30000
 **Effort:** 15 minutes
 **Risk:** Low — well within safe range after skill trim
+
+#### P2.5 — Enable Memory Search — NEW DISCOVERY
+
+**Schema verification result (2026-03-19):** CONFIRMED. `agents.defaults.memorySearch.enabled` exists and accepts boolean values.
+
+| Key Tested | Result |
+|---|---|
+| `memorySearch.enabled` (top-level) | `Config path not found` — wrong path |
+| `agents.defaults.memorySearch.enabled` | ✅ accepted (set to false, then reverted) |
+| `agents.defaults.memorySearch` | `{"enabled": false}` — shows full object |
+
+**What this could mean:** OpenClaw has a built-in memory search feature backed by `~/.openclaw/memory/main.sqlite` (FTS5 + vec0). If enabled, agents may get a `memory_search` tool that can query past session content — making MEMORY.md less critical as the sole persistence layer.
+
+**Investigation plan:**
+1. Enable on one test VM: `openclaw config set agents.defaults.memorySearch.enabled true`
+2. Restart gateway, verify healthy
+3. Check if agent has a new `memory_search` tool in its tool list
+4. Test: send a message, start new session, ask agent to recall the message
+5. Inspect `main.sqlite` — is it being populated with session content?
+
+**If it works:** This is a game-changer. Agents can search past conversations instead of relying solely on MEMORY.md. Could reduce memory loss dramatically.
+
+**If it doesn't work (or is too slow/unreliable):** Revert to `false`, no harm done.
+
+**Rollback:** `openclaw config set agents.defaults.memorySearch.enabled false`
+**Effort:** 1-2 hours investigation
+**Risk:** Very low — feature already exists in the binary, just disabled
 
 ---
 
@@ -868,27 +893,35 @@ The memory architecture overhaul is complete when:
 
 ## 10. Open Questions
 
-### Must Answer Before Phase 2
+### ~~Must Answer Before Phase 2~~ — ANSWERED (2026-03-19)
 
-1. **Which config keys actually exist in OpenClaw v2026.3.13?**
-   Phase 0 schema verification will answer this. If none of the proposed keys exist, Phase 2 collapses to "skip" and Phase 3 becomes more important.
+1. **Which config keys actually exist in OpenClaw v2026.3.13?** — ANSWERED.
+   Tested 20+ proposed keys via `openclaw config set` + `openclaw config get` on vm-507.
+   - `session.*` namespace: DOES NOT EXIST
+   - `compaction.memoryFlush.*` (top-level): DOES NOT EXIST — but `agents.defaults.compaction.memoryFlush.enabled`: EXISTS ✅ (initial test used wrong path)
+   - `cron.sessionRetention`: DOES NOT EXIST
+   - `skills.load.mode` / `skills.loadMode`: DOES NOT EXIST
+   - `agents.defaults.compaction.reserveTokensFloor`: EXISTS (default 30000)
+   - `agents.defaults.memorySearch.enabled`: EXISTS (default false) — **NEW DISCOVERY**
+   - `agents.defaults.heartbeat.every`: EXISTS (default "3h")
+   - Phase 2 revised: P2.2 (memoryFlush) GO, P2.4 (reserveTokensFloor) BLOCKED, P2.5 (memorySearch) GO. P2.1 and P2.3 remain NO-GO.
 
-2. **Does `--session isolated` work with `openclaw run`?**
-   Test on one VM in Phase 0. This determines whether P2.3 (cron isolation) and the weekly consolidation cron are possible.
+2. **Does `--session isolated` work with `openclaw run`?** — NOT YET TESTED.
+   Deferred to Phase 3. Config-based cron isolation (P2.3) is dead, but CLI flag may still work.
 
-3. **Does `openclaw doctor` catch all schema violations?**
-   Or can a key pass `config set` but fail at runtime? This determines whether our Phase 0 verification is sufficient.
+3. **Does `openclaw doctor` catch all schema violations?** — PARTIALLY ANSWERED.
+   `openclaw config validate` correctly rejects invalid keys. `openclaw config set` also validates before writing. Both are sufficient for Phase 0 verification. Runtime validation not tested separately.
 
-### Should Answer Before Phase 3
+### ~~Should Answer Before Phase 3~~ — PARTIALLY ANSWERED (2026-03-19)
 
-4. **Does OpenClaw support on-demand skill loading?**
-   Check `skills.load.mode` in the dist schema. If yes, this is a game-changer — it would free ~100K tokens of context. P3.3 is dedicated to this research.
+4. **Does OpenClaw support on-demand skill loading?** — NO.
+   `skills.load.mode` and `skills.loadMode` both rejected by schema validation. `agents.defaults.skills.load.mode` and `agents.defaults.skills.loadMode` also rejected. On-demand skill loading does not exist in v2026.3.13. All skills are loaded into context at startup. P1.1 skill trims remain the only lever for reducing skill token cost.
 
-5. **What does the OpenClaw SQLite memory index actually contain?**
-   We know `~/.openclaw/memory/main.sqlite` exists with FTS5 and vec0. Is this automatically populated from session content? Can agents query it? The `_check-memory-search.ts` script investigated this but results are unknown.
+5. **What does the OpenClaw SQLite memory index actually contain?** — INVESTIGATION IN PROGRESS.
+   `agents.defaults.memorySearch.enabled` exists (default false). Enabling it may give agents a `memory_search` tool backed by `main.sqlite`. Testing on one VM now (P2.5).
 
-6. **Can we read OpenClaw's compaction event logs?**
-   If we could detect when compaction fires (from gateway logs or systemd journal), we could measure whether our changes actually reduce compaction frequency.
+6. **Can we read OpenClaw's compaction event logs?** — NOT YET TESTED.
+   Deferred. Can check `journalctl --user -u openclaw-gateway | grep compaction` on a busy VM.
 
 ### Nice to Know
 
