@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Folder, File, ArrowLeft, FolderOpen, Download, Image, Film, FileText, Lock } from "lucide-react";
 
 interface FileEntry {
@@ -51,6 +52,15 @@ function getFileIcon(name: string) {
 }
 
 export default function FilesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center"><p className="text-sm" style={{ color: "var(--muted)" }}>Loading...</p></div>}>
+      <FilesPageInner />
+    </Suspense>
+  );
+}
+
+function FilesPageInner() {
+  const searchParams = useSearchParams();
   const [currentPath, setCurrentPath] = useState("~/.openclaw/workspace");
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +68,7 @@ export default function FilesPage() {
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [binaryData, setBinaryData] = useState<{ content: string; mime: string } | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
+  const [deepLinked, setDeepLinked] = useState(false);
 
   async function loadDirectory(path: string) {
     setLoading(true);
@@ -114,7 +125,22 @@ export default function FilesPage() {
   }
 
   useEffect(() => {
-    loadDirectory(currentPath);
+    const fileParam = searchParams.get("file");
+    const pathParam = searchParams.get("path");
+
+    if (fileParam && !deepLinked) {
+      setDeepLinked(true);
+      // Navigate to parent directory then open file
+      const parts = fileParam.split("/");
+      parts.pop();
+      const dir = parts.join("/") || "~/.openclaw/workspace";
+      loadDirectory(dir).then(() => viewFile(fileParam));
+    } else if (pathParam && !deepLinked) {
+      setDeepLinked(true);
+      loadDirectory(pathParam);
+    } else {
+      loadDirectory(currentPath);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

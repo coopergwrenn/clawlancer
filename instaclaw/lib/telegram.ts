@@ -165,3 +165,141 @@ export async function discoverTelegramChatId(
     return null;
   }
 }
+
+// ── File delivery functions ──
+
+interface TelegramFileResult {
+  success: boolean;
+  fileId?: string;
+  error?: string;
+}
+
+/**
+ * DRY wrapper for Telegram multipart file uploads.
+ * All send*() functions delegate here.
+ */
+async function telegramMultipartPost(
+  botToken: string,
+  method: string,
+  formData: FormData
+): Promise<TelegramFileResult> {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/bot${botToken}/${method}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`Telegram ${method} failed:`, errorBody);
+      return { success: false, error: `Telegram API error: ${response.status}` };
+    }
+
+    const data = await response.json();
+    // Extract file_id from the response (varies by type)
+    const fileId =
+      data.result?.document?.file_id ??
+      data.result?.photo?.at(-1)?.file_id ??
+      data.result?.video?.file_id ??
+      undefined;
+
+    return { success: true, fileId };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error(`Telegram ${method} error:`, errMsg);
+    return { success: false, error: errMsg };
+  }
+}
+
+/**
+ * Send a document (any file type) to a Telegram chat.
+ * 50MB limit — caller must check size before calling.
+ */
+export async function sendTelegramDocument(
+  botToken: string,
+  chatId: string,
+  fileBuffer: Buffer,
+  filename: string,
+  caption?: string
+): Promise<TelegramFileResult> {
+  const formData = new FormData();
+  formData.append("chat_id", chatId);
+  formData.append("document", new Blob([new Uint8Array(fileBuffer)]), filename);
+  if (caption) formData.append("caption", caption.slice(0, 1024));
+  return telegramMultipartPost(botToken, "sendDocument", formData);
+}
+
+/**
+ * Send a photo to a Telegram chat.
+ * 10MB limit, auto-compressed by Telegram.
+ */
+export async function sendTelegramPhoto(
+  botToken: string,
+  chatId: string,
+  fileBuffer: Buffer,
+  caption?: string
+): Promise<TelegramFileResult> {
+  const formData = new FormData();
+  formData.append("chat_id", chatId);
+  formData.append("photo", new Blob([new Uint8Array(fileBuffer)]), "photo");
+  if (caption) formData.append("caption", caption.slice(0, 1024));
+  return telegramMultipartPost(botToken, "sendPhoto", formData);
+}
+
+/**
+ * Send a video to a Telegram chat.
+ * 50MB limit.
+ */
+export async function sendTelegramVideo(
+  botToken: string,
+  chatId: string,
+  fileBuffer: Buffer,
+  filename: string,
+  caption?: string
+): Promise<TelegramFileResult> {
+  const formData = new FormData();
+  formData.append("chat_id", chatId);
+  formData.append("video", new Blob([new Uint8Array(fileBuffer)]), filename);
+  if (caption) formData.append("caption", caption.slice(0, 1024));
+  return telegramMultipartPost(botToken, "sendVideo", formData);
+}
+
+const IMAGE_EXTS_TG = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+const VIDEO_EXTS_TG = new Set([".mp4", ".webm", ".mov"]);
+
+/**
+ * Smart file dispatcher — detects MIME from extension and routes to the
+ * appropriate Telegram send method (Photo, Video, or Document).
+ *
+ * This is the main entry point for file delivery.
+ * Size guards: >50MB always rejected, >10MB photos sent as document instead.
+ */
+export async function sendTelegramFile(
+  botToken: string,
+  chatId: string,
+  fileBuffer: Buffer,
+  filename: string,
+  caption?: string
+): Promise<TelegramFileResult> {
+  const sizeBytes = fileBuffer.length;
+  const MAX_DOCUMENT = 50 * 1024 * 1024;
+  const MAX_PHOTO = 10 * 1024 * 1024;
+
+  if (sizeBytes > MAX_DOCUMENT) {
+    return { success: false, error: `File too large (${(sizeBytes / 1024 / 1024).toFixed(1)}MB). Telegram limit is 50MB.` };
+  }
+
+  const ext = filename.lastIndexOf(".") >= 0
+    ? filename.slice(filename.lastIndexOf(".")).toLowerCase()
+    : "";
+
+  if (IMAGE_EXTS_TG.has(ext) && sizeBytes <= MAX_PHOTO) {
+    return sendTelegramPhoto(botToken, chatId, fileBuffer, caption);
+  }
+
+  if (VIDEO_EXTS_TG.has(ext)) {
+    return sendTelegramVideo(botToken, chatId, fileBuffer, filename, caption);
+  }
+
+  return sendTelegramDocument(botToken, chatId, fileBuffer, filename, caption);
+}

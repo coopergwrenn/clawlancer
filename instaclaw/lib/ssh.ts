@@ -1569,11 +1569,142 @@ if __name__ == "__main__":
     main()
 `;
 
+// ── deliver_file.sh — VM-side file delivery script ──
+// Called by agents via tool_use to send files directly to the user's Telegram chat.
+// Usage: ~/scripts/deliver_file.sh <filepath> [caption]
+export const DELIVER_FILE_SCRIPT = `#!/bin/bash
+# deliver_file.sh — Send a file to the user's Telegram chat
+# Usage: deliver_file.sh <filepath> [caption]
+set -euo pipefail
+
+FILEPATH="\${1:-}"
+CAPTION="\${2:-}"
+
+json_error() { echo "{\\"success\\": false, \\"error\\": \\"\$1\\"}"; exit 1; }
+
+# Validate args
+[ -z "$FILEPATH" ] && json_error "Usage: deliver_file.sh <filepath> [caption]"
+
+# Resolve relative paths from workspace
+if [[ "$FILEPATH" != /* && "$FILEPATH" != ~* ]]; then
+  FILEPATH="$HOME/.openclaw/workspace/$FILEPATH"
+fi
+FILEPATH=$(eval echo "$FILEPATH")
+
+[ ! -f "$FILEPATH" ] && json_error "File not found: $FILEPATH"
+[ ! -r "$FILEPATH" ] && json_error "File not readable: $FILEPATH"
+
+# Check size (50MB limit for Telegram)
+FILE_SIZE=$(stat -c%s "$FILEPATH" 2>/dev/null || stat -f%z "$FILEPATH" 2>/dev/null)
+MAX_SIZE=$((50 * 1024 * 1024))
+if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
+  json_error "File too large: $((FILE_SIZE / 1024 / 1024))MB (max 50MB)"
+fi
+
+# Read bot token from auth-profiles.json
+AUTH_PROFILES="$HOME/.openclaw/agents/main/agent/auth-profiles.json"
+if [ ! -f "$AUTH_PROFILES" ]; then
+  json_error "Telegram not configured (auth-profiles.json missing)"
+fi
+
+BOT_TOKEN=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$AUTH_PROFILES'))
+    channels = d.get('profiles', {})
+    for k, v in channels.items():
+        if 'telegram' in k.lower():
+            print(v.get('key', v.get('token', '')))
+            sys.exit(0)
+    # Fallback: check channels section
+    ch = d.get('channels', {}).get('telegram', {})
+    print(ch.get('botToken', ch.get('token', '')))
+except Exception as e:
+    print('', file=sys.stderr)
+" 2>/dev/null)
+
+[ -z "$BOT_TOKEN" ] && json_error "Telegram bot token not found in auth-profiles.json"
+
+# Discover chat_id — try env first, then getUpdates
+CHAT_ID="\${TELEGRAM_CHAT_ID:-}"
+if [ -z "$CHAT_ID" ]; then
+  CHAT_ID=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?timeout=0&limit=10" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    if data.get('ok') and data.get('result'):
+        for u in reversed(data['result']):
+            chat = (u.get('message') or u.get('edited_message') or {}).get('chat')
+            if chat and chat.get('type') == 'private':
+                print(chat['id']); sys.exit(0)
+        chat = (data['result'][0].get('message') or data['result'][0].get('edited_message') or {}).get('chat')
+        if chat: print(chat['id']); sys.exit(0)
+except: pass
+" 2>/dev/null)
+fi
+
+[ -z "$CHAT_ID" ] && json_error "Could not discover Telegram chat_id. Send any message to your bot first."
+
+# Detect MIME type and choose Telegram method
+MIME=$(file --mime-type -b "$FILEPATH")
+FILENAME=$(basename "$FILEPATH")
+EXT="\${FILENAME##*.}"
+EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+
+METHOD="sendDocument"
+FIELD="document"
+MAX_PHOTO=$((10 * 1024 * 1024))
+
+case "$EXT_LOWER" in
+  png|jpg|jpeg|gif|webp)
+    if [ "$FILE_SIZE" -le "$MAX_PHOTO" ]; then
+      METHOD="sendPhoto"
+      FIELD="photo"
+    fi
+    ;;
+  mp4|webm|mov)
+    METHOD="sendVideo"
+    FIELD="video"
+    ;;
+esac
+
+# Upload via curl
+CURL_ARGS=(-s -X POST --max-time 30 -F "chat_id=$CHAT_ID" -F "$FIELD=@$FILEPATH")
+[ -n "$CAPTION" ] && CURL_ARGS+=(-F "caption=\${CAPTION:0:1024}")
+
+RESPONSE=$(curl "\${CURL_ARGS[@]}" "https://api.telegram.org/bot$BOT_TOKEN/$METHOD" 2>/dev/null)
+
+# Parse response
+OK=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('ok',''))" 2>/dev/null)
+if [ "$OK" != "True" ]; then
+  ERR=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('description','Upload failed'))" 2>/dev/null || echo "Upload failed")
+  json_error "$ERR"
+fi
+
+FILE_ID=$(echo "$RESPONSE" | python3 -c "
+import json, sys
+d = json.load(sys.stdin).get('result', {})
+fid = d.get('document', {}).get('file_id') or (d.get('photo', [{}])[-1] if d.get('photo') else {}).get('file_id') or d.get('video', {}).get('file_id') or ''
+print(fid)
+" 2>/dev/null)
+
+# Build dashboard deep-link
+REL_PATH=\${FILEPATH#$HOME/.openclaw/workspace/}
+DASHBOARD_URL="https://instaclaw.io/files?file=~/.openclaw/workspace/$REL_PATH"
+
+# Audit log
+mkdir -p "$HOME/.openclaw/workspace"
+echo "{\\"ts\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"file\\":\\"$FILEPATH\\",\\"method\\":\\"$METHOD\\",\\"size\\":$FILE_SIZE}" >> "$HOME/.openclaw/workspace/delivery-log.jsonl"
+
+echo "{\\"success\\": true, \\"method\\": \\"$METHOD\\", \\"telegram_file_id\\": \\"$FILE_ID\\", \\"dashboard_url\\": \\"$DASHBOARD_URL\\"}"
+`;
+
 // Register scripts with the template registry so vm-reconcile.ts can access them.
 // Must be done at module load time, after the script constants are defined.
 registerTemplate("STRIP_THINKING_SCRIPT", STRIP_THINKING_SCRIPT);
 registerTemplate("AUTO_APPROVE_PAIRING_SCRIPT", AUTO_APPROVE_PAIRING_SCRIPT);
 registerTemplate("VM_WATCHDOG_SCRIPT", VM_WATCHDOG_SCRIPT);
+registerTemplate("DELIVER_FILE_SCRIPT", DELIVER_FILE_SCRIPT);
 
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
@@ -1671,13 +1802,12 @@ Rule of thumb: Read/analyze/local = free. Write/execute/external/money = ask.
 
 ## Sharing Files
 
-When you create a file the user needs to access (CSV, HTML, PDF, image, etc.):
-1. Copy or save the file to \\\`~/.openclaw/workspace/tmp-media/\\\`
-2. Give the user the public URL: \\\`https://{your-hostname}/tmp-media/{filename}\\\`
-3. This link works everywhere — Telegram, browser, email. No login needed.
-4. For important files that should persist, also keep a copy in \\\`~/.openclaw/workspace/\\\`
-
-Get the hostname from your gateway URL (the part before /health). Example: if your gateway URL is \\\`https://vm-058.vm.instaclaw.io/health\\\`, the hostname is \\\`vm-058.vm.instaclaw.io\\\`.
+When you create a file the user wants (image, video, report, code):
+1. Run: \\\`~/scripts/deliver_file.sh <filepath> "optional caption"\\\`
+2. The file will be sent directly to the user's Telegram chat
+3. The script outputs a dashboard link — include it in your reply so the user can also view/download from the web
+4. For multiple files, call deliver_file.sh once per file
+5. If delivery fails, tell the user the file is available at: https://instaclaw.io/files
 
 ## When I Mess Up
 

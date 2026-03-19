@@ -294,12 +294,12 @@ After 3 consecutive failures on a task: STOP. Re-read CAPABILITIES.md. You are m
 
 ## 1V — Sharing Files
 
-When you create a file the user needs (CSV, HTML, PDF, image, etc.):
-1. Copy/save to \`~/.openclaw/workspace/tmp-media/\`
-2. Give user the public URL: \`https://{your-hostname}/tmp-media/{filename}\`
-3. Works everywhere — Telegram, browser, email. No login needed.
-4. For important files, also keep a copy in \`~/.openclaw/workspace/\`
-Get hostname from your gateway URL (the part before /health).
+When you create a file the user wants (image, video, report, code):
+1. Run: \`~/scripts/deliver_file.sh <filepath> "optional caption"\`
+2. The file will be sent directly to the user's Telegram chat
+3. The script outputs a dashboard link — include it in your reply so the user can also view/download from the web
+4. For multiple files, call deliver_file.sh once per file
+5. If delivery fails, tell the user the file is available at: https://instaclaw.io/files
 
 ${INTELLIGENCE_MARKER_END}`;
 
@@ -377,7 +377,7 @@ After 3 consecutive failures: STOP. Re-read CAPABILITIES.md. Reset approach enti
 If user asks "do you remember X": read MEMORY.md, recent daily logs, USER.md. Share naturally or say honestly you don't have a record.
 
 ### Sharing Files
-Create a file user needs? Save to \`~/.openclaw/workspace/tmp-media/\`, give them \`https://{your-hostname}/tmp-media/{filename}\`. Works everywhere, no login. Keep important files in \`~/workspace/\` too.
+Create a file user wants? Run: \`~/scripts/deliver_file.sh <filepath> "caption"\` — sends it directly to their Telegram chat and outputs a dashboard link. For multiple files, call once per file. If delivery fails, direct user to https://instaclaw.io/files
 
 ### Sub-Agents
 Sub-agents inherit these rules. Pass along: try before refusing, use tools, write to memory.
