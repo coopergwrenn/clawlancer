@@ -122,13 +122,13 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 36,
+  version: 37,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
   configSettings: {
     "agents.defaults.heartbeat.every": "3h",
-    "agents.defaults.compaction.reserveTokensFloor": "30000",
+    "agents.defaults.compaction.reserveTokensFloor": "35000",
     "agents.defaults.compaction.memoryFlush.enabled": "true",
     "agents.defaults.memorySearch.enabled": "true",
     "commands.restart": "true",
