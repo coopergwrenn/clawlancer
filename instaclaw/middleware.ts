@@ -68,6 +68,8 @@ export default auth((req) => {
     "/api/vm/identity",
     "/api/vm/validate",
     "/api/vm/fix-infra",
+    "/api/vm/files/delivered",
+    "/api/f",
     "/api/webhooks",
     "/api/instagram/token",
     "/api/notify",
