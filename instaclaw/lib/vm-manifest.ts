@@ -122,7 +122,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 30,
+  version: 32,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -137,10 +137,12 @@ export const VM_MANIFEST = {
     "channels.telegram.groupPolicy": "open",
     "channels.telegram.groups.*.requireMention": "false",
     "commands.useAccessGroups": "false",
-    // DO NOT CHANGE — total SKILL.md content is 328K chars across 18 skills.
-    // Below 350K, skills are silently dropped (alphabetical load order).
+    // DO NOT CHANGE — total SKILL.md content is ~405K chars across 17 skills
+    // (polymarket removed as duplicate of prediction-markets).
+    // Below 500K, skills are silently dropped (alphabetical load order).
     // Caused 3 fleet-wide outages when reverted. See commits 0cad0b7, 9e1e767.
-    "skills.limits.maxSkillsPromptChars": "350000",
+    // Also enforced by reconciler — OpenClaw version updates reset this to default.
+    "skills.limits.maxSkillsPromptChars": "500000",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
@@ -317,13 +319,14 @@ export const VM_MANIFEST = {
   openclawJsonSettings: {
     "skills.load.extraDirs": ["/home/openclaw/.openclaw/skills"],
     // DO NOT CHANGE — must match configSettings value above. See comments there.
-    "skills.limits.maxSkillsPromptChars": 350000,
+    "skills.limits.maxSkillsPromptChars": 500000,
   } as Record<string, unknown>,
 
   // ── Systemd unit overrides for openclaw-gateway.service ──
   // Applied by reconciler and configureOpenClaw after `openclaw gateway install`.
   systemdOverrides: {
     "KillMode": "mixed",           // Kill Chrome children when gateway stops (was: process)
+    "Delegate": "yes",             // Keep agent-spawned child processes inside the CGroup so KillMode=mixed catches them
     "RestartSec": "10",            // Wait 10s between restarts (was: 5)
     "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
     "StartLimitIntervalSec": "300", // 5-minute window for burst counting
@@ -331,7 +334,7 @@ export const VM_MANIFEST = {
     "ExecStartPre": "/bin/bash -c 'for f in /tmp/openclaw/openclaw-*.log; do [ -f \"$f\" ] && mv \"$f\" \"${f%%.log}-$(date +%%H%%M%%S).log.bak\"; done; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
     "MemoryHigh": "3G",             // Soft limit: kernel throttles at 3GB (gateway slows, doesn't die)
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
-    "TasksMax": "150",              // Max threads+processes (Node ~20 + Chrome ~50 + headroom)
+    "TasksMax": "75",               // Max threads+processes (Node ~11 + Chrome ~50 + small headroom). Was 150 — reduced to prevent runaway agent forks
     "OOMScoreAdjust": "500",        // Higher = killed first. sshd has -900. Gateway dies before sshd.
     "RuntimeMaxSec": "86400",       // Auto-restart gateway after 24h to prevent memory bloat
     "RuntimeRandomizedExtraSec": "3600", // Stagger restarts across fleet by up to 1h

@@ -133,6 +133,15 @@ MEMORY_FLAG_TTL = 300    # 5 minutes before giving up on memory write
 STALE_HOURS = 24         # Memory considered stale after this many hours
 STALE_MIN_SESSION_KB = 10  # Minimum session size (KB) to trigger staleness check
 
+# Daily hygiene constants
+SESSION_MAX_AGE_DAYS = 7
+CLEANUP_MARKER = os.path.join(SESSIONS_DIR, ".last-session-cleanup")
+CLEANUP_INTERVAL = 82800  # 23 hours
+BROWSER_CACHE_MAX_MB = 500
+GATEWAY_LOG_MAX_MB = 10
+GATEWAY_LOG_KEEP_LINES = 1000
+MEDIA_MAX_AGE_DAYS = 14
+
 # MEMORY.md injection markers
 MEM_URGENT_START = "<!-- INSTACLAW:MEMORY_WRITE_URGENT:START -->"
 MEM_URGENT_END = "<!-- INSTACLAW:MEMORY_WRITE_URGENT:END -->"
@@ -223,6 +232,137 @@ def remove_memory_section(path, marker_start, marker_end):
         os.replace(tmp, path)
     except Exception as e:
         print(f"remove_memory_section failed: {e}")
+
+def daily_hygiene():
+    """Run once per ~23 hours: clean stale sessions, browser cache, logs, media."""
+    try:
+        # Throttle: only run if marker is missing or older than CLEANUP_INTERVAL
+        if os.path.exists(CLEANUP_MARKER):
+            age = time.time() - os.path.getmtime(CLEANUP_MARKER)
+            if age < CLEANUP_INTERVAL:
+                return
+        print("daily_hygiene: starting")
+
+        # 1. Delete .jsonl session files older than SESSION_MAX_AGE_DAYS
+        #    but ALWAYS keep files modified in the last 24 hours (active conversations)
+        stale_deleted = 0
+        cutoff = time.time() - (SESSION_MAX_AGE_DAYS * 86400)
+        recent_cutoff = time.time() - 86400  # 24 hours
+        for f in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+            mtime = os.path.getmtime(f)
+            if mtime < cutoff and mtime < recent_cutoff:
+                try:
+                    os.remove(f)
+                    stale_deleted += 1
+                except Exception:
+                    pass
+        if stale_deleted:
+            print(f"daily_hygiene: deleted {stale_deleted} stale session files (>{SESSION_MAX_AGE_DAYS}d old)")
+
+        # 2. Rebuild sessions.json — remove entries whose .jsonl no longer exists
+        try:
+            existing_ids = set(
+                os.path.basename(f).replace(".jsonl", "")
+                for f in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl"))
+            )
+            if os.path.exists(SESSIONS_JSON):
+                with open(SESSIONS_JSON) as fh:
+                    sj = json.load(fh)
+                before_count = len(sj)
+                sj = {k: v for k, v in sj.items() if v.get("sessionId") in existing_ids}
+                if len(sj) != before_count:
+                    tmp = SESSIONS_JSON + ".tmp"
+                    with open(tmp, "w") as fh:
+                        json.dump(sj, fh, indent=2)
+                    os.replace(tmp, SESSIONS_JSON)
+                    print(f"daily_hygiene: sessions.json pruned {before_count - len(sj)} orphaned entries")
+        except Exception as e:
+            print(f"daily_hygiene: sessions.json rebuild failed: {e}")
+
+        # 3. Browser cache cleanup (if total > BROWSER_CACHE_MAX_MB)
+        try:
+            cache_dirs = [
+                os.path.expanduser("~/.config/chromium/Default/Cache"),
+                os.path.expanduser("~/.config/chromium/Default/Code Cache"),
+                os.path.expanduser("~/.config/chromium/Default/GPUCache"),
+            ]
+            total_bytes = 0
+            for d in cache_dirs:
+                if os.path.isdir(d):
+                    for dirpath, _, filenames in os.walk(d):
+                        for fn in filenames:
+                            try:
+                                total_bytes += os.path.getsize(os.path.join(dirpath, fn))
+                            except Exception:
+                                pass
+            if total_bytes > BROWSER_CACHE_MAX_MB * 1024 * 1024:
+                for d in cache_dirs:
+                    if os.path.isdir(d):
+                        shutil.rmtree(d, ignore_errors=True)
+                print(f"daily_hygiene: cleared browser cache ({total_bytes // (1024*1024)}MB > {BROWSER_CACHE_MAX_MB}MB)")
+        except Exception as e:
+            print(f"daily_hygiene: browser cache check failed: {e}")
+
+        # 4. Truncate gateway logs > GATEWAY_LOG_MAX_MB
+        try:
+            log_dir = "/tmp/openclaw"
+            if os.path.isdir(log_dir):
+                for f in glob.glob(os.path.join(log_dir, "*.log")):
+                    try:
+                        if os.path.getsize(f) > GATEWAY_LOG_MAX_MB * 1024 * 1024:
+                            with open(f) as fh:
+                                lines = fh.readlines()
+                            with open(f, "w") as fh:
+                                fh.writelines(lines[-GATEWAY_LOG_KEEP_LINES:])
+                            print(f"daily_hygiene: truncated {os.path.basename(f)} to {GATEWAY_LOG_KEEP_LINES} lines")
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"daily_hygiene: log truncation failed: {e}")
+
+        # 5. Media cleanup — delete inbound files older than MEDIA_MAX_AGE_DAYS
+        try:
+            media_dir = os.path.expanduser("~/.openclaw/media/inbound")
+            if os.path.isdir(media_dir):
+                media_cutoff = time.time() - (MEDIA_MAX_AGE_DAYS * 86400)
+                media_deleted = 0
+                for dirpath, _, filenames in os.walk(media_dir):
+                    for fn in filenames:
+                        fp = os.path.join(dirpath, fn)
+                        try:
+                            if os.path.getmtime(fp) < media_cutoff:
+                                os.remove(fp)
+                                media_deleted += 1
+                        except Exception:
+                            pass
+                if media_deleted:
+                    print(f"daily_hygiene: deleted {media_deleted} old media files (>{MEDIA_MAX_AGE_DAYS}d)")
+        except Exception as e:
+            print(f"daily_hygiene: media cleanup failed: {e}")
+
+        # 6. Session archive cleanup — delete archives older than 7 days
+        try:
+            if os.path.isdir(ARCHIVE_DIR):
+                archive_cutoff = time.time() - (7 * 86400)
+                archive_deleted = 0
+                for f in glob.glob(os.path.join(ARCHIVE_DIR, "*")):
+                    try:
+                        if os.path.getmtime(f) < archive_cutoff:
+                            os.remove(f)
+                            archive_deleted += 1
+                    except Exception:
+                        pass
+                if archive_deleted:
+                    print(f"daily_hygiene: deleted {archive_deleted} old archive files")
+        except Exception as e:
+            print(f"daily_hygiene: archive cleanup failed: {e}")
+
+        # Update marker
+        with open(CLEANUP_MARKER, "w") as fh:
+            fh.write(str(time.time()))
+        print("daily_hygiene: complete")
+    except Exception as e:
+        print(f"daily_hygiene: unexpected error: {e}")
 
 def check_session_quality(jsonl_file, session_id):
     """Scan tail of session for degradation patterns. Returns action to take."""
@@ -406,6 +546,9 @@ try:
                 os.remove(DEGRADED_FLAG)
             except Exception:
                 pass
+
+    # Run daily hygiene (self-throttled to once per ~23 hours via marker file)
+    daily_hygiene()
 
     for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
         file_size = os.path.getsize(jsonl_file)
