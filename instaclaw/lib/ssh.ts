@@ -5308,18 +5308,25 @@ export async function rotateOversizedSession(vm: VMRecord): Promise<{ rotated: b
       // Rename to .archived (preserved but never replayed by the gateway)
       await ssh.execCommand(`mv "${filePath}" "${filePath}.archived"`);
 
-      // Remove entry from sessions.json
+      // Remove entry from sessions.json (atomic write to avoid racing with strip-thinking.py)
       await ssh.execCommand(
         `python3 -c "
-import json
+import json, os, tempfile
+sj_path = '${sessDir}/sessions.json'
 try:
-    with open('${sessDir}/sessions.json', 'r') as f:
+    with open(sj_path, 'r') as f:
         data = json.load(f)
     to_del = [k for k, v in data.items() if v.get('sessionId') == '${sessionId}']
     for k in to_del:
         del data[k]
-    with open('${sessDir}/sessions.json', 'w') as f:
-        json.dump(data, f)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(sj_path), suffix='.tmp')
+    try:
+        with os.fdopen(tmp_fd, 'w') as tmp:
+            json.dump(data, tmp)
+        os.replace(tmp_path, sj_path)
+    except:
+        os.unlink(tmp_path)
+        raise
 except Exception:
     pass
 " 2>/dev/null || true`

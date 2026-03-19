@@ -1378,10 +1378,14 @@ else:
   let memoryEmptyAlerts = 0;
   let memoryStaleWarnings = 0;
   let memoryOversizedAlerts = 0;
+  let hygieneOk = 0;
+  let hygieneStale = 0;
+  let hygieneNever = 0;
   const MEMORY_EMPTY_THRESHOLD = 200;   // bytes — effectively empty
   const MEMORY_STALE_HOURS = 72;        // hours without update
   const MEMORY_MIN_SESSION_BYTES = 10 * 1024; // 10KB — VM must have meaningful session
   const MEMORY_ASSIGNED_HOURS = 48;     // VM must be assigned 48h+ for empty alert
+  const HYGIENE_STALE_HOURS = 48;       // daily_hygiene should run every ~23h; 48h = missed 2 cycles
   const MEMORY_OVERSIZED_BYTES = 25 * 1024; // 25KB — MEMORY.md is getting too large for bootstrap injection
 
   const memoryHealthBatch = vms
@@ -1394,6 +1398,37 @@ else:
       if (!memHealth.reachable) continue;
 
       const nowEpoch = Math.floor(Date.now() / 1000);
+
+      // daily_hygiene() monitoring — check if strip-thinking.py's cleanup has run recently
+      try {
+        const ssh = await connectSSH(vm);
+        try {
+          const markerResult = await ssh.execCommand(
+            "stat -c %Y ~/.openclaw/agents/main/sessions/.last-session-cleanup 2>/dev/null || echo 0"
+          );
+          const markerEpoch = parseInt(markerResult.stdout.trim()) || 0;
+          if (markerEpoch === 0) {
+            hygieneNever++;
+          } else {
+            const hoursSinceHygiene = (nowEpoch - markerEpoch) / 3600;
+            if (hoursSinceHygiene <= HYGIENE_STALE_HOURS) {
+              hygieneOk++;
+            } else {
+              hygieneStale++;
+              logger.warn("daily_hygiene stale", {
+                route: "cron/health-check",
+                vmId: vm.id,
+                vmName: vm.name,
+                hoursSinceHygiene: Math.round(hoursSinceHygiene),
+              });
+            }
+          }
+        } finally {
+          ssh.dispose();
+        }
+      } catch {
+        // SSH failed for hygiene check — don't block memory health pass
+      }
       const hoursSinceMemUpdate = memHealth.memMtimeEpoch > 0
         ? (nowEpoch - memHealth.memMtimeEpoch) / 3600
         : Infinity;
@@ -2544,6 +2579,9 @@ else:
     memoryEmptyAlerts,
     memoryStaleWarnings,
     memoryOversizedAlerts,
+    hygieneOk,
+    hygieneStale,
+    hygieneNever,
     tokenDriftChecked,
     tokenDriftFixed,
     proxyChecked,

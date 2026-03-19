@@ -340,7 +340,15 @@ export const VM_MANIFEST = {
     "RuntimeRandomizedExtraSec": "3600", // Stagger restarts across fleet by up to 1h
   } as Record<string, string>,
 
-  // ── Session thresholds (operational, kept for reference) ──
+  // ── Session thresholds ──
+  // NOTE: These are used by the health cron for alerting and by rotateOversizedSession()
+  // as a fallback safety net. The PRIMARY enforcement is in strip-thinking.py which uses
+  // its own hardcoded thresholds: MAX_SESSION_BYTES=200KB, MEMORY_WARN_BYTES=160KB
+  // (defined in the STRIP_THINKING_SCRIPT template in ssh.ts:110-111). Those were lowered
+  // independently after web fetch blowouts caused sessions to balloon past 512KB between
+  // health cron cycles. The values below are the "outer fence" — if strip-thinking misses
+  // a session (e.g., cron not running), the health cron catches it at these higher thresholds.
+  // See PRD-memory-architecture-overhaul.md Section 2.2 for the full split-brain analysis.
   maxSessionBytes: 512 * 1024,
   sessionAlertBytes: 480 * 1024,
   memoryWarnBytes: 400 * 1024,
