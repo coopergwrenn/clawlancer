@@ -200,11 +200,22 @@ fi
 # Enable loginctl linger so systemd user services survive SSH disconnect
 loginctl enable-linger "\${OPENCLAW_USER}" 2>/dev/null || true
 
-# ── 2. Copy SSH authorized keys from root → openclaw, then embed deploy key as fallback ──
-mkdir -p "\${OPENCLAW_HOME}/.ssh"
-cp /root/.ssh/authorized_keys "\${OPENCLAW_HOME}/.ssh/authorized_keys" 2>/dev/null || true
+# ── 2. Ensure both deploy keys are in root AND openclaw authorized_keys ──
+# The Linode/Hetzner API may only inject one key into root. We add both here
+# to prevent key mismatch issues on fleet deploys.
 DEPLOY_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB9cr49D/z0kHvimN65SWqKOHqJrrJAI6W/VVLlIZ+k4 instaclaw-deploy"
 VERCEL_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICn5FKGDhYrRQm85VX5VtR+mXLt2U+8wfXYZZN+zuHFz instaclaw-deploy@vercel"
+
+# Fix root's authorized_keys first
+for K in "\${DEPLOY_KEY}" "\${VERCEL_KEY}"; do
+  if ! grep -qF "\${K}" /root/.ssh/authorized_keys 2>/dev/null; then
+    echo "\${K}" >> /root/.ssh/authorized_keys
+  fi
+done
+
+# Then set up openclaw's keys (copy root's + ensure both deploy keys)
+mkdir -p "\${OPENCLAW_HOME}/.ssh"
+cp /root/.ssh/authorized_keys "\${OPENCLAW_HOME}/.ssh/authorized_keys" 2>/dev/null || true
 for K in "\${DEPLOY_KEY}" "\${VERCEL_KEY}"; do
   if ! grep -qF "\${K}" "\${OPENCLAW_HOME}/.ssh/authorized_keys" 2>/dev/null; then
     echo "\${K}" >> "\${OPENCLAW_HOME}/.ssh/authorized_keys"

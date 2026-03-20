@@ -1,12 +1,10 @@
 /**
- * _verify-ape-capital-vm379.ts — Verify Ape Capital's VM has latest changes
+ * _verify-ape-capital-vm379.ts — Verify Ape Capital's VM state + trigger manifest deploy
  *
- * Checks:
- * 1. DB state: vm-379 status, manifest version, health, assigned user
- * 2. SSH checks: deliver_file.sh, MEMORY.md, active-tasks.md, config values
- * 3. Creates memory/active-tasks.md if missing
+ * Checks DB state + gateway health endpoint directly (no SSH needed).
+ * Resets config_version to force reconciler to deploy latest manifest.
  *
- * Usage: npx tsx instaclaw/scripts/_verify-ape-capital-vm379.ts
+ * Usage: npx tsx scripts/_verify-ape-capital-vm379.ts
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -19,100 +17,62 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string,
 );
 
-const BASE_URL = "https://instaclaw.io";
-const adminKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-async function sshExec(vmId: string, command: string): Promise<{ stdout: string; stderr: string; error?: string }> {
-  const res = await fetch(`${BASE_URL}/api/vm/ssh`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-admin-key": adminKey,
-    },
-    body: JSON.stringify({ vmId, command }),
-  });
-  return res.json();
-}
-
 async function main() {
   console.log("=== Ape Capital VM-379 Verification ===\n");
 
   // Step 1: DB query
   console.log("--- Step 1: Database State ---");
-  const { data: vm, error } = await supabase
+  const { data: vms, error } = await supabase
     .from("instaclaw_vms")
-    .select("id, name, status, manifest_version, health_status, assigned_user_id, ip_address, gateway_url")
-    .eq("name", "vm-379")
-    .single();
+    .select("id, name, status, health_status, assigned_to, ip_address, gateway_url, config_version, gateway_token")
+    .eq("name", "instaclaw-vm-379");
 
-  if (error || !vm) {
+  if (error || !vms || vms.length === 0) {
     console.error("Failed to find vm-379:", error?.message || "not found");
     process.exit(1);
   }
+  const vm = vms[0];
 
   console.log(`  Name: ${vm.name}`);
   console.log(`  Status: ${vm.status}`);
-  console.log(`  Manifest Version: ${vm.manifest_version}`);
   console.log(`  Health: ${vm.health_status}`);
-  console.log(`  Assigned User: ${vm.assigned_user_id || "NONE"}`);
+  console.log(`  Config Version: ${vm.config_version ?? "NULL"}`);
+  console.log(`  Assigned User: ${vm.assigned_to || "NONE"}`);
   console.log(`  IP: ${vm.ip_address}`);
   console.log(`  Gateway URL: ${vm.gateway_url}`);
+  console.log(`  Has Gateway Token: ${vm.gateway_token ? "YES" : "NO"}`);
   console.log();
 
-  // Step 2: SSH checks
-  console.log("--- Step 2: SSH Checks ---");
-  const vmId = vm.id;
-
-  const checks = [
-    { label: "deliver_file.sh exists + executable", cmd: "test -x ~/scripts/deliver_file.sh && echo 'OK' || echo 'MISSING'" },
-    { label: "notify_user.sh exists + executable", cmd: "test -x ~/scripts/notify_user.sh && echo 'OK' || echo 'MISSING'" },
-    { label: "MEMORY.md size", cmd: "wc -c < ~/.openclaw/workspace/MEMORY.md 2>/dev/null || echo '0'" },
-    { label: "active-tasks.md exists", cmd: "ls ~/.openclaw/workspace/memory/active-tasks.md 2>/dev/null && echo 'EXISTS' || echo 'MISSING'" },
-    { label: "memoryFlush.enabled", cmd: "openclaw config get agents.defaults.compaction.memoryFlush.enabled 2>/dev/null || echo 'NOT SET'" },
-    { label: "memorySearch.enabled", cmd: "openclaw config get agents.defaults.memorySearch.enabled 2>/dev/null || echo 'NOT SET'" },
-    { label: "Gateway status", cmd: "export XDG_RUNTIME_DIR=/run/user/$(id -u) && systemctl --user is-active openclaw-gateway 2>/dev/null || echo 'unknown'" },
-    { label: "Health endpoint", cmd: "curl -sf http://localhost:18789/health 2>&1 | head -200 || echo 'UNREACHABLE'" },
-  ];
-
-  const results: Record<string, string> = {};
-
-  for (const check of checks) {
+  // Step 2: Direct health endpoint check
+  console.log("--- Step 2: Gateway Health ---");
+  if (vm.gateway_url) {
     try {
-      const data = await sshExec(vmId, check.cmd);
-      const output = (data.stdout || data.stderr || data.error || "").trim();
-      results[check.label] = output;
-      console.log(`  ${check.label}: ${output.slice(0, 200)}`);
+      const healthRes = await fetch(`${vm.gateway_url}/health`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      const healthText = await healthRes.text();
+      console.log(`  Status: ${healthRes.status}`);
+      console.log(`  Response: ${healthText.slice(0, 500)}`);
     } catch (e: any) {
-      results[check.label] = `FETCH ERROR: ${e.message}`;
-      console.log(`  ${check.label}: FETCH ERROR: ${e.message}`);
-    }
-  }
-
-  // Step 3: Create active-tasks.md if missing
-  console.log("\n--- Step 3: Create active-tasks.md if missing ---");
-  if (results["active-tasks.md exists"]?.includes("MISSING")) {
-    const template = `# Active Tasks
-
-<!-- Track async tasks and pending notifications here -->
-<!-- Status values: pending-notification | notification-failed | completed | notification-abandoned -->
-`;
-    try {
-      const mkdirResult = await sshExec(vmId, "mkdir -p ~/.openclaw/workspace/memory");
-      const writeResult = await sshExec(
-        vmId,
-        `cat > ~/.openclaw/workspace/memory/active-tasks.md << 'TASKEOF'
-${template}
-TASKEOF`,
-      );
-      console.log("  Created memory/active-tasks.md with template header");
-      // Verify
-      const verify = await sshExec(vmId, "cat ~/.openclaw/workspace/memory/active-tasks.md");
-      console.log("  Verified:", (verify.stdout || "").slice(0, 100));
-    } catch (e: any) {
-      console.log("  Failed to create:", e.message);
+      console.log(`  Health check failed: ${e.message}`);
     }
   } else {
-    console.log("  active-tasks.md already exists — skipping creation");
+    console.log("  No gateway URL — cannot check health");
+  }
+  console.log();
+
+  // Step 3: Force reconciler deployment by resetting config_version
+  console.log("--- Step 3: Trigger Manifest Deploy ---");
+  const { error: updateErr } = await supabase
+    .from("instaclaw_vms")
+    .update({ config_version: 0 })
+    .eq("id", vm.id);
+
+  if (updateErr) {
+    console.log(`  Failed to reset config_version: ${updateErr.message}`);
+  } else {
+    console.log(`  Reset config_version from ${vm.config_version ?? "NULL"} → 0`);
+    console.log("  The cron reconciler will deploy manifest v37 on next cycle (~1 min)");
   }
 
   // Summary
@@ -120,12 +80,12 @@ TASKEOF`,
   const issues: string[] = [];
   if (vm.status !== "assigned") issues.push(`Status is ${vm.status}, expected assigned`);
   if (vm.health_status !== "healthy") issues.push(`Health is ${vm.health_status}`);
-  if (results["deliver_file.sh exists + executable"] !== "OK") issues.push("deliver_file.sh missing or not executable");
-  if (results["notify_user.sh exists + executable"] !== "OK") issues.push("notify_user.sh missing or not executable (expected until manifest v36 deploys)");
-  if (results["MEMORY.md size"] === "0") issues.push("MEMORY.md is empty");
+  if (!vm.gateway_token) issues.push("No gateway token");
+  if (!vm.assigned_to) issues.push("Not assigned to any user");
 
   if (issues.length === 0) {
-    console.log("  All checks passed!");
+    console.log("  VM is in good shape. Manifest deploy triggered.");
+    console.log("  notify_user.sh will be deployed by reconciler on next health cycle.");
   } else {
     console.log("  Issues found:");
     for (const issue of issues) {

@@ -49,7 +49,6 @@ const REQUIRED_SKILLS = [
   "language-teacher",
   "marketplace-earning",
   "motion-graphics",
-  "polymarket",
   "prediction-markets",
   "sjinn-video",
   "social-media-content",
@@ -203,6 +202,22 @@ echo -n "CHECK:pip_openai:"; pip3 show openai 2>/dev/null | grep -q "^Name:" && 
   // 21. Port listening
   parts.push(`
 echo -n "CHECK:port_${GATEWAY_PORT}:"; ss -tlnp 2>/dev/null | grep -q ":${GATEWAY_PORT} " && echo "OK" || echo "MISSING"
+`);
+
+  // 22. maxSkillsPromptChars — check openclaw.json value
+  parts.push(`
+echo -n "CHECK:max_skill_chars:"; ${NVM_PREAMBLE} && openclaw config get skills.limits.maxSkillsPromptChars 2>/dev/null || echo "UNKNOWN"
+`);
+
+  // 25. _placeholder key in openclaw.json (blocks config validation)
+  parts.push(`
+echo -n "CHECK:placeholder_key:"; python3 -c "import json; d=json.load(open('/home/openclaw/.openclaw/openclaw.json')); print('EXISTS' if '_placeholder' in d else 'OK')" 2>/dev/null || echo "SKIP"
+`);
+
+  // 23. Duplicate skill directories that waste prompt budget
+  parts.push(`
+echo -n "CHECK:dup_polymarket:"; [ -d ~/.openclaw/skills/polymarket ] && echo "EXISTS" || echo "OK"
+echo -n "CHECK:dup_solana_disabled:"; [ -d ~/.openclaw/skills/solana-defi.disabled ] && echo "EXISTS" || echo "OK"
 `);
 
   return parts.join("\n");
@@ -498,6 +513,38 @@ export async function validateVM(
       severity: "critical",
       detail: portCheck === "OK" ? undefined : `Port ${GATEWAY_PORT} not listening`,
     });
+
+    // 23. maxSkillsPromptChars — warn if below 500K (OpenClaw updates can reset it)
+    const maxChars = data.get("max_skill_chars") ?? "UNKNOWN";
+    const maxCharsNum = parseInt(maxChars.trim(), 10);
+    if (isNaN(maxCharsNum) || maxCharsNum < 500000) {
+      checks.push({
+        category: "config",
+        name: "maxSkillsPromptChars",
+        status: "warning",
+        severity: "warning",
+        detail: `maxSkillsPromptChars=${maxChars.trim()} (expected >= 500000)`,
+        fixable: true,
+      });
+    } else {
+      checks.push({ category: "config", name: "maxSkillsPromptChars", status: "pass", severity: "warning" });
+    }
+
+    // 24. Duplicate skill directories (waste prompt budget)
+    const dupPoly = data.get("dup_polymarket") ?? "OK";
+    if (dupPoly === "EXISTS") {
+      checks.push({ category: "skill", name: "dup-polymarket", status: "warning", severity: "warning", detail: "Duplicate skill: polymarket/ (identical to prediction-markets/)", fixable: true });
+    }
+    const dupSolana = data.get("dup_solana_disabled") ?? "OK";
+    if (dupSolana === "EXISTS") {
+      checks.push({ category: "skill", name: "dup-solana-defi.disabled", status: "warning", severity: "warning", detail: "Duplicate skill: solana-defi.disabled/ (identical to solana-defi/)", fixable: true });
+    }
+
+    // 25. _placeholder key in openclaw.json (blocks config validation)
+    const placeholder = data.get("placeholder_key") ?? "SKIP";
+    if (placeholder === "EXISTS") {
+      checks.push({ category: "config", name: "placeholder-key", status: "fail", severity: "warning", detail: "_placeholder key in openclaw.json blocks config validation", fixable: true });
+    }
   } finally {
     ssh.dispose();
   }

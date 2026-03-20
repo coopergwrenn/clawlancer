@@ -51,6 +51,11 @@ export async function reconcileVM(
     // ── Step 0: Pre-audit workspace backup ──
     await stepBackup(ssh);
 
+    // ── Step 0b: Remove _placeholder key from openclaw.json ──
+    // Some VMs were provisioned with {"_placeholder": true} which fails
+    // OpenClaw's strict config validator, blocking all config set operations.
+    await stepRemovePlaceholder(ssh, result, dryRun);
+
     // ── Step 1: Config settings ──
     await stepConfigSettings(ssh, manifest, result, dryRun);
 
@@ -65,6 +70,9 @@ export async function reconcileVM(
 
     // ── Step 2d: Fix blank identity in SOUL.md + remove legacy IDENTITY.md ──
     await stepFixBlankIdentity(ssh, result, dryRun);
+
+    // ── Step 2e: Remove duplicate skill directories that waste prompt budget ──
+    await stepRemoveDuplicateSkills(ssh, result, dryRun);
 
     // ── Step 3: Skills ──
     await stepSkills(ssh, vm, manifest, result, dryRun);
@@ -484,6 +492,63 @@ async function stepFixBlankIdentity(
 
   // Also delete legacy blank IDENTITY.md
   await ssh.execCommand(`rm -f ${identityFile}`);
+}
+
+// Known duplicate skill directories that waste prompt budget.
+// polymarket is identical to prediction-markets; solana-defi.disabled is identical to solana-defi.
+const DUPLICATE_SKILL_DIRS = ["polymarket", "solana-defi.disabled"];
+
+async function stepRemoveDuplicateSkills(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  for (const dir of DUPLICATE_SKILL_DIRS) {
+    const check = await ssh.execCommand(
+      `[ -d ~/.openclaw/skills/${dir} ] && echo "EXISTS" || echo "GONE"`
+    );
+    if (check.stdout.trim() === "EXISTS") {
+      if (dryRun) {
+        result.fixed.push(`[dry-run] remove duplicate skill dir: ${dir}`);
+      } else {
+        await ssh.execCommand(`rm -rf ~/.openclaw/skills/${dir}`);
+        result.fixed.push(`removed duplicate skill dir: ${dir}`);
+        logger.info(`[reconcile] Removed duplicate skill directory: ${dir}`);
+      }
+    } else {
+      result.alreadyCorrect.push(`no duplicate: ${dir}`);
+    }
+  }
+}
+
+async function stepRemovePlaceholder(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const check = await ssh.execCommand(
+    `python3 -c "import json; d=json.load(open('/home/openclaw/.openclaw/openclaw.json')); print('YES' if '_placeholder' in d else 'NO')" 2>/dev/null || echo "SKIP"`
+  );
+  const has = check.stdout.trim();
+  if (has === "YES") {
+    if (dryRun) {
+      result.fixed.push("[dry-run] remove _placeholder from openclaw.json");
+    } else {
+      await ssh.execCommand(
+        `python3 -c "
+import json
+p='/home/openclaw/.openclaw/openclaw.json'
+d=json.load(open(p))
+del d['_placeholder']
+json.dump(d, open(p,'w'), indent=2)
+" 2>/dev/null`
+      );
+      result.fixed.push("removed _placeholder from openclaw.json");
+      logger.info("[reconcile] Removed _placeholder key from openclaw.json");
+    }
+  } else {
+    result.alreadyCorrect.push("no _placeholder in openclaw.json");
+  }
 }
 
 async function stepRenameVideoSkill(

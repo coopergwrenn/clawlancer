@@ -362,11 +362,49 @@ async function processEvent(event: any) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const periodEnd = (subscription as any).current_period_end as number | undefined;
 
-      // Detect tier changes (upgrades/downgrades) from the subscription's current price
+      // Detect tier changes (upgrades/downgrades) from the subscription's current price.
+      // Stripe webhook payloads don't always expand items.data (especially for
+      // Dashboard-initiated changes). Fall back to fetching the full subscription
+      // from the Stripe API when items.data is missing.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const items = (subscription as any).items?.data as Array<{ price?: { id?: string } }> | undefined;
+      let items = (subscription as any).items?.data as Array<{ price?: { id?: string } }> | undefined;
+      if (!items || items.length === 0) {
+        try {
+          const fullSub = await getStripe().subscriptions.retrieve(subscription.id, {
+            expand: ["items.data.price"],
+          });
+          items = fullSub.items?.data as Array<{ price?: { id?: string } }> | undefined;
+          logger.info("Fetched subscription items from Stripe API (not in webhook payload)", {
+            route: "billing/webhook",
+            subscriptionId: subscription.id,
+            itemCount: items?.length ?? 0,
+          });
+        } catch (err) {
+          logger.error("Failed to fetch subscription from Stripe API", {
+            route: "billing/webhook",
+            subscriptionId: subscription.id,
+            error: String(err),
+          });
+        }
+      }
       const currentPriceId = items?.[0]?.price?.id;
       const newTier = currentPriceId ? tierFromPriceId(currentPriceId) : null;
+
+      // Log when tier detection fails so we catch future mapping gaps
+      if (!newTier && currentPriceId) {
+        logger.warn("Unrecognized Stripe price ID — tier not updated", {
+          route: "billing/webhook",
+          subscriptionId: subscription.id,
+          priceId: currentPriceId,
+        });
+      }
+      if (!newTier && !currentPriceId) {
+        logger.warn("No price ID found in subscription update — items may be missing", {
+          route: "billing/webhook",
+          subscriptionId: subscription.id,
+          customerId,
+        });
+      }
 
       const subUpdates: Record<string, unknown> = {
         status: subscription.status,

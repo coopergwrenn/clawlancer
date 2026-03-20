@@ -42,14 +42,8 @@ export async function GET(req: NextRequest) {
 
   for (const vm of vms) {
     try {
-      const { NodeSSH } = await import("node-ssh");
-      const ssh = new NodeSSH();
-      await ssh.connect({
-        host: vm.ip_address,
-        port: vm.ssh_port,
-        username: vm.ssh_user,
-        privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8"),
-      });
+      const { connectSSH } = await import("@/lib/ssh");
+      const ssh = await connectSSH(vm);
 
       const timestamp = new Date().toISOString().split("T")[0];
       // Sanitize VM name/id — only allow safe characters for filenames
@@ -110,13 +104,8 @@ export async function GET(req: NextRequest) {
         for (const old of oldBackups) {
           if (old.backup_path) {
             try {
-              const delSsh = new NodeSSH();
-              await delSsh.connect({
-                host: vm.ip_address,
-                port: vm.ssh_port,
-                username: vm.ssh_user,
-                privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8"),
-              });
+              const { connectSSH: connectSSH2 } = await import("@/lib/ssh");
+              const delSsh = await connectSSH2(vm);
               await delSsh.execCommand(
                 `s3cmd del '${old.backup_path}' --host='${s3Endpoint}' 2>/dev/null || ` +
                 `aws s3 rm '${old.backup_path}' --endpoint-url='https://${s3Endpoint}' 2>/dev/null || true`

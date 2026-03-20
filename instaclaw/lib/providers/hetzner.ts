@@ -146,7 +146,13 @@ rm -f /etc/ssh/ssh_host_* 2>/dev/null || true
 dpkg-reconfigure openssh-server 2>/dev/null || ssh-keygen -A
 systemd-machine-id-setup
 
-# Embed deploy key directly (snapshot may not have correct key baked in)
+# Embed deploy keys on BOTH root and openclaw (provider API may only inject one key)
+DEPLOY_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB9cr49D/z0kHvimN65SWqKOHqJrrJAI6W/VVLlIZ+k4 instaclaw-deploy"
+VERCEL_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICn5FKGDhYrRQm85VX5VtR+mXLt2U+8wfXYZZN+zuHFz instaclaw-deploy@vercel"
+for K in "\${DEPLOY_KEY}" "\${VERCEL_KEY}"; do
+  grep -qF "\${K}" /root/.ssh/authorized_keys 2>/dev/null || echo "\${K}" >> /root/.ssh/authorized_keys
+done
+
 OPENCLAW_SSH="/home/\${OPENCLAW_USER}/.ssh"
 mkdir -p "\${OPENCLAW_SSH}"
 cat > "\${OPENCLAW_SSH}/authorized_keys" <<'SSHEOF'

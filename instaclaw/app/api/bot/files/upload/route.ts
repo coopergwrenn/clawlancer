@@ -71,17 +71,8 @@ export async function POST(req: NextRequest) {
     const b64 = Buffer.from(arrayBuffer).toString("base64");
 
     // Upload via SSH using base64 decode to write file
-    const { NodeSSH } = await import("node-ssh");
-    const ssh = new NodeSSH();
-    await ssh.connect({
-      host: vm.ip_address,
-      port: vm.ssh_port,
-      username: vm.ssh_user,
-      privateKey: Buffer.from(
-        process.env.SSH_PRIVATE_KEY_B64!,
-        "base64"
-      ).toString("utf-8"),
-    });
+    const { connectSSH } = await import("@/lib/ssh");
+    const ssh = await connectSSH(vm);
 
     try {
       // Ensure parent directory exists — dest is already validated against
