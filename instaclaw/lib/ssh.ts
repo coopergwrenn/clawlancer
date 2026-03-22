@@ -107,10 +107,12 @@ SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
 SESSIONS_JSON = os.path.join(SESSIONS_DIR, "sessions.json")
 ARCHIVE_DIR = os.path.join(SESSIONS_DIR, "archive")
 LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
+LOG_DIR = os.path.expanduser("~/.openclaw/logs")
+LOG_FILE = os.path.join(LOG_DIR, "strip-thinking.log")
 MAX_SESSION_BYTES = ${200 * 1024}  # 200KB — archive sessions larger than this (lowered from 512KB after web fetch blowouts)
 MEMORY_WARN_BYTES = ${160 * 1024}  # 160KB (80% of max) — trigger memory write request
 MAX_TOOL_RESULT_CHARS = 8000       # Truncate individual tool results over this
-IMAGE_KEEP_RECENT = 3              # Keep images in last N toolResult messages only
+IMAGE_KEEP_RECENT = 2              # Keep images in last N messages only (any role)
 
 # Workspace paths
 WORKSPACE_DIR = os.path.expanduser("~/.openclaw/workspace")
@@ -129,7 +131,7 @@ ERROR_LOOP_THRESHOLD = 5
 ERROR_PATTERNS = ["SIGKILL", "signal: killed", "out of memory", "empty response"]
 
 # Timing constants
-MEMORY_FLAG_TTL = 300    # 5 minutes before giving up on memory write
+MEMORY_FLAG_TTL = 1800   # 30 minutes before giving up on memory write
 STALE_HOURS = 24         # Memory considered stale after this many hours
 STALE_MIN_SESSION_KB = 10  # Minimum session size (KB) to trigger staleness check
 
@@ -432,38 +434,39 @@ def extract_session_summary(jsonl_file):
         return None
 
 def strip_images_from_older_messages(lines):
-    """Strip base64 image blocks from all but the most recent N toolResult messages.
+    """Strip base64 image blocks from all but the most recent N messages (any role).
 
-    When agents use the \`read\` tool on image files (PNGs, JPGs), the session accumulates
-    large base64-encoded image data that can consume 70%+ of the session. This strips
-    image blocks from older messages, keeping only the most recent IMAGE_KEEP_RECENT
-    toolResult messages with images intact.
+    Users send images (avatars for video gen, screenshots) and tool results return
+    images (chart PNGs, screenshots). Both accumulate base64-encoded data that can
+    consume 50-70% of the session file. This strips image blocks from older messages
+    of ANY role, keeping only the most recent IMAGE_KEEP_RECENT messages with images.
 
     Returns (cleaned_lines, image_strip_count).
     """
-    # First pass: find indices of all toolResult messages containing image blocks
-    tool_result_image_indices = []
+    # First pass: find indices of ALL messages containing image blocks (any role)
+    image_message_indices = []
     for i, line in enumerate(lines):
         try:
             d = json.loads(line)
             msg = d.get("message", {})
-            if msg and msg.get("role") == "toolResult":
-                content = msg.get("content", [])
-                if isinstance(content, list):
-                    has_image = any(
-                        isinstance(b, dict) and b.get("type") == "image"
-                        for b in content
-                    )
-                    if has_image:
-                        tool_result_image_indices.append(i)
+            if not msg:
+                continue
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                has_image = any(
+                    isinstance(b, dict) and b.get("type") == "image"
+                    for b in content
+                )
+                if has_image:
+                    image_message_indices.append(i)
         except (json.JSONDecodeError, Exception):
             pass
 
-    if len(tool_result_image_indices) <= IMAGE_KEEP_RECENT:
+    if len(image_message_indices) <= IMAGE_KEEP_RECENT:
         return lines, 0  # Nothing to strip
 
     # Strip images from all but the last IMAGE_KEEP_RECENT
-    indices_to_strip = set(tool_result_image_indices[:-IMAGE_KEEP_RECENT])
+    indices_to_strip = set(image_message_indices[:-IMAGE_KEEP_RECENT])
     cleaned = []
     strip_count = 0
 
@@ -479,12 +482,19 @@ def strip_images_from_older_messages(lines):
             new_content = []
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "image":
-                    # Replace image block with a text placeholder
+                    # Calculate size of the base64 data being stripped
+                    data = block.get("data", "")
+                    if not data:
+                        source = block.get("source", {})
+                        data = source.get("data", "")
+                    data_size = len(str(data))
                     source = block.get("source", {})
                     media_type = source.get("mediaType", source.get("media_type", "unknown"))
+                    if not media_type or media_type == "unknown":
+                        media_type = block.get("media_type", "image")
                     new_content.append({
                         "type": "text",
-                        "text": f"[image stripped by session manager — was {media_type}]"
+                        "text": f"[image stripped by session manager — was {media_type}, {data_size:,} bytes of base64]"
                     })
                     strip_count += 1
                 else:
@@ -495,6 +505,30 @@ def strip_images_from_older_messages(lines):
             cleaned.append(line)  # Don't lose data on error
 
     return cleaned, strip_count
+
+def log_telemetry(msg):
+    """Append a timestamped line to strip-thinking.log (keeps last 200 lines)."""
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOG_FILE, "a") as f:
+            f.write(f"[{ts}] {msg}\\n")
+        # Trim log to 200 lines
+        try:
+            with open(LOG_FILE) as f:
+                lines = f.readlines()
+            if len(lines) > 200:
+                with open(LOG_FILE, "w") as f:
+                    f.writelines(lines[-200:])
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+# Collect session sizes before processing for telemetry
+session_sizes_before = {}
+for _sf in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+    session_sizes_before[_sf] = os.path.getsize(_sf)
 
 total_stripped = 0
 total_truncated = 0
@@ -850,6 +884,43 @@ try:
                 os.remove(f)
     except Exception:
         pass
+
+    # ── Telemetry: log session sizes before/after and actions taken ──
+    if total_stripped > 0 or total_truncated > 0 or total_images_stripped > 0 or archived_sessions:
+        parts = []
+        if total_stripped > 0:
+            parts.append(f"thinking={total_stripped}")
+        if total_truncated > 0:
+            parts.append(f"truncated={total_truncated}")
+        if total_images_stripped > 0:
+            parts.append(f"images={total_images_stripped}")
+        if archived_sessions:
+            parts.append(f"archived={len(archived_sessions)}")
+        # Session size changes
+        size_changes = []
+        for sf, before_size in session_sizes_before.items():
+            if os.path.exists(sf):
+                after_size = os.path.getsize(sf)
+                if after_size != before_size:
+                    sid = os.path.basename(sf)[:8]
+                    size_changes.append(f"{sid}:{before_size//1024}K->{after_size//1024}K")
+        if size_changes:
+            parts.append("sizes=[" + ",".join(size_changes[:5]) + "]")
+        log_telemetry(" ".join(parts))
+    else:
+        # Log a no-op every 10 minutes (check if last line was within 10 min)
+        try:
+            if os.path.exists(LOG_FILE):
+                mtime = os.path.getmtime(LOG_FILE)
+                if time.time() - mtime > 600:
+                    session_summary = []
+                    for sf in sorted(glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")), key=os.path.getmtime, reverse=True)[:3]:
+                        session_summary.append(f"{os.path.basename(sf)[:8]}:{os.path.getsize(sf)//1024}K")
+                    log_telemetry(f"no-op sessions=[{','.join(session_summary)}]")
+            else:
+                log_telemetry("init")
+        except Exception:
+            pass
 finally:
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
