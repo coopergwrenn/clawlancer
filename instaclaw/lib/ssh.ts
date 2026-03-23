@@ -2455,10 +2455,30 @@ function buildOpenClawConfig(
         bootstrapMaxChars: 30000,
         heartbeat: {
           every: "3h",
+          // Route heartbeats to own session — prevents polluting user's conversation
+          session: "heartbeat",
         },
         compaction: {
           reserveTokensFloor: 30000,
+          memoryFlush: {
+            enabled: true,
+            softThresholdTokens: 8000,
+          },
         },
+        memorySearch: {
+          enabled: true,
+        },
+      },
+    },
+    // v41: Evergreen session — stop the daily 4 AM session wipe.
+    // Session only resets after 7 days of zero activity.
+    session: {
+      reset: {
+        mode: "idle",
+        idleMinutes: 10080,
+      },
+      maintenance: {
+        mode: "enforce",
       },
     },
     messages: {},

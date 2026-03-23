@@ -122,14 +122,21 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 40,
+  version: 41,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
   configSettings: {
     "agents.defaults.heartbeat.every": "3h",
+    // v41: Route heartbeats to their own session ("agent:main:heartbeat") instead of
+    // polluting the main Telegram conversation. Without this, every 3h heartbeat injects
+    // ~24 message exchanges/day into the user's chat context. Schema-verified on vm-379.
+    "agents.defaults.heartbeat.session": "heartbeat",
     "agents.defaults.compaction.reserveTokensFloor": "35000",
     "agents.defaults.compaction.memoryFlush.enabled": "true",
+    // v41: Raise softThresholdTokens from default 4000 to 8000 — gives the agent more
+    // room to write durable notes before compaction fires. OpenClaw Issue #31435 recommends 8000+.
+    "agents.defaults.compaction.memoryFlush.softThresholdTokens": "8000",
     "agents.defaults.memorySearch.enabled": "true",
     "commands.restart": "true",
     // NOTE: gateway.controlUi is version-dependent and handled by
@@ -139,6 +146,14 @@ export const VM_MANIFEST = {
     "channels.telegram.groupPolicy": "open",
     "channels.telegram.groups.*.requireMention": "false",
     "commands.useAccessGroups": "false",
+    // v41: CRITICAL — Stop the daily 4 AM session wipe. This is the #1 cause of
+    // "agent forgetting" complaints. Session now only resets after 7 days (10080 min)
+    // of ZERO activity. Active agents never hit this. Schema-verified on vm-379.
+    // See: instaclaw/docs/research-session-persistence.md
+    "session.reset.mode": "idle",
+    "session.reset.idleMinutes": "10080",
+    // v41: Actively prune old sessions to prevent disk bloat (vs "warn" which only reports).
+    "session.maintenance.mode": "enforce",
     // DO NOT CHANGE — total SKILL.md content is ~405K chars across 17 skills
     // (polymarket removed as duplicate of prediction-markets).
     // Below 500K, skills are silently dropped (alphabetical load order).
