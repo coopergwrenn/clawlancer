@@ -49,24 +49,57 @@ function MarqueeRow({ items, direction }: { items: string[]; direction: "left" |
   );
 }
 
+// ── Pixel Avatars (8x8 grids) ──
+// h=hair, s=skin, e=eye, m=mouth, b=shirt, space=transparent
+
+const avatars: Record<string, { grid: string[]; colors: Record<string, string>; bg: string }> = {
+  SM: { grid: ["  hhhh  "," hhhhhh ","hhsssshh","h sese h","h ssss h","h smms h","   ss   ","  bbbb  "], colors: { h:"#5C3A1E",s:"#F5D0A9",e:"#1A1A1A",m:"#CC6666",b:"#6B8E9B" }, bg:"#E8DDD3" },
+  JK: { grid: ["  hhhh  "," hhhhhh "," hssssh ","  sese  ","  ssss  ","  smms  ","   ss   ","  bbbb  "], colors: { h:"#2C1810",s:"#FADDBA",e:"#1A1A1A",m:"#CC6666",b:"#4A6FA5" }, bg:"#D5DDE5" },
+  PR: { grid: ["  hhhh  "," hhhhhh ","hhsssshh","h sese h","h ssss h","h smms h","   ss   ","  bbbb  "], colors: { h:"#1A1A2A",s:"#C68642",e:"#1A1A1A",m:"#B85C5C",b:"#B8860B" }, bg:"#E5D8C3" },
+  MT: { grid: [" hhhhhh "," hhhhhh "," hssssh ","  sese  ","  ssss  ","  smms  ","   ss   ","  bbbb  "], colors: { h:"#1A1A2A",s:"#8D6E4C",e:"#1A1A1A",m:"#A0522D",b:"#E8734A" }, bg:"#E0D5CA" },
+  AL: { grid: ["  hhhh  "," hhhhhh ","hhsssshh","h sese h","  ssss  ","  smms  ","   ss   ","  bbbb  "], colors: { h:"#D4A017",s:"#FFE0BD",e:"#1A1A1A",m:"#E8888A",b:"#7CB68E" }, bg:"#D8E5D5" },
+  DW: { grid: ["  hhhh  "," hhhhhh "," hssssh ","  sese  ","  ssss  ","  hmmh  ","   hh   ","  bbbb  "], colors: { h:"#6B4226",s:"#FADDBA",e:"#1A1A1A",m:"#CC6666",b:"#333333" }, bg:"#D5D5D5" },
+  RS: { grid: ["  hhhh  "," hhhhhh ","hhsssshh","h sese h","h ssss h","h smms h","   ss   ","  bbbb  "], colors: { h:"#A0522D",s:"#FFE0BD",e:"#1A1A1A",m:"#CC6666",b:"#9B6B8E" }, bg:"#E5D5DE" },
+  TH: { grid: ["  hhhh  "," hhhhhh "," hssssh ","  sese  ","  ssss  ","  smms  ","   ss   ","  bbbb  "], colors: { h:"#4A3728",s:"#D4A574",e:"#1A1A1A",m:"#B85C5C",b:"#5B7553" }, bg:"#D5E0D5" },
+  NP: { grid: ["  hhhh  "," hhhhhh ","hhsssshh","h sese h","h ssss h","h smms h","   ss   ","  bbbb  "], colors: { h:"#2C1810",s:"#D4A574",e:"#1A1A1A",m:"#B85C5C",b:"#4A4A6A" }, bg:"#D8D5E0" },
+  CD: { grid: ["  hhhh  "," hhhhhh "," hssssh ","  sese  ","  ssss  ","  smms  ","   ss   ","  bbbb  "], colors: { h:"#C4A45A",s:"#FADDBA",e:"#1A1A1A",m:"#CC6666",b:"#5A8FA5" }, bg:"#D5E0E5" },
+};
+
+function PixelAvatar({ id }: { id: string }) {
+  const d = avatars[id];
+  if (!d) return null;
+  return (
+    <svg width="24" height="24" viewBox="0 0 8 8" xmlns="http://www.w3.org/2000/svg" shapeRendering="crispEdges">
+      <rect width="8" height="8" fill={d.bg} />
+      {d.grid.map((row, y) =>
+        [...row].map((c, x) => {
+          if (c === " ") return null;
+          const color = d.colors[c];
+          return color ? <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={color} /> : null;
+        })
+      )}
+    </svg>
+  );
+}
+
 // ── Testimonials ──
 
-type Testimonial = { quote: string; name: string; role: string; bg: string };
+type Testimonial = { quote: string; name: string; role: string; avatarId: string; bg: string };
 
 const TESTIMONIALS_ROW_1: Testimonial[] = [
-  { quote: "I asked it to plan my entire vacation, book restaurants, and draft packing lists. It did all of it.", name: "Sarah M.", role: "Freelancer", bg: "#E8DDD3" },
-  { quote: "I told it what I needed and it figured out the rest. A week later it was doing things I didn't even ask for yet.", name: "James K.", role: "Small Business Owner", bg: "#D5DDE5" },
-  { quote: "It remembered every detail about 200+ clients and followed up with each one personally.", name: "Priya R.", role: "Real Estate Agent", bg: "#E5D8C3" },
-  { quote: "I gave it one task as a test. An hour later it had done that plus five other things I didn't think to ask for.", name: "Marcus T.", role: "Content Creator", bg: "#E0D5CA" },
-  { quote: "It wrote my cover letters, prepped me for interviews, and tracked every application. I got the job because of this.", name: "Ava L.", role: "College Student", bg: "#D8E5D5" },
+  { quote: "I asked it to plan my entire vacation, book restaurants, and draft packing lists. It did all of it.", name: "Sarah M.", role: "Freelancer", avatarId: "SM", bg: "#E8DDD3" },
+  { quote: "I told it what I needed and it figured out the rest. A week later it was doing things I didn't even ask for yet.", name: "James K.", role: "Small Business Owner", avatarId: "JK", bg: "#D5DDE5" },
+  { quote: "It remembered every detail about 200+ clients and followed up with each one personally.", name: "Priya R.", role: "Real Estate Agent", avatarId: "PR", bg: "#E5D8C3" },
+  { quote: "I gave it one task as a test. An hour later it had done that plus five other things I didn't think to ask for.", name: "Marcus T.", role: "Content Creator", avatarId: "MT", bg: "#E0D5CA" },
+  { quote: "It wrote my cover letters, prepped me for interviews, and tracked every application. I got the job because of this.", name: "Ava L.", role: "College Student", avatarId: "AL", bg: "#D8E5D5" },
 ];
 
 const TESTIMONIALS_ROW_2: Testimonial[] = [
-  { quote: "I went to sleep. Woke up to 30 emails answered, my calendar organized, and a summary waiting for me.", name: "Danny W.", role: "Startup Founder", bg: "#D5D5D5" },
-  { quote: "It gets smarter every week. I taught it how I like my reports and now it just does them perfectly.", name: "Rachel S.", role: "Marketing Manager", bg: "#E5D5DE" },
-  { quote: "The dashboard makes everything so simple. I'm not technical at all and I manage it myself.", name: "Tom H.", role: "Teacher", bg: "#D5E0D5" },
-  { quote: "There is nothing I've thrown at it that it couldn't do. Emails, research, scheduling, writing. Anything.", name: "Nina P.", role: "Consultant", bg: "#D8D5E0" },
-  { quote: "My 68-year-old mom set it up by herself and now she won't stop telling her friends about it.", name: "Chris D.", role: "Product Designer", bg: "#D5E0E5" },
+  { quote: "I went to sleep. Woke up to 30 emails answered, my calendar organized, and a summary waiting for me.", name: "Danny W.", role: "Startup Founder", avatarId: "DW", bg: "#D5D5D5" },
+  { quote: "It gets smarter every week. I taught it how I like my reports and now it just does them perfectly.", name: "Rachel S.", role: "Marketing Manager", avatarId: "RS", bg: "#E5D5DE" },
+  { quote: "The dashboard makes everything so simple. I'm not technical at all and I manage it myself.", name: "Tom H.", role: "Teacher", avatarId: "TH", bg: "#D5E0D5" },
+  { quote: "There is nothing I've thrown at it that it couldn't do. Emails, research, scheduling, writing. Anything.", name: "Nina P.", role: "Consultant", avatarId: "NP", bg: "#D8D5E0" },
+  { quote: "My 68-year-old mom set it up by herself and now she won't stop telling her friends about it.", name: "Chris D.", role: "Product Designer", avatarId: "CD", bg: "#D5E0E5" },
 ];
 
 const testimonialCardStyle: React.CSSProperties = {
@@ -90,12 +123,17 @@ function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direct
           >
             <div className="mb-2 flex items-center gap-2.5">
               <div
-                className="h-8 w-8 shrink-0 rounded-full"
+                className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
                 style={{
                   background: `radial-gradient(circle at 35% 35%, ${t.bg}dd, ${t.bg}88 40%, rgba(0,0,0,0.2) 100%)`,
                   boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.12)",
                 }}
-              />
+              >
+                <span className="pointer-events-none absolute left-[4px] top-[2px] h-[4px] w-[12px] rounded-full" style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 100%)" }} />
+                <div className="relative z-[1] h-6 w-6 overflow-hidden rounded-full">
+                  <PixelAvatar id={t.avatarId} />
+                </div>
+              </div>
               <div>
                 <p className="text-[11px] font-semibold" style={{ color: "#333334" }}>{t.name}</p>
                 <p className="text-[10px]" style={{ color: "#6b6b6b" }}>{t.role}</p>
