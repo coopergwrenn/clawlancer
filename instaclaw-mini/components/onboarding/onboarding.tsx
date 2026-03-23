@@ -357,7 +357,7 @@ export default function Onboarding() {
             <h1 className="text-center text-4xl tracking-[-0.5px] leading-[1.1]" style={serif}>
               Claim your free
               <br />
-              <span className="shimmer-text text-5xl" style={serif}>AI agent</span>
+              <span className="shimmer-text text-[60px]" style={serif}>AI agent</span>
             </h1>
 
             {/* Subtitle */}
