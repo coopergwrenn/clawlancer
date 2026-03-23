@@ -112,7 +112,7 @@ LOG_FILE = os.path.join(LOG_DIR, "strip-thinking.log")
 MAX_SESSION_BYTES = ${200 * 1024}  # 200KB — archive sessions larger than this (lowered from 512KB after web fetch blowouts)
 MEMORY_WARN_BYTES = ${160 * 1024}  # 160KB (80% of max) — trigger memory write request
 MAX_TOOL_RESULT_CHARS = 8000       # Truncate individual tool results over this
-IMAGE_KEEP_RECENT = 2              # Keep images in last N messages only (any role)
+IMAGE_KEEP_RECENT = 0              # Strip ALL base64 images from session history
 
 # Workspace paths
 WORKSPACE_DIR = os.path.expanduser("~/.openclaw/workspace")
@@ -462,11 +462,17 @@ def strip_images_from_older_messages(lines):
         except (json.JSONDecodeError, Exception):
             pass
 
-    if len(image_message_indices) <= IMAGE_KEEP_RECENT:
-        return lines, 0  # Nothing to strip
+    if not image_message_indices:
+        return lines, 0  # No images found
 
-    # Strip images from all but the last IMAGE_KEEP_RECENT
-    indices_to_strip = set(image_message_indices[:-IMAGE_KEEP_RECENT])
+    if IMAGE_KEEP_RECENT > 0 and len(image_message_indices) <= IMAGE_KEEP_RECENT:
+        return lines, 0  # All images are recent enough to keep
+
+    # Strip images from all but the last IMAGE_KEEP_RECENT (or ALL if IMAGE_KEEP_RECENT=0)
+    if IMAGE_KEEP_RECENT > 0:
+        indices_to_strip = set(image_message_indices[:-IMAGE_KEEP_RECENT])
+    else:
+        indices_to_strip = set(image_message_indices)
     cleaned = []
     strip_count = 0
 
