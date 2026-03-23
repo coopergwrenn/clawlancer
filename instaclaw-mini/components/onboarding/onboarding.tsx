@@ -4,7 +4,7 @@ import { MiniKit, tokenToDecimals, Tokens, VerificationLevel } from "@worldcoin/
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Step = "welcome" | "verifying" | "verify-failed" | "delegate" | "delegating" | "ready";
+type Step = "welcome" | "verifying" | "verify-failed" | "duplicate-found" | "delegate" | "delegating" | "ready";
 
 export default function Onboarding() {
   const router = useRouter();
@@ -60,6 +60,13 @@ export default function Onboarding() {
 
       if (!verifyRes.ok) {
         setStep("verify-failed");
+        return;
+      }
+
+      // Check if server detected a potential duplicate agent
+      const verifyData = await verifyRes.json();
+      if (verifyData.potentialDuplicate) {
+        setStep("duplicate-found");
         return;
       }
 
@@ -144,6 +151,35 @@ export default function Onboarding() {
     } catch {
       router.replace("/home");
     }
+  }
+
+  // ── Linking code ──
+  const [linkCode, setLinkCode] = useState("");
+
+  async function handleRedeemCode() {
+    if (!linkCode.trim()) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/link/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: linkCode.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Successfully linked — go to dashboard (they already have an agent)
+        router.replace("/home");
+      } else {
+        setError(data.error || "Invalid or expired code");
+      }
+    } catch {
+      setError("Failed to redeem code. Try again.");
+    }
+  }
+
+  function handleSkipDuplicate() {
+    // User says "no, this is a new account" — proceed to delegation
+    setStep("delegate");
   }
 
   // ── Fallbacks ──
@@ -271,6 +307,61 @@ export default function Onboarding() {
               className="py-2 text-sm text-muted underline underline-offset-2 transition-colors hover:text-foreground"
             >
               Subscribe on instaclaw.io instead
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Duplicate Found ── */}
+      {step === "duplicate-found" && (
+        <div className="animate-fade-in-up flex flex-col items-center gap-6 text-center" style={{ opacity: 0 }}>
+          <div className="relative">
+            <div className="animate-orb absolute -inset-4 rounded-full bg-accent/20 blur-xl" />
+            <div className="relative text-5xl">🔗</div>
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-bold">Already have an agent?</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+              It looks like you might already have an InstaClaw agent from
+              instaclaw.io. Enter your linking code to connect to your existing
+              agent.
+            </p>
+          </div>
+
+          <div className="w-full max-w-[300px]">
+            <input
+              type="text"
+              value={linkCode}
+              onChange={(e) => setLinkCode(e.target.value.toUpperCase())}
+              placeholder="Enter 8-digit code"
+              maxLength={8}
+              className="w-full rounded-xl border border-border bg-white/[0.04] px-4 py-3 text-center font-mono text-lg tracking-[0.3em] placeholder:text-muted/50 focus:border-accent focus:outline-none"
+            />
+            <p className="mt-2 text-xs text-muted">
+              Get your code from instaclaw.io → Settings → Connect World Wallet
+            </p>
+          </div>
+
+          {error && (
+            <div className="glass-card rounded-xl px-4 py-2.5">
+              <p className="text-sm text-error">{error}</p>
+            </div>
+          )}
+
+          <div className="flex w-full max-w-[300px] flex-col gap-3">
+            <button
+              onClick={handleRedeemCode}
+              disabled={linkCode.length < 8}
+              className="btn-primary rounded-2xl py-4 font-bold disabled:opacity-40"
+            >
+              Connect existing agent
+            </button>
+            <button
+              onClick={handleSkipDuplicate}
+              className="py-2 text-sm text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              No, create a new agent
             </button>
           </div>
         </div>

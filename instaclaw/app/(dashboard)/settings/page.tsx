@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { WorldIDSection } from "@/components/dashboard/world-id-section";
 import { BrowserExtensionSection } from "@/components/dashboard/browser-extension-section";
+import { ConnectWorldWallet } from "@/components/dashboard/connect-world-wallet";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
@@ -749,6 +750,9 @@ export default function SettingsPage() {
 
       {/* World ID Verification */}
       <WorldIDSection />
+
+      {/* Connect World Wallet — for linking to World mini app */}
+      <ConnectWorldWallet />
 
       {/* Gmail Connection */}
       <div data-tour="settings-gmail">

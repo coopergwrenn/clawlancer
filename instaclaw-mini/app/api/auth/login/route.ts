@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { verifySiweMessage } from "@worldcoin/minikit-js";
+import { verifySiweMessage, MiniKit } from "@worldcoin/minikit-js";
 import { createSession } from "@/lib/auth";
 import {
   getUserByWallet,
+  getUserByEmail,
   createWorldUser,
+  linkWalletToUser,
 } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
@@ -35,9 +37,26 @@ export async function POST(req: NextRequest) {
 
     const walletAddress = payload.address as string;
 
-    // Look up or create user
+    // ── Multi-lookup: prevent duplicate accounts ──
+    // Priority: wallet address → email → create new
     let user = await getUserByWallet(walletAddress);
+    let linked = false;
+
     if (!user) {
+      // Try email match — World App may provide email via payload or MiniKit.user
+      const email = payload.email as string | undefined;
+      if (email) {
+        user = await getUserByEmail(email);
+        if (user) {
+          // Found by email — link wallet to existing Google-auth account
+          await linkWalletToUser(user.id, walletAddress);
+          linked = true;
+        }
+      }
+    }
+
+    if (!user) {
+      // No match found — create new user
       user = await createWorldUser(walletAddress);
     }
 
@@ -55,7 +74,10 @@ export async function POST(req: NextRequest) {
       path: "/",
     });
 
-    return NextResponse.json({ user: { id: user.id } });
+    return NextResponse.json({
+      user: { id: user.id },
+      linked,
+    });
   } catch (err) {
     console.error("Login error:", err);
     return NextResponse.json(

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Wallet,
@@ -9,7 +10,82 @@ import {
   LogOut,
   Coins,
   ChevronRight,
+  Link2,
 } from "lucide-react";
+
+function LinkAccountSection() {
+  const router = useRouter();
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  async function handleRedeem() {
+    if (code.length < 8) return;
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/link/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus("success");
+        setTimeout(() => router.refresh(), 1000);
+      } else {
+        setStatus("error");
+        setErrorMsg(data.error || "Invalid code");
+      }
+    } catch {
+      setStatus("error");
+      setErrorMsg("Failed to redeem code");
+    }
+  }
+
+  if (status === "success") {
+    return (
+      <section className="animate-fade-in-up glass-card rounded-2xl border-success/20 p-4 stagger-4" style={{ opacity: 0 }}>
+        <div className="flex items-center gap-2 text-success">
+          <Shield size={16} />
+          <span className="text-sm font-semibold">Account linked successfully!</span>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0 }}>
+      <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+        Link instaclaw.io Account
+      </h2>
+      <p className="mb-3 text-xs text-muted">
+        Have an existing InstaClaw account? Get a linking code from
+        instaclaw.io → Settings → Connect World Wallet, then enter it here.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="XXXX XXXX"
+          maxLength={8}
+          className="flex-1 rounded-xl border border-border bg-white/[0.04] px-3 py-2.5 text-center font-mono text-sm tracking-[0.2em] placeholder:text-muted/40 focus:border-accent focus:outline-none"
+        />
+        <button
+          onClick={handleRedeem}
+          disabled={code.length < 8 || status === "loading"}
+          className="btn-primary rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-40"
+        >
+          {status === "loading" ? "..." : "Link"}
+        </button>
+      </div>
+      {status === "error" && (
+        <p className="mt-2 text-xs text-error">{errorMsg}</p>
+      )}
+    </section>
+  );
+}
 
 interface Delegation {
   id: string;
@@ -153,24 +229,21 @@ export default function SettingsClient({
         </section>
       )}
 
+      {/* ── Link Account ── */}
+      <LinkAccountSection />
+
       {/* ── Links ── */}
       <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0 }}>
         <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
           More
         </h2>
-        {[
-          { label: "Full dashboard", url: "https://instaclaw.io/dashboard" },
-          { label: "Link existing account", url: "https://instaclaw.io/settings" },
-        ].map(({ label, url }) => (
-          <button
-            key={label}
-            onClick={() => window.open(url, "_blank")}
-            className="flex w-full items-center justify-between rounded-lg px-1 py-3 text-sm transition-colors hover:bg-white/[0.03]"
-          >
-            <span>{label}</span>
-            <ChevronRight size={14} className="text-muted" />
-          </button>
-        ))}
+        <button
+          onClick={() => window.open("https://instaclaw.io/dashboard", "_blank")}
+          className="flex w-full items-center justify-between rounded-lg px-1 py-3 text-sm transition-colors hover:bg-white/[0.03]"
+        >
+          <span>Full dashboard on instaclaw.io</span>
+          <ChevronRight size={14} className="text-muted" />
+        </button>
       </section>
 
       {/* ── Sign Out ── */}

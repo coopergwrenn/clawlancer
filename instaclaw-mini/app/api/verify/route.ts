@@ -5,6 +5,7 @@ import {
   getUserByNullifier,
   markWorldIdVerified,
   linkWalletToUser,
+  findPotentialExistingAgent,
   supabase,
 } from "@/lib/supabase";
 import { proxyToInstaclaw } from "@/lib/api";
@@ -91,7 +92,25 @@ export async function POST(req: NextRequest) {
       payload.verification_level || "orb"
     );
 
-    // Trigger agent provisioning in background
+    // Check for duplicate VM before provisioning
+    const existingAgent = await findPotentialExistingAgent(
+      session.userId,
+      nullifierHash,
+      null // email checked during login, nullifier is the stronger signal here
+    );
+
+    if (existingAgent) {
+      // Found a potential duplicate — return it so the client can prompt
+      return NextResponse.json({
+        verified: true,
+        merged: false,
+        potentialDuplicate: {
+          matchedBy: existingAgent.matchedBy,
+        },
+      });
+    }
+
+    // No duplicate — trigger agent provisioning in background
     proxyToInstaclaw("/api/vm/configure", session.userId, {
       method: "POST",
       body: JSON.stringify({ userId: session.userId }),
