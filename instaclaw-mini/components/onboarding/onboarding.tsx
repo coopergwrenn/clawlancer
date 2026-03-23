@@ -321,12 +321,12 @@ export default function Onboarding() {
 
           {/* CTA — pinned to bottom */}
           <div
-            className="px-5 pt-3"
-            style={{ paddingBottom: "max(env(safe-area-inset-bottom, 20px), 20px)" }}
+            className="px-7 pt-4"
+            style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}
           >
             <button
               onClick={handleGetAgent}
-              className="btn-primary w-full rounded-xl text-base font-semibold"
+              className="btn-primary w-full rounded-[28px] text-base font-semibold"
               style={{ height: "56px" }}
             >
               Claim your free AI agent
@@ -359,9 +359,9 @@ export default function Onboarding() {
               Get Orb verified to unlock your free AI agent, or subscribe to get started right away.
             </p>
           </div>
-          <div className="px-5 pb-3 flex flex-col gap-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 20px), 20px)" }}>
-            <button onClick={handleGetVerified} className="btn-primary w-full rounded-xl font-semibold" style={{ height: "56px" }}>Get Orb Verified</button>
-            <button onClick={handleBuyCredits} className="w-full rounded-xl font-semibold" style={{ height: "52px", background: "rgba(0,0,0,0.04)", color: "#333334", border: "1px solid rgba(0,0,0,0.08)" }}>Buy credits with USDC</button>
+          <div className="px-7 flex flex-col gap-2.5" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
+            <button onClick={handleGetVerified} className="btn-primary w-full rounded-[28px] font-semibold" style={{ height: "56px" }}>Get Orb Verified</button>
+            <button onClick={handleBuyCredits} className="w-full rounded-[28px] font-semibold" style={{ height: "52px", background: "rgba(0,0,0,0.04)", color: "#333334", border: "1px solid rgba(0,0,0,0.08)" }}>Buy credits with USDC</button>
             <button onClick={handleSubscribeInstead} className="py-2 text-sm underline underline-offset-2" style={{ color: "#6b6b6b" }}>Subscribe on instaclaw.io instead</button>
           </div>
         </>
@@ -389,7 +389,7 @@ export default function Onboarding() {
             />
             {error && <p className="mt-2 text-xs" style={{ color: "#ef4444" }}>{error}</p>}
           </div>
-          <div className="px-5 pb-3 flex flex-col gap-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 20px), 20px)" }}>
+          <div className="px-7 flex flex-col gap-2.5" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
             <button onClick={handleRedeemCode} disabled={linkCode.length < 8} className="btn-primary w-full rounded-xl font-semibold disabled:opacity-40" style={{ height: "56px" }}>Connect existing agent</button>
             <button onClick={handleSkipDuplicate} className="py-2 text-sm underline underline-offset-2" style={{ color: "#6b6b6b" }}>No, create a new agent</button>
           </div>
@@ -424,8 +424,8 @@ export default function Onboarding() {
               </div>
             )}
           </div>
-          <div className="px-5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 20px), 20px)" }}>
-            <button onClick={handleDelegate} className="btn-wld w-full rounded-xl text-base font-semibold" style={{ height: "56px" }}>
+          <div className="px-7" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
+            <button onClick={handleDelegate} className="btn-wld w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
               Activate with 5 WLD
             </button>
           </div>
@@ -456,7 +456,7 @@ export default function Onboarding() {
               Start chatting now. Your agent is standing by in World Chat.
             </p>
           </div>
-          <div className="px-5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 20px), 20px)" }}>
+          <div className="px-7" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
             <button onClick={handleStartChat} className="btn-primary w-full rounded-xl text-base font-semibold" style={{ height: "56px" }}>
               Start chatting
             </button>
