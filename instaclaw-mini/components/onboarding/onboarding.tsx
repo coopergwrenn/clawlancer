@@ -459,9 +459,8 @@ export default function Onboarding() {
             </h1>
 
             {/* Subtitle */}
-            <p className="mt-3 max-w-[270px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
-              Verify as a real human and your personal AI agent is ready in
-              seconds. Powered by your WLD grant.
+            <p className="mt-3 max-w-[340px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
+              Verify as a real human and your personal AI agent is ready in seconds. Powered by your WLD grant.
             </p>
 
             {/* Marquee */}
