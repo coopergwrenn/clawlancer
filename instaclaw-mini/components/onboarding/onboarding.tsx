@@ -50,16 +50,14 @@ function MarqueeRow({ items, direction }: { items: string[]; direction: "left" |
 }
 
 function SpotsOpenPill() {
-  const [spots, setSpots] = useState<number | null>(null);
+  const [spots, setSpots] = useState<number>(62); // hardcoded default, updated by API
 
   useEffect(() => {
-    fetch("https://instaclaw.io/api/spots")
+    fetch("/api/spots")
       .then((r) => r.json())
-      .then((d) => setSpots(d.available ?? null))
-      .catch(() => setSpots(null));
+      .then((d) => { if (typeof d.available === "number") setSpots(d.available); })
+      .catch(() => {}); // keep hardcoded default
   }, []);
-
-  if (spots === null) return <div className="mb-6 h-9" />; // preserve spacing
 
   const orbBg = spots >= 10
     ? "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)"
