@@ -1,7 +1,7 @@
 "use client";
 
 import { MiniKit, tokenToDecimals, Tokens, VerificationLevel } from "@worldcoin/minikit-js";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type Step = "welcome" | "verifying" | "verify-failed" | "duplicate-found" | "delegate" | "delegating" | "ready";
@@ -46,6 +46,80 @@ function MarqueeRow({ items, direction }: { items: string[]; direction: "left" |
         ))}
       </div>
     </div>
+  );
+}
+
+function SpotsOpenPill() {
+  const [spots, setSpots] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("https://instaclaw.io/api/spots")
+      .then((r) => r.json())
+      .then((d) => setSpots(d.available ?? null))
+      .catch(() => setSpots(null));
+  }, []);
+
+  if (spots === null) return <div className="mb-6 h-9" />; // preserve spacing
+
+  const orbBg = spots >= 10
+    ? "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)"
+    : spots >= 3
+      ? "radial-gradient(circle at 35% 30%, rgba(245,158,11,0.7), rgba(245,158,11,0.4) 50%, rgba(200,120,10,0.75) 100%)"
+      : "radial-gradient(circle at 35% 30%, rgba(239,68,68,0.7), rgba(239,68,68,0.4) 50%, rgba(200,50,50,0.75) 100%)";
+
+  const glowBg = spots >= 10
+    ? "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)"
+    : spots >= 3
+      ? "radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%)"
+      : "radial-gradient(circle, rgba(239,68,68,0.4) 0%, transparent 70%)";
+
+  const text = spots >= 1
+    ? `${spots} Spots Open`
+    : "Servers restocking";
+
+  return (
+    <span
+      className="mb-6 inline-flex items-center gap-2.5 rounded-full px-5 py-2 text-xs font-medium animate-fade-in"
+      style={{
+        background: "#ffffff",
+        border: "1px solid rgba(0,0,0,0.08)",
+        boxShadow:
+          "rgba(0,0,0,0.04) 0px 2px 2px 0px inset, rgba(255,255,255,0.8) 0px -1px 1px 0px inset, rgba(0,0,0,0.06) 0px 2px 4px 0px, rgba(255,255,255,0.5) 0px 0px 1px 2px inset",
+        color: "#333334",
+        opacity: 0,
+      }}
+    >
+      {/* Glass orb */}
+      <span
+        className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full"
+        style={{
+          background: orbBg,
+          boxShadow:
+            "inset 0 -2px 4px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,255,0.5), inset 0 0 3px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.15)",
+        }}
+      >
+        {/* Shimmer sweep */}
+        <span
+          className="absolute inset-0 rounded-full"
+          style={{
+            background: "linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.4) 45%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.4) 55%, transparent 80%)",
+            backgroundSize: "300% 100%",
+            animation: "globe-shimmer 4s linear infinite",
+          }}
+        />
+        {/* Glass highlight */}
+        <span
+          className="pointer-events-none absolute left-[3px] top-[2px] h-[5px] w-[8px] rounded-full"
+          style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)" }}
+        />
+        {/* Breathing glow */}
+        <span
+          className="absolute -inset-0.5 rounded-full"
+          style={{ background: glowBg, animation: "globe-glow 4s ease-in-out infinite" }}
+        />
+      </span>
+      {text}
+    </span>
   );
 }
 
@@ -276,18 +350,8 @@ export default function Onboarding() {
         <>
           {/* Content — centered in available space above button */}
           <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
-            {/* Logo */}
-            <div
-              className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl"
-              style={{
-                background: "linear-gradient(145deg, #1a1a1a, #0a0a0a)",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.06)",
-              }}
-            >
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-              </svg>
-            </div>
+            {/* Spots open pill */}
+            <SpotsOpenPill />
 
             {/* Title */}
             <h1 className="text-center text-4xl tracking-[-0.5px] leading-[1.1]" style={serif}>
