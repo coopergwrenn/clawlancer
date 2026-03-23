@@ -222,39 +222,37 @@ export default function Onboarding() {
     }
   }
 
+  // ── Shared styles ──
+  const serif = { fontFamily: "'Instrument Serif', Georgia, serif" };
+  const pageStyle = "flex h-[100dvh] flex-col items-center justify-center px-6 onboarding-light";
+
   // ── Render ──
   return (
-    <div className="flex h-[100dvh] flex-col items-center justify-center px-6">
+    <div className={pageStyle}>
       {/* ── Welcome ── */}
       {step === "welcome" && (
         <div className="animate-fade-in-up flex flex-col items-center gap-8 text-center" style={{ opacity: 0 }}>
-          {/* Decorative orb */}
-          <div className="relative">
-            <div className="animate-orb absolute -inset-6 rounded-full bg-accent/20 blur-2xl" />
-            <div className="relative text-6xl">🤠</div>
-          </div>
-
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="text-4xl tracking-[-0.5px] leading-[1.1]" style={serif}>
               Get your free
               <br />
-              <span className="shimmer-text">AI agent</span>
+              <span className="shimmer-text text-4xl" style={serif}>AI agent</span>
             </h1>
-            <p className="mt-3 max-w-[280px] text-sm leading-relaxed text-muted">
+            <p className="mt-4 max-w-[280px] text-sm leading-relaxed" style={{ color: "#6b6b6b" }}>
               Verify as a real human and your personal AI agent is ready in
               seconds. Powered by your WLD grant.
             </p>
           </div>
 
           {error && (
-            <div className="glass-card rounded-xl px-4 py-2.5">
-              <p className="text-sm text-error">{error}</p>
+            <div className="rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+              <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
             </div>
           )}
 
           <button
             onClick={handleGetAgent}
-            className="btn-primary w-full max-w-[300px] rounded-2xl py-4 text-lg font-bold"
+            className="btn-primary w-full max-w-[300px] rounded-xl py-4 text-base font-semibold"
           >
             Get your free AI agent
           </button>
@@ -265,47 +263,41 @@ export default function Onboarding() {
       {step === "verifying" && (
         <div className="animate-fade-in flex flex-col items-center gap-5 text-center" style={{ opacity: 0 }}>
           <div className="relative">
-            <div className="absolute -inset-3 animate-pulse rounded-full bg-accent/20 blur-xl" />
-            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full border-[3px] border-white/10 border-t-accent" />
+            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(220,103,67,0.15)" }} />
+            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#DC6743" }} />
           </div>
-          <p className="text-lg font-medium">Verifying your identity...</p>
-          <p className="text-sm text-muted">Confirm in World App</p>
+          <p className="text-lg" style={{ ...serif, color: "#333334" }}>Verifying your identity...</p>
+          <p className="text-sm" style={{ color: "#6b6b6b" }}>Confirm in World App</p>
         </div>
       )}
 
       {/* ── Verify Failed ── */}
       {step === "verify-failed" && (
         <div className="animate-fade-in-up flex flex-col items-center gap-6 text-center" style={{ opacity: 0 }}>
-          <div className="relative">
-            <div className="animate-orb absolute -inset-4 rounded-full bg-white/5 blur-xl" />
-            <div className="relative text-5xl">🔒</div>
+          <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.12), rgba(220,103,67,0.04) 70%)" }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#DC6743" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold">Verification needed</h2>
-            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+            <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Verification needed</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed" style={{ color: "#6b6b6b" }}>
               Get Orb verified to unlock your free AI agent, or subscribe to get
               started right away.
             </p>
           </div>
 
           <div className="flex w-full max-w-[300px] flex-col gap-3">
-            <button
-              onClick={handleGetVerified}
-              className="btn-primary rounded-2xl py-4 font-bold"
-            >
+            <button onClick={handleGetVerified} className="btn-primary rounded-xl py-4 font-semibold">
               Get Orb Verified
             </button>
             <button
               onClick={handleBuyCredits}
-              className="glass-button rounded-2xl py-3.5 font-semibold text-foreground"
+              className="rounded-xl py-3.5 font-semibold transition-all"
+              style={{ background: "rgba(0,0,0,0.04)", color: "#333334", border: "1px solid rgba(0,0,0,0.08)" }}
             >
               Buy credits with USDC
             </button>
-            <button
-              onClick={handleSubscribeInstead}
-              className="py-2 text-sm text-muted underline underline-offset-2 transition-colors hover:text-foreground"
-            >
+            <button onClick={handleSubscribeInstead} className="py-2 text-sm underline underline-offset-2" style={{ color: "#6b6b6b" }}>
               Subscribe on instaclaw.io instead
             </button>
           </div>
@@ -315,14 +307,13 @@ export default function Onboarding() {
       {/* ── Duplicate Found ── */}
       {step === "duplicate-found" && (
         <div className="animate-fade-in-up flex flex-col items-center gap-6 text-center" style={{ opacity: 0 }}>
-          <div className="relative">
-            <div className="animate-orb absolute -inset-4 rounded-full bg-accent/20 blur-xl" />
-            <div className="relative text-5xl">🔗</div>
+          <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.12), rgba(220,103,67,0.04) 70%)" }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#DC6743" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold">Already have an agent?</h2>
-            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+            <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Already have an agent?</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed" style={{ color: "#6b6b6b" }}>
               It looks like you might already have an InstaClaw agent from
               instaclaw.io. Enter your linking code to connect to your existing
               agent.
@@ -336,31 +327,25 @@ export default function Onboarding() {
               onChange={(e) => setLinkCode(e.target.value.toUpperCase())}
               placeholder="Enter 8-digit code"
               maxLength={8}
-              className="w-full rounded-xl border border-border bg-white/[0.04] px-4 py-3 text-center font-mono text-lg tracking-[0.3em] placeholder:text-muted/50 focus:border-accent focus:outline-none"
+              className="w-full rounded-xl px-4 py-3 text-center font-mono text-lg tracking-[0.3em] focus:outline-none"
+              style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.1)", color: "#333334" }}
             />
-            <p className="mt-2 text-xs text-muted">
-              Get your code from instaclaw.io → Settings → Connect World Wallet
+            <p className="mt-2 text-xs" style={{ color: "#6b6b6b" }}>
+              Get your code from instaclaw.io &rarr; Settings &rarr; Connect World Wallet
             </p>
           </div>
 
           {error && (
-            <div className="glass-card rounded-xl px-4 py-2.5">
-              <p className="text-sm text-error">{error}</p>
+            <div className="rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+              <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
             </div>
           )}
 
           <div className="flex w-full max-w-[300px] flex-col gap-3">
-            <button
-              onClick={handleRedeemCode}
-              disabled={linkCode.length < 8}
-              className="btn-primary rounded-2xl py-4 font-bold disabled:opacity-40"
-            >
+            <button onClick={handleRedeemCode} disabled={linkCode.length < 8} className="btn-primary rounded-xl py-4 font-semibold disabled:opacity-40">
               Connect existing agent
             </button>
-            <button
-              onClick={handleSkipDuplicate}
-              className="py-2 text-sm text-muted underline underline-offset-2 transition-colors hover:text-foreground"
-            >
+            <button onClick={handleSkipDuplicate} className="py-2 text-sm underline underline-offset-2" style={{ color: "#6b6b6b" }}>
               No, create a new agent
             </button>
           </div>
@@ -370,44 +355,36 @@ export default function Onboarding() {
       {/* ── Delegate ── */}
       {step === "delegate" && (
         <div className="animate-fade-in-up flex flex-col items-center gap-6 text-center" style={{ opacity: 0 }}>
-          <div className="relative">
-            <div className="animate-orb absolute -inset-4 rounded-full bg-wld/20 blur-xl" />
-            <div className="relative text-5xl">⚡</div>
-          </div>
-
           <div>
-            <h2 className="text-2xl font-bold">Activate with 5 WLD</h2>
-            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+            <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Activate with 5 WLD</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed" style={{ color: "#6b6b6b" }}>
               Stake 5 WLD from your grant to power your agent for ~3 days.
               That&apos;s about $1.50 — from tokens you got for free.
             </p>
           </div>
 
-          <div className="glass-card w-full max-w-[300px] rounded-2xl px-5 py-4">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted">Credits</span>
+          <div className="w-full max-w-[300px] rounded-xl px-5 py-4" style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.08)" }}>
+            <div className="flex justify-between text-sm" style={{ color: "#333334" }}>
+              <span style={{ color: "#6b6b6b" }}>Credits</span>
               <span className="font-semibold">25 credits</span>
             </div>
-            <div className="mt-2 flex justify-between text-sm">
-              <span className="text-muted">Duration</span>
+            <div className="mt-2 flex justify-between text-sm" style={{ color: "#333334" }}>
+              <span style={{ color: "#6b6b6b" }}>Duration</span>
               <span className="font-semibold">~3 days</span>
             </div>
-            <div className="mt-2 flex justify-between text-sm">
-              <span className="text-muted">Cost</span>
-              <span className="font-semibold text-wld">5 WLD</span>
+            <div className="mt-2 flex justify-between text-sm" style={{ color: "#333334" }}>
+              <span style={{ color: "#6b6b6b" }}>Cost</span>
+              <span className="font-semibold" style={{ color: "#1dc1a0" }}>5 WLD</span>
             </div>
           </div>
 
           {error && (
-            <div className="glass-card rounded-xl px-4 py-2.5">
-              <p className="text-sm text-error">{error}</p>
+            <div className="rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+              <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
             </div>
           )}
 
-          <button
-            onClick={handleDelegate}
-            className="btn-wld w-full max-w-[300px] rounded-2xl py-4 text-lg font-bold"
-          >
+          <button onClick={handleDelegate} className="btn-wld w-full max-w-[300px] rounded-xl py-4 text-base font-semibold">
             Activate with 5 WLD
           </button>
         </div>
@@ -417,32 +394,31 @@ export default function Onboarding() {
       {step === "delegating" && (
         <div className="animate-fade-in flex flex-col items-center gap-5 text-center" style={{ opacity: 0 }}>
           <div className="relative">
-            <div className="absolute -inset-3 animate-pulse rounded-full bg-wld/20 blur-xl" />
-            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full border-[3px] border-white/10 border-t-wld" />
+            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(29,193,160,0.15)" }} />
+            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#1dc1a0" }} />
           </div>
-          <p className="text-lg font-medium">Your agent is powering up...</p>
-          <p className="text-sm text-muted">Deploying your personal AI</p>
+          <p className="text-lg" style={{ ...serif, color: "#333334" }}>Your agent is powering up...</p>
+          <p className="text-sm" style={{ color: "#6b6b6b" }}>Deploying your personal AI</p>
         </div>
       )}
 
       {/* ── Ready ── */}
       {step === "ready" && (
         <div className="animate-fade-in-up flex flex-col items-center gap-8 text-center" style={{ opacity: 0 }}>
-          <div className="relative">
-            <div className="animate-pulse-glow absolute -inset-6 rounded-full" />
-            <div className="relative text-6xl">🎉</div>
+          <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(34,197,94,0.15), rgba(34,197,94,0.04) 70%)" }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold">Your agent is ready!</h2>
-            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+            <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Your agent is ready!</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed" style={{ color: "#6b6b6b" }}>
               Start chatting now. Your agent is standing by in World Chat.
             </p>
           </div>
 
           <button
             onClick={handleStartChat}
-            className="btn-primary animate-pulse-glow w-full max-w-[300px] rounded-2xl py-4 text-lg font-bold"
+            className="btn-primary animate-pulse-glow w-full max-w-[300px] rounded-xl py-4 text-base font-semibold"
           >
             Start chatting
           </button>

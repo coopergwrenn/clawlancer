@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap');
 
 @theme inline {
   --color-background: #000000;
@@ -292,4 +293,38 @@ html, body {
 
 .progress-fill-wld {
   background: linear-gradient(90deg, #1dc1a0, #16a387);
+}
+
+/* ─── Onboarding Light Theme ────────────────────── */
+/* Matches instaclaw.io landing page: warm white bg, dark text */
+.onboarding-light {
+  background: #f8f7f4 !important;
+  color: #333334 !important;
+}
+
+/* Override shimmer for light background — keep orange sweep */
+.onboarding-light .shimmer-text {
+  background: linear-gradient(
+    90deg,
+    #DC6743 0%, #DC6743 40%, #fde68a 50%, #DC6743 60%, #DC6743 100%
+  );
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3.5s linear infinite;
+}
+
+/* Override pulse-glow for light bg */
+.onboarding-light .animate-pulse-glow {
+  animation: glow-pulse-light 4s ease-in-out infinite;
+}
+
+@keyframes glow-pulse-light {
+  0%, 100% {
+    box-shadow: 0 0 10px 2px rgba(220, 103, 67, 0.15), 0 0 22px 5px rgba(220, 103, 67, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 16px 5px rgba(220, 103, 67, 0.25), 0 0 36px 10px rgba(220, 103, 67, 0.08);
+  }
 }

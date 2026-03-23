@@ -97,17 +97,16 @@ export default function RootPage() {
   // AND we're confident — not used in practice since we default to onboarding)
   if (state === "not-world") {
     return (
-      <div style={{ background: "#000", color: "#fff", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "2rem", padding: "2rem", textAlign: "center" }}>
-        <div style={{ fontSize: "4rem" }}>🤠</div>
+      <div style={{ background: "#f8f7f4", color: "#333334", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "2rem", padding: "2rem", textAlign: "center" }}>
         <div>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: "bold" }}>InstaClaw</h1>
-          <p style={{ marginTop: "0.5rem", color: "#888", fontSize: "0.875rem" }}>
+          <h1 style={{ fontSize: "1.75rem", fontFamily: "'Instrument Serif', Georgia, serif", letterSpacing: "-0.5px" }}>InstaClaw</h1>
+          <p style={{ marginTop: "0.5rem", color: "#6b6b6b", fontSize: "0.875rem", maxWidth: "280px", lineHeight: "1.6" }}>
             Open this app inside World App to get your free AI agent.
           </p>
         </div>
         <a
           href="https://worldcoin.org/download"
-          style={{ background: "#DC6743", color: "#fff", padding: "0.875rem 2rem", borderRadius: "1rem", fontWeight: "600", textDecoration: "none" }}
+          style={{ background: "linear-gradient(180deg, rgba(220,103,67,0.95), rgba(200,85,52,1))", color: "#fff", padding: "0.875rem 2rem", borderRadius: "0.75rem", fontWeight: "600", textDecoration: "none", boxShadow: "0 2px 8px rgba(220,103,67,0.3)" }}
         >
           Get World App
         </a>
@@ -118,9 +117,9 @@ export default function RootPage() {
   // Loading — use INLINE styles so it renders even if CSS hasn't loaded
   if (state === "loading") {
     return (
-      <div style={{ background: "#000", color: "#fff", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
-        <div style={{ width: "2.5rem", height: "2.5rem", border: "3px solid rgba(255,255,255,0.1)", borderTopColor: "#DC6743", borderRadius: "50%", animation: "spin 1.2s linear infinite" }} />
-        <p style={{ fontSize: "0.75rem", color: "#888" }}>Loading InstaClaw...</p>
+      <div style={{ background: "#f8f7f4", color: "#333334", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
+        <div style={{ width: "2.5rem", height: "2.5rem", border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#DC6743", borderRadius: "50%", animation: "spin 1.2s linear infinite" }} />
+        <p style={{ fontSize: "0.75rem", color: "#6b6b6b" }}>Loading InstaClaw...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
