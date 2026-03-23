@@ -234,9 +234,9 @@ export default function Onboarding() {
         <div className="animate-fade-in-up flex flex-col items-center gap-8 text-center" style={{ opacity: 0 }}>
           <div>
             <h1 className="text-4xl tracking-[-0.5px] leading-[1.1]" style={serif}>
-              Get your free
+              Claim your free
               <br />
-              <span className="shimmer-text text-4xl" style={serif}>AI agent</span>
+              <span className="shimmer-text text-5xl" style={serif}>AI agent</span>
             </h1>
             <p className="mt-4 max-w-[280px] text-sm leading-relaxed" style={{ color: "#6b6b6b" }}>
               Verify as a real human and your personal AI agent is ready in
