@@ -163,6 +163,56 @@ This is the key upsell moment. Make it frictionless, not punitive. The agent doe
 
 **Pricing must be profitable, not break-even.** The WLD delegation model is the top of the funnel — it's designed to get users hooked on their agent so they convert to Stripe subscribers or regular credit pack buyers. Even the delegation itself should generate margin, not just cover compute costs.
 
+#### $INSTACLAW Token Staking
+
+**Contract:** `0xA9E23871156718C1D55e90dad1c4ea8a33480DFd` (Base mainnet, ERC-20, launched via Virtuals Protocol)
+**Current price:** ~$0.0023 | **Market cap:** ~$659K | **Supply:** 1B total, ~282M circulating
+
+**The problem:** $INSTACLAW is on Base only. MiniKit.pay() only supports WLD and USDC on Worldchain. No cross-chain support.
+
+**The solution (phased):**
+
+**v1 — Accept $INSTACLAW on Base via instaclaw.io (not MiniKit):**
+- Add a "Stake $INSTACLAW" option on the delegation screen that opens instaclaw.io in an in-app browser
+- instaclaw.io handles the Base transaction directly (we already have viem + Base RPC)
+- User approves ERC-20 transfer on Base → credits added to their agent
+- This works TODAY with zero Worldchain changes
+
+**v2 — Native $INSTACLAW on Worldchain:**
+- Deploy $INSTACLAW (or a bridged wrapper) as an ERC-20 on Worldchain
+- Whitelist the contract in the World Developer Portal (Configuration → Advanced)
+- Use `MiniKit.commandsAsync.sendTransaction()` to call `transfer()` directly
+- Register with Permit2 for signature-based transfers
+- **Note:** `sendTransaction()` does NOT sponsor gas like `pay()` does — user needs ETH on Worldchain for gas, or we need a paymaster
+
+**$INSTACLAW Delegation Tiers:**
+
+| Tier | $INSTACLAW Amount | Approx USD | Credits | Duration |
+|---|---|---|---|---|
+| Try it | 650 INSTACLAW | ~$1.50 | 25 credits | ~3 days |
+| Starter | 2,000 INSTACLAW | ~$4.50 | 45 credits | ~1 week |
+| Full month | 6,500 INSTACLAW | ~$15 | 200 credits | ~1 month |
+
+*Amounts at ~$0.0023/INSTACLAW. Will need a price feed (CoinGecko API has it).*
+
+**Tokenomics angle:** Staking $INSTACLAW for agent access creates direct utility and buy pressure for the token:
+- Every verified World ID holder who chooses $INSTACLAW staking locks tokens for the duration
+- Agent access is a real, tangible utility — not speculative
+- Creates a flywheel: more agents → more $INSTACLAW demand → higher price → more attractive to stake
+- Ties into any future NFT/staking governance design (e.g., $INSTACLAW stakers get priority features, premium models, exclusive skills)
+
+**Delegation screen UX — three options:**
+
+```
+How would you like to power your agent?
+
+[Stake 5 WLD]              ← primary, for World ID verified users (free money)
+[Stake 650 $INSTACLAW]     ← for token holders (opens instaclaw.io in v1)
+[Pay 5 USDC]               ← for everyone else
+```
+
+The default selection is WLD for Orb-verified users (lowest friction — staking free tokens). $INSTACLAW is second for existing token holders. USDC is the universal fallback.
+
 #### Database
 
 ```sql
@@ -475,7 +525,7 @@ POST /api/pay/confirm
 | Standard | 200 | 15 USDC | ~equivalent WLD |
 | Power | 500 | 30 USDC | ~equivalent WLD |
 
-**Note:** WLD pricing requires a price oracle or fixed rate. For v1, support USDC only. Add WLD in v1.1 with a price feed (Worldchain has native oracles).
+**Note:** WLD pricing requires a price oracle or fixed rate. For v1, support USDC and WLD via `MiniKit.pay()`. $INSTACLAW credit packs are handled via instaclaw.io in-app browser (Base chain transaction) until $INSTACLAW is deployed on Worldchain.
 
 ### Subscription Approach — DECISION
 
@@ -483,8 +533,9 @@ POST /api/pay/confirm
 
 1. **Credit packs** purchasable with USDC via World wallet (MiniKit.pay) — primary billing in mini app
 2. **WLD delegation** for free tier users — the killer feature (Section 3). This is how most mini app users will get started.
-3. **Full subscriptions via Stripe:** Include a "Subscribe for unlimited" button in the mini app that opens instaclaw.io in an in-app browser/webview (World App supports this). User completes Stripe checkout on instaclaw.io, account is linked, subscription applies to the same agent. If in-app browser isn't technically possible, a redirect with a return deeplink (`https://world.org/mini-app?app_id=...&path=/settings`) is fine.
-4. **Future:** Add native subscription support if/when World wallet adds recurring payment capabilities.
+3. **$INSTACLAW staking** — opens instaclaw.io in in-app browser for Base chain transaction. Converts to credits at current market rate. Creates token utility and buy pressure.
+4. **Full subscriptions via Stripe:** Include a "Subscribe for unlimited" button in the mini app that opens instaclaw.io in an in-app browser/webview (World App supports this). User completes Stripe checkout on instaclaw.io, account is linked, subscription applies to the same agent. If in-app browser isn't technically possible, a redirect with a return deeplink (`https://world.org/mini-app?app_id=...&path=/settings`) is fine.
+5. **Future:** Native $INSTACLAW on Worldchain via `sendTransaction()` + Permit2. Add native subscription support if/when World wallet adds recurring payment capabilities.
 
 ### Database Table
 
@@ -723,6 +774,8 @@ These are not blockers — everything above works today. But answers would help 
 3. **XMTP mainnet fees (expected early 2026):** What will per-message fees look like for high-volume agents? Any World Foundation subsidy program for featured mini apps?
 
 4. **Does World Chat expose the user's wallet address to the XMTP agent?** Or does it use a derived/proxy address? This affects how we map World Chat conversations back to InstaClaw user accounts.
+
+5. **Gas sponsorship for sendTransaction():** `pay()` sponsors gas, but `sendTransaction()` does not. Is there a paymaster/relayer option for featured mini apps? This matters for $INSTACLAW staking on Worldchain (v2) — users shouldn't need to hold ETH on Worldchain just to stake tokens.
 
 ### Implications for Telegram
 
