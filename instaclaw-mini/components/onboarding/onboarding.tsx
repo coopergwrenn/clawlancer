@@ -49,6 +49,68 @@ function MarqueeRow({ items, direction }: { items: string[]; direction: "left" |
   );
 }
 
+// ── Testimonials ──
+
+type Testimonial = { quote: string; name: string; role: string; bg: string };
+
+const TESTIMONIALS_ROW_1: Testimonial[] = [
+  { quote: "I asked it to plan my entire vacation, book restaurants, and draft packing lists. It did all of it.", name: "Sarah M.", role: "Freelancer", bg: "#E8DDD3" },
+  { quote: "I told it what I needed and it figured out the rest. A week later it was doing things I didn't even ask for yet.", name: "James K.", role: "Small Business Owner", bg: "#D5DDE5" },
+  { quote: "It remembered every detail about 200+ clients and followed up with each one personally.", name: "Priya R.", role: "Real Estate Agent", bg: "#E5D8C3" },
+  { quote: "I gave it one task as a test. An hour later it had done that plus five other things I didn't think to ask for.", name: "Marcus T.", role: "Content Creator", bg: "#E0D5CA" },
+  { quote: "It wrote my cover letters, prepped me for interviews, and tracked every application. I got the job because of this.", name: "Ava L.", role: "College Student", bg: "#D8E5D5" },
+];
+
+const TESTIMONIALS_ROW_2: Testimonial[] = [
+  { quote: "I went to sleep. Woke up to 30 emails answered, my calendar organized, and a summary waiting for me.", name: "Danny W.", role: "Startup Founder", bg: "#D5D5D5" },
+  { quote: "It gets smarter every week. I taught it how I like my reports and now it just does them perfectly.", name: "Rachel S.", role: "Marketing Manager", bg: "#E5D5DE" },
+  { quote: "The dashboard makes everything so simple. I'm not technical at all and I manage it myself.", name: "Tom H.", role: "Teacher", bg: "#D5E0D5" },
+  { quote: "There is nothing I've thrown at it that it couldn't do. Emails, research, scheduling, writing. Anything.", name: "Nina P.", role: "Consultant", bg: "#D8D5E0" },
+  { quote: "My 68-year-old mom set it up by herself and now she won't stop telling her friends about it.", name: "Chris D.", role: "Product Designer", bg: "#D5E0E5" },
+];
+
+const testimonialCardStyle: React.CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid rgba(0,0,0,0.08)",
+  boxShadow: "rgba(0,0,0,0.04) 0px 2px 2px 0px inset, rgba(255,255,255,0.8) 0px -1px 1px 0px inset, rgba(0,0,0,0.06) 0px 2px 4px 0px",
+};
+
+function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direction: "left" | "right" }) {
+  const cls = direction === "left" ? "animate-testimonial-left" : "animate-testimonial-right";
+  const repeated = [...items, ...items, ...items, ...items];
+
+  return (
+    <div className="overflow-hidden w-full py-1">
+      <div className={`flex gap-3 w-max ${cls}`}>
+        {repeated.map((t, i) => (
+          <div
+            key={`${t.name}-${i}`}
+            className="w-[220px] shrink-0 rounded-2xl p-3.5"
+            style={testimonialCardStyle}
+          >
+            <div className="mb-2 flex items-center gap-2.5">
+              <div
+                className="h-8 w-8 shrink-0 rounded-full"
+                style={{
+                  background: `radial-gradient(circle at 35% 35%, ${t.bg}dd, ${t.bg}88 40%, rgba(0,0,0,0.2) 100%)`,
+                  boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.12)",
+                }}
+              />
+              <div>
+                <p className="text-[11px] font-semibold" style={{ color: "#333334" }}>{t.name}</p>
+                <p className="text-[10px]" style={{ color: "#6b6b6b" }}>{t.role}</p>
+              </div>
+            </div>
+            <p className="text-[11px] leading-[1.5]" style={{ color: "#333334" }}>
+              &ldquo;{t.quote}&rdquo;
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SpotsOpenPill() {
   const [spots, setSpots] = useState<number>(62); // hardcoded default, updated by API
 
@@ -346,8 +408,8 @@ export default function Onboarding() {
       {/* ── Welcome ── */}
       {step === "welcome" && (
         <>
-          {/* Content — upper-third, not dead center */}
-          <div className="flex-1 flex flex-col items-center px-6 animate-fade-in-up" style={{ opacity: 0, justifyContent: "flex-start", paddingTop: "12vh" }}>
+          {/* Content — centered, testimonials fill the gap to button */}
+          <div className="flex-1 flex flex-col items-center px-6 animate-fade-in-up" style={{ opacity: 0, justifyContent: "center" }}>
             {/* Spots open pill */}
             <SpotsOpenPill />
 
@@ -371,6 +433,16 @@ export default function Onboarding() {
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <MarqueeRow items={MARQUEE_ROW_1} direction="left" />
                 <MarqueeRow items={MARQUEE_ROW_2} direction="right" />
+              </div>
+            </div>
+
+            {/* Testimonial cards */}
+            <div className="mt-6 w-screen overflow-hidden relative">
+              <div className="absolute left-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
+              <div className="absolute right-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to left, #f8f7f4, transparent)" }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <TestimonialMarquee items={TESTIMONIALS_ROW_1} direction="left" />
+                <TestimonialMarquee items={TESTIMONIALS_ROW_2} direction="right" />
               </div>
             </div>
 

@@ -325,6 +325,14 @@ html, body {
   animation: marquee-right 30s linear infinite;
 }
 
+.animate-testimonial-left {
+  animation: marquee-left 50s linear infinite;
+}
+
+.animate-testimonial-right {
+  animation: marquee-right 50s linear infinite;
+}
+
 /* ─── Onboarding Light Theme ────────────────────── */
 /* Matches instaclaw.io landing page: warm white bg, dark text */
 .onboarding-light {
