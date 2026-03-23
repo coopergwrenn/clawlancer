@@ -19,9 +19,12 @@ const MARQUEE_ROW_2 = [
 ];
 
 const pillStyle: React.CSSProperties = {
-  background: "linear-gradient(-75deg, rgba(0,0,0,0.02), rgba(0,0,0,0.06), rgba(0,0,0,0.02))",
-  border: "1px solid rgba(0,0,0,0.08)",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  background: "#ffffff",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  border: "1px solid rgba(0, 0, 0, 0.08)",
+  boxShadow:
+    "rgba(0, 0, 0, 0.04) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.8) 0px -1px 1px 0px inset, rgba(0, 0, 0, 0.06) 0px 2px 4px 0px, rgba(255, 255, 255, 0.5) 0px 0px 1px 2px inset",
   color: "#333334",
 };
 
