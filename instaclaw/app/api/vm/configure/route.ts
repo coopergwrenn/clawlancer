@@ -11,10 +11,15 @@ export const maxDuration = 180;
 const MAX_CONFIGURE_ATTEMPTS = 3;
 
 export async function POST(req: NextRequest) {
-  // This endpoint is called internally by the billing webhook and cron jobs.
-  // Require an admin API key for authentication.
+  // This endpoint is called internally by the billing webhook, cron jobs,
+  // and the World mini app proxy. Accepts X-Admin-Key OR X-Mini-App-Token.
+  let miniAppUserId: string | null = null;
   if (!validateAdminKey(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { validateMiniAppToken } = await import("@/lib/security");
+    miniAppUserId = await validateMiniAppToken(req);
+    if (!miniAppUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   let userId: string | undefined;
@@ -26,6 +31,11 @@ export async function POST(req: NextRequest) {
 
     if (!userId || typeof userId !== "string") {
       return NextResponse.json({ error: "userId required" }, { status: 400 });
+    }
+
+    // If authenticated via mini app token, enforce that the body userId matches
+    if (miniAppUserId && userId !== miniAppUserId) {
+      return NextResponse.json({ error: "userId mismatch" }, { status: 403 });
     }
 
     const supabase = getSupabase();

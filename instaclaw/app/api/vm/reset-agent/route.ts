@@ -1,13 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { resetAgentMemory } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    // Dual auth: NextAuth session OR X-Mini-App-Token (from World mini app proxy)
     const session = await auth();
-    if (!session?.user?.id) {
+    let userId = session?.user?.id;
+
+    if (!userId) {
+      const { validateMiniAppToken } = await import("@/lib/security");
+      userId = await validateMiniAppToken(req) ?? undefined;
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -16,7 +24,7 @@ export async function POST() {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("*")
-      .eq("assigned_to", session.user.id)
+      .eq("assigned_to", userId)
       .single();
 
     if (!vm) {

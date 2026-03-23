@@ -15,7 +15,7 @@ export default async function ChatPage() {
       <p className="mb-5 text-xs text-muted">Talk to your agent</p>
       <ChatOptions
         xmtpAddress={agent?.xmtp_address ?? null}
-        botToken={agent?.telegram_bot_token ?? null}
+        telegramBotUsername={agent?.telegram_bot_username ?? null}
       />
     </div>
   );

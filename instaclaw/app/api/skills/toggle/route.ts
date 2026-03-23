@@ -9,8 +9,16 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
+    // Dual auth: NextAuth session OR X-Mini-App-Token (from World mini app proxy)
     const session = await auth();
-    if (!session?.user?.id) {
+    let userId = session?.user?.id;
+
+    if (!userId) {
+      const { validateMiniAppToken } = await import("@/lib/security");
+      userId = await validateMiniAppToken(req) ?? undefined;
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -40,7 +48,7 @@ export async function POST(req: NextRequest) {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("id, ip_address, ssh_port, ssh_user")
-      .eq("assigned_to", session.user.id)
+      .eq("assigned_to", userId)
       .single();
 
     if (!vm) {
@@ -101,7 +109,7 @@ export async function POST(req: NextRequest) {
             authUrl: !!agdpResult.authUrl,
             serving: agdpResult.serving,
             vmId: vm.id,
-            userId: session.user.id,
+            userId: userId,
             route: "api/skills/toggle",
           });
 
@@ -123,7 +131,7 @@ export async function POST(req: NextRequest) {
             slug: skill.slug,
             enabled,
             vmId: vm.id,
-            userId: session.user.id,
+            userId: userId,
             route: "api/skills/toggle",
           });
 
@@ -166,7 +174,7 @@ export async function POST(req: NextRequest) {
             enabled,
             walletAddress: solResult.walletAddress,
             vmId: vm.id,
-            userId: session.user.id,
+            userId: userId,
             route: "api/skills/toggle",
           });
 
@@ -187,7 +195,7 @@ export async function POST(req: NextRequest) {
             slug: skill.slug,
             enabled,
             vmId: vm.id,
-            userId: session.user.id,
+            userId: userId,
             route: "api/skills/toggle",
           });
 
@@ -222,7 +230,7 @@ export async function POST(req: NextRequest) {
             slug: skill.slug,
             enabled,
             vmId: vm.id,
-            userId: session.user.id,
+            userId: userId,
             route: "api/skills/toggle",
           });
 
@@ -239,7 +247,7 @@ export async function POST(req: NextRequest) {
             slug: skill.slug,
             enabled,
             vmId: vm.id,
-            userId: session.user.id,
+            userId: userId,
             route: "api/skills/toggle",
           });
 
@@ -286,7 +294,7 @@ export async function POST(req: NextRequest) {
       enabled,
       restarted: result.restarted,
       vmId: vm.id,
-      userId: session.user.id,
+      userId: userId,
       route: "api/skills/toggle",
     });
 

@@ -57,6 +57,7 @@ export default function AgentDashboard({
   }
 
   async function handleStakeWld() {
+    MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
     try {
       const res = await fetch("/api/delegate/initiate", {
         method: "POST",

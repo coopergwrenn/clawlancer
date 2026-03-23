@@ -5,14 +5,15 @@ import { MessageCircle, Send, Globe, ArrowUpRight } from "lucide-react";
 
 export default function ChatOptions({
   xmtpAddress,
-  botToken,
+  telegramBotUsername,
 }: {
   xmtpAddress: string | null;
-  botToken: string | null;
+  telegramBotUsername: string | null;
 }) {
   async function handleWorldChat() {
     if (!xmtpAddress) return;
     try {
+      MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
       await MiniKit.commandsAsync.chat({
         message: "Hey! What's happening today?",
         to: [xmtpAddress],
@@ -21,8 +22,10 @@ export default function ChatOptions({
   }
 
   function handleTelegram() {
-    if (!botToken) return;
-    window.open("https://t.me/", "_blank");
+    if (!telegramBotUsername) return;
+    MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "light" });
+    const username = telegramBotUsername.replace(/^@/, "");
+    window.open(`https://t.me/${username}?start=world`, "_blank");
   }
 
   return (
@@ -51,7 +54,7 @@ export default function ChatOptions({
       {/* Secondary: Telegram */}
       <button
         onClick={handleTelegram}
-        disabled={!botToken}
+        disabled={!telegramBotUsername}
         className="animate-fade-in-up glass-card flex items-center gap-4 rounded-2xl p-4 text-left disabled:opacity-40 stagger-1"
         style={{ opacity: 0 }}
       >
@@ -61,8 +64,8 @@ export default function ChatOptions({
         <div className="flex-1">
           <p className="font-semibold">Chat via Telegram</p>
           <p className="mt-0.5 text-sm text-muted">
-            {botToken
-              ? "Opens Telegram with your agent"
+            {telegramBotUsername
+              ? `@${telegramBotUsername.replace(/^@/, "")}`
               : "Connect Telegram in Settings"}
           </p>
         </div>

@@ -111,6 +111,13 @@ export default function Onboarding() {
         return;
       }
 
+      MiniKit.commands.sendHapticFeedback({ hapticsType: "notification", style: "success" });
+
+      // Request push notification permission
+      try {
+        await MiniKit.commandsAsync.requestPermission({ permission: "notifications" as never });
+      } catch { /* user declined — that's fine */ }
+
       setStep("ready");
     } catch (err) {
       console.error("Delegation error:", err);
@@ -121,6 +128,7 @@ export default function Onboarding() {
 
   // ── TAP 3: Start Chatting ──
   async function handleStartChat() {
+    MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
     try {
       const res = await fetch("/api/auth/me");
       const data = await res.json();
