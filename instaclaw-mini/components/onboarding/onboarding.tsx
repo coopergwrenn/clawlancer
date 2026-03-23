@@ -252,7 +252,9 @@ export default function Onboarding() {
         body: JSON.stringify(authResult.finalPayload),
       });
       if (!loginRes.ok) {
-        setError("Sign-in failed. Please try again.");
+        const loginErr = await loginRes.json().catch(() => ({}));
+        console.error("[Onboarding] Login failed:", loginRes.status, loginErr);
+        setError(`Sign-in failed: ${loginErr.error || loginRes.status}${loginErr.detail ? ` — ${loginErr.detail}` : ""}`);
         setStep("welcome");
         return;
       }

@@ -7,7 +7,7 @@ export async function GET() {
   cookieStore.set("siwe-nonce", nonce, {
     httpOnly: true,
     secure: true,
-    sameSite: "strict",
+    sameSite: "lax",
     maxAge: 600, // 10 minutes
     path: "/",
   });
