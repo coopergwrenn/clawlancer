@@ -6,6 +6,46 @@ import { useRouter } from "next/navigation";
 
 type Step = "welcome" | "verifying" | "verify-failed" | "duplicate-found" | "delegate" | "delegating" | "ready";
 
+const MARQUEE_ROW_1 = [
+  "Personal Assistant", "Email Manager", "Scheduling Bot", "Content Creator",
+  "Social Media Manager", "Customer Support", "Writing Coach", "Research Assistant",
+  "CEO", "Your New Best Friend",
+];
+
+const MARQUEE_ROW_2 = [
+  "Community Manager", "Sales Outreach", "Lead Generation", "Travel Planner",
+  "Language Tutor", "Health Coach", "Meeting Notes", "Your New Employee",
+  "The Intern That Never Sleeps", "Data Entry & Reports",
+];
+
+const pillStyle: React.CSSProperties = {
+  background: "linear-gradient(-75deg, rgba(0,0,0,0.02), rgba(0,0,0,0.06), rgba(0,0,0,0.02))",
+  border: "1px solid rgba(0,0,0,0.08)",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  color: "#333334",
+};
+
+function MarqueeRow({ items, direction }: { items: string[]; direction: "left" | "right" }) {
+  const animClass = direction === "left" ? "animate-marquee-left" : "animate-marquee-right";
+  const repeated = [...items, ...items, ...items, ...items];
+
+  return (
+    <div className="overflow-hidden w-full py-1">
+      <div className={`flex gap-2 w-max ${animClass}`}>
+        {repeated.map((item, i) => (
+          <span
+            key={`${item}-${i}`}
+            className="whitespace-nowrap px-4 py-1.5 rounded-full text-xs shrink-0"
+            style={pillStyle}
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Onboarding() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("welcome");
@@ -244,6 +284,16 @@ export default function Onboarding() {
             </p>
           </div>
 
+          {/* ── Marquee use cases ── */}
+          <div className="w-screen overflow-hidden relative">
+            <div className="absolute left-0 top-0 bottom-0 w-12 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
+            <div className="absolute right-0 top-0 bottom-0 w-12 z-10 pointer-events-none" style={{ background: "linear-gradient(to left, #f8f7f4, transparent)" }} />
+            <div className="space-y-2">
+              <MarqueeRow items={MARQUEE_ROW_1} direction="left" />
+              <MarqueeRow items={MARQUEE_ROW_2} direction="right" />
+            </div>
+          </div>
+
           {error && (
             <div className="rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
               <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
@@ -254,7 +304,7 @@ export default function Onboarding() {
             onClick={handleGetAgent}
             className="btn-primary w-full max-w-[300px] rounded-xl py-4 text-base font-semibold"
           >
-            Get your free AI agent
+            Claim your free AI agent
           </button>
         </div>
       )}

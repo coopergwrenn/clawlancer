@@ -295,6 +295,25 @@ html, body {
   background: linear-gradient(90deg, #1dc1a0, #16a387);
 }
 
+/* ─── Marquee Scroll ────────────────────────────── */
+@keyframes marquee-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes marquee-right {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-marquee-left {
+  animation: marquee-left 30s linear infinite;
+}
+
+.animate-marquee-right {
+  animation: marquee-right 30s linear infinite;
+}
+
 /* ─── Onboarding Light Theme ────────────────────── */
 /* Matches instaclaw.io landing page: warm white bg, dark text */
 .onboarding-light {
