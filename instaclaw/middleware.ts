@@ -80,7 +80,11 @@ export default auth((req) => {
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
 
-  if (isAPI && !isSelfAuth && !isAuthenticated) {
+  // Allow requests with X-Mini-App-Token through — the route handler validates the token.
+  // These come from the World mini app (mini.instaclaw.io) proxy.
+  const hasMiniAppToken = !!req.headers.get("x-mini-app-token");
+
+  if (isAPI && !isSelfAuth && !isAuthenticated && !hasMiniAppToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

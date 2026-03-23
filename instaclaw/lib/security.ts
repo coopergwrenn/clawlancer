@@ -188,6 +188,75 @@ export function validateAdminKey(req: NextRequest): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Mini App proxy token validation (X-Mini-App-Token)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate and decode a mini app proxy token.
+ * The token is a JWT signed with MINI_APP_PROXY_SECRET containing { userId, source: "mini-app" }.
+ * Returns the userId if valid, null otherwise.
+ *
+ * This is used by API routes that accept requests proxied from the World mini app
+ * (mini.instaclaw.io). The mini app signs short-lived (60s) per-user tokens so
+ * there is no global admin key that can access all users' data.
+ */
+export async function validateMiniAppToken(
+  req: NextRequest
+): Promise<string | null> {
+  const token = req.headers.get("x-mini-app-token");
+  const secret = process.env.MINI_APP_PROXY_SECRET;
+  if (!token || !secret) return null;
+
+  try {
+    // Decode JWT: header.payload.signature (HS256)
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    // Verify signature using Web Crypto HMAC
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+
+    const signatureInput = `${parts[0]}.${parts[1]}`;
+    const signature = Uint8Array.from(
+      atob(parts[2].replace(/-/g, "+").replace(/_/g, "/")),
+      (c) => c.charCodeAt(0)
+    );
+
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      signature,
+      encoder.encode(signatureInput)
+    );
+
+    if (!valid) return null;
+
+    // Decode payload
+    const payload = JSON.parse(
+      atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
+    );
+
+    // Check expiry
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    // Check source
+    if (payload.source !== "mini-app") return null;
+
+    return payload.userId as string;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Constant-time string comparison
 // ---------------------------------------------------------------------------
 
