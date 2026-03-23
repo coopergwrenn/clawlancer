@@ -54,7 +54,7 @@ interface UserConfig {
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
 // Bump this after fleet upgrades (separate from the SSH upgrade flow).
-export const OPENCLAW_PINNED_VERSION = "2026.3.13";
+export const OPENCLAW_PINNED_VERSION = "2026.3.22";
 
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
@@ -2557,7 +2557,7 @@ function buildOpenClawConfig(
   // Schema path is tools.web.search (NOT tools.webSearch — verified against
   // OpenClaw dist resolveSearchConfig() which reads cfg?.tools?.web?.search)
   // Also enable media understanding (image/audio/video) for all agents.
-  // Schema verified against OpenClaw v2026.3.13 redact-snapshot: tools.media.image.enabled,
+  // Schema verified against OpenClaw v2026.3.22 redact-snapshot: tools.media.image.enabled,
   // tools.media.audio.enabled, tools.media.video.enabled are valid config keys.
   ocConfig.tools = {
     ...(braveKey
