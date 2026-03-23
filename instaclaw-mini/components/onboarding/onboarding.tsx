@@ -500,7 +500,7 @@ export default function Onboarding() {
               className="btn-primary w-full rounded-[28px] text-base font-semibold"
               style={{ height: "56px" }}
             >
-              Claim your free AI agent
+              Claim my agent
             </button>
           </div>
         </>
