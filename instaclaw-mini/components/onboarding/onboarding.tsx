@@ -346,16 +346,16 @@ export default function Onboarding() {
       {/* ── Welcome ── */}
       {step === "welcome" && (
         <>
-          {/* Content — upper-center, not dead center */}
-          <div className="flex-1 flex flex-col items-center px-6 animate-fade-in-up" style={{ opacity: 0, justifyContent: "center", paddingBottom: "12vh" }}>
+          {/* Content — upper-third, not dead center */}
+          <div className="flex-1 flex flex-col items-center px-6 animate-fade-in-up" style={{ opacity: 0, justifyContent: "flex-start", paddingTop: "12vh" }}>
             {/* Spots open pill */}
             <SpotsOpenPill />
 
             {/* Title */}
-            <h1 className="text-center text-[44px] tracking-[-0.5px] leading-[1.05]" style={serif}>
+            <h1 className="text-center text-[42px] tracking-[-0.5px] leading-[1.05]" style={serif}>
               Claim your free
               <br />
-              <span className="shimmer-text text-[72px]" style={serif}>AI agent</span>
+              <span className="shimmer-text text-[64px]" style={serif}>AI agent</span>
             </h1>
 
             {/* Subtitle */}
