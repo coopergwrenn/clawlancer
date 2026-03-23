@@ -252,9 +252,9 @@ export default function Onboarding() {
         body: JSON.stringify(authResult.finalPayload),
       });
       if (!loginRes.ok) {
-        const loginErr = await loginRes.json().catch(() => ({}));
-        console.error("[Onboarding] Login failed:", loginRes.status, loginErr);
-        setError(`Sign-in failed: ${loginErr.error || loginRes.status}${loginErr.detail ? ` — ${loginErr.detail}` : ""}`);
+        const loginErrText = await loginRes.text().catch(() => "no body");
+        console.error("[Onboarding] Login failed:", loginRes.status, loginErrText);
+        setError(`Login ${loginRes.status}: ${loginErrText}`);
         setStep("welcome");
         return;
       }
@@ -289,8 +289,9 @@ export default function Onboarding() {
 
       setStep("delegate");
     } catch (err) {
-      console.error("Onboarding error:", err);
-      setError("Something went wrong. Please try again.");
+      const errMsg = err instanceof Error ? err.message : JSON.stringify(err);
+      console.error("[Onboarding] Caught error:", errMsg, err);
+      setError(`Error: ${errMsg}`);
       setStep("welcome");
     }
   }

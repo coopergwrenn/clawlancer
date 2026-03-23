@@ -110,9 +110,10 @@ export async function POST(req: NextRequest) {
       linked,
     });
   } catch (err) {
-    console.error("[Login] Unhandled error:", err);
+    const msg = err instanceof Error ? `${err.message}\n${err.stack}` : JSON.stringify(err);
+    console.error("[Login] Unhandled error:", msg);
     return NextResponse.json(
-      { error: "Login failed", detail: String(err) },
+      { error: "Login failed", detail: msg },
       { status: 500 }
     );
   }
