@@ -1,31 +1,18 @@
 "use client";
 
 import { MiniKit } from "@worldcoin/minikit-js";
-import { ReactNode, useEffect, useState, createContext, useContext } from "react";
-
-const MiniKitContext = createContext({ ready: false });
-
-export function useMiniKit() {
-  return useContext(MiniKitContext);
-}
+import { ReactNode, useEffect } from "react";
 
 export default function MiniKitSetup({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
-
   useEffect(() => {
+    console.log("[InstaClaw] MiniKitSetup: installing MiniKit with appId:", process.env.NEXT_PUBLIC_APP_ID);
     try {
       MiniKit.install(process.env.NEXT_PUBLIC_APP_ID);
+      console.log("[InstaClaw] MiniKit installed. isInstalled:", MiniKit.isInstalled());
     } catch (e) {
-      console.error("MiniKit install error:", e);
+      console.error("[InstaClaw] MiniKit install error:", e);
     }
-    // Mark ready regardless — install is synchronous in practice,
-    // and isInstalled() works immediately after install()
-    setReady(true);
   }, []);
 
-  return (
-    <MiniKitContext.Provider value={{ ready }}>
-      {children}
-    </MiniKitContext.Provider>
-  );
+  return <>{children}</>;
 }
