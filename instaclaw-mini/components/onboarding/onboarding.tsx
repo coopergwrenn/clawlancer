@@ -346,20 +346,20 @@ export default function Onboarding() {
       {/* ── Welcome ── */}
       {step === "welcome" && (
         <>
-          {/* Content — centered in available space above button */}
-          <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
+          {/* Content — upper-center, not dead center */}
+          <div className="flex-1 flex flex-col items-center px-6 animate-fade-in-up" style={{ opacity: 0, justifyContent: "center", paddingBottom: "12vh" }}>
             {/* Spots open pill */}
             <SpotsOpenPill />
 
             {/* Title */}
-            <h1 className="text-center text-4xl tracking-[-0.5px] leading-[1.1]" style={serif}>
+            <h1 className="text-center text-[44px] tracking-[-0.5px] leading-[1.05]" style={serif}>
               Claim your free
               <br />
-              <span className="shimmer-text text-[60px]" style={serif}>AI agent</span>
+              <span className="shimmer-text text-[72px]" style={serif}>AI agent</span>
             </h1>
 
             {/* Subtitle */}
-            <p className="mt-3 max-w-[260px] text-center text-[13px] leading-relaxed" style={{ color: "#6b6b6b" }}>
+            <p className="mt-3 max-w-[270px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
               Verify as a real human and your personal AI agent is ready in
               seconds. Powered by your WLD grant.
             </p>
