@@ -1,7 +1,7 @@
 "use client";
 
 import { MiniKit } from "@worldcoin/minikit-js";
-import { MessageCircle, Send } from "lucide-react";
+import { MessageCircle, Send, Globe, ArrowUpRight } from "lucide-react";
 
 export default function ChatOptions({
   xmtpAddress,
@@ -17,16 +17,12 @@ export default function ChatOptions({
         message: "Hey! What's happening today?",
         to: [xmtpAddress],
       });
-    } catch {
-      // Chat cancelled or failed
-    }
+    } catch { /* chat cancelled */ }
   }
 
   function handleTelegram() {
     if (!botToken) return;
-    // Bot token format: 123456:ABC-DEF — we need the bot username
-    // For now, open a generic link. The actual username comes from the DB.
-    window.open(`https://t.me/`, "_blank");
+    window.open("https://t.me/", "_blank");
   }
 
   return (
@@ -35,45 +31,62 @@ export default function ChatOptions({
       <button
         onClick={handleWorldChat}
         disabled={!xmtpAddress}
-        className="flex items-center gap-4 rounded-2xl bg-accent p-4 text-left text-black active:scale-[0.98] transition-transform disabled:opacity-50"
+        className="animate-fade-in-up btn-primary flex items-center gap-4 rounded-2xl p-4 text-left disabled:opacity-40"
+        style={{ opacity: 0 }}
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/10">
-          <MessageCircle size={24} />
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20">
+          <Globe size={24} />
         </div>
-        <div>
+        <div className="flex-1">
           <p className="font-bold">Chat via World App</p>
-          <p className="text-sm opacity-70">
+          <p className="mt-0.5 text-sm opacity-70">
             {xmtpAddress
               ? "Opens World Chat with your agent"
               : "Agent is still deploying..."}
           </p>
         </div>
+        <ArrowUpRight size={18} className="opacity-50" />
       </button>
 
       {/* Secondary: Telegram */}
       <button
         onClick={handleTelegram}
         disabled={!botToken}
-        className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 text-left active:scale-[0.98] transition-transform disabled:opacity-50"
+        className="animate-fade-in-up glass-card flex items-center gap-4 rounded-2xl p-4 text-left disabled:opacity-40 stagger-1"
+        style={{ opacity: 0 }}
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card-hover">
-          <Send size={24} className="text-muted" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.04]">
+          <Send size={22} className="text-muted" />
         </div>
-        <div>
+        <div className="flex-1">
           <p className="font-semibold">Chat via Telegram</p>
-          <p className="text-sm text-muted">
+          <p className="mt-0.5 text-sm text-muted">
             {botToken
               ? "Opens Telegram with your agent"
               : "Connect Telegram in Settings"}
           </p>
         </div>
+        <ArrowUpRight size={18} className="text-muted opacity-50" />
       </button>
 
-      <p className="mt-2 text-center text-xs text-muted">
-        Your agent responds on whichever channel you message from.
-        <br />
-        Both channels connect to the same AI.
-      </p>
+      <div className="animate-fade-in mt-4 text-center stagger-2" style={{ opacity: 0 }}>
+        <p className="text-xs leading-relaxed text-muted">
+          Your agent responds on whichever channel you message from.
+          <br />
+          Both channels connect to the same AI.
+        </p>
+        <div className="mx-auto mt-3 flex items-center justify-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="status-dot-healthy h-1.5 w-1.5 rounded-full" />
+            <span className="text-[10px] text-muted">World Chat</span>
+          </div>
+          <span className="text-[10px] text-white/20">•</span>
+          <div className="flex items-center gap-1.5">
+            <MessageCircle size={10} className="text-muted" />
+            <span className="text-[10px] text-muted">Telegram</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

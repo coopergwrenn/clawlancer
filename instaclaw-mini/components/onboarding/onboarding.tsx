@@ -11,16 +11,14 @@ export default function Onboarding() {
   const [step, setStep] = useState<Step>("welcome");
   const [error, setError] = useState<string | null>(null);
 
-  // ---- TAP 1: Verify + Sign In ----
+  // ── TAP 1: Verify + Sign In ──
   async function handleGetAgent() {
     setStep("verifying");
     setError(null);
     try {
-      // Step 1: Get nonce for SIWE
       const nonceRes = await fetch("/api/nonce");
       const { nonce } = await nonceRes.json();
 
-      // Step 2: Wallet auth (SIWE)
       const authResult = await MiniKit.commandsAsync.walletAuth({
         nonce,
         statement: "Sign in to InstaClaw",
@@ -33,7 +31,6 @@ export default function Onboarding() {
         return;
       }
 
-      // Step 3: Verify SIWE on server + create session
       const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -45,7 +42,6 @@ export default function Onboarding() {
         return;
       }
 
-      // Step 4: World ID verification
       const verifyResult = await MiniKit.commandsAsync.verify({
         action: "instaclaw-verify-human",
         verification_level: VerificationLevel.Orb,
@@ -56,7 +52,6 @@ export default function Onboarding() {
         return;
       }
 
-      // Step 5: Send proof to backend
       const verifyRes = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -68,7 +63,6 @@ export default function Onboarding() {
         return;
       }
 
-      // Verification succeeded — move to delegation
       setStep("delegate");
     } catch (err) {
       console.error("Onboarding error:", err);
@@ -77,12 +71,11 @@ export default function Onboarding() {
     }
   }
 
-  // ---- TAP 2: Delegate WLD ----
+  // ── TAP 2: Delegate WLD ──
   async function handleDelegate() {
     setStep("delegating");
     setError(null);
     try {
-      // Initiate delegation on server
       const initRes = await fetch("/api/delegate/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -90,16 +83,10 @@ export default function Onboarding() {
       });
       const { reference, tokenAmount } = await initRes.json();
 
-      // Execute WLD payment
       const payResult = await MiniKit.commandsAsync.pay({
         reference,
         to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS!,
-        tokens: [
-          {
-            symbol: Tokens.WLD,
-            token_amount: tokenAmount,
-          },
-        ],
+        tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
         description: "Activate your free InstaClaw agent",
       });
 
@@ -109,7 +96,6 @@ export default function Onboarding() {
         return;
       }
 
-      // Confirm delegation on server
       const confirmRes = await fetch("/api/delegate/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -133,10 +119,9 @@ export default function Onboarding() {
     }
   }
 
-  // ---- TAP 3: Start Chatting ----
+  // ── TAP 3: Start Chatting ──
   async function handleStartChat() {
     try {
-      // Get agent's XMTP address
       const res = await fetch("/api/auth/me");
       const data = await res.json();
       const xmtpAddress = data?.user?.xmtpAddress;
@@ -147,27 +132,22 @@ export default function Onboarding() {
           to: [xmtpAddress],
         });
       }
-      // Regardless, navigate to dashboard
       router.replace("/home");
     } catch {
       router.replace("/home");
     }
   }
 
-  // ---- Fallback for non-Orb users ----
+  // ── Fallbacks ──
   function handleGetVerified() {
-    // Deep-link into World's Orb verification flow
-    // TODO: Register as Grow referral source (question for Mateo)
     window.open("https://worldcoin.org/download", "_blank");
   }
 
   function handleSubscribeInstead() {
-    // Open instaclaw.io Stripe checkout
     window.open("https://instaclaw.io/billing", "_blank");
   }
 
   async function handleBuyCredits() {
-    // Skip to credit pack purchase flow via USDC
     const initRes = await fetch("/api/pay/initiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -178,12 +158,10 @@ export default function Onboarding() {
     const payResult = await MiniKit.commandsAsync.pay({
       reference,
       to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS!,
-      tokens: [
-        {
-          symbol: Tokens.USDC,
-          token_amount: String(tokenToDecimals(5, Tokens.USDC)),
-        },
-      ],
+      tokens: [{
+        symbol: Tokens.USDC,
+        token_amount: String(tokenToDecimals(5, Tokens.USDC)),
+      }],
       description: "InstaClaw Starter credit pack (50 credits)",
     });
 
@@ -200,65 +178,89 @@ export default function Onboarding() {
     }
   }
 
-  // ---- Render ----
+  // ── Render ──
   return (
     <div className="flex h-[100dvh] flex-col items-center justify-center px-6">
+      {/* ── Welcome ── */}
       {step === "welcome" && (
-        <div className="flex flex-col items-center gap-6 text-center">
-          <div className="text-6xl">🤠</div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Get your free
-            <br />
-            AI agent
-          </h1>
-          <p className="max-w-[280px] text-sm text-muted">
-            Verify as a real human and your personal AI agent is ready in
-            seconds. Powered by your WLD grant.
-          </p>
+        <div className="animate-fade-in-up flex flex-col items-center gap-8 text-center" style={{ opacity: 0 }}>
+          {/* Decorative orb */}
+          <div className="relative">
+            <div className="animate-orb absolute -inset-6 rounded-full bg-accent/20 blur-2xl" />
+            <div className="relative text-6xl">🤠</div>
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Get your free
+              <br />
+              <span className="shimmer-text">AI agent</span>
+            </h1>
+            <p className="mt-3 max-w-[280px] text-sm leading-relaxed text-muted">
+              Verify as a real human and your personal AI agent is ready in
+              seconds. Powered by your WLD grant.
+            </p>
+          </div>
+
           {error && (
-            <p className="text-sm text-error">{error}</p>
+            <div className="glass-card rounded-xl px-4 py-2.5">
+              <p className="text-sm text-error">{error}</p>
+            </div>
           )}
+
           <button
             onClick={handleGetAgent}
-            className="w-full max-w-[300px] rounded-2xl bg-accent py-4 text-lg font-bold text-black active:scale-[0.98] transition-transform"
+            className="btn-primary w-full max-w-[300px] rounded-2xl py-4 text-lg font-bold"
           >
             Get your free AI agent
           </button>
         </div>
       )}
 
+      {/* ── Verifying ── */}
       {step === "verifying" && (
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-3 border-accent border-t-transparent" />
+        <div className="animate-fade-in flex flex-col items-center gap-5 text-center" style={{ opacity: 0 }}>
+          <div className="relative">
+            <div className="absolute -inset-3 animate-pulse rounded-full bg-accent/20 blur-xl" />
+            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full border-[3px] border-white/10 border-t-accent" />
+          </div>
           <p className="text-lg font-medium">Verifying your identity...</p>
           <p className="text-sm text-muted">Confirm in World App</p>
         </div>
       )}
 
+      {/* ── Verify Failed ── */}
       {step === "verify-failed" && (
-        <div className="flex flex-col items-center gap-6 text-center">
-          <div className="text-5xl">🔒</div>
-          <h2 className="text-2xl font-bold">Verification needed</h2>
-          <p className="max-w-[280px] text-sm text-muted">
-            Get Orb verified to unlock your free AI agent, or subscribe to get
-            started right away.
-          </p>
+        <div className="animate-fade-in-up flex flex-col items-center gap-6 text-center" style={{ opacity: 0 }}>
+          <div className="relative">
+            <div className="animate-orb absolute -inset-4 rounded-full bg-white/5 blur-xl" />
+            <div className="relative text-5xl">🔒</div>
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-bold">Verification needed</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+              Get Orb verified to unlock your free AI agent, or subscribe to get
+              started right away.
+            </p>
+          </div>
+
           <div className="flex w-full max-w-[300px] flex-col gap-3">
             <button
               onClick={handleGetVerified}
-              className="rounded-2xl bg-accent py-4 font-bold text-black active:scale-[0.98] transition-transform"
+              className="btn-primary rounded-2xl py-4 font-bold"
             >
               Get Orb Verified
             </button>
             <button
               onClick={handleBuyCredits}
-              className="rounded-2xl border border-border py-3.5 font-semibold text-foreground active:scale-[0.98] transition-transform"
+              className="glass-button rounded-2xl py-3.5 font-semibold text-foreground"
             >
               Buy credits with USDC
             </button>
             <button
               onClick={handleSubscribeInstead}
-              className="py-2 text-sm text-muted underline"
+              className="py-2 text-sm text-muted underline underline-offset-2 transition-colors hover:text-foreground"
             >
               Subscribe on instaclaw.io instead
             </button>
@@ -266,58 +268,82 @@ export default function Onboarding() {
         </div>
       )}
 
+      {/* ── Delegate ── */}
       {step === "delegate" && (
-        <div className="flex flex-col items-center gap-6 text-center">
-          <div className="text-5xl">⚡</div>
-          <h2 className="text-2xl font-bold">Activate with 5 WLD</h2>
-          <p className="max-w-[280px] text-sm text-muted">
-            Stake 5 WLD from your grant to power your agent for ~3 days. That&apos;s
-            about $1.50 — from tokens you got for free.
-          </p>
-          <div className="rounded-xl border border-border bg-card px-5 py-3 text-left text-sm">
-            <div className="flex justify-between">
+        <div className="animate-fade-in-up flex flex-col items-center gap-6 text-center" style={{ opacity: 0 }}>
+          <div className="relative">
+            <div className="animate-orb absolute -inset-4 rounded-full bg-wld/20 blur-xl" />
+            <div className="relative text-5xl">⚡</div>
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-bold">Activate with 5 WLD</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+              Stake 5 WLD from your grant to power your agent for ~3 days.
+              That&apos;s about $1.50 — from tokens you got for free.
+            </p>
+          </div>
+
+          <div className="glass-card w-full max-w-[300px] rounded-2xl px-5 py-4">
+            <div className="flex justify-between text-sm">
               <span className="text-muted">Credits</span>
-              <span className="font-medium">25 credits</span>
+              <span className="font-semibold">25 credits</span>
             </div>
-            <div className="mt-1 flex justify-between">
+            <div className="mt-2 flex justify-between text-sm">
               <span className="text-muted">Duration</span>
-              <span className="font-medium">~3 days</span>
+              <span className="font-semibold">~3 days</span>
             </div>
-            <div className="mt-1 flex justify-between">
+            <div className="mt-2 flex justify-between text-sm">
               <span className="text-muted">Cost</span>
-              <span className="font-medium text-wld">5 WLD</span>
+              <span className="font-semibold text-wld">5 WLD</span>
             </div>
           </div>
+
           {error && (
-            <p className="text-sm text-error">{error}</p>
+            <div className="glass-card rounded-xl px-4 py-2.5">
+              <p className="text-sm text-error">{error}</p>
+            </div>
           )}
+
           <button
             onClick={handleDelegate}
-            className="w-full max-w-[300px] rounded-2xl bg-wld py-4 text-lg font-bold text-black active:scale-[0.98] transition-transform"
+            className="btn-wld w-full max-w-[300px] rounded-2xl py-4 text-lg font-bold"
           >
             Activate with 5 WLD
           </button>
         </div>
       )}
 
+      {/* ── Delegating ── */}
       {step === "delegating" && (
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-3 border-wld border-t-transparent" />
+        <div className="animate-fade-in flex flex-col items-center gap-5 text-center" style={{ opacity: 0 }}>
+          <div className="relative">
+            <div className="absolute -inset-3 animate-pulse rounded-full bg-wld/20 blur-xl" />
+            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full border-[3px] border-white/10 border-t-wld" />
+          </div>
           <p className="text-lg font-medium">Your agent is powering up...</p>
           <p className="text-sm text-muted">Deploying your personal AI</p>
         </div>
       )}
 
+      {/* ── Ready ── */}
       {step === "ready" && (
-        <div className="flex flex-col items-center gap-6 text-center">
-          <div className="text-6xl">🎉</div>
-          <h2 className="text-2xl font-bold">Your agent is ready!</h2>
-          <p className="max-w-[280px] text-sm text-muted">
-            Start chatting now. Your agent is standing by in World Chat.
-          </p>
+        <div className="animate-fade-in-up flex flex-col items-center gap-8 text-center" style={{ opacity: 0 }}>
+          <div className="relative">
+            <div className="animate-pulse-glow absolute -inset-6 rounded-full" />
+            <div className="relative text-6xl">🎉</div>
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-bold">Your agent is ready!</h2>
+            <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+              Start chatting now. Your agent is standing by in World Chat.
+            </p>
+          </div>
+
           <button
             onClick={handleStartChat}
-            className="w-full max-w-[300px] rounded-2xl bg-accent py-4 text-lg font-bold text-black active:scale-[0.98] transition-transform"
+            className="btn-primary animate-pulse-glow w-full max-w-[300px] rounded-2xl py-4 text-lg font-bold"
           >
             Start chatting
           </button>

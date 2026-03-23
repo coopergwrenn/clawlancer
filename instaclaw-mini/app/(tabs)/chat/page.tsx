@@ -9,15 +9,13 @@ export default async function ChatPage() {
 
   const agent = await getAgentStatus(session.userId);
 
-  // Extract bot username from token if available
-  const botToken = agent?.telegram_bot_token;
-
   return (
     <div className="p-4">
-      <h1 className="mb-4 text-xl font-bold">Chat with your agent</h1>
+      <h1 className="mb-1 text-xl font-bold tracking-tight">Chat</h1>
+      <p className="mb-5 text-xs text-muted">Talk to your agent</p>
       <ChatOptions
         xmtpAddress={agent?.xmtp_address ?? null}
-        botToken={botToken ?? null}
+        botToken={agent?.telegram_bot_token ?? null}
       />
     </div>
   );

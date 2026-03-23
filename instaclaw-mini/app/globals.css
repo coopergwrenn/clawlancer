@@ -1,32 +1,53 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-background: #0a0a0a;
+  --color-background: #000000;
   --color-foreground: #ffffff;
   --color-muted: #888888;
-  --color-card: #141414;
-  --color-card-hover: #1a1a1a;
-  --color-border: rgba(255, 255, 255, 0.12);
+  --color-card: #0a0a0a;
+  --color-card-hover: #111111;
+  --color-border: rgba(255, 255, 255, 0.15);
   --color-success: #22c55e;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
-  --color-accent: #c8a45e;
-  --color-accent-light: #d4b76a;
+  --color-accent: #DC6743;
+  --color-accent-dark: #c2553a;
   --color-wld: #1dc1a0;
   --color-usdc: #2775ca;
 }
 
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+  --muted: #888888;
+  --card: #0a0a0a;
+  --border: rgba(255, 255, 255, 0.15);
+  --success: #22c55e;
+  --error: #ef4444;
+  --accent: #DC6743;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+}
+
+/* ─── World App WebView ─────────────────────────── */
 html, body {
   overscroll-behavior: none;
   overflow: hidden;
   height: 100dvh;
-  background: var(--color-background);
-  color: var(--color-foreground);
+  background: var(--background);
+  color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Prevent iOS rubber-band scrolling */
 #__next {
   height: 100dvh;
   overflow: hidden;
@@ -34,9 +55,241 @@ html, body {
   flex-direction: column;
 }
 
-/* Scrollable content area */
 .scroll-area {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Glass Morphism ────────────────────────────── */
+.glass {
+  background: rgba(10, 10, 10, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.02)
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.glass-card:hover {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.03)
+  );
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.glass-button {
+  background: linear-gradient(
+    -75deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.05)
+  );
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.3) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.1) 0px 2px 4px 0px;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.glass-button:hover {
+  background: linear-gradient(
+    -75deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0.08)
+  );
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.3) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.15) 0px 4px 8px 0px;
+}
+
+.glass-button:active {
+  transform: scale(0.98);
+}
+
+/* ─── Primary CTA Button (Accent Gradient) ──────── */
+.btn-primary {
+  background: linear-gradient(180deg, rgba(220, 103, 67, 0.95) 0%, rgba(200, 85, 52, 1) 100%);
+  color: #ffffff;
+  box-shadow:
+    rgba(255, 255, 255, 0.25) 0px 1px 1px 0px inset,
+    rgba(220, 103, 67, 0.15) 0px -2px 4px 0px inset,
+    0 2px 8px rgba(220, 103, 67, 0.3);
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.btn-primary:hover {
+  box-shadow:
+    rgba(255, 255, 255, 0.25) 0px 1px 1px 0px inset,
+    rgba(220, 103, 67, 0.15) 0px -2px 4px 0px inset,
+    0 4px 16px rgba(220, 103, 67, 0.4);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* ─── WLD Accent Button ─────────────────────────── */
+.btn-wld {
+  background: linear-gradient(180deg, rgba(29, 193, 160, 0.95) 0%, rgba(22, 163, 135, 1) 100%);
+  color: #000000;
+  box-shadow:
+    rgba(255, 255, 255, 0.2) 0px 1px 1px 0px inset,
+    rgba(29, 193, 160, 0.15) 0px -2px 4px 0px inset,
+    0 2px 8px rgba(29, 193, 160, 0.3);
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.btn-wld:hover {
+  box-shadow:
+    rgba(255, 255, 255, 0.2) 0px 1px 1px 0px inset,
+    rgba(29, 193, 160, 0.15) 0px -2px 4px 0px inset,
+    0 4px 16px rgba(29, 193, 160, 0.4);
+}
+
+.btn-wld:active {
+  transform: scale(0.98);
+}
+
+/* ─── Status Badge ──────────────────────────────── */
+.status-badge {
+  background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ─── Status Dot (with glow) ────────────────────── */
+.status-dot-healthy {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+.status-dot-error {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+.status-dot-paused {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+/* ─── Snappy Easing ─────────────────────────────── */
+.transition-snappy {
+  transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* ─── Animations ────────────────────────────────── */
+@keyframes fade-in-up {
+  0%   { opacity: 0; transform: translateY(12px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes fade-in {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px 2px rgba(220, 103, 67, 0.25), 0 0 22px 5px rgba(220, 103, 67, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 16px 5px rgba(220, 103, 67, 0.35), 0 0 36px 10px rgba(220, 103, 67, 0.12);
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+@keyframes shimmer {
+  0%, 5%   { background-position: 100% 0; }
+  90%, 100% { background-position: 0% 0; }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+.animate-orb {
+  animation: orb-pulse 6s ease-in-out infinite;
+}
+
+/* Stagger children animations */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+
+/* Shimmer text — accent with golden highlight sweep */
+.shimmer-text {
+  color: transparent;
+  background: linear-gradient(
+    90deg,
+    #DC6743 0%, #DC6743 40%, #fde68a 50%, #DC6743 60%, #DC6743 100%
+  );
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3.5s linear infinite;
+}
+
+/* ─── Progress Bar ──────────────────────────────── */
+.progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #DC6743, #c2553a);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-fill-low {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.progress-fill-wld {
+  background: linear-gradient(90deg, #1dc1a0, #16a387);
 }

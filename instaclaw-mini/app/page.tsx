@@ -11,11 +11,9 @@ export default function RootPage() {
   const [inWorldApp, setInWorldApp] = useState(true);
 
   useEffect(() => {
-    // Wait a tick for MiniKit to install
     const timer = setTimeout(() => {
       setInWorldApp(MiniKit.isInstalled());
 
-      // Check if user already has a session
       fetch("/api/auth/me")
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
@@ -32,15 +30,20 @@ export default function RootPage() {
 
   if (!inWorldApp) {
     return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center gap-6 px-8 text-center">
-        <div className="text-5xl">🤠</div>
-        <h1 className="text-2xl font-bold">InstaClaw</h1>
-        <p className="text-muted">
-          Open this app in World App to get started with your free AI agent.
-        </p>
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-8 px-8 text-center">
+        <div className="relative">
+          <div className="animate-orb absolute -inset-8 rounded-full bg-accent/20 blur-2xl" />
+          <div className="relative text-6xl">🤠</div>
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">InstaClaw</h1>
+          <p className="mt-2 max-w-[280px] text-sm leading-relaxed text-muted">
+            Open this app inside World App to get your free AI agent.
+          </p>
+        </div>
         <a
           href="https://worldcoin.org/download"
-          className="rounded-xl bg-accent px-6 py-3 font-semibold text-black"
+          className="btn-primary rounded-2xl px-8 py-3.5 font-semibold"
         >
           Get World App
         </a>
@@ -50,8 +53,11 @@ export default function RootPage() {
 
   if (checking) {
     return (
-      <div className="flex h-[100dvh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4">
+        <div className="relative">
+          <div className="absolute -inset-3 animate-pulse rounded-full bg-accent/20 blur-xl" />
+          <div className="relative h-10 w-10 animate-[spin_1.2s_linear_infinite] rounded-full border-[3px] border-white/10 border-t-accent" />
+        </div>
       </div>
     );
   }

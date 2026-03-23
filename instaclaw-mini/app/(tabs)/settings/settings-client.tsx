@@ -8,6 +8,7 @@ import {
   ExternalLink,
   LogOut,
   Coins,
+  ChevronRight,
 } from "lucide-react";
 
 interface Delegation {
@@ -47,125 +48,136 @@ export default function SettingsClient({
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
-      <h1 className="text-xl font-bold">Settings</h1>
+      <h1 className="mb-1 text-xl font-bold tracking-tight">Settings</h1>
 
-      {/* Account */}
-      <section className="rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-3 text-sm font-semibold text-muted">Account</h2>
-        <div className="flex items-center gap-3">
-          <Wallet size={16} className="text-muted" />
-          <span className="text-sm font-mono">
-            {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-          </span>
+      {/* ── Account ── */}
+      <section className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
+        <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+          Account
+        </h2>
+        <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] p-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06]">
+            <Wallet size={16} className="text-muted" />
+          </div>
+          <div className="flex-1">
+            <p className="font-mono text-sm">
+              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+            </p>
+            <p className="text-[10px] text-muted">World Wallet</p>
+          </div>
         </div>
         {agent && (
-          <div className="mt-2 flex items-center gap-3">
-            <Shield size={16} className="text-success" />
-            <span className="text-sm">World ID Verified</span>
+          <div className="mt-2 flex items-center gap-3 rounded-xl bg-success/[0.06] p-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success/10">
+              <Shield size={16} className="text-success" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">World ID Verified</p>
+              <p className="text-[10px] text-success/70">Orb verification</p>
+            </div>
           </div>
         )}
       </section>
 
-      {/* Credits */}
-      <section className="rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-3 text-sm font-semibold text-muted">Credits</h2>
-        <p className="text-2xl font-bold">{agent?.credit_balance ?? 0}</p>
-        <p className="mb-3 text-xs text-muted">Current balance</p>
+      {/* ── Credits ── */}
+      <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-1" style={{ opacity: 0 }}>
+        <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+          Credits
+        </h2>
+        <div className="mb-4 flex items-end justify-between">
+          <div>
+            <p className="text-3xl font-bold">{agent?.credit_balance ?? 0}</p>
+            <p className="text-[10px] text-muted">Current balance</p>
+          </div>
+          <p className="text-xs text-muted">{agent?.model ?? "—"}</p>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => router.push("/home")}
-            className="flex-1 rounded-xl bg-wld py-2.5 text-sm font-bold text-black"
+            className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
           >
             Stake WLD
           </button>
           <button
-            onClick={() =>
-              window.open("https://instaclaw.io/billing", "_blank")
-            }
-            className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-border py-2.5 text-sm font-semibold"
+            onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+            className="glass-button flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
           >
-            Subscribe <ExternalLink size={12} />
+            Subscribe <ExternalLink size={11} />
           </button>
         </div>
       </section>
 
-      {/* WLD Delegation History */}
+      {/* ── WLD Delegations ── */}
       {delegations.length > 0 && (
-        <section className="rounded-2xl border border-border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold text-muted">
+        <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-2" style={{ opacity: 0 }}>
+          <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
             WLD Delegations
           </h2>
           <div className="flex flex-col gap-2">
             {delegations.slice(0, 5).map((d) => (
               <div
                 key={d.id}
-                className="flex items-center justify-between text-sm"
+                className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-2"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <Coins size={14} className="text-wld" />
-                  <span>{d.amount_wld} WLD</span>
+                  <span className="text-sm font-medium">{d.amount_wld} WLD</span>
                 </div>
-                <span className="text-xs text-muted">
-                  +{d.credits_granted} credits
-                </span>
+                <span className="text-xs text-muted">+{d.credits_granted} credits</span>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* Payment History */}
+      {/* ── Payments ── */}
       {payments.length > 0 && (
-        <section className="rounded-2xl border border-border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold text-muted">
+        <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-3" style={{ opacity: 0 }}>
+          <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
             Credit Purchases
           </h2>
           <div className="flex flex-col gap-2">
             {payments.slice(0, 5).map((p) => (
               <div
                 key={p.id}
-                className="flex items-center justify-between text-sm"
+                className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-2"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <CreditCard size={14} className="text-usdc" />
-                  <span>${p.amount_usdc} USDC</span>
+                  <span className="text-sm font-medium">${p.amount_usdc} USDC</span>
                 </div>
-                <span className="text-xs text-muted">
-                  +{p.credits} credits
-                </span>
+                <span className="text-xs text-muted">+{p.credits} credits</span>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* Links */}
-      <section className="rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-3 text-sm font-semibold text-muted">More</h2>
-        <button
-          onClick={() =>
-            window.open("https://instaclaw.io/dashboard", "_blank")
-          }
-          className="flex w-full items-center justify-between py-2 text-sm"
-        >
-          <span>Full dashboard on instaclaw.io</span>
-          <ExternalLink size={14} className="text-muted" />
-        </button>
-        <button
-          onClick={() =>
-            window.open("https://instaclaw.io/settings", "_blank")
-          }
-          className="flex w-full items-center justify-between py-2 text-sm"
-        >
-          <span>Link existing InstaClaw account</span>
-          <ExternalLink size={14} className="text-muted" />
-        </button>
+      {/* ── Links ── */}
+      <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0 }}>
+        <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+          More
+        </h2>
+        {[
+          { label: "Full dashboard", url: "https://instaclaw.io/dashboard" },
+          { label: "Link existing account", url: "https://instaclaw.io/settings" },
+        ].map(({ label, url }) => (
+          <button
+            key={label}
+            onClick={() => window.open(url, "_blank")}
+            className="flex w-full items-center justify-between rounded-lg px-1 py-3 text-sm transition-colors hover:bg-white/[0.03]"
+          >
+            <span>{label}</span>
+            <ChevronRight size={14} className="text-muted" />
+          </button>
+        ))}
       </section>
 
-      {/* Sign out */}
+      {/* ── Sign Out ── */}
       <button
         onClick={handleSignOut}
-        className="flex items-center justify-center gap-2 rounded-2xl border border-border py-3 text-sm font-medium text-error"
+        className="animate-fade-in-up glass-card flex items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-medium text-error stagger-5"
+        style={{ opacity: 0 }}
       >
         <LogOut size={16} />
         Sign out
