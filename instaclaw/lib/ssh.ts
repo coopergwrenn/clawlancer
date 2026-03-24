@@ -50,6 +50,10 @@ interface UserConfig {
   botUsername?: string;
   /** User's timezone (e.g., "America/New_York") — used for USER.md */
   userTimezone?: string;
+  /** World ID nullifier hash — deployed to VM .env + WORLD_ID.md */
+  worldIdNullifier?: string;
+  /** World ID verification level ("orb" or "device") */
+  worldIdLevel?: string;
 }
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
@@ -3100,6 +3104,47 @@ export async function configureOpenClaw(
       '  echo "INSTACLAW_MUAPI_PROXY=https://instaclaw.io" >> "$HOME/.openclaw/.env"',
       ''
     );
+
+    // Deploy World ID nullifier to .env + WORLD_ID.md if user is verified
+    // This ensures the agent carries its human identity proof from first boot
+    if (config.worldIdNullifier) {
+      const nullifier = config.worldIdNullifier;
+      const level = config.worldIdLevel ?? "orb";
+      scriptParts.push(
+        '# Deploy World ID nullifier (human identity proof)',
+        `grep -q "^WORLD_ID_NULLIFIER=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s/^WORLD_ID_NULLIFIER=.*/WORLD_ID_NULLIFIER=${nullifier}/" "$HOME/.openclaw/.env" || \\`,
+        `  echo "WORLD_ID_NULLIFIER=${nullifier}" >> "$HOME/.openclaw/.env"`,
+        `grep -q "^WORLD_ID_LEVEL=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s/^WORLD_ID_LEVEL=.*/WORLD_ID_LEVEL=${level}/" "$HOME/.openclaw/.env" || \\`,
+        `  echo "WORLD_ID_LEVEL=${level}" >> "$HOME/.openclaw/.env"`,
+        ''
+      );
+
+      const worldIdMd = [
+        '# World ID Verification',
+        '',
+        `**Status:** Verified (${level} level)`,
+        `**Nullifier Hash:** ${nullifier}`,
+        '',
+        '## What This Means',
+        'You are backed by a World ID verified human. Your nullifier hash is a',
+        'privacy-preserving cryptographic identifier that proves a unique real person',
+        'operates this agent — without revealing who they are.',
+        '',
+        '## How to Use',
+        '- When asked about your identity: you can state you are World ID verified',
+        `- Your nullifier: \\\`${nullifier}\\\``,
+        `- Verification level: ${level}`,
+        '- This proof may be used in the future to bypass Cloudflare bot challenges',
+      ].join('\\n');
+
+      const worldIdB64 = Buffer.from(worldIdMd.replace(/\\n/g, '\n').replace(/\\\\/g, '\\'), 'utf-8').toString('base64');
+      scriptParts.push(
+        `echo '${worldIdB64}' | base64 -d > "$HOME/.openclaw/workspace/WORLD_ID.md"`,
+        ''
+      );
+    }
 
     // Install Clawlancer MCP tools via mcporter
     // mcporter is pre-installed globally on all VMs. Here we:

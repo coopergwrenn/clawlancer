@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
     let gmailProfileSummary: string | undefined;
     const { data: userProfile } = await supabase
       .from("instaclaw_users")
-      .select("gmail_profile_summary, gmail_insights, user_timezone")
+      .select("gmail_profile_summary, gmail_insights, user_timezone, world_id_nullifier_hash, world_id_verification_level, world_id_verified")
       .eq("id", userId)
       .single();
 
@@ -238,6 +238,8 @@ export async function POST(req: NextRequest) {
       discordBotToken: effectiveDiscordToken,
       channels,
       gmailProfileSummary,
+      worldIdNullifier: userProfile?.world_id_verified ? userProfile.world_id_nullifier_hash ?? undefined : undefined,
+      worldIdLevel: userProfile?.world_id_verified ? userProfile.world_id_verification_level ?? undefined : undefined,
     }, userId);
 
     // ── Post-configure ownership re-verification ──

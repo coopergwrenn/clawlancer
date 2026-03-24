@@ -156,7 +156,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Update user record
+    // Update user record — store full proof payload for future Cloudflare integration
     const { error: updateError } = await supabase
       .from("instaclaw_users")
       .update({
@@ -164,6 +164,7 @@ export async function POST(req: Request) {
         world_id_nullifier_hash: nullifier_hash,
         world_id_verified_at: new Date().toISOString(),
         world_id_verification_level: verification_level ?? "orb",
+        world_id_proof_json: body,
       })
       .eq("id", userId);
 
@@ -265,7 +266,7 @@ async function propagateVerificationToVM(
   userId: string,
   supabase: ReturnType<typeof getSupabase>
 ) {
-  // Get user's VM
+  // Get user's VM and user's nullifier
   const { data: vm } = await supabase
     .from("instaclaw_vms")
     .select("id, ip_address, ssh_port, ssh_user, system_prompt")
@@ -274,8 +275,18 @@ async function propagateVerificationToVM(
 
   if (!vm) return; // No VM deployed yet — nothing to push
 
-  const { updateSystemPrompt } = await import("@/lib/ssh");
+  const { data: user } = await supabase
+    .from("instaclaw_users")
+    .select("world_id_nullifier_hash, world_id_verification_level")
+    .eq("id", userId)
+    .single();
 
+  const nullifier = user?.world_id_nullifier_hash ?? "unknown";
+  const level = user?.world_id_verification_level ?? "orb";
+
+  const { updateSystemPrompt, connectSSH } = await import("@/lib/ssh");
+
+  // 1. Append World ID block to system prompt
   const verifiedBlock = [
     "",
     "---",
@@ -288,18 +299,64 @@ async function propagateVerificationToVM(
 
   const currentPrompt = vm.system_prompt ?? "";
 
-  // Don't append if already present
-  if (currentPrompt.includes("## World ID Verified")) return;
+  if (!currentPrompt.includes("## World ID Verified")) {
+    const newPrompt = currentPrompt + verifiedBlock;
+    await updateSystemPrompt(vm, newPrompt);
+    await supabase
+      .from("instaclaw_vms")
+      .update({ system_prompt: newPrompt })
+      .eq("id", vm.id);
+  }
 
-  const newPrompt = currentPrompt + verifiedBlock;
+  // 2. Deploy WORLD_ID.md to workspace + nullifier to .env
+  try {
+    const ssh = await connectSSH(vm);
+    try {
+      const worldIdMd = [
+        "# World ID Verification",
+        "",
+        `**Status:** Verified (${level} level)`,
+        `**Nullifier Hash:** ${nullifier}`,
+        `**Verified At:** ${new Date().toISOString()}`,
+        "",
+        "## What This Means",
+        "You are backed by a World ID verified human. Your nullifier hash is a",
+        "privacy-preserving cryptographic identifier that proves a unique real person",
+        "operates this agent — without revealing who they are.",
+        "",
+        "## How to Use",
+        "- When asked about your identity: you can state you are World ID verified",
+        `- Your nullifier: \`${nullifier}\``,
+        "- Verification level: " + level,
+        "- This proof may be used in the future to bypass Cloudflare bot challenges",
+      ].join("\n");
 
-  await updateSystemPrompt(vm, newPrompt);
+      const worldIdMdB64 = Buffer.from(worldIdMd, "utf-8").toString("base64");
 
-  // Update DB to match
-  await supabase
-    .from("instaclaw_vms")
-    .update({ system_prompt: newPrompt })
-    .eq("id", vm.id);
+      await ssh.execCommand(
+        `echo '${worldIdMdB64}' | base64 -d > "$HOME/.openclaw/workspace/WORLD_ID.md"`
+      );
+
+      // Deploy nullifier to .env
+      await ssh.execCommand(
+        `grep -q "^WORLD_ID_NULLIFIER=" "$HOME/.openclaw/.env" 2>/dev/null && ` +
+        `sed -i "s/^WORLD_ID_NULLIFIER=.*/WORLD_ID_NULLIFIER=${nullifier}/" "$HOME/.openclaw/.env" || ` +
+        `echo "WORLD_ID_NULLIFIER=${nullifier}" >> "$HOME/.openclaw/.env"`
+      );
+      await ssh.execCommand(
+        `grep -q "^WORLD_ID_LEVEL=" "$HOME/.openclaw/.env" 2>/dev/null && ` +
+        `sed -i "s/^WORLD_ID_LEVEL=.*/WORLD_ID_LEVEL=${level}/" "$HOME/.openclaw/.env" || ` +
+        `echo "WORLD_ID_LEVEL=${level}" >> "$HOME/.openclaw/.env"`
+      );
+    } finally {
+      ssh.dispose();
+    }
+  } catch (err) {
+    logger.warn("Failed to deploy WORLD_ID.md to VM (non-fatal)", {
+      error: String(err),
+      vmId: vm.id,
+    });
+  }
 }
 
 /**
