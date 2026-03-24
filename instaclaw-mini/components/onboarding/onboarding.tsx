@@ -284,7 +284,7 @@ export default function Onboarding() {
       let verifyResult;
       try {
         verifyResult = await MiniKit.commandsAsync.verify({
-          action: "instaclaw-verify-human",
+          action: "verify-instaclaw-agent",
           verification_level: VerificationLevel.Orb,
         });
         console.log("[Onboarding] World ID verify result:", JSON.stringify(verifyResult.finalPayload));

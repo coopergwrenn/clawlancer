@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const verifyRes = await verifyCloudProof(
       payload,
       appId,
-      "instaclaw-verify-human"
+      "verify-instaclaw-agent"
     );
 
     if (!verifyRes.success) {
