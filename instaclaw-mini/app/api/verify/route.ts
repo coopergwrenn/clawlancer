@@ -15,17 +15,37 @@ export async function POST(req: NextRequest) {
     const session = await requireSession();
     const payload = await req.json();
 
-    // Verify proof with World ID cloud
     const appId = process.env.NEXT_PUBLIC_APP_ID as `app_${string}`;
-    const verifyRes = await verifyCloudProof(
-      payload,
-      appId,
-      "verify-instaclaw-agent"
-    );
+    const action = "verify-instaclaw-agent";
+
+    console.log("[Verify] App ID:", appId);
+    console.log("[Verify] Action:", action);
+    console.log("[Verify] Payload keys:", Object.keys(payload));
+    console.log("[Verify] Payload:", JSON.stringify(payload));
+
+    // Verify proof with World ID cloud
+    let verifyRes: { success: boolean; [key: string]: unknown };
+    try {
+      verifyRes = await verifyCloudProof(payload, appId, action) as { success: boolean; [key: string]: unknown };
+      console.log("[Verify] verifyCloudProof response:", JSON.stringify(verifyRes));
+    } catch (cloudErr) {
+      console.error("[Verify] verifyCloudProof threw:", cloudErr);
+      return NextResponse.json(
+        { error: "Cloud proof verification threw", detail: cloudErr instanceof Error ? cloudErr.message : JSON.stringify(cloudErr) },
+        { status: 500 }
+      );
+    }
 
     if (!verifyRes.success) {
+      console.error("[Verify] Proof invalid. Full response:", JSON.stringify(verifyRes));
       return NextResponse.json(
-        { error: "Verification failed" },
+        {
+          error: "Verification failed",
+          detail: JSON.stringify(verifyRes),
+          appId,
+          action,
+          payloadKeys: Object.keys(payload),
+        },
         { status: 400 }
       );
     }
