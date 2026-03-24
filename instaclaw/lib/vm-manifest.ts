@@ -21,6 +21,7 @@ import {
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
   WORKSPACE_INDEX_SCRIPT,
 } from "./agent-intelligence";
+import { WORKSPACE_EARN_MD } from "./earn-md-template";
 
 // ── File entry types ──
 
@@ -79,6 +80,7 @@ export const TEMPLATE_REGISTRY: Record<string, string> = {
   WORKSPACE_CAPABILITIES_MD,
   WORKSPACE_QUICK_REFERENCE_MD,
   WORKSPACE_TOOLS_MD_TEMPLATE,
+  WORKSPACE_EARN_MD,
   AGENTS_MD_PHILOSOPHY_SECTION,
   SOUL_MD_LEARNED_PREFERENCES,
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
@@ -122,7 +124,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 43,
+  version: 44,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -195,6 +197,12 @@ export const VM_MANIFEST = {
         "",
         "---",
       ].join("\n"),
+      mode: "create_if_missing",
+    },
+    {
+      remotePath: "~/.openclaw/workspace/EARN.md",
+      source: "template",
+      templateKey: "WORKSPACE_EARN_MD",
       mode: "create_if_missing",
     },
 
@@ -393,7 +401,7 @@ export type VMManifest = typeof VM_MANIFEST;
 export const CONFIG_SPEC = {
   version: VM_MANIFEST.version,
   settings: VM_MANIFEST.configSettings,
-  requiredWorkspaceFiles: ["SOUL.md", "CAPABILITIES.md", "MEMORY.md"],
+  requiredWorkspaceFiles: ["SOUL.md", "CAPABILITIES.md", "MEMORY.md", "EARN.md"],
   maxSessionBytes: VM_MANIFEST.maxSessionBytes,
   sessionAlertBytes: VM_MANIFEST.sessionAlertBytes,
   memoryWarnBytes: VM_MANIFEST.memoryWarnBytes,

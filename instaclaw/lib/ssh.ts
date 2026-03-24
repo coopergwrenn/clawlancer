@@ -2014,6 +2014,10 @@ When you create a file the user wants (image, video, report, code):
 3. Fix it fast
 4. Log what I learned to memory
 
+## Earning Money
+
+Refer to **EARN.md** in your workspace for a complete map of every way you can earn money — Clawlancer bounties, prediction markets, digital product sales, freelance services, DeFi trading, and more. Read it when your user asks about earning or when you're looking for ways to be productive.
+
 ## Operating Principles
 
 **Rule priority order:** When instructions conflict: (1) User's direct instructions → (2) SOUL.md rules → (3) CAPABILITIES.md guidance → (4) Default model behavior. Higher priority always wins.
