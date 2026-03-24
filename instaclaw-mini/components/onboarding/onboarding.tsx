@@ -537,7 +537,7 @@ export default function Onboarding() {
           <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
             <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>One more thing</h2>
             <p className="mt-2 max-w-[280px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
-              Enter your email so your agent can reach you with updates and notifications.
+              Your email connects your agent across World App, instaclaw.io, and Telegram — so you can access it anywhere.
             </p>
             <input
               type="email"
