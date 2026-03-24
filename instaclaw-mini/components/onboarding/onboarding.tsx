@@ -734,20 +734,19 @@ export default function Onboarding() {
               </div>
             </div>
 
-            {/* $INSTACLAW option */}
-            <button
-              onClick={() => window.location.href = "https://instaclaw.io/billing"}
-              className="mt-3 w-full max-w-[300px] rounded-xl px-5 py-4 text-left transition-all"
-              style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.08)" }}
+            {/* $INSTACLAW option — coming soon */}
+            <div
+              className="mt-3 w-full max-w-[300px] rounded-xl px-5 py-4 opacity-50"
+              style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.06)" }}
             >
-              <div className="flex justify-between text-sm" style={{ color: "#333334" }}>
-                <span style={{ color: "#6b6b6b" }}>Or stake</span>
-                <span className="font-semibold">$INSTACLAW</span>
+              <div className="flex justify-between text-sm" style={{ color: "#999" }}>
+                <span>Stake $INSTACLAW</span>
+                <span className="font-semibold">Coming Soon</span>
               </div>
-              <p className="mt-1 text-[11px]" style={{ color: "#6b6b6b" }}>
-                Stake $INSTACLAW tokens at market rate via instaclaw.io
+              <p className="mt-1 text-[11px]" style={{ color: "#aaa" }}>
+                Base chain staking launching this week
               </p>
-            </button>
+            </div>
 
             {error && (
               <div className="mt-4 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
