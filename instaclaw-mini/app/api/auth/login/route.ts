@@ -83,8 +83,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (!user) {
-      user = await createWorldUser(walletAddress);
-      console.log("[Login] Created new user:", user.id);
+      try {
+        user = await createWorldUser(walletAddress);
+        console.log("[Login] Created new user:", user.id);
+      } catch (createErr) {
+        console.error("[Login] createWorldUser failed:", createErr);
+        return NextResponse.json(
+          { error: "Failed to create account", detail: createErr instanceof Error ? createErr.message : JSON.stringify(createErr) },
+          { status: 500 }
+        );
+      }
     } else {
       console.log("[Login] Found existing user:", user.id);
     }

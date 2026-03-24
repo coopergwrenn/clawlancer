@@ -120,7 +120,13 @@ export async function createWorldUser(walletAddress: string) {
     })
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    // Include the full Supabase error with column info
+    const fullErr = new Error(
+      `createWorldUser failed: ${error.code} ${error.message} | ${error.details} | hint: ${error.hint}`
+    );
+    throw fullErr;
+  }
   return data;
 }
 
