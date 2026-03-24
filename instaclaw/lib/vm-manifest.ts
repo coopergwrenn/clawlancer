@@ -122,7 +122,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 42,
+  version: 43,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -362,7 +362,7 @@ export const VM_MANIFEST = {
     "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
     "StartLimitIntervalSec": "300", // 5-minute window for burst counting
     "StartLimitAction": "stop",    // Stop unit after burst exceeded (was: none → infinite loop)
-    "ExecStartPre": "/bin/bash -c 'for f in /tmp/openclaw/openclaw-*.log; do [ -f \"$f\" ] && mv \"$f\" \"${f%%.log}-$(date +%%H%%M%%S).log.bak\"; done; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
+    "ExecStartPre": "/bin/bash -c 'find /tmp/openclaw/ -name \"*.log\" -mmin +60 -delete 2>/dev/null; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
     "MemoryHigh": "3G",             // Soft limit: kernel throttles at 3GB (gateway slows, doesn't die)
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
     "TasksMax": "75",               // Max threads+processes (Node ~11 + Chrome ~50 + small headroom). Was 150 — reduced to prevent runaway agent forks
