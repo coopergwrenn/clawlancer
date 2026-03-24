@@ -281,12 +281,24 @@ export default function Onboarding() {
         return;
       }
 
-      const verifyResult = await MiniKit.commandsAsync.verify({
-        action: "instaclaw-verify-human",
-        verification_level: VerificationLevel.Orb,
-      });
+      let verifyResult;
+      try {
+        verifyResult = await MiniKit.commandsAsync.verify({
+          action: "instaclaw-verify-human",
+          verification_level: VerificationLevel.Orb,
+        });
+        console.log("[Onboarding] World ID verify result:", JSON.stringify(verifyResult.finalPayload));
+      } catch (verifyErr) {
+        console.error("[Onboarding] World ID verify threw:", verifyErr);
+        // Verification modal failed/cancelled — show fallback
+        setError(`Verification error: ${verifyErr instanceof Error ? verifyErr.message : JSON.stringify(verifyErr)}`);
+        setStep("verify-failed");
+        return;
+      }
 
       if (verifyResult.finalPayload.status !== "success") {
+        console.log("[Onboarding] World ID verify not success:", verifyResult.finalPayload.status);
+        setError(`Verification returned: ${JSON.stringify(verifyResult.finalPayload)}`);
         setStep("verify-failed");
         return;
       }
@@ -298,6 +310,9 @@ export default function Onboarding() {
       });
 
       if (!verifyRes.ok) {
+        const verifyErrText = await verifyRes.text().catch(() => "");
+        console.error("[Onboarding] /api/verify failed:", verifyRes.status, verifyErrText);
+        setError(`Verify API ${verifyRes.status}: ${verifyErrText}`);
         setStep("verify-failed");
         return;
       }
@@ -422,43 +437,84 @@ export default function Onboarding() {
     setStep("delegate");
   }
 
-  // ── Fallbacks ──
+  // ── Fallbacks for non-Orb users ──
+
   function handleGetVerified() {
-    window.open("https://worldcoin.org/download", "_blank");
+    // Deep link into World App's verification/Orb finder flow
+    // Uses the World App's native verify screen since we're already inside the app
+    // TODO: Replace with World Grow referral link once Cooper provides invite code
+    // Format will be: https://worldcoin.org/join/{INVITE_CODE}
+    const appId = process.env.NEXT_PUBLIC_APP_ID || "";
+    window.location.href = `https://worldcoin.org/verify?mini_app_id=${appId}`;
   }
 
   function handleSubscribeInstead() {
-    window.open("https://instaclaw.io/billing", "_blank");
+    window.location.href = "https://instaclaw.io/billing";
   }
 
   async function handleBuyCredits() {
-    const initRes = await fetch("/api/pay/initiate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pack: "50" }),
-    });
-    const { reference } = await initRes.json();
+    setError(null);
+    try {
+      // First ensure user account exists (email was collected earlier)
+      if (!walletPayload) {
+        setError("Please sign in first.");
+        return;
+      }
 
-    const payResult = await MiniKit.commandsAsync.pay({
-      reference,
-      to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS!,
-      tokens: [{
-        symbol: Tokens.USDC,
-        token_amount: String(tokenToDecimals(5, Tokens.USDC)),
-      }],
-      description: "InstaClaw Starter credit pack (50 credits)",
-    });
-
-    if (payResult.finalPayload.status === "success") {
-      await fetch("/api/pay/confirm", {
+      // Create account if needed (skip World ID, pay directly)
+      const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reference,
-          transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
-        }),
+        body: JSON.stringify({ ...walletPayload, email: email.trim().toLowerCase() }),
       });
-      setStep("ready");
+      if (!loginRes.ok) {
+        const errText = await loginRes.text().catch(() => "");
+        setError(`Account creation failed: ${errText}`);
+        return;
+      }
+
+      // Initiate credit pack purchase
+      const initRes = await fetch("/api/pay/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pack: "50" }),
+      });
+
+      if (!initRes.ok) {
+        const errText = await initRes.text().catch(() => "");
+        setError(`Payment setup failed: ${errText}`);
+        return;
+      }
+
+      const { reference } = await initRes.json();
+
+      const payResult = await MiniKit.commandsAsync.pay({
+        reference,
+        to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS!,
+        tokens: [{
+          symbol: Tokens.USDC,
+          token_amount: String(tokenToDecimals(5, Tokens.USDC)),
+        }],
+        description: "InstaClaw Starter credit pack — 50 credits",
+      });
+
+      if (payResult.finalPayload.status === "success") {
+        await fetch("/api/pay/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reference,
+            transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
+          }),
+        });
+        setStep("ready");
+      } else {
+        setError("Payment was cancelled.");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      console.error("[Onboarding] Buy credits error:", msg);
+      setError(`Payment error: ${msg}`);
     }
   }
 
@@ -588,13 +644,18 @@ export default function Onboarding() {
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#DC6743" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
             <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Verification needed</h2>
-            <p className="mt-2 max-w-[260px] text-center text-[13px] leading-relaxed" style={{ color: "#6b6b6b" }}>
-              Get Orb verified to unlock your free AI agent, or subscribe to get started right away.
+            <p className="mt-2 max-w-[300px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
+              Get Orb verified to claim your free AI agent — or skip verification and pay with USDC to get started now.
             </p>
+            {error && (
+              <div className="mt-4 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <p className="text-xs text-center" style={{ color: "#ef4444" }}>{error}</p>
+              </div>
+            )}
           </div>
           <div className="px-7 flex flex-col gap-2.5" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
             <button onClick={handleGetVerified} className="btn-primary w-full rounded-[28px] font-semibold" style={{ height: "56px" }}>Get Orb Verified</button>
-            <button onClick={handleBuyCredits} className="w-full rounded-[28px] font-semibold" style={{ height: "52px", background: "rgba(0,0,0,0.04)", color: "#333334", border: "1px solid rgba(0,0,0,0.08)" }}>Buy credits with USDC</button>
+            <button onClick={handleBuyCredits} className="w-full rounded-[28px] font-semibold" style={{ height: "52px", background: "rgba(0,0,0,0.04)", color: "#333334", border: "1px solid rgba(0,0,0,0.08)" }}>Buy 50 credits — $5 USDC</button>
             <button onClick={handleSubscribeInstead} className="py-2 text-sm underline underline-offset-2" style={{ color: "#6b6b6b" }}>Subscribe on instaclaw.io instead</button>
           </div>
         </>
