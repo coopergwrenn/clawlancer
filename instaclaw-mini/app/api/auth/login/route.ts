@@ -84,7 +84,8 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       try {
-        user = await createWorldUser(walletAddress);
+        const email = payload.email as string | undefined;
+        user = await createWorldUser(walletAddress, email);
         console.log("[Login] Created new user:", user.id);
       } catch (createErr) {
         console.error("[Login] createWorldUser failed:", createErr);

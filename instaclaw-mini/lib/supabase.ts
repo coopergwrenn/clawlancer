@@ -111,17 +111,17 @@ export async function getUserByNullifier(nullifierHash: string) {
   return data;
 }
 
-export async function createWorldUser(walletAddress: string) {
+export async function createWorldUser(walletAddress: string, email?: string) {
   const { data, error } = await supabase()
     .from("instaclaw_users")
     .insert({
       world_wallet_address: walletAddress,
       auth_provider: "world",
+      email: email || null,
     })
     .select()
     .single();
   if (error) {
-    // Include the full Supabase error with column info
     const fullErr = new Error(
       `createWorldUser failed: ${error.code} ${error.message} | ${error.details} | hint: ${error.hint}`
     );

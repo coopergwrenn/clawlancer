@@ -4,7 +4,7 @@ import { MiniKit, tokenToDecimals, Tokens, VerificationLevel } from "@worldcoin/
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-type Step = "welcome" | "verifying" | "verify-failed" | "duplicate-found" | "delegate" | "delegating" | "ready";
+type Step = "welcome" | "verifying" | "collect-email" | "verify-failed" | "duplicate-found" | "delegate" | "delegating" | "ready";
 
 const MARQUEE_ROW_1 = [
   "Personal Assistant", "Email Manager", "Scheduling Bot", "Content Creator",
@@ -225,8 +225,12 @@ export default function Onboarding() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("welcome");
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [walletPayload, setWalletPayload] = useState<Record<string, unknown> | null>(null);
 
-  // ── TAP 1: Verify + Sign In ──
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  // ── TAP 1a: Wallet Auth → collect email ──
   async function handleGetAgent() {
     setStep("verifying");
     setError(null);
@@ -246,16 +250,34 @@ export default function Onboarding() {
         return;
       }
 
+      // Store wallet payload and collect email before creating account
+      setWalletPayload(authResult.finalPayload as unknown as Record<string, unknown>);
+      setStep("collect-email");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : JSON.stringify(err);
+      console.error("[Onboarding] Wallet auth error:", errMsg);
+      setError(`Error: ${errMsg}`);
+      setStep("welcome");
+    }
+  }
+
+  // ── TAP 1b: Email collected → login + verify ──
+  async function handleEmailContinue() {
+    if (!walletPayload || !isValidEmail) return;
+    setStep("verifying");
+    setError(null);
+    try {
+      // Create account with email
       const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(authResult.finalPayload),
+        body: JSON.stringify({ ...walletPayload, email: email.trim().toLowerCase() }),
       });
       if (!loginRes.ok) {
         const loginErrText = await loginRes.text().catch(() => "no body");
         console.error("[Onboarding] Login failed:", loginRes.status, loginErrText);
         setError(`Login ${loginRes.status}: ${loginErrText}`);
-        setStep("welcome");
+        setStep("collect-email");
         return;
       }
 
@@ -504,6 +526,43 @@ export default function Onboarding() {
               style={{ height: "56px" }}
             >
               Claim my agent
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── Collect Email ── */}
+      {step === "collect-email" && (
+        <>
+          <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
+            <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>One more thing</h2>
+            <p className="mt-2 max-w-[280px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
+              Enter your email so your agent can reach you with updates and notifications.
+            </p>
+            <input
+              type="email"
+              inputMode="email"
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="mt-6 w-full max-w-[300px] rounded-xl px-4 py-3.5 text-center text-[15px] focus:outline-none"
+              style={{ background: "rgba(0,0,0,0.03)", border: `1px solid ${isValidEmail ? "rgba(220,103,67,0.4)" : "rgba(0,0,0,0.1)"}`, color: "#333334", transition: "border-color 0.2s" }}
+            />
+            {error && (
+              <div className="mt-3 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <p className="text-xs" style={{ color: "#ef4444" }}>{error}</p>
+              </div>
+            )}
+          </div>
+          <div className="px-7 pt-4" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
+            <button
+              onClick={handleEmailContinue}
+              disabled={!isValidEmail}
+              className="btn-primary w-full rounded-[28px] text-base font-semibold disabled:opacity-40"
+              style={{ height: "56px" }}
+            >
+              Continue
             </button>
           </div>
         </>
