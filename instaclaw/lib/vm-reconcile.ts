@@ -12,7 +12,7 @@
  *   - Dry run support: dryRun=true logs what would change without writing
  */
 
-import { VM_MANIFEST, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
+import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, type VMRecord } from "./ssh";
 import { logger } from "./logger";
 import * as fs from "fs";
@@ -55,6 +55,9 @@ export async function reconcileVM(
     // Some VMs were provisioned with {"_placeholder": true} which fails
     // OpenClaw's strict config validator, blocking all config set operations.
     await stepRemovePlaceholder(ssh, result, dryRun);
+
+    // ── Step 0c: Workspace integrity — ensure critical files exist ──
+    await stepWorkspaceIntegrity(ssh, result, dryRun);
 
     // ── Step 1: Config settings ──
     await stepConfigSettings(ssh, manifest, result, dryRun);
@@ -146,6 +149,102 @@ async function stepBackup(ssh: SSHConnection): Promise<void> {
     'fi',
     'find "$HOME/.openclaw/backups" -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \\; 2>/dev/null || true',
   ].join(' && '));
+}
+
+/**
+ * Step 0c: Workspace integrity check.
+ * Verifies that critical workspace files (SOUL.md, CAPABILITIES.md, MEMORY.md)
+ * exist. If missing, creates a minimal version so subsequent reconciler steps
+ * (append_if_marker_absent, insert_before_marker) don't silently fail.
+ *
+ * This catches VMs where configureOpenClaw() partially failed but the VM was
+ * still marked as ready.
+ */
+async function stepWorkspaceIntegrity(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const workspaceDir = "$HOME/.openclaw/workspace";
+
+  // Check which required files are missing in a single SSH call
+  const checkCommands = CONFIG_SPEC.requiredWorkspaceFiles
+    .map((f) => `test -f ${workspaceDir}/${f} && echo "OK:${f}" || echo "MISSING:${f}"`)
+    .join(" && ");
+  const checkResult = await ssh.execCommand(checkCommands);
+
+  const missing: string[] = [];
+  for (const line of checkResult.stdout.split("\n")) {
+    const m = line.match(/^MISSING:(.+)$/);
+    if (m) missing.push(m[1]);
+  }
+
+  if (missing.length === 0) {
+    result.alreadyCorrect.push("workspace: all critical files present");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] workspace: would create missing files: ${missing.join(", ")}`);
+    return;
+  }
+
+  // Create missing files with minimal content so append/insert steps work
+  const MINIMAL_TEMPLATES: Record<string, string> = {
+    "SOUL.md": [
+      "# SOUL.md — Who You Are",
+      "",
+      "_You're not a chatbot. You're becoming someone._",
+      "",
+      "## My Identity",
+      "",
+      "Your identity develops naturally through your conversations.",
+      "",
+      "## Hard Boundaries",
+      "",
+      "- Private things stay private. Period.",
+      "- When in doubt, ask before acting externally.",
+      "- **NEVER run `openclaw update` or `npm install -g openclaw`.** Your platform version is managed by InstaClaw.",
+      "",
+    ].join("\n"),
+    "CAPABILITIES.md": [
+      "# CAPABILITIES.md — What You Can Do",
+      "",
+      "_This file is managed by InstaClaw. It will be updated automatically._",
+      "",
+    ].join("\n"),
+    "MEMORY.md": [
+      "# MEMORY.md - Long-Term Memory",
+      "",
+      "_Start capturing what matters here. Decisions, context, things to remember._",
+      "",
+      "---",
+    ].join("\n"),
+  };
+
+  await ssh.execCommand(`mkdir -p ${workspaceDir}`);
+
+  for (const fileName of missing) {
+    const template = MINIMAL_TEMPLATES[fileName];
+    if (!template) {
+      result.errors.push(`workspace: ${fileName} missing, no template available`);
+      continue;
+    }
+
+    const b64 = Buffer.from(template, "utf-8").toString("base64");
+    const writeResult = await ssh.execCommand(
+      `echo '${b64}' | base64 -d > ${workspaceDir}/${fileName}`
+    );
+
+    if (writeResult.code === 0) {
+      result.fixed.push(`workspace: created missing ${fileName}`);
+      logger.warn(`[reconcile] Created missing workspace file: ${fileName}`, {
+        note: "configureOpenClaw() may have partially failed on this VM",
+      });
+    } else {
+      result.errors.push(`workspace: failed to create ${fileName}: ${writeResult.stderr}`);
+    }
+  }
 }
 
 async function stepConfigSettings(
@@ -297,14 +396,18 @@ async function deployFileEntry(
     case "append_if_marker_absent": {
       const marker = (entry as { marker: string }).marker;
 
-      // For AGENTS.md: only run if the file exists (legacy VMs only)
-      if (remotePath.includes('AGENTS.md')) {
-        const existsCheck = await ssh.execCommand(
-          `test -f ${remotePath} && echo EXISTS || echo MISSING`
-        );
-        if (existsCheck.stdout.trim() === 'MISSING') {
-          return; // Skip — file doesn't exist on this VM
+      // Check if target file exists first
+      const fileExistsCheck = await ssh.execCommand(
+        `test -f ${remotePath} && echo EXISTS || echo MISSING`
+      );
+      if (fileExistsCheck.stdout.trim() === 'MISSING') {
+        // For AGENTS.md: skip entirely (legacy VMs only)
+        if (remotePath.includes('AGENTS.md')) {
+          return;
         }
+        // For other files: log error — stepWorkspaceIntegrity should have created it
+        result.errors.push(`${fileName}: target file missing, cannot append (${marker})`);
+        return;
       }
 
       const markerCheck = await ssh.execCommand(
@@ -342,6 +445,16 @@ async function deployFileEntry(
 
     case "insert_before_marker": {
       const marker = (entry as { marker: string }).marker;
+
+      // Check if target file exists first
+      const insertFileCheck = await ssh.execCommand(
+        `test -f ${remotePath} && echo EXISTS || echo MISSING`
+      );
+      if (insertFileCheck.stdout.trim() === 'MISSING') {
+        result.errors.push(`${fileName}: target file missing, cannot insert before ${marker}`);
+        return;
+      }
+
       const markerCheck = await ssh.execCommand(
         `grep -qF "Operating Principles" ${remotePath} 2>/dev/null && echo PRESENT || echo ABSENT`
       );
