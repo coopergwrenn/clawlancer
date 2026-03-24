@@ -710,32 +710,53 @@ export default function Onboarding() {
       {step === "delegate" && (
         <>
           <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
-            <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Activate with 5 WLD</h2>
-            <p className="mt-2 max-w-[260px] text-center text-[13px] leading-relaxed" style={{ color: "#6b6b6b" }}>
-              Stake 5 WLD from your grant to power your agent for ~3 days. That&apos;s about $1.50 — tokens you got for free.
+            <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Activate your agent</h2>
+            <p className="mt-2 max-w-[300px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
+              Stake WLD or $INSTACLAW to power your agent. 150 credits gets you a few days of conversations, tokens you got for free.
             </p>
-            <div className="mt-6 w-full max-w-[280px] rounded-xl px-5 py-4" style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.08)" }}>
+
+            {/* WLD option */}
+            <div
+              className="mt-6 w-full max-w-[300px] rounded-xl px-5 py-4 cursor-pointer transition-all"
+              style={{ background: "rgba(0,0,0,0.02)", border: "2px solid rgba(220,103,67,0.4)" }}
+            >
               <div className="flex justify-between text-sm" style={{ color: "#333334" }}>
                 <span style={{ color: "#6b6b6b" }}>Credits</span>
-                <span className="font-semibold">25 credits</span>
+                <span className="font-semibold">150 credits</span>
               </div>
-              <div className="mt-2.5 flex justify-between text-sm" style={{ color: "#333334" }}>
+              <div className="mt-2 flex justify-between text-sm" style={{ color: "#333334" }}>
                 <span style={{ color: "#6b6b6b" }}>Duration</span>
                 <span className="font-semibold">~3 days</span>
               </div>
-              <div className="mt-2.5 flex justify-between text-sm" style={{ color: "#333334" }}>
+              <div className="mt-2 flex justify-between text-sm" style={{ color: "#333334" }}>
                 <span style={{ color: "#6b6b6b" }}>Cost</span>
-                <span className="font-semibold" style={{ color: "#1dc1a0" }}>5 WLD</span>
+                <span className="font-semibold" style={{ color: "#DC6743" }}>5 WLD (~$1.50)</span>
               </div>
             </div>
+
+            {/* $INSTACLAW option */}
+            <button
+              onClick={() => window.location.href = "https://instaclaw.io/billing"}
+              className="mt-3 w-full max-w-[300px] rounded-xl px-5 py-4 text-left transition-all"
+              style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.08)" }}
+            >
+              <div className="flex justify-between text-sm" style={{ color: "#333334" }}>
+                <span style={{ color: "#6b6b6b" }}>Or stake</span>
+                <span className="font-semibold">$INSTACLAW</span>
+              </div>
+              <p className="mt-1 text-[11px]" style={{ color: "#6b6b6b" }}>
+                Stake $INSTACLAW tokens at market rate via instaclaw.io
+              </p>
+            </button>
+
             {error && (
               <div className="mt-4 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
+                <p className="text-sm text-center" style={{ color: "#ef4444" }}>{error}</p>
               </div>
             )}
           </div>
           <div className="px-7" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
-            <button onClick={handleDelegate} className="btn-wld w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
+            <button onClick={handleDelegate} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
               Activate with 5 WLD
             </button>
           </div>
@@ -746,8 +767,8 @@ export default function Onboarding() {
       {step === "delegating" && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in" style={{ opacity: 0 }}>
           <div className="relative mb-5">
-            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(29,193,160,0.15)" }} />
-            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#1dc1a0" }} />
+            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(220,103,67,0.15)" }} />
+            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#DC6743" }} />
           </div>
           <p className="text-lg" style={{ ...serif, color: "#333334" }}>Your agent is powering up...</p>
           <p className="mt-1 text-sm" style={{ color: "#6b6b6b" }}>Deploying your personal AI</p>
