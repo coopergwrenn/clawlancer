@@ -5,7 +5,7 @@ import { supabase, getAgentStatus } from "@/lib/supabase";
 import { tokenToDecimals, Tokens } from "@worldcoin/minikit-js";
 
 const TIERS = {
-  try_it: { wld: 5, credits: 150, durationDays: 3 },
+  try_it: { wld: 20, credits: 150, durationDays: 3 },
   starter: { wld: 15, credits: 500, durationDays: 7 },
   full_month: { wld: 50, credits: 2000, durationDays: 30 },
 } as const;
