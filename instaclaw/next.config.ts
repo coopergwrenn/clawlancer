@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname, ".."),
   },
+  async rewrites() {
+    return [
+      {
+        source: "/.well-known/agent.json",
+        destination: "/api/well-known/agent-json",
+      },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {
