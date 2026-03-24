@@ -73,6 +73,7 @@ export default auth((req) => {
     "/api/webhooks",
     "/api/instagram/token",
     "/api/notify",
+    "/api/well-known",
   ];
 
   const isAPI = pathname.startsWith("/api/");
