@@ -36,7 +36,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!verifyRes.success) {
+    // "max_verifications_reached" means the user IS verified — they already
+    // proved they're human for this action. Treat it as a success.
+    const isMaxReached = (verifyRes as Record<string, unknown>).code === "max_verifications_reached";
+
+    if (!verifyRes.success && !isMaxReached) {
       console.error("[Verify] Proof invalid. Full response:", JSON.stringify(verifyRes));
       return NextResponse.json(
         {
@@ -48,6 +52,10 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    if (isMaxReached) {
+      console.log("[Verify] max_verifications_reached — treating as already verified");
     }
 
     const nullifierHash =

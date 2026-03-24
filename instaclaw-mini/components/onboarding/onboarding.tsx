@@ -281,6 +281,15 @@ export default function Onboarding() {
         return;
       }
 
+      // Check if user is already World ID verified (skip verification entirely)
+      const meRes = await fetch("/api/auth/me");
+      const meData = await meRes.json().catch(() => ({}));
+      if (meData?.user?.worldIdVerified) {
+        console.log("[Onboarding] User already World ID verified — skipping verify step");
+        setStep("delegate");
+        return;
+      }
+
       let verifyResult;
       try {
         verifyResult = await MiniKit.commandsAsync.verify({
@@ -290,7 +299,6 @@ export default function Onboarding() {
         console.log("[Onboarding] World ID verify result:", JSON.stringify(verifyResult.finalPayload));
       } catch (verifyErr) {
         console.error("[Onboarding] World ID verify threw:", verifyErr);
-        // Verification modal failed/cancelled — show fallback
         setError(`Verification error: ${verifyErr instanceof Error ? verifyErr.message : JSON.stringify(verifyErr)}`);
         setStep("verify-failed");
         return;
@@ -311,6 +319,12 @@ export default function Onboarding() {
 
       if (!verifyRes.ok) {
         const verifyErrText = await verifyRes.text().catch(() => "");
+        // Check if it's max_verifications_reached — that means already verified
+        if (verifyErrText.includes("max_verifications_reached")) {
+          console.log("[Onboarding] max_verifications_reached — user already verified, proceeding");
+          setStep("delegate");
+          return;
+        }
         console.error("[Onboarding] /api/verify failed:", verifyRes.status, verifyErrText);
         setError(`Verify API ${verifyRes.status}: ${verifyErrText}`);
         setStep("verify-failed");
