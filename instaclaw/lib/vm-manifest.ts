@@ -124,7 +124,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 44,
+  version: 45,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -380,8 +380,8 @@ export const VM_MANIFEST = {
   } as Record<string, string>,
 
   // ── Session thresholds ──
-  // NOTE: These are used by the health cron for alerting and by rotateOversizedSession()
-  // as a fallback safety net. The PRIMARY enforcement is in strip-thinking.py which uses
+  // NOTE: These are used by the health cron for alerting only. rotateOversizedSession()
+  // was removed in v45 (P3.2). The PRIMARY enforcement is in strip-thinking.py which uses
   // its own hardcoded thresholds: MAX_SESSION_BYTES=200KB, MEMORY_WARN_BYTES=160KB
   // (defined in the STRIP_THINKING_SCRIPT template in ssh.ts:110-111). Those were lowered
   // independently after web fetch blowouts caused sessions to balloon past 512KB between
@@ -396,8 +396,8 @@ export const VM_MANIFEST = {
 export type VMManifest = typeof VM_MANIFEST;
 
 // ── Backwards compatibility ──
-// CONFIG_SPEC was the old name. Re-export so existing code (rotateOversizedSession,
-// upgradeOpenClaw, configureOpenClaw) can keep using it during migration.
+// CONFIG_SPEC was the old name. Re-export so existing code (upgradeOpenClaw,
+// configureOpenClaw, health cron) can keep using it during migration.
 export const CONFIG_SPEC = {
   version: VM_MANIFEST.version,
   settings: VM_MANIFEST.configSettings,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, rotateOversizedSession, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
@@ -182,38 +182,11 @@ export async function GET(req: NextRequest) {
     const currentFailCount = vm.health_fail_count ?? 0;
 
     // ── Session health check (runs for ALL VMs regardless of gateway health) ──
-    // This MUST be outside the healthy-only block. The Ladio incident happened
-    // because session rotation only ran on healthy VMs — an unhealthy/failed VM
-    // had its sessions grow to 1.9MB unchecked until they corrupted.
-    if (result.largestSessionBytes > VM_MANIFEST.maxSessionBytes) {
-      logger.warn("Session overflow detected, rotating", {
-        route: "cron/health-check",
-        vmId: vm.id,
-        vmName: vm.name,
-        largestSessionBytes: result.largestSessionBytes,
-        maxSessionBytes: VM_MANIFEST.maxSessionBytes,
-      });
-
-      try {
-        const rotateResult = await rotateOversizedSession(vm);
-        if (rotateResult.rotated) {
-          sessionsCleared++;
-          logger.info("Oversized session rotated (archived, not deleted)", {
-            route: "cron/health-check",
-            vmId: vm.id,
-            vmName: vm.name,
-            file: rotateResult.file,
-            sizeBytes: rotateResult.sizeBytes,
-          });
-        }
-      } catch (err) {
-        logger.error("Failed to rotate session", {
-          error: String(err),
-          route: "cron/health-check",
-          vmId: vm.id,
-        });
-      }
-    } else if (result.largestSessionBytes > VM_MANIFEST.sessionAlertBytes) {
+    // NOTE: rotateOversizedSession() was removed in v45 (P3.2). The primary session
+    // management is now strip-thinking.py (200KB threshold, runs every minute) +
+    // daily_hygiene() (7-day age cleanup). The 512KB threshold here was a redundant
+    // "outer fence" that was never reached in practice.
+    if (result.largestSessionBytes > VM_MANIFEST.sessionAlertBytes) {
       // Alert threshold (480KB) — session approaching auto-rotate (512KB).
       // Informational only — goes into digest, never as individual email.
       sessionsAlerted++;

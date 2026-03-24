@@ -80,7 +80,7 @@ const CHROME_CLEANUP = [
 // ── Fleet-wide config spec ──
 // CONFIG_SPEC is now derived from VM_MANIFEST in vm-manifest.ts.
 // Re-exported here for backwards compatibility with existing callers
-// (rotateOversizedSession, upgradeOpenClaw, configureOpenClaw, health cron).
+// (upgradeOpenClaw, configureOpenClaw, health cron).
 export { CONFIG_SPEC };
 
 // ── Thinking block stripping script ──
@@ -5702,84 +5702,11 @@ except Exception:
   }
 }
 
-/**
- * Rotate an oversized session instead of deleting it.
- * Renames the largest .jsonl file to .jsonl.archived so it's preserved
- * on disk but never replayed to the API. Removes its entry from
- * sessions.json. The gateway auto-creates a new session on next message.
- * No gateway restart needed — OpenClaw handles missing sessions gracefully.
- */
-export async function rotateOversizedSession(vm: VMRecord): Promise<{ rotated: boolean; file: string | null; sizeBytes: number }> {
-  try {
-    const ssh = await connectSSH(vm);
-    try {
-      const sessDir = '~/.openclaw/agents/main/sessions';
-      const archiveDir = '~/.openclaw/agents/main/sessions-archive';
-
-      // Find the largest .jsonl file and its size
-      const findResult = await ssh.execCommand(
-        `ls -lS ${sessDir}/*.jsonl 2>/dev/null | head -1 | awk '{print $5, $NF}'`
-      );
-      const parts = findResult.stdout.trim().split(/\s+/);
-      if (parts.length < 2) {
-        return { rotated: false, file: null, sizeBytes: 0 };
-      }
-
-      const sizeBytes = parseInt(parts[0], 10) || 0;
-      const filePath = parts[1];
-
-      if (sizeBytes < CONFIG_SPEC.maxSessionBytes) {
-        return { rotated: false, file: null, sizeBytes };
-      }
-
-      // Extract session ID from filename
-      const sessionId = filePath.split('/').pop()?.replace('.jsonl', '') ?? '';
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-
-      // Create archive directory and backup the session before removing
-      await ssh.execCommand(`mkdir -p ${archiveDir}`);
-      await ssh.execCommand(`cp "${filePath}" "${archiveDir}/${sessionId}.${timestamp}.jsonl"`);
-
-      // Rename to .archived (preserved but never replayed by the gateway)
-      await ssh.execCommand(`mv "${filePath}" "${filePath}.archived"`);
-
-      // Remove entry from sessions.json (atomic write to avoid racing with strip-thinking.py)
-      await ssh.execCommand(
-        `python3 -c "
-import json, os, tempfile
-sj_path = '${sessDir}/sessions.json'
-try:
-    with open(sj_path, 'r') as f:
-        data = json.load(f)
-    to_del = [k for k, v in data.items() if v.get('sessionId') == '${sessionId}']
-    for k in to_del:
-        del data[k]
-    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(sj_path), suffix='.tmp')
-    try:
-        with os.fdopen(tmp_fd, 'w') as tmp:
-            json.dump(data, tmp)
-        os.replace(tmp_path, sj_path)
-    except:
-        os.unlink(tmp_path)
-        raise
-except Exception:
-    pass
-" 2>/dev/null || true`
-      );
-
-      // Prune old archives (keep last 5 per VM to avoid disk bloat)
-      await ssh.execCommand(
-        `ls -t ${archiveDir}/*.jsonl 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true`
-      );
-
-      return { rotated: true, file: filePath, sizeBytes };
-    } finally {
-      ssh.dispose();
-    }
-  } catch {
-    return { rotated: false, file: null, sizeBytes: 0 };
-  }
-}
+// rotateOversizedSession() was removed in v45 (P3.2 of memory architecture PRD).
+// Session management is now handled exclusively by strip-thinking.py (200KB threshold,
+// runs every minute via cron) + daily_hygiene() (7-day age cleanup). The 512KB
+// "outer fence" threshold was redundant — strip-thinking catches sessions at 200KB,
+// so they never reach 512KB.
 
 /**
  * Standalone session health check that can be called on ANY VM regardless
