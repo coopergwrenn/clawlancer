@@ -1,113 +1,150 @@
 ---
 name: computer-dispatch
-description: "Virtual desktop with stealth browser — open websites, take screenshots, control GUI apps. Use dispatch-browser.sh for ANY website visit."
+description: "Control computers with mouse/keyboard — your VM desktop OR the user's personal Mac/PC via remote relay"
 metadata:
   triggers:
-    keywords: [dispatch, desktop, screen, click, screenshot, xterm, gui, app, window, open, visit, show, dexscreener, website, url, browse]
-    phrases: ["take a screenshot", "open an app", "click on", "what is on screen", "open this website", "show me this site", "go to", "visit", "pull up", "check this url"]
+    keywords: [dispatch, desktop, screen, click, screenshot, gui, app, window, open, visit, show, dexscreener, website, url, browse, my computer, my screen, remote]
+    phrases: ["take a screenshot", "open an app", "click on", "what is on screen", "open this website", "show me this site", "go to", "visit", "pull up", "on my computer", "on my desktop", "on my screen", "control my computer"]
 ---
 
 # Computer Dispatch Skill
 
-## Overview
+You can control TWO computers: your own VM desktop AND the user's personal computer (when their relay is connected).
 
-You have a virtual desktop (Xvfb) running on your VM at DISPLAY=:99 with a stealth Chrome browser. You can open any website, take screenshots, and control GUI applications with mouse and keyboard.
+## Two Modes
 
-**IMPORTANT: For opening/visiting/showing ANY website, use `dispatch-browser.sh` — it has anti-Cloudflare stealth that the regular `browser` tool does NOT have. The regular browser tool gets blocked by Cloudflare on most crypto/financial sites.**
+### Mode 1: Local Dispatch (Your VM Desktop)
+Your VM has a virtual desktop (Xvfb at DISPLAY=:99, 1280x720, Openbox WM). Use this for:
+- Opening websites with stealth Chrome (`dispatch-browser.sh`)
+- Running GUI applications autonomously
+- Tasks that don't need the user's computer
 
-## When to Use This Skill
+**Scripts:** `dispatch-screenshot.sh`, `dispatch-click.sh`, `dispatch-type.sh`, `dispatch-press.sh`, `dispatch-scroll.sh`, `dispatch-browser.sh`
 
-- **User asks to open, visit, show, or screenshot ANY website** → dispatch-browser.sh
-- **Regular browser tool fails with Cloudflare/403/timeout** → dispatch-browser.sh (immediate fallback)
-- You need to interact with a desktop application
-- You want to see what is currently displayed on your VM desktop
-- A task requires GUI interaction beyond web browsing
-- You are debugging something visual
+### Mode 2: Remote Dispatch (User's Personal Computer)
+When the user runs `instaclaw-dispatch` on their Mac/PC, you can control their actual computer. Use this for:
+- User asks "do this on MY computer"
+- Tasks that require the user's installed apps (Figma, Excel, Slack, etc.)
+- Interacting with the user's logged-in sessions
 
-## When NOT to Use This
+**Scripts:** `dispatch-remote-screenshot.sh`, `dispatch-remote-click.sh`, `dispatch-remote-type.sh`, `dispatch-remote-press.sh`, `dispatch-remote-scroll.sh`
 
-- Regular web browsing → use the `browser` tool (faster, cheaper, more reliable)
-- Web searches → use `web_search`
-- File reading/writing → use bash commands directly
-- API calls → use `web_fetch` or scripts
+## Which Mode to Use
 
-## Available Commands
+| User says... | Mode | Why |
+|---|---|---|
+| "open dexscreener" / "show me this site" | **Local** (dispatch-browser.sh) | You browse on your VM |
+| "do this on my computer" / "on my screen" | **Remote** (dispatch-remote-*) | User's machine |
+| "open Figma and edit the logo" | **Remote** | Figma is on user's Mac |
+| "take a screenshot of your desktop" | **Local** (dispatch-screenshot.sh) | Your VM screen |
+| "take a screenshot of my screen" | **Remote** (dispatch-remote-screenshot.sh) | User's screen |
+| "click on this button" (in VM browser) | **Local** (dispatch-click.sh) | Your VM |
+| Regular web browsing/scraping | **Local** browser tool or dispatch-browser.sh | No need for user's machine |
 
-### Take a Screenshot
+**Default: Use Local dispatch unless the user explicitly asks you to act on THEIR computer.**
+
+## Checking Remote Relay Status
+
+Before using remote dispatch, check if the user's relay is connected:
+```bash
+bash ~/scripts/dispatch-remote-status.sh
+```
+Returns `{"connected":true}` or `{"connected":false}`. If not connected, tell the user:
+"To let me control your computer, run `npx @instaclaw/dispatch` in your terminal."
+
+---
+
+## Local Dispatch Commands (Your VM)
+
+### Open a Website (Stealth Chrome)
+```bash
+bash ~/scripts/dispatch-browser.sh "https://example.com"
+sleep 5
+bash ~/scripts/dispatch-screenshot.sh
+~/scripts/deliver_file.sh ~/.openclaw/workspace/dispatch-screenshot.jpg "Screenshot"
+```
+Has anti-Cloudflare stealth. Use for ANY website visit.
+
+### Screenshot Your Desktop
 ```bash
 bash ~/scripts/dispatch-screenshot.sh
 ```
-Returns JSON with:
-- `path`: path to the PNG file on disk
-- `coordMap`: coordinate mapping string (use this for click targets)
-- `image_base64`: base64-encoded PNG
+Returns JSON with `path`, `coordMap`, `image_base64`. Send to user via `deliver_file.sh`.
 
-### Click at Coordinates
+### Click / Type / Press / Scroll
 ```bash
 bash ~/scripts/dispatch-click.sh <x> <y>
+bash ~/scripts/dispatch-type.sh "text"
+bash ~/scripts/dispatch-press.sh "Return"
+bash ~/scripts/dispatch-scroll.sh down 3
 ```
-Coordinates are in **screenshot pixel space**. Get them from analyzing the screenshot.
 
-### Type Text
+### Launch GUI Apps
 ```bash
-bash ~/scripts/dispatch-type.sh "text to type"
+DISPLAY=:99 xterm &
 ```
-Types the text via keyboard synthesis using xdotool. Supports spaces and most ASCII characters.
 
-### Press a Key or Combo
-```bash
-bash ~/scripts/dispatch-press.sh "ctrl+c"
-```
-Supports key names: Return, Tab, Escape, BackSpace, Delete, space, ctrl, shift, alt, super, plus key combos like ctrl+c, ctrl+shift+t.
+---
 
-### Scroll
+## Remote Dispatch Commands (User's Computer)
+
+### Screenshot User's Screen
 ```bash
-bash ~/scripts/dispatch-scroll.sh <direction> [amount]
+bash ~/scripts/dispatch-remote-screenshot.sh
 ```
-Direction: up, down, left, right. Amount defaults to 3.
+Captures the user's actual screen. Returns JSON with `path` (saved to workspace) and `coordMap`. Send to user via `deliver_file.sh`.
+
+### Click on User's Screen
+```bash
+bash ~/scripts/dispatch-remote-click.sh <x> <y>
+```
+
+### Type on User's Keyboard
+```bash
+bash ~/scripts/dispatch-remote-type.sh "text"
+```
+
+### Press Key on User's Machine
+```bash
+bash ~/scripts/dispatch-remote-press.sh "Return"
+```
+
+### Scroll on User's Machine
+```bash
+bash ~/scripts/dispatch-remote-scroll.sh down 3
+```
+
+---
 
 ## The Screenshot → Reason → Act Loop
 
-This is the core pattern. Follow it every time:
+Same pattern for both modes:
 
-1. **Screenshot**: `bash ~/scripts/dispatch-screenshot.sh`
-2. **Analyze**: Look at the screenshot. What is on screen? What do you need to interact with?
-3. **Plan**: Decide your next action — which element to click, what to type
-4. **Act**: Execute ONE action (click, type, press, or scroll)
-5. **Wait**: Give the screen 500ms to update
-6. **Verify**: Take another screenshot to confirm your action worked
-7. **Repeat**: Continue until the task is done
+1. **Screenshot** — see what's on screen
+2. **Analyze** — identify elements, read text
+3. **Plan** — decide what to click/type
+4. **Act** — execute ONE action
+5. **Wait** — 500ms for screen to update
+6. **Verify** — screenshot again to confirm
+7. **Repeat** until done
 
-**IMPORTANT:** Always take a screenshot BEFORE and AFTER each action. Do not guess what is on screen — look.
+Max 50 actions per task. Always screenshot before AND after each action.
 
-## Launching Applications
+## Safety Rules
 
-To open a GUI app on the desktop:
-```bash
-DISPLAY=:99 xterm &       # Terminal emulator
-DISPLAY=:99 xeyes &       # Test app
-```
-
-If the app is not installed, install it first: `sudo apt-get install -y <package>`
-
-## Safety Rules (NEVER VIOLATE)
-
-1. **Do not click blindly** — always screenshot first to see what is on screen
-2. **Do not spam actions** — wait for each action to complete before the next
-3. **Do not run destructive commands** in GUI terminals without user confirmation
-4. **Max 50 actions per task** — if you have not completed the task in 50 steps, stop and report
-5. **If something looks wrong**, stop and describe what you see rather than continuing
-
-## Limitations
-
-- **No clipboard** — clipboard operations are not yet supported
-- **Resolution is 1280x720** — this is the virtual display size
-- **No window manager** — windows may overlap without proper management. Launch one app at a time.
-- **Unicode typing may fail** — stick to ASCII characters for best results
+1. **Never click blindly** — screenshot first
+2. **Never type passwords** — ask the user to type credentials themselves
+3. **Never delete files** without user confirmation
+4. **Never interact with banking/financial apps** unless user explicitly requested
+5. **Remote mode**: the user sees every action in their terminal (supervised mode). Be descriptive about what you're doing.
+6. **If something looks wrong**, stop and describe what you see
 
 ## Error Handling
 
-- If a screenshot fails: check that Xvfb is running (`ps aux | grep Xvfb`)
-- If a click does not work: verify coordinates from the latest screenshot
-- If typing fails: try dispatch-press.sh for individual keys
-- If an app will not start: check if it is installed (`which <app>`)
+| Error | Fix |
+|-------|-----|
+| "dispatch relay not connected" | User needs to run `npx @instaclaw/dispatch` |
+| Screenshot fails (local) | Check Xvfb: `ps aux \| grep Xvfb` |
+| Screenshot fails (remote) | User may need to grant Screen Recording permission |
+| Click doesn't work | Verify coordinates from latest screenshot |
+| dispatch-browser.sh won't launch | Check RAM: `free -m` (needs 500MB+ available) |

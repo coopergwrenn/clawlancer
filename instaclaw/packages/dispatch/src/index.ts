@@ -7,10 +7,11 @@
  *   npx @instaclaw/dispatch --token XXX --vm HOST  # Direct connect
  */
 import { loadConfig, saveConfig, getConfigPath } from "./config.js";
-import { checkPermissions, printPermissionGuide } from "./permissions.js";
+import { checkPermissions, printPermissionGuide, runPermissionTest } from "./permissions.js";
 import { connect, disconnect } from "./connection.js";
 import { closeSupervisor } from "./supervisor.js";
 import readline from "readline";
+import os from "os";
 import type { DispatchConfig } from "./types.js";
 
 async function main() {
@@ -19,12 +20,33 @@ async function main() {
   ─────────────────────────────────────────────
   `);
 
-  // 1. Check/request permissions
-  const perms = checkPermissions();
-  if (!perms.accessibility || !perms.screenRecording) {
+  // 1. Check permissions (macOS only)
+  if (os.platform() === "darwin") {
     console.log("  Checking permissions...");
-    printPermissionGuide();
-    await waitForEnter();
+    const perms = checkPermissions();
+    printPermissionGuide(perms);
+
+    if (perms.screenRecording === false || perms.accessibility === false) {
+      await waitForEnter();
+      // Re-check after user grants
+      const recheck = checkPermissions();
+      if (recheck.screenRecording === false) {
+        console.log("  Warning: Screen Recording still not granted. Screenshots may fail.\n");
+      }
+      if (recheck.accessibility === false) {
+        console.log("  Warning: Accessibility still not granted. Click/type may fail.\n");
+      }
+    } else {
+      // Run a functional test to be sure
+      console.log("  Running permission test...");
+      const test = await runPermissionTest();
+      if (test.ok) {
+        console.log("  Permissions: all OK\n");
+      } else {
+        console.log(`  Warning: ${test.error}`);
+        console.log("  Continuing anyway — some commands may fail.\n");
+      }
+    }
   }
 
   // 2. Load or create config
