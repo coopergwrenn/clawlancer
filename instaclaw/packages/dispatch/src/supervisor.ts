@@ -12,16 +12,23 @@ const AUTO_APPROVE_TYPES = new Set(["screenshot", "windows", "status"]);
 
 // Patterns that indicate dangerous actions — always require confirmation even in autonomous mode
 const DANGEROUS_TEXT_PATTERNS = [
+  // Authentication
   /password/i, /passwd/i, /secret/i, /credential/i,
-  /delete/i, /remove/i, /destroy/i, /format/i, /erase/i,
+  /\b2fa\b/i, /\bmfa\b/i, /authenticat/i, /verification.?code/i, /one.?time.?pass/i,
+  // Destructive
+  /delete/i, /remove/i, /destroy/i, /format/i, /erase/i, /empty.?trash/i,
+  // Financial
   /purchase/i, /submit.*order/i, /confirm.*payment/i, /buy\s/i,
   /transfer.*fund/i, /send.*money/i, /withdraw/i,
-  /sudo\s/i, /rm\s+-rf/i, /shutdown/i, /reboot/i,
+  // System
+  /sudo\s/i, /rm\s+-rf/i, /shutdown/i, /reboot/i, /restart/i,
+  /\binstall\b/i, /\bapt\b/i, /\bbrew\b/i, /\bnpm\s+i/i, /pip\s+install/i,
 ];
 
 const DANGEROUS_KEY_COMBOS = new Set([
   "cmd+delete", "cmd+shift+delete", "ctrl+delete",
   "cmd+q", "alt+f4",
+  "cmd+shift+backspace", // Empty Trash on macOS
 ]);
 
 let mode: "supervised" | "autonomous" = "supervised";

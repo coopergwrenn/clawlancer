@@ -10,14 +10,15 @@ import { loadConfig, saveConfig, getConfigPath } from "./config.js";
 import { checkPermissions, printPermissionGuide, runPermissionTest } from "./permissions.js";
 import { connect, disconnect } from "./connection.js";
 import { closeSupervisor, setMode } from "./supervisor.js";
+import chalk from "chalk";
 import readline from "readline";
 import os from "os";
 import type { DispatchConfig } from "./types.js";
 
 async function main() {
   console.log(`
-  InstaClaw Dispatch — Remote Computer Control
-  ─────────────────────────────────────────────
+  ${chalk.bold("InstaClaw Dispatch")} ${chalk.dim("— Remote Computer Control")}
+  ${chalk.dim("─────────────────────────────────────────────")}
   `);
 
   // 1. Check permissions (macOS only)
@@ -96,7 +97,22 @@ async function main() {
         console.log(`\n  Dispatch mode: SUPERVISED`);
         console.log(`  Screenshots auto-approved. Actions require [Enter] to confirm.`);
       }
-      console.log(`  Press Ctrl+C to disconnect.\n`);
+      console.log(`  Press 'a' to toggle autonomous mode. Press Ctrl+C to disconnect.\n`);
+
+      // Runtime mode switching via keypress
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode?.(false); // Ensure line mode for supervisor readline
+        process.stdin.on("data", (chunk) => {
+          const key = chunk.toString().trim().toLowerCase();
+          if (key === "a") {
+            const newMode = config!.mode === "supervised" ? "autonomous" : "supervised";
+            config!.mode = newMode;
+            setMode(newMode);
+            saveConfig(config!);
+            console.log(`\n  Mode switched to: ${newMode.toUpperCase()}\n`);
+          }
+        });
+      }
     },
     onDisconnect: () => {
       // Will auto-reconnect

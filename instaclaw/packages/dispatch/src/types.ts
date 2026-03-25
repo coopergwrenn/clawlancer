@@ -34,4 +34,10 @@ export interface DispatchConfig {
   mode: "supervised" | "autonomous";
   /** TLS cert fingerprint for TOFU (trust on first use) */
   certFingerprint?: string;
+  /** Screenshot format: "jpeg" or "png" */
+  screenshotFormat?: "jpeg" | "png";
+  /** Screenshot quality (1-100, JPEG only) */
+  screenshotQuality?: number;
+  /** Max actions per minute before rate limiting */
+  maxActionsPerMinute?: number;
 }

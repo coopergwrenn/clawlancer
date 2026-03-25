@@ -6,9 +6,13 @@ import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import type { DispatchCommand } from "./types.js";
+import { captureScreenshot } from "./screenshot.js";
 
 // Dynamic import for usecomputer (ESM)
 let uc: typeof import("usecomputer") | null = null;
+
+// Track the most recent coordMap from screenshots for click mapping
+let lastCoordMap: string | null = null;
 
 async function getUC() {
   if (!uc) {
@@ -46,6 +50,8 @@ export async function executeCommand(command: DispatchCommand): Promise<Executio
         return await doPress(params);
       case "scroll":
         return await doScroll(params);
+      case "drag":
+        return await doDrag(params);
       case "windows":
         return await listWindows();
       default:
@@ -57,45 +63,45 @@ export async function executeCommand(command: DispatchCommand): Promise<Executio
 }
 
 async function takeScreenshot(params: Record<string, unknown>): Promise<ExecutionResult> {
-  const usecomputer = await getUC();
-  const tmpPath = path.join("/tmp", `dispatch-ss-${Date.now()}.png`);
+  const capture = await captureScreenshot({
+    format: (params.format as "jpeg" | "png") || "jpeg",
+    quality: Number(params.quality) || 80,
+  });
 
-  try {
-    const result = await usecomputer.screenshot({ path: tmpPath, display: null, window: null, region: null, annotate: null });
+  // Cache coordMap for subsequent click/hover/drag commands
+  lastCoordMap = capture.coordMap;
 
-    // Read the PNG and convert to JPEG via sharp
-    const pngBuffer = fs.readFileSync(tmpPath);
-    let jpegBuffer: Buffer;
-
-    try {
-      const sharp = (await import("sharp")).default;
-      jpegBuffer = await sharp(pngBuffer).jpeg({ quality: 80 }).toBuffer();
-    } catch {
-      // sharp not available — send PNG
-      jpegBuffer = pngBuffer;
-    }
-
-    return {
-      success: true,
-      screenshotBuffer: jpegBuffer,
-      screenshotMeta: {
-        width: result.imageWidth,
-        height: result.imageHeight,
-        format: "jpeg",
-        coordMap: result.coordMap,
-      },
-    };
-  } finally {
-    try { fs.unlinkSync(tmpPath); } catch {}
-  }
+  return {
+    success: true,
+    screenshotBuffer: capture.buffer,
+    screenshotMeta: {
+      width: capture.width,
+      height: capture.height,
+      format: capture.format,
+      coordMap: capture.coordMap,
+    },
+  };
 }
 
 async function doClick(params: Record<string, unknown>): Promise<ExecutionResult> {
   const usecomputer = await getUC();
   const x = Number(params.x);
   const y = Number(params.y);
-  await usecomputer.click({ point: { x, y }, button: "left", count: 1 });
-  return { success: true, data: { action: "click", x, y } };
+  const coordMap = params.coordMap ? String(params.coordMap) : lastCoordMap;
+
+  let point = { x, y };
+  if (coordMap) {
+    // Map screenshot-space coordinates to desktop-space (critical for Retina/HiDPI)
+    try {
+      const parsed = usecomputer.parseCoordMapOrThrow(coordMap);
+      point = usecomputer.mapPointFromCoordMap({ point: { x, y }, coordMap: parsed });
+    } catch {
+      // If mapping fails, fall back to raw coords
+    }
+  }
+
+  await usecomputer.click({ point, button: "left", count: 1 });
+  return { success: true, data: { action: "click", x, y, mappedX: point.x, mappedY: point.y, coordMap: coordMap || "none" } };
 }
 
 async function doType(params: Record<string, unknown>): Promise<ExecutionResult> {
@@ -127,6 +133,25 @@ async function doScroll(params: Record<string, unknown>): Promise<ExecutionResul
   const amount = Number(params.amount || 3);
   await usecomputer.scroll({ direction, amount, at: null });
   return { success: true, data: { action: "scroll", direction, amount } };
+}
+
+async function doDrag(params: Record<string, unknown>): Promise<ExecutionResult> {
+  const usecomputer = await getUC();
+  const coordMap = params.coordMap ? String(params.coordMap) : lastCoordMap;
+
+  let from = { x: Number(params.fromX), y: Number(params.fromY) };
+  let to = { x: Number(params.toX), y: Number(params.toY) };
+
+  if (coordMap) {
+    try {
+      const parsed = usecomputer.parseCoordMapOrThrow(coordMap);
+      from = usecomputer.mapPointFromCoordMap({ point: from, coordMap: parsed });
+      to = usecomputer.mapPointFromCoordMap({ point: to, coordMap: parsed });
+    } catch {}
+  }
+
+  await usecomputer.drag({ from, to, durationMs: null, button: null });
+  return { success: true, data: { action: "drag" } };
 }
 
 async function listWindows(): Promise<ExecutionResult> {

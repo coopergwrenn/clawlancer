@@ -40,6 +40,51 @@ function auditLog(entry) {
   fs.appendFile(AUDIT_LOG, line, () => {}); // fire-and-forget
 }
 
+// ── Rate Limiting ──
+const RATE_LIMIT_INTERVAL_MS = 1000; // 1 command per second
+const RATE_LIMIT_MAX_PER_SESSION = 100; // max 100 commands per relay session
+const RATE_LIMIT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 min idle → disconnect
+
+let sessionCommandCount = 0;
+let lastCommandTime = 0;
+let idleTimer = null;
+
+function resetRateLimits() {
+  sessionCommandCount = 0;
+  lastCommandTime = 0;
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = null;
+}
+
+function checkRateLimit() {
+  const now = Date.now();
+
+  // Max commands per session
+  if (sessionCommandCount >= RATE_LIMIT_MAX_PER_SESSION) {
+    return { allowed: false, error: `Session limit exceeded (${RATE_LIMIT_MAX_PER_SESSION} commands). Reconnect to reset.` };
+  }
+
+  // 1 command per second
+  if (lastCommandTime && (now - lastCommandTime) < RATE_LIMIT_INTERVAL_MS) {
+    return { allowed: false, error: "Rate limited — max 1 command per second" };
+  }
+
+  sessionCommandCount++;
+  lastCommandTime = now;
+  return { allowed: true };
+}
+
+function resetIdleTimer() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (activeRelay && activeRelay.readyState === WebSocket.OPEN) {
+      console.log("[dispatch-server] Idle timeout (5 min) — disconnecting relay");
+      auditLog({ event: "idle_timeout" });
+      activeRelay.close(4002, "Idle timeout");
+    }
+  }, RATE_LIMIT_IDLE_TIMEOUT_MS);
+}
+
 // ── TLS: Self-signed cert (TOFU) ──
 const CERT_DIR = path.join(process.env.HOME, ".dispatch-server-certs");
 let tlsOptions = null;
@@ -74,6 +119,60 @@ let activeRelay = null; // The one connected local relay WebSocket
 let pendingRequests = new Map(); // id → { resolve, reject, timer }
 let commandCounter = 0;
 
+// ── HMAC Auth: nonce tracking ──
+const seenNonces = new Map(); // nonce → timestamp
+const HANDSHAKE_MAX_AGE_MS = 30000; // 30 seconds
+const NONCE_EXPIRY_MS = 60000; // 60 seconds
+
+// Clean up expired nonces every 30s
+setInterval(() => {
+  const cutoff = Date.now() - NONCE_EXPIRY_MS;
+  for (const [nonce, ts] of seenNonces) {
+    if (ts < cutoff) seenNonces.delete(nonce);
+  }
+}, 30000);
+
+function verifyHmacHandshake(url) {
+  const params = new URL(url, "http://localhost");
+  const hmac = params.searchParams.get("hmac");
+  const ts = params.searchParams.get("ts");
+  const nonce = params.searchParams.get("nonce");
+
+  // Also accept legacy plain token for backwards compatibility during rollout
+  const plainToken = params.searchParams.get("token");
+  if (plainToken === GATEWAY_TOKEN) {
+    return { ok: true, legacy: true };
+  }
+
+  if (!hmac || !ts || !nonce) {
+    return { ok: false, error: "Missing auth params (hmac, ts, nonce)" };
+  }
+
+  // Timestamp check
+  const tsMs = parseInt(ts, 10);
+  if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > HANDSHAKE_MAX_AGE_MS) {
+    return { ok: false, error: "Handshake expired (timestamp > 30s old)" };
+  }
+
+  // Nonce replay check
+  if (seenNonces.has(nonce)) {
+    return { ok: false, error: "Nonce already used (replay attack)" };
+  }
+
+  // HMAC verification
+  const expected = crypto.createHmac("sha256", GATEWAY_TOKEN)
+    .update(ts + ":" + nonce)
+    .digest("hex");
+
+  if (hmac.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(hmac, "hex"), Buffer.from(expected, "hex"))) {
+    return { ok: false, error: "HMAC verification failed" };
+  }
+
+  // Record nonce
+  seenNonces.set(nonce, Date.now());
+  return { ok: true, legacy: false };
+}
+
 // ── WebSocket Server ──
 const server = tlsOptions
   ? https.createServer(tlsOptions)
@@ -82,14 +181,16 @@ const server = tlsOptions
 const wss = new WebSocketServer({
   server,
   verifyClient: (info, cb) => {
-    // Auth: validate gateway token from query string
-    const url = new URL(info.req.url, `http://${info.req.headers.host}`);
-    const token = url.searchParams.get("token");
+    const result = verifyHmacHandshake(info.req.url);
 
-    if (token === GATEWAY_TOKEN) {
+    if (result.ok) {
+      if (result.legacy) {
+        console.log("[dispatch-server] Connection accepted (legacy token auth — upgrade client)");
+      }
       cb(true);
     } else {
-      console.warn("[dispatch-server] Rejected connection: invalid token");
+      console.warn(`[dispatch-server] Rejected connection: ${result.error}`);
+      auditLog({ event: "auth_rejected", error: result.error });
       cb(false, 401, "Unauthorized");
     }
   },
@@ -107,6 +208,8 @@ wss.on("connection", (ws, req) => {
   const clientIP = req.socket.remoteAddress;
   console.log(`[dispatch-server] Relay connected from ${clientIP}`);
   auditLog({ event: "relay_connected", ip: clientIP });
+  resetRateLimits();
+  resetIdleTimer();
 
   // Heartbeat
   ws.isAlive = true;
@@ -151,8 +254,9 @@ wss.on("connection", (ws, req) => {
 
   ws.on("close", () => {
     console.log("[dispatch-server] Relay disconnected");
-    auditLog({ event: "relay_disconnected" });
+    auditLog({ event: "relay_disconnected", commandsThisSession: sessionCommandCount });
     if (activeRelay === ws) activeRelay = null;
+    resetRateLimits();
     // Reject all pending requests
     for (const [id, req] of pendingRequests) {
       req.reject(new Error("Relay disconnected"));
@@ -249,6 +353,17 @@ const unixServer = net.createServer((conn) => {
         conn.end();
         return;
       }
+
+      // Rate limit check
+      const rl = checkRateLimit();
+      if (!rl.allowed) {
+        console.log(`[dispatch-server] Rate limited: ${rl.error}`);
+        auditLog({ event: "rate_limited", type: command.type });
+        conn.write(JSON.stringify({ error: rl.error }) + "\n");
+        conn.end();
+        return;
+      }
+      resetIdleTimer();
 
       // Forward to relay
       console.log(`[dispatch-server] Forwarding ${command.type} command to relay`);

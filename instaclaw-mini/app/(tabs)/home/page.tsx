@@ -28,7 +28,7 @@ export default async function HomePage() {
       const { supabase: db } = await import("@/lib/supabase");
       const { data: vms } = await db()
         .from("instaclaw_vms")
-        .select("id, status, health_status, credit_balance, model, xmtp_address, telegram_bot_token, telegram_bot_username, assigned_at, last_health_check")
+        .select("id, status, health_status, credit_balance, default_model, xmtp_address, telegram_bot_token, telegram_bot_username, assigned_at, last_health_check")
         .eq("assigned_to", session.userId);
       console.log("[Home] Fallback VM query returned:", vms?.length, "rows");
       if (vms && vms.length > 0) {

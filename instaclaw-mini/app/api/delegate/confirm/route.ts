@@ -127,15 +127,36 @@ export async function POST(req: NextRequest) {
         console.error("[Confirm] Credit grant error:", err);
       }
     } else {
-      // No agent yet — trigger provisioning
-      console.log("[Confirm] No agent found — triggering provisioning for user:", session.userId);
-      proxyToInstaclaw("/api/vm/configure", session.userId, {
-        method: "POST",
-        body: JSON.stringify({
-          userId: session.userId,
-          initialCredits: delegation.credits_granted,
-        }),
-      }).catch((err) => console.error("[Confirm] Provisioning proxy failed:", err));
+      // No agent yet — assign a VM from the pool, then configure it
+      console.log("[Confirm] No agent found — assigning VM for user:", session.userId);
+      try {
+        // Step 1: Assign a VM
+        const assignRes = await proxyToInstaclaw("/api/vm/assign", session.userId, {
+          method: "POST",
+          body: JSON.stringify({
+            userId: session.userId,
+            initialCredits: delegation.credits_granted,
+          }),
+        });
+        const assignData = await assignRes.json().catch(() => ({}));
+        console.log("[Confirm] VM assign result:", JSON.stringify(assignData));
+
+        if (assignData.assigned && assignData.vm?.id) {
+          // Step 2: Configure the assigned VM
+          proxyToInstaclaw("/api/vm/configure", session.userId, {
+            method: "POST",
+            body: JSON.stringify({ userId: session.userId }),
+          }).catch((err) => console.error("[Confirm] Configure proxy failed:", err));
+
+          // Update delegation with vm_id
+          await supabase()
+            .from("instaclaw_wld_delegations")
+            .update({ vm_id: assignData.vm.id })
+            .eq("id", delegation.id);
+        }
+      } catch (err) {
+        console.error("[Confirm] VM assignment failed:", err);
+      }
     }
 
     return NextResponse.json({

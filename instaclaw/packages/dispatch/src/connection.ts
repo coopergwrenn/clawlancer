@@ -3,10 +3,10 @@
  * Handles reconnection, heartbeat, and message routing.
  */
 import WebSocket from "ws";
-import crypto from "crypto";
 import type { DispatchCommand } from "./types.js";
 import { executeCommand } from "./executor.js";
 import { requestApproval } from "./supervisor.js";
+import { buildAuthUrl } from "./auth.js";
 
 interface ConnectionOptions {
   vmAddress: string;
@@ -27,8 +27,8 @@ let shouldReconnect = true;
 let commandsExecuted = 0;
 
 export function connect(opts: ConnectionOptions): void {
-  const proto = "wss";
-  const url = `${proto}://${opts.vmAddress}:${opts.port}?token=${opts.gatewayToken}`;
+  // HMAC-authenticated URL (token + timestamp + nonce)
+  const url = buildAuthUrl(opts.vmAddress, opts.port, opts.gatewayToken);
 
   console.log(`  Connecting to ${opts.vmAddress}:${opts.port}...`);
 

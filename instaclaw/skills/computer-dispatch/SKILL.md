@@ -114,6 +114,16 @@ bash ~/scripts/dispatch-remote-press.sh "Return"
 bash ~/scripts/dispatch-remote-scroll.sh down 3
 ```
 
+### Drag on User's Screen
+```bash
+bash ~/scripts/dispatch-remote-drag.sh <fromX> <fromY> <toX> <toY>
+```
+
+### List Windows on User's Machine
+```bash
+bash ~/scripts/dispatch-remote-windows.sh
+```
+
 ---
 
 ## The Screenshot → Reason → Act Loop
@@ -129,6 +139,20 @@ Same pattern for both modes:
 7. **Repeat** until done
 
 Max 50 actions per task. Always screenshot before AND after each action.
+
+## Rate Limits
+
+- **Max 1 command per second** — the dispatch server enforces this. If you send commands faster, they'll be rejected.
+- **Max 60 screenshots per minute** — each screenshot costs ~$0.003 in vision tokens.
+- **Max 100 commands per relay session** — after 100 commands, the relay disconnects. Tell the user to reconnect if more work is needed.
+- **5-minute idle timeout** — if no commands for 5 minutes, the relay auto-disconnects.
+
+## Token Cost Budget
+
+Each dispatch screenshot costs ~1,049 vision tokens (~$0.003 at Sonnet pricing). A 20-step task costs ~$0.06-0.30. Be efficient:
+- Don't take unnecessary screenshots — only when you need to see the screen
+- Use the browser tool for data extraction (cheaper than vision-based dispatch)
+- If a task needs >30 screenshots, warn the user about the cost
 
 ## Safety Rules
 
