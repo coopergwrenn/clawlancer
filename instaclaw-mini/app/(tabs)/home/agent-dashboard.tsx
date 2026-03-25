@@ -17,11 +17,13 @@ interface Agent {
   status: string;
   health_status: string;
   credit_balance: number;
-  model: string;
-  xmtp_address: string | null;
-  telegram_bot_token: string | null;
-  assigned_at: string;
-  last_health_check: string;
+  default_model?: string;
+  xmtp_address?: string | null;
+  telegram_bot_token?: string | null;
+  telegram_bot_username?: string | null;
+  assigned_at?: string;
+  last_health_check?: string;
+  [key: string]: unknown; // allow extra fields from Supabase
 }
 
 interface Usage {

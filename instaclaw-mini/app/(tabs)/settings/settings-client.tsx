@@ -111,7 +111,7 @@ export default function SettingsClient({
   payments,
 }: {
   walletAddress: string;
-  agent: { credit_balance: number; model: string } | null;
+  agent: { credit_balance: number; default_model?: string; [key: string]: unknown } | null;
   delegations: Delegation[];
   payments: Payment[];
 }) {
@@ -165,7 +165,7 @@ export default function SettingsClient({
             <p className="text-3xl font-bold">{agent?.credit_balance ?? 0}</p>
             <p className="text-[10px] text-muted">Current balance</p>
           </div>
-          <p className="text-xs text-muted">{agent?.model ?? "—"}</p>
+          <p className="text-xs text-muted">{agent?.default_model ?? "—"}</p>
         </div>
         <div className="flex gap-2">
           <button
