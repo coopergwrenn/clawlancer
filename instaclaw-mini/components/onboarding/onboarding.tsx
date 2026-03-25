@@ -352,26 +352,64 @@ export default function Onboarding() {
     setStep("delegating");
     setError(null);
     try {
+      // Step 1: Initiate delegation on backend
+      console.log("[Delegate] Step 1: Initiating...");
       const initRes = await fetch("/api/delegate/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tier: "try_it" }),
       });
-      const { reference, tokenAmount } = await initRes.json();
 
-      const payResult = await MiniKit.commandsAsync.pay({
-        reference,
-        to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS!,
-        tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
-        description: "Activate your free InstaClaw agent",
-      });
-
-      if (payResult.finalPayload.status !== "success") {
-        setError("Payment was cancelled. Try again.");
+      if (!initRes.ok) {
+        const errText = await initRes.text().catch(() => "no body");
+        console.error("[Delegate] Initiate failed:", initRes.status, errText);
+        setError(`Initiate ${initRes.status}: ${errText}`);
         setStep("delegate");
         return;
       }
 
+      const initData = await initRes.json();
+      console.log("[Delegate] Initiate response:", JSON.stringify(initData));
+      const { reference, tokenAmount } = initData;
+
+      // Step 2: MiniKit.pay()
+      const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS;
+      console.log("[Delegate] Step 2: MiniKit.pay()");
+      console.log("[Delegate] Recipient:", recipientAddress);
+      console.log("[Delegate] Token: WLD, Amount:", tokenAmount);
+      console.log("[Delegate] Reference:", reference);
+
+      if (!recipientAddress) {
+        setError("Treasury wallet not configured (NEXT_PUBLIC_RECIPIENT_ADDRESS is empty)");
+        setStep("delegate");
+        return;
+      }
+
+      let payResult;
+      try {
+        payResult = await MiniKit.commandsAsync.pay({
+          reference,
+          to: recipientAddress,
+          tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
+          description: "Activate your free InstaClaw agent",
+        });
+        console.log("[Delegate] Pay result:", JSON.stringify(payResult.finalPayload));
+      } catch (payErr) {
+        console.error("[Delegate] MiniKit.pay threw:", payErr);
+        setError(`Pay error: ${payErr instanceof Error ? payErr.message : JSON.stringify(payErr)}`);
+        setStep("delegate");
+        return;
+      }
+
+      if (payResult.finalPayload.status !== "success") {
+        console.log("[Delegate] Pay not success:", JSON.stringify(payResult.finalPayload));
+        setError(`Payment failed: ${JSON.stringify(payResult.finalPayload)}`);
+        setStep("delegate");
+        return;
+      }
+
+      // Step 3: Confirm on backend
+      console.log("[Delegate] Step 3: Confirming...");
       const confirmRes = await fetch("/api/delegate/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -382,22 +420,25 @@ export default function Onboarding() {
       });
 
       if (!confirmRes.ok) {
-        setError("Could not confirm payment. Please contact support.");
+        const confirmErr = await confirmRes.text().catch(() => "no body");
+        console.error("[Delegate] Confirm failed:", confirmRes.status, confirmErr);
+        setError(`Confirm ${confirmRes.status}: ${confirmErr}`);
         setStep("delegate");
         return;
       }
 
+      console.log("[Delegate] Success!");
       MiniKit.commands.sendHapticFeedback({ hapticsType: "notification", style: "success" });
 
-      // Request push notification permission
       try {
         await MiniKit.commandsAsync.requestPermission({ permission: "notifications" as never });
-      } catch { /* user declined — that's fine */ }
+      } catch { /* user declined */ }
 
       setStep("ready");
     } catch (err) {
-      console.error("Delegation error:", err);
-      setError("Something went wrong. Please try again.");
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      console.error("[Delegate] Unhandled error:", msg, err);
+      setError(`Delegation error: ${msg}`);
       setStep("delegate");
     }
   }
