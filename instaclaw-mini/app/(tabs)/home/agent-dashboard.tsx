@@ -116,7 +116,7 @@ export default function AgentDashboard({
               onClick={handleStakeWld}
               className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
             >
-              Stake 20 WLD
+              Stake 25 WLD
             </button>
             <button
               onClick={() => window.open("https://instaclaw.io/billing", "_blank")}

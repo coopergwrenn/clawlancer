@@ -724,7 +724,7 @@ export default function Onboarding() {
           <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
             <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Activate your agent</h2>
             <p className="mt-2 max-w-[300px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
-              Stake 20 WLD from your grant to power your agent for ~3 days, tokens you got for free.
+              Stake 25 WLD from your grant to power your agent for ~3 days, tokens you got for free.
             </p>
 
             {/* WLD option */}
@@ -742,7 +742,7 @@ export default function Onboarding() {
               </div>
               <div className="mt-2 flex justify-between text-sm" style={{ color: "#333334" }}>
                 <span style={{ color: "#6b6b6b" }}>Cost</span>
-                <span className="font-semibold" style={{ color: "#DC6743" }}>20 WLD (~$6.60)</span>
+                <span className="font-semibold" style={{ color: "#DC6743" }}>25 WLD (~$8.25)</span>
               </div>
             </div>
 
@@ -768,7 +768,7 @@ export default function Onboarding() {
           </div>
           <div className="px-7" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
             <button onClick={handleDelegate} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
-              Activate with 20 WLD
+              Activate with 25 WLD
             </button>
           </div>
         </>
