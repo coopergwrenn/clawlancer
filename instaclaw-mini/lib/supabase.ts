@@ -85,10 +85,11 @@ export async function getDailyUsage(vmId: string) {
 }
 
 export async function getUserByWallet(walletAddress: string) {
+  // Try exact match first, then case-insensitive
   const { data } = await supabase()
     .from("instaclaw_users")
     .select("*")
-    .eq("world_wallet_address", walletAddress)
+    .ilike("world_wallet_address", walletAddress)
     .single();
   return data;
 }

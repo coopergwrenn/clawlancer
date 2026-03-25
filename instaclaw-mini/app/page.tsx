@@ -13,88 +13,82 @@ export default function RootPage() {
   useEffect(() => {
     console.log("[InstaClaw] Root page mounted");
 
-    // HARD TIMEOUT: force past splash after 3 seconds no matter what
+    // Hard timeout: force past splash after 5 seconds
     const forceTimer = setTimeout(() => {
       if (!resolved.current) {
         console.log("[InstaClaw] Force timeout — showing onboarding");
         resolved.current = true;
         setState("onboarding");
       }
-    }, 3000);
+    }, 5000);
 
-    // Try MiniKit detection
-    try {
-      const installed = MiniKit.isInstalled();
-      console.log("[InstaClaw] MiniKit.isInstalled():", installed);
+    async function tryAutoLogin() {
+      // Step 1: Check existing session first (fastest path)
+      try {
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (meData?.user?.hasAgent) {
+            console.log("[InstaClaw] Existing session + agent → dashboard");
+            resolved.current = true;
+            router.replace("/home");
+            return;
+          }
+          if (meData?.user?.id) {
+            // Has session but no agent — might be mid-provisioning
+            console.log("[InstaClaw] Existing session, no agent → provisioning/onboarding");
+            resolved.current = true;
+            router.replace("/home"); // home shows ProvisioningStatus if no agent
+            return;
+          }
+        }
+      } catch {
+        console.log("[InstaClaw] /api/auth/me failed, trying wallet auto-login");
+      }
 
-      if (!installed) {
-        // Give it a moment — MiniKit.install() from provider may not have run yet
-        // Check again after a short delay
-        setTimeout(() => {
-          const retryInstalled = MiniKit.isInstalled();
-          console.log("[InstaClaw] MiniKit retry isInstalled():", retryInstalled);
+      // Step 2: No session — try wallet-based auto-login via MiniKit
+      // Wait a moment for MiniKit to install
+      await new Promise((r) => setTimeout(r, 300));
 
-          if (!retryInstalled) {
-            // Not in World App — but DON'T block on this in preview mode
-            // World App preview may report false initially
-            // Show onboarding anyway; MiniKit commands will work when called
-            console.log("[InstaClaw] Not detected as World App — showing onboarding anyway");
-            if (!resolved.current) {
+      const walletAddress = MiniKit.user?.walletAddress;
+      console.log("[InstaClaw] MiniKit.user?.walletAddress:", walletAddress);
+
+      if (walletAddress) {
+        try {
+          const autoRes = await fetch(`/api/auth/auto-login?wallet=${encodeURIComponent(walletAddress)}`);
+          if (autoRes.ok) {
+            const autoData = await autoRes.json();
+            if (autoData?.user?.id) {
+              console.log("[InstaClaw] Auto-login success:", autoData.user.id, "hasAgent:", autoData.user.hasAgent);
               resolved.current = true;
-              setState("onboarding");
+              if (autoData.user.hasAgent) {
+                router.replace("/home");
+              } else {
+                // User exists but no agent — go to home (shows provisioning status)
+                router.replace("/home");
+              }
+              return;
             }
           }
-        }, 500);
+        } catch (err) {
+          console.error("[InstaClaw] Auto-login failed:", err);
+        }
       }
-    } catch (e) {
-      console.error("[InstaClaw] MiniKit detection error:", e);
+
+      // Step 3: No session, no wallet match — new user, show onboarding
+      if (!resolved.current) {
+        console.log("[InstaClaw] No session or wallet match — showing onboarding");
+        resolved.current = true;
+        setState("onboarding");
+      }
     }
 
-    // Check for existing session (non-blocking)
-    console.log("[InstaClaw] Checking /api/auth/me...");
-    const controller = new AbortController();
-    const fetchTimeout = setTimeout(() => controller.abort(), 4000);
+    tryAutoLogin();
 
-    fetch("/api/auth/me", { signal: controller.signal })
-      .then((r) => {
-        clearTimeout(fetchTimeout);
-        console.log("[InstaClaw] /api/auth/me status:", r.status);
-        if (!r.ok) return null;
-        return r.json();
-      })
-      .then((data) => {
-        console.log("[InstaClaw] /api/auth/me data:", JSON.stringify(data));
-        if (resolved.current) return; // force timeout already fired
-
-        if (data?.user?.hasAgent) {
-          console.log("[InstaClaw] User has agent — redirecting to /home");
-          resolved.current = true;
-          router.replace("/home");
-        } else {
-          console.log("[InstaClaw] No agent — showing onboarding");
-          resolved.current = true;
-          setState("onboarding");
-        }
-      })
-      .catch((err) => {
-        console.log("[InstaClaw] /api/auth/me error:", err);
-        if (!resolved.current) {
-          resolved.current = true;
-          setState("onboarding");
-        }
-      });
-
-    return () => {
-      clearTimeout(forceTimer);
-      clearTimeout(fetchTimeout);
-      controller.abort();
-    };
+    return () => clearTimeout(forceTimer);
   }, [router]);
 
-  console.log("[InstaClaw] Render state:", state);
-
-  // Not in World App (only shown if explicitly detected outside World App
-  // AND we're confident — not used in practice since we default to onboarding)
+  // Not in World App
   if (state === "not-world") {
     return (
       <div style={{ background: "#f8f7f4", color: "#333334", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "2rem", padding: "2rem", textAlign: "center" }}>
@@ -114,7 +108,7 @@ export default function RootPage() {
     );
   }
 
-  // Loading — use INLINE styles so it renders even if CSS hasn't loaded
+  // Loading
   if (state === "loading") {
     return (
       <div style={{ background: "#f8f7f4", color: "#333334", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
