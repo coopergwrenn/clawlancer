@@ -4,7 +4,7 @@ import { connectSSH, NVM_PREAMBLE, type VMRecord } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 600;
+export const maxDuration = 600; // v48: push-soul-principles
 
 const DBUS_PREAMBLE = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
 
