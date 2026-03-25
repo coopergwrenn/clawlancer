@@ -480,6 +480,59 @@ SEOF`);
           break;
         }
 
+        case "push-soul-principles": {
+          // Force-push updated Operating Principles to SOUL.md (bypasses reconciler skip)
+          const soulPath = "$HOME/.openclaw/workspace/SOUL.md";
+          const soulCheck = await ssh.execCommand(`test -f ${soulPath} && echo EXISTS || echo MISSING`);
+          if (soulCheck.stdout.trim() === "MISSING") {
+            results["push-soul-principles"] = "no-soul-md";
+            break;
+          }
+          // Check if latest principle (#4 self-restart ban) is already present
+          const p4Check = await ssh.execCommand(`grep -qF "NEVER self-restart" ${soulPath} 2>/dev/null && echo PRESENT || echo ABSENT`);
+          if (p4Check.stdout.trim() === "PRESENT") {
+            results["push-soul-principles"] = "already-present";
+            break;
+          }
+          // Build the full Operating Principles block
+          const principlesBlock = [
+            "## Operating Principles",
+            "",
+            "1. **Error handling:** Fix routine errors immediately without bothering the user. For anything involving security, data loss, or money — ask first.",
+            "",
+            "2. **Config safety:** Always back up files before modifying them. For unfamiliar systems, read docs first. For routine changes, proceed confidently.",
+            "",
+            '3. **Never go silent:** When starting any operation that may take more than 30 seconds (browser navigation, API calls, authentication flows, file generation, trading, etc.), ALWAYS send a quick message to the user FIRST like "Working on this, give me a minute..." or "On it — this might take a sec." NEVER go silent for more than 30 seconds without acknowledging what you\'re doing. The user will think you crashed.',
+            "",
+            "4. **NEVER self-restart:** NEVER restart your own gateway (`systemctl restart openclaw-gateway`) to fix browser issues or any other problem. This kills your Telegram connection and creates a crash loop where you go silent, come back, try again, and go silent again. If a website times out in the browser, try a different approach — use curl, API calls, web fetch, or ask the user for help. Do NOT restart yourself.",
+            "",
+          ].join("\n");
+          const principlesB64 = Buffer.from(principlesBlock, "utf-8").toString("base64");
+          // Replace existing Operating Principles section or insert before ## Boundaries
+          // Strategy: delete old section (from "## Operating Principles" to next "## "), then insert new
+          const sedResult = await ssh.execCommand(
+            `python3 -c "
+import re
+with open('${soulPath.replace("$HOME", "/home/openclaw")}', 'r') as f:
+    content = f.read()
+# Remove old Operating Principles section (up to next ## heading)
+content = re.sub(r'## Operating Principles.*?(?=## )', '', content, flags=re.DOTALL)
+# Insert new principles before ## Boundaries (or append if no Boundaries)
+import base64
+new_block = base64.b64decode('${principlesB64}').decode()
+if '## Boundaries' in content:
+    content = content.replace('## Boundaries', new_block + '## Boundaries')
+else:
+    content = content.rstrip() + '\\n\\n' + new_block
+with open('${soulPath.replace("$HOME", "/home/openclaw")}', 'w') as f:
+    f.write(content)
+print('OK')
+" 2>&1`
+          );
+          results["push-soul-principles"] = sedResult.stdout.trim() === "OK" ? "updated" : `failed: ${sedResult.stdout.trim().slice(0, 200)}`;
+          break;
+        }
+
         case "restart-gateway": {
           await ssh.execCommand(`${DBUS_PREAMBLE} && systemctl --user restart openclaw-gateway 2>/dev/null || true`);
           // Wait for startup
