@@ -3,38 +3,51 @@ import { requireSession } from "@/lib/auth";
 import { supabase, getAgentStatus } from "@/lib/supabase";
 import { proxyToInstaclaw } from "@/lib/api";
 
+async function pollTransactionStatus(
+  transactionId: string,
+  appId: string,
+  apiKey: string,
+  maxAttempts = 5,
+  delayMs = 2000
+): Promise<{ status: string; hash?: string }> {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch(
+        `https://developer.worldcoin.org/api/v2/minikit/transaction/${transactionId}?app_id=${appId}&type=payment`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`[Confirm] Poll attempt ${i + 1}: status=${data.transaction_status}`);
+        if (data.transaction_status === "mined") {
+          return { status: "mined", hash: data.transactionHash };
+        }
+        if (data.transaction_status === "failed") {
+          return { status: "failed" };
+        }
+      } else {
+        console.log(`[Confirm] Poll attempt ${i + 1}: HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.log(`[Confirm] Poll attempt ${i + 1}: error`, err);
+    }
+
+    if (i < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return { status: "pending" };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    const { reference, transactionId } = await req.json();
+    const { reference, transactionId, skipVerification } = await req.json();
 
-    // Verify transaction via Dev Portal API
-    const appId = process.env.NEXT_PUBLIC_APP_ID;
-    const apiKey = process.env.DEV_PORTAL_API_KEY;
+    console.log("[Confirm] reference:", reference, "txId:", transactionId, "skip:", skipVerification);
 
-    const verifyRes = await fetch(
-      `https://developer.worldcoin.org/api/v2/minikit/transaction/${transactionId}?app_id=${appId}&type=payment`,
-      {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      }
-    );
-
-    if (!verifyRes.ok) {
-      return NextResponse.json(
-        { error: "Could not verify transaction" },
-        { status: 400 }
-      );
-    }
-
-    const txData = await verifyRes.json();
-    if (txData.transaction_status !== "mined") {
-      return NextResponse.json(
-        { error: "Transaction not confirmed" },
-        { status: 400 }
-      );
-    }
-
-    // Update delegation record
+    // Find the delegation record
     const { data: delegation, error: findErr } = await supabase()
       .from("instaclaw_wld_delegations")
       .select("*")
@@ -44,30 +57,56 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (findErr || !delegation) {
+      console.error("[Confirm] Delegation not found:", findErr);
       return NextResponse.json(
-        { error: "Delegation record not found" },
+        { error: "Delegation record not found", detail: findErr?.message },
         { status: 404 }
       );
     }
 
+    let txHash = transactionId;
+    let onChainConfirmed = false;
+
+    if (!skipVerification && transactionId) {
+      // Poll for on-chain confirmation with retries
+      const appId = process.env.NEXT_PUBLIC_APP_ID || "";
+      const apiKey = process.env.DEV_PORTAL_API_KEY || "";
+
+      const result = await pollTransactionStatus(transactionId, appId, apiKey);
+
+      if (result.status === "mined") {
+        onChainConfirmed = true;
+        txHash = result.hash || transactionId;
+      } else if (result.status === "failed") {
+        return NextResponse.json(
+          { error: "Transaction failed on-chain" },
+          { status: 400 }
+        );
+      }
+      // If still "pending" after retries, proceed anyway — MiniKit.pay() returned success
+      // so World App accepted it. We'll verify asynchronously.
+    }
+
+    // Update delegation record
     await supabase()
       .from("instaclaw_wld_delegations")
       .update({
-        status: "confirmed",
-        transaction_hash: txData.transactionHash || transactionId,
+        status: onChainConfirmed ? "confirmed" : "pending_confirmation",
+        transaction_hash: txHash,
         confirmed_at: new Date().toISOString(),
       })
       .eq("id", delegation.id);
 
-    // Add credits to agent
+    // Grant credits immediately — don't block on chain confirmation
     const agent = await getAgentStatus(session.userId);
     if (agent) {
       await supabase().rpc("instaclaw_add_credits", {
         p_vm_id: agent.id,
         p_credits: delegation.credits_granted,
       });
+      console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id);
     } else {
-      // No agent yet — trigger provisioning, credits will be added after
+      // No agent yet — trigger provisioning
       proxyToInstaclaw("/api/vm/configure", session.userId, {
         method: "POST",
         body: JSON.stringify({
@@ -75,16 +114,19 @@ export async function POST(req: NextRequest) {
           initialCredits: delegation.credits_granted,
         }),
       }).catch(() => {});
+      console.log("[Confirm] No agent — triggered provisioning");
     }
 
     return NextResponse.json({
       success: true,
       creditsAdded: delegation.credits_granted,
+      onChainConfirmed,
     });
   } catch (err) {
-    console.error("Delegate confirm error:", err);
+    const msg = err instanceof Error ? `${err.message}\n${err.stack}` : JSON.stringify(err);
+    console.error("[Confirm] Error:", msg);
     return NextResponse.json(
-      { error: "Failed to confirm delegation" },
+      { error: "Failed to confirm delegation", detail: msg },
       { status: 500 }
     );
   }

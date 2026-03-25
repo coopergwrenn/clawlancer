@@ -347,14 +347,12 @@ export default function Onboarding() {
     }
   }
 
-  // ── TAP 2: Delegate WLD (two-step: prepare → confirm → pay) ──
-  const [payPayload, setPayPayload] = useState<Record<string, unknown> | null>(null);
-  const [delegateRef, setDelegateRef] = useState<string | null>(null);
-
-  // Step 2a: Prepare the payment (show payload for inspection)
+  // ── TAP 2: Delegate WLD ──
   async function handleDelegate() {
+    setStep("delegating");
     setError(null);
     try {
+      // 1. Initiate on backend
       const initRes = await fetch("/api/delegate/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -364,64 +362,44 @@ export default function Onboarding() {
       if (!initRes.ok) {
         const errText = await initRes.text().catch(() => "no body");
         setError(`Initiate ${initRes.status}: ${errText}`);
+        setStep("delegate");
         return;
       }
 
-      const initData = await initRes.json();
-      const { reference, tokenAmount } = initData;
+      const { reference, tokenAmount } = await initRes.json();
       const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim();
 
-      const payload = {
+      if (!recipientAddress) {
+        setError("Treasury wallet not configured");
+        setStep("delegate");
+        return;
+      }
+
+      // 2. Fire MiniKit.pay()
+      const payResult = await MiniKit.commandsAsync.pay({
         reference,
         to: recipientAddress,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
         description: "Activate your free InstaClaw agent",
-      };
-
-      setPayPayload(payload);
-      setDelegateRef(reference);
-      // Show the payload — user must tap "Confirm Payment" to proceed
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      setError(`Prepare error: ${msg}`);
-    }
-  }
-
-  // Step 2b: Actually fire MiniKit.pay() after user reviews payload
-  async function handleConfirmPay() {
-    if (!payPayload || !delegateRef) return;
-    setStep("delegating");
-    setError(null);
-    try {
-      const payResult = await MiniKit.commandsAsync.pay(payPayload as Parameters<typeof MiniKit.commandsAsync.pay>[0]);
-      console.log("[Delegate] Pay result:", JSON.stringify(payResult.finalPayload));
-
-      if (payResult.finalPayload.status !== "success") {
-        setError(`Payment failed: ${JSON.stringify(payResult.finalPayload)}`);
-        setStep("delegate");
-        return;
-      }
-
-      // Step 3: Confirm on backend
-      console.log("[Delegate] Step 3: Confirming...");
-      const confirmRes = await fetch("/api/delegate/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reference: delegateRef,
-          transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
-        }),
       });
 
-      if (!confirmRes.ok) {
-        const confirmErr = await confirmRes.text().catch(() => "no body");
-        console.error("[Delegate] Confirm failed:", confirmRes.status, confirmErr);
-        setError(`Confirm ${confirmRes.status}: ${confirmErr}`);
+      if (payResult.finalPayload.status !== "success") {
+        setError(`Payment cancelled or failed`);
         setStep("delegate");
         return;
       }
 
-      console.log("[Delegate] Success!");
+      // 3. MiniKit returned success — payment went through on World App side
+      // Confirm on backend (with retry polling for on-chain confirmation)
+      // Don't block user — proceed to ready even if on-chain is still pending
+      const txId = (payResult.finalPayload as Record<string, unknown>).transaction_id;
+
+      fetch("/api/delegate/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference, transactionId: txId }),
+      }).catch((err) => console.error("[Delegate] Confirm background error:", err));
+
       MiniKit.commands.sendHapticFeedback({ hapticsType: "notification", style: "success" });
 
       try {
@@ -431,8 +409,7 @@ export default function Onboarding() {
       setStep("ready");
     } catch (err) {
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      console.error("[Delegate] Unhandled error:", msg, err);
-      setError(`Delegation error: ${msg}`);
+      setError(`Error: ${msg}`);
       setStep("delegate");
     }
   }
@@ -783,30 +760,16 @@ export default function Onboarding() {
               </p>
             </div>
 
-            {/* Debug: show payload when prepared */}
-            {payPayload && (
-              <div className="mt-4 w-full max-w-[300px] rounded-xl px-4 py-3 overflow-x-auto" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
-                <p className="text-[10px] font-semibold mb-1" style={{ color: "#6b6b6b" }}>PAYLOAD (debug):</p>
-                <pre className="text-[9px] whitespace-pre-wrap break-all" style={{ color: "#333" }}>{JSON.stringify(payPayload, null, 2)}</pre>
-              </div>
-            )}
-
             {error && (
               <div className="mt-4 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
                 <p className="text-sm text-center" style={{ color: "#ef4444" }}>{error}</p>
               </div>
             )}
           </div>
-          <div className="px-7 flex flex-col gap-2.5" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
-            {!payPayload ? (
-              <button onClick={handleDelegate} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
-                Activate with 20 WLD
-              </button>
-            ) : (
-              <button onClick={handleConfirmPay} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
-                Confirm Payment →
-              </button>
-            )}
+          <div className="px-7" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
+            <button onClick={handleDelegate} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
+              Activate with 20 WLD
+            </button>
           </div>
         </>
       )}
