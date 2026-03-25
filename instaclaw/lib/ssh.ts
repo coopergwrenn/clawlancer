@@ -6704,7 +6704,7 @@ export async function setupTLS(
   const ssh = await connectSSH(vm);
   try {
     // Base64 encode the Caddyfile content to avoid heredoc injection
-    const caddyfile = `${hostname} {\n  handle /.well-known/* {\n    root * /home/openclaw\n    file_server\n  }\n  handle /tmp-media/* {\n    root * /home/openclaw/workspace\n    file_server\n  }\n  handle /relay/* {\n    uri strip_prefix /relay\n    reverse_proxy localhost:18792\n  }\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
+    const caddyfile = `${hostname} {\n  handle /.well-known/* {\n    root * /home/openclaw\n    file_server\n  }\n  handle /tmp-media/* {\n    root * /home/openclaw/workspace\n    file_server\n  }\n  handle /relay/* {\n    uri strip_prefix /relay\n    reverse_proxy localhost:18792\n  }\n  # Block Control UI — redirect to dashboard\n  handle / {\n    header Content-Type "text/html; charset=utf-8"\n    respond "<html><head><meta http-equiv=\'refresh\' content=\'0;url=https://instaclaw.io/dashboard\'><title>InstaClaw</title></head><body style=\'font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa\'><div style=\'text-align:center\'><h2 style=\'color:#1a1a1a\'>Manage your agent at</h2><a href=\'https://instaclaw.io/dashboard\' style=\'color:#2563eb;font-size:1.25rem\'>instaclaw.io/dashboard</a></div></body></html>" 200\n  }\n  reverse_proxy localhost:${GATEWAY_PORT}\n}\n`;
     const b64Caddy = Buffer.from(caddyfile, "utf-8").toString("base64");
 
     const script = [

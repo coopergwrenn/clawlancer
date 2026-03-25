@@ -111,6 +111,9 @@ export async function reconcileVM(
     // ── Step 8e: Clean stale memory entries (proxy down, geoblock, etc.) ──
     await stepCleanStaleMemory(ssh, result, dryRun);
 
+    // ── Step 8f: Caddy UI block (redirect / to instaclaw.io/dashboard) ──
+    await stepCaddyUIBlock(ssh, result, dryRun);
+
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
     if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun) {
       result.gatewayRestartNeeded = true;
@@ -1375,4 +1378,88 @@ async function stepCleanStaleMemory(
   } else {
     result.errors.push(`memory cleanup failed: ${cleanResult.stderr}`);
   }
+}
+
+// ── Step 8f: Caddy UI block — redirect / to instaclaw.io/dashboard ──
+// Prevents users from accessing the raw OpenClaw control panel which can
+// destroy their openclaw.json config. All other paths (API, health, WS) pass through.
+
+async function stepCaddyUIBlock(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Check if Caddyfile already has the UI block
+  const check = await ssh.execCommand(
+    "sudo grep -c 'instaclaw.io/dashboard' /etc/caddy/Caddyfile 2>/dev/null || echo 0",
+  );
+  const count = parseInt(check.stdout.trim(), 10) || 0;
+
+  if (count > 0) {
+    result.alreadyCorrect.push("caddy: UI block present");
+    return;
+  }
+
+  // Read current Caddyfile to extract hostname
+  const catResult = await ssh.execCommand("sudo cat /etc/caddy/Caddyfile 2>/dev/null");
+  if (catResult.code !== 0 || !catResult.stdout.trim()) {
+    result.errors.push("caddy: no Caddyfile found — skipping UI block");
+    return;
+  }
+
+  // Extract hostname from first line (e.g. "abc123.vm.instaclaw.io {")
+  const hostnameMatch = catResult.stdout.match(/^([a-zA-Z0-9][a-zA-Z0-9.\-]+)\s*\{/);
+  if (!hostnameMatch) {
+    result.errors.push("caddy: could not parse hostname from Caddyfile");
+    return;
+  }
+  const hostname = hostnameMatch[1];
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] caddy: would add UI block redirect for ${hostname}`);
+    return;
+  }
+
+  // Build the new Caddyfile with the UI block
+  const newCaddyfile = [
+    `${hostname} {`,
+    `  handle /.well-known/* {`,
+    `    root * /home/openclaw`,
+    `    file_server`,
+    `  }`,
+    `  handle /tmp-media/* {`,
+    `    root * /home/openclaw/workspace`,
+    `    file_server`,
+    `  }`,
+    `  handle /relay/* {`,
+    `    uri strip_prefix /relay`,
+    `    reverse_proxy localhost:18792`,
+    `  }`,
+    `  # Block Control UI — redirect to dashboard`,
+    `  handle / {`,
+    `    header Content-Type "text/html; charset=utf-8"`,
+    `    respond "<html><head><meta http-equiv='refresh' content='0;url=https://instaclaw.io/dashboard'><title>InstaClaw</title></head><body style='font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa'><div style='text-align:center'><h2 style='color:#1a1a1a'>Manage your agent at</h2><a href='https://instaclaw.io/dashboard' style='color:#2563eb;font-size:1.25rem'>instaclaw.io/dashboard</a></div></body></html>" 200`,
+    `  }`,
+    `  reverse_proxy localhost:18789`,
+    `}`,
+    ``,
+  ].join("\n");
+
+  const b64 = Buffer.from(newCaddyfile, "utf-8").toString("base64");
+  const writeResult = await ssh.execCommand(
+    `echo '${b64}' | base64 -d | sudo tee /etc/caddy/Caddyfile > /dev/null`,
+  );
+  if (writeResult.code !== 0) {
+    result.errors.push(`caddy: failed to write Caddyfile: ${writeResult.stderr}`);
+    return;
+  }
+
+  // Reload Caddy (zero downtime)
+  const reloadResult = await ssh.execCommand("sudo systemctl reload caddy 2>/dev/null");
+  if (reloadResult.code !== 0) {
+    result.errors.push(`caddy: reload failed: ${reloadResult.stderr}`);
+    return;
+  }
+
+  result.fixed.push(`caddy: added UI block redirect for ${hostname}`);
 }

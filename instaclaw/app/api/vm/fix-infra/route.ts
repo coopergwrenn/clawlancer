@@ -431,6 +431,55 @@ SEOF`);
           break;
         }
 
+        case "update-caddyfile": {
+          // Block OpenClaw Control UI — redirect / to instaclaw.io/dashboard
+          const caddyCheck = await ssh.execCommand(
+            "sudo grep -c 'instaclaw.io/dashboard' /etc/caddy/Caddyfile 2>/dev/null || echo 0"
+          );
+          if (parseInt(caddyCheck.stdout.trim()) > 0) {
+            results["update-caddyfile"] = "already-present";
+            break;
+          }
+          // Read current Caddyfile to extract hostname
+          const caddyCat = await ssh.execCommand("sudo cat /etc/caddy/Caddyfile 2>/dev/null");
+          const caddyHostMatch = caddyCat.stdout.match(/^([a-zA-Z0-9][a-zA-Z0-9.\-]+)\s*\{/);
+          if (!caddyHostMatch) {
+            results["update-caddyfile"] = "no-caddyfile";
+            break;
+          }
+          const caddyHost = caddyHostMatch[1];
+          const newCaddyfile = [
+            `${caddyHost} {`,
+            `  handle /.well-known/* {`,
+            `    root * /home/openclaw`,
+            `    file_server`,
+            `  }`,
+            `  handle /tmp-media/* {`,
+            `    root * /home/openclaw/workspace`,
+            `    file_server`,
+            `  }`,
+            `  handle /relay/* {`,
+            `    uri strip_prefix /relay`,
+            `    reverse_proxy localhost:18792`,
+            `  }`,
+            `  # Block Control UI — redirect to dashboard`,
+            `  handle / {`,
+            `    header Content-Type "text/html; charset=utf-8"`,
+            `    respond "<html><head><meta http-equiv='refresh' content='0;url=https://instaclaw.io/dashboard'><title>InstaClaw</title></head><body style='font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa'><div style='text-align:center'><h2 style='color:#1a1a1a'>Manage your agent at</h2><a href='https://instaclaw.io/dashboard' style='color:#2563eb;font-size:1.25rem'>instaclaw.io/dashboard</a></div></body></html>" 200`,
+            `  }`,
+            `  reverse_proxy localhost:18789`,
+            `}`,
+            ``,
+          ].join("\n");
+          const caddyB64 = Buffer.from(newCaddyfile, "utf-8").toString("base64");
+          await ssh.execCommand(
+            `echo '${caddyB64}' | base64 -d | sudo tee /etc/caddy/Caddyfile > /dev/null`
+          );
+          const caddyReload = await ssh.execCommand("sudo systemctl reload caddy 2>/dev/null");
+          results["update-caddyfile"] = caddyReload.code === 0 ? "updated" : `reload-failed: ${caddyReload.stderr}`;
+          break;
+        }
+
         case "restart-gateway": {
           await ssh.execCommand(`${DBUS_PREAMBLE} && systemctl --user restart openclaw-gateway 2>/dev/null || true`);
           // Wait for startup
