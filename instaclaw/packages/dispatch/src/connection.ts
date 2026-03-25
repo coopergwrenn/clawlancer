@@ -1,0 +1,125 @@
+/**
+ * Connection — WebSocket client that connects to the VM's dispatch server.
+ * Handles reconnection, heartbeat, and message routing.
+ */
+import WebSocket from "ws";
+import crypto from "crypto";
+import type { DispatchCommand } from "./types.js";
+import { executeCommand } from "./executor.js";
+import { requestApproval } from "./supervisor.js";
+
+interface ConnectionOptions {
+  vmAddress: string;
+  port: number;
+  gatewayToken: string;
+  mode: "supervised" | "autonomous";
+  /** Accept self-signed certs (TOFU) */
+  rejectUnauthorized: boolean;
+  certFingerprint?: string;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  onCertFingerprint?: (fingerprint: string) => void;
+}
+
+let ws: WebSocket | null = null;
+let reconnectDelay = 1000;
+let shouldReconnect = true;
+let commandsExecuted = 0;
+
+export function connect(opts: ConnectionOptions): void {
+  const proto = "wss";
+  const url = `${proto}://${opts.vmAddress}:${opts.port}?token=${opts.gatewayToken}`;
+
+  console.log(`  Connecting to ${opts.vmAddress}:${opts.port}...`);
+
+  ws = new WebSocket(url, {
+    rejectUnauthorized: false, // Accept self-signed certs (TOFU model)
+  });
+
+  ws.on("open", () => {
+    reconnectDelay = 1000; // Reset backoff
+    console.log(`  Connected to agent on ${opts.vmAddress}`);
+    opts.onConnect?.();
+  });
+
+  ws.on("message", async (data, isBinary) => {
+    if (isBinary) return; // We don't expect binary from the server
+
+    try {
+      const command: DispatchCommand = JSON.parse(data.toString());
+
+      // Supervised mode: ask user for approval
+      if (opts.mode === "supervised") {
+        const approved = await requestApproval(command);
+        if (!approved) {
+          sendResult(command.id, { success: false, error: "User denied the action" });
+          return;
+        }
+      }
+
+      // Execute the command
+      const result = await executeCommand(command);
+      commandsExecuted++;
+
+      if (result.screenshotBuffer && result.screenshotMeta) {
+        // Screenshot: send metadata text frame, then binary frame
+        const meta = {
+          id: command.id,
+          type: "screenshot_result" as const,
+          ...result.screenshotMeta,
+          size: result.screenshotBuffer.length,
+        };
+        ws?.send(JSON.stringify(meta));
+        ws?.send(result.screenshotBuffer);
+      } else {
+        // Normal result
+        sendResult(command.id, {
+          success: result.success,
+          data: result.data,
+          error: result.error,
+        });
+      }
+    } catch (err) {
+      console.error("  Error processing command:", err);
+    }
+  });
+
+  ws.on("close", (code, reason) => {
+    console.log(`  Disconnected (code=${code}${reason.length ? `, reason=${reason}` : ""})`);
+    ws = null;
+    opts.onDisconnect?.();
+
+    if (shouldReconnect) {
+      console.log(`  Reconnecting in ${reconnectDelay / 1000}s...`);
+      setTimeout(() => connect(opts), reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    }
+  });
+
+  ws.on("error", (err) => {
+    // Suppress ECONNREFUSED noise — close handler will reconnect
+    if ((err as NodeJS.ErrnoException).code !== "ECONNREFUSED") {
+      console.error("  WebSocket error:", err.message);
+    }
+  });
+
+  ws.on("ping", () => { ws?.pong(); });
+}
+
+function sendResult(id: string, result: { success: boolean; data?: unknown; error?: string }) {
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ id, type: "result", ...result }));
+  }
+}
+
+export function disconnect(): void {
+  shouldReconnect = false;
+  ws?.close();
+}
+
+export function getStats() {
+  return {
+    connected: ws?.readyState === WebSocket.OPEN,
+    commandsExecuted,
+  };
+}
