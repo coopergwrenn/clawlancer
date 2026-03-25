@@ -48,13 +48,11 @@ export function connect(opts: ConnectionOptions): void {
     try {
       const command: DispatchCommand = JSON.parse(data.toString());
 
-      // Supervised mode: ask user for approval
-      if (opts.mode === "supervised") {
-        const approved = await requestApproval(command);
-        if (!approved) {
-          sendResult(command.id, { success: false, error: "User denied the action" });
-          return;
-        }
+      // Check approval (supervisor handles mode logic — prompts in supervised, auto-approves in autonomous, blocks dangerous)
+      const approved = await requestApproval(command);
+      if (!approved) {
+        sendResult(command.id, { success: false, error: "User denied the action" });
+        return;
       }
 
       // Execute the command
