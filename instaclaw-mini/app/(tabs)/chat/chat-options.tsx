@@ -10,6 +10,13 @@ export default function ChatOptions({
   xmtpAddress: string | null;
   telegramBotUsername: string | null;
 }) {
+  function handleTelegram() {
+    if (!telegramBotUsername) return;
+    MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
+    const username = telegramBotUsername.replace(/^@/, "");
+    window.location.href = `https://t.me/${username}?start=world`;
+  }
+
   async function handleWorldChat() {
     if (!xmtpAddress) return;
     try {
@@ -21,52 +28,43 @@ export default function ChatOptions({
     } catch { /* chat cancelled */ }
   }
 
-  function handleTelegram() {
-    if (!telegramBotUsername) return;
-    MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "light" });
-    const username = telegramBotUsername.replace(/^@/, "");
-    window.open(`https://t.me/${username}?start=world`, "_blank");
-  }
-
   return (
     <div className="flex flex-col gap-3">
-      {/* Primary: World Chat */}
+      {/* Primary: Telegram (works now) */}
       <button
-        onClick={handleWorldChat}
-        disabled={!xmtpAddress}
+        onClick={handleTelegram}
+        disabled={!telegramBotUsername}
         className="animate-fade-in-up btn-primary flex items-center gap-4 rounded-2xl p-4 text-left disabled:opacity-40"
         style={{ opacity: 0 }}
       >
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20">
-          <Globe size={24} />
+          <Send size={24} />
         </div>
         <div className="flex-1">
-          <p className="font-bold">Chat via World App</p>
+          <p className="font-bold">Chat via Telegram</p>
           <p className="mt-0.5 text-sm opacity-70">
-            {xmtpAddress
-              ? "Opens World Chat with your agent"
-              : "Coming soon — use Telegram for now"}
+            {telegramBotUsername
+              ? `@${telegramBotUsername.replace(/^@/, "")}`
+              : "Not connected yet"}
           </p>
         </div>
         <ArrowUpRight size={18} className="opacity-50" />
       </button>
 
-      {/* Secondary: Telegram */}
+      {/* Secondary: World Chat (XMTP) */}
       <button
-        onClick={handleTelegram}
-        disabled={!telegramBotUsername}
+        onClick={handleWorldChat}
+        disabled={!xmtpAddress}
         className="animate-fade-in-up glass-card flex items-center gap-4 rounded-2xl p-4 text-left disabled:opacity-40 stagger-1"
         style={{ opacity: 0 }}
       >
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.04]">
-          <Send size={22} className="text-muted" />
+          <Globe size={22} className="text-muted" />
         </div>
         <div className="flex-1">
-          <p className="font-semibold">Chat via Telegram</p>
+          <p className="font-semibold">Chat via World App</p>
           <p className="mt-0.5 text-sm text-muted">
-            {telegramBotUsername
-              ? `@${telegramBotUsername.replace(/^@/, "")}`
-              : "Connect Telegram in Settings"}
+            {xmtpAddress ? "Send a message via World Chat" : "Coming soon"}
           </p>
         </div>
         <ArrowUpRight size={18} className="text-muted opacity-50" />
@@ -80,13 +78,13 @@ export default function ChatOptions({
         </p>
         <div className="mx-auto mt-3 flex items-center justify-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="status-dot-healthy h-1.5 w-1.5 rounded-full" />
-            <span className="text-[10px] text-muted">World Chat</span>
+            <Send size={10} className="text-accent" />
+            <span className="text-[10px] text-muted">Telegram</span>
           </div>
           <span className="text-[10px] text-white/20">•</span>
           <div className="flex items-center gap-1.5">
-            <MessageCircle size={10} className="text-muted" />
-            <span className="text-[10px] text-muted">Telegram</span>
+            <Globe size={10} className="text-muted" />
+            <span className="text-[10px] text-muted">World Chat</span>
           </div>
         </div>
       </div>

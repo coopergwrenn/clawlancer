@@ -46,14 +46,17 @@ export default function AgentDashboard({
   const isHealthy = agent.health_status === "healthy";
   const creditPct = Math.min(100, (agent.credit_balance / 25) * 100);
 
-  async function handleChat() {
-    if (agent.xmtp_address) {
-      try {
-        await MiniKit.commandsAsync.chat({
-          message: "Hey! What's happening today?",
-          to: [agent.xmtp_address],
-        });
-      } catch { /* fallback — stay on dashboard */ }
+  function handleChat() {
+    // Primary: Telegram (works reliably)
+    if (agent.telegram_bot_username) {
+      const username = String(agent.telegram_bot_username).replace(/^@/, "");
+      window.location.href = `https://t.me/${username}?start=world`;
+    } else if (agent.xmtp_address) {
+      // Fallback: World Chat via XMTP
+      MiniKit.commandsAsync.chat({
+        message: "Hey! What's happening today?",
+        to: [String(agent.xmtp_address)],
+      }).catch(() => {});
     }
   }
 
