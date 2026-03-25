@@ -17,6 +17,7 @@ export function supabase(): SupabaseClient {
 // --- Direct Supabase reads (server-side, scoped to authenticated user) ---
 
 export async function getAgentStatus(userId: string) {
+  console.log("[getAgentStatus] Looking up VM for userId:", userId);
   const { data, error } = await supabase()
     .from("instaclaw_vms")
     .select(
@@ -24,7 +25,11 @@ export async function getAgentStatus(userId: string) {
     )
     .eq("assigned_to", userId)
     .single();
-  if (error && error.code !== "PGRST116") throw error; // PGRST116 = no rows
+  if (error && error.code !== "PGRST116") {
+    console.error("[getAgentStatus] Error:", error.code, error.message);
+    throw error;
+  }
+  console.log("[getAgentStatus] Result:", data ? data.id : "null");
   return data;
 }
 
