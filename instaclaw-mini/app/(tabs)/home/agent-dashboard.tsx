@@ -10,7 +10,6 @@ import {
   Share2,
   Zap,
   TrendingUp,
-  ExternalLink,
 } from "lucide-react";
 
 interface Agent {
@@ -229,16 +228,10 @@ export default function AgentDashboard({
       {showDiscovery && (
         <div className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-3" style={{ opacity: 0 }}>
           <p className="mb-3 text-sm leading-relaxed text-muted">
-            Want more from your agent? Browse skills, connect Telegram,
-            or visit instaclaw.io for the full dashboard.
+            Want more from your agent? Browse skills or connect Telegram
+            to chat with your agent from anywhere.
           </p>
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => window.open("https://instaclaw.io/dashboard", "_blank")}
-              className="flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent-dark"
-            >
-              Full dashboard <ExternalLink size={10} />
-            </button>
+          <div className="flex items-center justify-end">
             <button
               onClick={() => setShowDiscovery(false)}
               className="text-xs text-muted transition-colors hover:text-foreground"

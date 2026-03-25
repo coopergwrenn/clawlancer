@@ -184,22 +184,15 @@ export default function ProvisioningStatus() {
         </div>
         <h2 className="text-[32px] tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>All systems go!</h2>
         <p className="mt-3 max-w-[280px] text-center text-[15px] leading-relaxed" style={{ color: "#6b6b6b" }}>
-          Your agent is ready. It may take a few minutes for your VM to fully configure.
+          Your agent is ready. Start chatting or explore your dashboard.
         </p>
         <div className="mt-8 flex flex-col gap-3 w-full max-w-[300px]">
           <button
-            onClick={() => window.location.href = "https://instaclaw.io/dashboard"}
+            onClick={() => window.location.href = "/home?t=" + Date.now()}
             className="btn-primary w-full rounded-[28px] text-base font-semibold"
             style={{ height: "56px" }}
           >
-            Open full dashboard
-          </button>
-          <button
-            onClick={() => router.push("/settings")}
-            className="w-full rounded-[28px] text-base font-semibold"
-            style={{ height: "52px", background: "rgba(0,0,0,0.04)", color: "#333334", border: "1px solid rgba(0,0,0,0.08)" }}
-          >
-            View settings
+            Go to my dashboard
           </button>
         </div>
       </div>

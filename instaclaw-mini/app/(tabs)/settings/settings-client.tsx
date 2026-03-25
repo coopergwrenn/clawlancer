@@ -238,10 +238,10 @@ export default function SettingsClient({
           More
         </h2>
         <button
-          onClick={() => window.open("https://instaclaw.io/dashboard", "_blank")}
+          onClick={() => window.open("https://instaclaw.io", "_blank")}
           className="flex w-full items-center justify-between rounded-lg px-1 py-3 text-sm transition-colors hover:bg-white/[0.03]"
         >
-          <span>Full dashboard on instaclaw.io</span>
+          <span>Visit instaclaw.io</span>
           <ChevronRight size={14} className="text-muted" />
         </button>
       </section>
