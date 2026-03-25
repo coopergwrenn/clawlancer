@@ -133,7 +133,6 @@ export default function ProvisioningStatus() {
       setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as StepStatus })));
       setJustCompleted(new Set(["payment", "assign", "configure", "connect", "health"]));
       setTimeout(() => setPhase("complete"), 800);
-      setTimeout(() => router.refresh(), 2500);
     };
 
     const poll = setInterval(async () => {
@@ -176,7 +175,7 @@ export default function ProvisioningStatus() {
   const serif = { fontFamily: "'Instrument Serif', Georgia, serif" };
   const doneCount = steps.filter((s) => s.status === "done").length;
 
-  // ── Complete: "All systems go!" then auto-navigate ──
+  // ── Complete: "All systems go!" with dashboard content ──
   if (phase === "complete") {
     return (
       <div className="flex h-full flex-col items-center justify-center px-8 onboarding-light animate-fade-in" style={{ opacity: 0 }}>
@@ -184,7 +183,25 @@ export default function ProvisioningStatus() {
           <Check size={40} strokeWidth={2} color="#22c55e" />
         </div>
         <h2 className="text-[32px] tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>All systems go!</h2>
-        <p className="mt-3 text-[16px]" style={{ color: "#6b6b6b" }}>Loading your dashboard...</p>
+        <p className="mt-3 max-w-[280px] text-center text-[15px] leading-relaxed" style={{ color: "#6b6b6b" }}>
+          Your agent is ready. It may take a few minutes for your VM to fully configure.
+        </p>
+        <div className="mt-8 flex flex-col gap-3 w-full max-w-[300px]">
+          <button
+            onClick={() => window.location.href = "https://instaclaw.io/dashboard"}
+            className="btn-primary w-full rounded-[28px] text-base font-semibold"
+            style={{ height: "56px" }}
+          >
+            Open full dashboard
+          </button>
+          <button
+            onClick={() => router.push("/settings")}
+            className="w-full rounded-[28px] text-base font-semibold"
+            style={{ height: "52px", background: "rgba(0,0,0,0.04)", color: "#333334", border: "1px solid rgba(0,0,0,0.08)" }}
+          >
+            View settings
+          </button>
+        </div>
       </div>
     );
   }
