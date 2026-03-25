@@ -295,6 +295,18 @@ html, body {
   background: linear-gradient(90deg, #1dc1a0, #16a387);
 }
 
+/* ─── Provisioning Step Animations ───────────────── */
+@keyframes check-bounce {
+  0%   { transform: scale(0); }
+  60%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50%      { transform: scale(1.1); opacity: 1; }
+}
+
 /* ─── Globe Orb (Spots Counter) ─────────────────── */
 @keyframes globe-shimmer {
   0%   { background-position: 200% 0; }
