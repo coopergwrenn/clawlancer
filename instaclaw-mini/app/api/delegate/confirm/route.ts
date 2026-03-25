@@ -98,23 +98,44 @@ export async function POST(req: NextRequest) {
       .eq("id", delegation.id);
 
     // Grant credits immediately — don't block on chain confirmation
-    const agent = await getAgentStatus(session.userId);
+    let agent = null;
+    try {
+      agent = await getAgentStatus(session.userId);
+    } catch (err) {
+      console.error("[Confirm] Agent lookup failed:", err);
+    }
+
     if (agent) {
-      await supabase().rpc("instaclaw_add_credits", {
-        p_vm_id: agent.id,
-        p_credits: delegation.credits_granted,
-      });
-      console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id);
+      // Direct update instead of RPC — more reliable
+      try {
+        const { error: creditErr } = await supabase()
+          .from("instaclaw_vms")
+          .update({ credit_balance: (agent.credit_balance || 0) + delegation.credits_granted })
+          .eq("id", agent.id);
+        if (creditErr) {
+          console.error("[Confirm] Credit update failed:", creditErr);
+        } else {
+          console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id, "new balance:", (agent.credit_balance || 0) + delegation.credits_granted);
+        }
+
+        // Also update delegation with vm_id
+        await supabase()
+          .from("instaclaw_wld_delegations")
+          .update({ vm_id: agent.id })
+          .eq("id", delegation.id);
+      } catch (err) {
+        console.error("[Confirm] Credit grant error:", err);
+      }
     } else {
       // No agent yet — trigger provisioning
+      console.log("[Confirm] No agent found — triggering provisioning for user:", session.userId);
       proxyToInstaclaw("/api/vm/configure", session.userId, {
         method: "POST",
         body: JSON.stringify({
           userId: session.userId,
           initialCredits: delegation.credits_granted,
         }),
-      }).catch(() => {});
-      console.log("[Confirm] No agent — triggered provisioning");
+      }).catch((err) => console.error("[Confirm] Provisioning proxy failed:", err));
     }
 
     return NextResponse.json({
