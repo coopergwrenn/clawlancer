@@ -3332,6 +3332,36 @@ export async function configureOpenClaw(
       ''
     );
 
+    // Deploy Dispatch Mode scripts (virtual desktop control)
+    // Load scripts from skills/computer-dispatch/scripts/ in the repo
+    try {
+      const dispatchScriptsDir = path.resolve(__dirname, '../skills/computer-dispatch/scripts');
+      const dispatchSkillPath = path.resolve(__dirname, '../skills/computer-dispatch/SKILL.md');
+      const dispatchScripts = ['dispatch-screenshot.sh', 'dispatch-click.sh', 'dispatch-type.sh', 'dispatch-press.sh', 'dispatch-scroll.sh', 'dispatch-browser.sh'];
+
+      const dispatchParts: string[] = ['# ── Deploy Dispatch Mode scripts (virtual desktop control) ──', 'mkdir -p "$HOME/scripts"'];
+      for (const name of dispatchScripts) {
+        const content = fs.readFileSync(path.join(dispatchScriptsDir, name), 'utf-8');
+        const b64 = Buffer.from(content, 'utf-8').toString('base64');
+        dispatchParts.push(`echo '${b64}' | base64 -d > "$HOME/scripts/${name}"`);
+        dispatchParts.push(`chmod +x "$HOME/scripts/${name}"`);
+      }
+
+      // Deploy computer-dispatch SKILL.md
+      if (fs.existsSync(dispatchSkillPath)) {
+        const skillContent = fs.readFileSync(dispatchSkillPath, 'utf-8');
+        const skillB64 = Buffer.from(skillContent, 'utf-8').toString('base64');
+        dispatchParts.push('mkdir -p "$HOME/.openclaw/skills/computer-dispatch"');
+        dispatchParts.push(`echo '${skillB64}' | base64 -d > "$HOME/.openclaw/skills/computer-dispatch/SKILL.md"`);
+      }
+      dispatchParts.push('');
+      scriptParts.push(...dispatchParts);
+    } catch (dispatchErr) {
+      logger.warn("Failed to load dispatch scripts for deployment (non-fatal)", {
+        error: String(dispatchErr),
+      });
+    }
+
     if (config.gmailProfileSummary) {
       // Gmail connected → personalized BOOTSTRAP.md + profile data
       const bootstrap = buildPersonalizedBootstrap(config.gmailProfileSummary);
@@ -4446,6 +4476,36 @@ export async function configureOpenClaw(
       '  echo "CONFIG_VALIDATION_WARNING: $DOCTOR_OUT"',
       'fi',
       '',
+      // ── Deploy Dispatch Mode (Xvfb + usecomputer + dispatch scripts) ──
+      // Gives every agent a virtual desktop with stealth browser capability.
+      '# ── Dispatch Mode: Install Xvfb, openbox, usecomputer, xdotool ──',
+      'sudo apt-get install -y -qq xvfb xdotool libx11-dev libxext-dev libxtst-dev libpng-dev openbox imagemagick > /dev/null 2>&1 || true',
+      'npm ls -g usecomputer > /dev/null 2>&1 || npm i -g usecomputer > /dev/null 2>&1 || true',
+      '',
+      '# Create Xvfb systemd service (virtual display at :99)',
+      'if ! systemctl is-active xvfb > /dev/null 2>&1; then',
+      '  sudo bash -c \'cat > /etc/systemd/system/xvfb.service << XVFBEOF',
+      '[Unit]',
+      'Description=Xvfb Virtual Display for Dispatch Mode',
+      'After=network.target',
+      '[Service]',
+      'Type=simple',
+      'User=openclaw',
+      'ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x720x24 -ac',
+      'Restart=always',
+      'RestartSec=3',
+      '[Install]',
+      'WantedBy=multi-user.target',
+      'XVFBEOF\'',
+      '  sudo systemctl daemon-reload',
+      '  sudo systemctl enable xvfb 2>/dev/null || true',
+      '  sudo systemctl start xvfb 2>/dev/null || true',
+      '  sleep 2',
+      'fi',
+      '# Start openbox window manager on virtual display',
+      'pgrep -x openbox > /dev/null || (DISPLAY=:99 nohup openbox > /dev/null 2>&1 &)',
+      '',
+
       '# Install gateway as systemd service and start',
       'openclaw gateway install 2>/dev/null || true',
       '',
