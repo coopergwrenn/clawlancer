@@ -385,14 +385,23 @@ export default function Onboarding() {
         return;
       }
 
+      // MiniKit tokenToDecimals returns number (amount * 10^decimals)
+      // For WLD (18 decimals), amounts > ~9 WLD overflow JS Number precision
+      // So we pass the server-computed BigInt string directly
+      // tokenAmount from server = "20000000000000000000" (20 * 10^18)
+      const payPayload = {
+        reference,
+        to: recipientAddress,
+        tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
+        description: "Activate your free InstaClaw agent",
+      };
+      // Show payload on screen for debugging
+      setError(`DEBUG payload: ${JSON.stringify(payPayload)}`);
+      console.log("[Delegate] Pay payload:", JSON.stringify(payPayload));
+
       let payResult;
       try {
-        payResult = await MiniKit.commandsAsync.pay({
-          reference,
-          to: recipientAddress,
-          tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
-          description: "Activate your free InstaClaw agent",
-        });
+        payResult = await MiniKit.commandsAsync.pay(payPayload);
         console.log("[Delegate] Pay result:", JSON.stringify(payResult.finalPayload));
       } catch (payErr) {
         console.error("[Delegate] MiniKit.pay threw:", payErr);
