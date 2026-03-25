@@ -3337,7 +3337,10 @@ export async function configureOpenClaw(
     try {
       const dispatchScriptsDir = path.resolve(__dirname, '../skills/computer-dispatch/scripts');
       const dispatchSkillPath = path.resolve(__dirname, '../skills/computer-dispatch/SKILL.md');
-      const dispatchScripts = ['dispatch-screenshot.sh', 'dispatch-click.sh', 'dispatch-type.sh', 'dispatch-press.sh', 'dispatch-scroll.sh', 'dispatch-browser.sh'];
+      const dispatchScripts = [
+        'dispatch-screenshot.sh', 'dispatch-click.sh', 'dispatch-type.sh', 'dispatch-press.sh', 'dispatch-scroll.sh', 'dispatch-browser.sh',
+        'dispatch-remote-screenshot.sh', 'dispatch-remote-click.sh', 'dispatch-remote-type.sh', 'dispatch-remote-press.sh', 'dispatch-remote-scroll.sh', 'dispatch-remote-status.sh',
+      ];
 
       const dispatchParts: string[] = ['# ── Deploy Dispatch Mode scripts (virtual desktop control) ──', 'mkdir -p "$HOME/scripts"'];
       for (const name of dispatchScripts) {
@@ -3345,6 +3348,15 @@ export async function configureOpenClaw(
         const b64 = Buffer.from(content, 'utf-8').toString('base64');
         dispatchParts.push(`echo '${b64}' | base64 -d > "$HOME/scripts/${name}"`);
         dispatchParts.push(`chmod +x "$HOME/scripts/${name}"`);
+      }
+
+      // Deploy dispatch-server.js
+      const dispatchServerPath = path.resolve(__dirname, '../skills/computer-dispatch/dispatch-server.js');
+      if (fs.existsSync(dispatchServerPath)) {
+        const serverContent = fs.readFileSync(dispatchServerPath, 'utf-8');
+        const serverB64 = Buffer.from(serverContent, 'utf-8').toString('base64');
+        dispatchParts.push(`echo '${serverB64}' | base64 -d > "$HOME/scripts/dispatch-server.js"`);
+        dispatchParts.push('chmod +x "$HOME/scripts/dispatch-server.js"');
       }
 
       // Deploy computer-dispatch SKILL.md
@@ -4508,6 +4520,35 @@ export async function configureOpenClaw(
       'fi',
       '# Start openbox window manager on virtual display',
       'pgrep -x openbox > /dev/null || (DISPLAY=:99 nohup openbox > /dev/null 2>&1 &)',
+      '',
+      '# ── Dispatch Server (Phase 2: remote computer control relay) ──',
+      'sudo apt-get install -y -qq socat netcat-openbsd > /dev/null 2>&1 || true',
+      'sudo ufw allow 8765/tcp > /dev/null 2>&1 || true',
+      'cd ~/scripts && [ -f package.json ] || echo "{}" > package.json',
+      'npm ls ws > /dev/null 2>&1 || npm i ws > /dev/null 2>&1 || true',
+      '',
+      '# Create dispatch-server systemd user service',
+      'if [ -f "$HOME/scripts/dispatch-server.js" ]; then',
+      '  mkdir -p "$HOME/.config/systemd/user"',
+      '  NODE_BIN_PATH=$(which node)',
+      '  cat > "$HOME/.config/systemd/user/dispatch-server.service" << DSEOF',
+      '[Unit]',
+      'Description=Dispatch WebSocket Server',
+      'After=network.target xvfb.service',
+      '[Service]',
+      'Type=simple',
+      'ExecStart=\'$NODE_BIN_PATH\' /home/openclaw/scripts/dispatch-server.js',
+      'Environment=HOME=/home/openclaw',
+      'Environment=PATH=/home/openclaw/.nvm/versions/node/\'$NODE_VER\'/bin:/usr/local/bin:/usr/bin:/bin',
+      'Restart=always',
+      'RestartSec=5',
+      '[Install]',
+      'WantedBy=default.target',
+      'DSEOF',
+      '  systemctl --user daemon-reload 2>/dev/null || true',
+      '  systemctl --user enable dispatch-server 2>/dev/null || true',
+      '  systemctl --user start dispatch-server 2>/dev/null || true',
+      'fi',
       '',
 
       '# Install gateway as systemd service and start',

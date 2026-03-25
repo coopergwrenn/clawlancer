@@ -6,11 +6,15 @@ import readline from "readline";
 import type { DispatchCommand } from "./types.js";
 
 const AUTO_APPROVE_TYPES = new Set(["screenshot", "windows", "status"]);
+const isTTY = process.stdin.isTTY ?? false;
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+let rl: readline.Interface | null = null;
+if (isTTY) {
+  rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+}
 
 export async function requestApproval(command: DispatchCommand): Promise<boolean> {
   // Auto-approve passive commands
@@ -21,8 +25,14 @@ export async function requestApproval(command: DispatchCommand): Promise<boolean
   const desc = formatCommand(command);
   console.log(`\n  Agent wants to: ${desc}`);
 
+  // Non-interactive mode (no TTY) — auto-approve with log
+  if (!rl) {
+    console.log("  Auto-approved (non-interactive mode)");
+    return true;
+  }
+
   return new Promise((resolve) => {
-    rl.question("  [Enter] to approve, [n] to deny: ", (answer) => {
+    rl!.question("  [Enter] to approve, [n] to deny: ", (answer) => {
       const denied = answer.trim().toLowerCase() === "n";
       if (denied) {
         console.log("  Denied.");
@@ -51,5 +61,5 @@ function formatCommand(cmd: DispatchCommand): string {
 }
 
 export function closeSupervisor(): void {
-  rl.close();
+  rl?.close();
 }
