@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { WorldIDSection } from "@/components/dashboard/world-id-section";
 import { BrowserExtensionSection } from "@/components/dashboard/browser-extension-section";
+import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-section";
 import { ConnectWorldWallet } from "@/components/dashboard/connect-world-wallet";
 
 const MODEL_OPTIONS = [
@@ -744,6 +745,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Remote Computer Control (Dispatch Relay) */}
+      <DispatchRelaySection />
 
       {/* Browser Extension */}
       <BrowserExtensionSection gatewayUrl={vm.gatewayUrl} />

@@ -1,6 +1,6 @@
 {
   "name": "@instaclaw/dispatch",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Let your InstaClaw AI agent control your computer — screenshots, clicks, typing, and more via a secure WebSocket relay",
   "bin": {
     "instaclaw-dispatch": "./dist/index.js"

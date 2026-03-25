@@ -9,7 +9,7 @@
 import { loadConfig, saveConfig, getConfigPath } from "./config.js";
 import { checkPermissions, printPermissionGuide, runPermissionTest } from "./permissions.js";
 import { connect, disconnect } from "./connection.js";
-import { closeSupervisor } from "./supervisor.js";
+import { closeSupervisor, setMode } from "./supervisor.js";
 import readline from "readline";
 import os from "os";
 import type { DispatchConfig } from "./types.js";
@@ -59,7 +59,7 @@ async function main() {
       gatewayToken: args.token,
       vmAddress: args.vm,
       port: args.port || 8765,
-      mode: "supervised",
+      mode: args.autonomous ? "autonomous" : "supervised",
     };
     saveConfig(config);
   }
@@ -69,6 +69,11 @@ async function main() {
     config = await interactiveSetup(config);
     saveConfig(config);
     console.log(`  Config saved to ${getConfigPath()}\n`);
+  }
+
+  // Set supervisor mode
+  if (config.mode === "autonomous") {
+    setMode("autonomous");
   }
 
   console.log(`  VM:   ${config.vmAddress}:${config.port}`);
@@ -84,8 +89,13 @@ async function main() {
     rejectUnauthorized: false, // Accept self-signed (TOFU)
     certFingerprint: config.certFingerprint,
     onConnect: () => {
-      console.log(`\n  Dispatch mode: SUPERVISED`);
-      console.log(`  Screenshots auto-approved. Actions require [Enter] to confirm.`);
+      if (config!.mode === "autonomous") {
+        console.log(`\n  Dispatch mode: AUTONOMOUS`);
+        console.log(`  All actions auto-approved (dangerous actions still require confirmation).`);
+      } else {
+        console.log(`\n  Dispatch mode: SUPERVISED`);
+        console.log(`  Screenshots auto-approved. Actions require [Enter] to confirm.`);
+      }
       console.log(`  Press Ctrl+C to disconnect.\n`);
     },
     onDisconnect: () => {
@@ -136,9 +146,9 @@ async function interactiveSetup(existing: DispatchConfig | null): Promise<Dispat
   };
 }
 
-function parseArgs(): { token?: string; vm?: string; port?: number } {
+function parseArgs(): { token?: string; vm?: string; port?: number; autonomous?: boolean } {
   const args = process.argv.slice(2);
-  const result: { token?: string; vm?: string; port?: number } = {};
+  const result: { token?: string; vm?: string; port?: number; autonomous?: boolean } = {};
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--token" || args[i] === "-t") && args[i + 1]) {
@@ -147,6 +157,8 @@ function parseArgs(): { token?: string; vm?: string; port?: number } {
       result.vm = args[++i];
     } else if ((args[i] === "--port" || args[i] === "-p") && args[i + 1]) {
       result.port = parseInt(args[++i], 10);
+    } else if (args[i] === "--autonomous" || args[i] === "--auto") {
+      result.autonomous = true;
     }
   }
   return result;

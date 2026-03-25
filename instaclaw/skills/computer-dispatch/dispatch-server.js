@@ -32,6 +32,14 @@ if (!GATEWAY_TOKEN) {
   process.exit(1);
 }
 
+// ── Audit Log ──
+const AUDIT_LOG = path.join(process.env.HOME, ".openclaw/workspace/dispatch-audit.log");
+
+function auditLog(entry) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + "\n";
+  fs.appendFile(AUDIT_LOG, line, () => {}); // fire-and-forget
+}
+
 // ── TLS: Self-signed cert (TOFU) ──
 const CERT_DIR = path.join(process.env.HOME, ".dispatch-server-certs");
 let tlsOptions = null;
@@ -98,6 +106,7 @@ wss.on("connection", (ws, req) => {
   activeRelay = ws;
   const clientIP = req.socket.remoteAddress;
   console.log(`[dispatch-server] Relay connected from ${clientIP}`);
+  auditLog({ event: "relay_connected", ip: clientIP });
 
   // Heartbeat
   ws.isAlive = true;
@@ -142,6 +151,7 @@ wss.on("connection", (ws, req) => {
 
   ws.on("close", () => {
     console.log("[dispatch-server] Relay disconnected");
+    auditLog({ event: "relay_disconnected" });
     if (activeRelay === ws) activeRelay = null;
     // Reject all pending requests
     for (const [id, req] of pendingRequests) {
@@ -242,8 +252,10 @@ const unixServer = net.createServer((conn) => {
 
       // Forward to relay
       console.log(`[dispatch-server] Forwarding ${command.type} command to relay`);
+      auditLog({ event: "command", type: command.type, params: command.type === "type" ? { text: "***" } : command.params });
       const result = await sendToRelay(command);
       console.log(`[dispatch-server] Got result for ${command.type}: ${JSON.stringify(result).substring(0, 100)}`);
+      auditLog({ event: "result", type: command.type, success: !!result && !result.error });
       conn.write(JSON.stringify(result) + "\n");
       conn.end();
     } catch (err) {
