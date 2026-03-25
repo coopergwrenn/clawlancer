@@ -41,7 +41,7 @@ function RotatingMessage() {
 
   return (
     <span
-      className="shimmer-text text-[13px]"
+      className="shimmer-text text-[15px]"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(-4px)",
@@ -54,17 +54,19 @@ function RotatingMessage() {
 }
 
 function StepIcon({ status, justDone }: { status: StepStatus; justDone: boolean }) {
+  const size = "h-11 w-11"; // 44px — comfortable touch target
+
   if (status === "done") {
     return (
       <div
-        className="flex h-7 w-7 items-center justify-center rounded-full"
+        className={`flex ${size} items-center justify-center rounded-full`}
         style={{
           background: "radial-gradient(circle at 40% 35%, rgba(34,197,94,0.7), rgba(34,197,94,0.3) 70%)",
-          boxShadow: "inset 0 -1px 3px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.1)",
+          boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.4), 0 2px 6px rgba(0,0,0,0.12)",
           animation: justDone ? "check-bounce 0.3s ease" : undefined,
         }}
       >
-        <Check size={14} strokeWidth={3} color="#fff" />
+        <Check size={20} strokeWidth={3} color="#fff" />
       </div>
     );
   }
@@ -72,27 +74,27 @@ function StepIcon({ status, justDone }: { status: StepStatus; justDone: boolean 
   if (status === "active") {
     return (
       <div
-        className="flex h-7 w-7 items-center justify-center rounded-full"
+        className={`flex ${size} items-center justify-center rounded-full`}
         style={{
           background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.7), rgba(220,103,67,0.3) 70%)",
-          boxShadow: "inset 0 -1px 3px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.1)",
+          boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.4), 0 2px 6px rgba(0,0,0,0.12)",
           animation: "pulse-dot 2s ease-in-out infinite",
         }}
       >
-        <div className="h-2 w-2 rounded-full bg-white" />
+        <div className="h-3 w-3 rounded-full bg-white" />
       </div>
     );
   }
 
   return (
     <div
-      className="flex h-7 w-7 items-center justify-center rounded-full"
+      className={`flex ${size} items-center justify-center rounded-full`}
       style={{
         background: "radial-gradient(circle at 40% 35%, rgba(0,0,0,0.06), rgba(0,0,0,0.02) 70%)",
-        boxShadow: "inset 0 -1px 2px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04)",
+        boxShadow: "inset 0 -1px 2px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.04)",
       }}
     >
-      <div className="h-1.5 w-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.15)" }} />
+      <div className="h-2 w-2 rounded-full" style={{ background: "rgba(0,0,0,0.12)" }} />
     </div>
   );
 }
@@ -177,12 +179,12 @@ export default function ProvisioningStatus() {
   // ── Complete: "All systems go!" then auto-navigate ──
   if (phase === "complete") {
     return (
-      <div className="flex h-full flex-col items-center justify-center px-6 onboarding-light animate-fade-in" style={{ opacity: 0 }}>
-        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(34,197,94,0.15), rgba(34,197,94,0.04) 70%)" }}>
-          <Check size={32} strokeWidth={2} color="#22c55e" />
+      <div className="flex h-full flex-col items-center justify-center px-8 onboarding-light animate-fade-in" style={{ opacity: 0 }}>
+        <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(34,197,94,0.15), rgba(34,197,94,0.04) 70%)" }}>
+          <Check size={40} strokeWidth={2} color="#22c55e" />
         </div>
-        <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>All systems go!</h2>
-        <p className="mt-2 text-[14px]" style={{ color: "#6b6b6b" }}>Loading your dashboard...</p>
+        <h2 className="text-[32px] tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>All systems go!</h2>
+        <p className="mt-3 text-[16px]" style={{ color: "#6b6b6b" }}>Loading your dashboard...</p>
       </div>
     );
   }
@@ -190,14 +192,14 @@ export default function ProvisioningStatus() {
   // ── Timeout fallback ──
   if (phase === "timeout") {
     return (
-      <div className="flex h-full flex-col items-center justify-center px-6 onboarding-light">
-        <h2 className="text-xl tracking-[-0.5px] mb-2" style={{ ...serif, color: "#333334" }}>Taking longer than expected</h2>
-        <p className="max-w-[260px] text-center text-[13px] leading-relaxed mb-6" style={{ color: "#6b6b6b" }}>
+      <div className="flex h-full flex-col items-center justify-center px-8 onboarding-light">
+        <h2 className="text-[28px] tracking-[-0.5px] mb-3" style={{ ...serif, color: "#333334" }}>Taking longer than expected</h2>
+        <p className="max-w-[300px] text-center text-[15px] leading-relaxed mb-8" style={{ color: "#6b6b6b" }}>
           Your agent is almost ready. You can close this and come back, or go to the dashboard now.
         </p>
         <button
           onClick={() => router.refresh()}
-          className="btn-primary rounded-[28px] px-8 py-3 text-sm font-semibold"
+          className="btn-primary rounded-[28px] px-10 py-4 text-base font-semibold"
         >
           Go to dashboard
         </button>
@@ -207,34 +209,35 @@ export default function ProvisioningStatus() {
 
   // ── Provisioning in progress ──
   return (
-    <div className="flex h-full flex-col items-center px-6 pt-[10vh] onboarding-light">
-      <h2 className="text-2xl tracking-[-0.5px] mb-1" style={{ ...serif, color: "#333334" }}>
+    <div className="flex h-full flex-col items-center px-8 pt-[8vh] onboarding-light">
+      <h2 className="text-[32px] tracking-[-0.5px] mb-2" style={{ ...serif, color: "#333334" }}>
         Your agent is powering up
       </h2>
-      <div className="h-5 mb-8">
+      <div className="h-6 mb-10">
         <RotatingMessage />
       </div>
 
-      <div className="w-full max-w-[300px]">
+      <div className="w-full max-w-[320px]">
         {steps.map((step, i) => (
-          <div key={step.id} className="flex items-start gap-3 mb-1">
+          <div key={step.id} className="flex items-start gap-4 mb-1">
             <div className="flex flex-col items-center">
               <StepIcon status={step.status} justDone={justCompleted.has(step.id)} />
               {i < steps.length - 1 && (
                 <div
-                  className="w-[2px] my-1"
+                  className="my-1.5"
                   style={{
-                    height: "20px",
+                    width: "3px",
+                    height: "24px",
                     background: step.status === "done" ? "rgba(34,197,94,0.3)" : "rgba(0,0,0,0.06)",
-                    borderRadius: "1px",
+                    borderRadius: "2px",
                     transition: "background 0.5s ease",
                   }}
                 />
               )}
             </div>
-            <div className="pt-1">
+            <div className="pt-2.5">
               <p
-                className="text-[14px] font-medium"
+                className="text-[17px] font-medium"
                 style={{
                   color: step.status === "done" ? "#333334" : step.status === "active" ? "#DC6743" : "#aaa",
                   transition: "color 0.3s ease",
@@ -247,11 +250,11 @@ export default function ProvisioningStatus() {
         ))}
       </div>
 
-      <p className="mt-6 text-[12px] font-medium" style={{ color: "#6b6b6b" }}>
+      <p className="mt-8 text-[14px] font-medium" style={{ color: "#6b6b6b" }}>
         Step {doneCount} of {steps.length}
       </p>
 
-      <p className="mt-8 max-w-[240px] text-center text-[11px]" style={{ color: "#aaa" }}>
+      <p className="mt-8 max-w-[280px] text-center text-[13px] leading-relaxed" style={{ color: "#aaa" }}>
         Please don&apos;t close this screen. Your agent will be ready in about a minute.
       </p>
     </div>
