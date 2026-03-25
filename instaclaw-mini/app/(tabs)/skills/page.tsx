@@ -7,7 +7,12 @@ export default async function SkillsPage() {
   const session = await getSession();
   if (!session) redirect("/");
 
-  const skills = await getSkillsList(session.userId);
+  let skills: Awaited<ReturnType<typeof getSkillsList>> = [];
+  try {
+    skills = await getSkillsList(session.userId);
+  } catch (err) {
+    console.error("[Skills] Error fetching skills:", err);
+  }
 
   return (
     <div className="p-4">

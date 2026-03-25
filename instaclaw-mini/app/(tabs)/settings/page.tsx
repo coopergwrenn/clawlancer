@@ -11,9 +11,27 @@ export default async function SettingsPage() {
   const session = await getSession();
   if (!session) redirect("/");
 
-  const agent = await getAgentStatus(session.userId);
-  const delegations = await getDelegationHistory(session.userId);
-  const payments = await getPaymentHistory(session.userId);
+  let agent = null;
+  let delegations: Awaited<ReturnType<typeof getDelegationHistory>> = [];
+  let payments: Awaited<ReturnType<typeof getPaymentHistory>> = [];
+
+  try {
+    agent = await getAgentStatus(session.userId);
+  } catch (err) {
+    console.error("[Settings] Error fetching agent:", err);
+  }
+
+  try {
+    delegations = await getDelegationHistory(session.userId);
+  } catch (err) {
+    console.error("[Settings] Error fetching delegations:", err);
+  }
+
+  try {
+    payments = await getPaymentHistory(session.userId);
+  } catch (err) {
+    console.error("[Settings] Error fetching payments:", err);
+  }
 
   return (
     <SettingsClient

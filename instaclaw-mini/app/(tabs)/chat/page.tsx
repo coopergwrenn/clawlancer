@@ -7,7 +7,12 @@ export default async function ChatPage() {
   const session = await getSession();
   if (!session) redirect("/");
 
-  const agent = await getAgentStatus(session.userId);
+  let agent = null;
+  try {
+    agent = await getAgentStatus(session.userId);
+  } catch (err) {
+    console.error("[Chat] Error fetching agent:", err);
+  }
 
   return (
     <div className="p-4">
