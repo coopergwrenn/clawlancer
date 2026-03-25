@@ -347,13 +347,14 @@ export default function Onboarding() {
     }
   }
 
-  // ── TAP 2: Delegate WLD ──
+  // ── TAP 2: Delegate WLD (two-step: prepare → confirm → pay) ──
+  const [payPayload, setPayPayload] = useState<Record<string, unknown> | null>(null);
+  const [delegateRef, setDelegateRef] = useState<string | null>(null);
+
+  // Step 2a: Prepare the payment (show payload for inspection)
   async function handleDelegate() {
-    setStep("delegating");
     setError(null);
     try {
-      // Step 1: Initiate delegation on backend
-      console.log("[Delegate] Step 1: Initiating...");
       const initRes = await fetch("/api/delegate/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -362,56 +363,40 @@ export default function Onboarding() {
 
       if (!initRes.ok) {
         const errText = await initRes.text().catch(() => "no body");
-        console.error("[Delegate] Initiate failed:", initRes.status, errText);
         setError(`Initiate ${initRes.status}: ${errText}`);
-        setStep("delegate");
         return;
       }
 
       const initData = await initRes.json();
-      console.log("[Delegate] Initiate response:", JSON.stringify(initData));
       const { reference, tokenAmount } = initData;
-
-      // Step 2: MiniKit.pay()
       const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS;
-      console.log("[Delegate] Step 2: MiniKit.pay()");
-      console.log("[Delegate] Recipient:", recipientAddress);
-      console.log("[Delegate] Token: WLD, Amount:", tokenAmount);
-      console.log("[Delegate] Reference:", reference);
 
-      if (!recipientAddress) {
-        setError("Treasury wallet not configured (NEXT_PUBLIC_RECIPIENT_ADDRESS is empty)");
-        setStep("delegate");
-        return;
-      }
-
-      // MiniKit tokenToDecimals returns number (amount * 10^decimals)
-      // For WLD (18 decimals), amounts > ~9 WLD overflow JS Number precision
-      // So we pass the server-computed BigInt string directly
-      // tokenAmount from server = "20000000000000000000" (20 * 10^18)
-      const payPayload = {
+      const payload = {
         reference,
         to: recipientAddress,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
         description: "Activate your free InstaClaw agent",
       };
-      // Show payload on screen for debugging
-      setError(`DEBUG payload: ${JSON.stringify(payPayload)}`);
-      console.log("[Delegate] Pay payload:", JSON.stringify(payPayload));
 
-      let payResult;
-      try {
-        payResult = await MiniKit.commandsAsync.pay(payPayload);
-        console.log("[Delegate] Pay result:", JSON.stringify(payResult.finalPayload));
-      } catch (payErr) {
-        console.error("[Delegate] MiniKit.pay threw:", payErr);
-        setError(`Pay error: ${payErr instanceof Error ? payErr.message : JSON.stringify(payErr)}`);
-        setStep("delegate");
-        return;
-      }
+      setPayPayload(payload);
+      setDelegateRef(reference);
+      // Show the payload — user must tap "Confirm Payment" to proceed
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      setError(`Prepare error: ${msg}`);
+    }
+  }
+
+  // Step 2b: Actually fire MiniKit.pay() after user reviews payload
+  async function handleConfirmPay() {
+    if (!payPayload || !delegateRef) return;
+    setStep("delegating");
+    setError(null);
+    try {
+      const payResult = await MiniKit.commandsAsync.pay(payPayload as Parameters<typeof MiniKit.commandsAsync.pay>[0]);
+      console.log("[Delegate] Pay result:", JSON.stringify(payResult.finalPayload));
 
       if (payResult.finalPayload.status !== "success") {
-        console.log("[Delegate] Pay not success:", JSON.stringify(payResult.finalPayload));
         setError(`Payment failed: ${JSON.stringify(payResult.finalPayload)}`);
         setStep("delegate");
         return;
@@ -423,7 +408,7 @@ export default function Onboarding() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reference,
+          reference: delegateRef,
           transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
         }),
       });
@@ -798,16 +783,30 @@ export default function Onboarding() {
               </p>
             </div>
 
+            {/* Debug: show payload when prepared */}
+            {payPayload && (
+              <div className="mt-4 w-full max-w-[300px] rounded-xl px-4 py-3 overflow-x-auto" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
+                <p className="text-[10px] font-semibold mb-1" style={{ color: "#6b6b6b" }}>PAYLOAD (debug):</p>
+                <pre className="text-[9px] whitespace-pre-wrap break-all" style={{ color: "#333" }}>{JSON.stringify(payPayload, null, 2)}</pre>
+              </div>
+            )}
+
             {error && (
               <div className="mt-4 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
                 <p className="text-sm text-center" style={{ color: "#ef4444" }}>{error}</p>
               </div>
             )}
           </div>
-          <div className="px-7" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
-            <button onClick={handleDelegate} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
-              Activate with 20 WLD
-            </button>
+          <div className="px-7 flex flex-col gap-2.5" style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}>
+            {!payPayload ? (
+              <button onClick={handleDelegate} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
+                Activate with 20 WLD
+              </button>
+            ) : (
+              <button onClick={handleConfirmPay} className="btn-primary w-full rounded-[28px] text-base font-semibold" style={{ height: "56px" }}>
+                Confirm Payment →
+              </button>
+            )}
           </div>
         </>
       )}
