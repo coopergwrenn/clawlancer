@@ -114,6 +114,111 @@ async function applyFixes(
           break;
         }
 
+        case "diagnose": {
+          // Read key config files and gateway logs for support diagnosis
+          const diag: Record<string, string> = {};
+
+          // openclaw.json config
+          const ocJson = await ssh.execCommand("cat ~/.openclaw/agents/main/agent/openclaw.json 2>/dev/null || echo MISSING");
+          diag["openclaw.json"] = ocJson.stdout.trim().slice(0, 4000);
+
+          // auth-profiles.json (redact key)
+          const authP = await ssh.execCommand("cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null | sed 's/\"key\":\"[^\"]*\"/\"key\":\"REDACTED\"/g' || echo MISSING");
+          diag["auth-profiles.json"] = authP.stdout.trim().slice(0, 2000);
+
+          // MEMORY.md size and first 20 lines
+          const mem = await ssh.execCommand("wc -c ~/.openclaw/agents/main/agent/workspace/MEMORY.md 2>/dev/null; echo '---'; head -20 ~/.openclaw/agents/main/agent/workspace/MEMORY.md 2>/dev/null || echo MISSING");
+          diag["MEMORY.md"] = mem.stdout.trim().slice(0, 2000);
+
+          // SOUL.md size
+          const soul = await ssh.execCommand("wc -c ~/.openclaw/agents/main/agent/workspace/SOUL.md 2>/dev/null || echo MISSING");
+          diag["SOUL.md-size"] = soul.stdout.trim();
+
+          // Session files
+          const sessions = await ssh.execCommand("ls -la ~/.openclaw/agents/main/agent/sessions/ 2>/dev/null | tail -20 || echo 'NO SESSIONS DIR'");
+          diag["sessions"] = sessions.stdout.trim().slice(0, 2000);
+
+          // Control UI check
+          const controlUI = await ssh.execCommand("ls -la ~/.openclaw/agents/main/ui/ 2>/dev/null | head -10 || echo 'NO UI DIR'; ls ~/.openclaw/agents/main/ui/dist/ 2>/dev/null | head -5 || echo 'NO DIST DIR'");
+          diag["control-ui"] = controlUI.stdout.trim().slice(0, 1000);
+
+          // Gateway journal logs (last 50 lines)
+          const logs = await ssh.execCommand(`${DBUS_PREAMBLE} && journalctl --user -u openclaw-gateway --no-pager -n 50 2>/dev/null || echo 'NO JOURNAL'`);
+          diag["gateway-logs"] = logs.stdout.trim().slice(0, 4000);
+
+          // Health endpoint
+          const health = await ssh.execCommand("curl -s http://localhost:18789/api/health 2>/dev/null || echo 'HEALTH UNREACHABLE'");
+          diag["health"] = health.stdout.trim().slice(0, 1000);
+
+          // Disk usage
+          const disk = await ssh.execCommand("df -h / | tail -1; echo '---'; du -sh ~/.openclaw/ 2>/dev/null || echo 'N/A'");
+          diag["disk"] = disk.stdout.trim();
+
+          // Crontab
+          const cron = await ssh.execCommand("crontab -l 2>/dev/null || echo 'NO CRONTAB'");
+          diag["crontab"] = cron.stdout.trim().slice(0, 2000);
+
+          // Process check
+          const procs = await ssh.execCommand("ps aux | grep -E '(openclaw|node|chrome)' | grep -v grep | head -20");
+          diag["processes"] = procs.stdout.trim().slice(0, 2000);
+
+          results["diagnose"] = JSON.stringify(diag);
+          break;
+        }
+
+        case "reset-config": {
+          // Reset openclaw.json to standard config
+          // First read current config to preserve necessary values
+          const currentCfg = await ssh.execCommand("cat ~/.openclaw/agents/main/agent/openclaw.json 2>/dev/null");
+          if (!currentCfg.stdout.trim() || currentCfg.stdout.trim() === "MISSING") {
+            results["reset-config"] = "failed-no-config";
+            break;
+          }
+
+          let cfg;
+          try {
+            cfg = JSON.parse(currentCfg.stdout.trim());
+          } catch {
+            results["reset-config"] = "failed-parse-error";
+            break;
+          }
+
+          // Reset to standard values while preserving identity
+          cfg.gateway = cfg.gateway || {};
+          cfg.gateway.port = 18789;
+          cfg.gateway.groupPolicy = "open";
+          cfg.gateway.requireMention = false;
+          cfg.gateway.useAccessGroups = false;
+
+          cfg.agent = cfg.agent || {};
+          cfg.agent.maxTurns = 50;
+          cfg.agent.idleTimeout = 300;
+          cfg.agent.sessionTimeout = 3600;
+          cfg.agent.maxSkillsPromptChars = 30000;
+
+          // Remove any bad user-added keys
+          delete cfg.agent.memoryReset;
+          delete cfg.agent.clearSessionOnIdle;
+
+          const cfgStr = JSON.stringify(cfg, null, 2);
+          const writeRes = await ssh.execCommand(`cat > ~/.openclaw/agents/main/agent/openclaw.json << 'CFGEOF'\n${cfgStr}\nCFGEOF`);
+          if (writeRes.stderr && !writeRes.stderr.includes("warning")) {
+            results["reset-config"] = `failed-write: ${writeRes.stderr.slice(0, 200)}`;
+          } else {
+            results["reset-config"] = "done";
+          }
+          break;
+        }
+
+        case "restart-gateway": {
+          await ssh.execCommand(`${DBUS_PREAMBLE} && systemctl --user restart openclaw-gateway 2>/dev/null || true`);
+          // Wait for startup
+          await new Promise((r) => setTimeout(r, 5000));
+          const healthCheck = await ssh.execCommand("curl -s http://localhost:18789/api/health 2>/dev/null || echo UNREACHABLE");
+          results["restart-gateway"] = healthCheck.stdout.trim().includes("ok") ? "restarted-healthy" : `restarted-status: ${healthCheck.stdout.trim().slice(0, 200)}`;
+          break;
+        }
+
         default:
           results[fix] = "unknown-fix";
       }
