@@ -45,7 +45,7 @@ export default function ChatOptions({
           <p className="mt-0.5 text-sm opacity-70">
             {xmtpAddress
               ? "Opens World Chat with your agent"
-              : "Agent is still deploying..."}
+              : "Coming soon — use Telegram for now"}
           </p>
         </div>
         <ArrowUpRight size={18} className="opacity-50" />
