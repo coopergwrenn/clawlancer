@@ -369,7 +369,7 @@ export default function Onboarding() {
 
       const initData = await initRes.json();
       const { reference, tokenAmount } = initData;
-      const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS;
+      const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim();
 
       const payload = {
         reference,
@@ -539,7 +539,7 @@ export default function Onboarding() {
 
       const payResult = await MiniKit.commandsAsync.pay({
         reference,
-        to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS!,
+        to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim()!,
         tokens: [{
           symbol: Tokens.USDC,
           token_amount: String(tokenToDecimals(5, Tokens.USDC)),

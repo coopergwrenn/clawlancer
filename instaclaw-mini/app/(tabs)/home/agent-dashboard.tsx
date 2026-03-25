@@ -68,7 +68,7 @@ export default function AgentDashboard({
 
       const payResult = await MiniKit.commandsAsync.pay({
         reference,
-        to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS!,
+        to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim()!,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
         description: "Re-stake WLD for your InstaClaw agent",
       });
