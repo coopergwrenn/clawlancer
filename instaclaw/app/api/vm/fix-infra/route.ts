@@ -360,16 +360,27 @@ async function applyFixes(
         }
 
         case "rebuild-ui": {
-          // Rebuild OpenClaw Control UI assets
-          const buildCmd = `${NVM_PREAMBLE} && cd $(npm root -g)/openclaw && npx pnpm ui:build 2>&1 | tail -5`;
-          const buildRes = await ssh.execCommand(buildCmd);
-          // Check if index.html exists after build
+          // Rebuild OpenClaw Control UI by reinstalling the package
+          // First try: npm rebuild to trigger postinstall which builds UI
+          const rebuildCmd = `${NVM_PREAMBLE} && npm install -g openclaw@latest 2>&1 | tail -10`;
+          const rebuildRes = await ssh.execCommand(rebuildCmd);
+          // Check if index.html exists after rebuild
           const uiCheck = await ssh.execCommand(
-            "test -f $(npm root -g)/openclaw/dist/control-ui/index.html && echo OK || echo MISSING"
+            `${NVM_PREAMBLE} && test -f $(npm root -g)/openclaw/dist/control-ui/index.html && echo OK || echo MISSING`
           );
-          results["rebuild-ui"] = uiCheck.stdout.trim() === "OK"
+          if (uiCheck.stdout.trim() === "OK") {
+            results["rebuild-ui"] = "built";
+            break;
+          }
+          // Fallback: try running the build script directly
+          const buildCmd = `${NVM_PREAMBLE} && cd $(npm root -g)/openclaw && node -e "const{execSync}=require('child_process');execSync('npm run ui:build',{stdio:'inherit'})" 2>&1 | tail -5`;
+          const buildRes = await ssh.execCommand(buildCmd);
+          const uiCheck2 = await ssh.execCommand(
+            `${NVM_PREAMBLE} && test -f $(npm root -g)/openclaw/dist/control-ui/index.html && echo OK || echo MISSING`
+          );
+          results["rebuild-ui"] = uiCheck2.stdout.trim() === "OK"
             ? "built"
-            : `failed: ${buildRes.stdout?.slice(0, 300)} ${buildRes.stderr?.slice(0, 200)}`;
+            : `failed: ${rebuildRes.stdout?.slice(0, 200)} | ${buildRes.stdout?.slice(0, 200)}`;
           break;
         }
 
