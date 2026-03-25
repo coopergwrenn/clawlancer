@@ -8,6 +8,133 @@ export const maxDuration = 600;
 
 const DBUS_PREAMBLE = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
 
+/** Full VM record type for config rebuild */
+interface FullVMRecord {
+  id: string;
+  ip_address: string;
+  ssh_port: number;
+  ssh_user: string;
+  name?: string;
+  gateway_token?: string;
+  telegram_bot_token?: string;
+  discord_bot_token?: string;
+  brave_api_key?: string;
+  default_model?: string;
+  channels_enabled?: string[];
+  assigned_to?: string;
+  telegram_bot_username?: string;
+}
+
+/**
+ * Build a complete standard openclaw.json from VM database record.
+ */
+function buildStandardConfig(vm: FullVMRecord): Record<string, unknown> {
+  const proxyBaseUrl = `https://instaclaw.io/api/gateway/${vm.assigned_to}`;
+  const gatewayToken = vm.gateway_token || "MISSING";
+  const openclawModel = `anthropic/${vm.default_model || "claude-sonnet-4-6"}`;
+
+  const cfg: Record<string, unknown> = {
+    wizard: {
+      lastRunAt: new Date().toISOString(),
+      lastRunVersion: "2026.3.22",
+      lastRunCommand: "onboard",
+      lastRunMode: "local",
+    },
+    browser: {
+      executablePath: "/usr/local/bin/chromium-browser",
+      headless: true,
+      noSandbox: true,
+      defaultProfile: "openclaw",
+      profiles: {
+        openclaw: { cdpPort: 18800, color: "#FF4500" },
+      },
+    },
+    agents: {
+      defaults: {
+        model: {
+          primary: openclawModel,
+          fallbacks: ["anthropic/claude-haiku-4-5-20251001"],
+        },
+        bootstrapMaxChars: 30000,
+        heartbeat: { every: "3h", session: "heartbeat" },
+        compaction: {
+          reserveTokensFloor: 35000,
+          memoryFlush: { enabled: true, softThresholdTokens: 8000 },
+        },
+        memorySearch: { enabled: true },
+      },
+    },
+    session: {
+      reset: { mode: "idle", idleMinutes: 10080 },
+      maintenance: { mode: "enforce" },
+    },
+    messages: {},
+    commands: { restart: true, useAccessGroups: false },
+    channels: {} as Record<string, unknown>,
+    gateway: {
+      mode: "local",
+      port: 28899,
+      bind: "lan",
+      controlUi: { dangerouslyAllowHostHeaderOriginFallback: true },
+      auth: { mode: "token", token: gatewayToken },
+      trustedProxies: ["127.0.0.1", "::1"],
+      http: { endpoints: { chatCompletions: { enabled: true } } },
+    },
+    models: {
+      providers: {
+        anthropic: {
+          baseUrl: proxyBaseUrl,
+          api: "anthropic-messages",
+          models: [],
+        },
+      },
+    },
+    tools: {
+      media: {
+        image: { enabled: true, timeoutSeconds: 120 },
+        audio: { enabled: true, timeoutSeconds: 120 },
+        video: { enabled: true, timeoutSeconds: 120 },
+      },
+      links: { timeoutSeconds: 30 },
+    } as Record<string, unknown>,
+    skills: {
+      load: { extraDirs: ["/home/openclaw/.openclaw/skills"] },
+      limits: { maxSkillsPromptChars: 500000 },
+    },
+    plugins: { entries: {} as Record<string, unknown> },
+  };
+
+  // Channels
+  const channels = cfg.channels as Record<string, unknown>;
+  if (vm.telegram_bot_token) {
+    channels.telegram = {
+      botToken: vm.telegram_bot_token,
+      allowFrom: ["*"],
+      dmPolicy: "open",
+      groupPolicy: "open",
+      streamMode: "partial",
+      groups: { "*": { requireMention: false } },
+    };
+    (cfg.plugins as { entries: Record<string, unknown> }).entries.telegram = { enabled: true };
+  }
+  if (vm.discord_bot_token) {
+    channels.discord = {
+      botToken: vm.discord_bot_token,
+      allowFrom: ["*"],
+    };
+    (cfg.plugins as { entries: Record<string, unknown> }).entries.discord = { enabled: true };
+  }
+
+  // Brave search
+  if (vm.brave_api_key) {
+    (cfg.tools as Record<string, unknown>).web = {
+      search: { provider: "brave", apiKey: vm.brave_api_key, timeoutSeconds: 30 },
+    };
+  }
+
+  return cfg;
+}
+
 /**
  * Apply infrastructure fixes to a single VM over SSH.
  * Reused for both single-VM and fleet modes.
@@ -15,6 +142,7 @@ const DBUS_PREAMBLE = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
 async function applyFixes(
   vm: Pick<VMRecord, "id" | "ip_address" | "ssh_port" | "ssh_user"> & { name?: string },
   fixes: string[],
+  fullVm?: FullVMRecord,
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
   const ssh = await connectSSH(vm);
@@ -210,10 +338,92 @@ async function applyFixes(
           break;
         }
 
+        case "write-config": {
+          // Create openclaw.json from scratch using DB data
+          if (!fullVm) {
+            results["write-config"] = "failed-no-full-vm-data";
+            break;
+          }
+          const cfg = buildStandardConfig(fullVm);
+          const cfgJson = JSON.stringify(cfg, null, 2);
+          // Ensure directory exists
+          await ssh.execCommand("mkdir -p ~/.openclaw/agents/main/agent");
+          const wr = await ssh.execCommand(
+            `cat > ~/.openclaw/agents/main/agent/openclaw.json << 'CFGEOF'\n${cfgJson}\nCFGEOF`
+          );
+          // Verify
+          const verifyWr = await ssh.execCommand("test -f ~/.openclaw/agents/main/agent/openclaw.json && echo OK || echo MISSING");
+          results["write-config"] = verifyWr.stdout.trim() === "OK"
+            ? "created"
+            : `failed: ${wr.stderr?.slice(0, 200)}`;
+          break;
+        }
+
+        case "rebuild-ui": {
+          // Rebuild OpenClaw Control UI assets
+          const buildCmd = `${NVM_PREAMBLE} && cd $(npm root -g)/openclaw && npx pnpm ui:build 2>&1 | tail -5`;
+          const buildRes = await ssh.execCommand(buildCmd);
+          // Check if index.html exists after build
+          const uiCheck = await ssh.execCommand(
+            "test -f $(npm root -g)/openclaw/dist/control-ui/index.html && echo OK || echo MISSING"
+          );
+          results["rebuild-ui"] = uiCheck.stdout.trim() === "OK"
+            ? "built"
+            : `failed: ${buildRes.stdout?.slice(0, 300)} ${buildRes.stderr?.slice(0, 200)}`;
+          break;
+        }
+
+        case "init-workspace": {
+          // Create minimal workspace files if missing
+          const wsBase = "~/.openclaw/agents/main/agent/workspace";
+          await ssh.execCommand(`mkdir -p ${wsBase}/memory`);
+
+          // MEMORY.md
+          const memCheck = await ssh.execCommand(`test -s ${wsBase}/MEMORY.md && echo EXISTS || echo MISSING`);
+          if (memCheck.stdout.trim() === "MISSING") {
+            await ssh.execCommand(`echo "# Memory" > ${wsBase}/MEMORY.md`);
+          }
+
+          // SOUL.md — only create if missing, reconciler will fill it properly on next health check
+          const soulCheck = await ssh.execCommand(`test -s ${wsBase}/SOUL.md && echo EXISTS || echo MISSING`);
+          if (soulCheck.stdout.trim() === "MISSING") {
+            await ssh.execCommand(`cat > ${wsBase}/SOUL.md << 'SEOF'
+# SOUL.md — Core Identity & Operating Guidelines
+
+## Core Truths
+- Be genuinely helpful — not performatively helpful
+- Have opinions. Share them when relevant.
+- Be resourceful — use your tools, skills, and memory proactively.
+
+## How I Communicate
+- Be concise. Direct. No corporate speak.
+- Read the room — DMs vs groups vs heartbeats need different energy.
+- If you remember something about your human, show it.
+
+## Memory Persistence (CRITICAL)
+After every substantive conversation, update MEMORY.md:
+- Format: ## YYYY-MM-DD — [Brief title] followed by 2-3 sentences
+- Keep under 25KB; consolidate if >20KB
+- These files ARE your memory across session resets
+
+_This is a minimal SOUL.md. The full version will be deployed on next health check._
+SEOF`);
+          }
+
+          // Sessions dir
+          await ssh.execCommand(`mkdir -p ~/.openclaw/agents/main/agent/sessions`);
+
+          const verify = await ssh.execCommand(
+            `test -f ${wsBase}/SOUL.md && test -f ${wsBase}/MEMORY.md && echo OK || echo INCOMPLETE`
+          );
+          results["init-workspace"] = verify.stdout.trim() === "OK" ? "created" : "partial";
+          break;
+        }
+
         case "restart-gateway": {
           await ssh.execCommand(`${DBUS_PREAMBLE} && systemctl --user restart openclaw-gateway 2>/dev/null || true`);
           // Wait for startup
-          await new Promise((r) => setTimeout(r, 5000));
+          await new Promise((r) => setTimeout(r, 8000));
           const healthCheck = await ssh.execCommand("curl -s http://localhost:18789/api/health 2>/dev/null || echo UNREACHABLE");
           results["restart-gateway"] = healthCheck.stdout.trim().includes("ok") ? "restarted-healthy" : `restarted-status: ${healthCheck.stdout.trim().slice(0, 200)}`;
           break;
@@ -317,9 +527,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "vmId or fleet required" }, { status: 400 });
   }
 
+  // Fetch full VM record (needed for write-config and deploy-workspace)
+  const needsFullData = fixes.some((f) => ["write-config"].includes(f));
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, name")
+    .select("id,ip_address,ssh_port,ssh_user,name,gateway_token,telegram_bot_token,discord_bot_token,brave_api_key,default_model,channels_enabled,assigned_to,telegram_bot_username")
     .eq("id", vmId)
     .single();
 
@@ -328,7 +540,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const results = await applyFixes(vm, fixes);
+    const results = await applyFixes(vm, fixes, needsFullData ? (vm as unknown as FullVMRecord) : undefined);
     logger.info("fix-infra completed", { vm: vm.name, results });
     return NextResponse.json({ vm: vm.name, results });
   } catch (err) {
