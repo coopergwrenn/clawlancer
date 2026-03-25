@@ -1216,3 +1216,85 @@ ngrok http 3002
 # Set ngrok URL as App URL in Developer Portal
 # Scan QR code from Developer Portal to open in World App
 ```
+
+---
+
+## Phase 2: Group Chat Agents
+
+**Status:** Design only — ships AFTER 1-on-1 World Chat is fully working and fleet deployed.
+
+### Concept
+
+Users can add their InstaClaw agent into World Chat group conversations. The agent participates contextually — answers questions, summarizes threads, takes actions when mentioned.
+
+### Two Chat Modes (Chat Tab)
+
+The mini app's Chat tab shows two options:
+
+1. **"Chat 1-on-1"** — Direct conversation with your agent (Phase 1, built)
+2. **"Add to group chat"** — User selects a World Chat group → agent joins as a participant
+
+### Group Chat Behavior
+
+- **Responds only when @mentioned or directly addressed** — does NOT reply to every message in the group. Silent observer by default.
+- **Full conversation context** — agent has the group's XMTP message history and can reference prior messages
+- **Takes actions on behalf of the owner** — check prices, place trades, generate content, look up information. Actions use the OWNER's configured skills and credentials.
+- **Identifies itself** — messages are sent as "[Username]'s InstaClaw agent" so group members know what it is
+- **Interaction permissions** — configurable by the agent owner:
+  - **Open mode:** anyone in the group can interact with the agent
+  - **Owner-only mode:** only the agent's owner can trigger it in the group
+
+### Use Cases
+
+| Group Type | Example Interactions |
+|---|---|
+| **Trading/alpha groups** | "hey agent, what's ETH at?" • "summarize the last 50 messages" • "alert me if anyone mentions SOL" |
+| **Project teams** | Agent takes meeting notes, creates action items, follows up on tasks, tracks deadlines |
+| **Friend groups** | Planning assistance, restaurant recommendations, trip logistics, splitting costs |
+| **DAO/community groups** | Monitor governance proposals, alert on voting deadlines, summarize discussions |
+
+### Technical Requirements
+
+- **XMTP group messaging support** — the `@xmtp/agent-sdk` supports group conversations via `agent.on("group", ...)`. Verified in research.
+- **Concurrent conversations** — agent must handle multiple group chats simultaneously. The streaming architecture already supports this.
+- **Rate limiting per group** — prevent noisy groups from burning all credits. Default: 20 messages/day per group, configurable.
+- **Credit usage** — group messages cost the **agent owner's credits**, not the group members'. Owner is billed per-response.
+- **Daily credit cap per group** — owner sets a max daily spend per group (e.g., 10 credits/day for the trading group, 5 for the friends group).
+
+### Permissions Model
+
+Owner controls (accessible from mini app Settings tab):
+
+| Setting | Options | Default |
+|---|---|---|
+| Groups enabled | On / Off | Off |
+| Who can interact | Everyone / Owner only | Owner only |
+| Daily credit cap per group | 5 / 10 / 20 / Unlimited | 10 |
+| Max groups | 1 / 3 / 5 / 10 | 3 |
+| @mention required | Yes / No | Yes |
+
+### Implementation Notes
+
+- Agent joins groups via `MiniKit.commandsAsync.chat()` with the group selected
+- Group messages arrive via the same XMTP streaming connection as DMs
+- Agent filters: only respond if `@mentioned` or if the message starts with a trigger phrase
+- Owner can manage group settings from Settings → "Group Chat" section
+- Each group conversation has its own context window — the agent maintains separate memory per group
+
+### Question for Mateo: Agent Profiles in World App
+
+**Can we register the agent as a World App user/profile?** If the agent had a World profile (username like `@coopers-agent`), users could:
+- Message it directly in World Chat without a picker
+- Add it to groups by username
+- See its profile card
+
+This would make the World Chat button work without the picker limitation. Is there an API to register a bot/agent profile in World App? This is the single biggest unlock for Phase 2.
+
+### XMTP Agent Status (as of 2026-03-25)
+
+- **Agent service deployed** on vm-313: `instaclaw-xmtp.service` (systemd, auto-restart)
+- **XMTP address:** `0xb9f8e286dd78bc03ccec920e225f3852ccad528f` (production network)
+- **Bridge:** XMTP → OpenClaw gateway HTTP API → XMTP response
+- **Database:** SQLite at `~/.openclaw/xmtp/data/`, encrypted, persistent
+- **Limitation:** World Chat's MiniKit `chat()` command shows a recipient picker — no direct DM API exists. Telegram is the primary chat channel until World App supports agent profiles or direct DM links.
+- **The agent infrastructure is ready.** The moment World Chat supports direct agent messaging, we flip the switch.
