@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 
 type StepStatus = "pending" | "active" | "done";
+type Phase = "provisioning" | "complete" | "timeout";
 
 interface Step {
   id: string;
@@ -98,6 +99,7 @@ function StepIcon({ status, justDone }: { status: StepStatus; justDone: boolean 
 
 export default function ProvisioningStatus() {
   const router = useRouter();
+  const [phase, setPhase] = useState<Phase>("provisioning");
   const [steps, setSteps] = useState<Step[]>([
     { id: "payment", label: "Payment confirmed", status: "done" },
     { id: "assign", label: "Assigning server", status: "active" },
@@ -107,9 +109,11 @@ export default function ProvisioningStatus() {
   ]);
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set(["payment"]));
   const pollCount = useRef(0);
-  const configuredRef = useRef(false);
+  const doneRef = useRef(false);
 
   useEffect(() => {
+    if (doneRef.current) return;
+
     const completeStep = (id: string, nextId?: string) => {
       setSteps((prev) =>
         prev.map((s) => {
@@ -121,46 +125,46 @@ export default function ProvisioningStatus() {
       setJustCompleted((prev) => new Set([...prev, id]));
     };
 
-    // Simulate progress based on polling
+    const finishAll = () => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as StepStatus })));
+      setJustCompleted(new Set(["payment", "assign", "configure", "connect", "health"]));
+      setTimeout(() => setPhase("complete"), 800);
+      setTimeout(() => router.refresh(), 2500);
+    };
+
     const poll = setInterval(async () => {
       pollCount.current++;
       const count = pollCount.current;
 
-      // Step 1: assign (done after ~3s)
-      if (count === 3) completeStep("assign", "configure");
+      // Timed step progression
+      if (count === 3 && !doneRef.current) completeStep("assign", "configure");
+      if (count === 8 && !doneRef.current) completeStep("configure", "connect");
+      if (count === 12 && !doneRef.current) completeStep("connect", "health");
+      if (count === 16 && !doneRef.current) completeStep("health");
 
-      // Step 2: configure (done after ~8s)
-      if (count === 8) completeStep("configure", "connect");
-
-      // Step 3: connect (done after ~12s)
-      if (count === 12) completeStep("connect", "health");
-
-      // Check actual agent status
+      // Poll for real agent readiness
       try {
         const res = await fetch("/api/auth/me");
         const data = await res.json();
-        if (data?.user?.hasAgent && !configuredRef.current) {
-          configuredRef.current = true;
-          // Complete all remaining steps
-          setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as StepStatus })));
-          setJustCompleted(new Set(["payment", "assign", "configure", "connect", "health"]));
-          setTimeout(() => {
-            clearInterval(poll);
-            router.refresh();
-          }, 1500);
+        if (data?.user?.hasAgent) {
+          clearInterval(poll);
+          finishAll();
           return;
         }
       } catch { /* keep polling */ }
 
-      // Step 4: health check (done after ~15s even if VM not ready yet)
-      if (count === 15 && !configuredRef.current) {
-        completeStep("health");
+      // After all timed steps done (18s), wait a beat then finish
+      if (count >= 18 && !doneRef.current) {
+        finishAll();
       }
 
-      // After 20s, redirect to dashboard regardless (it has its own provisioning handling)
-      if (count >= 20 && !configuredRef.current) {
+      // Hard timeout at 60s
+      if (count >= 60 && !doneRef.current) {
         clearInterval(poll);
-        router.refresh();
+        doneRef.current = true;
+        setPhase("timeout");
       }
     }, 1000);
 
@@ -170,9 +174,40 @@ export default function ProvisioningStatus() {
   const serif = { fontFamily: "'Instrument Serif', Georgia, serif" };
   const doneCount = steps.filter((s) => s.status === "done").length;
 
+  // ── Complete: "All systems go!" then auto-navigate ──
+  if (phase === "complete") {
+    return (
+      <div className="flex h-full flex-col items-center justify-center px-6 onboarding-light animate-fade-in" style={{ opacity: 0 }}>
+        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(34,197,94,0.15), rgba(34,197,94,0.04) 70%)" }}>
+          <Check size={32} strokeWidth={2} color="#22c55e" />
+        </div>
+        <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>All systems go!</h2>
+        <p className="mt-2 text-[14px]" style={{ color: "#6b6b6b" }}>Loading your dashboard...</p>
+      </div>
+    );
+  }
+
+  // ── Timeout fallback ──
+  if (phase === "timeout") {
+    return (
+      <div className="flex h-full flex-col items-center justify-center px-6 onboarding-light">
+        <h2 className="text-xl tracking-[-0.5px] mb-2" style={{ ...serif, color: "#333334" }}>Taking longer than expected</h2>
+        <p className="max-w-[260px] text-center text-[13px] leading-relaxed mb-6" style={{ color: "#6b6b6b" }}>
+          Your agent is almost ready. You can close this and come back, or go to the dashboard now.
+        </p>
+        <button
+          onClick={() => router.refresh()}
+          className="btn-primary rounded-[28px] px-8 py-3 text-sm font-semibold"
+        >
+          Go to dashboard
+        </button>
+      </div>
+    );
+  }
+
+  // ── Provisioning in progress ──
   return (
     <div className="flex h-full flex-col items-center px-6 pt-[10vh] onboarding-light">
-      {/* Header */}
       <h2 className="text-2xl tracking-[-0.5px] mb-1" style={{ ...serif, color: "#333334" }}>
         Your agent is powering up
       </h2>
@@ -180,11 +215,9 @@ export default function ProvisioningStatus() {
         <RotatingMessage />
       </div>
 
-      {/* Step progress */}
       <div className="w-full max-w-[300px]">
         {steps.map((step, i) => (
           <div key={step.id} className="flex items-start gap-3 mb-1">
-            {/* Icon + connector line */}
             <div className="flex flex-col items-center">
               <StepIcon status={step.status} justDone={justCompleted.has(step.id)} />
               {i < steps.length - 1 && (
@@ -199,7 +232,6 @@ export default function ProvisioningStatus() {
                 />
               )}
             </div>
-            {/* Label */}
             <div className="pt-1">
               <p
                 className="text-[14px] font-medium"
@@ -215,12 +247,10 @@ export default function ProvisioningStatus() {
         ))}
       </div>
 
-      {/* Progress count */}
       <p className="mt-6 text-[12px] font-medium" style={{ color: "#6b6b6b" }}>
         Step {doneCount} of {steps.length}
       </p>
 
-      {/* Don't leave message */}
       <p className="mt-8 max-w-[240px] text-center text-[11px]" style={{ color: "#aaa" }}>
         Please don&apos;t close this screen. Your agent will be ready in about a minute.
       </p>
