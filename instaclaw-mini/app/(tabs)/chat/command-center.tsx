@@ -429,13 +429,13 @@ export default function CommandCenter({
       </div>
 
 
-      {/* Input bar — glass UI matching instaclaw.io */}
-      <div className="px-3 py-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
+      {/* Input bar — clean glass UI */}
+      <div className="px-4 py-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
         <div
           className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
           style={{
-            background: "rgba(255,255,255,0.08)",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.06)",
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.08)",
           }}
         >
           {/* + button */}
