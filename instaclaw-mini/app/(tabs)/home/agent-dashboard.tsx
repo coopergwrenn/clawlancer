@@ -54,8 +54,10 @@ export default function AgentDashboard({
   const [googleCardDismissed, setGoogleCardDismissed] = useState(false);
   const [showPersonalization, setShowPersonalization] = useState(false);
   const [waitingForOAuth, setWaitingForOAuth] = useState(false);
+  const [waitingForSubscribe, setWaitingForSubscribe] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(subscription.hasSubscription);
   // Subscribers with daily limits aren't paused even at 0 credit_balance
-  const isPaused = agent.credit_balance <= 0 && !subscription.hasSubscription;
+  const isPaused = agent.credit_balance <= 0 && !isSubscribed;
 
   // Check session dismissal
   useEffect(() => {
@@ -153,6 +155,53 @@ export default function AgentDashboard({
     }
   }
 
+  async function handleSubscribe() {
+    try {
+      const res = await fetch("/api/subscription/checkout-url?tier=starter");
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, "_blank");
+        setWaitingForSubscribe(true);
+      }
+    } catch {
+      window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
+      setWaitingForSubscribe(true);
+    }
+  }
+
+  // Poll for subscription when user returns from external browser
+  useEffect(() => {
+    if (!waitingForSubscribe) return;
+
+    async function checkSubscription() {
+      try {
+        const res = await fetch("/api/subscription/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.hasSubscription) {
+            setIsSubscribed(true);
+            setWaitingForSubscribe(false);
+            router.refresh();
+          }
+        }
+      } catch {}
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        setTimeout(checkSubscription, 1500);
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    const interval = setInterval(checkSubscription, 5000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [waitingForSubscribe, router]);
+
   async function handleShare() {
     try {
       const appId = process.env.NEXT_PUBLIC_APP_ID;
@@ -186,7 +235,7 @@ export default function AgentDashboard({
               Pay 25 WLD
             </button>
             <button
-              onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+              onClick={handleSubscribe}
               className="glass-button flex-1 rounded-xl py-2.5 text-sm font-semibold"
             >
               From $29/mo
@@ -228,7 +277,7 @@ export default function AgentDashboard({
               <Zap size={16} className="text-accent" />
               <span className="text-xs font-medium text-muted">Credits</span>
             </div>
-            {!subscription.hasSubscription && (
+            {!isSubscribed && (
               <button
                 onClick={handleAddCredits}
                 className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold"
@@ -238,7 +287,7 @@ export default function AgentDashboard({
             )}
           </div>
 
-          {subscription.hasSubscription ? (
+          {isSubscribed ? (
             <>
               {/* Subscriber: show daily limit usage */}
               <div className="flex items-baseline gap-2 mb-1">
@@ -367,7 +416,7 @@ export default function AgentDashboard({
       {/* ── Discovery / Upgrade Prompt ── */}
       {showDiscovery && (
         <div className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-3" style={{ opacity: 0 }}>
-          {subscription.hasSubscription ? (
+          {isSubscribed ? (
             <p className="mb-3 text-sm leading-relaxed text-muted">
               {subscription.tier?.charAt(0).toUpperCase()}{subscription.tier?.slice(1)} plan active.
               Manage your subscription or browse skills on instaclaw.io.
@@ -378,9 +427,9 @@ export default function AgentDashboard({
             </p>
           )}
           <div className="flex items-center justify-between">
-            {!subscription.hasSubscription && (
+            {!isSubscribed && (
               <button
-                onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+                onClick={handleSubscribe}
                 className="text-xs font-medium transition-colors"
                 style={{ color: "#DC6743" }}
               >

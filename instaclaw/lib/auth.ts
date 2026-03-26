@@ -32,13 +32,54 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       if (existing) return true;
 
+      // ── Account linking: check if a wallet-linked user exists with this email ──
+      // Mini app users create accounts via World wallet with an email but no google_id.
+      // When they later sign in with Google to subscribe, we link Google to their
+      // existing account instead of creating a duplicate.
+      const userEmail = user.email?.toLowerCase();
+      if (userEmail) {
+        const { data: walletUser } = await supabase
+          .from("instaclaw_users")
+          .select("id, google_id, world_wallet_address")
+          .eq("email", userEmail)
+          .single();
+
+        if (walletUser && !walletUser.google_id) {
+          // Found existing user with this email but no Google linked — link now
+          const { error: linkErr } = await supabase
+            .from("instaclaw_users")
+            .update({
+              google_id: account.providerAccountId,
+              name: user.name || undefined,
+              onboarding_complete: true,
+            })
+            .eq("id", walletUser.id);
+
+          if (linkErr) {
+            logger.error("Failed to link Google to wallet user", {
+              error: String(linkErr),
+              userId: walletUser.id,
+              route: "auth/signIn",
+            });
+          } else {
+            logger.info("Linked Google account to existing wallet user", {
+              userId: walletUser.id,
+              email: userEmail,
+              hasWallet: !!walletUser.world_wallet_address,
+              route: "auth/signIn",
+            });
+          }
+          return true;
+        }
+      }
+
       // New user — read optional ambassador referral code from cookie
       const cookieStore = await cookies();
       const referralCode = cookieStore.get("instaclaw_referral_code")?.value ?? null;
 
       // Create the user row
       const { error } = await supabase.from("instaclaw_users").insert({
-        email: user.email?.toLowerCase(),
+        email: userEmail,
         name: user.name,
         google_id: account.providerAccountId,
         invited_by: null,

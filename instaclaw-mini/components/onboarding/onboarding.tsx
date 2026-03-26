@@ -475,7 +475,7 @@ export default function Onboarding() {
   }
 
   function handleSubscribeInstead() {
-    window.location.href = "https://instaclaw.io/billing";
+    window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
   }
 
   async function handleBuyCredits() {

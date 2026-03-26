@@ -258,7 +258,15 @@ export default function SettingsClient({
               </p>
             )}
             <button
-              onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/subscription/checkout-url?tier=starter");
+                  const data = await res.json();
+                  if (data.url) window.open(data.url, "_blank");
+                } catch {
+                  window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
+                }
+              }}
               className="glass-button flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
             >
               Manage Subscription <ExternalLink size={11} />
@@ -284,7 +292,15 @@ export default function SettingsClient({
                 Pay with WLD
               </button>
               <button
-                onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+                onClick={async () => {
+                try {
+                  const res = await fetch("/api/subscription/checkout-url?tier=starter");
+                  const data = await res.json();
+                  if (data.url) window.open(data.url, "_blank");
+                } catch {
+                  window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
+                }
+              }}
                 className="glass-button flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
               >
                 Subscribe <ExternalLink size={11} />
