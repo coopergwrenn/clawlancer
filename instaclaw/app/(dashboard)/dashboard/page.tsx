@@ -23,6 +23,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
+import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
@@ -749,6 +750,13 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* ── Live Desktop Thumbnail ── */}
+          <div className="grid gap-5 sm:grid-cols-4">
+            <div className="sm:col-span-1">
+              <DesktopThumbnail />
+            </div>
+            <div className="sm:col-span-3">
+
           {/* ── Instance Status ── */}
           <div data-tour="dash-status" className="grid gap-5 sm:grid-cols-3">
             <div className="glass rounded-xl p-6">
@@ -796,6 +804,9 @@ export default function DashboardPage() {
                   ? new Date(vm.assignedAt).toLocaleDateString()
                   : "\u2014"}
               </span>
+            </div>
+          </div>
+
             </div>
           </div>
 
