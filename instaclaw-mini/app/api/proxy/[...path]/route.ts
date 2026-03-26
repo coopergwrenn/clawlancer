@@ -3,24 +3,27 @@ import { requireSession } from "@/lib/auth";
 import { proxyToInstaclaw } from "@/lib/api";
 
 /**
- * Generic authenticated proxy to instaclaw.io for write operations.
- * Usage: POST /api/proxy/vm/update-model → proxied to instaclaw.io/api/vm/update-model
+ * Generic authenticated proxy to instaclaw.io.
+ * GET /api/proxy/tasks/suggestions → proxied to instaclaw.io/api/tasks/suggestions
+ * POST /api/proxy/vm/update-model → proxied to instaclaw.io/api/vm/update-model
  */
-export async function POST(
+
+async function handleProxy(
   req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ path: string[] }> },
+  method: "GET" | "POST"
 ) {
   try {
     const session = await requireSession();
     const { path } = await params;
     const targetPath = `/api/${path.join("/")}`;
 
-    const body = await req.text();
-    const res = await proxyToInstaclaw(targetPath, session.userId, {
-      method: "POST",
-      body,
-    });
+    const options: RequestInit = { method };
+    if (method === "POST") {
+      options.body = await req.text();
+    }
 
+    const res = await proxyToInstaclaw(targetPath, session.userId, options);
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
@@ -28,9 +31,14 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("Proxy error:", err);
-    return NextResponse.json(
-      { error: "Proxy request failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Proxy request failed" }, { status: 500 });
   }
+}
+
+export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
+  return handleProxy(req, ctx, "GET");
+}
+
+export async function POST(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
+  return handleProxy(req, ctx, "POST");
 }

@@ -131,7 +131,7 @@ export default function CommandCenter({
     } catch {}
 
     // Fetch fresh from API in background
-    fetch("/api/proxy/tasks/suggestions", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+    fetch("/api/proxy/tasks/suggestions")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data?.suggestions && Array.isArray(data.suggestions)) {

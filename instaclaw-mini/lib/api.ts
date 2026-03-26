@@ -15,13 +15,17 @@ export async function proxyToInstaclaw(
 ): Promise<Response> {
   const proxyToken = await signProxyToken(userId);
 
+  const headers: Record<string, string> = {
+    ...options.headers as Record<string, string>,
+    "X-Mini-App-Token": proxyToken,
+  };
+  if (options.body) {
+    headers["Content-Type"] = "application/json";
+  }
+
   return fetch(`${INSTACLAW_API}${path}`, {
     ...options,
-    headers: {
-      ...options.headers,
-      "X-Mini-App-Token": proxyToken,
-      "Content-Type": "application/json",
-    },
+    headers,
   });
 }
 
