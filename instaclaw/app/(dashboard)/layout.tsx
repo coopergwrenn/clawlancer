@@ -61,6 +61,8 @@ export default function DashboardLayout({
   const moreRef = useRef<HTMLDivElement>(null);
   const tourControllingMore = useRef(false);
   const [heartbeatHealth, setHeartbeatHealth] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
+  const [gateChecked, setGateChecked] = useState(false);
+  const [gated, setGated] = useState(false);
 
   // Only redirect to onboarding if we have a confirmed session (user.id is set
   // by the session callback) AND onboardingComplete is explicitly false.
@@ -101,6 +103,42 @@ export default function DashboardLayout({
     }
   }, [status, router]);
 
+  // ── Dashboard access gate (Phase 3) ──
+  // When NEXT_PUBLIC_ENABLE_DASHBOARD_GATE=true, check subscription status.
+  // WLD-only users (no active subscription) see a dimmed preview + upgrade prompt.
+  // Exempt routes: /billing, /settings — always accessible for account management.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (process.env.NEXT_PUBLIC_ENABLE_DASHBOARD_GATE !== "true") {
+      setGateChecked(true);
+      return;
+    }
+
+    // Exempt routes — always accessible
+    const exemptPaths = ["/billing", "/settings", "/upgrade"];
+    if (exemptPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      setGateChecked(true);
+      setGated(false);
+      return;
+    }
+
+    fetch("/api/billing/status")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        const sub = data?.subscription;
+        const isActive = sub?.status === "active" || sub?.status === "trialing";
+        const isPastDueGrace = sub?.status === "past_due";
+        if (!isActive && !isPastDueGrace) {
+          setGated(true);
+        }
+        setGateChecked(true);
+      })
+      .catch(() => {
+        // Can't check — don't gate (fail open)
+        setGateChecked(true);
+      });
+  }, [status, pathname]);
+
   // Auto-detect browser timezone and sync to backend if it differs.
   // This catches pre-feature users (before Feb 21) who defaulted to America/New_York,
   // and keeps timezone current if a user travels or changes system settings.
@@ -129,6 +167,11 @@ export default function DashboardLayout({
   }, [status]);
 
   if (status === "loading" || status === "unauthenticated" || needsOnboarding) {
+    return null;
+  }
+
+  // Gate not yet checked — don't flash content
+  if (process.env.NEXT_PUBLIC_ENABLE_DASHBOARD_GATE === "true" && !gateChecked) {
     return null;
   }
 
@@ -279,6 +322,92 @@ export default function DashboardLayout({
 
       {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-12 sm:py-16">{children}</main>
+
+      {/* ── Dashboard Gate Overlay (Phase 3) ── */}
+      {gated && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9998,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: "1.25rem",
+              padding: "2.5rem",
+              maxWidth: "420px",
+              width: "90%",
+              textAlign: "center",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h2
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "1.5rem",
+                fontWeight: 400,
+                marginBottom: "0.75rem",
+              }}
+            >
+              Upgrade to unlock the dashboard
+            </h2>
+            <p
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.875rem",
+                lineHeight: 1.6,
+                marginBottom: "1.5rem",
+              }}
+            >
+              Your agent is running via World App and Telegram.
+              Subscribe to unlock the full web dashboard, daily credit refresh,
+              and all features.
+            </p>
+            <button
+              onClick={() => router.push("/upgrade")}
+              style={{
+                width: "100%",
+                padding: "0.875rem",
+                borderRadius: "0.75rem",
+                fontSize: "0.9rem",
+                fontWeight: 600,
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                background: "linear-gradient(180deg, rgba(220,103,67,0.95), rgba(200,85,52,1))",
+                boxShadow: "0 2px 8px rgba(220,103,67,0.3)",
+                marginBottom: "0.75rem",
+              }}
+            >
+              View plans — from $29/mo
+            </button>
+            <button
+              onClick={() => router.push("/billing")}
+              style={{
+                width: "100%",
+                padding: "0.75rem",
+                borderRadius: "0.75rem",
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                color: "var(--muted)",
+                background: "rgba(0,0,0,0.04)",
+                border: "1px solid var(--border)",
+                cursor: "pointer",
+              }}
+            >
+              Manage billing
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Onboarding wizard (persists across page navigations) */}
       <OnboardingWizard
