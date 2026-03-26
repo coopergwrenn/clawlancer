@@ -46,10 +46,20 @@ export default function LiveDesktopPage() {
     if (vmInfo) connect();
   }, [vmInfo, connect]);
 
-  const toggleViewOnly = () => {
-    setViewOnly(!viewOnly);
-    // In iframe mode, we'd need to post a message to the noVNC page
-    // For the MVP, the user can interact directly in the noVNC iframe
+  const toggleViewOnly = async () => {
+    const newMode = !viewOnly;
+    setViewOnly(newMode);
+
+    // Signal the agent to pause/resume
+    try {
+      await fetch("/api/vm/takeover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: newMode ? "stop" : "start" }),
+      });
+    } catch {
+      // Non-fatal — agent may not check the file immediately anyway
+    }
   };
 
   const toggleFullscreen = () => {
@@ -143,22 +153,31 @@ export default function LiveDesktopPage() {
         </div>
       </div>
 
-      {/* noVNC iframe */}
-      <div ref={containerRef} className="flex-1 bg-black relative">
-        <iframe
-          ref={iframeRef}
-          src={`${vmInfo.vncUrl}&view_only=${viewOnly ? "true" : "false"}`}
-          className="w-full h-full border-0"
-          allow="clipboard-read; clipboard-write"
-          title="Agent Desktop Live View"
-        />
-
-        {/* Overlay hint when watching */}
-        {viewOnly && connectionState === "connected" && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm">
-            Watching agent work — click &quot;Controlling&quot; to take over
+      {/* Live desktop view */}
+      <div ref={containerRef} className="flex-1 bg-black relative flex items-center justify-center">
+        <div className="text-center">
+          <div className="bg-[var(--surface)] rounded-xl p-8 max-w-md mx-auto">
+            <Monitor className="w-16 h-16 text-[var(--accent)] mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Agent Desktop</h2>
+            <p className="text-sm text-[var(--muted)] mb-6">
+              {viewOnly
+                ? "Watch your agent work in real-time on its virtual desktop."
+                : "Take control — your mouse and keyboard will control the agent's desktop."}
+            </p>
+            <a
+              href={`${vmInfo.vncUrl}&view_only=${viewOnly ? "true" : "false"}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-opacity"
+            >
+              <Eye className="w-5 h-5" />
+              Open Live View
+            </a>
+            <p className="text-xs text-[var(--muted)] mt-4">
+              Opens in a new tab. {viewOnly ? "View-only mode — you can watch but not interact." : "Full control — your clicks and keyboard go to the VM."}
+            </p>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

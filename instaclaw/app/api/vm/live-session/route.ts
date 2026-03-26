@@ -22,7 +22,7 @@ export async function GET() {
     const supabase = getSupabase();
     const { data: vm } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, name, gateway_token, tier")
+      .select("id, ip_address, ssh_port, ssh_user, name, gateway_token, tier")
       .eq("assigned_to", session.user.id)
       .eq("status", "assigned")
       .single();
@@ -39,14 +39,34 @@ export async function GET() {
       }, { status: 403 });
     }
 
-    // Generate a one-time token (valid for 60 seconds)
-    // This token will be validated by websockify's token plugin on the VM
+    // Generate a one-time token and deploy it to the VM
     const token = crypto.randomBytes(32).toString("hex");
 
+    // Write token to VM for websockify validation
+    try {
+      const { connectSSH } = await import("@/lib/ssh");
+      const ssh = await connectSSH(vm);
+      try {
+        // Write token file that websockify --token-source will read
+        // Format: token: host:port (one line per valid token)
+        await ssh.execCommand(
+          `mkdir -p ~/.vnc && echo "${token}: localhost:5901" > ~/.vnc/live-tokens`
+        );
+      } finally {
+        ssh.dispose();
+      }
+    } catch (sshErr) {
+      logger.warn("Failed to deploy VNC token to VM", {
+        error: String(sshErr),
+        vmId: vm.id,
+        route: "vm/live-session",
+      });
+      // Fall back to tokenless connection (less secure but functional)
+    }
+
     // The noVNC client connects to the VM's websockify on port 6080
-    // For now, direct connection. Phase 3 will add Caddy TLS proxy.
     const wsUrl = `ws://${vm.ip_address}:6080`;
-    const vncUrl = `http://${vm.ip_address}:6080/vnc.html?autoconnect=true&resize=scale`;
+    const vncUrl = `http://${vm.ip_address}:6080/vnc.html?autoconnect=true&resize=scale&path=websockify?token=${token}`;
 
     logger.info("Live session requested", {
       userId: session.user.id,
@@ -61,6 +81,7 @@ export async function GET() {
       vmName: vm.name,
       vmIp: vm.ip_address,
       port: 6080,
+      token,
     });
   } catch (err) {
     logger.error("Live session error", {

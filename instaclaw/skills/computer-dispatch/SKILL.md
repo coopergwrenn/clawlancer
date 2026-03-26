@@ -140,6 +140,16 @@ Same pattern for both modes:
 
 Max 50 actions per task. Always screenshot before AND after each action.
 
+## User Takeover Detection
+
+Before executing any dispatch command, check if the user has taken control:
+```bash
+[ -f ~/.openclaw/workspace/.user-takeover ] && echo "USER_IN_CONTROL" || echo "OK"
+```
+If `.user-takeover` exists, **STOP all dispatch actions immediately**. The user is controlling the desktop via live view. Wait and check again in 10 seconds. When the file is removed, resume your work.
+
+**Never fight the user for control.** If the takeover file exists, do not click, type, press, scroll, or take screenshots.
+
 ## Rate Limits
 
 - **Max 1 command per second** — the dispatch server enforces this. If you send commands faster, they'll be rejected.
