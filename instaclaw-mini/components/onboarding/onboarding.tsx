@@ -749,7 +749,7 @@ export default function Onboarding() {
           <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
             <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Activate your agent</h2>
             <p className="mt-2 max-w-[300px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
-              Stake 25 WLD from your grant to power your agent for ~3 days, tokens you got for free.
+              Use 25 WLD from your grant to power your agent for ~3 days, tokens you got for free.
             </p>
 
             {/* WLD option */}

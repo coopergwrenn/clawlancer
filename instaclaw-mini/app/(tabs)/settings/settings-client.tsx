@@ -237,7 +237,7 @@ export default function SettingsClient({
             onClick={() => router.push("/home")}
             className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
           >
-            Stake WLD
+            Pay with WLD
           </button>
           <button
             onClick={() => window.open("https://instaclaw.io/billing", "_blank")}

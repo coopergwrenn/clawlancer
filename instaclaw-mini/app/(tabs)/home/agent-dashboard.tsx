@@ -110,7 +110,7 @@ export default function AgentDashboard({
     router.push("/chat");
   }
 
-  async function handleStakeWld() {
+  async function handleAddCredits() {
     MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
     try {
       const res = await fetch("/api/delegate/initiate", {
@@ -130,7 +130,7 @@ export default function AgentDashboard({
         reference,
         to: recipientAddress,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
-        description: "Re-stake WLD for your InstaClaw agent",
+        description: "Add credits to your InstaClaw agent",
       });
 
       if (payResult.finalPayload.status === "success") {
@@ -145,7 +145,7 @@ export default function AgentDashboard({
         router.refresh();
       }
     } catch (err) {
-      console.error("Stake error:", err);
+      console.error("Payment error:", err);
     }
   }
 
@@ -173,10 +173,10 @@ export default function AgentDashboard({
           </div>
           <div className="flex gap-2">
             <button
-              onClick={handleStakeWld}
+              onClick={handleAddCredits}
               className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
             >
-              Stake 25 WLD
+              Pay 25 WLD
             </button>
             <button
               onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
@@ -222,7 +222,7 @@ export default function AgentDashboard({
               <span className="text-xs font-medium text-muted">Credits</span>
             </div>
             <button
-              onClick={handleStakeWld}
+              onClick={handleAddCredits}
               className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold"
             >
               + Add
