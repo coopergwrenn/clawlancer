@@ -67,7 +67,7 @@ const SUGGESTIONS = [
 ];
 
 const EMPTY_STATES: Record<Filter, { icon: typeof Zap; title: string; desc: string; hint?: string }> = {
-  all: { icon: Zap, title: "No tasks yet", desc: "Tell your agent what to do — just type below.", hint: 'Try: "Research the top AI agent frameworks"' },
+  all: { icon: Zap, title: "No tasks yet", desc: "Tell your agent what to do. Just type below.", hint: 'Try: "Research the top AI agent frameworks"' },
   recurring: { icon: Repeat, title: "No recurring tasks", desc: "Set up tasks that run on autopilot.", hint: 'Try: "Send me a weekly newsletter digest"' },
   scheduled: { icon: Sparkles, title: "Nothing scheduled", desc: "Schedule tasks for a specific time." },
   completed: { icon: Check, title: "No completed tasks", desc: "Tasks your agent has finished will show up here." },
@@ -285,10 +285,10 @@ export default function CommandCenter({
       </div>
 
       {/* Content */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+      <div ref={scrollRef} className="flex-1 flex flex-col overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
         {/* ── Tasks Tab ── */}
         {tab === "tasks" && (
-          <div className="px-4 py-3">
+          <div className="flex-1 flex flex-col px-4 py-3">
             {loadingTasks ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
@@ -296,7 +296,7 @@ export default function CommandCenter({
                 ))}
               </div>
             ) : filteredTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex-1 flex flex-col items-center justify-center text-center">
                 <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
                   <EmptyIcon size={24} style={{ color: "#666" }} />
                 </div>
@@ -365,9 +365,9 @@ export default function CommandCenter({
 
         {/* ── Chat Tab ── */}
         {tab === "chat" && (
-          <div className="px-4 py-3">
+          <div className="flex-1 flex flex-col px-4 py-3">
             {chatMsgs.length === 0 && !sending ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex-1 flex flex-col items-center justify-center text-center">
                 <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
                   <Zap size={24} style={{ color: "#666" }} />
                 </div>
@@ -402,7 +402,7 @@ export default function CommandCenter({
 
         {/* ── Library Tab ── */}
         {tab === "library" && (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+          <div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
               <Search size={24} style={{ color: "#666" }} />
             </div>
