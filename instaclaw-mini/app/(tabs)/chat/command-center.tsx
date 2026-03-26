@@ -92,6 +92,12 @@ export default function CommandCenter({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [webSearch, setWebSearch] = useState(true);
+  const [infoDismissed, setInfoDismissed] = useState(false);
+
+  // Check localStorage for dismissed state
+  useEffect(() => {
+    try { if (localStorage.getItem("instaclaw-info-dismissed")) setInfoDismissed(true); } catch {}
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -194,13 +200,24 @@ export default function CommandCenter({
 
   return (
     <div className="flex h-full flex-col" style={{ background: "#0a0a0a" }}>
-      {/* World Chat banner — coming soon */}
-      <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-        <div className="flex h-7 w-7 items-center justify-center rounded-full opacity-40" style={{ background: "rgba(220,103,67,0.15)" }}>
-          <Globe size={14} className="text-accent" />
+      {/* Info banners — compact top section */}
+      {!infoDismissed && (
+        <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+          <div className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <Globe size={12} style={{ color: "#666", flexShrink: 0 }} />
+            <p className="flex-1 text-[10px] leading-tight" style={{ color: "#777" }}>
+              Also on <a href={tgUsername ? `https://t.me/${tgUsername}?start=world` : "#"} style={{ color: "#999" }}>Telegram</a> &amp; <a href="https://instaclaw.io" style={{ color: "#999" }}>instaclaw.io</a> — same email to sign in. World Chat coming soon
+            </p>
+            <button
+              onClick={() => { setInfoDismissed(true); try { localStorage.setItem("instaclaw-info-dismissed", "1"); } catch {} }}
+              className="shrink-0 text-[11px]"
+              style={{ color: "#555" }}
+            >
+              ×
+            </button>
+          </div>
         </div>
-        <span className="text-[11px] opacity-40" style={{ color: "#888" }}>World Chat — coming soon</span>
-      </div>
+      )}
 
       {/* Header */}
       <div className="px-4 pt-2 pb-1">
@@ -411,14 +428,6 @@ export default function CommandCenter({
         </button>
       </div>
 
-      {/* Telegram footer */}
-      {tgUsername && (
-        <div className="px-4 py-1 text-center">
-          <a href={`https://t.me/${tgUsername}?start=world`} className="text-[10px]" style={{ color: "#444" }}>
-            Also on Telegram @{tgUsername} · instaclaw.io
-          </a>
-        </div>
-      )}
 
       {/* Input bar — glass UI matching instaclaw.io */}
       <div className="px-3 py-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
