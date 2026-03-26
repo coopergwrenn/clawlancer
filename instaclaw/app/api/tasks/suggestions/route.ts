@@ -7,9 +7,18 @@ export const dynamic = "force-dynamic";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
-export async function GET() {
+export async function GET(req: Request) {
+  // Dual auth: NextAuth session OR X-Mini-App-Token
   const session = await auth();
-  if (!session?.user?.id) {
+  let userId = session?.user?.id;
+
+  if (!userId) {
+    const { validateMiniAppToken } = await import("@/lib/security");
+    const { NextRequest } = await import("next/server");
+    userId = await validateMiniAppToken(req as unknown as InstanceType<typeof NextRequest>) ?? undefined;
+  }
+
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -23,7 +32,7 @@ export async function GET() {
   const { data: user } = await supabase
     .from("instaclaw_users")
     .select("name, gmail_profile_summary, gmail_insights")
-    .eq("id", session.user.id)
+    .eq("id", userId)
     .single();
 
   if (!user?.gmail_profile_summary) {
@@ -38,7 +47,7 @@ export async function GET() {
     const { data: recentTasks } = await supabase
       .from("instaclaw_tasks")
       .select("title, description")
-      .eq("user_id", session.user.id)
+      .eq("user_id", userId)
       .eq("status", "completed")
       .order("created_at", { ascending: false })
       .limit(10);

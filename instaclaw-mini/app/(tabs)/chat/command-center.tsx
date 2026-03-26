@@ -92,6 +92,7 @@ export default function CommandCenter({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [webSearch, setWebSearch] = useState(true);
+  const [suggestions, setSuggestions] = useState<string[]>(SUGGESTIONS);
   const [infoDismissed, setInfoDismissed] = useState(false);
 
   // Check localStorage for dismissed state
@@ -114,6 +115,29 @@ export default function CommandCenter({
       setLoadingTasks(false);
     }
     loadTasks();
+  }, []);
+
+  // Load personalized suggestions
+  useEffect(() => {
+    // Show cached suggestions first
+    try {
+      const cached = localStorage.getItem("instaclaw-suggestions");
+      if (cached) setSuggestions(JSON.parse(cached));
+    } catch {}
+
+    // Fetch fresh from API in background
+    fetch("/api/proxy/tasks/suggestions", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.suggestions && Array.isArray(data.suggestions)) {
+          const labels = data.suggestions.map((s: { label: string }) => s.label).filter(Boolean);
+          if (labels.length > 0) {
+            setSuggestions(labels);
+            try { localStorage.setItem("instaclaw-suggestions", JSON.stringify(labels)); } catch {}
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Load chat history
@@ -393,7 +417,7 @@ export default function CommandCenter({
       {/* Suggestion chips */}
       {((tab === "tasks" && filteredTasks.length === 0) || (tab === "chat" && chatMsgs.length === 0)) && (
         <div className="flex gap-2 overflow-x-auto px-4 py-2 no-scrollbar">
-          {SUGGESTIONS.map((s) => (
+          {suggestions.map((s) => (
             <button
               key={s}
               onClick={() => { setInput(s); inputRef.current?.focus(); }}
