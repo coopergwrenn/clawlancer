@@ -91,6 +91,7 @@ export default function CommandCenter({
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [webSearch, setWebSearch] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -374,19 +375,41 @@ export default function CommandCenter({
 
       {/* Suggestion chips */}
       {((tab === "tasks" && filteredTasks.length === 0) || (tab === "chat" && chatMsgs.length === 0)) && (
-        <div className="flex gap-1.5 overflow-x-auto px-4 py-2 no-scrollbar">
+        <div className="flex gap-2 overflow-x-auto px-4 py-2 no-scrollbar">
           {SUGGESTIONS.map((s) => (
             <button
               key={s}
               onClick={() => { setInput(s); inputRef.current?.focus(); }}
-              className="shrink-0 rounded-full px-3 py-1.5 text-[11px] transition-all active:scale-95"
-              style={{ background: "rgba(255,255,255,0.06)", color: "#888", border: "1px solid rgba(255,255,255,0.06)" }}
+              className="shrink-0 rounded-full px-4 py-2 text-[12px] font-medium transition-all active:scale-95"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "#aaa",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.04)",
+              }}
             >
               {s}
             </button>
           ))}
         </div>
       )}
+
+      {/* Web search toggle */}
+      <div className="flex gap-2 px-4 py-1">
+        <button
+          onClick={() => setWebSearch(!webSearch)}
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all"
+          style={{
+            background: webSearch ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
+            border: `1px solid ${webSearch ? "rgba(66,133,244,0.3)" : "rgba(255,255,255,0.06)"}`,
+            color: webSearch ? "#4285F4" : "#666",
+          }}
+        >
+          <Globe size={12} />
+          Web search
+          {webSearch && <span style={{ marginLeft: 2, opacity: 0.5 }}>×</span>}
+        </button>
+      </div>
 
       {/* Telegram footer */}
       {tgUsername && (
@@ -397,9 +420,24 @@ export default function CommandCenter({
         </div>
       )}
 
-      {/* Input bar */}
-      <div className="px-3 py-2.5" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
-        <div className="flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+      {/* Input bar — glass UI matching instaclaw.io */}
+      <div className="px-3 py-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
+        <div
+          className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.06)",
+          }}
+        >
+          {/* + button */}
+          <button
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all active:scale-90"
+            style={{ background: "rgba(255,255,255,0.08)" }}
+          >
+            <span className="text-lg font-light" style={{ color: "#888" }}>+</span>
+          </button>
+
+          {/* Input */}
           <input
             ref={inputRef}
             type="text"
@@ -408,15 +446,45 @@ export default function CommandCenter({
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             placeholder={tab === "chat" ? "Message your agent..." : "Tell your agent what to do next..."}
             autoComplete="off"
-            className="flex-1 bg-transparent text-[13px] text-white placeholder:text-white/25 focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-[13px] text-white placeholder:text-white/30 focus:outline-none"
           />
+
+          {/* Model selector */}
+          <button
+            className="shrink-0 flex items-center gap-0.5 text-[11px] font-medium"
+            style={{ color: "#666" }}
+          >
+            <span className="hidden sm:inline">Sonnet</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+
+          {/* Mic button */}
+          <button
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
+            style={{ color: "#666" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
+            </svg>
+          </button>
+
+          {/* Send button */}
           <button
             onClick={handleSend}
             disabled={!input.trim() || sending}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl disabled:opacity-20"
-            style={{ background: input.trim() ? "#DC6743" : "transparent" }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all active:scale-90 disabled:opacity-20"
+            style={{
+              background: input.trim()
+                ? "linear-gradient(135deg, #DC6743, #c2553a)"
+                : "rgba(255,255,255,0.06)",
+              boxShadow: input.trim()
+                ? "0 2px 8px rgba(220,103,67,0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
+                : "none",
+            }}
           >
-            <Send size={16} color="#fff" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
+            </svg>
           </button>
         </div>
       </div>
