@@ -29,12 +29,19 @@ export default function DispatchDocsPage() {
       </Section>
 
       <Section title="Quick Start">
-        <p className="mb-4">Run this in your terminal:</p>
+        <p className="mb-4">
+          <strong>Easiest way:</strong> Go to{" "}
+          <a href="/settings" className="underline">instaclaw.io/settings</a> and
+          click <strong>&quot;Connect Your Computer&quot;</strong>. It downloads a small
+          file — double-click it and you&apos;re connected.
+        </p>
+        <p className="mb-4">
+          <strong>Or from your terminal:</strong>
+        </p>
         <CodeBlock>npx @instaclaw/dispatch</CodeBlock>
         <p className="mt-4">
-          On first run, you&apos;ll be asked for your gateway token (found in
-          Settings) and your VM address. The relay connects via encrypted
-          WebSocket and stays running in the background.
+          You&apos;ll be asked for a pairing code (shown on your Settings page).
+          Enter it and the relay connects automatically via encrypted WebSocket.
         </p>
       </Section>
 
