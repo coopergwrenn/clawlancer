@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  Play, Eye, Hand, Maximize2, Minimize2, RefreshCw, WifiOff, Wifi,
-  Camera, Globe, Copy, CheckCircle2, ChevronDown, Download, Monitor,
+  Play, Eye, Hand, Maximize2, Minimize2, RefreshCw, WifiOff,
+  Camera, Globe, Monitor,
 } from "lucide-react";
 import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-section";
 
@@ -107,7 +107,6 @@ export default function LiveDesktopPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Watch / Control pill toggle */}
           <div className="flex rounded-full p-0.5 bg-black/5">
             <button
               onClick={() => { if (!viewOnly) toggleViewOnly(); }}
@@ -139,9 +138,9 @@ export default function LiveDesktopPage() {
         </div>
       </div>
 
-      {/* Main layout: viewer + sidebar */}
+      {/* Main layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* LEFT: Live Viewer Area */}
+        {/* Viewer */}
         <div className="lg:col-span-2" ref={containerRef}>
           <div
             className="relative rounded-xl overflow-hidden border border-[var(--border)]"
@@ -153,90 +152,91 @@ export default function LiveDesktopPage() {
               aspectRatio: "16/10",
             }}
           >
-            {/* Dot grid pattern background */}
+            {/* #3: Dot grid — bumped to opacity-20 */}
             <div
-              className="absolute inset-0 opacity-10"
+              className="absolute inset-0 opacity-[0.06]"
               style={{
-                backgroundImage: "radial-gradient(circle, #555 1px, transparent 1px)",
-                backgroundSize: "20px 20px",
+                backgroundImage: "radial-gradient(circle, #888 1px, transparent 1px)",
+                backgroundSize: "24px 24px",
               }}
             />
 
-            {/* Content */}
+            {/* #1: Play button with outer circle + glow */}
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
               <a
                 href={`${vmInfo.vncUrl}&view_only=${viewOnly ? "true" : "false"}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group flex flex-col items-center gap-4 transition-transform hover:scale-105"
+                className="group flex flex-col items-center gap-3 transition-transform hover:scale-105"
               >
-                <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center transition-all group-hover:scale-110"
-                  style={{
-                    background: "rgba(220, 103, 67, 0.15)",
-                    border: "2px solid rgba(220, 103, 67, 0.3)",
-                  }}
-                >
-                  <Play className="w-7 h-7 text-[#DC6743] ml-0.5" fill="currentColor" />
+                {/* Outer pulse ring */}
+                <div className="relative">
+                  <div
+                    className="absolute inset-0 rounded-full animate-ping opacity-20"
+                    style={{ background: "rgba(220, 103, 67, 0.4)" }}
+                  />
+                  <div
+                    className="relative w-16 h-16 rounded-full flex items-center justify-center transition-all group-hover:shadow-[0_0_24px_rgba(220,103,67,0.4)]"
+                    style={{
+                      background: "rgba(220, 103, 67, 0.12)",
+                      border: "2px solid rgba(220, 103, 67, 0.25)",
+                    }}
+                  >
+                    <Play className="w-6 h-6 text-[#DC6743] ml-0.5" fill="currentColor" />
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-white/90 font-medium text-sm">
-                    {viewOnly ? "Watch your agent work" : "Take control of the desktop"}
-                  </p>
-                  <p className="text-white/40 text-xs mt-1">Click to open live view</p>
-                </div>
+
+                {/* #2: Tighter text spacing */}
+                <p className="text-white/80 font-medium text-sm">
+                  {viewOnly ? "Watch your agent work" : "Take control"}
+                </p>
+                <p className="text-white/30 text-[11px] -mt-2">Click to open</p>
               </a>
             </div>
 
-            {/* Status bar at bottom */}
-            <div className="absolute bottom-0 left-0 right-0 z-20 px-4 py-2 bg-gradient-to-t from-black/60 to-transparent">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-white/60">
-                  <Monitor className="w-3 h-3" />
-                  <span>1280×720</span>
-                  <span>•</span>
-                  <span>{viewOnly ? "View only" : "Interactive"}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-emerald-400">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Connected</span>
+            {/* #7: Floating quick action toolbar */}
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex gap-1.5">
+              <button className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-white/70 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors">
+                <Camera className="w-3 h-3" /> Screenshot
+              </button>
+              <button className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-white/70 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors">
+                <Globe className="w-3 h-3" /> Browser
+              </button>
+            </div>
+
+            {/* #4: Centered single-line status bar */}
+            <div className="absolute bottom-0 left-0 right-0 z-20 px-4 py-1.5 bg-black/50">
+              <div className="flex items-center justify-center gap-2 text-[10px] text-white/50">
+                <span>1280×720</span>
+                <span className="text-white/20">·</span>
+                <span>{viewOnly ? "View only" : "Interactive"}</span>
+                <span className="text-white/20">·</span>
+                <div className="flex items-center gap-1 text-emerald-400/80">
+                  <div className="w-1 h-1 rounded-full bg-emerald-400" />
+                  Connected
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Quick Actions */}
-          <div className="flex gap-2 mt-3">
-            <QuickAction icon={<Camera className="w-3.5 h-3.5" />} label="Screenshot" />
-            <QuickAction icon={<Globe className="w-3.5 h-3.5" />} label="Open Browser" />
-          </div>
         </div>
 
-        {/* RIGHT: Remote Control */}
+        {/* Sidebar */}
         <div className="space-y-4">
+          {/* #5: DispatchRelaySection already cleaned up */}
           <DispatchRelaySection />
 
-          {/* Activity */}
+          {/* #6: Activity — meaningful info, no "Openbox" */}
           <div className="glass rounded-xl p-4">
             <h3 className="text-sm font-semibold mb-3">Activity</h3>
             <div className="space-y-2">
-              <ActivityItem label="Agent status" value="Active" color="emerald" />
-              <ActivityItem label="Display" value="1280×720 (Xvfb)" />
-              <ActivityItem label="Window manager" value="Openbox" />
+              <ActivityItem label="Status" value="Active" color="emerald" />
+              <ActivityItem label="Display" value="1280×720" />
+              <ActivityItem label="Last activity" value="Just now" />
             </div>
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function QuickAction({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-black/5 border border-[var(--border)] transition-colors">
-      {icon}
-      {label}
-    </button>
   );
 }
 
