@@ -47,14 +47,7 @@ export default function AgentDashboard({
   const creditPct = Math.min(100, (agent.credit_balance / 25) * 100);
 
   function handleChat() {
-    if (agent.xmtp_address) {
-      // World Chat deep link — opens direct 1-on-1 chat with agent
-      window.location.href = `https://world.org/profile?address=${agent.xmtp_address}&action=chat`;
-    } else if (agent.telegram_bot_username) {
-      // Fallback: Telegram
-      const username = String(agent.telegram_bot_username).replace(/^@/, "");
-      window.location.href = `https://t.me/${username}?start=world`;
-    }
+    router.push("/chat");
   }
 
   async function handleStakeWld() {

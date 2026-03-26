@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { getAgentStatus } from "@/lib/supabase";
 import { redirect } from "next/navigation";
-import ChatOptions from "./chat-options";
+import ChatInterface from "./chat-interface";
 
 export default async function ChatPage() {
   const session = await getSession();
@@ -10,18 +10,13 @@ export default async function ChatPage() {
   let agent = null;
   try {
     agent = await getAgentStatus(session.userId);
-  } catch (err) {
-    console.error("[Chat] Error fetching agent:", err);
-  }
+  } catch { /* no agent */ }
 
   return (
-    <div className="p-4">
-      <h1 className="mb-1 text-xl font-bold tracking-tight">Chat</h1>
-      <p className="mb-5 text-xs text-muted">Talk to your agent</p>
-      <ChatOptions
-        xmtpAddress={agent?.xmtp_address ?? null}
-        telegramBotUsername={agent?.telegram_bot_username ?? null}
-      />
-    </div>
+    <ChatInterface
+      telegramBotUsername={agent?.telegram_bot_username as string | null ?? null}
+      xmtpAddress={agent?.xmtp_address as string | null ?? null}
+      isOnline={agent?.health_status === "healthy"}
+    />
   );
 }
