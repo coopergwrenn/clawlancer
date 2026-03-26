@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Monitor,
   Wifi,
@@ -10,6 +10,11 @@ import {
   ChevronDown,
   Terminal as TerminalIcon,
   Clipboard,
+  MousePointer2,
+  Camera,
+  Globe,
+  FolderOpen,
+  MessageSquare,
 } from "lucide-react";
 
 function detectOS(): "mac" | "windows" | "linux" {
@@ -30,13 +35,24 @@ export function DispatchRelaySection() {
   const [showSteps, setShowSteps] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
   const [os] = useState(detectOS);
+  const prevConnected = useRef(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/vm/dispatch-status");
       const status = await res.json();
-      setRelayConnected(!!status.relayConnected);
+      const connected = !!status.relayConnected;
+
+      // Detect the moment of connection for animation
+      if (connected && !prevConnected.current) {
+        setJustConnected(true);
+        setTimeout(() => setJustConnected(false), 3000);
+      }
+      prevConnected.current = connected;
+      setRelayConnected(connected);
     } catch {
       setRelayConnected(false);
     } finally {
@@ -44,10 +60,24 @@ export function DispatchRelaySection() {
     }
   }, []);
 
+  // Poll every 5s (fast enough to catch connection, cached server-side to avoid SSH spam)
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
-    return () => clearInterval(interval);
+    pollRef.current = setInterval(fetchStatus, 5000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [fetchStatus]);
+
+  // When user clicks Connect, poll even faster (every 2s) for 60 seconds to catch the connection
+  const startFastPoll = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(fetchStatus, 2000);
+    // Revert to 5s after 60 seconds
+    setTimeout(() => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(fetchStatus, 5000);
+    }, 60000);
   }, [fetchStatus]);
 
   // Countdown for pairing code
@@ -84,7 +114,6 @@ export function DispatchRelaySection() {
     setTimeout(() => setCopiedField(null), 3000);
   }
 
-  /** Generate pairing code, build npx command, copy to clipboard, show steps */
   async function handleConnect() {
     setGenerating(true);
     try {
@@ -99,16 +128,16 @@ export function DispatchRelaySection() {
         setCopiedField("connect");
         setTimeout(() => setCopiedField(null), 4000);
         setShowSteps(true);
+        startFastPoll();
       } else if (data.fallbackCommand) {
-        // Pairing table not migrated — use full command
         setFullCommand(data.fallbackCommand);
         await navigator.clipboard.writeText(data.fallbackCommand);
         setCopiedField("connect");
         setTimeout(() => setCopiedField(null), 4000);
         setShowSteps(true);
+        startFastPoll();
       }
     } catch {
-      // Fallback: just show manual section
       setShowSteps(true);
     } finally {
       setGenerating(false);
@@ -126,23 +155,38 @@ export function DispatchRelaySection() {
   const spotlightKey = os === "mac" ? "Cmd + Space" : "";
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+    <div
+      className="rounded-xl border bg-[var(--surface)] p-5 transition-all duration-700"
+      style={{
+        borderColor: relayConnected
+          ? "rgb(16 185 129 / 0.4)"
+          : "var(--border)",
+        boxShadow: justConnected
+          ? "0 0 24px rgba(16, 185, 129, 0.2)"
+          : "none",
+      }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <Monitor className="w-5 h-5 text-[var(--accent)] shrink-0" />
           <h3 className="font-semibold whitespace-nowrap">Remote Control</h3>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div
+          className="flex items-center gap-1.5 shrink-0 transition-all duration-500"
+        >
           {checking ? (
             <span className="text-xs text-[var(--muted)]">Checking...</span>
           ) : relayConnected ? (
-            <>
-              <Wifi className="w-3.5 h-3.5 text-emerald-500" />
+            <div className="flex items-center gap-1.5 animate-in fade-in duration-500">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+              </span>
               <span className="text-xs font-medium text-emerald-600">
                 Connected
               </span>
-            </>
+            </div>
           ) : (
             <>
               <WifiOff className="w-3.5 h-3.5 text-[var(--muted)]" />
@@ -152,25 +196,67 @@ export function DispatchRelaySection() {
         </div>
       </div>
 
+      {/* ── Connected state ── */}
       {relayConnected ? (
-        <div>
-          <p className="text-sm text-emerald-600 mb-2">
-            Your agent is connected to your computer and can take screenshots,
-            click, and type.
-          </p>
-          <p className="text-xs text-[var(--muted)]">
-            To disconnect, press Ctrl+C in the terminal running the dispatch
-            relay.
+        <div
+          className="transition-all duration-700 ease-out"
+          style={{ animation: "fadeSlideIn 0.5s ease-out" }}
+        >
+          {/* Success header */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                Your agent is connected to your computer!
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                Secure relay active via encrypted WebSocket
+              </p>
+            </div>
+          </div>
+
+          {/* Capabilities */}
+          <div className="rounded-lg bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200/50 dark:border-emerald-800/30 p-4 mb-4">
+            <p className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wide mb-2.5">
+              Your agent can now
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Capability icon={<Camera className="w-3.5 h-3.5" />} text="Take screenshots" />
+              <Capability icon={<MousePointer2 className="w-3.5 h-3.5" />} text="Click, type & scroll" />
+              <Capability icon={<Globe className="w-3.5 h-3.5" />} text="Browse the web as you" />
+              <Capability icon={<FolderOpen className="w-3.5 h-3.5" />} text="Organize files" />
+            </div>
+          </div>
+
+          {/* Example prompts */}
+          <div className="mb-4">
+            <p className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wide mb-2">
+              Try saying to your agent
+            </p>
+            <div className="space-y-1.5">
+              <ExamplePrompt text="Take a screenshot of my screen" />
+              <ExamplePrompt text="Open Chrome and search for..." />
+              <ExamplePrompt text="Clean up my desktop" />
+              <ExamplePrompt text="Fill out this form for me" />
+            </div>
+          </div>
+
+          {/* Disconnect */}
+          <p className="text-xs text-[var(--muted)] text-center">
+            To disconnect, press <kbd className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-[10px] font-mono">Ctrl+C</kbd> in your terminal
           </p>
         </div>
       ) : (
+        /* ── Not connected state ── */
         <>
           <p className="text-sm text-[var(--muted)] mb-5">
             Let your agent control your computer. Take screenshots, click, type,
             and more.
           </p>
 
-          {/* ── Primary: Copy-to-clipboard button ── */}
+          {/* Primary: Copy-to-clipboard button */}
           {!showSteps ? (
             <button
               onClick={handleConnect}
@@ -185,7 +271,7 @@ export function DispatchRelaySection() {
               {generating ? "Generating..." : "Connect Your Computer"}
             </button>
           ) : (
-            /* ── Steps modal (inline) ── */
+            /* Steps + waiting for connection */
             <div className="w-full rounded-xl border-2 border-emerald-200 bg-emerald-50/50 dark:bg-emerald-900/10 dark:border-emerald-800 p-5">
               {/* Success header */}
               <div className="flex items-center gap-2 mb-5">
@@ -225,7 +311,18 @@ export function DispatchRelaySection() {
                 />
               </div>
 
-              {/* Command reference block with copy button */}
+              {/* Waiting indicator */}
+              <div className="flex items-center gap-2 justify-center mb-4 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                </span>
+                <span className="text-xs text-amber-700 dark:text-amber-400">
+                  Waiting for connection...
+                </span>
+              </div>
+
+              {/* Command reference block */}
               <div className="relative">
                 <pre className="bg-black/10 dark:bg-black/30 rounded-lg p-3 pr-10 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all text-[var(--foreground)]">
                   {npxCommand}
@@ -261,8 +358,8 @@ export function DispatchRelaySection() {
               {/* macOS permission note */}
               {os === "mac" && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 text-center">
-                  macOS: You&apos;ll need to grant Accessibility + Screen
-                  Recording permissions to Terminal.app.
+                  macOS: Grant Accessibility + Screen Recording permissions to
+                  Terminal.app when prompted.
                 </p>
               )}
 
@@ -281,7 +378,7 @@ export function DispatchRelaySection() {
             </div>
           )}
 
-          {/* ── Collapsed fallback: download .command file ── */}
+          {/* Collapsed fallback: download .command file */}
           <div className="mt-4 border-t border-[var(--border)] pt-3">
             <button
               onClick={() => setShowFallback(!showFallback)}
@@ -321,9 +418,25 @@ export function DispatchRelaySection() {
           </div>
         </>
       )}
+
+      {/* CSS animation keyframes */}
+      <style jsx>{`
+        @keyframes fadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
+
+/* ── Sub-components ── */
 
 function Step({
   number,
@@ -350,6 +463,24 @@ function Step({
         </div>
         <p className="text-xs text-[var(--muted)] mt-0.5">{subtitle}</p>
       </div>
+    </div>
+  );
+}
+
+function Capability({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400">
+      {icon}
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function ExamplePrompt({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.03] border border-transparent hover:border-[var(--border)] transition-colors">
+      <MessageSquare className="w-3 h-3 text-[var(--muted)] shrink-0" />
+      <span className="text-xs text-[var(--foreground)]">&ldquo;{text}&rdquo;</span>
     </div>
   );
 }
