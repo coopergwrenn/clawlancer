@@ -599,8 +599,8 @@ export default function Onboarding() {
 
           {/* CTA — pinned to bottom */}
           <div
-            className="px-7 pt-4"
-            style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 16px)" }}
+            className="px-7 pt-4 flex flex-col items-center gap-3"
+            style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 12px)" }}
           >
             <button
               onClick={handleGetAgent}
@@ -608,6 +608,31 @@ export default function Onboarding() {
               style={{ height: "56px" }}
             >
               Claim my agent
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const nonceRes = await fetch("/api/nonce");
+                  const { nonce } = await nonceRes.json();
+                  const authResult = await MiniKit.commandsAsync.walletAuth({
+                    nonce,
+                    statement: "Sign back in to InstaClaw",
+                    expirationTime: new Date(Date.now() + 1000 * 60 * 60),
+                  });
+                  if (authResult.finalPayload.status === "success") {
+                    const loginRes = await fetch("/api/auth/login", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(authResult.finalPayload),
+                    });
+                    if (loginRes.ok) window.location.href = "/home";
+                  }
+                } catch {}
+              }}
+              className="text-[13px] font-semibold"
+              style={{ color: "#DC6743", background: "none", border: "none" }}
+            >
+              Already have an agent? Sign in
             </button>
           </div>
         </>
