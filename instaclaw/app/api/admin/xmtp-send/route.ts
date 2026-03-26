@@ -50,8 +50,12 @@ export async function POST(req: NextRequest) {
       privateKey,
     });
 
-    // Write a small send script that uses the same wallet key as the running agent
-    // This shares the SAME identity (same key, same DB) — no new installation
+    // Stop the running XMTP service to release the DB lock
+    await ssh.execCommand(
+      'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop instaclaw-xmtp 2>/dev/null; sleep 2; echo "service stopped"'
+    );
+
+    // Write a send script that uses the agent's wallet key
     const sendScript = `
 import { Agent } from "@xmtp/agent-sdk";
 import { readFileSync } from "fs";
@@ -80,34 +84,13 @@ console.log("Agent address:", agent.address);
 console.log("Sending DM to:", TARGET);
 
 try {
-  // Check if target can receive messages
-  const canMsg = await agent.client.canMessage([{ identifier: TARGET, identifierKind: "Ethereum" }]);
-  console.log("canMessage:", JSON.stringify(canMsg));
-} catch (e) {
-  console.log("canMessage check:", e.message);
-}
-
-try {
   const dm = await agent.createDmWithAddress(TARGET);
   console.log("DM conversation created:", dm.id);
   await dm.sendText(MSG);
   console.log("MESSAGE SENT SUCCESSFULLY!");
 } catch (e) {
   console.error("createDmWithAddress failed:", e.message);
-
-  // Fallback: try via client.conversations.createDmWithIdentifier
-  try {
-    console.log("Trying client.conversations.createDmWithIdentifier...");
-    const dm = await agent.client.conversations.createDmWithIdentifier({
-      identifier: TARGET,
-      identifierKind: "Ethereum",
-    });
-    console.log("DM created via identifier:", dm.id);
-    await dm.send(MSG);
-    console.log("MESSAGE SENT via identifier!");
-  } catch (e2) {
-    console.error("createDmWithIdentifier also failed:", e2.message);
-  }
+  console.error("Stack:", e.stack);
 }
 
 await new Promise(r => setTimeout(r, 3000));
@@ -116,8 +99,13 @@ process.exit(0);
 
     // Write the script to ~/scripts/ so it can find node_modules
     const result = await ssh.execCommand(
-      `source ~/.nvm/nvm.sh && cat > ~/scripts/xmtp-send-tmp.mjs << 'SCRIPTEOF'\n${sendScript}\nSCRIPTEOF\ncd ~/scripts && node xmtp-send-tmp.mjs 2>&1; rm -f ~/scripts/xmtp-send-tmp.mjs`,
+      `source ~/.nvm/nvm.sh && cat > ~/scripts/xmtp-send-tmp.mjs << 'SCRIPTEOF'\n${sendScript}\nSCRIPTEOF\ncd ~/scripts && node xmtp-send-tmp.mjs 2>&1; EXIT_CODE=$?; rm -f ~/scripts/xmtp-send-tmp.mjs; echo "EXIT:$EXIT_CODE"`,
       { cwd: "/home/openclaw/scripts" }
+    );
+
+    // Restart the XMTP service after sending
+    await ssh.execCommand(
+      'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user start instaclaw-xmtp 2>/dev/null; echo "service restarted"'
     );
 
     ssh.dispose();
