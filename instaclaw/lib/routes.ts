@@ -21,6 +21,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/faq", label: "FAQ", changeFrequency: "monthly", priority: 0.8 },
   { path: "/about", label: "About", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs", label: "Docs", changeFrequency: "monthly", priority: 0.8 },
+  { path: "/docs/dispatch", label: "Dispatch Mode", changeFrequency: "monthly", priority: 0.7 },
   { path: "/use-cases", label: "Use Cases", changeFrequency: "monthly", priority: 0.8 },
   { path: "/use-cases/polymarket-trading", label: "Polymarket Trading", changeFrequency: "monthly", priority: 0.7 },
   { path: "/use-cases/shopify-management", label: "Shopify Management", changeFrequency: "monthly", priority: 0.7 },
