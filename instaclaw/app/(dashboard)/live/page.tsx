@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Monitor, Eye, Hand, Maximize2, Minimize2, RefreshCw, WifiOff } from "lucide-react";
+import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-section";
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
 
@@ -176,6 +177,10 @@ export default function LiveDesktopPage() {
             <p className="text-xs text-[var(--muted)] mt-4">
               Opens in a new tab. {viewOnly ? "View-only mode — you can watch but not interact." : "Full control — your clicks and keyboard go to the VM."}
             </p>
+          {/* Dispatch relay section — let user connect their own computer too */}
+          <div className="mt-6 w-full max-w-md mx-auto">
+            <DispatchRelaySection />
+          </div>
           </div>
         </div>
       </div>
