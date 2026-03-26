@@ -15,7 +15,7 @@
  */
 
 import { Agent } from "@xmtp/agent-sdk";
-import { appendFileSync, mkdirSync, existsSync, readFileSync } from "fs";
+import { appendFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 // ── Config ──
@@ -111,7 +111,7 @@ async function main() {
   agent.on("text", async (ctx) => {
     if (!ctx.isDm()) return; // Only handle DMs, not group messages
 
-    const sender = await ctx.getSenderAddress();
+    const sender = ctx.message?.senderInboxId || ctx.message?.senderAddress || "unknown";
     const text = ctx.message.content;
 
     log("INFO", `Message from ${sender}: ${text.slice(0, 100)}${text.length > 100 ? "..." : ""}`);
@@ -132,7 +132,7 @@ async function main() {
 
   // ── Handle new DM conversations ──
   agent.on("dm", async (ctx) => {
-    const sender = await ctx.getSenderAddress();
+    const sender = ctx.message?.senderInboxId || ctx.message?.senderAddress || "unknown";
     log("INFO", `New DM conversation from ${sender}`);
     await ctx.conversation.sendText(
       "Hey! I'm your InstaClaw agent. Ask me anything — I'm here to help."
@@ -147,7 +147,6 @@ async function main() {
     // Write address to a file so other scripts can read it
     const addrFile = join(HOME, ".openclaw", "xmtp", "address");
     try {
-      const { writeFileSync } = await import("fs");
       writeFileSync(addrFile, agent.address);
       log("INFO", `Address written to ${addrFile}`);
     } catch (e) {
@@ -161,6 +160,11 @@ async function main() {
 
   // Start listening
   await agent.start();
+
+  // Keep the process alive — agent.start() sets up streams but
+  // the Node.js event loop needs a reference to stay running
+  log("INFO", "Agent is now listening for messages. Keeping process alive...");
+  setInterval(() => {}, 60000);
 }
 
 main().catch((err) => {
