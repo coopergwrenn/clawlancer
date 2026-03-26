@@ -62,8 +62,8 @@ function formatNextRun(iso: string | null) {
 const CHAT_KEY = "instaclaw-chat-history";
 
 const SUGGESTIONS = [
-  "Research", "Draft email", "Market update", "Write a post",
-  "Check bounties", "Today's schedule",
+  "Research a topic", "Draft an email", "Summarize the news",
+  "Write a social post", "Plan my week", "Track crypto prices",
 ];
 
 const EMPTY_STATES: Record<Filter, { icon: typeof Zap; title: string; desc: string; hint?: string }> = {
@@ -122,27 +122,39 @@ export default function CommandCenter({
     loadTasks();
   }, []);
 
-  // Load personalized suggestions
+  // Load personalized suggestions — cached first, then refresh from API
   useEffect(() => {
-    // Show cached suggestions first
+    // 1. Show cached suggestions instantly (no flash of defaults)
     try {
       const cached = localStorage.getItem("instaclaw-suggestions");
-      if (cached) setSuggestions(JSON.parse(cached));
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) setSuggestions(parsed);
+      }
     } catch {}
 
-    // Fetch fresh from API in background
+    // 2. Fetch personalized from API (runs in background, updates when ready)
     fetch("/api/proxy/tasks/suggestions")
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
       .then((data) => {
-        if (data?.suggestions && Array.isArray(data.suggestions)) {
-          const labels = data.suggestions.map((s: { label: string }) => s.label).filter(Boolean);
+        // API returns { suggestions: [{ label, prefill }, ...] } or { suggestions: null }
+        if (data?.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          const labels = data.suggestions
+            .map((s: { label?: string; prefill?: string }) => s.label || s.prefill)
+            .filter(Boolean);
           if (labels.length > 0) {
             setSuggestions(labels);
             try { localStorage.setItem("instaclaw-suggestions", JSON.stringify(labels)); } catch {}
           }
         }
+        // If suggestions is null (no Gmail), keep current suggestions (defaults or cached)
       })
-      .catch(() => {});
+      .catch(() => {
+        // API failed — keep defaults, don't clear anything
+      });
   }, []);
 
   // Load chat history
