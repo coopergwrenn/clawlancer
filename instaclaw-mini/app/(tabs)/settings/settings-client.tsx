@@ -260,9 +260,9 @@ export default function SettingsClient({
             <div className="flex gap-2">
               <button
                 onClick={() => router.push("/home")}
-                className="btn-primary flex-1 rounded-xl py-2.5 text-sm font-bold"
+                className="btn-primary flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold"
               >
-                Top up with WLD
+                <Zap size={14} fill="currentColor" /> Top up with WLD
               </button>
               <button
                 onClick={async () => {
