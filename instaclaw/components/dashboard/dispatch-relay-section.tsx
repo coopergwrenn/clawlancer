@@ -96,21 +96,21 @@ export function DispatchRelaySection() {
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Monitor className="w-5 h-5 text-[var(--accent)]" />
-          <h3 className="font-semibold">Remote Computer Control</h3>
+        <div className="flex items-center gap-2 min-w-0">
+          <Monitor className="w-5 h-5 text-[var(--accent)] shrink-0" />
+          <h3 className="font-semibold whitespace-nowrap">Remote Control</h3>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           {checking ? (
             <span className="text-xs text-[var(--muted)]">Checking...</span>
           ) : relayConnected ? (
             <>
-              <Wifi className="w-4 h-4 text-emerald-500" />
-              <span className="text-xs font-medium text-emerald-600">Relay Connected</span>
+              <Wifi className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="text-xs font-medium text-emerald-600">Connected</span>
             </>
           ) : (
             <>
-              <WifiOff className="w-4 h-4 text-[var(--muted)]" />
+              <WifiOff className="w-3.5 h-3.5 text-[var(--muted)]" />
               <span className="text-xs text-[var(--muted)]">Not Connected</span>
             </>
           )}
@@ -129,7 +129,7 @@ export function DispatchRelaySection() {
       ) : (
         <>
           <p className="text-sm text-[var(--muted)] mb-5">
-            Let your agent control your computer — take screenshots, click, type, and more.
+            Let your agent control your computer. Take screenshots, click, type, and more.
           </p>
 
           {/* Big "Connect Your Computer" button */}
