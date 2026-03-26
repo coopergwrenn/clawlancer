@@ -232,6 +232,17 @@ export default function SettingsClient({
       {/* ── Link Account ── */}
       <LinkAccountSection />
 
+      {/* ── Debug — temporary ── */}
+      <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0, border: "1px solid rgba(220,103,67,0.3)" }}>
+        <button
+          onClick={() => router.push("/test-deeplinks")}
+          className="btn-primary w-full rounded-xl py-3 text-sm font-semibold"
+        >
+          Test World Chat Deep Links
+        </button>
+        <p className="mt-2 text-[10px] text-center text-muted">Temporary — for debugging with World team</p>
+      </section>
+
       {/* ── Links ── */}
       <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0 }}>
         <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
