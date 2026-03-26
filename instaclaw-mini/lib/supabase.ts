@@ -89,6 +89,68 @@ export async function getDailyUsage(vmId: string) {
   return data;
 }
 
+// Tier display limits — must match instaclaw/lib/credit-constants.ts
+const TIER_DAILY_LIMITS: Record<string, number> = {
+  starter: 600,
+  pro: 1000,
+  power: 2500,
+  internal: 5000,
+};
+
+export interface SubscriptionInfo {
+  hasSubscription: boolean;
+  tier: string | null;
+  status: string | null;
+  paymentStatus: string | null;
+  currentPeriodEnd: string | null;
+  dailyLimit: number;
+  dailyUsed: number;
+}
+
+export async function getSubscriptionStatus(userId: string): Promise<SubscriptionInfo> {
+  // Fetch subscription
+  const { data: sub } = await supabase()
+    .from("instaclaw_subscriptions")
+    .select("tier, status, payment_status, current_period_end")
+    .eq("user_id", userId)
+    .single();
+
+  const isActive = sub?.status === "active" || sub?.status === "trialing";
+  const tier = isActive ? sub?.tier : null;
+  const dailyLimit = tier ? (TIER_DAILY_LIMITS[tier] ?? 0) : 0;
+
+  // Fetch today's usage if subscriber
+  let dailyUsed = 0;
+  if (isActive && tier) {
+    const { data: vm } = await supabase()
+      .from("instaclaw_vms")
+      .select("id")
+      .eq("assigned_to", userId)
+      .single();
+
+    if (vm) {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: usage } = await supabase()
+        .from("instaclaw_daily_usage")
+        .select("message_count")
+        .eq("vm_id", vm.id)
+        .eq("usage_date", today)
+        .single();
+      dailyUsed = usage?.message_count ?? 0;
+    }
+  }
+
+  return {
+    hasSubscription: isActive,
+    tier: sub?.tier ?? null,
+    status: sub?.status ?? null,
+    paymentStatus: sub?.payment_status ?? null,
+    currentPeriodEnd: sub?.current_period_end ?? null,
+    dailyLimit,
+    dailyUsed,
+  };
+}
+
 export async function getGoogleStatus(userId: string): Promise<{
   connected: boolean;
   connectedAt: string | null;

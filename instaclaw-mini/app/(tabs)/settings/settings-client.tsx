@@ -13,8 +13,10 @@ import {
   Link2,
   Mail,
   Check,
+  Zap,
 } from "lucide-react";
 import GoogleConnectCard from "@/components/google-connect-card";
+import type { SubscriptionInfo } from "@/lib/supabase";
 
 function LinkAccountSection() {
   const router = useRouter();
@@ -113,12 +115,14 @@ export default function SettingsClient({
   delegations,
   payments,
   gmailConnected: initialGmailConnected,
+  subscription,
 }: {
   walletAddress: string;
   agent: { credit_balance: number; default_model?: string; [key: string]: unknown } | null;
   delegations: Delegation[];
   payments: Payment[];
   gmailConnected: boolean;
+  subscription: SubscriptionInfo;
 }) {
   const router = useRouter();
   const [gmailConnected, setGmailConnected] = useState(initialGmailConnected);
@@ -220,32 +224,74 @@ export default function SettingsClient({
         )}
       </section>
 
-      {/* ── Credits ── */}
+      {/* ── Subscription / Credits ── */}
       <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-1" style={{ opacity: 0 }}>
-        <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
-          Credits
-        </h2>
-        <div className="mb-4 flex items-end justify-between">
-          <div>
-            <p className="text-3xl font-bold">{agent?.credit_balance ?? 0}</p>
-            <p className="text-[10px] text-muted">Current balance</p>
-          </div>
-          <p className="text-xs text-muted">{agent?.default_model ?? "—"}</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => router.push("/home")}
-            className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
-          >
-            Pay with WLD
-          </button>
-          <button
-            onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
-            className="glass-button flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
-          >
-            Subscribe <ExternalLink size={11} />
-          </button>
-        </div>
+        {subscription.hasSubscription ? (
+          <>
+            <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Subscription
+            </h2>
+            <div className="mb-3 flex items-center gap-3 rounded-xl bg-accent/[0.06] p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10">
+                <Zap size={16} className="text-accent" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold capitalize">{subscription.tier} plan</p>
+                <p className="text-[10px] text-muted">
+                  {subscription.dailyLimit} daily credits — resets at midnight
+                </p>
+              </div>
+            </div>
+            <div className="mb-3 flex items-end justify-between">
+              <div>
+                <p className="text-[10px] text-muted mb-0.5">Daily usage</p>
+                <p className="text-xl font-bold">{Math.round(subscription.dailyUsed)} <span className="text-sm text-muted font-normal">/ {subscription.dailyLimit}</span></p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-muted mb-0.5">Overflow credits</p>
+                <p className="text-xl font-bold">{agent?.credit_balance ?? 0}</p>
+              </div>
+            </div>
+            {subscription.currentPeriodEnd && (
+              <p className="text-[10px] text-muted mb-3">
+                Renews {new Date(subscription.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </p>
+            )}
+            <button
+              onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+              className="glass-button flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
+            >
+              Manage Subscription <ExternalLink size={11} />
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Credits
+            </h2>
+            <div className="mb-4 flex items-end justify-between">
+              <div>
+                <p className="text-3xl font-bold">{agent?.credit_balance ?? 0}</p>
+                <p className="text-[10px] text-muted">Current balance</p>
+              </div>
+              <p className="text-xs text-muted">{agent?.default_model ?? "—"}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push("/home")}
+                className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
+              >
+                Pay with WLD
+              </button>
+              <button
+                onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+                className="glass-button flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
+              >
+                Subscribe <ExternalLink size={11} />
+              </button>
+            </div>
+          </>
+        )}
       </section>
 
       {/* ── WLD Delegations ── */}

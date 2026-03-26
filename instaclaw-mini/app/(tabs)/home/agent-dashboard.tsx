@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import GoogleConnectCard from "@/components/google-connect-card";
 import GooglePersonalizationModal from "@/components/google-personalization-modal";
+import type { SubscriptionInfo } from "@/lib/supabase";
 
 interface Agent {
   id: string;
@@ -39,11 +40,13 @@ export default function AgentDashboard({
   usage,
   walletAddress,
   gmailConnected: initialGmailConnected,
+  subscription,
 }: {
   agent: Agent;
   usage: Usage | null;
   walletAddress: string;
   gmailConnected: boolean;
+  subscription: SubscriptionInfo;
 }) {
   const router = useRouter();
   const [showDiscovery, setShowDiscovery] = useState(true);
@@ -51,7 +54,8 @@ export default function AgentDashboard({
   const [googleCardDismissed, setGoogleCardDismissed] = useState(false);
   const [showPersonalization, setShowPersonalization] = useState(false);
   const [waitingForOAuth, setWaitingForOAuth] = useState(false);
-  const isPaused = agent.credit_balance <= 0;
+  // Subscribers with daily limits aren't paused even at 0 credit_balance
+  const isPaused = agent.credit_balance <= 0 && !subscription.hasSubscription;
 
   // Check session dismissal
   useEffect(() => {
@@ -171,6 +175,9 @@ export default function AgentDashboard({
               Agent paused — credits ran out
             </span>
           </div>
+          <p className="text-[11px] text-muted mb-3">
+            Add more with WLD (instant) or subscribe for daily credit refresh.
+          </p>
           <div className="flex gap-2">
             <button
               onClick={handleAddCredits}
@@ -182,7 +189,7 @@ export default function AgentDashboard({
               onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
               className="glass-button flex-1 rounded-xl py-2.5 text-sm font-semibold"
             >
-              Subscribe
+              From $29/mo
             </button>
           </div>
         </div>
@@ -221,21 +228,60 @@ export default function AgentDashboard({
               <Zap size={16} className="text-accent" />
               <span className="text-xs font-medium text-muted">Credits</span>
             </div>
-            <button
-              onClick={handleAddCredits}
-              className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold"
-            >
-              + Add
-            </button>
+            {!subscription.hasSubscription && (
+              <button
+                onClick={handleAddCredits}
+                className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold"
+              >
+                + Add
+              </button>
+            )}
           </div>
-          <p className="mb-2 text-2xl font-bold">{agent.credit_balance}</p>
-          <div className="progress-track">
-            <div
-              className={`progress-fill ${creditPct < 20 ? "progress-fill-low" : ""}`}
-              style={{ width: `${creditPct}%` }}
-            />
-          </div>
+
+          {subscription.hasSubscription ? (
+            <>
+              {/* Subscriber: show daily limit usage */}
+              <div className="flex items-baseline gap-2 mb-1">
+                <p className="text-2xl font-bold">{Math.round(subscription.dailyUsed)}</p>
+                <p className="text-sm text-muted">/ {subscription.dailyLimit}</p>
+              </div>
+              <p className="text-[10px] text-muted mb-2">
+                Daily usage ({subscription.tier} plan) — resets at midnight
+              </p>
+              <div className="progress-track">
+                <div
+                  className={`progress-fill ${subscription.dailyUsed / subscription.dailyLimit > 0.8 ? "progress-fill-low" : ""}`}
+                  style={{ width: `${Math.min(100, (subscription.dailyUsed / subscription.dailyLimit) * 100)}%` }}
+                />
+              </div>
+              {agent.credit_balance > 0 && (
+                <p className="text-[10px] text-muted mt-2">
+                  + {agent.credit_balance} overflow credits
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              {/* WLD user: show credit balance */}
+              <p className="mb-2 text-2xl font-bold">{agent.credit_balance}</p>
+              <div className="progress-track">
+                <div
+                  className={`progress-fill ${creditPct < 20 ? "progress-fill-low" : ""}`}
+                  style={{ width: `${creditPct}%` }}
+                />
+              </div>
+            </>
+          )}
         </div>
+
+        {/* Low credit warning for WLD users */}
+        {!subscription.hasSubscription && agent.credit_balance > 0 && creditPct < 20 && (
+          <div className="rounded-xl p-3 mb-1" style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.15)" }}>
+            <p className="text-[11px]" style={{ color: "#ca8a04" }}>
+              Credits running low. Top up with WLD or subscribe for daily credit refresh.
+            </p>
+          </div>
+        )}
 
         {/* Today's stats */}
         <div className="flex gap-3">
@@ -318,17 +364,32 @@ export default function AgentDashboard({
         </div>
       )}
 
-      {/* ── Discovery Prompt ── */}
+      {/* ── Discovery / Upgrade Prompt ── */}
       {showDiscovery && (
         <div className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-3" style={{ opacity: 0 }}>
-          <p className="mb-3 text-sm leading-relaxed text-muted">
-            Want more from your agent? Browse skills or connect Telegram
-            to chat with your agent from anywhere.
-          </p>
-          <div className="flex items-center justify-end">
+          {subscription.hasSubscription ? (
+            <p className="mb-3 text-sm leading-relaxed text-muted">
+              {subscription.tier?.charAt(0).toUpperCase()}{subscription.tier?.slice(1)} plan active.
+              Manage your subscription or browse skills on instaclaw.io.
+            </p>
+          ) : (
+            <p className="mb-3 text-sm leading-relaxed text-muted">
+              Want daily credit refresh and the full dashboard? Plans start at $29/mo.
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            {!subscription.hasSubscription && (
+              <button
+                onClick={() => window.open("https://instaclaw.io/billing", "_blank")}
+                className="text-xs font-medium transition-colors"
+                style={{ color: "#DC6743" }}
+              >
+                View plans
+              </button>
+            )}
             <button
               onClick={() => setShowDiscovery(false)}
-              className="text-xs text-muted transition-colors hover:text-foreground"
+              className="text-xs text-muted transition-colors hover:text-foreground ml-auto"
             >
               Dismiss
             </button>

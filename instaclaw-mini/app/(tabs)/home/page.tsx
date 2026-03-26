@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/auth";
-import { getAgentStatus, getDailyUsage, getGoogleStatus } from "@/lib/supabase";
+import { getAgentStatus, getDailyUsage, getGoogleStatus, getSubscriptionStatus, type SubscriptionInfo } from "@/lib/supabase";
 import { redirect } from "next/navigation";
 import AgentDashboard from "./agent-dashboard";
 import ProvisioningStatus from "./provisioning-status";
@@ -11,6 +11,10 @@ export default async function HomePage() {
   let agent = null;
   let usage = null;
   let gmailConnected = false;
+  let subscription: SubscriptionInfo = {
+    hasSubscription: false, tier: null, status: null,
+    paymentStatus: null, currentPeriodEnd: null, dailyLimit: 0, dailyUsed: 0,
+  };
 
   console.log("[Home] Session userId:", session.userId, "walletAddress:", session.walletAddress);
 
@@ -26,6 +30,9 @@ export default async function HomePage() {
       const googleStatus = await getGoogleStatus(session.userId);
       gmailConnected = googleStatus.connected;
     } catch { /* google status fetch failed — not critical */ }
+    try {
+      subscription = await getSubscriptionStatus(session.userId);
+    } catch { /* subscription fetch failed — not critical */ }
   } catch (err) {
     console.error("[Home] Error fetching agent:", err);
     // Fallback: try a direct query without .single() to see what's there
@@ -82,6 +89,7 @@ export default async function HomePage() {
       usage={usage}
       walletAddress={session.walletAddress}
       gmailConnected={gmailConnected}
+      subscription={subscription}
     />
   );
 }
