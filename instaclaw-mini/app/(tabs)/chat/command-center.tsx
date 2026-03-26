@@ -92,8 +92,13 @@ export default function CommandCenter({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [webSearch, setWebSearch] = useState(true);
+  const [deepResearch, setDeepResearch] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>(SUGGESTIONS);
   const [infoDismissed, setInfoDismissed] = useState(false);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("Sonnet 4.6");
+  const [isListening, setIsListening] = useState(false);
 
   // Check localStorage for dismissed state
   useEffect(() => {
@@ -435,39 +440,73 @@ export default function CommandCenter({
         </div>
       )}
 
-      {/* Web search toggle */}
-      <div className="flex gap-2 px-4 py-1">
-        <button
-          onClick={() => setWebSearch(!webSearch)}
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all"
-          style={{
-            background: webSearch ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
-            border: `1px solid ${webSearch ? "rgba(66,133,244,0.3)" : "rgba(255,255,255,0.06)"}`,
-            color: webSearch ? "#4285F4" : "#666",
-          }}
-        >
-          <Globe size={12} />
-          Web search
-          {webSearch && <span style={{ marginLeft: 2, opacity: 0.5 }}>×</span>}
-        </button>
+      {/* Active toggle pills */}
+      <div className="flex flex-wrap gap-1.5 px-4 py-1">
+        {webSearch && (
+          <button onClick={() => setWebSearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(66,133,244,0.1)", border: "1px solid rgba(66,133,244,0.25)", color: "#4285F4" }}>
+            <Globe size={11} /> Web search <span style={{ opacity: 0.5 }}>×</span>
+          </button>
+        )}
+        {deepResearch && (
+          <button onClick={() => setDeepResearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.25)", color: "#8b5cf6" }}>
+            <Sparkles size={11} /> Deep research <span style={{ opacity: 0.5 }}>×</span>
+          </button>
+        )}
       </div>
 
+      {/* Input bar */}
+      <div className="relative px-4 py-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
+        {/* + menu overlay */}
+        {plusMenuOpen && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 rounded-xl p-2" style={{ background: "rgba(30,30,30,0.95)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(12px)", zIndex: 50 }}>
+            <button onClick={() => { setWebSearch(!webSearch); setPlusMenuOpen(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors active:bg-white/5" style={{ color: webSearch ? "#4285F4" : "#aaa" }}>
+              <Globe size={16} /> Web search {webSearch && <span className="ml-auto text-[10px]" style={{ color: "#4285F4" }}>ON</span>}
+            </button>
+            <button onClick={() => { setDeepResearch(!deepResearch); setPlusMenuOpen(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors active:bg-white/5" style={{ color: deepResearch ? "#8b5cf6" : "#aaa" }}>
+              <Sparkles size={16} /> Deep research {deepResearch && <span className="ml-auto text-[10px]" style={{ color: "#8b5cf6" }}>ON</span>}
+            </button>
+            <div className="my-1 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }} />
+            <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px]" style={{ color: "#666" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+              Add files <span className="ml-auto text-[10px]" style={{ color: "#555" }}>soon</span>
+            </button>
+          </div>
+        )}
 
-      {/* Input bar — clean glass UI */}
-      <div className="px-4 py-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
-        <div
-          className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
+        {/* Model dropdown */}
+        {modelMenuOpen && (
+          <div className="absolute bottom-full right-4 mb-2 w-40 rounded-xl p-1.5" style={{ background: "rgba(30,30,30,0.95)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(12px)", zIndex: 50 }}>
+            {[
+              { id: "Haiku 4.5", label: "Haiku 4.5" },
+              { id: "Sonnet 4.6", label: "Sonnet 4.6" },
+              { id: "Opus 4.6", label: "Opus 4.6" },
+            ].map((m) => (
+              <button
+                key={m.id}
+                onClick={() => { setSelectedModel(m.id); setModelMenuOpen(false); }}
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors active:bg-white/5"
+                style={{ color: selectedModel === m.id ? "#DC6743" : "#aaa" }}
+              >
+                {m.label}
+                {selectedModel === m.id && <Check size={14} />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Close menus on tap outside */}
+        {(plusMenuOpen || modelMenuOpen) && (
+          <div className="fixed inset-0 z-40" onClick={() => { setPlusMenuOpen(false); setModelMenuOpen(false); }} />
+        )}
+
+        <div className="relative z-50 flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
           {/* + button */}
           <button
+            onClick={() => { setPlusMenuOpen(!plusMenuOpen); setModelMenuOpen(false); }}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all active:scale-90"
-            style={{ background: "rgba(255,255,255,0.08)" }}
+            style={{ background: plusMenuOpen ? "#DC6743" : "rgba(255,255,255,0.08)", transform: plusMenuOpen ? "rotate(45deg)" : "none" }}
           >
-            <span className="text-lg font-light" style={{ color: "#888" }}>+</span>
+            <span className="text-lg font-light" style={{ color: plusMenuOpen ? "#fff" : "#888" }}>+</span>
           </button>
 
           {/* Input */}
@@ -484,17 +523,38 @@ export default function CommandCenter({
 
           {/* Model selector */}
           <button
-            className="shrink-0 flex items-center gap-0.5 text-[11px] font-medium"
-            style={{ color: "#666" }}
+            onClick={() => { setModelMenuOpen(!modelMenuOpen); setPlusMenuOpen(false); }}
+            className="shrink-0 flex items-center gap-0.5 text-[11px] font-medium transition-colors"
+            style={{ color: modelMenuOpen ? "#DC6743" : "#666" }}
           >
-            <span className="hidden sm:inline">Sonnet</span>
+            <span>{selectedModel.split(" ")[0]}</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
           </button>
 
           {/* Mic button */}
           <button
+            onClick={() => {
+              if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) return;
+              const SR = (window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+              if (!SR) return;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const recognition = new (SR as any)();
+              recognition.continuous = false;
+              recognition.interimResults = false;
+              recognition.lang = "en-US";
+              setIsListening(true);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              recognition.onresult = (e: any) => {
+                const transcript = e.results[0][0].transcript;
+                setInput((prev: string) => prev + (prev ? " " : "") + transcript);
+                setIsListening(false);
+              };
+              recognition.onerror = () => setIsListening(false);
+              recognition.onend = () => setIsListening(false);
+              recognition.start();
+            }}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
-            style={{ color: "#666" }}
+            style={{ color: isListening ? "#ef4444" : "#666" }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
@@ -507,12 +567,8 @@ export default function CommandCenter({
             disabled={!input.trim() || sending}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all active:scale-90 disabled:opacity-20"
             style={{
-              background: input.trim()
-                ? "linear-gradient(135deg, #DC6743, #c2553a)"
-                : "rgba(255,255,255,0.06)",
-              boxShadow: input.trim()
-                ? "0 2px 8px rgba(220,103,67,0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
-                : "none",
+              background: input.trim() ? "linear-gradient(135deg, #DC6743, #c2553a)" : "rgba(255,255,255,0.06)",
+              boxShadow: input.trim() ? "0 2px 8px rgba(220,103,67,0.3), inset 0 1px 0 rgba(255,255,255,0.15)" : "none",
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
