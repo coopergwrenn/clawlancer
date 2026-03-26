@@ -6,6 +6,7 @@ import {
   Play, Eye, Hand, Maximize2, Minimize2, RefreshCw, WifiOff, Monitor,
 } from "lucide-react";
 import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-section";
+import { ClipRecorder } from "@/components/dashboard/clip-recorder";
 
 // Dynamic import — noVNC uses browser APIs
 const VncViewer = dynamic(
@@ -121,24 +122,27 @@ export default function LiveDesktopPage() {
         </div>
         <div className="flex items-center gap-2">
           {viewerState === "live" && (
-            <div className="flex rounded-full p-0.5 bg-black/5">
-              <button
-                onClick={() => { if (!viewOnly) toggleViewOnly(); }}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  viewOnly ? "bg-emerald-500 text-white shadow-sm" : "text-[var(--muted)] hover:text-[var(--foreground)]"
-                }`}
-              >
-                <Eye className="w-3 h-3 inline mr-1" />Watch
-              </button>
-              <button
-                onClick={() => { if (viewOnly) toggleViewOnly(); }}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  !viewOnly ? "bg-orange-500 text-white shadow-sm" : "text-[var(--muted)] hover:text-[var(--foreground)]"
-                }`}
-              >
-                <Hand className="w-3 h-3 inline mr-1" />Control
-              </button>
-            </div>
+            <>
+              <ClipRecorder targetRef={viewerRef} />
+              <div className="flex rounded-full p-0.5 bg-black/5">
+                <button
+                  onClick={() => { if (!viewOnly) toggleViewOnly(); }}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    viewOnly ? "bg-emerald-500 text-white shadow-sm" : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <Eye className="w-3 h-3 inline mr-1" />Watch
+                </button>
+                <button
+                  onClick={() => { if (viewOnly) toggleViewOnly(); }}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    !viewOnly ? "bg-orange-500 text-white shadow-sm" : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <Hand className="w-3 h-3 inline mr-1" />Control
+                </button>
+              </div>
+            </>
           )}
           <button onClick={toggleFullscreen} className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
             {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
