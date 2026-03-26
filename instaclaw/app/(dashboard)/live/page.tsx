@@ -1,23 +1,29 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import {
-  Play, Eye, Hand, Maximize2, Minimize2, RefreshCw, WifiOff,
-  Camera, Globe, Monitor,
+  Play, Eye, Hand, Maximize2, Minimize2, RefreshCw, WifiOff, Monitor,
 } from "lucide-react";
 import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-section";
 
-type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
+// Dynamic import — noVNC uses browser APIs
+const VncViewer = dynamic(
+  () => import("@/components/dashboard/vnc-viewer").then((m) => ({ default: m.VncViewer })),
+  { ssr: false }
+);
+
+type ViewerState = "idle" | "connecting" | "live" | "error";
 
 export default function LiveDesktopPage() {
-  const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
+  const [viewerState, setViewerState] = useState<ViewerState>("idle");
   const [viewOnly, setViewOnly] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [vmInfo, setVmInfo] = useState<{
-    vmName: string; vmIp: string; port: number; vncUrl: string;
+    vmName: string; vmIp: string; wssUrl: string; fallbackVncUrl: string; caddyDomain: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function fetchSession() {
@@ -26,11 +32,14 @@ export default function LiveDesktopPage() {
         const data = await res.json();
         if (data.error) { setError(data.error); return; }
         setVmInfo(data);
-        setConnectionState("connected");
       } catch { setError("Failed to load live session"); }
     }
     fetchSession();
   }, []);
+
+  const startViewing = () => {
+    setViewerState("connecting");
+  };
 
   const toggleViewOnly = async () => {
     const newMode = !viewOnly;
@@ -45,9 +54,9 @@ export default function LiveDesktopPage() {
   };
 
   const toggleFullscreen = () => {
-    if (!containerRef.current) return;
+    if (!viewerRef.current) return;
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen();
+      viewerRef.current.requestFullscreen();
       setFullscreen(true);
     } else {
       document.exitFullscreen();
@@ -55,6 +64,7 @@ export default function LiveDesktopPage() {
     }
   };
 
+  // Error state
   if (error) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-8">
@@ -77,6 +87,7 @@ export default function LiveDesktopPage() {
     );
   }
 
+  // Loading state
   if (!vmInfo) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-8">
@@ -101,38 +112,35 @@ export default function LiveDesktopPage() {
           <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-black/5 text-[var(--muted)]">
             {vmInfo.vmName}
           </span>
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-medium text-emerald-600">Live</span>
-          </div>
+          {viewerState === "live" && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-medium text-emerald-600">Live</span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-full p-0.5 bg-black/5">
-            <button
-              onClick={() => { if (!viewOnly) toggleViewOnly(); }}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                viewOnly
-                  ? "bg-emerald-500 text-white shadow-sm"
-                  : "text-[var(--muted)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              <Eye className="w-3 h-3 inline mr-1" />Watch
-            </button>
-            <button
-              onClick={() => { if (viewOnly) toggleViewOnly(); }}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                !viewOnly
-                  ? "bg-orange-500 text-white shadow-sm"
-                  : "text-[var(--muted)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              <Hand className="w-3 h-3 inline mr-1" />Control
-            </button>
-          </div>
-          <button
-            onClick={toggleFullscreen}
-            className="p-1.5 rounded-lg hover:bg-black/5 transition-colors"
-          >
+          {viewerState === "live" && (
+            <div className="flex rounded-full p-0.5 bg-black/5">
+              <button
+                onClick={() => { if (!viewOnly) toggleViewOnly(); }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  viewOnly ? "bg-emerald-500 text-white shadow-sm" : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                <Eye className="w-3 h-3 inline mr-1" />Watch
+              </button>
+              <button
+                onClick={() => { if (viewOnly) toggleViewOnly(); }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  !viewOnly ? "bg-orange-500 text-white shadow-sm" : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                <Hand className="w-3 h-3 inline mr-1" />Control
+              </button>
+            </div>
+          )}
+          <button onClick={toggleFullscreen} className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
             {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
         </div>
@@ -141,71 +149,86 @@ export default function LiveDesktopPage() {
       {/* Main layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Viewer */}
-        <div className="lg:col-span-2" ref={containerRef}>
+        <div className="lg:col-span-2" ref={viewerRef}>
           <div
             className="relative rounded-xl overflow-hidden border border-[var(--border)]"
             style={{
               background: "#1a1a1a",
-              boxShadow: connectionState === "connected"
+              boxShadow: viewerState === "live"
                 ? "0 0 20px rgba(16, 185, 129, 0.1), 0 2px 8px rgba(0,0,0,0.1)"
                 : "0 2px 8px rgba(0,0,0,0.08)",
               aspectRatio: "16/10",
             }}
           >
-            {/* #3: Dot grid — bumped to opacity-20 */}
-            <div
-              className="absolute inset-0 opacity-[0.06]"
-              style={{
-                backgroundImage: "radial-gradient(circle, #888 1px, transparent 1px)",
-                backgroundSize: "24px 24px",
-              }}
-            />
+            {viewerState === "idle" && (
+              <>
+                {/* Dot grid background */}
+                <div
+                  className="absolute inset-0 opacity-[0.06]"
+                  style={{
+                    backgroundImage: "radial-gradient(circle, #888 1px, transparent 1px)",
+                    backgroundSize: "24px 24px",
+                  }}
+                />
 
-            {/* #1: Play button with outer circle + glow */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-              <a
-                href={`${vmInfo.vncUrl}&view_only=${viewOnly ? "true" : "false"}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex flex-col items-center gap-3 transition-transform hover:scale-105"
-              >
-                {/* Outer pulse ring */}
-                <div className="relative">
-                  <div
-                    className="absolute inset-0 rounded-full animate-ping opacity-20"
-                    style={{ background: "rgba(220, 103, 67, 0.4)" }}
-                  />
-                  <div
-                    className="relative w-16 h-16 rounded-full flex items-center justify-center transition-all group-hover:shadow-[0_0_24px_rgba(220,103,67,0.4)]"
-                    style={{
-                      background: "rgba(220, 103, 67, 0.12)",
-                      border: "2px solid rgba(220, 103, 67, 0.25)",
-                    }}
+                {/* Play button */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                  <button
+                    onClick={startViewing}
+                    className="group flex flex-col items-center gap-3 transition-transform hover:scale-105"
                   >
-                    <Play className="w-6 h-6 text-[#DC6743] ml-0.5" fill="currentColor" />
-                  </div>
+                    <div className="relative">
+                      <div
+                        className="absolute inset-0 rounded-full animate-ping opacity-20"
+                        style={{ background: "rgba(220, 103, 67, 0.4)" }}
+                      />
+                      <div
+                        className="relative w-16 h-16 rounded-full flex items-center justify-center transition-all group-hover:shadow-[0_0_24px_rgba(220,103,67,0.4)]"
+                        style={{
+                          background: "rgba(220, 103, 67, 0.12)",
+                          border: "2px solid rgba(220, 103, 67, 0.25)",
+                        }}
+                      >
+                        <Play className="w-6 h-6 text-[#DC6743] ml-0.5" fill="currentColor" />
+                      </div>
+                    </div>
+                    <p className="text-white/80 font-medium text-sm">Watch your agent work</p>
+                    <p className="text-white/30 text-[11px] -mt-2">Click to start</p>
+                  </button>
                 </div>
+              </>
+            )}
 
-                {/* #2: Tighter text spacing */}
-                <p className="text-white/80 font-medium text-sm">
-                  {viewOnly ? "Watch your agent work" : "Take control"}
-                </p>
-                <p className="text-white/30 text-[11px] -mt-2">Click to open</p>
-              </a>
-            </div>
+            {(viewerState === "connecting" || viewerState === "live") && (
+              <VncViewer
+                wssUrl={vmInfo.wssUrl}
+                viewOnly={viewOnly}
+                onConnect={() => setViewerState("live")}
+                onDisconnect={() => setViewerState("idle")}
+                onError={(msg) => {
+                  console.warn("VNC error:", msg);
+                  // Fall back to new-tab noVNC
+                  setViewerState("error");
+                }}
+              />
+            )}
 
-            {/* #7: Floating quick action toolbar */}
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex gap-1.5">
-              <button className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-white/70 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors">
-                <Camera className="w-3 h-3" /> Screenshot
-              </button>
-              <button className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium text-white/70 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors">
-                <Globe className="w-3 h-3" /> Browser
-              </button>
-            </div>
+            {viewerState === "error" && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-10 gap-3">
+                <p className="text-white/60 text-sm">Inline viewer unavailable</p>
+                <a
+                  href={vmInfo.fallbackVncUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 text-white/80 hover:bg-white/20 transition-colors"
+                >
+                  Open in new tab
+                </a>
+              </div>
+            )}
 
-            {/* #4: Centered single-line status bar */}
-            <div className="absolute bottom-0 left-0 right-0 z-20 px-4 py-1.5 bg-black/50">
+            {/* Status bar */}
+            <div className="absolute bottom-0 left-0 right-0 z-30 px-4 py-1.5 bg-black/50 pointer-events-none">
               <div className="flex items-center justify-center gap-2 text-[10px] text-white/50">
                 <span>1280×720</span>
                 <span className="text-white/20">·</span>
@@ -213,7 +236,7 @@ export default function LiveDesktopPage() {
                 <span className="text-white/20">·</span>
                 <div className="flex items-center gap-1 text-emerald-400/80">
                   <div className="w-1 h-1 rounded-full bg-emerald-400" />
-                  Connected
+                  {viewerState === "live" ? "Live" : viewerState === "connecting" ? "Connecting..." : "Ready"}
                 </div>
               </div>
             </div>
@@ -222,10 +245,8 @@ export default function LiveDesktopPage() {
 
         {/* Sidebar */}
         <div className="space-y-4">
-          {/* #5: DispatchRelaySection already cleaned up */}
           <DispatchRelaySection />
 
-          {/* #6: Activity — meaningful info, no "Openbox" */}
           <div className="glass rounded-xl p-4">
             <h3 className="text-sm font-semibold mb-3">Activity</h3>
             <div className="space-y-2">

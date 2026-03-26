@@ -64,9 +64,12 @@ export async function GET() {
       // Fall back to tokenless connection (less secure but functional)
     }
 
-    // The noVNC client connects to the VM's websockify on port 6080
-    const wsUrl = `ws://${vm.ip_address}:6080`;
-    const vncUrl = `http://${vm.ip_address}:6080/vnc.html?autoconnect=true&resize=scale&path=websockify?token=${token}`;
+    // Build WSS URL through Caddy (proper TLS, no mixed content)
+    const caddyDomain = `${vm.id}.vm.instaclaw.io`;
+    const wssUrl = `wss://${caddyDomain}/vnc/websockify`;
+
+    // Fallback: direct connection (for VMs without Caddy VNC proxy yet)
+    const fallbackVncUrl = `http://${vm.ip_address}:6080/vnc.html?autoconnect=true&resize=scale`;
 
     logger.info("Live session requested", {
       userId: session.user.id,
@@ -76,12 +79,11 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      wsUrl,
-      vncUrl,
+      wssUrl,
+      fallbackVncUrl,
       vmName: vm.name,
       vmIp: vm.ip_address,
-      port: 6080,
-      token,
+      caddyDomain,
     });
   } catch (err) {
     logger.error("Live session error", {
