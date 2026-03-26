@@ -75,6 +75,7 @@ export default auth((req) => {
     "/api/notify",
     "/api/well-known",
     "/api/vm/dispatch-pair", // Pairing code redemption is public (code = auth)
+    "/api/admin/setup-xmtp-clean", // X-Admin-Key header auth
   ];
 
   const isAPI = pathname.startsWith("/api/");
