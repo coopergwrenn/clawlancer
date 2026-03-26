@@ -74,6 +74,7 @@ export default auth((req) => {
     "/api/instagram/token",
     "/api/notify",
     "/api/well-known",
+    "/api/vm/dispatch-pair", // Pairing code redemption is public (code = auth)
   ];
 
   const isAPI = pathname.startsWith("/api/");
