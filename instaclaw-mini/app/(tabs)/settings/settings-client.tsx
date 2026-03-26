@@ -257,20 +257,28 @@ export default function SettingsClient({
                 Renews {new Date(subscription.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </p>
             )}
-            <button
-              onClick={async () => {
-                try {
-                  const res = await fetch("/api/subscription/checkout-url?tier=starter");
-                  const data = await res.json();
-                  if (data.url) window.open(data.url, "_blank");
-                } catch {
-                  window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
-                }
-              }}
-              className="glass-button flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
-            >
-              Manage Subscription <ExternalLink size={11} />
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push("/home")}
+                className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
+              >
+                Top up with WLD
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/subscription/checkout-url?tier=starter");
+                    const data = await res.json();
+                    if (data.url) window.open(data.url, "_blank");
+                  } catch {
+                    window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
+                  }
+                }}
+                className="glass-button flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
+              >
+                Manage <ExternalLink size={11} />
+              </button>
+            </div>
           </>
         ) : (
           <>

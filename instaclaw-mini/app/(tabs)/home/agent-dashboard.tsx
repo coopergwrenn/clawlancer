@@ -277,14 +277,12 @@ export default function AgentDashboard({
               <Zap size={16} className="text-accent" />
               <span className="text-xs font-medium text-muted">Credits</span>
             </div>
-            {!isSubscribed && (
-              <button
-                onClick={handleAddCredits}
-                className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold"
-              >
-                + Add
-              </button>
-            )}
+            <button
+              onClick={handleAddCredits}
+              className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold"
+            >
+              + Add
+            </button>
           </div>
 
           {isSubscribed ? (
