@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Create fresh XMTP directory and write .env
     const envContent = [
-      `XMTP_WALLET_KEY=${newWalletKey}`,
+      `XMTP_WALLET_KEY=0x${newWalletKey}`,
       `XMTP_ENV=production`,
       `GATEWAY_URL=http://localhost:3000`,
       `GATEWAY_TOKEN=${vm.gateway_token}`,
