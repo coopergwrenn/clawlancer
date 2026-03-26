@@ -7,15 +7,44 @@ import { getUserByWallet, getAgentStatus } from "@/lib/supabase";
  * GET /api/auth/auto-login?wallet=0x...
  *
  * Wallet-based auto-login for returning World App users.
- * MiniKit.walletAddress is trusted as identity (authenticated by World App).
- * If the wallet matches an existing user, create a session and return user data.
+ * MiniKit.walletAddress is trusted (authenticated by World App WebView).
+ * Rate limited: 5 requests per wallet per 60 seconds.
  */
+
+// Simple in-memory rate limiter (resets on cold start, which is fine for Vercel)
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(wallet: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(wallet);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(wallet, { count: 1, resetAt: now + 60000 });
+    return true;
+  }
+
+  if (entry.count >= 5) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const wallet = req.nextUrl.searchParams.get("wallet")?.trim().toLowerCase();
 
-    if (!wallet || !wallet.startsWith("0x")) {
+    if (!wallet || !wallet.startsWith("0x") || wallet.length < 42) {
       return NextResponse.json({ user: null }, { status: 400 });
+    }
+
+    // Rate limit: 5 requests per wallet per minute
+    if (!checkRateLimit(wallet)) {
+      return NextResponse.json(
+        { user: null, error: "Too many requests" },
+        { status: 429 }
+      );
     }
 
     // Lookup user by wallet address

@@ -53,7 +53,7 @@ export default function RootPage() {
       const walletAddress = MiniKit.user?.walletAddress;
       console.log("[InstaClaw] MiniKit.user?.walletAddress:", walletAddress);
 
-      if (walletAddress) {
+      if (walletAddress && typeof walletAddress === "string" && walletAddress.startsWith("0x")) {
         try {
           const autoRes = await fetch(`/api/auth/auto-login?wallet=${encodeURIComponent(walletAddress)}`);
           if (autoRes.ok) {

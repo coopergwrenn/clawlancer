@@ -70,9 +70,15 @@ export default function AgentDashboard({
       });
       const { reference, tokenAmount } = await res.json();
 
+      const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim();
+      if (!recipientAddress) {
+        console.error("NEXT_PUBLIC_RECIPIENT_ADDRESS not configured");
+        return;
+      }
+
       const payResult = await MiniKit.commandsAsync.pay({
         reference,
-        to: process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim()!,
+        to: recipientAddress,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
         description: "Re-stake WLD for your InstaClaw agent",
       });

@@ -141,21 +141,42 @@ export async function POST(req: NextRequest) {
         const assignData = await assignRes.json().catch(() => ({}));
         console.log("[Confirm] VM assign result:", JSON.stringify(assignData));
 
-        if (assignData.assigned && assignData.vm?.id) {
-          // Step 2: Configure the assigned VM
-          proxyToInstaclaw("/api/vm/configure", session.userId, {
+        if (!assignData.assigned || !assignData.vm?.id) {
+          console.error("[Confirm] VM assignment failed — no VMs available");
+          return NextResponse.json(
+            { error: "No agents available right now. Please try again later.", noVms: true },
+            { status: 503 }
+          );
+        }
+
+        // Step 2: Configure the assigned VM (await, don't fire-and-forget)
+        try {
+          const configRes = await proxyToInstaclaw("/api/vm/configure", session.userId, {
             method: "POST",
             body: JSON.stringify({ userId: session.userId }),
-          }).catch((err) => console.error("[Confirm] Configure proxy failed:", err));
+          });
+          const configStatus = configRes.status;
+          console.log("[Confirm] Configure returned:", configStatus);
 
-          // Update delegation with vm_id
-          await supabase()
-            .from("instaclaw_wld_delegations")
-            .update({ vm_id: assignData.vm.id })
-            .eq("id", delegation.id);
+          if (!configRes.ok) {
+            console.error("[Confirm] Configure failed, but VM is assigned. Will retry on next health check.");
+          }
+        } catch (configErr) {
+          console.error("[Confirm] Configure proxy error:", configErr);
+          // VM is assigned but not configured — health check will retry
         }
+
+        // Update delegation with vm_id
+        await supabase()
+          .from("instaclaw_wld_delegations")
+          .update({ vm_id: assignData.vm.id })
+          .eq("id", delegation.id);
       } catch (err) {
         console.error("[Confirm] VM assignment failed:", err);
+        return NextResponse.json(
+          { error: "VM assignment failed. Your WLD payment was received — contact support if your agent doesn't appear within 5 minutes." },
+          { status: 500 }
+        );
       }
     }
 
