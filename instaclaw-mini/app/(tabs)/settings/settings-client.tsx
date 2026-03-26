@@ -168,15 +168,32 @@ export default function SettingsClient({
         </h2>
 
         {gmailConnected ? (
-          <div className="flex items-center gap-3 rounded-xl bg-success/[0.06] p-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success/10">
-              <Mail size={16} className="text-success" />
+          <div>
+            <div className="flex items-center gap-3 rounded-xl bg-success/[0.06] p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success/10">
+                <Mail size={16} className="text-success" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium">Google</p>
+                <p className="text-[10px] text-success/70">Connected</p>
+              </div>
+              <Check size={16} className="text-success" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium">Google</p>
-              <p className="text-[10px] text-success/70">Connected</p>
-            </div>
-            <Check size={16} className="text-success" />
+            <button
+              onClick={async () => {
+                if (!confirm("Disconnect Google? Your agent will lose personalized context.")) return;
+                try {
+                  const res = await fetch("/api/google/disconnect", { method: "POST" });
+                  if (res.ok) {
+                    setGmailConnected(false);
+                    router.refresh();
+                  }
+                } catch {}
+              }}
+              className="mt-2 w-full text-center text-[11px] py-2 text-muted transition-colors hover:text-error"
+            >
+              Disconnect Google
+            </button>
           </div>
         ) : (
           <GoogleConnectCard
