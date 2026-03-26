@@ -10,6 +10,7 @@ import {
   Share2,
   Zap,
   TrendingUp,
+  Mail,
 } from "lucide-react";
 import GoogleConnectCard from "@/components/google-connect-card";
 import GooglePersonalizationModal from "@/components/google-personalization-modal";
@@ -267,8 +268,19 @@ export default function AgentDashboard({
         </div>
       </div>
 
-      {/* ── Google Connect Card ── */}
-      {!gmailConnected && !googleCardDismissed && (
+      {/* ── Google Connection Status ── */}
+      {gmailConnected ? (
+        <div className="animate-fade-in-up glass-card flex items-center gap-3 rounded-2xl p-4" style={{ opacity: 0 }}>
+          <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ background: "rgba(34,197,94,0.1)" }}>
+            <Mail size={16} style={{ color: "#22c55e" }} />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold">Google connected</p>
+            <p className="text-[10px]" style={{ color: "#888" }}>Personalized suggestions active</p>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+      ) : !googleCardDismissed ? (
         <GoogleConnectCard
           variant="home"
           onConnectStart={() => setWaitingForOAuth(true)}
@@ -277,7 +289,7 @@ export default function AgentDashboard({
             try { sessionStorage.setItem("google-card-dismissed", "1"); } catch {}
           }}
         />
-      )}
+      ) : null}
 
       {/* Waiting indicator */}
       {waitingForOAuth && !gmailConnected && (
