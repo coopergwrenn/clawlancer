@@ -102,10 +102,9 @@ await new Promise(r => setTimeout(r, 3000));
 process.exit(0);
 `;
 
-    // Write the script to a temp file and execute it
-    const escaped = sendScript.replace(/'/g, "'\\''");
+    // Write the script to ~/scripts/ so it can find node_modules
     const result = await ssh.execCommand(
-      `source ~/.nvm/nvm.sh && cat > /tmp/xmtp-send.mjs << 'SCRIPTEOF'\n${sendScript}\nSCRIPTEOF\ncd ~/scripts && node --experimental-vm-modules /tmp/xmtp-send.mjs 2>&1`,
+      `source ~/.nvm/nvm.sh && cat > ~/scripts/xmtp-send-tmp.mjs << 'SCRIPTEOF'\n${sendScript}\nSCRIPTEOF\ncd ~/scripts && node xmtp-send-tmp.mjs 2>&1; rm -f ~/scripts/xmtp-send-tmp.mjs`,
       { cwd: "/home/openclaw/scripts" }
     );
 
