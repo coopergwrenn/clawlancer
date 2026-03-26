@@ -115,7 +115,7 @@ export async function getSubscriptionStatus(userId: string): Promise<Subscriptio
     .eq("user_id", userId)
     .single();
 
-  const isActive = sub?.status === "active" || sub?.status === "trialing";
+  const isActive = sub?.status === "active" || sub?.status === "trialing" || sub?.status === "past_due";
   const tier = isActive ? sub?.tier : null;
   const dailyLimit = tier ? (TIER_DAILY_LIMITS[tier] ?? 0) : 0;
 

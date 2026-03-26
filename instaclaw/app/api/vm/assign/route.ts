@@ -74,14 +74,33 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Set initial credits if provided (from WLD delegation)
+    // Set initial credits if provided (from WLD delegation) — use RPC for audit trail
     try {
       const body = await req.clone().json().catch(() => ({}));
       if (body.initialCredits && typeof body.initialCredits === "number") {
-        await supabase
-          .from("instaclaw_vms")
-          .update({ credit_balance: body.initialCredits })
-          .eq("id", vm.id);
+        const { error: creditErr } = await supabase.rpc("instaclaw_add_credits", {
+          p_vm_id: vm.id,
+          p_credits: body.initialCredits,
+          p_reference_id: `initial_wld_${targetUserId}`,
+          p_source: "wld",
+        });
+        if (creditErr) {
+          // Fallback if p_source not yet supported
+          if (creditErr.message?.includes("p_source")) {
+            await supabase.rpc("instaclaw_add_credits", {
+              p_vm_id: vm.id,
+              p_credits: body.initialCredits,
+              p_reference_id: `initial_wld_${targetUserId}`,
+            });
+          } else {
+            logger.error("Initial credits RPC failed, falling back to direct update", {
+              error: String(creditErr), vmId: vm.id, route: "vm/assign",
+            });
+            await supabase.from("instaclaw_vms")
+              .update({ credit_balance: body.initialCredits })
+              .eq("id", vm.id);
+          }
+        }
         logger.info("Initial credits set on new VM", {
           vmId: vm.id,
           credits: body.initialCredits,

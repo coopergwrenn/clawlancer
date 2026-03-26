@@ -87,17 +87,8 @@ export async function POST(req: NextRequest) {
       // so World App accepted it. We'll verify asynchronously.
     }
 
-    // Update delegation record
-    await supabase()
-      .from("instaclaw_wld_delegations")
-      .update({
-        status: onChainConfirmed ? "confirmed" : "pending_confirmation",
-        transaction_hash: txHash,
-        confirmed_at: new Date().toISOString(),
-      })
-      .eq("id", delegation.id);
-
-    // Grant credits immediately — don't block on chain confirmation
+    // Grant credits FIRST, then mark delegation confirmed
+    // This ensures delegation is only "confirmed" after credits are truly added
     let agent = null;
     try {
       agent = await getAgentStatus(session.userId);
@@ -107,49 +98,54 @@ export async function POST(req: NextRequest) {
 
     if (agent) {
       // Atomic credit addition via RPC — prevents race conditions
-      // when concurrent WLD payments or Stripe credit packs modify credit_balance
-      try {
-        // Try with p_source param first (after migration 20260326),
-        // fall back to 3-param version for backward compatibility
-        let newBalance: number | null = null;
-        let creditErr: { message?: string } | null = null;
+      const rpcResult = await supabase()
+        .rpc("instaclaw_add_credits", {
+          p_vm_id: agent.id,
+          p_credits: delegation.credits_granted,
+          p_reference_id: `wld_delegation_${delegation.id}`,
+          p_source: "wld",
+        });
 
-        const rpcResult = await supabase()
+      let newBalance = rpcResult.data;
+      let creditErr = rpcResult.error;
+
+      // Fallback if p_source param not yet supported
+      if (creditErr?.message?.includes("p_source")) {
+        const fallback = await supabase()
           .rpc("instaclaw_add_credits", {
             p_vm_id: agent.id,
             p_credits: delegation.credits_granted,
             p_reference_id: `wld_delegation_${delegation.id}`,
-            p_source: "wld",
           });
+        newBalance = fallback.data;
+        creditErr = fallback.error;
+      }
 
-        if (rpcResult.error?.message?.includes("p_source")) {
-          // Migration not applied yet — use 3-param version
-          const fallback = await supabase()
-            .rpc("instaclaw_add_credits", {
-              p_vm_id: agent.id,
-              p_credits: delegation.credits_granted,
-              p_reference_id: `wld_delegation_${delegation.id}`,
-            });
-          newBalance = fallback.data;
-          creditErr = fallback.error;
-        } else {
-          newBalance = rpcResult.data;
-          creditErr = rpcResult.error;
-        }
-        if (creditErr) {
-          console.error("[Confirm] Credit RPC failed:", creditErr);
-        } else {
-          console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id, "new balance:", newBalance);
-        }
-
-        // Also update delegation with vm_id
+      if (creditErr) {
+        console.error("[Confirm] Credit RPC failed:", creditErr);
+        // Mark delegation as failed so it can be retried
         await supabase()
           .from("instaclaw_wld_delegations")
-          .update({ vm_id: agent.id })
+          .update({ status: "credit_failed", transaction_hash: txHash })
           .eq("id", delegation.id);
-      } catch (err) {
-        console.error("[Confirm] Credit grant error:", err);
+        return NextResponse.json(
+          { error: "Failed to add credits. Your payment was received — credits will be added shortly. Contact support if they don't appear within 5 minutes." },
+          { status: 500 }
+        );
       }
+
+      console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id, "new balance:", newBalance);
+
+      // NOW mark delegation confirmed (credits were successfully added)
+      await supabase()
+        .from("instaclaw_wld_delegations")
+        .update({
+          status: onChainConfirmed ? "confirmed" : "pending_confirmation",
+          transaction_hash: txHash,
+          confirmed_at: new Date().toISOString(),
+          vm_id: agent.id,
+        })
+        .eq("id", delegation.id);
     } else {
       // No agent yet — assign a VM from the pool, then configure it
       console.log("[Confirm] No agent found — assigning VM for user:", session.userId);
@@ -190,10 +186,15 @@ export async function POST(req: NextRequest) {
           // VM is assigned but not configured — health check will retry
         }
 
-        // Update delegation with vm_id
+        // Mark delegation confirmed with vm_id
         await supabase()
           .from("instaclaw_wld_delegations")
-          .update({ vm_id: assignData.vm.id })
+          .update({
+            status: onChainConfirmed ? "confirmed" : "pending_confirmation",
+            transaction_hash: txHash,
+            confirmed_at: new Date().toISOString(),
+            vm_id: assignData.vm.id,
+          })
           .eq("id", delegation.id);
       } catch (err) {
         console.error("[Confirm] VM assignment failed:", err);
