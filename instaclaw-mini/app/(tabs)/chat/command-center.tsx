@@ -206,7 +206,7 @@ export default function CommandCenter({
           <div className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <Globe size={12} style={{ color: "#666", flexShrink: 0 }} />
             <p className="flex-1 text-[10px] leading-tight" style={{ color: "#777" }}>
-              Also on <a href={tgUsername ? `https://t.me/${tgUsername}?start=world` : "#"} style={{ color: "#999" }}>Telegram</a> &amp; <a href="https://instaclaw.io" style={{ color: "#999" }}>instaclaw.io</a> — same email to sign in. World Chat coming soon
+              Also on <a href={tgUsername ? `https://t.me/${tgUsername}?start=world` : "#"} style={{ color: "#999" }}>Telegram</a> &amp; <a href="https://instaclaw.io" style={{ color: "#999" }}>instaclaw.io</a>, same email to sign in. World Chat coming soon
             </p>
             <button
               onClick={() => { setInfoDismissed(true); try { localStorage.setItem("instaclaw-info-dismissed", "1"); } catch {} }}
