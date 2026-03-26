@@ -47,11 +47,15 @@ export default function RootPage() {
       }
 
       // Step 2: No session — try wallet-based auto-login via MiniKit
-      // Wait a moment for MiniKit to install
-      await new Promise((r) => setTimeout(r, 300));
-
-      const walletAddress = MiniKit.user?.walletAddress;
-      console.log("[InstaClaw] MiniKit.user?.walletAddress:", walletAddress);
+      // MiniKit.user may not be populated immediately after install — retry a few times
+      let walletAddress: string | undefined;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise((r) => setTimeout(r, 400));
+        walletAddress = MiniKit.user?.walletAddress;
+        if (walletAddress && walletAddress.startsWith("0x")) break;
+        console.log(`[InstaClaw] Wallet attempt ${attempt + 1}: ${walletAddress || "null"}`);
+      }
+      console.log("[InstaClaw] Final walletAddress:", walletAddress);
 
       if (walletAddress && typeof walletAddress === "string" && walletAddress.startsWith("0x")) {
         try {
@@ -119,5 +123,39 @@ export default function RootPage() {
     );
   }
 
-  return <Onboarding />;
+  return (
+    <>
+      <Onboarding />
+      {/* Fallback sign-in for returning users when auto-login fails */}
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "12px 20px", paddingBottom: "max(env(safe-area-inset-bottom, 20px), 20px)", background: "linear-gradient(transparent, #f8f7f4 40%)", textAlign: "center", zIndex: 50 }}>
+        <button
+          onClick={async () => {
+            // Force wallet auth to sign back in
+            try {
+              const nonceRes = await fetch("/api/nonce");
+              const { nonce } = await nonceRes.json();
+              const authResult = await MiniKit.commandsAsync.walletAuth({
+                nonce,
+                statement: "Sign back in to InstaClaw",
+                expirationTime: new Date(Date.now() + 1000 * 60 * 60),
+              });
+              if (authResult.finalPayload.status === "success") {
+                const loginRes = await fetch("/api/auth/login", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(authResult.finalPayload),
+                });
+                if (loginRes.ok) {
+                  window.location.href = "/home";
+                }
+              }
+            } catch {}
+          }}
+          style={{ color: "#DC6743", fontSize: "13px", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}
+        >
+          Already have an agent? Sign in
+        </button>
+      </div>
+    </>
+  );
 }
