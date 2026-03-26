@@ -83,14 +83,54 @@ console.log("Agent address:", agent.address);
 // Use agent.createDmWithAddress — the correct API method
 console.log("Sending DM to:", TARGET);
 
+// First resolve the inbox ID
+let targetInboxId = null;
 try {
-  const dm = await agent.createDmWithAddress(TARGET);
-  console.log("DM conversation created:", dm.id);
-  await dm.sendText(MSG);
-  console.log("MESSAGE SENT SUCCESSFULLY!");
+  targetInboxId = await agent.client.fetchInboxIdByIdentifier({
+    identifier: TARGET.toLowerCase(),
+    identifierKind: 0, // 0 = Ethereum
+  });
+  console.log("Resolved inbox ID:", targetInboxId);
 } catch (e) {
-  console.error("createDmWithAddress failed:", e.message);
-  console.error("Stack:", e.stack);
+  console.log("fetchInboxIdByIdentifier failed:", e.message);
+}
+
+// Try createDmWithIdentifier (proper API with numeric enum)
+try {
+  console.log("Creating DM via createDmWithIdentifier...");
+  const dm = await agent.client.conversations.createDmWithIdentifier({
+    identifier: TARGET.toLowerCase(),
+    identifierKind: 0,
+  });
+  console.log("DM created:", dm.id);
+  await dm.send(MSG);
+  console.log("MESSAGE SENT SUCCESSFULLY via createDmWithIdentifier!");
+} catch (e) {
+  console.error("createDmWithIdentifier failed:", e.message);
+
+  // Fallback: try createDm with inbox ID
+  if (targetInboxId) {
+    try {
+      console.log("Trying createDm with inbox ID...");
+      const dm = await agent.client.conversations.createDm(targetInboxId);
+      console.log("DM created via inbox ID:", dm.id);
+      await dm.send(MSG);
+      console.log("MESSAGE SENT via createDm(inboxId)!");
+    } catch (e2) {
+      console.error("createDm(inboxId) failed:", e2.message);
+    }
+  }
+
+  // Last resort: try createDmWithAddress again
+  try {
+    console.log("Trying agent.createDmWithAddress...");
+    const dm = await agent.createDmWithAddress(TARGET);
+    console.log("DM created:", dm.id);
+    await dm.sendText(MSG);
+    console.log("MESSAGE SENT via createDmWithAddress!");
+  } catch (e3) {
+    console.error("createDmWithAddress failed:", e3.message);
+  }
 }
 
 await new Promise(r => setTimeout(r, 3000));
