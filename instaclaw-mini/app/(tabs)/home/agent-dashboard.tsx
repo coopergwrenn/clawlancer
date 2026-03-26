@@ -268,6 +268,23 @@ export default function AgentDashboard({
         </div>
       </div>
 
+      {/* ── Quick Actions ── */}
+      <div className="animate-fade-in-up flex gap-3 stagger-2" style={{ opacity: 0 }}>
+        <button
+          onClick={handleChat}
+          className="btn-primary flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 font-bold"
+        >
+          <MessageCircle size={18} />
+          Chat
+        </button>
+        <button
+          onClick={handleShare}
+          className="glass-button flex items-center justify-center rounded-2xl px-5"
+        >
+          <Share2 size={18} />
+        </button>
+      </div>
+
       {/* ── Google Connection Status ── */}
       {gmailConnected ? (
         <div className="animate-fade-in-up glass-card flex items-center gap-3 rounded-2xl p-4" style={{ opacity: 0 }}>
@@ -300,23 +317,6 @@ export default function AgentDashboard({
           </div>
         </div>
       )}
-
-      {/* ── Quick Actions ── */}
-      <div className="animate-fade-in-up flex gap-3 stagger-2" style={{ opacity: 0 }}>
-        <button
-          onClick={handleChat}
-          className="btn-primary flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 font-bold"
-        >
-          <MessageCircle size={18} />
-          Chat
-        </button>
-        <button
-          onClick={handleShare}
-          className="glass-button flex items-center justify-center rounded-2xl px-5"
-        >
-          <Share2 size={18} />
-        </button>
-      </div>
 
       {/* ── Discovery Prompt ── */}
       {showDiscovery && (
