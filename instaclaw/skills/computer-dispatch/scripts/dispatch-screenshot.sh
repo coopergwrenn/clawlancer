@@ -31,6 +31,6 @@ else
 fi
 
 FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE")
-IMAGE_B64=$(base64 -w0 "$OUTFILE" 2>/dev/null || base64 "$OUTFILE")
 
-echo "{\"path\":\"${OUTFILE}\",\"coordMap\":\"${COORD_MAP}\",\"format\":\"${FMT}\",\"size_bytes\":${FILESIZE},\"image_base64\":\"${IMAGE_B64}\"}"
+# Output ONLY metadata — no base64. The agent reads the file via deliver_file.sh, not through stdout.
+echo "{\"path\":\"${OUTFILE}\",\"coordMap\":\"${COORD_MAP}\",\"format\":\"${FMT}\",\"size_bytes\":${FILESIZE}}"
