@@ -106,16 +106,40 @@ export async function POST(req: NextRequest) {
     }
 
     if (agent) {
-      // Direct update instead of RPC — more reliable
+      // Atomic credit addition via RPC — prevents race conditions
+      // when concurrent WLD payments or Stripe credit packs modify credit_balance
       try {
-        const { error: creditErr } = await supabase()
-          .from("instaclaw_vms")
-          .update({ credit_balance: (agent.credit_balance || 0) + delegation.credits_granted })
-          .eq("id", agent.id);
-        if (creditErr) {
-          console.error("[Confirm] Credit update failed:", creditErr);
+        // Try with p_source param first (after migration 20260326),
+        // fall back to 3-param version for backward compatibility
+        let newBalance: number | null = null;
+        let creditErr: { message?: string } | null = null;
+
+        const rpcResult = await supabase()
+          .rpc("instaclaw_add_credits", {
+            p_vm_id: agent.id,
+            p_credits: delegation.credits_granted,
+            p_reference_id: `wld_delegation_${delegation.id}`,
+            p_source: "wld",
+          });
+
+        if (rpcResult.error?.message?.includes("p_source")) {
+          // Migration not applied yet — use 3-param version
+          const fallback = await supabase()
+            .rpc("instaclaw_add_credits", {
+              p_vm_id: agent.id,
+              p_credits: delegation.credits_granted,
+              p_reference_id: `wld_delegation_${delegation.id}`,
+            });
+          newBalance = fallback.data;
+          creditErr = fallback.error;
         } else {
-          console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id, "new balance:", (agent.credit_balance || 0) + delegation.credits_granted);
+          newBalance = rpcResult.data;
+          creditErr = rpcResult.error;
+        }
+        if (creditErr) {
+          console.error("[Confirm] Credit RPC failed:", creditErr);
+        } else {
+          console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id, "new balance:", newBalance);
         }
 
         // Also update delegation with vm_id
