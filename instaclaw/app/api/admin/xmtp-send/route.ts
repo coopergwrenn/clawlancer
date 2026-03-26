@@ -76,81 +76,42 @@ console.log("Creating agent from env...");
 const agent = await Agent.createFromEnv();
 console.log("Agent address:", agent.address);
 
-// Inspect available methods on agent and agent.conversations
-console.log("Agent keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(agent)).join(", "));
-if (agent.conversations) {
-  console.log("Conversations keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(agent.conversations)).join(", "));
+// Use agent.createDmWithAddress — the correct API method
+console.log("Sending DM to:", TARGET);
+
+try {
+  // Check if target can receive messages
+  const canMsg = await agent.client.canMessage([{ identifier: TARGET, identifierKind: "Ethereum" }]);
+  console.log("canMessage:", JSON.stringify(canMsg));
+} catch (e) {
+  console.log("canMessage check:", e.message);
 }
-if (agent.client) {
-  console.log("Client keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(agent.client)).join(", "));
-  if (agent.client.conversations) {
-    console.log("Client.conversations keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(agent.client.conversations)).join(", "));
+
+try {
+  const dm = await agent.createDmWithAddress(TARGET);
+  console.log("DM conversation created:", dm.id);
+  await dm.sendText(MSG);
+  console.log("MESSAGE SENT SUCCESSFULLY!");
+} catch (e) {
+  console.error("createDmWithAddress failed:", e.message);
+
+  // Fallback: try via client.conversations.createDmWithIdentifier
+  try {
+    console.log("Trying client.conversations.createDmWithIdentifier...");
+    const dm = await agent.client.conversations.createDmWithIdentifier({
+      identifier: TARGET,
+      identifierKind: "Ethereum",
+    });
+    console.log("DM created via identifier:", dm.id);
+    await dm.send(MSG);
+    console.log("MESSAGE SENT via identifier!");
+  } catch (e2) {
+    console.error("createDmWithIdentifier also failed:", e2.message);
   }
 }
 
-// Try multiple approaches to create a DM
-console.log("\\nAttempting to message:", TARGET);
-
-// Approach 1: agent.conversations.newDm (agent-sdk v2.x)
-if (agent.conversations?.newDm) {
-  try {
-    console.log("Trying agent.conversations.newDm...");
-    const dm = await agent.conversations.newDm(TARGET);
-    console.log("DM created:", dm.id || dm);
-    await dm.sendText(MSG);
-    console.log("SUCCESS via newDm!");
-    await new Promise(r => setTimeout(r, 3000));
-    process.exit(0);
-  } catch (e) { console.log("newDm failed:", e.message); }
-}
-
-// Approach 2: agent.client.conversations.createDm
-if (agent.client?.conversations?.createDm) {
-  try {
-    console.log("Trying agent.client.conversations.createDm...");
-    // First get inbox ID
-    const inboxIds = await agent.client.findInboxIdByAddress(TARGET);
-    console.log("Inbox IDs:", JSON.stringify(inboxIds));
-    if (inboxIds) {
-      const dm = await agent.client.conversations.createDm(inboxIds);
-      console.log("DM created:", dm.id || dm);
-      await dm.send(MSG);
-      console.log("SUCCESS via client.conversations.createDm!");
-      await new Promise(r => setTimeout(r, 3000));
-      process.exit(0);
-    }
-  } catch (e) { console.log("createDm failed:", e.message); }
-}
-
-// Approach 3: newGroup with single member (creates a 1:1)
-if (agent.conversations?.newGroup) {
-  try {
-    console.log("Trying agent.conversations.newGroup([TARGET])...");
-    const group = await agent.conversations.newGroup([TARGET]);
-    console.log("Group created:", group.id || group);
-    await group.sendText(MSG);
-    console.log("SUCCESS via newGroup!");
-    await new Promise(r => setTimeout(r, 3000));
-    process.exit(0);
-  } catch (e) { console.log("newGroup failed:", e.message); }
-}
-
-// Approach 4: Direct client DM methods
-if (agent.client?.conversations?.findOrCreateDmWithIdentity) {
-  try {
-    console.log("Trying findOrCreateDmWithIdentity...");
-    const dm = await agent.client.conversations.findOrCreateDmWithIdentity({ identifier: TARGET, identifierKind: "Ethereum" });
-    console.log("DM created:", dm.id || dm);
-    await dm.send(MSG);
-    console.log("SUCCESS via findOrCreateDmWithIdentity!");
-    await new Promise(r => setTimeout(r, 3000));
-    process.exit(0);
-  } catch (e) { console.log("findOrCreateDmWithIdentity failed:", e.message); }
-}
-
-console.log("All approaches failed.");
-await new Promise(r => setTimeout(r, 1000));
-process.exit(1);
+await new Promise(r => setTimeout(r, 3000));
+process.exit(0);
 `;
 
     // Write the script to ~/scripts/ so it can find node_modules
