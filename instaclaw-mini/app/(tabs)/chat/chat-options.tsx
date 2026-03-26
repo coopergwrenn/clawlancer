@@ -18,14 +18,18 @@ export default function ChatOptions({
     window.location.href = `https://t.me/${username}?start=world`;
   }
 
-  function handleWorldChat() {
+  async function handleWorldChat() {
     if (!xmtpAddress) return;
     MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
-    // Try World Chat deep link — address-based profile with chat action
-    // If this doesn't resolve (agent has no World profile), falls back to chat tab
-    // Format: world.org/profile?address=0x...&action=chat
-    // Alt format: worldapp://chat/{address}/draft
-    window.location.href = `https://world.org/profile?address=${xmtpAddress}&action=chat`;
+    try {
+      const result = await MiniKit.commandsAsync.chat({
+        message: "Hey! What's happening today?",
+        to: [xmtpAddress],
+      });
+      console.log("[Chat] MiniKit.chat result:", JSON.stringify(result.finalPayload));
+    } catch (e) {
+      console.error("[Chat] MiniKit.chat error:", e);
+    }
   }
 
   // In-app chat — bypass World Chat entirely, talk to agent via our API
