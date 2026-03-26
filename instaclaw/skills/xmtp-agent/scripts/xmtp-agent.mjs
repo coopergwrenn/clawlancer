@@ -42,7 +42,7 @@ function log(level, msg, data) {
  * Uses the gateway's v1 chat API, same format as the Telegram bot.
  */
 async function sendToGateway(userMessage, senderAddress) {
-  const url = `${GATEWAY_URL}/api/v1/chat`;
+  const url = `${GATEWAY_URL}/v1/chat/completions`;
 
   try {
     const res = await fetch(url, {
@@ -52,9 +52,10 @@ async function sendToGateway(userMessage, senderAddress) {
         "Authorization": `Bearer ${GATEWAY_TOKEN}`,
       },
       body: JSON.stringify({
-        message: userMessage,
-        sender: senderAddress,
-        channel: "xmtp",
+        model: "claude-sonnet-4-6",
+        messages: [
+          { role: "user", content: userMessage },
+        ],
       }),
     });
 
@@ -65,7 +66,8 @@ async function sendToGateway(userMessage, senderAddress) {
     }
 
     const data = await res.json();
-    return data.response || data.message || data.text || null;
+    // OpenAI chat completions format
+    return data.choices?.[0]?.message?.content || null;
   } catch (err) {
     log("ERROR", "Gateway request failed", { error: err.message });
     return null;

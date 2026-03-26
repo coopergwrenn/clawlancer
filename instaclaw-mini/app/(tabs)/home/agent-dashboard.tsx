@@ -47,16 +47,13 @@ export default function AgentDashboard({
   const creditPct = Math.min(100, (agent.credit_balance / 25) * 100);
 
   function handleChat() {
-    // Primary: Telegram (works reliably)
-    if (agent.telegram_bot_username) {
+    if (agent.xmtp_address) {
+      // World Chat deep link — opens direct 1-on-1 chat with agent
+      window.location.href = `https://world.org/profile?address=${agent.xmtp_address}&action=chat`;
+    } else if (agent.telegram_bot_username) {
+      // Fallback: Telegram
       const username = String(agent.telegram_bot_username).replace(/^@/, "");
       window.location.href = `https://t.me/${username}?start=world`;
-    } else if (agent.xmtp_address) {
-      // Fallback: World Chat via XMTP
-      MiniKit.commandsAsync.chat({
-        message: "Hey! What's happening today?",
-        to: [String(agent.xmtp_address)],
-      }).catch(() => {});
     }
   }
 
