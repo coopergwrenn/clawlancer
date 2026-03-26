@@ -69,9 +69,15 @@ export default function DispatchDocsPage() {
           <li>Click at any position</li>
           <li>Type text via keyboard</li>
           <li>Press key combos (Cmd+C, Ctrl+V, etc.)</li>
+          <li>Drag and drop between positions</li>
           <li>Scroll in any direction</li>
           <li>List open windows</li>
           <li>Open and control any desktop application</li>
+          <li>
+            <strong>Batch actions</strong> — execute multiple actions in one
+            round-trip (click, type, press Enter) for 2-3x faster task
+            completion
+          </li>
         </ul>
       </Section>
 
@@ -88,6 +94,34 @@ export default function DispatchDocsPage() {
           purchases) still require your confirmation. Enable with:
         </p>
         <CodeBlock>npx @instaclaw/dispatch --autonomous</CodeBlock>
+      </Section>
+
+      <Section title="Speed">
+        <p className="mb-4">
+          Dispatch v0.5 introduced <strong>action batching</strong> and
+          optimized screenshots for significantly faster computer control.
+        </p>
+        <ul className="list-disc pl-6 space-y-2">
+          <li>
+            <strong>Batch actions:</strong> Your agent plans multiple steps
+            (click, type, press Enter) and executes them in a single round-trip
+            instead of one at a time — <strong>2-3x faster</strong> for
+            multi-step tasks
+          </li>
+          <li>
+            <strong>WebP screenshots:</strong> 50-60% smaller than the previous
+            JPEG format, reducing transfer time without losing visual quality
+          </li>
+          <li>
+            <strong>Smart verification:</strong> Your agent only takes
+            screenshots at decision points, not after every keystroke — cutting
+            vision costs by up to 70%
+          </li>
+        </ul>
+        <p className="mt-4 text-sm text-[var(--muted)]">
+          A typical 20-step task that previously took 1-3 minutes now completes
+          in 25-45 seconds.
+        </p>
       </Section>
 
       <Section title="macOS Permissions">
@@ -149,7 +183,7 @@ export default function DispatchDocsPage() {
           severed immediately.
         </FAQ>
         <FAQ q="What data does the relay send to my agent?">
-          Screenshots (as compressed JPEG images) and command results (success/failure).
+          Screenshots (as compressed WebP images) and command results (success/failure).
           No files, passwords, or browsing history are ever sent.
         </FAQ>
         <FAQ q="Can I use this on multiple computers?">

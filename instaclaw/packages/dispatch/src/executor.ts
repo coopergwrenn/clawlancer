@@ -54,6 +54,8 @@ export async function executeCommand(command: DispatchCommand): Promise<Executio
         return await doDrag(params);
       case "windows":
         return await listWindows();
+      case "batch":
+        return await executeBatch(params);
       default:
         return { success: false, error: `Unknown command type: ${type}` };
     }
@@ -62,10 +64,104 @@ export async function executeCommand(command: DispatchCommand): Promise<Executio
   }
 }
 
+/**
+ * Execute multiple actions sequentially with optional per-action wait times.
+ * Returns results for all actions; stops on first failure.
+ * Optionally takes a screenshot after the batch completes.
+ */
+async function executeBatch(params: Record<string, unknown>): Promise<ExecutionResult> {
+  const actions = params.actions as Array<{
+    type: string;
+    params: Record<string, unknown>;
+    waitAfterMs?: number;
+  }>;
+
+  if (!Array.isArray(actions) || actions.length === 0) {
+    return { success: false, error: "batch requires a non-empty 'actions' array" };
+  }
+
+  if (actions.length > 20) {
+    return { success: false, error: "batch limited to 20 actions max" };
+  }
+
+  const results: Array<{ type: string; success: boolean; data?: Record<string, unknown>; error?: string }> = [];
+
+  for (const action of actions) {
+    const cmd: DispatchCommand = {
+      id: `batch_${Date.now()}`,
+      type: action.type as DispatchCommand["type"],
+      params: action.params || {},
+    };
+
+    // Don't allow nested batches or screenshots inside a batch
+    if (cmd.type === "batch") {
+      results.push({ type: "batch", success: false, error: "nested batches not allowed" });
+      break;
+    }
+    if (cmd.type === "screenshot") {
+      results.push({ type: "screenshot", success: false, error: "use screenshotAfter param instead of screenshot in batch" });
+      break;
+    }
+
+    const result = await executeCommand(cmd);
+    results.push({
+      type: action.type,
+      success: result.success,
+      data: result.data,
+      error: result.error,
+    });
+
+    if (!result.success) break; // Stop batch on first failure
+
+    // Per-action wait time (default: 50ms between actions)
+    const waitMs = action.waitAfterMs ?? 50;
+    if (waitMs > 0) {
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+
+  // Optionally take a screenshot after the batch completes
+  const screenshotAfter = params.screenshotAfter !== false; // default true
+  let screenshotResult: ExecutionResult | undefined;
+
+  if (screenshotAfter) {
+    // Wait for screen to settle before capturing
+    const settleMs = typeof params.settleMs === "number" ? params.settleMs : 300;
+    if (settleMs > 0) {
+      await new Promise((r) => setTimeout(r, settleMs));
+    }
+    screenshotResult = await takeScreenshot({
+      format: (params.screenshotFormat as string) || "webp",
+      quality: Number(params.screenshotQuality) || 55,
+    });
+  }
+
+  const batchResult: ExecutionResult = {
+    success: results.every((r) => r.success),
+    data: {
+      action: "batch",
+      actionsExecuted: results.length,
+      actionsTotal: actions.length,
+      results,
+    },
+  };
+
+  // If we took a screenshot, attach it
+  if (screenshotResult?.screenshotBuffer && screenshotResult.screenshotMeta) {
+    batchResult.screenshotBuffer = screenshotResult.screenshotBuffer;
+    batchResult.screenshotMeta = screenshotResult.screenshotMeta;
+    // Also include batch results in the screenshot meta so the agent gets both
+    batchResult.data!.screenshotIncluded = true;
+  }
+
+  return batchResult;
+}
+
 async function takeScreenshot(params: Record<string, unknown>): Promise<ExecutionResult> {
   const capture = await captureScreenshot({
-    format: (params.format as "jpeg" | "png") || "jpeg",
-    quality: Number(params.quality) || 80,
+    format: (params.format as "jpeg" | "png" | "webp") || "webp",
+    quality: Number(params.quality) || 55,
+    maxWidth: Number(params.maxWidth) || 1280,
   });
 
   // Cache coordMap for subsequent click/hover/drag commands

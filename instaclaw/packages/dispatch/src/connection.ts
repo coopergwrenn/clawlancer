@@ -60,13 +60,17 @@ export function connect(opts: ConnectionOptions): void {
       commandsExecuted++;
 
       if (result.screenshotBuffer && result.screenshotMeta) {
-        // Screenshot: send metadata text frame, then binary frame
-        const meta = {
+        // Screenshot (or batch with screenshot): send metadata text frame, then binary frame
+        const meta: Record<string, unknown> = {
           id: command.id,
           type: "screenshot_result" as const,
           ...result.screenshotMeta,
           size: result.screenshotBuffer.length,
         };
+        // For batch commands, include action results in the metadata frame
+        if (result.data) {
+          meta.data = result.data;
+        }
         ws?.send(JSON.stringify(meta));
         ws?.send(result.screenshotBuffer);
       } else {

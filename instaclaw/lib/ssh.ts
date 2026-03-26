@@ -3339,7 +3339,7 @@ export async function configureOpenClaw(
       const dispatchSkillPath = path.resolve(__dirname, '../skills/computer-dispatch/SKILL.md');
       const dispatchScripts = [
         'dispatch-screenshot.sh', 'dispatch-click.sh', 'dispatch-type.sh', 'dispatch-press.sh', 'dispatch-scroll.sh', 'dispatch-browser.sh',
-        'dispatch-remote-screenshot.sh', 'dispatch-remote-click.sh', 'dispatch-remote-type.sh', 'dispatch-remote-press.sh', 'dispatch-remote-scroll.sh', 'dispatch-remote-status.sh',
+        'dispatch-remote-screenshot.sh', 'dispatch-remote-click.sh', 'dispatch-remote-type.sh', 'dispatch-remote-press.sh', 'dispatch-remote-scroll.sh', 'dispatch-remote-status.sh', 'dispatch-remote-batch.sh', 'dispatch-remote-drag.sh', 'dispatch-remote-windows.sh', 'dispatch-windows.sh',
       ];
 
       const dispatchParts: string[] = ['# ── Deploy Dispatch Mode scripts (virtual desktop control) ──', 'mkdir -p "$HOME/scripts"'];

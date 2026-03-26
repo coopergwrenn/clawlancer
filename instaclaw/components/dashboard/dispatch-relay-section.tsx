@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Monitor, Wifi, WifiOff, Copy, CheckCircle2, Download, ChevronDown, Apple, Terminal as TerminalIcon } from "lucide-react";
+import {
+  Monitor,
+  Wifi,
+  WifiOff,
+  Copy,
+  CheckCircle2,
+  ChevronDown,
+  Terminal as TerminalIcon,
+  Clipboard,
+} from "lucide-react";
 
 function detectOS(): "mac" | "windows" | "linux" {
   if (typeof navigator === "undefined") return "mac";
@@ -18,27 +27,16 @@ export function DispatchRelaySection() {
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [expiresIn, setExpiresIn] = useState(0);
   const [fullCommand, setFullCommand] = useState<string | null>(null);
-  const [showManual, setShowManual] = useState(false);
-  const [downloaded, setDownloaded] = useState(false);
+  const [showSteps, setShowSteps] = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [os] = useState(detectOS);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const [statusRes, pairRes] = await Promise.all([
-        fetch("/api/vm/dispatch-status"),
-        fetch("/api/vm/dispatch-pair"),
-      ]);
-      const status = await statusRes.json();
-      const pair = await pairRes.json();
-
+      const res = await fetch("/api/vm/dispatch-status");
+      const status = await res.json();
       setRelayConnected(!!status.relayConnected);
-      if (pair.code) {
-        setPairingCode(pair.code);
-        setExpiresIn(pair.expiresIn || 0);
-      }
-      if (pair.fallbackCommand) {
-        setFullCommand(pair.fallbackCommand);
-      }
     } catch {
       setRelayConnected(false);
     } finally {
@@ -52,26 +50,28 @@ export function DispatchRelaySection() {
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  // Countdown
+  // Countdown for pairing code
   useEffect(() => {
     if (expiresIn <= 0) return;
     const timer = setInterval(() => {
       setExpiresIn((prev) => {
-        if (prev <= 1) { fetchStatus(); return 0; }
+        if (prev <= 1) return 0;
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [expiresIn, fetchStatus]);
+  }, [expiresIn]);
 
-  // Fetch full command
+  // Fetch full command fallback
   useEffect(() => {
     async function getCommand() {
       try {
         const res = await fetch("/api/vm/live-session");
         const data = await res.json();
         if (data.token && data.vmIp) {
-          setFullCommand(`npx @instaclaw/dispatch --token ${data.token} --vm ${data.vmIp}`);
+          setFullCommand(
+            `npx @instaclaw/dispatch --token ${data.token} --vm ${data.vmIp}`
+          );
         }
       } catch {}
     }
@@ -81,16 +81,49 @@ export function DispatchRelaySection() {
   function copyToClipboard(text: string, field: string) {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
-    setTimeout(() => setCopiedField(null), 2000);
+    setTimeout(() => setCopiedField(null), 3000);
   }
 
-  function handleDownload() {
-    // Trigger file download via the API
-    window.location.href = `/api/vm/dispatch-connect?os=${os}`;
-    setDownloaded(true);
+  /** Generate pairing code, build npx command, copy to clipboard, show steps */
+  async function handleConnect() {
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/vm/dispatch-pair", { method: "POST" });
+      const data = await res.json();
+
+      if (data.code) {
+        setPairingCode(data.code);
+        setExpiresIn(data.expiresIn || 600);
+        const cmd = `npx @instaclaw/dispatch@0.5.0 --pair ${data.code}`;
+        await navigator.clipboard.writeText(cmd);
+        setCopiedField("connect");
+        setTimeout(() => setCopiedField(null), 4000);
+        setShowSteps(true);
+      } else if (data.fallbackCommand) {
+        // Pairing table not migrated — use full command
+        setFullCommand(data.fallbackCommand);
+        await navigator.clipboard.writeText(data.fallbackCommand);
+        setCopiedField("connect");
+        setTimeout(() => setCopiedField(null), 4000);
+        setShowSteps(true);
+      }
+    } catch {
+      // Fallback: just show manual section
+      setShowSteps(true);
+    } finally {
+      setGenerating(false);
+    }
   }
 
-  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+  const npxCommand = pairingCode
+    ? `npx @instaclaw/dispatch@0.5.0 --pair ${pairingCode}`
+    : fullCommand || "npx @instaclaw/dispatch";
+
+  const formatTime = (s: number) =>
+    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  const pasteKey = os === "mac" ? "Cmd + V" : "Ctrl + V";
+  const spotlightKey = os === "mac" ? "Cmd + Space" : "";
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
@@ -106,7 +139,9 @@ export function DispatchRelaySection() {
           ) : relayConnected ? (
             <>
               <Wifi className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="text-xs font-medium text-emerald-600">Connected</span>
+              <span className="text-xs font-medium text-emerald-600">
+                Connected
+              </span>
             </>
           ) : (
             <>
@@ -120,136 +155,201 @@ export function DispatchRelaySection() {
       {relayConnected ? (
         <div>
           <p className="text-sm text-emerald-600 mb-2">
-            Your agent is connected to your computer and can take screenshots, click, and type.
+            Your agent is connected to your computer and can take screenshots,
+            click, and type.
           </p>
           <p className="text-xs text-[var(--muted)]">
-            To disconnect, press Ctrl+C in the terminal running the dispatch relay.
+            To disconnect, press Ctrl+C in the terminal running the dispatch
+            relay.
           </p>
         </div>
       ) : (
         <>
           <p className="text-sm text-[var(--muted)] mb-5">
-            Let your agent control your computer. Take screenshots, click, type, and more.
+            Let your agent control your computer. Take screenshots, click, type,
+            and more.
           </p>
 
-          {/* Big "Connect Your Computer" button */}
-          {!downloaded ? (
+          {/* ── Primary: Copy-to-clipboard button ── */}
+          {!showSteps ? (
             <button
-              onClick={handleDownload}
-              className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl text-white font-semibold text-base transition-all hover:opacity-90"
+              onClick={handleConnect}
+              disabled={generating}
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl text-white font-semibold text-base transition-all hover:opacity-90 disabled:opacity-60"
               style={{
                 background: "linear-gradient(135deg, var(--accent), #c0553a)",
                 boxShadow: "0 4px 12px rgba(220, 103, 67, 0.3)",
               }}
             >
-              <Download className="w-5 h-5" />
-              Connect Your Computer
+              <Clipboard className="w-5 h-5" />
+              {generating ? "Generating..." : "Connect Your Computer"}
             </button>
           ) : (
-            <div className="w-full rounded-xl border-2 border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800 p-4 text-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-1">
-                File downloaded!
+            /* ── Steps modal (inline) ── */
+            <div className="w-full rounded-xl border-2 border-emerald-200 bg-emerald-50/50 dark:bg-emerald-900/10 dark:border-emerald-800 p-5">
+              {/* Success header */}
+              <div className="flex items-center gap-2 mb-5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                  Command copied to clipboard!
+                </span>
+              </div>
+
+              {/* 3 steps */}
+              <div className="space-y-4 mb-5">
+                <Step
+                  number={1}
+                  title="Open Terminal"
+                  subtitle={
+                    os === "mac"
+                      ? `Press ${spotlightKey}, type "Terminal", press Enter`
+                      : os === "windows"
+                      ? 'Press Win + R, type "cmd", press Enter'
+                      : "Open your terminal application"
+                  }
+                  icon={<TerminalIcon className="w-4 h-4" />}
+                />
+                <Step
+                  number={2}
+                  title="Paste the command"
+                  subtitle={`Press ${pasteKey} in Terminal`}
+                  icon={<Clipboard className="w-4 h-4" />}
+                />
+                <Step
+                  number={3}
+                  title="Press Enter"
+                  subtitle="Your agent will connect automatically"
+                  icon={
+                    <span className="text-xs font-bold font-mono">⏎</span>
+                  }
+                />
+              </div>
+
+              {/* Command reference block with copy button */}
+              <div className="relative">
+                <pre className="bg-black/10 dark:bg-black/30 rounded-lg p-3 pr-10 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all text-[var(--foreground)]">
+                  {npxCommand}
+                </pre>
+                <button
+                  onClick={() => copyToClipboard(npxCommand, "ref")}
+                  className="absolute top-2.5 right-2.5 p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                  title="Copy command"
+                >
+                  {copiedField === "ref" ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-[var(--muted)]" />
+                  )}
+                </button>
+              </div>
+
+              {/* Pairing code timer */}
+              {pairingCode && expiresIn > 0 && (
+                <p className="text-xs text-[var(--muted)] mt-2 text-center">
+                  Code expires in {formatTime(expiresIn)}
+                </p>
+              )}
+              {pairingCode && expiresIn <= 0 && (
+                <button
+                  onClick={handleConnect}
+                  className="text-xs text-[var(--accent)] underline mt-2 block mx-auto"
+                >
+                  Generate new code
+                </button>
+              )}
+
+              {/* macOS permission note */}
+              {os === "mac" && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 text-center">
+                  macOS: You&apos;ll need to grant Accessibility + Screen
+                  Recording permissions to Terminal.app.
+                </p>
+              )}
+
+              {/* Requires Node.js note */}
+              <p className="text-xs text-[var(--muted)] mt-2 text-center">
+                Requires{" "}
+                <a
+                  href="https://nodejs.org"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Node.js 18+
+                </a>
               </p>
-              <p className="text-xs text-emerald-600 dark:text-emerald-500">
-                {os === "mac"
-                  ? "Double-click instaclaw-connect.command in your Downloads folder."
-                  : os === "windows"
-                  ? "Double-click instaclaw-connect.bat in your Downloads folder."
-                  : "Run: bash ~/Downloads/instaclaw-connect.sh"}
-              </p>
-              <button
-                onClick={() => setDownloaded(false)}
-                className="text-xs text-emerald-500 underline mt-2"
-              >
-                Download again
-              </button>
             </div>
           )}
 
-          <p className="text-xs text-[var(--muted)] mt-3 text-center">
-            Downloads a small script. {os === "mac" ? "Double-click to open in Terminal." : os === "windows" ? "Double-click to run." : "Run in your terminal."} Requires{" "}
-            <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer" className="underline">
-              Node.js
-            </a>
-            .
-          </p>
-
-          {/* macOS permission note */}
-          {os === "mac" && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 text-center">
-              macOS: You&apos;ll need to grant Accessibility + Screen Recording permissions to Terminal.app.
-            </p>
-          )}
-
-          {/* Manual / power user section */}
-          <div className="mt-4 border-t border-[var(--border)] pt-4">
+          {/* ── Collapsed fallback: download .command file ── */}
+          <div className="mt-4 border-t border-[var(--border)] pt-3">
             <button
-              onClick={() => setShowManual(!showManual)}
+              onClick={() => setShowFallback(!showFallback)}
               className="flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
             >
-              <ChevronDown className={`w-3 h-3 transition-transform ${showManual ? "rotate-180" : ""}`} />
-              Or connect manually
+              <ChevronDown
+                className={`w-3 h-3 transition-transform ${
+                  showFallback ? "rotate-180" : ""
+                }`}
+              />
+              Or download a connect script
             </button>
 
-            {showManual && (
-              <div className="mt-3 space-y-3">
-                {/* Pairing code */}
-                {pairingCode && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium text-[var(--muted)]">Pairing code:</span>
-                      {expiresIn > 0 && (
-                        <span className="text-xs text-[var(--muted)]">({formatTime(expiresIn)})</span>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <pre className="bg-black/5 rounded-lg p-3 text-center text-lg font-mono font-bold tracking-widest">
-                        {pairingCode}
-                      </pre>
-                      <button
-                        onClick={() => copyToClipboard(`npx @instaclaw/dispatch --pair ${pairingCode}`, "pair")}
-                        className="absolute top-2 right-2 p-1 rounded hover:bg-black/10"
-                      >
-                        {copiedField === "pair" ? (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5 text-[var(--muted)]" />
-                        )}
-                      </button>
-                    </div>
-                    <p className="text-xs text-[var(--muted)] mt-1">
-                      <code className="bg-black/5 px-1 rounded text-[10px]">npx @instaclaw/dispatch --pair {pairingCode}</code>
-                    </p>
-                  </div>
-                )}
-
-                {/* Full command */}
-                {fullCommand && (
-                  <div>
-                    <span className="text-xs font-medium text-[var(--muted)]">Full command:</span>
-                    <div className="relative mt-1">
-                      <pre className="bg-black/5 rounded-lg p-2 pr-8 text-[10px] font-mono overflow-x-auto whitespace-pre-wrap break-all">
-                        {fullCommand}
-                      </pre>
-                      <button
-                        onClick={() => copyToClipboard(fullCommand, "cmd")}
-                        className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-black/10"
-                      >
-                        {copiedField === "cmd" ? (
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                        ) : (
-                          <Copy className="w-3 h-3 text-[var(--muted)]" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
+            {showFallback && (
+              <div className="mt-3 space-y-2">
+                <button
+                  onClick={() => {
+                    window.location.href = `/api/vm/dispatch-connect?os=${os}`;
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                >
+                  Download{" "}
+                  {os === "mac"
+                    ? ".command"
+                    : os === "windows"
+                    ? ".bat"
+                    : ".sh"}{" "}
+                  file
+                </button>
+                <p className="text-[10px] text-[var(--muted)] text-center">
+                  {os === "mac"
+                    ? "Note: macOS may show a security warning. Right-click → Open to bypass."
+                    : "Double-click to run."}
+                </p>
               </div>
             )}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function Step({
+  number,
+  title,
+  subtitle,
+  icon,
+}: {
+  number: number;
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0 mt-0.5">
+        <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+          {number}
+        </span>
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[var(--muted)]">{icon}</span>
+          <span className="text-sm font-semibold">{title}</span>
+        </div>
+        <p className="text-xs text-[var(--muted)] mt-0.5">{subtitle}</p>
+      </div>
     </div>
   );
 }

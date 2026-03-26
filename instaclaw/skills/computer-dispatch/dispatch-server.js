@@ -53,9 +53,9 @@ try {
 } catch {}
 
 // ── Rate Limiting ──
-const RATE_LIMIT_INTERVAL_MS = 1000; // 1 command per second
-const RATE_LIMIT_MAX_PER_SESSION = 100; // max 100 commands per relay session
-const RATE_LIMIT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min idle → disconnect (was 5 min — too aggressive)
+const RATE_LIMIT_INTERVAL_MS = 100; // 10 commands per second (was 1/sec — too slow for batching)
+const RATE_LIMIT_MAX_PER_SESSION = 500; // max 500 commands per relay session (was 100 — too low for complex tasks)
+const RATE_LIMIT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min idle → disconnect
 
 let sessionCommandCount = 0;
 let lastCommandTime = 0;
@@ -414,9 +414,14 @@ const unixServer = net.createServer((conn) => {
 
       // Forward to relay (screenshots are queued to prevent race conditions)
       console.log(`[dispatch-server] Forwarding ${command.type} command to relay`);
-      auditLog({ event: "command", type: command.type, params: command.type === "type" ? { text: "***" } : command.params });
-      const result = await sendToRelayQueued(command);
-      console.log(`[dispatch-server] Got result for ${command.type}: ${JSON.stringify(result).substring(0, 100)}`);
+      const logParams = command.type === "type" ? { text: "***" } :
+        command.type === "batch" ? { actions: (command.params?.actions || []).length } : command.params;
+      auditLog({ event: "command", type: command.type, params: logParams });
+
+      // Batch commands get a longer timeout (60s) since they execute multiple actions + screenshot
+      const timeout = command.type === "batch" ? 60000 : 30000;
+      const result = await sendToRelayQueued(command, timeout);
+      console.log(`[dispatch-server] Got result for ${command.type}: ${JSON.stringify(result).substring(0, 200)}`);
       auditLog({ event: "result", type: command.type, success: !!result && !result.error });
       conn.write(JSON.stringify(result) + "\n");
       conn.end();

@@ -102,6 +102,16 @@ function isDangerous(cmd: DispatchCommand): boolean {
     return DANGEROUS_KEY_COMBOS.has(key);
   }
 
+  // Check all sub-actions in a batch
+  if (cmd.type === "batch") {
+    const actions = p.actions as Array<{ type: string; params: Record<string, unknown> }> | undefined;
+    if (Array.isArray(actions)) {
+      return actions.some((a) =>
+        isDangerous({ id: "", type: a.type as DispatchCommand["type"], params: a.params || {} })
+      );
+    }
+  }
+
   return false;
 }
 
@@ -118,6 +128,14 @@ function formatCommand(cmd: DispatchCommand): string {
       return `Scroll ${p.direction} by ${p.amount || 3}`;
     case "drag":
       return `Drag from (${p.fromX}, ${p.fromY}) to (${p.toX}, ${p.toY})`;
+    case "batch": {
+      const actions = p.actions as Array<{ type: string; params: Record<string, unknown> }> | undefined;
+      if (!Array.isArray(actions)) return "Batch (empty)";
+      const summary = actions.map((a) =>
+        formatCommand({ id: "", type: a.type as DispatchCommand["type"], params: a.params || {} })
+      ).join(" → ");
+      return `Batch (${actions.length} actions): ${summary}`;
+    }
     default:
       return `${cmd.type}: ${JSON.stringify(p).substring(0, 80)}`;
   }

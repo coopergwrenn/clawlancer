@@ -128,17 +128,75 @@ bash ~/scripts/dispatch-remote-windows.sh
 
 ## The Screenshot → Reason → Act Loop
 
-Same pattern for both modes:
+Use **batch commands** to execute multiple actions per reasoning cycle. This is 2-3x faster than single actions.
 
+### Fast Loop (preferred — use batch):
 1. **Screenshot** — see what's on screen
-2. **Analyze** — identify elements, read text
-3. **Plan** — decide what to click/type
-4. **Act** — execute ONE action
-5. **Wait** — 500ms for screen to update
-6. **Verify** — screenshot again to confirm
-7. **Repeat** until done
+2. **Plan multiple actions** — identify the next 2-5 steps you can take without needing to re-check the screen
+3. **Batch execute** — run all planned actions in one call (includes auto-screenshot after)
+4. **Analyze result** — check the post-batch screenshot
+5. **Repeat** until done
 
-Max 50 actions per task. Always screenshot before AND after each action.
+### Batch Command (Remote):
+```bash
+bash ~/scripts/dispatch-remote-batch.sh '{"actions":[{"type":"click","params":{"x":400,"y":300},"waitAfterMs":100},{"type":"type","params":{"text":"hello world"},"waitAfterMs":0},{"type":"press","params":{"key":"Return"},"waitAfterMs":1500}]}'
+```
+
+Returns JSON with both action results AND a screenshot (auto-captured after the batch). The screenshot is saved to `~/.openclaw/workspace/dispatch-remote-screenshot.jpg`.
+
+### Batch Options:
+- `screenshotAfter`: true (default) — auto-screenshot after batch
+- `screenshotFormat`: "webp" (default) — smaller than JPEG
+- `screenshotQuality`: 55 (default) — good enough for GUI analysis
+- `settleMs`: 300 (default) — wait for screen to settle before screenshot
+- `waitAfterMs` per action: milliseconds to wait after each action (default 50ms)
+
+### Wait Time Guide (for waitAfterMs):
+| Action | waitAfterMs | Why |
+|--------|------------|-----|
+| Click on UI element | 100 | OS redraws instantly |
+| Type text | 0 | Characters appear immediately |
+| Press Enter on form/search | 1500-3000 | Page navigation or API call |
+| Click link / navigate | 2000-3000 | Page load |
+| Scroll | 200 | Smooth scroll animation |
+| Click dropdown/menu | 300 | Animation |
+
+### When to Batch vs Single Action:
+- **Batch**: Click + type + Enter (search flow), fill multiple form fields, navigate menus
+- **Single**: When you're unsure what's on screen, first action on a new page, after an error
+
+### Fallback: Single Actions
+If you need precise control or are unsure of the screen state, use individual commands:
+
+Max 50 actions per task. Max 20 actions per batch.
+
+## Verification Decision Tree — When to Screenshot
+
+Not every action needs a verification screenshot. Use this decision tree:
+
+### ALWAYS screenshot after:
+- Page navigation (clicked a link, submitted a form, pressed Enter in address bar)
+- First action on a new screen or app
+- Switching windows or tabs
+- After a batch that includes navigation
+- After any action that produced an error
+- When you're unsure what's on screen
+
+### SKIP verification screenshot when:
+- You just typed text into a field you already confirmed exists
+- You pressed a single key (Tab, Escape) in a known context
+- You scrolled in a page you've already screenshotted
+- You're mid-batch — the batch auto-screenshots at the end
+- You clicked a button and the next step is to type in the resulting dialog (batch these together)
+
+### Rule of Thumb:
+**If you can predict what the screen looks like after the action, skip the screenshot.**
+A search flow (click search bar → type query → press Enter) needs ONE screenshot at the end, not three.
+
+### Cost Awareness:
+Each screenshot costs ~1,049 vision tokens (~$0.003). A 20-step task with screenshots after every action: ~$0.12. With smart verification: ~$0.04-0.06. Prefer batching to cut costs by 50-70%.
+
+---
 
 ## User Takeover Detection
 
@@ -152,9 +210,10 @@ If `.user-takeover` exists, **STOP all dispatch actions immediately**. The user 
 
 ## Rate Limits
 
-- **Max 1 command per second** — the dispatch server enforces this. If you send commands faster, they'll be rejected.
+- **Max 10 commands per second** — the dispatch server enforces this. Batch commands count as 1 command.
 - **Max 60 screenshots per minute** — each screenshot costs ~$0.003 in vision tokens.
-- **Max 100 commands per relay session** — after 100 commands, the relay disconnects. Tell the user to reconnect if more work is needed.
+- **Max 500 commands per relay session** — after 500 commands, the relay disconnects. Tell the user to reconnect if more work is needed.
+- **Max 20 actions per batch** — individual batch actions are not rate-limited internally.
 - **30-minute idle timeout** — if no commands for 30 minutes, the relay auto-disconnects.
 
 **If a dispatch command returns an error containing "rate limit":** Tell the user: "I'm being rate limited on dispatch commands. I'll wait 30 seconds and try again." Then wait 30 seconds before retrying.
