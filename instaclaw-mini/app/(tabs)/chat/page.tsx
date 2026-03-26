@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { getAgentStatus } from "@/lib/supabase";
 import { redirect } from "next/navigation";
-import ChatInterface from "./chat-interface";
+import CommandCenter from "./command-center";
 
 export default async function ChatPage() {
   const session = await getSession();
@@ -13,9 +13,9 @@ export default async function ChatPage() {
   } catch { /* no agent */ }
 
   return (
-    <ChatInterface
+    <CommandCenter
+      userId={session.userId}
       telegramBotUsername={agent?.telegram_bot_username as string | null ?? null}
-      xmtpAddress={agent?.xmtp_address as string | null ?? null}
       isOnline={agent?.health_status === "healthy"}
     />
   );
