@@ -89,6 +89,21 @@ export async function getDailyUsage(vmId: string) {
   return data;
 }
 
+export async function getGoogleStatus(userId: string): Promise<{
+  connected: boolean;
+  connectedAt: string | null;
+}> {
+  const { data } = await supabase()
+    .from("instaclaw_users")
+    .select("gmail_connected, gmail_connected_at")
+    .eq("id", userId)
+    .single();
+  return {
+    connected: data?.gmail_connected === true,
+    connectedAt: data?.gmail_connected_at ?? null,
+  };
+}
+
 export async function getUserByWallet(walletAddress: string) {
   // Try exact match first, then case-insensitive
   const { data } = await supabase()

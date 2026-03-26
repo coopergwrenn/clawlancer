@@ -3,6 +3,7 @@ import {
   getAgentStatus,
   getDelegationHistory,
   getPaymentHistory,
+  getGoogleStatus,
 } from "@/lib/supabase";
 import { redirect } from "next/navigation";
 import SettingsClient from "./settings-client";
@@ -14,6 +15,7 @@ export default async function SettingsPage() {
   let agent = null;
   let delegations: Awaited<ReturnType<typeof getDelegationHistory>> = [];
   let payments: Awaited<ReturnType<typeof getPaymentHistory>> = [];
+  let gmailConnected = false;
 
   try {
     agent = await getAgentStatus(session.userId);
@@ -33,12 +35,18 @@ export default async function SettingsPage() {
     console.error("[Settings] Error fetching payments:", err);
   }
 
+  try {
+    const googleStatus = await getGoogleStatus(session.userId);
+    gmailConnected = googleStatus.connected;
+  } catch { /* not critical */ }
+
   return (
     <SettingsClient
       walletAddress={session.walletAddress}
       agent={agent}
       delegations={delegations}
       payments={payments}
+      gmailConnected={gmailConnected}
     />
   );
 }

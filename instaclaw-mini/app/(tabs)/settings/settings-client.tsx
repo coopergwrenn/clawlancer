@@ -11,7 +11,10 @@ import {
   Coins,
   ChevronRight,
   Link2,
+  Mail,
+  Check,
 } from "lucide-react";
+import GoogleConnectCard from "@/components/google-connect-card";
 
 function LinkAccountSection() {
   const router = useRouter();
@@ -109,13 +112,16 @@ export default function SettingsClient({
   agent,
   delegations,
   payments,
+  gmailConnected: initialGmailConnected,
 }: {
   walletAddress: string;
   agent: { credit_balance: number; default_model?: string; [key: string]: unknown } | null;
   delegations: Delegation[];
   payments: Payment[];
+  gmailConnected: boolean;
 }) {
   const router = useRouter();
+  const [gmailConnected, setGmailConnected] = useState(initialGmailConnected);
 
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -152,6 +158,48 @@ export default function SettingsClient({
               <p className="text-[10px] text-success/70">Orb verification</p>
             </div>
           </div>
+        )}
+      </section>
+
+      {/* ── Connected Accounts ── */}
+      <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-1" style={{ opacity: 0 }}>
+        <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+          Connected Accounts
+        </h2>
+
+        {gmailConnected ? (
+          <div className="flex items-center gap-3 rounded-xl bg-success/[0.06] p-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success/10">
+              <Mail size={16} className="text-success" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Google</p>
+              <p className="text-[10px] text-success/70">Connected</p>
+            </div>
+            <Check size={16} className="text-success" />
+          </div>
+        ) : (
+          <GoogleConnectCard
+            variant="settings"
+            onConnectStart={() => {
+              // Poll when user returns
+              const interval = setInterval(async () => {
+                try {
+                  const res = await fetch("/api/google/status");
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.connected) {
+                      setGmailConnected(true);
+                      clearInterval(interval);
+                    }
+                  }
+                } catch {}
+              }, 3000);
+              // Stop polling after 5 minutes
+              setTimeout(() => clearInterval(interval), 300000);
+            }}
+            onDismiss={() => {}}
+          />
         )}
       </section>
 

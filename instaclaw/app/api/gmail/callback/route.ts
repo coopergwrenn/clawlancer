@@ -8,19 +8,28 @@ export const dynamic = "force-dynamic";
 
 const GMAIL_TOKEN_COOKIE = "ic_gmail_token";
 const GMAIL_STATE_COOKIE = "ic_gmail_state";
+const MINI_USER_COOKIE = "ic_gmail_mini_user";
 const TOKEN_MAX_AGE_SECONDS = 300;
 
 /**
  * GET /api/gmail/callback
  *
- * Handles the OAuth callback after the user grants gmail.readonly scope
- * from the dashboard popup. Exchanges the authorization code for tokens,
- * stores them in the database for future use, sets a short-lived httpOnly
- * cookie for the immediate insights fetch, and redirects to the dashboard.
+ * Handles the OAuth callback after the user grants gmail.readonly scope.
+ * Supports both web dashboard users (NextAuth) and mini app users (cookie).
+ * Exchanges the authorization code for tokens, stores them in the database,
+ * and redirects appropriately.
  */
 export async function GET(req: NextRequest) {
+  // Dual auth: NextAuth session OR mini-app cookie
   const session = await auth();
-  if (!session?.user?.id) {
+  let userId = session?.user?.id;
+  const isMiniApp = !userId && !!req.cookies.get(MINI_USER_COOKIE)?.value;
+
+  if (!userId) {
+    userId = req.cookies.get(MINI_USER_COOKIE)?.value;
+  }
+
+  if (!userId) {
     return NextResponse.redirect(new URL("/signin", req.url));
   }
 
@@ -35,7 +44,7 @@ export async function GET(req: NextRequest) {
     logger.error("Gmail OAuth CSRF mismatch", {
       hasState: !!state,
       hasCookie: !!stateCookie,
-      userId: session.user.id,
+      userId,
       route: "gmail/callback",
     });
     const res = NextResponse.redirect(
@@ -49,7 +58,7 @@ export async function GET(req: NextRequest) {
   if (error) {
     logger.warn("Gmail OAuth denied", {
       error,
-      userId: session.user.id,
+      userId,
       route: "gmail/callback",
     });
     const res = NextResponse.redirect(new URL("/dashboard", req.url));
@@ -59,7 +68,7 @@ export async function GET(req: NextRequest) {
 
   if (!code) {
     logger.error("Gmail OAuth callback missing code", {
-      userId: session.user.id,
+      userId,
       route: "gmail/callback",
     });
     const res = NextResponse.redirect(new URL("/dashboard", req.url));
@@ -115,19 +124,30 @@ export async function GET(req: NextRequest) {
     const { error: dbError } = await supabase
       .from("instaclaw_users")
       .update({
+        gmail_connected: true,
         gmail_access_token: accessToken,
         gmail_refresh_token: refreshToken || null,
         gmail_connected_at: new Date().toISOString(),
       })
-      .eq("id", session.user.id);
+      .eq("id", userId);
 
     if (dbError) {
       logger.error("Failed to store Gmail tokens", {
         error: String(dbError),
-        userId: session.user.id,
+        userId,
         route: "gmail/callback",
       });
       // Non-fatal: continue with cookie-based flow
+    }
+
+    if (isMiniApp) {
+      // Mini app users: show success page, clear mini-app cookie
+      const res = NextResponse.redirect(
+        new URL("/api/gmail/connect-mini/success", req.url)
+      );
+      res.cookies.set(MINI_USER_COOKIE, "", { maxAge: 0, path: "/" });
+      res.cookies.set(GMAIL_STATE_COOKIE, "", { maxAge: 0, path: "/" });
+      return res;
     }
 
     // Store access token in httpOnly cookie for immediate insights fetch

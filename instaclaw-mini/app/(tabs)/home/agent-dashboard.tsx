@@ -1,7 +1,7 @@
 "use client";
 
 import { MiniKit, Tokens } from "@worldcoin/minikit-js";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -11,6 +11,8 @@ import {
   Zap,
   TrendingUp,
 } from "lucide-react";
+import GoogleConnectCard from "@/components/google-connect-card";
+import GooglePersonalizationModal from "@/components/google-personalization-modal";
 
 interface Agent {
   id: string;
@@ -35,14 +37,71 @@ export default function AgentDashboard({
   agent,
   usage,
   walletAddress,
+  gmailConnected: initialGmailConnected,
 }: {
   agent: Agent;
   usage: Usage | null;
   walletAddress: string;
+  gmailConnected: boolean;
 }) {
   const router = useRouter();
   const [showDiscovery, setShowDiscovery] = useState(true);
+  const [gmailConnected, setGmailConnected] = useState(initialGmailConnected);
+  const [googleCardDismissed, setGoogleCardDismissed] = useState(false);
+  const [showPersonalization, setShowPersonalization] = useState(false);
+  const [waitingForOAuth, setWaitingForOAuth] = useState(false);
   const isPaused = agent.credit_balance <= 0;
+
+  // Check session dismissal
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("google-card-dismissed")) setGoogleCardDismissed(true);
+    } catch {}
+  }, []);
+
+  // Poll for Google connection when user returns from OAuth in external browser
+  const checkGoogleStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/google/status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.connected) {
+          setGmailConnected(true);
+          setWaitingForOAuth(false);
+          // Trigger personalization modal
+          setShowPersonalization(true);
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  }, []);
+
+  // When waiting for OAuth, poll on visibility change (user returns to app)
+  useEffect(() => {
+    if (!waitingForOAuth) return;
+
+    async function onVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        // Small delay to let the callback finish on instaclaw.io
+        await new Promise((r) => setTimeout(r, 1500));
+        const connected = await checkGoogleStatus();
+        if (!connected) {
+          // Try again after a bit more time
+          setTimeout(checkGoogleStatus, 3000);
+        }
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    // Also poll periodically while waiting
+    const interval = setInterval(checkGoogleStatus, 5000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [waitingForOAuth, checkGoogleStatus]);
   const isHealthy = agent.health_status === "healthy";
   const creditPct = Math.min(100, (agent.credit_balance / 25) * 100);
 
@@ -208,6 +267,28 @@ export default function AgentDashboard({
         </div>
       </div>
 
+      {/* ── Google Connect Card ── */}
+      {!gmailConnected && !googleCardDismissed && (
+        <GoogleConnectCard
+          variant="home"
+          onConnectStart={() => setWaitingForOAuth(true)}
+          onDismiss={() => {
+            setGoogleCardDismissed(true);
+            try { sessionStorage.setItem("google-card-dismissed", "1"); } catch {}
+          }}
+        />
+      )}
+
+      {/* Waiting indicator */}
+      {waitingForOAuth && !gmailConnected && (
+        <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(220,103,67,0.3)", borderTopColor: "transparent" }} />
+            <p className="text-xs text-muted">Waiting for Google connection... Come back after completing OAuth.</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Quick Actions ── */}
       <div className="animate-fade-in-up flex gap-3 stagger-2" style={{ opacity: 0 }}>
         <button
@@ -241,6 +322,16 @@ export default function AgentDashboard({
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── Personalization Modal ── */}
+      {showPersonalization && (
+        <GooglePersonalizationModal
+          onDone={() => {
+            setShowPersonalization(false);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

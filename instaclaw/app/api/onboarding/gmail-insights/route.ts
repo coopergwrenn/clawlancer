@@ -32,13 +32,34 @@ interface GmailMessageMeta {
  * The access token cookie is cleared after use — single-use by design.
  */
 export async function POST(req: NextRequest) {
+  // Dual auth: NextAuth session OR X-Mini-App-Token
   const session = await auth();
-  if (!session?.user?.id) {
+  let userId = session?.user?.id;
+
+  if (!userId) {
+    const { validateMiniAppToken } = await import("@/lib/security");
+    userId = await validateMiniAppToken(req) ?? undefined;
+  }
+
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Read the Gmail access token from the httpOnly cookie (set by callback route)
-  const accessToken = req.cookies.get(GMAIL_TOKEN_COOKIE)?.value;
+  // Read the Gmail access token from the httpOnly cookie (web dashboard)
+  // or from the database (mini app — no cookie available)
+  let accessToken = req.cookies.get(GMAIL_TOKEN_COOKIE)?.value;
+
+  if (!accessToken) {
+    // Fallback: read from database (mini app flow stores tokens there)
+    const supabase = getSupabase();
+    const { data: user } = await supabase
+      .from("instaclaw_users")
+      .select("gmail_access_token")
+      .eq("id", userId)
+      .single();
+    accessToken = user?.gmail_access_token;
+  }
+
   if (!accessToken) {
     return NextResponse.json(
       { error: "Gmail session expired. Please reconnect." },
@@ -217,19 +238,18 @@ Rules:
         gmail_insights: parsed.insights,
         gmail_profile_summary: parsed.summary,
       })
-      .eq("id", session.user.id);
+      .eq("id", userId);
 
     if (dbError) {
       logger.error("Failed to store Gmail insights", {
         error: String(dbError),
-        userId: session.user.id,
+        userId: userId,
         route: "gmail-insights",
       });
       // Non-fatal: still return insights to the frontend even if DB write fails
     }
 
     // ── 6b. Sync MEMORY.md to the VM in the background (non-blocking) ──
-    const userId = session.user.id;
     const parsedSummary = parsed.summary;
     const parsedInsights = parsed.insights;
     after(async () => {
