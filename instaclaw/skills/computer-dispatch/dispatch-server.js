@@ -40,10 +40,22 @@ function auditLog(entry) {
   fs.appendFile(AUDIT_LOG, line, () => {}); // fire-and-forget
 }
 
+// Rotate audit log on startup: keep last 1000 lines, max 1MB
+try {
+  if (fs.existsSync(AUDIT_LOG)) {
+    const stat = fs.statSync(AUDIT_LOG);
+    if (stat.size > 1024 * 1024) { // > 1MB
+      const lines = fs.readFileSync(AUDIT_LOG, "utf-8").split("\n");
+      fs.writeFileSync(AUDIT_LOG, lines.slice(-1000).join("\n") + "\n");
+      console.log(`[dispatch-server] Rotated audit log (was ${(stat.size / 1024).toFixed(0)}KB, kept last 1000 lines)`);
+    }
+  }
+} catch {}
+
 // ── Rate Limiting ──
 const RATE_LIMIT_INTERVAL_MS = 1000; // 1 command per second
 const RATE_LIMIT_MAX_PER_SESSION = 100; // max 100 commands per relay session
-const RATE_LIMIT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 min idle → disconnect
+const RATE_LIMIT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min idle → disconnect (was 5 min — too aggressive)
 
 let sessionCommandCount = 0;
 let lastCommandTime = 0;
@@ -213,7 +225,7 @@ wss.on("connection", (ws, req) => {
 
   // Heartbeat
   ws.isAlive = true;
-  ws.on("pong", () => { ws.isAlive = true; });
+  ws.on("pong", () => { ws.isAlive = true; missedPongs.set(ws, 0); });
 
   ws.on("message", (data, isBinary) => {
     if (isBinary) {
@@ -287,6 +299,32 @@ function finishRequest(id) {
   }
 }
 
+// ── Screenshot Queue (prevent concurrent screenshot race condition) ──
+let screenshotInFlight = false;
+let screenshotQueue = [];
+
+function sendToRelayQueued(command, timeoutMs = 30000) {
+  if (command.type === "screenshot" && screenshotInFlight) {
+    // Queue the screenshot request
+    return new Promise((resolve, reject) => {
+      screenshotQueue.push({ command, timeoutMs, resolve, reject });
+    });
+  }
+  if (command.type === "screenshot") {
+    screenshotInFlight = true;
+  }
+  return sendToRelay(command, timeoutMs).finally(() => {
+    if (command.type === "screenshot") {
+      screenshotInFlight = false;
+      // Process next queued screenshot if any
+      if (screenshotQueue.length > 0) {
+        const next = screenshotQueue.shift();
+        sendToRelayQueued(next.command, next.timeoutMs).then(next.resolve, next.reject);
+      }
+    }
+  });
+}
+
 // Send command to relay and wait for response
 function sendToRelay(command, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
@@ -309,17 +347,26 @@ function sendToRelay(command, timeoutMs = 30000) {
 }
 
 // ── Heartbeat interval ──
+// Relaxed: 45s interval, 2 missed pongs before terminating.
+// The relay may block on screenshot capture (usecomputer N-API is synchronous)
+// which delays pong responses. One missed pong is normal during screenshots.
+let missedPongs = new Map(); // ws → count
 const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (!ws.isAlive) {
-      console.log("[dispatch-server] Terminating stale relay connection");
-      ws.terminate();
-      return;
+      const missed = (missedPongs.get(ws) || 0) + 1;
+      missedPongs.set(ws, missed);
+      if (missed >= 2) {
+        console.log(`[dispatch-server] Terminating stale relay (${missed} missed pongs)`);
+        missedPongs.delete(ws);
+        ws.terminate();
+        return;
+      }
     }
     ws.isAlive = false;
     ws.ping();
   });
-}, 25000);
+}, 45000);
 
 wss.on("close", () => clearInterval(heartbeatInterval));
 
@@ -365,10 +412,10 @@ const unixServer = net.createServer((conn) => {
       }
       resetIdleTimer();
 
-      // Forward to relay
+      // Forward to relay (screenshots are queued to prevent race conditions)
       console.log(`[dispatch-server] Forwarding ${command.type} command to relay`);
       auditLog({ event: "command", type: command.type, params: command.type === "type" ? { text: "***" } : command.params });
-      const result = await sendToRelay(command);
+      const result = await sendToRelayQueued(command);
       console.log(`[dispatch-server] Got result for ${command.type}: ${JSON.stringify(result).substring(0, 100)}`);
       auditLog({ event: "result", type: command.type, success: !!result && !result.error });
       conn.write(JSON.stringify(result) + "\n");

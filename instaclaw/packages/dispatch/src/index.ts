@@ -147,8 +147,25 @@ async function interactiveSetup(existing: DispatchConfig | null): Promise<Dispat
 
   console.log("  First-time setup:\n");
 
-  const token = await ask("Gateway token", existing?.gatewayToken);
-  const vm = await ask("VM address (IP or hostname)", existing?.vmAddress);
+  let token = await ask("Gateway token", existing?.gatewayToken);
+  let vm = await ask("VM address (IP or hostname)", existing?.vmAddress);
+
+  // Input validation: detect swapped fields
+  const isHexLong = (s: string) => /^[0-9a-f]{32,}$/i.test(s);
+  const isIPish = (s: string) => /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s);
+
+  if (isHexLong(vm)) {
+    console.log(chalk.yellow("\n  That VM address looks like a gateway token (long hex string)."));
+    console.log(chalk.yellow("  The VM address should be an IP like 104.237.145.128"));
+    const swap = await ask("Did you swap the fields? Enter your VM IP now");
+    if (swap) { token = vm; vm = swap; }
+  } else if (isIPish(token)) {
+    console.log(chalk.yellow("\n  That gateway token looks like an IP address."));
+    console.log(chalk.yellow("  The gateway token should be a long hex string."));
+    const swap = await ask("Did you swap the fields? Enter your gateway token now");
+    if (swap) { vm = token; token = swap; }
+  }
+
   const portStr = await ask("Port", String(existing?.port || 8765));
 
   rl.close();

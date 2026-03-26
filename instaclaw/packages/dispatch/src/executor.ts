@@ -87,6 +87,11 @@ async function doClick(params: Record<string, unknown>): Promise<ExecutionResult
   const usecomputer = await getUC();
   const x = Number(params.x);
   const y = Number(params.y);
+
+  if (isNaN(x) || isNaN(y) || x < 0 || y < 0) {
+    return { success: false, error: `Invalid coordinates: (${params.x}, ${params.y}). Must be non-negative numbers.` };
+  }
+
   const coordMap = params.coordMap ? String(params.coordMap) : lastCoordMap;
 
   let point = { x, y };

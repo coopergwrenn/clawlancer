@@ -155,7 +155,28 @@ If `.user-takeover` exists, **STOP all dispatch actions immediately**. The user 
 - **Max 1 command per second** — the dispatch server enforces this. If you send commands faster, they'll be rejected.
 - **Max 60 screenshots per minute** — each screenshot costs ~$0.003 in vision tokens.
 - **Max 100 commands per relay session** — after 100 commands, the relay disconnects. Tell the user to reconnect if more work is needed.
-- **5-minute idle timeout** — if no commands for 5 minutes, the relay auto-disconnects.
+- **30-minute idle timeout** — if no commands for 30 minutes, the relay auto-disconnects.
+
+**If a dispatch command returns an error containing "rate limit":** Tell the user: "I'm being rate limited on dispatch commands. I'll wait 30 seconds and try again." Then wait 30 seconds before retrying.
+
+**Before EVERY remote dispatch command:** Check relay status first:
+```bash
+bash ~/scripts/dispatch-remote-status.sh
+```
+If `connected: false`, tell the user: "Your dispatch relay isn't connected. Run `npx @instaclaw/dispatch` in your terminal to connect."
+
+## Sending Screenshots to Users (BOTH modes)
+
+After taking a screenshot (local OR remote), ALWAYS send it to the user:
+```bash
+# Local screenshot:
+bash ~/scripts/dispatch-screenshot.sh
+~/scripts/deliver_file.sh ~/.openclaw/workspace/dispatch-screenshot.jpg "Desktop screenshot"
+
+# Remote screenshot:
+bash ~/scripts/dispatch-remote-screenshot.sh
+~/scripts/deliver_file.sh ~/.openclaw/workspace/dispatch-remote-screenshot.jpg "Your Mac screenshot"
+```
 
 ## Token Cost Budget
 
