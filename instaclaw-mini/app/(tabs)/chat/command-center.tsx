@@ -241,18 +241,18 @@ export default function CommandCenter({
 
   return (
     <div className="flex min-h-full flex-col" style={{ background: "transparent" }}>
-      {/* Info banners — compact top section */}
+      {/* Info banner */}
       {!infoDismissed && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-          <div className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <Globe size={12} style={{ color: "#666", flexShrink: 0 }} />
-            <p className="flex-1 text-[10px] leading-tight" style={{ color: "#777" }}>
-              Also on <a href={tgUsername ? `https://t.me/${tgUsername}?start=world` : "#"} style={{ color: "#999" }}>Telegram</a> &amp; <a href="https://instaclaw.io" style={{ color: "#999" }}>instaclaw.io</a>, same email to sign in. World Chat coming soon
+          <div className="glass-card flex flex-1 items-center gap-2 rounded-xl px-3 py-2.5">
+            <Globe size={12} style={{ color: "#777", flexShrink: 0 }} />
+            <p className="flex-1 text-[10px] leading-tight" style={{ color: "#888" }}>
+              Also on <a href={tgUsername ? `https://t.me/${tgUsername}?start=world` : "#"} style={{ color: "#aaa" }}>Telegram</a> &amp; <a href="https://instaclaw.io" style={{ color: "#aaa" }}>instaclaw.io</a>, same email to sign in. World Chat coming soon
             </p>
             <button
               onClick={() => { setInfoDismissed(true); try { localStorage.setItem("instaclaw-info-dismissed", "1"); } catch {} }}
               className="shrink-0 text-[11px]"
-              style={{ color: "#555" }}
+              style={{ color: "#666" }}
             >
               ×
             </button>
@@ -274,9 +274,13 @@ export default function CommandCenter({
             onClick={() => setFilter(f)}
             className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium capitalize transition-all"
             style={{
-              background: filter === f ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-              color: filter === f ? "#fff" : "#888",
-              border: `1px solid ${filter === f ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.06)"}`,
+              background: filter === f
+                ? "linear-gradient(145deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06))"
+                : "rgba(255,255,255,0.04)",
+              color: filter === f ? "#fff" : "#777",
+              border: `1px solid ${filter === f ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.06)"}`,
+              boxShadow: filter === f ? "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 4px rgba(0,0,0,0.1)" : "none",
+              backdropFilter: "blur(8px)",
             }}
           >
             {f}
@@ -284,18 +288,24 @@ export default function CommandCenter({
         ))}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b px-4" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+      {/* Tabs — glass with sliding underline */}
+      <div className="relative flex px-4 pb-0.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         {(["tasks", "chat", "library"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="relative px-4 py-2.5 text-[13px] font-medium capitalize transition-colors"
-            style={{ color: tab === t ? "#fff" : "#666" }}
+            className="relative px-4 py-2.5 text-[13px] font-semibold capitalize transition-all duration-300"
+            style={{ color: tab === t ? "#fff" : "#555" }}
           >
             {t}
             {tab === t && (
-              <div className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full" style={{ background: "#DC6743" }} />
+              <div
+                className="absolute bottom-0 left-2 right-2 h-[2.5px] rounded-full"
+                style={{
+                  background: "linear-gradient(90deg, #DC6743, #e8845e)",
+                  boxShadow: "0 0 8px rgba(220,103,67,0.4)",
+                }}
+              />
             )}
           </button>
         ))}
@@ -314,13 +324,13 @@ export default function CommandCenter({
               </div>
             ) : filteredTasks.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
-                  <EmptyIcon size={24} style={{ color: "#666" }} />
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.1)" }}>
+                  <EmptyIcon size={24} style={{ color: "#777" }} />
                 </div>
                 <p className="text-sm font-medium text-white">{emptyState.title}</p>
-                <p className="mt-1 max-w-[240px] text-[12px]" style={{ color: "#666" }}>{emptyState.desc}</p>
+                <p className="mt-1 max-w-[240px] text-[12px]" style={{ color: "#777" }}>{emptyState.desc}</p>
                 {emptyState.hint && (
-                  <p className="mt-3 max-w-[260px] rounded-xl px-3 py-2 text-[11px]" style={{ background: "rgba(255,255,255,0.04)", color: "#888" }}>
+                  <p className="mt-3 max-w-[260px] glass-inner px-3 py-2 text-[11px]" style={{ color: "#999" }}>
                     {emptyState.hint}
                   </p>
                 )}
@@ -330,8 +340,7 @@ export default function CommandCenter({
                 {filteredTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="rounded-xl p-3.5"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                    className="glass-card rounded-xl p-3.5"
                   >
                     <div className="flex items-start gap-3">
                       {/* Status dot */}
@@ -440,10 +449,11 @@ export default function CommandCenter({
               onClick={() => { setInput(s); inputRef.current?.focus(); }}
               className="shrink-0 rounded-full px-4 py-2 text-[12px] font-medium transition-all active:scale-95"
               style={{
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                color: "#aaa",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.04)",
+                background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "#bbb",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)",
               }}
             >
               {s}
@@ -470,7 +480,7 @@ export default function CommandCenter({
       <div className="relative px-4 py-2.5" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)" }}>
         {/* + menu overlay */}
         {plusMenuOpen && (
-          <div className="absolute bottom-full left-4 right-4 mb-2 rounded-xl p-2" style={{ background: "rgba(30,30,30,0.95)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(12px)", zIndex: 50 }}>
+          <div className="absolute bottom-full left-4 right-4 mb-2 rounded-xl p-2" style={{ background: "linear-gradient(145deg, rgba(30,30,30,0.9), rgba(20,20,20,0.95))", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)", zIndex: 50 }}>
             <button onClick={() => { setWebSearch(!webSearch); setPlusMenuOpen(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors active:bg-white/5" style={{ color: webSearch ? "#4285F4" : "#aaa" }}>
               <Globe size={16} /> Web search {webSearch && <span className="ml-auto text-[10px]" style={{ color: "#4285F4" }}>ON</span>}
             </button>
@@ -487,7 +497,7 @@ export default function CommandCenter({
 
         {/* Model dropdown */}
         {modelMenuOpen && (
-          <div className="absolute bottom-full right-4 mb-2 w-40 rounded-xl p-1.5" style={{ background: "rgba(30,30,30,0.95)", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(12px)", zIndex: 50 }}>
+          <div className="absolute bottom-full right-4 mb-2 w-40 rounded-xl p-1.5" style={{ background: "linear-gradient(145deg, rgba(30,30,30,0.9), rgba(20,20,20,0.95))", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)", zIndex: 50 }}>
             {[
               { id: "Haiku 4.5", label: "Haiku 4.5" },
               { id: "Sonnet 4.6", label: "Sonnet 4.6" },
@@ -511,7 +521,7 @@ export default function CommandCenter({
           <div className="fixed inset-0 z-40" onClick={() => { setPlusMenuOpen(false); setModelMenuOpen(false); }} />
         )}
 
-        <div className="relative z-50 flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="relative z-50 flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", boxShadow: "0 2px 8px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
           {/* + button */}
           <button
             onClick={() => { setPlusMenuOpen(!plusMenuOpen); setModelMenuOpen(false); }}
