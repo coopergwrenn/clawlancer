@@ -15,8 +15,15 @@ const CACHE_TTL_MS = 4000; // 4s cache — allows 5s polling without duplicate S
  * GET /api/vm/dispatch-status
  *
  * Returns the status of the dispatch relay (user's computer connection).
- * Checks the dispatch-server Unix socket on the user's VM.
- * Cached for 4s to support fast polling without SSH overhead.
+ *
+ * Detection strategy (in order, first success wins):
+ *   1. Check active TCP connections on port 8765 via `ss` (most reliable)
+ *   2. Fall back to Unix socket status query (can be flaky after restarts)
+ *
+ * The Unix socket on dispatch-server is unreliable — it can enter a broken
+ * state where lsof says LISTEN but connect() returns ECONNREFUSED. The TCP
+ * check via `ss` directly measures what we care about: is a relay WebSocket
+ * connected to port 8765?
  */
 export async function GET() {
   try {
@@ -47,21 +54,29 @@ export async function GET() {
       return NextResponse.json(result);
     }
 
-    // SSH into VM and check dispatch status via Unix socket
     let ssh;
     try {
       ssh = await connectSSH(vm);
-      const sshResult = await ssh.execCommand(
-        'echo \'{"type":"status"}\' | nc -U -w 3 /tmp/dispatch.sock 2>/dev/null || echo \'{"connected":false,"error":"dispatch server not running"}\''
-      );
 
-      const status = JSON.parse(sshResult.stdout.trim() || '{"connected":false}');
+      // Primary check: count ESTABLISHED WebSocket connections on port 8765
+      // This is the most reliable method — directly checks the TCP state
+      const tcpResult = await ssh.execCommand(
+        'ss -tnp 2>/dev/null | grep ":8765" | grep -c ESTAB 2>/dev/null || echo 0'
+      );
+      const estabCount = parseInt(tcpResult.stdout.trim(), 10) || 0;
+
+      // Also check if dispatch-server process is running
+      const procResult = await ssh.execCommand(
+        'pgrep -f "node.*dispatch-server" > /dev/null 2>&1 && echo 1 || echo 0'
+      );
+      const serverRunning = procResult.stdout.trim() === "1";
+
+      const relayConnected = estabCount > 0;
 
       const result = {
-        dispatchServer: true,
-        relayConnected: status.connected ?? false,
-        pendingCommands: status.pendingCommands ?? 0,
-        uptime: status.uptime ?? 0,
+        dispatchServer: serverRunning,
+        relayConnected,
+        activeConnections: estabCount,
       };
       statusCache.set(userId, { result, ts: Date.now() });
       return NextResponse.json(result);
