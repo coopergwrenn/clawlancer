@@ -17,6 +17,7 @@ import {
   Film,
   Crosshair,
   AtSign,
+  RotateCw,
 } from "lucide-react";
 
 // ── Types ──
@@ -94,6 +95,7 @@ export default function SkillsPage() {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<Category>("all");
   const [toggling, setToggling] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [tab, setTab] = useState<"skills" | "integrations">("skills");
 
   useEffect(() => {
@@ -217,14 +219,20 @@ export default function SkillsPage() {
               const isIntegration = skill.itemType === "integration";
               const isComingSoon = skill.status === "coming_soon";
               const canToggle = !isBuiltIn && !isIntegration && !isComingSoon;
+              const isExpanded = expanded === skill.slug;
+              const isToggling = toggling === skill.slug;
 
               return (
                 <div
                   key={skill.slug}
-                  className="animate-fade-in-up glass-card rounded-xl px-4 py-3.5"
+                  className="animate-fade-in-up glass-card rounded-xl overflow-hidden"
                   style={{ opacity: 0, animationDelay: `${i * 0.03}s` }}
                 >
-                  <div className="flex items-center gap-3">
+                  {/* Main row — tappable to expand */}
+                  <div
+                    className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-white/[0.02] transition-colors"
+                    onClick={() => setExpanded(isExpanded ? null : skill.slug)}
+                  >
                     {/* Icon */}
                     <div
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
@@ -238,12 +246,12 @@ export default function SkillsPage() {
                       <Icon size={16} style={{ color: skill.enabled ? "#ddd" : "#666" }} />
                     </div>
 
-                    {/* Name + description */}
+                    {/* Name + truncated description */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium truncate">{skill.name}</span>
                         {isBuiltIn && (
-                          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(99,102,241,0.1)", color: "#818cf8" }}>
+                          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold" style={{ background: "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(22,163,74,0.15))", color: "#22c55e", boxShadow: "0 0 0 1px rgba(34,197,94,0.2)" }}>
                             Always On
                           </span>
                         )}
@@ -256,27 +264,44 @@ export default function SkillsPage() {
                       <p className="text-[11px] text-muted truncate">{skill.description}</p>
                     </div>
 
-                    {/* Toggle / Status */}
+                    {/* Toggle */}
                     {canToggle ? (
                       <button
-                        onClick={() => handleToggle(skill.slug, skill.enabled)}
-                        disabled={toggling === skill.slug}
-                        className="shrink-0 relative w-10 h-6 rounded-full transition-all"
+                        onClick={(e) => { e.stopPropagation(); handleToggle(skill.slug, skill.enabled); }}
+                        disabled={isToggling}
+                        className="shrink-0 relative w-12 h-7 rounded-full cursor-pointer disabled:cursor-wait"
                         style={{
                           background: skill.enabled
-                            ? "linear-gradient(180deg, rgba(220,103,67,0.8), rgba(200,85,52,0.9))"
-                            : "rgba(255,255,255,0.08)",
-                          opacity: toggling === skill.slug ? 0.5 : 1,
+                            ? "linear-gradient(135deg, #22c55e, #16a34a)"
+                            : "rgba(255,255,255,0.06)",
+                          boxShadow: skill.enabled
+                            ? "0 0 0 1px rgba(34,197,94,0.2), 0 2px 8px rgba(22,163,74,0.3), inset 0 1px 1px rgba(255,255,255,0.2)"
+                            : "0 0 0 1px rgba(255,255,255,0.06), inset 0 2px 4px rgba(0,0,0,0.15)",
+                          backdropFilter: "blur(8px)",
+                          transition: "background 0.3s, box-shadow 0.3s",
                         }}
                       >
-                        <div
-                          className="absolute top-0.5 h-5 w-5 rounded-full transition-all duration-200"
-                          style={{
-                            left: skill.enabled ? "calc(100% - 22px)" : "2px",
-                            background: "#fff",
-                            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                          }}
-                        />
+                        {isToggling ? (
+                          <RotateCw
+                            size={12}
+                            className="animate-spin absolute top-2 left-1/2 -translate-x-1/2"
+                            style={{ color: skill.enabled ? "#fff" : "#888" }}
+                          />
+                        ) : (
+                          <span
+                            className="absolute top-1 w-5 h-5 rounded-full"
+                            style={{
+                              left: skill.enabled ? "24px" : "4px",
+                              background: skill.enabled
+                                ? "linear-gradient(145deg, rgba(255,255,255,0.98), rgba(245,245,245,0.9))"
+                                : "linear-gradient(145deg, rgba(255,255,255,0.85), rgba(220,220,220,0.8))",
+                              boxShadow: skill.enabled
+                                ? "0 2px 6px rgba(0,0,0,0.15), 0 0 0 0.5px rgba(255,255,255,0.6), inset 0 1px 0 rgba(255,255,255,0.8)"
+                                : "0 1px 3px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
+                              transition: "left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                            }}
+                          />
+                        )}
                       </button>
                     ) : isIntegration ? (
                       <span
@@ -288,7 +313,41 @@ export default function SkillsPage() {
                       >
                         {skill.connected ? "Connected" : "Not connected"}
                       </span>
+                    ) : isBuiltIn ? (
+                      <div
+                        className="shrink-0 relative w-12 h-7 rounded-full"
+                        style={{
+                          background: "linear-gradient(135deg, rgba(34,197,94,0.3), rgba(22,163,74,0.2))",
+                          boxShadow: "0 0 0 1px rgba(34,197,94,0.15), inset 0 1px 0 rgba(255,255,255,0.05)",
+                          opacity: 0.6,
+                        }}
+                      >
+                        <span
+                          className="absolute top-1 w-5 h-5 rounded-full"
+                          style={{
+                            left: "24px",
+                            background: "linear-gradient(145deg, rgba(255,255,255,0.9), rgba(240,240,240,0.85))",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5)",
+                          }}
+                        />
+                      </div>
                     ) : null}
+                  </div>
+
+                  {/* Expanded description */}
+                  <div
+                    style={{
+                      maxHeight: isExpanded ? "200px" : "0",
+                      opacity: isExpanded ? 1 : 0,
+                      overflow: "hidden",
+                      transition: "max-height 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease",
+                    }}
+                  >
+                    <div className="px-4 pb-4 pt-0" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      <p className="text-[12px] leading-relaxed pt-3" style={{ color: "#999" }}>
+                        {skill.description}
+                      </p>
+                    </div>
                   </div>
                 </div>
               );
