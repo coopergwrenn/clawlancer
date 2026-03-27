@@ -102,11 +102,12 @@ export default function SkillsPage() {
         const res = await fetch("/api/proxy/skills");
         if (res.ok) {
           const data = await res.json();
-          // The API returns grouped by category — flatten into a single array
+          // The API returns { skills: { category1: [...], category2: [...] } }
           const flat: Skill[] = [];
-          if (data && typeof data === "object") {
-            for (const cat of Object.values(data)) {
-              if (Array.isArray(cat)) flat.push(...cat);
+          const grouped = data?.skills || data;
+          if (grouped && typeof grouped === "object") {
+            for (const cat of Object.values(grouped)) {
+              if (Array.isArray(cat)) flat.push(...(cat as Skill[]));
             }
           }
           setSkills(flat);
