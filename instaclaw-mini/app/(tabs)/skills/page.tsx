@@ -196,19 +196,21 @@ export default function SkillsPage() {
       {/* Skills list */}
       <div className="flex-1 overflow-y-auto px-4 pb-6">
         {loading ? (
-          <div className="flex flex-col items-center gap-3 py-16">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3">
             <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(220,103,67,0.3)", borderTopColor: "transparent" }} />
             <p className="text-xs text-muted">Loading skills...</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.03]">
               <Sparkles size={24} className="text-muted" />
             </div>
             <p className="max-w-[220px] text-sm leading-relaxed text-muted">
               {skills.length === 0
                 ? "No skills configured yet. Your agent will get skills after deployment completes."
-                : "No skills in this category."}
+                : tab === "integrations"
+                  ? "No integrations in this category."
+                  : "No skills in this category."}
             </p>
           </div>
         ) : (
