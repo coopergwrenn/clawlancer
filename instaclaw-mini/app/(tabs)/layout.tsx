@@ -6,8 +6,10 @@ export default function TabsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-[100dvh] flex-col">
-      <div className="scroll-area">{children}</div>
+    <div className="relative h-[100dvh]">
+      <div className="scroll-area h-full" style={{ paddingBottom: "90px" }}>
+        {children}
+      </div>
       <TabBar />
     </div>
   );

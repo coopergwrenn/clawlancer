@@ -34,10 +34,12 @@ export default function TabBar() {
 
   return (
     <div
-      className="px-5"
+      className="fixed bottom-0 left-0 right-0 z-50 px-5"
       style={{
         paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)",
         paddingTop: "6px",
+        background: "transparent",
+        pointerEvents: "none",
       }}
     >
       <nav
@@ -50,6 +52,7 @@ export default function TabBar() {
           border: "1px solid rgba(255,255,255,0.08)",
           boxShadow:
             "0 4px 24px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)",
+          pointerEvents: "auto",
         }}
       >
         {/* Sliding pill indicator */}
