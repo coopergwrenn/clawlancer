@@ -178,7 +178,7 @@ export default function CommandCenter({
     if (!msg || sending) return;
     setInput("");
 
-    // Always show conversation in Chat tab — switch there if on Tasks/Library
+    // Always show conversation in Chat tab
     if (tab !== "chat") setTab("chat");
 
     const userMsg: ChatMsg = { role: "user", content: msg, ts: Date.now() };
@@ -187,22 +187,83 @@ export default function CommandCenter({
     localStorage.setItem(CHAT_KEY, JSON.stringify(newMsgs.slice(-50)));
     setSending(true);
 
-    // Scroll to bottom after adding user message
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 50);
 
     try {
       const res = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
+        body: JSON.stringify({
+          message: msg,
+          stream: true,
+          toggles: { webSearch, deepResearch },
+        }),
       });
-      const data = await res.json();
-      const reply: ChatMsg = { role: "assistant", content: data.response || data.error || "No response", ts: Date.now() };
-      const updated = [...newMsgs, reply];
-      setChatMsgs(updated);
-      localStorage.setItem(CHAT_KEY, JSON.stringify(updated.slice(-50)));
 
-      // Also refresh tasks in background (agent may have created one)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Error ${res.status}`);
+      }
+
+      // Handle SSE streaming
+      if (res.headers.get("content-type")?.includes("text/event-stream") && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+        let buffer = "";
+
+        // Add placeholder assistant message that we'll update
+        const streamMsg: ChatMsg = { role: "assistant", content: "", ts: Date.now() };
+        let currentMsgs = [...newMsgs, streamMsg];
+        setChatMsgs(currentMsgs);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const chunk = JSON.parse(jsonStr);
+              // OpenAI format
+              const delta = chunk.choices?.[0]?.delta?.content;
+              // Anthropic format
+              const anthDelta = chunk.type === "content_block_delta" ? chunk.delta?.text : null;
+              const text = delta || anthDelta || "";
+
+              if (text) {
+                accumulated += text;
+                streamMsg.content = accumulated;
+                currentMsgs = [...newMsgs, { ...streamMsg }];
+                setChatMsgs(currentMsgs);
+                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+              }
+            } catch { /* skip malformed chunks */ }
+          }
+        }
+
+        // Finalize
+        if (!accumulated) accumulated = "No response";
+        const finalMsgs = [...newMsgs, { role: "assistant" as const, content: accumulated, ts: Date.now() }];
+        setChatMsgs(finalMsgs);
+        localStorage.setItem(CHAT_KEY, JSON.stringify(finalMsgs.slice(-50)));
+      } else {
+        // Non-streaming fallback
+        const data = await res.json();
+        const reply: ChatMsg = { role: "assistant", content: data.response || data.error || "No response", ts: Date.now() };
+        const updated = [...newMsgs, reply];
+        setChatMsgs(updated);
+        localStorage.setItem(CHAT_KEY, JSON.stringify(updated.slice(-50)));
+      }
+
+      // Refresh tasks in background
       setTimeout(async () => {
         try {
           const taskRes = await fetch("/api/proxy/tasks/list?limit=20&offset=0", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -212,12 +273,13 @@ export default function CommandCenter({
           }
         } catch {}
       }, 1000);
-    } catch {
-      const updated = [...newMsgs, { role: "assistant" as const, content: "Connection error. Please try again.", ts: Date.now() }];
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Connection error";
+      const updated = [...newMsgs, { role: "assistant" as const, content: errMsg, ts: Date.now() }];
       setChatMsgs(updated);
+      localStorage.setItem(CHAT_KEY, JSON.stringify(updated.slice(-50)));
     }
     setSending(false);
-    // Scroll to bottom after response
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 100);
     inputRef.current?.focus();
   }, [input, sending, tab, chatMsgs]);
