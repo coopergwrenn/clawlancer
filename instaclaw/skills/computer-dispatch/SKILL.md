@@ -34,8 +34,9 @@ bash ~/scripts/dispatch-remote-exec.sh "ls ~/Desktop/"
 
 Step 2 — Run the command:
 ```bash
-bash ~/scripts/dispatch-remote-exec.sh "mkdir -p ~/Desktop/Screenshots && mv ~/Desktop/Screenshot*.png ~/Desktop/Screenshot*.jpg ~/Desktop/Screenshots/ 2>/dev/null; ls ~/Desktop/Screenshots/ | wc -l"
+bash ~/scripts/dispatch-remote-exec.sh "mkdir -p ~/Desktop/Screenshots && find ~/Desktop -maxdepth 1 -name 'Screenshot*' -type f -exec mv {} ~/Desktop/Screenshots/ \; && ls ~/Desktop/Screenshots/ | wc -l"
 ```
+Note: macOS screenshot filenames have spaces ("Screenshot 2026-03-27 at 1.16 PM.png"). Use `find -exec mv` instead of `mv Screenshot*` to handle spaces correctly.
 
 Step 3 — Verify and report:
 ```bash
@@ -47,7 +48,7 @@ bash ~/scripts/dispatch-remote-screenshot.sh
 
 **Common commands via dispatch-remote-exec.sh:**
 - Create folder: `dispatch-remote-exec.sh "mkdir -p ~/Desktop/NewFolder"`
-- Move files: `dispatch-remote-exec.sh "mv ~/Desktop/*.png ~/Desktop/Screenshots/"`
+- Move files (with spaces in names): `dispatch-remote-exec.sh "find ~/Desktop -maxdepth 1 -name '*.png' -type f -exec mv {} ~/Desktop/Screenshots/ \;"`
 - List files: `dispatch-remote-exec.sh "ls -la ~/Desktop/"`
 - Delete files: `dispatch-remote-exec.sh "rm ~/Desktop/old-file.txt"` (ask user first!)
 - Rename: `dispatch-remote-exec.sh "mv ~/Desktop/old.txt ~/Desktop/new.txt"`
