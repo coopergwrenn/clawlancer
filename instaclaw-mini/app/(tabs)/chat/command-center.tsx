@@ -117,7 +117,7 @@ export default function CommandCenter({
         if (filter === "recurring") params.set("recurring", "true");
         else if (filter === "scheduled") params.set("status", "queued");
         else if (filter === "completed") params.set("status", "completed");
-        const res = await fetch(`/api/proxy/tasks/list?${params.toString()}`);
+        const res = await fetch(`/api/tasks/list?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
           setTasks(data.tasks || []);
@@ -187,8 +187,20 @@ export default function CommandCenter({
     // ── Tasks tab: create a task ──
     if (tab === "tasks") {
       setSending(true);
+
+      // Show optimistic placeholder immediately
+      const tempId = `temp-${Date.now()}`;
+      const placeholder: TaskItem = {
+        id: tempId, title: "Working on it...", description: msg.slice(0, 500),
+        status: "in_progress", is_recurring: false, frequency: null,
+        streak: 0, next_run_at: null, tools_used: [], error_message: null,
+        created_at: new Date().toISOString(),
+      };
+      setTasks((prev) => [placeholder, ...prev]);
+
       try {
-        const res = await fetch("/api/proxy/tasks/create", {
+        // This awaits full gateway execution and returns the completed task
+        const res = await fetch("/api/tasks/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: msg }),
@@ -196,27 +208,12 @@ export default function CommandCenter({
         if (res.ok) {
           const data = await res.json();
           if (data.task) {
-            // Add new task to list immediately (optimistic)
-            setTasks((prev) => [data.task, ...prev]);
-            // Poll for updates on this task
-            const pollTask = async (taskId: string, attempts: number) => {
-              if (attempts <= 0) return;
-              await new Promise((r) => setTimeout(r, 2000));
-              try {
-                const pollRes = await fetch(`/api/proxy/tasks/${taskId}`);
-                if (pollRes.ok) {
-                  const pollData = await pollRes.json();
-                  if (pollData.task) {
-                    setTasks((prev) => prev.map((t) => t.id === taskId ? pollData.task : t));
-                    if (pollData.task.status === "in_progress") {
-                      pollTask(taskId, attempts - 1);
-                    }
-                  }
-                }
-              } catch {}
-            };
-            pollTask(data.task.id, 30); // Poll up to 60 seconds
+            // Replace placeholder with real task
+            setTasks((prev) => prev.map((t) => t.id === tempId ? data.task : t));
           }
+        } else {
+          // Remove placeholder on error
+          setTasks((prev) => prev.filter((t) => t.id !== tempId));
         }
       } catch {}
       setSending(false);
@@ -312,7 +309,7 @@ export default function CommandCenter({
       // Refresh tasks in background
       setTimeout(async () => {
         try {
-          const taskRes = await fetch("/api/proxy/tasks/list?limit=20&offset=0", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+          const taskRes = await fetch("/api/tasks/list?limit=20&offset=0");
           if (taskRes.ok) {
             const taskData = await taskRes.json();
             setTasks(taskData.tasks || []);
