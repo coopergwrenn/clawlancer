@@ -47,20 +47,6 @@ export async function GET() {
       return NextResponse.json(result);
     }
 
-    // Remote dispatch requires Pro or Power tier
-    const allowedTiers = ["pro", "power"];
-    if (!allowedTiers.includes(vm.tier || "")) {
-      const result = {
-        dispatchServer: false,
-        relayConnected: false,
-        allowed: false,
-        tier: vm.tier,
-        error: "Remote dispatch requires Pro or Power tier.",
-      };
-      statusCache.set(userId, { result, ts: Date.now() });
-      return NextResponse.json(result);
-    }
-
     // SSH into VM and check dispatch status via Unix socket
     let ssh;
     try {
