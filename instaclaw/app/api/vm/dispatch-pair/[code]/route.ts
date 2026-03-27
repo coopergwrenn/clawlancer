@@ -6,8 +6,12 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/vm/dispatch-pair/:code — Redeem a pairing code.
- * Returns { token, vmAddress } if valid. Marks code as used (one-time).
- * No auth required — the code IS the auth.
+ * Returns { token, vmAddress } if valid and not expired.
+ *
+ * Codes are reusable within their 10-minute TTL window.
+ * This is intentional — macOS kills Terminal when granting Accessibility,
+ * forcing the user to reopen Terminal and re-run the command.
+ * The code only truly expires after the TTL, not after first use.
  */
 export async function GET(
   req: NextRequest,
@@ -22,7 +26,7 @@ export async function GET(
 
     const supabase = getSupabase();
 
-    // Look up the code
+    // Look up the code — allow reuse within TTL
     const { data: pairing } = await supabase
       .from("instaclaw_dispatch_pairing_codes")
       .select("code, gateway_token, vm_address, expires_at, used_at")
@@ -33,21 +37,19 @@ export async function GET(
       return NextResponse.json({ error: "Invalid or expired pairing code" }, { status: 404 });
     }
 
-    if (pairing.used_at) {
-      return NextResponse.json({ error: "Pairing code already used" }, { status: 410 });
-    }
-
     if (new Date(pairing.expires_at) < new Date()) {
-      return NextResponse.json({ error: "Pairing code expired" }, { status: 410 });
+      return NextResponse.json({ error: "Pairing code expired. Generate a new one at instaclaw.io/settings." }, { status: 410 });
     }
 
-    // Mark as used
-    await supabase
-      .from("instaclaw_dispatch_pairing_codes")
-      .update({ used_at: new Date().toISOString() })
-      .eq("code", pairing.code);
+    // Mark as used (for tracking), but allow re-redemption within TTL
+    if (!pairing.used_at) {
+      await supabase
+        .from("instaclaw_dispatch_pairing_codes")
+        .update({ used_at: new Date().toISOString() })
+        .eq("code", pairing.code);
+    }
 
-    logger.info("Pairing code redeemed", { code: pairing.code });
+    logger.info("Pairing code redeemed", { code: pairing.code, reuse: !!pairing.used_at });
 
     return NextResponse.json({
       token: pairing.gateway_token,

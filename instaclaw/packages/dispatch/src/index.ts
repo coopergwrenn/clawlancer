@@ -14,9 +14,15 @@ import { closeSupervisor, setMode } from "./supervisor.js";
 import chalk from "chalk";
 import readline from "readline";
 import os from "os";
+import fs from "fs";
+import path from "path";
 import type { DispatchConfig } from "./types.js";
 
 const API_BASE = "https://instaclaw.io";
+
+// Temp file to persist pairing code + args across Terminal restarts
+const RETRY_FILE = path.join(os.tmpdir(), "instaclaw-dispatch-retry.json");
+const RETRY_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
 async function main() {
   console.log(`
@@ -24,15 +30,91 @@ async function main() {
   ${chalk.dim("─────────────────────────────────────────────")}
   `);
 
-  // 1. Check permissions (macOS only)
+  const args = parseArgs();
+
+  // ── Auto-retry: check if we're resuming after a Terminal restart ──
+  const retry = loadRetryState();
+  if (!args.pair && !args.token && retry) {
+    console.log(`  ${chalk.cyan("↻")} Resuming after Terminal restart...`);
+    console.log(`  ${chalk.dim("Pairing code:")} ${chalk.bold(retry.pair)}\n`);
+    args.pair = retry.pair;
+    if (retry.autonomous) args.autonomous = true;
+    clearRetryState();
+  }
+
+  // ── 1. Check permissions FIRST (before consuming pairing code) ──
   if (os.platform() === "darwin") {
     console.log("  Checking permissions...");
     const perms = checkPermissions();
-    printPermissionGuide(perms);
 
-    if (perms.screenRecording === false || perms.accessibility === false) {
-      await waitForEnter();
+    if (perms.accessibility === false || perms.screenRecording === false) {
+      const terminal = getTerminalName();
+
+      // Save state so we can auto-resume after Terminal restart
+      if (args.pair) {
+        saveRetryState({ pair: args.pair, autonomous: args.autonomous });
+      }
+
+      console.log("");
+
+      if (perms.accessibility === false) {
+        console.log(`  ${chalk.red("✗")} Accessibility: ${chalk.bold("NOT GRANTED")}`);
+        console.log(`    → System Settings → Privacy & Security → Accessibility`);
+        console.log(`    → Enable "${terminal}"`);
+        console.log("");
+        console.log(chalk.yellow(`  ⚠  Enabling Accessibility will close ${terminal}.`));
+        console.log(chalk.yellow(`     Don't worry — just reopen ${terminal} and run the same command.`));
+        if (args.pair) {
+          console.log(chalk.green(`     Your pairing code ${chalk.bold(args.pair)} will still work.`));
+        }
+        console.log("");
+      }
+
+      if (perms.screenRecording === false) {
+        console.log(`  ${chalk.red("✗")} Screen Recording: ${chalk.bold("NOT GRANTED")}`);
+        console.log(`    → System Settings → Privacy & Security → Screen Recording`);
+        console.log(`    → Enable "${terminal}"`);
+        console.log("");
+      }
+
+      if (perms.accessibility === true && perms.screenRecording === false) {
+        // Only Screen Recording is missing — Terminal won't be killed
+        console.log(`  Grant Screen Recording, then press ${chalk.bold("Enter")} to continue...`);
+        await waitForEnter();
+        // Re-check
+        const recheck = checkPermissions();
+        if (recheck.screenRecording === false) {
+          console.log(`  ${chalk.yellow("⚠")} Screen Recording still not granted. Screenshots may not work.\n`);
+        } else {
+          console.log(`  ${chalk.green("✓")} Screen Recording: OK\n`);
+        }
+      } else if (perms.accessibility === false) {
+        // Accessibility is missing — Terminal WILL be killed
+        console.log(`  After granting permissions and reopening ${terminal}, run:`);
+        console.log("");
+        if (args.pair) {
+          console.log(`  ${chalk.cyan(`npx @instaclaw/dispatch@0.5.0 --pair ${args.pair}`)}`);
+        } else {
+          console.log(`  ${chalk.cyan("npx @instaclaw/dispatch")}`);
+        }
+        console.log("");
+        console.log(`  ${chalk.dim("Or just reopen Terminal — we'll auto-resume if possible.")}`);
+        console.log("");
+        console.log(`  Press ${chalk.bold("Enter")} when ready (or grant Accessibility and Terminal will restart)...`);
+        await waitForEnter();
+
+        // If we get here, user pressed Enter without Terminal being killed
+        const recheck = checkPermissions();
+        if (recheck.accessibility === false) {
+          console.log(`\n  ${chalk.yellow("⚠")} Accessibility still not granted. Click/type commands will fail.`);
+          console.log(`  ${chalk.dim("Continuing anyway — screenshots may still work.\n")}`);
+        } else {
+          console.log(`\n  ${chalk.green("✓")} Permissions: all OK\n`);
+          clearRetryState();
+        }
+      }
     } else {
+      // All permissions OK — run functional test
       console.log("  Running permission test...");
       const test = await runPermissionTest();
       if (test.ok) {
@@ -41,12 +123,12 @@ async function main() {
         console.log(`  ${chalk.yellow("⚠")} ${test.error}`);
         console.log("  Continuing anyway — some commands may fail.\n");
       }
+      clearRetryState();
     }
   }
 
-  // 2. Resolve config: --pair, --token+--vm, saved config, or interactive
+  // ── 2. Resolve config: --pair, --token+--vm, saved config, or interactive ──
   let config = loadConfig();
-  const args = parseArgs();
 
   // Path A: Pairing code (simplest)
   if (args.pair) {
@@ -56,6 +138,7 @@ async function main() {
       config = { gatewayToken: result.token, vmAddress: result.vmAddress, port: 8765, mode: "supervised" };
       saveConfig(config);
       console.log(`  ${chalk.green("✓")} Paired successfully\n`);
+      clearRetryState();
     } else {
       process.exit(1);
     }
@@ -87,7 +170,7 @@ async function main() {
   console.log(`  ${chalk.dim("Mode:")} ${config.mode}`);
   console.log(`  ${chalk.dim("Token:")} ${config.gatewayToken.substring(0, 8)}...\n`);
 
-  // 3. Connect to VM
+  // ── 3. Connect to VM ──
   connect({
     vmAddress: config.vmAddress,
     port: config.port,
@@ -128,13 +211,51 @@ async function main() {
     },
   });
 
-  // 4. Ctrl+C
+  // ── 4. Ctrl+C ──
   process.on("SIGINT", () => {
     console.log(`\n  ${chalk.dim("Disconnecting...")}`);
     disconnect();
     closeSupervisor();
     process.exit(0);
   });
+}
+
+// ── Retry State (persists across Terminal restarts) ──
+
+function saveRetryState(state: { pair: string; autonomous?: boolean }) {
+  try {
+    fs.writeFileSync(RETRY_FILE, JSON.stringify({ ...state, ts: Date.now() }));
+  } catch {}
+}
+
+function loadRetryState(): { pair: string; autonomous?: boolean } | null {
+  try {
+    if (!fs.existsSync(RETRY_FILE)) return null;
+    const data = JSON.parse(fs.readFileSync(RETRY_FILE, "utf-8"));
+    // Only use if recent (within 10 min)
+    if (Date.now() - data.ts > RETRY_MAX_AGE_MS) {
+      clearRetryState();
+      return null;
+    }
+    if (!data.pair) return null;
+    return { pair: data.pair, autonomous: data.autonomous };
+  } catch {
+    return null;
+  }
+}
+
+function clearRetryState() {
+  try { fs.unlinkSync(RETRY_FILE); } catch {}
+}
+
+function getTerminalName(): string {
+  const terminal = process.env.TERM_PROGRAM || "your terminal app";
+  return ({
+    "Apple_Terminal": "Terminal",
+    "iTerm.app": "iTerm2",
+    "vscode": "Visual Studio Code",
+    "WarpTerminal": "Warp",
+  } as Record<string, string>)[terminal] || terminal;
 }
 
 // ── Pairing Code ──

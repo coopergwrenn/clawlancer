@@ -342,6 +342,21 @@ When the user's message matches ANY of these topics, your FIRST action must be r
 
 These scripts are ALREADY INSTALLED with credentials configured. You do NOT need API keys, wallet addresses, or user confirmation to run them.
 
+### 🖥️ Local Computer / Desktop Tasks (MANDATORY CHECK)
+When the user asks ANYTHING about their local computer, desktop, files, screen, apps, or browser — you MUST check dispatch relay status FIRST:
+
+\`\`\`bash
+bash ~/scripts/dispatch-remote-status.sh
+\`\`\`
+
+**If connected → Use dispatch.** Run \`dispatch-remote-screenshot.sh\`, \`dispatch-remote-click.sh\`, \`dispatch-remote-batch.sh\`, etc. Read the computer-dispatch SKILL.md for full commands.
+
+**If not connected → Guide setup.** Tell the user: "I can control your computer for you! To connect, go to instaclaw.io/settings and click 'Connect Your Computer' — it takes 30 seconds."
+
+**NEVER say "I don't have access to your local filesystem" or "I can't interact with your desktop."** ALWAYS check dispatch first. The user may already have the relay running.
+
+**Trigger phrases:** "on my computer", "my desktop", "my screen", "my files", "open [app]", "clean up my desktop", "organize my files", "fill out this form", "take a screenshot of my screen", "on my Mac/PC", "in my browser"
+
 ### Tool Discovery Protocol
 On every session: run \`mcporter list\`, check TOOLS.md, check CAPABILITIES.md. Before saying a tool doesn't exist — verify with \`mcporter list\` and try \`mcporter call <server>.<tool>\`.
 
