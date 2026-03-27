@@ -626,7 +626,7 @@ export default function CommandCenter({
       </div>
 
       {/* Suggestion chips */}
-      {((tab === "tasks" && filteredTasks.length === 0) || (tab === "chat" && chatMsgs.length === 0)) && (
+      {(tab === "tasks" || (tab === "chat" && chatMsgs.length === 0)) && (
         <div className="flex gap-2 overflow-x-auto px-4 py-2 no-scrollbar">
           {suggestions.map((s) => (
             <button
