@@ -173,56 +173,52 @@ export default function CommandCenter({
   }, [chatMsgs, sending, tab]);
 
   // Send message (chat tab) or create task (tasks tab)
-  const handleSend = useCallback(async () => {
-    const msg = input.trim();
+  const handleSend = useCallback(async (directMsg?: string) => {
+    const msg = (directMsg || input).trim();
     if (!msg || sending) return;
     setInput("");
 
-    if (tab === "chat") {
-      const userMsg: ChatMsg = { role: "user", content: msg, ts: Date.now() };
-      const newMsgs = [...chatMsgs, userMsg];
-      setChatMsgs(newMsgs);
-      localStorage.setItem(CHAT_KEY, JSON.stringify(newMsgs.slice(-50)));
-      setSending(true);
+    // Always show conversation in Chat tab — switch there if on Tasks/Library
+    if (tab !== "chat") setTab("chat");
 
-      try {
-        const res = await fetch("/api/chat/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: msg }),
-        });
-        const data = await res.json();
-        const reply: ChatMsg = { role: "assistant", content: data.response || data.error || "No response", ts: Date.now() };
-        const updated = [...newMsgs, reply];
-        setChatMsgs(updated);
-        localStorage.setItem(CHAT_KEY, JSON.stringify(updated.slice(-50)));
-      } catch {
-        const updated = [...newMsgs, { role: "assistant" as const, content: "Connection error.", ts: Date.now() }];
-        setChatMsgs(updated);
-      }
-      setSending(false);
-    } else {
-      // Tasks tab — create a task via chat/send (agent processes it)
-      setSending(true);
-      try {
-        await fetch("/api/chat/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: msg }),
-        });
-        // Refresh tasks after a short delay
-        setTimeout(async () => {
-          try {
-            const res = await fetch("/api/proxy/tasks/list?limit=20&offset=0", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-            if (res.ok) {
-              const data = await res.json();
-              setTasks(data.tasks || []);
-            }
-          } catch {}
-        }, 3000);
-      } catch {}
-      setSending(false);
+    const userMsg: ChatMsg = { role: "user", content: msg, ts: Date.now() };
+    const newMsgs = [...chatMsgs, userMsg];
+    setChatMsgs(newMsgs);
+    localStorage.setItem(CHAT_KEY, JSON.stringify(newMsgs.slice(-50)));
+    setSending(true);
+
+    // Scroll to bottom after adding user message
+    setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 50);
+
+    try {
+      const res = await fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg }),
+      });
+      const data = await res.json();
+      const reply: ChatMsg = { role: "assistant", content: data.response || data.error || "No response", ts: Date.now() };
+      const updated = [...newMsgs, reply];
+      setChatMsgs(updated);
+      localStorage.setItem(CHAT_KEY, JSON.stringify(updated.slice(-50)));
+
+      // Also refresh tasks in background (agent may have created one)
+      setTimeout(async () => {
+        try {
+          const taskRes = await fetch("/api/proxy/tasks/list?limit=20&offset=0", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+          if (taskRes.ok) {
+            const taskData = await taskRes.json();
+            setTasks(taskData.tasks || []);
+          }
+        } catch {}
+      }, 1000);
+    } catch {
+      const updated = [...newMsgs, { role: "assistant" as const, content: "Connection error. Please try again.", ts: Date.now() }];
+      setChatMsgs(updated);
     }
+    setSending(false);
+    // Scroll to bottom after response
+    setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 100);
     inputRef.current?.focus();
   }, [input, sending, tab, chatMsgs]);
 
@@ -394,30 +390,45 @@ export default function CommandCenter({
           <div className="flex-1 flex flex-col px-4 py-3">
             {chatMsgs.length === 0 && !sending ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
-                  <Zap size={24} style={{ color: "#666" }} />
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.1)" }}>
+                  <Zap size={24} style={{ color: "#777" }} />
                 </div>
                 <p className="text-sm font-medium text-white">Chat with your agent</p>
-                <p className="mt-1 max-w-[240px] text-[12px]" style={{ color: "#666" }}>Same AI, same skills, same memory.</p>
+                <p className="mt-1 max-w-[240px] text-[12px]" style={{ color: "#777" }}>Same AI, same skills, same memory. Tap a suggestion below or type anything.</p>
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {chatMsgs.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}>
                     <div
-                      className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${msg.role === "user" ? "rounded-br-sm" : "rounded-bl-sm"}`}
-                      style={{ background: msg.role === "user" ? "linear-gradient(135deg, #DC6743, #c2553a)" : "rgba(255,255,255,0.08)", color: "#fff" }}
+                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed ${msg.role === "user" ? "rounded-br-md" : "rounded-bl-md"}`}
+                      style={msg.role === "user"
+                        ? {
+                            background: "linear-gradient(135deg, rgba(220,103,67,0.8), rgba(194,85,58,0.85))",
+                            backdropFilter: "blur(8px)",
+                            border: "1px solid rgba(255,255,255,0.1)",
+                            boxShadow: "0 2px 8px rgba(220,103,67,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
+                            color: "#fff",
+                          }
+                        : {
+                            background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
+                            backdropFilter: "blur(12px)",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            boxShadow: "0 1px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)",
+                            color: "#ddd",
+                          }
+                      }
                     >
                       {msg.content}
                     </div>
                   </div>
                 ))}
                 {sending && (
-                  <div className="flex justify-start">
-                    <div className="flex gap-1.5 rounded-2xl rounded-bl-sm px-4 py-3" style={{ background: "rgba(255,255,255,0.08)" }}>
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(255,255,255,0.4)", animation: "dot 1.4s infinite 0s" }} />
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(255,255,255,0.4)", animation: "dot 1.4s infinite 0.2s" }} />
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(255,255,255,0.4)", animation: "dot 1.4s infinite 0.4s" }} />
+                  <div className="flex justify-start animate-fade-in">
+                    <div className="flex gap-1.5 rounded-2xl rounded-bl-md px-4 py-3.5" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
+                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(220,103,67,0.6)", animation: "dot 1.4s infinite 0s" }} />
+                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(220,103,67,0.6)", animation: "dot 1.4s infinite 0.2s" }} />
+                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(220,103,67,0.6)", animation: "dot 1.4s infinite 0.4s" }} />
                     </div>
                   </div>
                 )}
@@ -446,7 +457,7 @@ export default function CommandCenter({
           {suggestions.map((s) => (
             <button
               key={s}
-              onClick={() => { setInput(s); inputRef.current?.focus(); }}
+              onClick={() => handleSend(s)}
               className="shrink-0 rounded-full px-4 py-2 text-[12px] font-medium transition-all active:scale-95"
               style={{
                 background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
@@ -585,7 +596,7 @@ export default function CommandCenter({
 
           {/* Send button */}
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all active:scale-90 disabled:opacity-20"
             style={{
