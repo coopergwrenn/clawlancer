@@ -208,12 +208,12 @@ export default function CommandCenter({
         if (res.ok) {
           const data = await res.json();
           if (data.task) {
-            // Replace placeholder with real task
-            setTasks((prev) => prev.map((t) => t.id === tempId ? data.task : t));
+            // Replace placeholder with real task, remove any temp entries
+            setTasks((prev) => [data.task, ...prev.filter((t) => !t.id.startsWith("temp-"))]);
           }
         } else {
           // Remove placeholder on error
-          setTasks((prev) => prev.filter((t) => t.id !== tempId));
+          setTasks((prev) => prev.filter((t) => !t.id.startsWith("temp-")));
         }
       } catch {}
       setSending(false);
@@ -412,19 +412,6 @@ export default function CommandCenter({
         {/* ── Tasks Tab ── */}
         {tab === "tasks" && (
           <div className="flex-1 flex flex-col px-4 py-3">
-            {/* Creating task indicator — matches web app "Working on it..." */}
-            {sending && tab === "tasks" && (
-              <div className="glass-card rounded-xl p-4 mb-2.5 flex items-start gap-3.5">
-                <div className="w-7 h-7 rounded-full shrink-0 relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)" }}>
-                  <div className="absolute inset-0 rounded-full" style={{ background: "conic-gradient(from 0deg, transparent 0%, rgba(99,102,241,0.5) 30%, transparent 55%)", animation: "spin 2s linear infinite" }} />
-                  <div className="w-2 h-2 rounded-full relative z-10" style={{ background: "radial-gradient(circle, #818cf8, #6366f1)" }} />
-                </div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: "#818cf8" }}>Working on it...</p>
-                  <p className="text-xs mt-0.5" style={{ color: "#888" }}>Your agent is processing this task</p>
-                </div>
-              </div>
-            )}
             {loadingTasks ? (
               <div className="space-y-2.5">
                 {[1, 2, 3].map((i) => (
