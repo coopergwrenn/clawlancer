@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { MiniKit, Tokens } from "@worldcoin/minikit-js";
 import {
   Wallet,
   Shield,
@@ -127,9 +128,49 @@ export default function SettingsClient({
   const router = useRouter();
   const [gmailConnected, setGmailConnected] = useState(initialGmailConnected);
 
+  const [paying, setPaying] = useState(false);
+
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.replace("/");
+  }
+
+  async function handleAddCredits() {
+    if (paying) return;
+    setPaying(true);
+    MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
+    try {
+      const res = await fetch("/api/delegate/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier: "try_it" }),
+      });
+      const { reference, tokenAmount } = await res.json();
+      const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim();
+      if (!recipientAddress) { setPaying(false); return; }
+
+      const payResult = await MiniKit.commandsAsync.pay({
+        reference,
+        to: recipientAddress,
+        tokens: [{ symbol: Tokens.WLD, token_amount: tokenAmount }],
+        description: "Add credits to your InstaClaw agent",
+      });
+
+      if (payResult.finalPayload.status === "success") {
+        await fetch("/api/delegate/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reference,
+            transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
+          }),
+        });
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("Payment error:", err);
+    }
+    setPaying(false);
   }
 
   return (
@@ -259,10 +300,11 @@ export default function SettingsClient({
             )}
             <div className="flex gap-2">
               <button
-                onClick={() => router.push("/home")}
-                className="btn-primary flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold"
+                onClick={handleAddCredits}
+                disabled={paying}
+                className="btn-primary flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
               >
-                <Zap size={14} fill="currentColor" /> Top up with WLD
+                <Zap size={14} fill="currentColor" /> {paying ? "Processing..." : "Top up with WLD"}
               </button>
               <button
                 onClick={async () => {
@@ -294,10 +336,11 @@ export default function SettingsClient({
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => router.push("/home")}
-                className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
+                onClick={handleAddCredits}
+                disabled={paying}
+                className="btn-primary flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
               >
-                Pay with WLD
+                {paying ? "Processing..." : "Pay with WLD"}
               </button>
               <button
                 onClick={async () => {
