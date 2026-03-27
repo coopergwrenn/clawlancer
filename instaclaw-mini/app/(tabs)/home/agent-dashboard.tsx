@@ -1,7 +1,7 @@
 "use client";
 
 import { MiniKit, Tokens } from "@worldcoin/minikit-js";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -11,6 +11,7 @@ import {
   Zap,
   TrendingUp,
   Mail,
+  Pencil,
 } from "lucide-react";
 import GoogleConnectCard from "@/components/google-connect-card";
 import GooglePersonalizationModal from "@/components/google-personalization-modal";
@@ -56,6 +57,9 @@ export default function AgentDashboard({
   const [waitingForOAuth, setWaitingForOAuth] = useState(false);
   const [waitingForSubscribe, setWaitingForSubscribe] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(subscription.hasSubscription);
+  const [editingName, setEditingName] = useState(false);
+  const [agentName, setAgentName] = useState<string>((agent as Record<string, unknown>).agent_name as string || "");
+  const nameInputRef = useRef<HTMLInputElement>(null);
   // Subscribers with daily limits aren't paused even at 0 credit_balance
   const isPaused = agent.credit_balance <= 0 && !isSubscribed;
 
@@ -247,7 +251,41 @@ export default function AgentDashboard({
       {/* ── Agent Status Card ── */}
       <div className="animate-fade-in-up glass-card rounded-2xl p-5 stagger-1" style={{ opacity: 0 }}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold tracking-tight">Your Agent</h2>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={agentName}
+              onChange={(e) => setAgentName(e.target.value.slice(0, 40))}
+              onBlur={async () => {
+                setEditingName(false);
+                try {
+                  await fetch("/api/agent/name", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: agentName }),
+                  });
+                } catch {}
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              className="text-lg font-bold tracking-tight bg-transparent border-b border-accent/40 outline-none w-40"
+              placeholder="Your Agent"
+              autoFocus
+            />
+          ) : (
+            <button
+              onClick={() => {
+                setEditingName(true);
+                setTimeout(() => nameInputRef.current?.focus(), 50);
+              }}
+              className="flex items-center gap-1.5 group"
+            >
+              <h2 className="text-lg font-bold tracking-tight">{agentName || "Your Agent"}</h2>
+              <Pencil size={12} className="text-muted opacity-0 group-hover:opacity-100 transition-opacity" style={{ opacity: 0.4 }} />
+            </button>
+          )}
           <div
             className={`status-badge flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${
               isPaused
