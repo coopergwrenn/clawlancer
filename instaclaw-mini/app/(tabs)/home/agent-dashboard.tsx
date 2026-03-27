@@ -309,7 +309,7 @@ export default function AgentDashboard({
         </div>
 
         {/* Credit balance with progress bar */}
-        <div className="mb-4 rounded-xl bg-white/[0.03] p-4">
+        <div className="mb-4 glass-inner p-4">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-accent" />
@@ -370,14 +370,14 @@ export default function AgentDashboard({
 
         {/* Today's stats */}
         <div className="flex gap-3">
-          <div className="flex-1 rounded-xl bg-white/[0.03] p-3">
+          <div className="flex-1 glass-inner p-3">
             <div className="mb-1 flex items-center gap-1.5">
               <MessageCircle size={12} className="text-muted" />
               <span className="text-[10px] font-medium tracking-wide text-muted">MESSAGES</span>
             </div>
             <p className="text-xl font-bold">{usage?.message_count ?? 0}</p>
           </div>
-          <div className="flex-1 rounded-xl bg-white/[0.03] p-3">
+          <div className="flex-1 glass-inner p-3">
             <div className="mb-1 flex items-center gap-1.5">
               <Activity size={12} className="text-muted" />
               <span className="text-[10px] font-medium tracking-wide text-muted">HEARTBEATS</span>
@@ -387,7 +387,7 @@ export default function AgentDashboard({
         </div>
 
         {/* Agent earnings */}
-        <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.03] p-3">
+        <div className="mt-3 flex items-center gap-3 glass-inner p-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10">
             <TrendingUp size={14} className="text-success" />
           </div>
