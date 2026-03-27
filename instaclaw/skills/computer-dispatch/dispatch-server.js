@@ -223,6 +223,13 @@ wss.on("connection", (ws, req) => {
   resetRateLimits();
   resetIdleTimer();
 
+  // Enable TCP keepalive to prevent NAT/firewall from killing idle connections
+  const rawSocket = req.socket;
+  if (rawSocket.setKeepAlive) {
+    rawSocket.setKeepAlive(true, 30000); // Send TCP keepalive every 30s
+    console.log("[dispatch-server] TCP keepalive enabled (30s interval)");
+  }
+
   // Heartbeat
   ws.isAlive = true;
   ws.on("pong", () => { ws.isAlive = true; missedPongs.set(ws, 0); });

@@ -34,11 +34,20 @@ export function connect(opts: ConnectionOptions): void {
 
   ws = new WebSocket(url, {
     rejectUnauthorized: false, // Accept self-signed certs (TOFU model)
+    handshakeTimeout: 10000,
   });
 
   ws.on("open", () => {
     reconnectDelay = 1000; // Reset backoff
     console.log(`  Connected to agent on ${opts.vmAddress}`);
+
+    // Enable TCP keepalive to prevent NAT/firewall/router from killing idle connections
+    // Without this, home routers typically drop idle TCP after 2-5 minutes
+    const socket = (ws as any)?._socket;
+    if (socket?.setKeepAlive) {
+      socket.setKeepAlive(true, 30000); // Send TCP keepalive every 30s
+    }
+
     opts.onConnect?.();
   });
 
