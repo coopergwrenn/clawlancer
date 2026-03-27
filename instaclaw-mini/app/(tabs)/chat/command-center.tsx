@@ -298,7 +298,7 @@ export default function CommandCenter({
   const tgUsername = telegramBotUsername?.replace(/^@/, "");
 
   return (
-    <div className="flex min-h-full flex-col" style={{ background: "transparent" }}>
+    <div className="flex h-full flex-col overflow-hidden" style={{ background: "transparent" }}>
       {/* Info banner */}
       {!infoDismissed && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-1">
@@ -369,8 +369,8 @@ export default function CommandCenter({
         ))}
       </div>
 
-      {/* Content */}
-      <div ref={scrollRef} className="flex-1 flex flex-col overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+      {/* Content — ONLY scrollable area */}
+      <div ref={scrollRef} className="flex-1 flex flex-col overflow-y-auto" style={{ minHeight: 0, WebkitOverflowScrolling: "touch" }}>
         {/* ── Tasks Tab ── */}
         {tab === "tasks" && (
           <div className="flex-1 flex flex-col px-4 py-3">
