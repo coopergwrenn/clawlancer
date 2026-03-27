@@ -1,0 +1,130 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth";
+import { getAgentStatus, supabase } from "@/lib/supabase";
+
+export const maxDuration = 120;
+
+/**
+ * POST /api/tasks/[id]/trigger — Manually trigger a recurring task.
+ * Re-executes via the gateway, same as initial creation.
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await requireSession();
+    const { id } = await params;
+
+    const { data: task } = await supabase()
+      .from("instaclaw_tasks")
+      .select("*")
+      .eq("id", id)
+      .eq("user_id", session.userId)
+      .single();
+
+    if (!task) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    if (!task.is_recurring || !["active", "failed"].includes(task.status)) {
+      return NextResponse.json({ error: "Only active/failed recurring tasks can be triggered" }, { status: 400 });
+    }
+
+    const agent = await getAgentStatus(session.userId);
+    if (!agent) {
+      return NextResponse.json({ error: "No agent assigned" }, { status: 404 });
+    }
+
+    const { data: vmData } = await supabase()
+      .from("instaclaw_vms")
+      .select("gateway_url, gateway_token")
+      .eq("id", agent.id)
+      .single();
+
+    if (!vmData?.gateway_url || !vmData?.gateway_token) {
+      return NextResponse.json({ error: "Agent not configured" }, { status: 503 });
+    }
+
+    // Mark as processing
+    await supabase()
+      .from("instaclaw_tasks")
+      .update({
+        processing_started_at: new Date().toISOString(),
+        consecutive_failures: 0,
+      })
+      .eq("id", id);
+
+    // Execute via gateway
+    try {
+      const gatewayRes = await fetch(`${vmData.gateway_url}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${vmData.gateway_token}`,
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          messages: [{ role: "user", content: task.description }],
+        }),
+      });
+
+      if (!gatewayRes.ok) {
+        await supabase()
+          .from("instaclaw_tasks")
+          .update({ status: "failed", error_message: `Gateway error: ${gatewayRes.status}`, processing_started_at: null })
+          .eq("id", id);
+        return NextResponse.json({ error: "Gateway error" }, { status: 502 });
+      }
+
+      const data = await gatewayRes.json();
+      const result = data.choices?.[0]?.message?.content || "";
+      const cleanResult = result.replace(/---TASK_META---[\s\S]*?---END_META---/, "").trim();
+
+      // Calculate next run
+      let nextRunAt: string | null = null;
+      if (task.frequency) {
+        const now = Date.now();
+        if (task.frequency.includes("hour")) nextRunAt = new Date(now + 3600000).toISOString();
+        else if (task.frequency.includes("week")) nextRunAt = new Date(now + 7 * 86400000).toISOString();
+        else nextRunAt = new Date(now + 86400000).toISOString(); // default: daily
+      }
+
+      await supabase()
+        .from("instaclaw_tasks")
+        .update({
+          result: cleanResult || task.result,
+          status: "active",
+          processing_started_at: null,
+          last_run_at: new Date().toISOString(),
+          next_run_at: nextRunAt,
+          streak: (task.streak || 0) + 1,
+        })
+        .eq("id", id);
+
+    } catch (err) {
+      await supabase()
+        .from("instaclaw_tasks")
+        .update({
+          status: "failed",
+          error_message: err instanceof Error ? err.message : "Execution failed",
+          processing_started_at: null,
+        })
+        .eq("id", id);
+    }
+
+    // Return updated task
+    const { data: updated } = await supabase()
+      .from("instaclaw_tasks")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    return NextResponse.json({ task: updated });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Failed to trigger task" }, { status: 500 });
+  }
+}

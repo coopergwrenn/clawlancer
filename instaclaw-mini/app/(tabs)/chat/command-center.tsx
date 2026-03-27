@@ -14,6 +14,10 @@ import {
   Trash2,
   RefreshCw,
   Search,
+  Play,
+  Pause,
+  Pencil,
+  X,
 } from "lucide-react";
 
 // ── Types ──
@@ -95,6 +99,11 @@ export default function CommandCenter({
   const [filter, setFilter] = useState<Filter>("all");
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTitleDraft, setEditTitleDraft] = useState("");
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -134,6 +143,32 @@ export default function CommandCenter({
     }
     loadTasks();
   }, [filter]);
+
+  // Background polling for in-progress tasks (matches web app: every 3s, 2min timeout)
+  useEffect(() => {
+    const inProgress = tasks.filter((t) => t.status === "in_progress" && !t.id.startsWith("temp-"));
+    if (inProgress.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const task of inProgress) {
+        try {
+          const res = await fetch(`/api/tasks/${task.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.task) {
+              setTasks((prev) => prev.map((t) => t.id === task.id ? data.task : t));
+              // Stop polling this task if it reached a terminal state
+              if (data.task.status !== "in_progress") {
+                setPollingIds((prev) => { const next = new Set(prev); next.delete(task.id); return next; });
+              }
+            }
+          }
+        } catch {}
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [tasks]);
 
   // Load personalized suggestions — cached first, then refresh from API
   useEffect(() => {
@@ -222,6 +257,7 @@ export default function CommandCenter({
         } else {
           // Remove placeholder on error
           setTasks((prev) => prev.filter((t) => !t.id.startsWith("temp-")));
+          setTaskError("Failed to create task. Please try again.");
         }
       } catch {}
       setSending(false);
@@ -420,6 +456,13 @@ export default function CommandCenter({
         {/* ── Tasks Tab ── */}
         {tab === "tasks" && (
           <div className="flex-1 flex flex-col px-4 py-3">
+            {/* Error banner */}
+            {taskError && (
+              <div className="mb-2.5 rounded-xl p-3 flex items-center justify-between" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                <p className="text-[12px]" style={{ color: "#f87171" }}>{taskError}</p>
+                <button onClick={() => setTaskError(null)} className="text-xs" style={{ color: "#f87171" }}><X size={14} /></button>
+              </div>
+            )}
             {loadingTasks ? (
               <div className="space-y-2.5">
                 {[1, 2, 3].map((i) => (
@@ -617,16 +660,46 @@ export default function CommandCenter({
                           <p className="text-xs mt-3" style={{ color: "#666" }}>No result yet.</p>
                         )}
 
-                        {/* Action buttons — matches web app */}
+                        {/* Action buttons — matches web app exactly */}
                         <div className="flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                          {/* Re-run */}
-                          {(task.status === "completed" || task.status === "failed") && (
+                          {/* Run now / Resume / Re-run — context-dependent */}
+                          {task.is_recurring && isActive ? (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, processing_started_at: new Date().toISOString() } : t));
+                                try {
+                                  const res = await fetch(`/api/tasks/${task.id}/trigger`, { method: "POST" });
+                                  if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", color: "#22c55e" }}
+                            >
+                              <Play size={11} /> Run now
+                            </button>
+                          ) : isPaused ? (
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  await fetch(`/api/proxy/tasks/${task.id}/rerun`, { method: "POST" });
-                                  setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "in_progress", result: null } : t));
+                                  const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "active" }) });
+                                  if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", color: "#22c55e" }}
+                            >
+                              <Play size={11} /> Resume
+                            </button>
+                          ) : (isCompleted || isFailed) ? (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "in_progress", result: null, error_message: null } : t));
+                                try {
+                                  const res = await fetch(`/api/tasks/${task.id}/rerun`, { method: "POST" });
+                                  if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                 } catch {}
                               }}
                               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
@@ -634,24 +707,123 @@ export default function CommandCenter({
                             >
                               <RotateCw size={11} /> Re-run
                             </button>
+                          ) : null}
+
+                          {/* Pause (active recurring only) */}
+                          {isActive && task.is_recurring && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paused" }) });
+                                  if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              style={{ background: "rgba(156,163,175,0.06)", border: "1px solid rgba(156,163,175,0.12)", color: "#9ca3af" }}
+                            >
+                              <Pause size={11} /> Pause
+                            </button>
                           )}
 
-                          {/* Delete */}
+                          {/* Toggle complete (for non-recurring) */}
+                          {!task.is_recurring && (isCompleted || task.status === "queued") && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const newStatus = isCompleted ? "queued" : "completed";
+                                try {
+                                  const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus }) });
+                                  if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#aaa" }}
+                            >
+                              <Check size={11} /> {isCompleted ? "Mark undone" : "Mark done"}
+                            </button>
+                          )}
+
+                          {/* Edit title */}
                           <button
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.stopPropagation();
-                              try {
-                                await fetch(`/api/proxy/tasks/${task.id}`, { method: "DELETE" });
-                                setTasks((prev) => prev.filter((t) => t.id !== task.id));
-                                setExpandedTaskId(null);
-                              } catch {}
+                              setEditingTaskId(task.id);
+                              setEditTitleDraft(task.title);
                             }}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
-                            style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)", color: "#f87171" }}
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#aaa" }}
                           >
-                            <Trash2 size={11} /> Delete
+                            <Pencil size={11} /> Edit
                           </button>
+
+                          {/* Delete with confirmation */}
+                          {confirmDeleteId !== task.id ? (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(task.id); }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)", color: "#f87171" }}
+                            >
+                              <Trash2 size={11} /> Delete
+                            </button>
+                          ) : (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+                                  setTasks((prev) => prev.filter((t) => t.id !== task.id));
+                                  setExpandedTaskId(null);
+                                  setConfirmDeleteId(null);
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
+                              style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.25)", color: "#ef4444" }}
+                            >
+                              Confirm delete
+                            </button>
+                          )}
                         </div>
+
+                        {/* Edit title inline */}
+                        {editingTaskId === task.id && (
+                          <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="text"
+                              value={editTitleDraft}
+                              onChange={(e) => setEditTitleDraft(e.target.value)}
+                              className="flex-1 rounded-lg px-3 py-2 text-sm bg-transparent outline-none"
+                              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}
+                              autoFocus
+                              onKeyDown={async (e) => {
+                                if (e.key === "Enter") {
+                                  try {
+                                    const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: editTitleDraft }) });
+                                    if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
+                                  } catch {}
+                                  setEditingTaskId(null);
+                                }
+                                if (e.key === "Escape") setEditingTaskId(null);
+                              }}
+                            />
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: editTitleDraft }) });
+                                  if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
+                                } catch {}
+                                setEditingTaskId(null);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium"
+                              style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}
+                            >
+                              Save
+                            </button>
+                            <button onClick={() => setEditingTaskId(null)} className="text-[11px]" style={{ color: "#888" }}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
