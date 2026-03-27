@@ -4,9 +4,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 
 /**
- * Wraps page content with a smooth fade + slide transition
- * when navigating between tabs. Uses CSS transitions with
- * a brief exit→enter cycle on route change.
+ * Wraps page content with a smooth fade + slide transition.
+ * Cancels any in-progress transition immediately on rapid taps
+ * so switching feels snappy even when tapping quickly.
  */
 export default function PageTransition({
   children,
@@ -15,36 +15,33 @@ export default function PageTransition({
 }) {
   const pathname = usePathname();
   const [displayChildren, setDisplayChildren] = useState(children);
-  const [phase, setPhase] = useState<"visible" | "exiting" | "entering">("visible");
+  const [animating, setAnimating] = useState(false);
   const prevPathname = useRef(pathname);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (pathname === prevPathname.current) {
-      // Same route — just update children (e.g., page refresh)
+      // Same route — just update children
       setDisplayChildren(children);
       return;
     }
 
-    // Route changed — run exit → swap → enter transition
+    // Route changed — cancel any in-progress transition
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = undefined;
+    }
+
     prevPathname.current = pathname;
 
-    // Clear any pending timeout
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    // Swap content immediately, then animate in
+    setDisplayChildren(children);
+    setAnimating(true);
 
-    // Phase 1: Exit (fade out + slight slide)
-    setPhase("exiting");
-
-    // Phase 2: Swap content after exit completes
+    // Clear animation flag after enter completes
     timeoutRef.current = setTimeout(() => {
-      setDisplayChildren(children);
-      setPhase("entering");
-
-      // Phase 3: Enter complete
-      timeoutRef.current = setTimeout(() => {
-        setPhase("visible");
-      }, 250);
-    }, 120);
+      setAnimating(false);
+    }, 200);
 
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -53,27 +50,30 @@ export default function PageTransition({
 
   return (
     <div
-      className="page-transition"
+      className={animating ? "page-enter" : ""}
       style={{
-        opacity: phase === "exiting" ? 0 : 1,
-        transform:
-          phase === "exiting"
-            ? "translateY(6px) scale(0.99)"
-            : phase === "entering"
-              ? "translateY(0) scale(1)"
-              : "translateY(0) scale(1)",
-        transition:
-          phase === "exiting"
-            ? "opacity 0.12s ease-out, transform 0.12s ease-out"
-            : "opacity 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
-        willChange: "opacity, transform",
         minHeight: "100%",
         display: "flex",
-        flexDirection: "column" as const,
+        flexDirection: "column",
         flex: 1,
       }}
     >
       {displayChildren}
+      <style>{`
+        .page-enter {
+          animation: pageIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes pageIn {
+          from {
+            opacity: 0.6;
+            transform: translateY(4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
