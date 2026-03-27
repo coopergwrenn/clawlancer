@@ -1,4 +1,5 @@
 import TabBar from "@/components/tab-bar";
+import PageTransition from "@/components/page-transition";
 
 export default function TabsLayout({
   children,
@@ -7,7 +8,9 @@ export default function TabsLayout({
 }) {
   return (
     <div className="flex h-[100dvh] flex-col">
-      <div className="scroll-area">{children}</div>
+      <div className="scroll-area">
+        <PageTransition>{children}</PageTransition>
+      </div>
       <TabBar />
     </div>
   );
