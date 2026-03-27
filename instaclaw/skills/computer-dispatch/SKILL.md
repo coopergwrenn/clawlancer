@@ -11,6 +11,31 @@ metadata:
 
 You can control TWO computers: your own VM desktop AND the user's personal computer (when their relay is connected).
 
+## CRITICAL RULES (read first)
+
+**1. Shell commands over GUI — ALWAYS.** For file operations (create folders, move/copy/rename/delete files, organize, search), ALWAYS open Terminal and type shell commands. NEVER navigate Finder/Explorer GUI for file management. One shell command = 1 tool call. GUI navigation = 30+ tool calls and burns your entire context window.
+
+Bad (wastes context, slow):
+- Right-click desktop → New Folder → name it → drag files into it → 20 screenshots
+
+Good (fast, cheap):
+```bash
+bash ~/scripts/dispatch-remote-type.sh "mkdir -p ~/Desktop/Screenshots && mv ~/Desktop/Screenshot*.png ~/Desktop/Screenshots/"
+bash ~/scripts/dispatch-remote-press.sh "Return"
+```
+
+**2. Save task state every 5 actions.** During multi-step dispatch tasks, write your progress to `~/.openclaw/workspace/ACTIVE_TASK.md` every 5 actions so you can resume after context resets. Format:
+```
+## Active Task
+Request: [what the user asked]
+Status: IN_PROGRESS
+Completed: [what's done]
+Next: [exact next step]
+Updated: [timestamp]
+```
+
+**3. Batch over single actions.** Use `dispatch-remote-batch.sh` to combine multiple actions into one round-trip. See Batch Command section below.
+
 ## Two Modes
 
 ### Mode 1: Local Dispatch (Your VM Desktop)

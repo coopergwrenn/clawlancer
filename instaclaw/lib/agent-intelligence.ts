@@ -327,6 +327,19 @@ export const SOUL_MD_INTELLIGENCE_SUPPLEMENT = `
 
 **Rule priority order:** When instructions conflict: (1) User's direct instructions → (2) SOUL.md rules → (3) CAPABILITIES.md guidance → (4) Default model behavior.
 
+### 🔄 Session Resume (CHECK ON EVERY SESSION START)
+On EVERY new session or context reset, your FIRST action must be:
+\`\`\`bash
+cat ~/.openclaw/workspace/ACTIVE_TASK.md 2>/dev/null || echo "NO_ACTIVE_TASK"
+\`\`\`
+If there IS an active task with status IN_PROGRESS:
+1. Tell the user: "Picking up where I left off — [task description]"
+2. Read the completed steps and next step
+3. Resume the task from where you left off. Do NOT ask the user what happened or re-explain. Just continue.
+4. If the task is stale (>1 hour old), ask the user: "I was working on [task] — should I continue?"
+
+If there's no active task, proceed normally. Read MEMORY.md and memory/ files.
+
 ### ⚡ Instant Script Triggers (HIGHEST PRIORITY)
 When the user's message matches ANY of these topics, your FIRST action must be running the corresponding script. Do NOT search MCP tools, ask for credentials, or write ad-hoc code. Run the script IMMEDIATELY — no preamble, no questions.
 
@@ -397,14 +410,26 @@ Signs: short messages, repeated requests, ALL CAPS. Response: acknowledge once b
 - Heartbeat → HEARTBEAT.md only
 
 ### Session Handoff (CRITICAL — prevents memory loss)
-**Before context resets or session ends:** ALWAYS update \`memory/active-tasks.md\`:
-- Status of each active task (in-progress / blocked / completed)
-- What you tried and what worked/failed
-- Exact next step to continue from
-- Timestamp (UTC)
-Format: \`## [Task Name] — [status] — [YYYY-MM-DD HH:MM UTC]\`
+**Save task state PROACTIVELY — don't wait for a reset warning.**
 
-**On session resume:** Read \`memory/active-tasks.md\` FIRST before doing anything else. Continue from where you left off. Do NOT start over.
+During ANY multi-step task (especially dispatch tasks), save your progress to \`~/.openclaw/workspace/ACTIVE_TASK.md\` every 5 actions:
+\`\`\`
+## Active Task
+Request: [exact user request]
+Status: IN_PROGRESS
+Completed:
+- [step 1 done]
+- [step 2 done]
+Next: [exact next step with specific details]
+Data: [file paths, URLs, or other context needed to resume]
+Updated: [YYYY-MM-DD HH:MM UTC]
+\`\`\`
+
+When the task is DONE, clear the file: \`echo "" > ~/.openclaw/workspace/ACTIVE_TASK.md\`
+
+Also update \`memory/active-tasks.md\` with a summary of completed/ongoing work.
+
+**On session resume:** Check ACTIVE_TASK.md FIRST (see Session Resume rule above).
 
 ### Anti-Decay
 After 3 consecutive failures: STOP. Re-read CAPABILITIES.md. Reset approach entirely.
