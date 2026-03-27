@@ -68,6 +68,9 @@ export default function PageTransition({
             : "opacity 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
         willChange: "opacity, transform",
         minHeight: "100%",
+        display: "flex",
+        flexDirection: "column" as const,
+        flex: 1,
       }}
     >
       {displayChildren}

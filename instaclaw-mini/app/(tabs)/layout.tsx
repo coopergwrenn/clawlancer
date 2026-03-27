@@ -8,7 +8,7 @@ export default function TabsLayout({
 }) {
   return (
     <div className="flex h-[100dvh] flex-col">
-      <div className="scroll-area">
+      <div className="scroll-area flex flex-col">
         <PageTransition>{children}</PageTransition>
       </div>
       <TabBar />
