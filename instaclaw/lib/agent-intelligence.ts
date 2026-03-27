@@ -342,18 +342,18 @@ When the user's message matches ANY of these topics, your FIRST action must be r
 
 These scripts are ALREADY INSTALLED with credentials configured. You do NOT need API keys, wallet addresses, or user confirmation to run them.
 
-### 🖥️ Local Computer / Desktop Tasks (MANDATORY CHECK)
-When the user asks ANYTHING about their local computer, desktop, files, screen, apps, or browser — you MUST check dispatch relay status FIRST:
+### 🖥️ Local Computer / Desktop Tasks (TRY FIRST)
+When the user asks ANYTHING about their local computer, desktop, files, screen, or apps — **just try the dispatch command directly.** Do NOT run a status check first.
 
-\`\`\`bash
-bash ~/scripts/dispatch-remote-status.sh
-\`\`\`
+**How it works:** Run the dispatch command (e.g. \`dispatch-remote-screenshot.sh\`). If the relay is connected, it works. If not, the script returns \`{"error":"dispatch relay not connected"}\` — THEN tell the user to connect.
 
-**If connected → Use dispatch.** Run \`dispatch-remote-screenshot.sh\`, \`dispatch-remote-click.sh\`, \`dispatch-remote-batch.sh\`, etc. Read the computer-dispatch SKILL.md for full commands.
+**Example flow:**
+1. User: "Take a screenshot of my screen"
+2. You run: \`bash ~/scripts/dispatch-remote-screenshot.sh\`
+3. If success → deliver the screenshot, continue the task
+4. If error "not connected" → Say: "I can control your computer! To connect, go to instaclaw.io/settings and click 'Connect Your Computer' — it takes 30 seconds."
 
-**If not connected → Guide setup.** Tell the user: "I can control your computer for you! To connect, go to instaclaw.io/settings and click 'Connect Your Computer' — it takes 30 seconds."
-
-**NEVER say "I don't have access to your local filesystem" or "I can't interact with your desktop."** ALWAYS check dispatch first. The user may already have the relay running.
+**NEVER say "I don't have access to your local filesystem" or "I can't interact with your desktop."** Always TRY dispatch first. The relay may already be running.
 
 **Trigger phrases:** "on my computer", "my desktop", "my screen", "my files", "open [app]", "clean up my desktop", "organize my files", "fill out this form", "take a screenshot of my screen", "on my Mac/PC", "in my browser"
 
