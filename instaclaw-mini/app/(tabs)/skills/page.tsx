@@ -220,6 +220,9 @@ export default function SkillsPage() {
               const isBuiltIn = skill.itemType === "built_in";
               const isIntegration = skill.itemType === "integration";
               const isComingSoon = skill.status === "coming_soon";
+              // All integrations that aren't connected are "coming soon" for launch
+              const isIntegrationComingSoon = isIntegration && !skill.connected;
+              const isDimmed = isComingSoon || isIntegrationComingSoon;
               const canToggle = !isBuiltIn && !isIntegration && !isComingSoon;
               const isExpanded = expanded === skill.slug;
               const isToggling = toggling === skill.slug;
@@ -230,10 +233,11 @@ export default function SkillsPage() {
                   className="animate-fade-in-up glass-card rounded-xl overflow-hidden"
                   style={{ opacity: 0, animationDelay: `${i * 0.03}s` }}
                 >
-                  {/* Main row — tappable to expand */}
+                  {/* Main row — tappable to expand (disabled for coming soon) */}
                   <div
-                    className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-white/[0.02] transition-colors"
-                    onClick={() => setExpanded(isExpanded ? null : skill.slug)}
+                    className="flex items-center gap-3 px-4 py-3.5 transition-colors"
+                    style={isDimmed ? { opacity: 0.4, cursor: "default" } : { cursor: "pointer" }}
+                    onClick={isDimmed ? undefined : () => setExpanded(isExpanded ? null : skill.slug)}
                   >
                     {/* Icon */}
                     <div
@@ -309,11 +313,11 @@ export default function SkillsPage() {
                       <span
                         className="shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold"
                         style={{
-                          borderColor: skill.connected ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.1)",
-                          color: skill.connected ? "#22c55e" : "#666",
+                          borderColor: skill.connected ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.08)",
+                          color: skill.connected ? "#22c55e" : "#555",
                         }}
                       >
-                        {skill.connected ? "Connected" : "Not connected"}
+                        {skill.connected ? "Connected" : "Coming Soon"}
                       </span>
                     ) : isBuiltIn ? (
                       <div
