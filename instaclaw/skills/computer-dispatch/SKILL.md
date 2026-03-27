@@ -36,6 +36,8 @@ Updated: [timestamp]
 
 **3. Batch over single actions.** Use `dispatch-remote-batch.sh` to combine multiple actions into one round-trip. See Batch Command section below.
 
+**4. Context budget limit.** If you've taken more than 10 screenshots for one task, STOP and reconsider your approach. You're probably doing something the wrong way (e.g. GUI navigation instead of shell commands). Switch to Terminal + shell commands immediately. Max 15 screenshots per task — after that, tell the user what's left and offer to continue in a fresh session.
+
 ## Two Modes
 
 ### Mode 1: Local Dispatch (Your VM Desktop)
