@@ -30,10 +30,19 @@ interface VmSkillRow {
   connected_account: string | null;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // Dual auth: NextAuth session OR X-Mini-App-Token
     const session = await auth();
-    if (!session?.user?.id) {
+    let userId = session?.user?.id;
+
+    if (!userId) {
+      const { validateMiniAppToken } = await import("@/lib/security");
+      const { NextRequest } = await import("next/server");
+      userId = await validateMiniAppToken(req as unknown as InstanceType<typeof NextRequest>) ?? undefined;
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -43,7 +52,7 @@ export async function GET() {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("id")
-      .eq("assigned_to", session.user.id)
+      .eq("assigned_to", userId)
       .single();
 
     if (!vm) {
