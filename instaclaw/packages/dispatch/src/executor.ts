@@ -2,7 +2,7 @@
  * Executor — receives dispatch commands and executes them via usecomputer.
  * Returns results (action confirmations or screenshot data).
  */
-import { execSync } from "child_process";
+import { execSync, exec as execCb } from "child_process";
 import fs from "fs";
 import path from "path";
 import type { DispatchCommand } from "./types.js";
@@ -278,8 +278,7 @@ async function doExec(params: Record<string, unknown>): Promise<ExecutionResult>
   const timeoutMs = Math.min(Number(params.timeout) || 30000, 120000);
 
   return new Promise((resolve) => {
-    const { exec } = require("child_process") as typeof import("child_process");
-    exec(command, { timeout: timeoutMs, maxBuffer: 1024 * 1024, shell: "/bin/bash" }, (err, stdout, stderr) => {
+    execCb(command, { timeout: timeoutMs, maxBuffer: 1024 * 1024, shell: "/bin/bash" }, (err, stdout, stderr) => {
       const exitCode = err ? (err as any).code ?? 1 : 0;
       // Cap output to prevent context flooding (max 4KB each)
       const cappedStdout = stdout.length > 4096 ? stdout.substring(0, 4096) + "\n[...truncated]" : stdout;
