@@ -13,59 +13,55 @@ You can control TWO computers: your own VM desktop AND the user's personal compu
 
 ## CRITICAL RULES (read first)
 
-**1. Shell commands over GUI — ALWAYS.** For file operations on the user's computer, type shell commands into their Terminal — NEVER navigate Finder/Explorer GUI.
+**1. Use dispatch-remote-exec.sh for ALL shell commands on the user's computer.**
 
-**KEY CONCEPT: dispatch-remote-type.sh types keystrokes ON THE USER'S COMPUTER, not on your VM.** When you run `bash ~/scripts/dispatch-remote-type.sh "ls"`, it types "ls" into whatever app is focused on the user's Mac/PC. You are remote-controlling their keyboard.
+This executes commands DIRECTLY on the user's Mac/PC — no Terminal window needed, no GUI, no screenshots required. The command runs through the relay and returns stdout/stderr.
+
+```bash
+bash ~/scripts/dispatch-remote-exec.sh "mkdir -p ~/Desktop/Screenshots && mv ~/Desktop/Screenshot*.png ~/Desktop/Screenshot*.jpg ~/Desktop/Screenshots/ 2>/dev/null; echo Done"
+```
+
+That's ONE command. It runs on the USER'S machine, not your VM. Output comes back as JSON with stdout, stderr, and exitCode.
 
 ### File Operations on User's Computer (copy this pattern exactly)
 
 **Example: "organize my screenshots into a folder"**
 
-Step 1 — See the desktop:
+Step 1 — See what's on the desktop:
+```bash
+bash ~/scripts/dispatch-remote-exec.sh "ls ~/Desktop/"
+```
+
+Step 2 — Run the command:
+```bash
+bash ~/scripts/dispatch-remote-exec.sh "mkdir -p ~/Desktop/Screenshots && mv ~/Desktop/Screenshot*.png ~/Desktop/Screenshot*.jpg ~/Desktop/Screenshots/ 2>/dev/null; ls ~/Desktop/Screenshots/ | wc -l"
+```
+
+Step 3 — Verify and report:
 ```bash
 bash ~/scripts/dispatch-remote-screenshot.sh
-~/scripts/deliver_file.sh ~/.openclaw/workspace/dispatch-remote-screenshot.jpg "Your desktop"
+~/scripts/deliver_file.sh ~/.openclaw/workspace/dispatch-remote-screenshot.jpg "Done — here's your desktop now"
 ```
 
-Step 2 — Focus Terminal. The user has Terminal open (they're running the relay). Either:
-- **If Terminal is visible on screen:** click on it: `bash ~/scripts/dispatch-remote-click.sh <x> <y>` (coordinates from screenshot)
-- **If Terminal is NOT visible:** open it via Spotlight:
-```bash
-bash ~/scripts/dispatch-remote-press.sh "cmd+space"
-sleep 1
-bash ~/scripts/dispatch-remote-type.sh "Terminal"
-bash ~/scripts/dispatch-remote-press.sh "Return"
-sleep 2
-```
+**That's 3 steps. Under 15 seconds.** No Terminal window, no clicking, no GUI.
 
-Step 3 — Type the shell command (this types on the USER'S keyboard, into THEIR Terminal):
-```bash
-bash ~/scripts/dispatch-remote-type.sh "mkdir -p ~/Desktop/Screenshots && mv ~/Desktop/Screenshot*.png ~/Desktop/Screenshot*.jpg ~/Desktop/Screenshots/ 2>/dev/null; echo Done"
-```
+**Common commands via dispatch-remote-exec.sh:**
+- Create folder: `dispatch-remote-exec.sh "mkdir -p ~/Desktop/NewFolder"`
+- Move files: `dispatch-remote-exec.sh "mv ~/Desktop/*.png ~/Desktop/Screenshots/"`
+- List files: `dispatch-remote-exec.sh "ls -la ~/Desktop/"`
+- Delete files: `dispatch-remote-exec.sh "rm ~/Desktop/old-file.txt"` (ask user first!)
+- Rename: `dispatch-remote-exec.sh "mv ~/Desktop/old.txt ~/Desktop/new.txt"`
+- Find files: `dispatch-remote-exec.sh "find ~/Desktop -name '*.png' -type f"`
+- Open app: `dispatch-remote-exec.sh "open -a 'Google Chrome'"` (macOS)
+- Get system info: `dispatch-remote-exec.sh "sw_vers; uname -a"`
 
-Step 4 — Press Enter on the USER'S keyboard:
-```bash
-bash ~/scripts/dispatch-remote-press.sh "Return"
-```
+**NEVER type commands into the user's Terminal via dispatch-remote-type.sh for file operations.** The relay's Terminal window captures focus and your commands end up in the wrong window. Always use dispatch-remote-exec.sh instead.
 
-Step 5 — Take a screenshot to verify:
-```bash
-bash ~/scripts/dispatch-remote-screenshot.sh
-~/scripts/deliver_file.sh ~/.openclaw/workspace/dispatch-remote-screenshot.jpg "Result"
-```
+**When to use GUI (screenshot/click/type) vs exec:**
+- **Use exec:** File operations, running commands, installing software, opening apps, any shell task
+- **Use GUI (screenshot + click):** Interacting with app UIs (clicking buttons, filling forms, navigating websites)
 
-**That's 5 dispatch calls. NOT 30.** Do NOT right-click, open Finder, drag files, or use GUI menus for file operations.
-
-**Common shell commands to type on the user's computer:**
-- Create folder: `mkdir -p ~/Desktop/NewFolder`
-- Move files: `mv ~/Desktop/*.png ~/Desktop/Screenshots/`
-- List files: `ls ~/Desktop/`
-- Delete files: `rm ~/Desktop/old-file.txt` (ask user first!)
-- Rename: `mv ~/Desktop/old-name.txt ~/Desktop/new-name.txt`
-- Find files: `find ~/Desktop -name "*.png" -type f`
-- Open app: `open -a "Google Chrome"` (macOS) or `xdg-open` (Linux)
-
-**NEVER run osascript, AppleScript, or any command that only works on macOS from your VM.** Your VM is Linux. Use dispatch-remote-type.sh to type commands on the user's machine instead.
+**After EVERY exec command, verify the result before telling the user it's done.** Either check the command output (exitCode 0 + expected stdout) or take a screenshot. NEVER claim success without proof.
 
 **If the user needs to reconnect the relay:** Run `bash ~/scripts/dispatch-connection-info.sh` to get the exact npx command with the real token and IP. Give this to the user — never use placeholder values like YOUR_TOKEN_HERE.
 

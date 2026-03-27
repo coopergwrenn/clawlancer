@@ -1,7 +1,7 @@
 /** Command sent from VM agent → dispatch server → local relay */
 export interface DispatchCommand {
   id: string;
-  type: "screenshot" | "click" | "type" | "press" | "scroll" | "drag" | "windows" | "status" | "batch";
+  type: "screenshot" | "click" | "type" | "press" | "scroll" | "drag" | "windows" | "status" | "batch" | "exec";
   params: Record<string, unknown>;
   description?: string; // For supervised mode — what the agent wants to do
 }

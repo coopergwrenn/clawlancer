@@ -102,6 +102,19 @@ function isDangerous(cmd: DispatchCommand): boolean {
     return DANGEROUS_KEY_COMBOS.has(key);
   }
 
+  // Check exec commands for dangerous patterns
+  if (cmd.type === "exec") {
+    const command = String(p.command || "");
+    // Check against text patterns (reuses the same dangerous detection)
+    if (DANGEROUS_TEXT_PATTERNS.some((pat) => pat.test(command))) return true;
+    // Additional exec-specific dangerous patterns
+    if (/\brm\s+-rf\b/.test(command)) return true;
+    if (/\bsudo\b/.test(command)) return true;
+    if (/\bchmod\s+777\b/.test(command)) return true;
+    if (/\bcurl\b.*\|\s*(bash|sh)\b/.test(command)) return true;
+    return false;
+  }
+
   // Check all sub-actions in a batch
   if (cmd.type === "batch") {
     const actions = p.actions as Array<{ type: string; params: Record<string, unknown> }> | undefined;
@@ -128,6 +141,8 @@ function formatCommand(cmd: DispatchCommand): string {
       return `Scroll ${p.direction} by ${p.amount || 3}`;
     case "drag":
       return `Drag from (${p.fromX}, ${p.fromY}) to (${p.toX}, ${p.toY})`;
+    case "exec":
+      return `Run command: ${String(p.command || "").substring(0, 100)}${String(p.command || "").length > 100 ? "..." : ""}`;
     case "batch": {
       const actions = p.actions as Array<{ type: string; params: Record<string, unknown> }> | undefined;
       if (!Array.isArray(actions)) return "Batch (empty)";

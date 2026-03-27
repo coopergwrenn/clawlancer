@@ -56,6 +56,8 @@ export async function executeCommand(command: DispatchCommand): Promise<Executio
         return await listWindows();
       case "batch":
         return await executeBatch(params);
+      case "exec":
+        return await doExec(params);
       default:
         return { success: false, error: `Unknown command type: ${type}` };
     }
@@ -259,4 +261,41 @@ async function listWindows(): Promise<ExecutionResult> {
   const usecomputer = await getUC();
   const windows = await usecomputer.windowList();
   return { success: true, data: { windows } };
+}
+
+/**
+ * Execute a shell command directly on the user's machine.
+ * Bypasses the GUI entirely — no Terminal window needed.
+ * Returns stdout, stderr, and exit code.
+ */
+async function doExec(params: Record<string, unknown>): Promise<ExecutionResult> {
+  const command = String(params.command || "");
+  if (!command) {
+    return { success: false, error: "exec requires a 'command' parameter" };
+  }
+
+  // Timeout: default 30s, max 120s
+  const timeoutMs = Math.min(Number(params.timeout) || 30000, 120000);
+
+  return new Promise((resolve) => {
+    const { exec } = require("child_process") as typeof import("child_process");
+    exec(command, { timeout: timeoutMs, maxBuffer: 1024 * 1024, shell: "/bin/bash" }, (err, stdout, stderr) => {
+      const exitCode = err ? (err as any).code ?? 1 : 0;
+      // Cap output to prevent context flooding (max 4KB each)
+      const cappedStdout = stdout.length > 4096 ? stdout.substring(0, 4096) + "\n[...truncated]" : stdout;
+      const cappedStderr = stderr.length > 4096 ? stderr.substring(0, 4096) + "\n[...truncated]" : stderr;
+
+      resolve({
+        success: exitCode === 0,
+        data: {
+          action: "exec",
+          command,
+          exitCode,
+          stdout: cappedStdout,
+          stderr: cappedStderr,
+        },
+        error: exitCode !== 0 ? `Command exited with code ${exitCode}` : undefined,
+      });
+    });
+  });
 }
