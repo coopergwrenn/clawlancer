@@ -240,7 +240,7 @@ export default function CommandCenter({
   const tgUsername = telegramBotUsername?.replace(/^@/, "");
 
   return (
-    <div className="flex h-full flex-col" style={{ background: "#0a0a0a" }}>
+    <div className="flex min-h-full flex-col" style={{ background: "transparent" }}>
       {/* Info banners — compact top section */}
       {!infoDismissed && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-1">

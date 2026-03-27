@@ -151,7 +151,7 @@ export default function SkillsPage() {
   });
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col min-h-full">
       {/* Header */}
       <div className="p-4 pb-0">
         <h1 className="mb-1 text-xl font-bold tracking-tight">Skills</h1>
