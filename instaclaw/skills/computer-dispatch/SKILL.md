@@ -63,6 +63,8 @@ bash ~/scripts/dispatch-remote-screenshot.sh
 
 **After EVERY exec command, verify the result before telling the user it's done.** Either check the command output (exitCode 0 + expected stdout) or take a screenshot. NEVER claim success without proof.
 
+**If the user attached a screenshot of their desktop, DO NOT take another dispatch-remote-screenshot.sh.** Use the image they sent — it shows the same thing. Taking redundant screenshots wastes context tokens.
+
 **If the user needs to reconnect the relay:** Run `bash ~/scripts/dispatch-connection-info.sh` to get the exact npx command with the real token and IP. Give this to the user — never use placeholder values like YOUR_TOKEN_HERE.
 
 **2. Save task state every 5 actions.** During multi-step dispatch tasks, write your progress to `~/.openclaw/workspace/ACTIVE_TASK.md` every 5 actions so you can resume after context resets. Format:
