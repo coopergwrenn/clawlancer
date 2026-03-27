@@ -9,6 +9,9 @@ import {
   Sparkles,
   Check,
   ChevronRight,
+  ChevronDown,
+  RotateCw,
+  Trash2,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -29,6 +32,7 @@ interface TaskItem {
   next_run_at: string | null;
   tools_used: string[];
   error_message: string | null;
+  result: string | null;
   created_at: string;
 }
 
@@ -88,6 +92,7 @@ export default function CommandCenter({
   const [tab, setTab] = useState<Tab>("tasks");
   const [filter, setFilter] = useState<Filter>("all");
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -193,7 +198,7 @@ export default function CommandCenter({
       const placeholder: TaskItem = {
         id: tempId, title: "Working on it...", description: msg.slice(0, 500),
         status: "in_progress", is_recurring: false, frequency: null,
-        streak: 0, next_run_at: null, tools_used: [], error_message: null,
+        streak: 0, next_run_at: null, tools_used: [], error_message: null, result: null,
         created_at: new Date().toISOString(),
       };
       setTasks((prev) => [placeholder, ...prev]);
@@ -449,7 +454,10 @@ export default function CommandCenter({
                       opacity: isPaused ? 0.65 : undefined,
                     }}
                   >
-                    <div className="p-4 flex items-start gap-3.5">
+                    <div
+                      className="p-4 flex items-start gap-3.5 cursor-pointer active:bg-white/[0.02] transition-colors"
+                      onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                    >
                       {/* Left status icon — matches web app exactly */}
                       <div className="shrink-0 mt-0.5">
                         {isPaused ? (
@@ -511,7 +519,10 @@ export default function CommandCenter({
                           </div>
                         )}
                         {task.is_recurring && <Repeat size={14} style={{ color: "#888" }} />}
-                        <ChevronRight size={16} style={{ color: "#555" }} />
+                        {expandedTaskId === task.id
+                          ? <ChevronDown size={16} style={{ color: "#888" }} />
+                          : <ChevronRight size={16} style={{ color: "#555", transition: "transform 0.2s" }} />
+                        }
                       </div>
                     </div>
 
@@ -535,6 +546,79 @@ export default function CommandCenter({
                         )}
                       </div>
                     )}
+
+                    {/* ── Expanded Result Section ── */}
+                    <div
+                      style={{
+                        maxHeight: expandedTaskId === task.id ? "800px" : "0",
+                        opacity: expandedTaskId === task.id ? 1 : 0,
+                        overflow: "hidden",
+                        transition: "max-height 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease",
+                      }}
+                    >
+                      <div className="px-4 pb-4 pt-0 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                        {/* Result content */}
+                        {task.result ? (
+                          <div
+                            className="rounded-xl p-3.5 text-sm leading-relaxed mt-3"
+                            style={{
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.06)",
+                              boxShadow: "inset 0 1px 2px rgba(0,0,0,0.08)",
+                              color: "#ccc",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {task.result}
+                          </div>
+                        ) : task.status === "in_progress" ? (
+                          <p className="text-xs mt-3" style={{ color: "#888" }}>Agent is working on this task...</p>
+                        ) : task.error_message ? (
+                          <div className="rounded-xl p-3.5 text-sm mt-3" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", color: "#f87171" }}>
+                            {task.error_message}
+                          </div>
+                        ) : (
+                          <p className="text-xs mt-3" style={{ color: "#666" }}>No result yet.</p>
+                        )}
+
+                        {/* Action buttons — matches web app */}
+                        <div className="flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                          {/* Re-run */}
+                          {(task.status === "completed" || task.status === "failed") && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetch(`/api/proxy/tasks/${task.id}/rerun`, { method: "POST" });
+                                  setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "in_progress", result: null } : t));
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#aaa" }}
+                            >
+                              <RotateCw size={11} /> Re-run
+                            </button>
+                          )}
+
+                          {/* Delete */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await fetch(`/api/proxy/tasks/${task.id}`, { method: "DELETE" });
+                                setTasks((prev) => prev.filter((t) => t.id !== task.id));
+                                setExpandedTaskId(null);
+                              } catch {}
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                            style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)", color: "#f87171" }}
+                          >
+                            <Trash2 size={11} /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   );
                 })}
