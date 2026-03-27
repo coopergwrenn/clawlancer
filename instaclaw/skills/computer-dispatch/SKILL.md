@@ -27,11 +27,16 @@ bash ~/scripts/dispatch-remote-screenshot.sh
 ~/scripts/deliver_file.sh ~/.openclaw/workspace/dispatch-remote-screenshot.jpg "Your desktop"
 ```
 
-Step 2 — Click on the user's Terminal window to focus it (the user has Terminal open because they're running the dispatch relay):
+Step 2 — Focus Terminal. The user has Terminal open (they're running the relay). Either:
+- **If Terminal is visible on screen:** click on it: `bash ~/scripts/dispatch-remote-click.sh <x> <y>` (coordinates from screenshot)
+- **If Terminal is NOT visible:** open it via Spotlight:
 ```bash
-bash ~/scripts/dispatch-remote-click.sh 400 700
+bash ~/scripts/dispatch-remote-press.sh "cmd+space"
+sleep 1
+bash ~/scripts/dispatch-remote-type.sh "Terminal"
+bash ~/scripts/dispatch-remote-press.sh "Return"
+sleep 2
 ```
-(Use coordinates from the screenshot to click on the Terminal window. Look for the terminal app in the taskbar/dock or visible on screen.)
 
 Step 3 — Type the shell command (this types on the USER'S keyboard, into THEIR Terminal):
 ```bash
@@ -62,6 +67,8 @@ bash ~/scripts/dispatch-remote-screenshot.sh
 
 **NEVER run osascript, AppleScript, or any command that only works on macOS from your VM.** Your VM is Linux. Use dispatch-remote-type.sh to type commands on the user's machine instead.
 
+**If the user needs to reconnect the relay:** Run `bash ~/scripts/dispatch-connection-info.sh` to get the exact npx command with the real token and IP. Give this to the user — never use placeholder values like YOUR_TOKEN_HERE.
+
 **2. Save task state every 5 actions.** During multi-step dispatch tasks, write your progress to `~/.openclaw/workspace/ACTIVE_TASK.md` every 5 actions so you can resume after context resets. Format:
 ```
 ## Active Task
@@ -74,7 +81,14 @@ Updated: [timestamp]
 
 **3. Batch over single actions.** Use `dispatch-remote-batch.sh` to combine multiple actions into one round-trip. See Batch Command section below.
 
-**4. Context budget limit.** If you've taken more than 10 screenshots for one task, STOP and reconsider your approach. You're probably doing something the wrong way (e.g. GUI navigation instead of shell commands). Switch to Terminal + shell commands immediately. Max 15 screenshots per task — after that, tell the user what's left and offer to continue in a fresh session.
+**4. Context budget limit.** Remote dispatch tasks must complete in **10 messages or fewer**. If you're past 10 messages without completing the task, STOP immediately and:
+- Tell the user what went wrong
+- Give them the exact shell command to run manually
+- Do NOT try another approach — you're burning context
+
+Max 10 screenshots per task. If you've taken more than 5 screenshots and the task isn't done, you're using GUI when you should be using shell commands. Switch to Terminal immediately.
+
+**5. If the first approach fails, go to shell commands.** Do NOT try 3 different GUI approaches. If clicking doesn't work on the first try, open Terminal and type a shell command instead. No "let me try another approach" — go straight to the shell fallback.
 
 ## Two Modes
 
