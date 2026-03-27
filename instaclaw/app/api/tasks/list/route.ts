@@ -15,8 +15,16 @@ const MAX_LIMIT = 200;
  * Query params: ?status=completed&limit=50&offset=0
  */
 export async function GET(req: NextRequest) {
+  // Dual auth: NextAuth session OR X-Mini-App-Token
   const session = await auth();
-  if (!session?.user?.id) {
+  let userId = session?.user?.id;
+
+  if (!userId) {
+    const { validateMiniAppToken } = await import("@/lib/security");
+    userId = await validateMiniAppToken(req) ?? undefined;
+  }
+
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -34,7 +42,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("instaclaw_tasks")
     .select("*", { count: "exact" })
-    .eq("user_id", session.user.id)
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 

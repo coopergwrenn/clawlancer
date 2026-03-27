@@ -21,8 +21,16 @@ const GATEWAY_TIMEOUT_MS = 120_000;
  * Falls back to direct Anthropic API if the gateway is unreachable.
  */
 export async function POST(req: NextRequest) {
+  // Dual auth: NextAuth session OR X-Mini-App-Token
   const session = await auth();
-  if (!session?.user?.id) {
+  let userId = session?.user?.id;
+
+  if (!userId) {
+    const { validateMiniAppToken } = await import("@/lib/security");
+    userId = await validateMiniAppToken(req) ?? undefined;
+  }
+
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -54,7 +62,7 @@ export async function POST(req: NextRequest) {
   const { data: vm } = await supabase
     .from("instaclaw_vms")
     .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone, tier")
-    .eq("assigned_to", session.user.id)
+    .eq("assigned_to", userId)
     .single();
 
   if (!vm) {
@@ -68,7 +76,7 @@ export async function POST(req: NextRequest) {
   const { data: task, error: insertError } = await supabase
     .from("instaclaw_tasks")
     .insert({
-      user_id: session.user.id,
+      user_id: userId,
       description: message,
       title: "Processing...",
       status: "in_progress",
@@ -80,7 +88,7 @@ export async function POST(req: NextRequest) {
     logger.error("Failed to create task", {
       error: String(insertError),
       route: "tasks/create",
-      userId: session.user.id,
+      userId: userId,
     });
     return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
   }
@@ -89,12 +97,12 @@ export async function POST(req: NextRequest) {
   const response = NextResponse.json({ task });
 
   // Fire-and-forget background execution
-  executeTask(task.id, session.user.id, message, vm, apiKey).catch((err) => {
+  executeTask(task.id, userId, message, vm, apiKey).catch((err) => {
     logger.error("Background task execution failed", {
       error: String(err),
       taskId: task.id,
       route: "tasks/create",
-      userId: session.user.id,
+      userId: userId,
     });
   });
 

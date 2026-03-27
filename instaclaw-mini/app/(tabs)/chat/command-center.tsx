@@ -107,20 +107,25 @@ export default function CommandCenter({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load tasks
+  // Load tasks — re-fetch when filter changes
   useEffect(() => {
     async function loadTasks() {
+      setLoadingTasks(true);
       try {
-        const res = await fetch("/api/proxy/tasks/list?limit=20&offset=0", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const params = new URLSearchParams({ limit: "50", offset: "0" });
+        if (filter === "recurring") params.set("recurring", "true");
+        else if (filter === "scheduled") params.set("status", "queued");
+        else if (filter === "completed") params.set("status", "completed");
+        const res = await fetch(`/api/proxy/tasks/list?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
           setTasks(data.tasks || []);
         }
-      } catch { /* proxy might not support this yet */ }
+      } catch { /* proxy error */ }
       setLoadingTasks(false);
     }
     loadTasks();
-  }, []);
+  }, [filter]);
 
   // Load personalized suggestions — cached first, then refresh from API
   useEffect(() => {
@@ -178,8 +183,48 @@ export default function CommandCenter({
     if (!msg || sending) return;
     setInput("");
 
-    // Always show conversation in Chat tab
-    if (tab !== "chat") setTab("chat");
+    // ── Tasks tab: create a task ──
+    if (tab === "tasks") {
+      setSending(true);
+      try {
+        const res = await fetch("/api/proxy/tasks/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.task) {
+            // Add new task to list immediately (optimistic)
+            setTasks((prev) => [data.task, ...prev]);
+            // Poll for updates on this task
+            const pollTask = async (taskId: string, attempts: number) => {
+              if (attempts <= 0) return;
+              await new Promise((r) => setTimeout(r, 2000));
+              try {
+                const pollRes = await fetch(`/api/proxy/tasks/${taskId}`);
+                if (pollRes.ok) {
+                  const pollData = await pollRes.json();
+                  if (pollData.task) {
+                    setTasks((prev) => prev.map((t) => t.id === taskId ? pollData.task : t));
+                    if (pollData.task.status === "in_progress") {
+                      pollTask(taskId, attempts - 1);
+                    }
+                  }
+                }
+              } catch {}
+            };
+            pollTask(data.task.id, 30); // Poll up to 60 seconds
+          }
+        }
+      } catch {}
+      setSending(false);
+      inputRef.current?.focus();
+      return;
+    }
+
+    // ── Chat tab: send a chat message ──
+    if (tab === "library") setTab("chat");
 
     const userMsg: ChatMsg = { role: "user", content: msg, ts: Date.now() };
     const newMsgs = [...chatMsgs, userMsg];
@@ -284,14 +329,8 @@ export default function CommandCenter({
     inputRef.current?.focus();
   }, [input, sending, tab, chatMsgs]);
 
-  // Filter tasks
-  const filteredTasks = tasks.filter((t) => {
-    if (filter === "all") return true;
-    if (filter === "recurring") return t.is_recurring;
-    if (filter === "scheduled") return t.next_run_at && !t.is_recurring;
-    if (filter === "completed") return t.status === "completed";
-    return true;
-  });
+  // Tasks are already filtered by the API based on the filter param
+  const filteredTasks = tasks;
 
   const emptyState = EMPTY_STATES[filter];
   const EmptyIcon = emptyState.icon;
@@ -374,6 +413,13 @@ export default function CommandCenter({
         {/* ── Tasks Tab ── */}
         {tab === "tasks" && (
           <div className="flex-1 flex flex-col px-4 py-3">
+            {/* Creating task indicator */}
+            {sending && tab === "tasks" && (
+              <div className="glass-card rounded-xl p-3.5 mb-2 flex items-center gap-3">
+                <div className="h-2.5 w-2.5 rounded-full" style={{ background: "#3b82f6", animation: "dot 1.4s infinite" }} />
+                <p className="text-[13px] text-white">Creating task...</p>
+              </div>
+            )}
             {loadingTasks ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
@@ -395,45 +441,60 @@ export default function CommandCenter({
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredTasks.map((task) => (
+                {filteredTasks.map((task) => {
+                  const statusColor = task.status === "completed" ? "#22c55e"
+                    : task.status === "active" ? "#22c55e"
+                    : task.status === "in_progress" ? "#3b82f6"
+                    : task.status === "failed" ? "#ef4444"
+                    : task.status === "paused" ? "#9ca3af"
+                    : "#888";
+                  const statusLabel = task.status === "in_progress" ? "Working..."
+                    : task.status === "active" ? "Active"
+                    : task.status === "paused" ? "Paused"
+                    : task.status;
+                  return (
                   <div
                     key={task.id}
                     className="glass-card rounded-xl p-3.5"
                   >
                     <div className="flex items-start gap-3">
                       {/* Status dot */}
-                      <div className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center">
-                        <div
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{
-                            background: task.status === "completed" ? "#22c55e"
-                              : task.status === "active" ? "#22c55e"
-                              : task.status === "in_progress" ? "#3b82f6"
-                              : task.status === "failed" ? "#ef4444"
-                              : "#888",
-                            boxShadow: task.status === "active" ? "0 0 6px rgba(34,197,94,0.5)" : "none",
-                          }}
-                        />
+                      <div className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center">
+                        {task.status === "in_progress" ? (
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ background: statusColor, animation: "dot 1.4s infinite" }} />
+                        ) : (
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}40` }} />
+                        )}
                       </div>
                       {/* Content */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-medium text-white truncate">{task.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[13px] font-medium text-white truncate">{task.title}</p>
+                          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold capitalize" style={{ background: `${statusColor}18`, color: statusColor }}>
+                            {statusLabel}
+                          </span>
+                        </div>
                         <p className="mt-0.5 text-[11px] truncate" style={{ color: "#888" }}>{task.description}</p>
                         {/* Pills */}
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {task.is_recurring && task.frequency && (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]" style={{ background: "rgba(255,255,255,0.06)", color: "#888" }}>
-                              <Repeat size={9} /> Runs {task.frequency}
+                            <span className="inline-flex items-center gap-1 glass-inner rounded-full px-2 py-0.5 text-[10px]" style={{ color: "#999" }}>
+                              <Repeat size={9} /> {task.frequency}
                             </span>
                           )}
                           {task.next_run_at && (
-                            <span className="rounded-full px-2 py-0.5 text-[10px]" style={{ background: "rgba(255,255,255,0.06)", color: "#888" }}>
+                            <span className="glass-inner rounded-full px-2 py-0.5 text-[10px]" style={{ color: "#999" }}>
                               {formatNextRun(task.next_run_at)}
                             </span>
                           )}
                           {task.streak > 0 && (
                             <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]" style={{ background: "rgba(220,103,67,0.1)", color: "#DC6743" }}>
-                              <Zap size={9} /> {task.streak} streak
+                              <Zap size={9} /> {task.streak}
+                            </span>
+                          )}
+                          {task.created_at && (
+                            <span className="text-[10px]" style={{ color: "#555" }}>
+                              {timeAgo(task.created_at)}
                             </span>
                           )}
                         </div>
@@ -441,7 +502,8 @@ export default function CommandCenter({
                       <ChevronRight size={16} style={{ color: "#444", marginTop: 4 }} />
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -611,7 +673,7 @@ export default function CommandCenter({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-            placeholder={tab === "chat" ? "Message your agent..." : "Tell your agent what to do next..."}
+            placeholder={tab === "tasks" ? "Create a new task..." : tab === "chat" ? "Message your agent..." : "Search library..."}
             autoComplete="off"
             className="flex-1 min-w-0 bg-transparent text-[13px] text-white placeholder:text-white/30 focus:outline-none"
           />
