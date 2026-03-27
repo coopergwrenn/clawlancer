@@ -30,6 +30,8 @@ interface TaskItem {
   frequency: string | null;
   streak: number;
   next_run_at: string | null;
+  last_run_at: string | null;
+  processing_started_at: string | null;
   tools_used: string[];
   error_message: string | null;
   result: string | null;
@@ -198,7 +200,8 @@ export default function CommandCenter({
       const placeholder: TaskItem = {
         id: tempId, title: "Working on it...", description: msg.slice(0, 500),
         status: "in_progress", is_recurring: false, frequency: null,
-        streak: 0, next_run_at: null, tools_used: [], error_message: null, result: null,
+        streak: 0, next_run_at: null, last_run_at: null, processing_started_at: null,
+        tools_used: [], error_message: null, result: null,
         created_at: new Date().toISOString(),
       };
       setTasks((prev) => [placeholder, ...prev]);
@@ -526,26 +529,58 @@ export default function CommandCenter({
                       </div>
                     </div>
 
-                    {/* Recurring pills row */}
-                    {task.is_recurring && (task.frequency || task.next_run_at || task.streak > 0) && (
+                    {/* Recurring pills row — matches web app exactly */}
+                    {task.is_recurring && (task.frequency || task.next_run_at || task.streak > 0) && (() => {
+                      const isOverdue = task.next_run_at ? new Date(task.next_run_at).getTime() < Date.now() : false;
+                      const isRunningNow = !!task.processing_started_at || isOverdue;
+                      const frequencyLabel = task.frequency ? `Runs ${task.frequency}` : null;
+                      const nextRunLabel = isRunningNow ? "Running now" : task.next_run_at ? formatNextRun(task.next_run_at) : null;
+
+                      return (
                       <div className="px-4 pb-3 pt-0 flex flex-wrap gap-1.5" style={{ marginLeft: "44px" }}>
-                        {task.frequency && (
+                        {/* Frequency pill */}
+                        {frequencyLabel && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#999", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
-                            <Repeat size={9} /> Runs {task.frequency}
+                            <Repeat size={9} /> {frequencyLabel}
                           </span>
                         )}
-                        {task.next_run_at && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#999", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
-                            {formatNextRun(task.next_run_at)}
+
+                        {/* Next run / Running now pill */}
+                        {nextRunLabel && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+                            style={isRunningNow ? {
+                              background: "rgba(34,197,94,0.08)",
+                              border: "1px solid rgba(34,197,94,0.15)",
+                              boxShadow: "0 0 0 1px rgba(34,197,94,0.1), 0 1px 2px rgba(34,197,94,0.06)",
+                              color: "#22c55e",
+                            } : isPaused ? {
+                              background: "rgba(156,163,175,0.08)",
+                              border: "1px solid rgba(156,163,175,0.12)",
+                              color: "#9ca3af",
+                            } : {
+                              background: "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                              color: "#999",
+                              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+                            }}
+                          >
+                            {isRunningNow && (
+                              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#22c55e" }} />
+                            )}
+                            {nextRunLabel}
                           </span>
                         )}
-                        {task.streak > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(220,103,67,0.08)", boxShadow: "0 0 0 1px rgba(220,103,67,0.12)", color: "#DC6743" }}>
+
+                        {/* Streak pill */}
+                        {!isPaused && task.streak > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: "rgba(220,103,67,0.08)", boxShadow: "0 0 0 1px rgba(220,103,67,0.12), 0 1px 2px rgba(220,103,67,0.06)", color: "#DC6743" }}>
                             <Zap size={9} style={{ fill: "#DC6743" }} /> {task.streak} {task.streak === 1 ? "day" : "days"} streak
                           </span>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
 
                     {/* ── Expanded Result Section ── */}
                     <div
