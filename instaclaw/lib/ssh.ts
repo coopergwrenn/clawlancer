@@ -3339,7 +3339,7 @@ export async function configureOpenClaw(
       const dispatchSkillPath = path.resolve(__dirname, '../skills/computer-dispatch/SKILL.md');
       const dispatchScripts = [
         'dispatch-screenshot.sh', 'dispatch-click.sh', 'dispatch-type.sh', 'dispatch-press.sh', 'dispatch-scroll.sh', 'dispatch-browser.sh',
-        'dispatch-remote-screenshot.sh', 'dispatch-remote-click.sh', 'dispatch-remote-type.sh', 'dispatch-remote-press.sh', 'dispatch-remote-scroll.sh', 'dispatch-remote-status.sh', 'dispatch-remote-batch.sh', 'dispatch-remote-drag.sh', 'dispatch-remote-windows.sh', 'dispatch-windows.sh',
+        'dispatch-remote-screenshot.sh', 'dispatch-remote-click.sh', 'dispatch-remote-type.sh', 'dispatch-remote-press.sh', 'dispatch-remote-scroll.sh', 'dispatch-remote-status.sh', 'dispatch-remote-batch.sh', 'dispatch-remote-drag.sh', 'dispatch-remote-windows.sh', 'dispatch-windows.sh', 'gateway-watchdog.sh',
       ];
 
       const dispatchParts: string[] = ['# ── Deploy Dispatch Mode scripts (virtual desktop control) ──', 'mkdir -p "$HOME/scripts"'];
@@ -4589,6 +4589,7 @@ export async function configureOpenClaw(
       'After=network.target xvfb.service',
       '[Service]',
       'Type=simple',
+      'ExecStartPre=/bin/rm -f /tmp/dispatch.sock',
       'ExecStart=\'$NODE_BIN_PATH\' /home/openclaw/scripts/dispatch-server.js',
       'Environment=HOME=/home/openclaw',
       'Environment=PATH=/home/openclaw/.nvm/versions/node/\'$NODE_VER\'/bin:/usr/local/bin:/usr/bin:/bin',
@@ -4600,6 +4601,31 @@ export async function configureOpenClaw(
       '  systemctl --user daemon-reload 2>/dev/null || true',
       '  systemctl --user enable dispatch-server 2>/dev/null || true',
       '  systemctl --user start dispatch-server 2>/dev/null || true',
+      'fi',
+      '',
+      '# Gateway watchdog — auto-restarts gateway if it hangs (every 2 min)',
+      'if [ -f "$HOME/scripts/gateway-watchdog.sh" ]; then',
+      '  cat > "$HOME/.config/systemd/user/gateway-watchdog.service" << WDEOF',
+      '[Unit]',
+      'Description=Gateway Watchdog Check',
+      '[Service]',
+      'Type=oneshot',
+      'ExecStart=/bin/bash /home/openclaw/scripts/gateway-watchdog.sh',
+      'Environment=HOME=/home/openclaw',
+      'WDEOF',
+      '  cat > "$HOME/.config/systemd/user/gateway-watchdog.timer" << WTEOF',
+      '[Unit]',
+      'Description=Gateway Watchdog Timer',
+      '[Timer]',
+      'OnBootSec=120',
+      'OnUnitActiveSec=120',
+      'AccuracySec=30',
+      '[Install]',
+      'WantedBy=timers.target',
+      'WTEOF',
+      '  systemctl --user daemon-reload 2>/dev/null || true',
+      '  systemctl --user enable gateway-watchdog.timer 2>/dev/null || true',
+      '  systemctl --user start gateway-watchdog.timer 2>/dev/null || true',
       'fi',
       '',
 
