@@ -157,16 +157,36 @@ export default function SkillsPage() {
         <h1 className="mb-1 text-xl font-bold tracking-tight">Skills</h1>
         <p className="mb-4 text-xs text-muted">Capabilities your agent has access to</p>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-3 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.04)" }}>
+        {/* Tabs — glass pill with sliding indicator */}
+        <div
+          className="relative flex mb-3 rounded-2xl p-1"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            boxShadow: "inset 0 1px 3px rgba(0,0,0,0.15), 0 1px 0 rgba(255,255,255,0.02)",
+          }}
+        >
+          {/* Sliding glass pill */}
+          <div
+            className="absolute top-1 bottom-1 rounded-xl"
+            style={{
+              width: "calc(50% - 4px)",
+              left: tab === "skills" ? "4px" : "calc(50% + 0px)",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.06)",
+              backdropFilter: "blur(12px)",
+              transition: "left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
+            }}
+          />
           {(["skills", "integrations"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className="flex-1 rounded-lg py-2 text-[12px] font-semibold transition-all"
+              className="relative z-10 flex-1 rounded-xl py-2.5 text-[12px] font-semibold"
               style={{
-                background: tab === t ? "rgba(255,255,255,0.08)" : "transparent",
-                color: tab === t ? "#fff" : "#888",
+                color: tab === t ? "#fff" : "#666",
+                transition: "color 0.3s ease",
               }}
             >
               {t === "skills" ? "My Skills" : "Integrations"}
