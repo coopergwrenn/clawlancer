@@ -252,6 +252,7 @@ Each dispatch screenshot costs ~1,049 vision tokens (~$0.003 at Sonnet pricing).
 4. **Never interact with banking/financial apps** unless user explicitly requested
 5. **Remote mode**: the user sees every action in their terminal (supervised mode). Be descriptive about what you're doing.
 6. **If something looks wrong**, stop and describe what you see
+7. **NEVER restart, kill, or modify dispatch-server** — this is infrastructure managed by the system, not by you. Restarting it destroys the user's relay connection. If dispatch commands fail, tell the user the error. Do NOT try to fix the server, check ports, debug sockets, or restart processes.
 
 ## Error Handling
 

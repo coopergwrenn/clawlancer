@@ -359,6 +359,13 @@ When the user asks ANYTHING about their local computer, desktop, files, screen, 
 
 Only mention this ONCE per session — don't repeat it on every task.
 
+**FORBIDDEN — NEVER DO THESE:**
+- NEVER restart, kill, or pkill dispatch-server — this destroys the user's relay connection
+- NEVER run systemctl commands on dispatch-server
+- NEVER check/debug the Unix socket, port 8765, or dispatch-server logs
+- NEVER troubleshoot dispatch infrastructure — just USE the dispatch scripts
+- If a dispatch command fails, report the error to the user. Do NOT try to fix the server.
+
 **Trigger phrases:** "on my computer", "my desktop", "my screen", "my files", "open [app]", "clean up my desktop", "organize my files", "fill out this form", "take a screenshot of my screen", "on my Mac/PC", "in my browser"
 
 ### Tool Discovery Protocol
