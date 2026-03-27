@@ -28,6 +28,7 @@ interface TaskItem {
   streak: number;
   next_run_at: string | null;
   tools_used: string[];
+  error_message: string | null;
   created_at: string;
 }
 
@@ -369,15 +370,16 @@ export default function CommandCenter({
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium capitalize transition-all"
+            className="shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium capitalize transition-all active:scale-95"
             style={{
               background: filter === f
-                ? "linear-gradient(145deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06))"
-                : "rgba(255,255,255,0.04)",
-              color: filter === f ? "#fff" : "#777",
-              border: `1px solid ${filter === f ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.06)"}`,
-              boxShadow: filter === f ? "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 4px rgba(0,0,0,0.1)" : "none",
-              backdropFilter: "blur(8px)",
+                ? "rgba(255,255,255,0.85)"
+                : "rgba(255,255,255,0.06)",
+              color: filter === f ? "#111" : "#888",
+              border: `1px solid ${filter === f ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.08)"}`,
+              boxShadow: filter === f
+                ? "0 2px 8px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.3)"
+                : "inset 0 1px 0 rgba(255,255,255,0.04)",
             }}
           >
             {f}
@@ -413,17 +415,23 @@ export default function CommandCenter({
         {/* ── Tasks Tab ── */}
         {tab === "tasks" && (
           <div className="flex-1 flex flex-col px-4 py-3">
-            {/* Creating task indicator */}
+            {/* Creating task indicator — matches web app "Working on it..." */}
             {sending && tab === "tasks" && (
-              <div className="glass-card rounded-xl p-3.5 mb-2 flex items-center gap-3">
-                <div className="h-2.5 w-2.5 rounded-full" style={{ background: "#3b82f6", animation: "dot 1.4s infinite" }} />
-                <p className="text-[13px] text-white">Creating task...</p>
+              <div className="glass-card rounded-xl p-4 mb-2.5 flex items-start gap-3.5">
+                <div className="w-7 h-7 rounded-full shrink-0 relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)" }}>
+                  <div className="absolute inset-0 rounded-full" style={{ background: "conic-gradient(from 0deg, transparent 0%, rgba(99,102,241,0.5) 30%, transparent 55%)", animation: "spin 2s linear infinite" }} />
+                  <div className="w-2 h-2 rounded-full relative z-10" style={{ background: "radial-gradient(circle, #818cf8, #6366f1)" }} />
+                </div>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: "#818cf8" }}>Working on it...</p>
+                  <p className="text-xs mt-0.5" style={{ color: "#888" }}>Your agent is processing this task</p>
+                </div>
               </div>
             )}
             {loadingTasks ? (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-20 animate-pulse rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }} />
+                  <div key={i} className="h-20 animate-pulse glass-card rounded-xl" />
                 ))}
               </div>
             ) : filteredTasks.length === 0 ? (
@@ -440,67 +448,109 @@ export default function CommandCenter({
                 )}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {filteredTasks.map((task) => {
-                  const statusColor = task.status === "completed" ? "#22c55e"
-                    : task.status === "active" ? "#22c55e"
-                    : task.status === "in_progress" ? "#3b82f6"
-                    : task.status === "failed" ? "#ef4444"
-                    : task.status === "paused" ? "#9ca3af"
-                    : "#888";
-                  const statusLabel = task.status === "in_progress" ? "Working..."
-                    : task.status === "active" ? "Active"
-                    : task.status === "paused" ? "Paused"
-                    : task.status;
+                  const isProcessing = task.status === "in_progress";
+                  const isCompleted = task.status === "completed";
+                  const isActive = task.status === "active";
+                  const isFailed = task.status === "failed";
+                  const isPaused = task.status === "paused";
+
                   return (
                   <div
                     key={task.id}
-                    className="glass-card rounded-xl p-3.5"
+                    className="glass-card rounded-xl overflow-hidden"
+                    style={{
+                      border: isFailed ? "1px solid rgba(252,165,165,0.3)" : undefined,
+                      opacity: isPaused ? 0.65 : undefined,
+                    }}
                   >
-                    <div className="flex items-start gap-3">
-                      {/* Status dot */}
-                      <div className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center">
-                        {task.status === "in_progress" ? (
-                          <div className="h-2.5 w-2.5 rounded-full" style={{ background: statusColor, animation: "dot 1.4s infinite" }} />
+                    <div className="p-4 flex items-start gap-3.5">
+                      {/* Left status icon — matches web app exactly */}
+                      <div className="shrink-0 mt-0.5">
+                        {isPaused ? (
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ border: "2px solid #9ca3af" }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="#9ca3af"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                          </div>
+                        ) : isActive ? (
+                          <div className="w-7 h-7 rounded-full relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(34,197,94,0.12) 0%, transparent 70%)", boxShadow: "0 0 12px rgba(34,197,94,0.15)" }}>
+                            <div className="absolute inset-0 rounded-full" style={{ background: "conic-gradient(from 0deg, transparent 0%, rgba(34,197,94,0.45) 30%, transparent 55%)", animation: "spin 3s linear infinite" }} />
+                            <div className="w-2.5 h-2.5 rounded-full relative z-10" style={{ background: "radial-gradient(circle, #4ade80, #16a34a)" }} />
+                          </div>
+                        ) : isProcessing ? (
+                          <div className="w-7 h-7 rounded-full relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)" }}>
+                            <div className="absolute inset-0 rounded-full" style={{ background: "conic-gradient(from 0deg, transparent 0%, rgba(99,102,241,0.5) 30%, transparent 55%)", animation: "spin 2s linear infinite" }} />
+                            <div className="w-2 h-2 rounded-full relative z-10" style={{ background: "radial-gradient(circle, #818cf8, #6366f1)" }} />
+                          </div>
+                        ) : isCompleted ? (
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center relative" style={{ background: "radial-gradient(circle at 35% 35%, #4a4a4a, #2a2a2acc 60%, #1a1a1a88 100%)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.2)" }}>
+                            <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%)" }} />
+                            <Check size={14} strokeWidth={3} className="relative z-10" style={{ color: "#fff" }} />
+                          </div>
                         ) : (
-                          <div className="h-2.5 w-2.5 rounded-full" style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}40` }} />
+                          <div className="w-6 h-6 rounded-full" style={{ border: "2px solid rgba(255,255,255,0.15)" }} />
                         )}
                       </div>
+
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="text-[13px] font-medium text-white truncate">{task.title}</p>
-                          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold capitalize" style={{ background: `${statusColor}18`, color: statusColor }}>
-                            {statusLabel}
-                          </span>
-                        </div>
-                        <p className="mt-0.5 text-[11px] truncate" style={{ color: "#888" }}>{task.description}</p>
-                        {/* Pills */}
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {task.is_recurring && task.frequency && (
-                            <span className="inline-flex items-center gap-1 glass-inner rounded-full px-2 py-0.5 text-[10px]" style={{ color: "#999" }}>
-                              <Repeat size={9} /> {task.frequency}
-                            </span>
+                          <p className="font-medium text-[14px] truncate" style={{ color: isProcessing ? "#818cf8" : isFailed ? "#ef4444" : "#fff" }}>
+                            {isProcessing && task.title === "Processing..." ? "Working on it..." : task.title}
+                          </p>
+                          {/* Status dot for non-active/completed */}
+                          {!isCompleted && !isActive && !isProcessing && !isPaused && task.status === "queued" && (
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "#eab308" }} />
                           )}
-                          {task.next_run_at && (
-                            <span className="glass-inner rounded-full px-2 py-0.5 text-[10px]" style={{ color: "#999" }}>
-                              {formatNextRun(task.next_run_at)}
-                            </span>
-                          )}
-                          {task.streak > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]" style={{ background: "rgba(220,103,67,0.1)", color: "#DC6743" }}>
-                              <Zap size={9} /> {task.streak}
-                            </span>
-                          )}
-                          {task.created_at && (
-                            <span className="text-[10px]" style={{ color: "#555" }}>
-                              {timeAgo(task.created_at)}
-                            </span>
+                          {isFailed && (
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "#ef4444" }} />
                           )}
                         </div>
+                        <p className="text-[12px] mt-0.5 truncate" style={{ color: isFailed && task.error_message ? "#f87171" : "#888" }}>
+                          {isFailed && task.error_message ? task.error_message : task.description}
+                        </p>
                       </div>
-                      <ChevronRight size={16} style={{ color: "#444", marginTop: 4 }} />
+
+                      {/* Tools + Recurring + Chevron */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {task.tools_used && task.tools_used.length > 0 && (
+                          <div className="flex -space-x-1.5">
+                            {task.tools_used.slice(0, 3).map((tool) => {
+                              const toolColor = tool.includes("search") ? "#4285F4" : tool.includes("code") ? "#4285F4" : tool.includes("file") ? "#34a853" : "#71717a";
+                              return (
+                                <div key={tool} className="w-6 h-6 rounded-full flex items-center justify-center relative" style={{ background: `radial-gradient(circle at 35% 35%, ${toolColor}, ${toolColor}cc 60%, ${toolColor}88 100%)`, boxShadow: "inset 0 -1px 3px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.3), 0 1px 4px rgba(0,0,0,0.15)" }}>
+                                  <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.5) 0%, transparent 100%)" }} />
+                                  <Search size={10} className="relative z-10" style={{ color: "#fff" }} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {task.is_recurring && <Repeat size={14} style={{ color: "#888" }} />}
+                        <ChevronRight size={16} style={{ color: "#555" }} />
+                      </div>
                     </div>
+
+                    {/* Recurring pills row */}
+                    {task.is_recurring && (task.frequency || task.next_run_at || task.streak > 0) && (
+                      <div className="px-4 pb-3 pt-0 flex flex-wrap gap-1.5" style={{ marginLeft: "44px" }}>
+                        {task.frequency && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#999", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+                            <Repeat size={9} /> Runs {task.frequency}
+                          </span>
+                        )}
+                        {task.next_run_at && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#999", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+                            {formatNextRun(task.next_run_at)}
+                          </span>
+                        )}
+                        {task.streak > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(220,103,67,0.08)", boxShadow: "0 0 0 1px rgba(220,103,67,0.12)", color: "#DC6743" }}>
+                            <Zap size={9} style={{ fill: "#DC6743" }} /> {task.streak} {task.streak === 1 ? "day" : "days"} streak
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   );
                 })}
@@ -582,13 +632,12 @@ export default function CommandCenter({
             <button
               key={s}
               onClick={() => handleSend(s)}
-              className="shrink-0 rounded-full px-4 py-2 text-[12px] font-medium transition-all active:scale-95"
+              className="shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
               style={{
-                background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "#bbb",
-                backdropFilter: "blur(8px)",
-                boxShadow: "0 2px 6px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "#ccc",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.06)",
               }}
             >
               {s}
