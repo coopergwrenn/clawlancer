@@ -86,7 +86,7 @@ export async function POST(
       if (!gatewayRes.ok) {
         await supabase()
           .from("instaclaw_tasks")
-          .update({ status: "failed", error_message: `Gateway error: ${gatewayRes.status}`, processing_started_at: null })
+          .update({ status: "failed", error_message: `Agent is busy (${gatewayRes.status}). Tap Re-run to try again.`, processing_started_at: null })
           .eq("id", id);
         return NextResponse.json({ error: "Gateway error" }, { status: 502 });
       }

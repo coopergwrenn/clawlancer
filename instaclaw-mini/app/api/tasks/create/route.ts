@@ -7,16 +7,16 @@ export const maxDuration = 120;
 const TASK_SUFFIX = `
 
 TASK EXECUTION MODE:
-After completing the task, append this metadata block at the END of your response:
+After completing the task, you MUST append this metadata block at the very END of your response:
 
 ---TASK_META---
 title: [A concise title for this task, max 60 characters]
-recurring: [true/false - is this something that should repeat on a schedule?]
+recurring: [true if this task should repeat on a schedule — ANY of these indicate recurring: "daily", "every morning", "monitor", "track", "watch", "alert", "notify", "keep updated", "scheduled", "weekly", "hourly". Set to false ONLY if it's clearly a one-time request]
 frequency: [If recurring: daily/weekly/hourly. If not recurring: none]
 tools: [Comma-separated list of tools you used, e.g.: web_search, code_execution, email]
 ---END_META---
 
-Put your full task result BEFORE the TASK_META block. Be thorough and helpful. Format with markdown if appropriate.`;
+Put your full task result BEFORE the TASK_META block. Be thorough and helpful. Format with markdown if appropriate. You MUST include the TASK_META block — do not skip it.`;
 
 /**
  * POST /api/tasks/create — Create a task and execute it via the gateway directly.
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
             .from("instaclaw_tasks")
             .update({
               status: "failed",
-              error_message: `Gateway error: ${gatewayRes.status}`,
+              error_message: `Agent is busy (${gatewayRes.status}). Tap Re-run to try again.`,
               processing_started_at: null,
             })
             .eq("id", taskId);
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
             .from("instaclaw_tasks")
             .update({
               status: "failed",
-              error_message: "No response from agent",
+              error_message: "Agent is busy. Tap Re-run to try again.",
               processing_started_at: null,
             })
             .eq("id", taskId);
@@ -134,6 +134,31 @@ export async function POST(req: NextRequest) {
           if (frequencyMatch) frequency = frequencyMatch[1].trim();
           if (toolsMatch) {
             toolsUsed.push(...toolsMatch[1].split(",").map((t: string) => t.trim()).filter(Boolean));
+          }
+        }
+
+        // Client-side recurring detection fallback —
+        // if TASK_META didn't mark as recurring but the description clearly implies it
+        if (!isRecurring) {
+          const desc = message.toLowerCase();
+          const recurringKeywords = [
+            "daily", "every day", "every morning", "every evening", "every night",
+            "weekly", "every week", "each week",
+            "hourly", "every hour",
+            "monitor", "track", "watch", "alert me", "notify me",
+            "keep me updated", "send me updates", "recurring",
+            "on a schedule", "scheduled", "cron",
+            "every monday", "every tuesday", "every wednesday", "every thursday", "every friday",
+            "every saturday", "every sunday",
+          ];
+          if (recurringKeywords.some((kw) => desc.includes(kw))) {
+            isRecurring = true;
+            // Detect frequency from description
+            if (!frequency) {
+              if (desc.includes("hourly") || desc.includes("every hour")) frequency = "hourly";
+              else if (desc.includes("weekly") || desc.includes("every week")) frequency = "weekly";
+              else frequency = "daily"; // default to daily for recurring
+            }
           }
         }
 
