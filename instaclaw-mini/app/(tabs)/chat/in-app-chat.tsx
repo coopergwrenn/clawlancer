@@ -101,7 +101,7 @@ export default function InAppChat({
     <div className="flex h-full flex-col" style={{ background: "#0a0a0a" }}>
       {/* Header */}
       <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "linear-gradient(145deg, rgba(220,103,67,0.3), rgba(220,103,67,0.1))" }}>
+        <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "linear-gradient(145deg, rgba(218,119,86,0.3), rgba(218,119,86,0.1))" }}>
           <Bot size={20} className="text-accent" />
         </div>
         <div className="flex-1">
@@ -125,7 +125,7 @@ export default function InAppChat({
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: "touch" }}>
         {messages.length === 0 && !loading && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(220,103,67,0.1)" }}>
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(218,119,86,0.1)" }}>
               <Bot size={28} className="text-accent" />
             </div>
             <p className="text-sm font-medium text-white">Chat with your agent</p>
@@ -148,7 +148,7 @@ export default function InAppChat({
                 }`}
                 style={{
                   background: msg.role === "user"
-                    ? "linear-gradient(135deg, #DC6743, #c2553a)"
+                    ? "linear-gradient(135deg, #da7756, #c36441)"
                     : "rgba(255,255,255,0.08)",
                   color: "#fff",
                 }}
@@ -205,7 +205,7 @@ export default function InAppChat({
             onClick={handleSend}
             disabled={!input.trim() || loading}
             className="flex h-[46px] w-[46px] items-center justify-center rounded-2xl disabled:opacity-30"
-            style={{ background: "linear-gradient(135deg, #DC6743, #c2553a)" }}
+            style={{ background: "linear-gradient(135deg, #da7756, #c36441)" }}
           >
             <Send size={18} color="#fff" />
           </button>

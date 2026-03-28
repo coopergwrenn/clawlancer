@@ -312,7 +312,7 @@ export default function AgentDashboard({
         <div className="mb-4 glass-inner p-4">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="relative flex h-7 w-7 items-center justify-center rounded-full overflow-hidden" style={{ background: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.3) 50%, rgba(180,70,40,0.6) 100%)", boxShadow: "0 2px 8px rgba(220,103,67,0.35), inset 0 1px 2px rgba(255,255,255,0.2)" }}>
+              <div className="relative flex h-7 w-7 items-center justify-center rounded-full overflow-hidden" style={{ background: "radial-gradient(circle at 35% 30%, rgba(218,119,86,0.7), rgba(218,119,86,0.3) 50%, rgba(180,70,40,0.6) 100%)", boxShadow: "0 2px 8px rgba(218,119,86,0.35), inset 0 1px 2px rgba(255,255,255,0.2)" }}>
                 <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)" }} />
                 <Zap size={13} className="relative z-10" style={{ color: "#fff" }} />
               </div>
@@ -447,7 +447,7 @@ export default function AgentDashboard({
       {waitingForOAuth && !gmailConnected && (
         <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
           <div className="flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(220,103,67,0.3)", borderTopColor: "transparent" }} />
+            <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(218,119,86,0.3)", borderTopColor: "transparent" }} />
             <p className="text-xs text-muted">Waiting for Google connection... Come back after completing OAuth.</p>
           </div>
         </div>
@@ -471,7 +471,7 @@ export default function AgentDashboard({
               <button
                 onClick={handleSubscribe}
                 className="text-xs font-medium transition-colors"
-                style={{ color: "#DC6743" }}
+                style={{ color: "#da7756" }}
               >
                 View plans
               </button>

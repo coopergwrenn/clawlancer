@@ -76,7 +76,7 @@ function StepIcon({ status, justDone }: { status: StepStatus; justDone: boolean 
       <div
         className={`flex ${size} items-center justify-center rounded-full`}
         style={{
-          background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.7), rgba(220,103,67,0.3) 70%)",
+          background: "radial-gradient(circle at 40% 35%, rgba(218,119,86,0.7), rgba(218,119,86,0.3) 70%)",
           boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.4), 0 2px 6px rgba(0,0,0,0.12)",
           animation: "pulse-dot 2s ease-in-out infinite",
         }}
@@ -249,7 +249,7 @@ export default function ProvisioningStatus() {
               <p
                 className="text-[17px] font-medium"
                 style={{
-                  color: step.status === "done" ? "#333334" : step.status === "active" ? "#DC6743" : "#aaa",
+                  color: step.status === "done" ? "#333334" : step.status === "active" ? "#da7756" : "#aaa",
                   transition: "color 0.3s ease",
                 }}
               >

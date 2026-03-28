@@ -160,13 +160,13 @@ function SpotsOpenPill() {
   }, []);
 
   const orbBg = spots >= 10
-    ? "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)"
+    ? "radial-gradient(circle at 35% 30%, rgba(218,119,86,0.7), rgba(218,119,86,0.4) 50%, rgba(180,70,40,0.75) 100%)"
     : spots >= 3
       ? "radial-gradient(circle at 35% 30%, rgba(245,158,11,0.7), rgba(245,158,11,0.4) 50%, rgba(200,120,10,0.75) 100%)"
       : "radial-gradient(circle at 35% 30%, rgba(239,68,68,0.7), rgba(239,68,68,0.4) 50%, rgba(200,50,50,0.75) 100%)";
 
   const glowBg = spots >= 10
-    ? "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)"
+    ? "radial-gradient(circle, rgba(218,119,86,0.4) 0%, transparent 70%)"
     : spots >= 3
       ? "radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%)"
       : "radial-gradient(circle, rgba(239,68,68,0.4) 0%, transparent 70%)";
@@ -630,7 +630,7 @@ export default function Onboarding() {
                 } catch {}
               }}
               className="text-[13px] font-semibold"
-              style={{ color: "#DC6743", background: "none", border: "none" }}
+              style={{ color: "#da7756", background: "none", border: "none" }}
             >
               Already have an agent? Sign in
             </button>
@@ -656,7 +656,7 @@ export default function Onboarding() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               className="mt-6 w-full max-w-[300px] rounded-xl px-4 py-3.5 text-center text-[15px] focus:outline-none"
-              style={{ background: "rgba(0,0,0,0.03)", border: `1px solid ${isValidEmail ? "rgba(220,103,67,0.4)" : "rgba(0,0,0,0.1)"}`, color: "#333334", transition: "border-color 0.2s" }}
+              style={{ background: "rgba(0,0,0,0.03)", border: `1px solid ${isValidEmail ? "rgba(218,119,86,0.4)" : "rgba(0,0,0,0.1)"}`, color: "#333334", transition: "border-color 0.2s" }}
             />
             {error && (
               <div className="mt-3 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
@@ -681,8 +681,8 @@ export default function Onboarding() {
       {step === "verifying" && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in" style={{ opacity: 0 }}>
           <div className="relative mb-5">
-            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(220,103,67,0.15)" }} />
-            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#DC6743" }} />
+            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(218,119,86,0.15)" }} />
+            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#da7756" }} />
           </div>
           <p className="text-lg" style={{ ...serif, color: "#333334" }}>Verifying your identity...</p>
           <p className="mt-1 text-sm" style={{ color: "#6b6b6b" }}>Confirm in World App</p>
@@ -693,8 +693,8 @@ export default function Onboarding() {
       {step === "verify-failed" && (
         <>
           <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
-            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.12), rgba(220,103,67,0.04) 70%)" }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#DC6743" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(218,119,86,0.12), rgba(218,119,86,0.04) 70%)" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#da7756" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
             <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Verification needed</h2>
             <p className="mt-2 max-w-[300px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
@@ -718,8 +718,8 @@ export default function Onboarding() {
       {step === "duplicate-found" && (
         <>
           <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in-up" style={{ opacity: 0 }}>
-            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.12), rgba(220,103,67,0.04) 70%)" }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#DC6743" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 40% 35%, rgba(218,119,86,0.12), rgba(218,119,86,0.04) 70%)" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#da7756" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
             </div>
             <h2 className="text-2xl tracking-[-0.5px]" style={{ ...serif, color: "#333334" }}>Already have an agent?</h2>
             <p className="mt-2 max-w-[260px] text-center text-[13px] leading-relaxed" style={{ color: "#6b6b6b" }}>
@@ -755,7 +755,7 @@ export default function Onboarding() {
             {/* WLD option */}
             <div
               className="mt-6 w-full max-w-[300px] rounded-xl px-5 py-4 cursor-pointer transition-all"
-              style={{ background: "rgba(0,0,0,0.02)", border: "2px solid rgba(220,103,67,0.4)" }}
+              style={{ background: "rgba(0,0,0,0.02)", border: "2px solid rgba(218,119,86,0.4)" }}
             >
               <div className="flex justify-between text-sm" style={{ color: "#333334" }}>
                 <span style={{ color: "#6b6b6b" }}>Credits</span>
@@ -767,7 +767,7 @@ export default function Onboarding() {
               </div>
               <div className="mt-2 flex justify-between text-sm" style={{ color: "#333334" }}>
                 <span style={{ color: "#6b6b6b" }}>Cost</span>
-                <span className="font-semibold" style={{ color: "#DC6743" }}>25 WLD (~$8.25)</span>
+                <span className="font-semibold" style={{ color: "#da7756" }}>25 WLD (~$8.25)</span>
               </div>
             </div>
 
@@ -803,8 +803,8 @@ export default function Onboarding() {
       {step === "delegating" && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in" style={{ opacity: 0 }}>
           <div className="relative mb-5">
-            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(220,103,67,0.15)" }} />
-            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#DC6743" }} />
+            <div className="absolute -inset-3 animate-pulse rounded-full blur-xl" style={{ background: "rgba(218,119,86,0.15)" }} />
+            <div className="relative h-12 w-12 animate-[spin_1.2s_linear_infinite] rounded-full" style={{ border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#da7756" }} />
           </div>
           <p className="text-lg" style={{ ...serif, color: "#333334" }}>Your agent is powering up...</p>
           <p className="mt-1 text-sm" style={{ color: "#6b6b6b" }}>Deploying your personal AI</p>

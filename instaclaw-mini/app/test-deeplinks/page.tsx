@@ -87,7 +87,7 @@ export default function TestDeeplinks() {
           style={{
             padding: "14px 16px",
             borderRadius: "12px",
-            background: "#DC6743",
+            background: "#da7756",
             color: "#fff",
             border: "none",
             fontSize: "13px",

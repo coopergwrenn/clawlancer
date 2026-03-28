@@ -150,7 +150,7 @@ export default function GooglePersonalizationModal({
                     className="h-full rounded-full transition-all duration-300 ease-out"
                     style={{
                       width: `${progress}%`,
-                      background: "linear-gradient(90deg, #c75a34, #DC6743, #e8845e)",
+                      background: "linear-gradient(90deg, #c36441, #da7756, #e0906a)",
                     }}
                   />
                 </div>
@@ -169,8 +169,8 @@ export default function GooglePersonalizationModal({
                     key={i}
                     className="w-2 h-2 rounded-full transition-all duration-300"
                     style={{
-                      background: i <= currentInsight ? "#DC6743" : "rgba(255,255,255,0.1)",
-                      boxShadow: i === currentInsight ? "0 0 8px rgba(220,103,67,0.5)" : "none",
+                      background: i <= currentInsight ? "#da7756" : "rgba(255,255,255,0.1)",
+                      boxShadow: i === currentInsight ? "0 0 8px rgba(218,119,86,0.5)" : "none",
                       transform: i === currentInsight ? "scale(1.3)" : "scale(1)",
                     }}
                   />
@@ -198,7 +198,7 @@ export default function GooglePersonalizationModal({
                     className="h-full rounded-full transition-all duration-400 ease-out"
                     style={{
                       width: `${((currentInsight + 1) / insights.length) * 100}%`,
-                      background: "linear-gradient(90deg, #c75a34, #DC6743, #e8845e)",
+                      background: "linear-gradient(90deg, #c36441, #da7756, #e0906a)",
                     }}
                   />
                 </div>
@@ -263,8 +263,8 @@ export default function GooglePersonalizationModal({
                 onClick={onDone}
                 className="w-full rounded-xl py-3 text-sm font-semibold"
                 style={{
-                  background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-                  boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+                  background: "linear-gradient(-75deg, #c36441, #da7756, #e0906a, #da7756, #c36441)",
+                  boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(218,119,86,0.35) 0px 4px 16px 0px",
                   color: "#fff",
                 }}
               >
@@ -287,8 +287,8 @@ export default function GooglePersonalizationModal({
                 onClick={() => fetchInsights()}
                 className="w-full rounded-xl py-3 text-sm font-semibold mb-3"
                 style={{
-                  background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-                  boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+                  background: "linear-gradient(-75deg, #c36441, #da7756, #e0906a, #da7756, #c36441)",
+                  boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(218,119,86,0.35) 0px 4px 16px 0px",
                   color: "#fff",
                 }}
               >

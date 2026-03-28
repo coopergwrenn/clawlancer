@@ -85,7 +85,7 @@ export default function ChatInterface({
           className="flex w-full items-center gap-3 rounded-2xl p-3.5 opacity-40"
           style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "rgba(220,103,67,0.15)" }}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "rgba(218,119,86,0.15)" }}>
             <Globe size={20} className="text-accent" />
           </div>
           <div className="flex-1 text-left">
@@ -98,7 +98,7 @@ export default function ChatInterface({
 
       {/* Agent header */}
       <div className="flex items-center gap-3 px-4 py-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ background: "linear-gradient(145deg, rgba(220,103,67,0.3), rgba(220,103,67,0.1))" }}>
+        <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ background: "linear-gradient(145deg, rgba(218,119,86,0.3), rgba(218,119,86,0.1))" }}>
           <Bot size={18} className="text-accent" />
         </div>
         <div className="flex-1">
@@ -114,7 +114,7 @@ export default function ChatInterface({
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3" style={{ WebkitOverflowScrolling: "touch" }}>
         {messages.length === 0 && !loading && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(220,103,67,0.1)" }}>
+            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "rgba(218,119,86,0.1)" }}>
               <Bot size={24} className="text-accent" />
             </div>
             <p className="text-sm font-medium text-white">Chat with your agent</p>
@@ -129,7 +129,7 @@ export default function ChatInterface({
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`} style={{ animation: "msg-in 0.2s ease" }}>
               <div
                 className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${msg.role === "user" ? "rounded-br-sm" : "rounded-bl-sm"}`}
-                style={{ background: msg.role === "user" ? "linear-gradient(135deg, #DC6743, #c2553a)" : "rgba(255,255,255,0.08)", color: "#fff" }}
+                style={{ background: msg.role === "user" ? "linear-gradient(135deg, #da7756, #c36441)" : "rgba(255,255,255,0.08)", color: "#fff" }}
               >
                 {msg.content}
               </div>
@@ -175,7 +175,7 @@ export default function ChatInterface({
             onClick={handleSend}
             disabled={!input.trim() || loading}
             className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-2xl disabled:opacity-30"
-            style={{ background: "linear-gradient(135deg, #DC6743, #c2553a)" }}
+            style={{ background: "linear-gradient(135deg, #da7756, #c36441)" }}
           >
             <Send size={18} color="#fff" />
           </button>

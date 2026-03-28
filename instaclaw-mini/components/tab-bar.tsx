@@ -92,7 +92,7 @@ export default function TabBar() {
                   color: active ? "#fff" : "rgba(255,255,255,0.3)",
                   transform: active ? "scale(1.08)" : "scale(1)",
                   filter: active
-                    ? "drop-shadow(0 0 4px rgba(220,103,67,0.25))"
+                    ? "drop-shadow(0 0 4px rgba(218,119,86,0.25))"
                     : "none",
                 }}
               />

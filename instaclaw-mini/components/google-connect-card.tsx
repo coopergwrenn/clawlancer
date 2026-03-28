@@ -86,19 +86,19 @@ export default function GoogleConnectCard({
           <p className="text-[11px] font-semibold mb-2 text-muted">When you see the warning:</p>
           <ol className="text-[11px] leading-relaxed space-y-1.5" style={{ color: "#999", listStyle: "none", paddingLeft: 0 }}>
             <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(220,103,67,0.15)", color: "#DC6743" }}>1</span>
+              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>1</span>
               <span>Tap <strong>&quot;Advanced&quot;</strong> at the bottom left</span>
             </li>
             <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(220,103,67,0.15)", color: "#DC6743" }}>2</span>
+              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>2</span>
               <span>Tap <strong>&quot;Go to instaclaw.io (unsafe)&quot;</strong></span>
             </li>
             <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(220,103,67,0.15)", color: "#DC6743" }}>3</span>
+              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>3</span>
               <span>Grant read-only Gmail access</span>
             </li>
             <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(220,103,67,0.15)", color: "#DC6743" }}>4</span>
+              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>4</span>
               <span>Return to World App when done</span>
             </li>
           </ol>
@@ -113,8 +113,8 @@ export default function GoogleConnectCard({
           disabled={loading}
           className="w-full rounded-xl py-3 text-sm font-bold transition-all disabled:opacity-50"
           style={{
-            background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-            boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+            background: "linear-gradient(-75deg, #c36441, #da7756, #e0906a, #da7756, #c36441)",
+            boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(218,119,86,0.35) 0px 4px 16px 0px",
             color: "#fff",
           }}
         >

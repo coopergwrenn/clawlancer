@@ -85,7 +85,7 @@ function getSkillColor(slug: string, category: string, enabled: boolean): string
     communication: "rgba(99,102,241,0.15)",
   };
   if (EARN_SLUGS.has(slug)) return "rgba(245,158,11,0.15)";
-  return colorMap[category] || "rgba(220,103,67,0.12)";
+  return colorMap[category] || "rgba(218,119,86,0.12)";
 }
 
 // ── Component ──
@@ -202,9 +202,9 @@ export default function SkillsPage() {
               onClick={() => setActiveCategory(cat.id)}
               className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all"
               style={{
-                background: activeCategory === cat.id ? "rgba(220,103,67,0.15)" : "rgba(255,255,255,0.04)",
-                border: activeCategory === cat.id ? "1px solid rgba(220,103,67,0.3)" : "1px solid rgba(255,255,255,0.06)",
-                color: activeCategory === cat.id ? "#DC6743" : "#888",
+                background: activeCategory === cat.id ? "rgba(218,119,86,0.15)" : "rgba(255,255,255,0.04)",
+                border: activeCategory === cat.id ? "1px solid rgba(218,119,86,0.3)" : "1px solid rgba(255,255,255,0.06)",
+                color: activeCategory === cat.id ? "#da7756" : "#888",
               }}
             >
               {cat.label}
@@ -217,7 +217,7 @@ export default function SkillsPage() {
       <div className="flex-1 flex flex-col overflow-y-auto px-4 pb-6" style={{ minHeight: 0 }}>
         {loading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3" style={{ minHeight: "50vh" }}>
-            <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(220,103,67,0.3)", borderTopColor: "transparent" }} />
+            <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(218,119,86,0.3)", borderTopColor: "transparent" }} />
             <p className="text-xs text-muted">Loading skills...</p>
           </div>
         ) : filtered.length === 0 ? (

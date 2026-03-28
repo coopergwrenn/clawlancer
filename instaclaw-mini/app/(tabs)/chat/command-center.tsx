@@ -479,8 +479,8 @@ export default function CommandCenter({
               <div
                 className="absolute bottom-0 left-2 right-2 h-[2.5px] rounded-full"
                 style={{
-                  background: "linear-gradient(90deg, #DC6743, #e8845e)",
-                  boxShadow: "0 0 8px rgba(220,103,67,0.4)",
+                  background: "linear-gradient(90deg, #da7756, #e0906a)",
+                  boxShadow: "0 0 8px rgba(218,119,86,0.4)",
                 }}
               />
             )}
@@ -667,8 +667,8 @@ export default function CommandCenter({
 
                         {/* Streak pill */}
                         {!isPaused && task.streak > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: "rgba(220,103,67,0.08)", boxShadow: "0 0 0 1px rgba(220,103,67,0.12), 0 1px 2px rgba(220,103,67,0.06)", color: "#DC6743" }}>
-                            <Zap size={9} style={{ fill: "#DC6743" }} /> {task.streak} {task.streak === 1 ? "day" : "days"} streak
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: "rgba(218,119,86,0.08)", boxShadow: "0 0 0 1px rgba(218,119,86,0.12), 0 1px 2px rgba(218,119,86,0.06)", color: "#da7756" }}>
+                            <Zap size={9} style={{ fill: "#da7756" }} /> {task.streak} {task.streak === 1 ? "day" : "days"} streak
                           </span>
                         )}
                       </div>
@@ -973,7 +973,7 @@ export default function CommandCenter({
                                 } catch {}
                               }}
                               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium"
-                              style={{ background: "rgba(220,103,67,0.1)", border: "1px solid rgba(220,103,67,0.15)", color: "#DC6743" }}
+                              style={{ background: "rgba(218,119,86,0.1)", border: "1px solid rgba(218,119,86,0.15)", color: "#da7756" }}
                             >
                               <RotateCw size={10} /> Re-run
                             </button>
@@ -1011,10 +1011,10 @@ export default function CommandCenter({
                       className={`max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed ${msg.role === "user" ? "rounded-br-md" : "rounded-bl-md"}`}
                       style={msg.role === "user"
                         ? {
-                            background: "linear-gradient(135deg, rgba(220,103,67,0.8), rgba(194,85,58,0.85))",
+                            background: "linear-gradient(135deg, rgba(218,119,86,0.8), rgba(194,85,58,0.85))",
                             backdropFilter: "blur(8px)",
                             border: "1px solid rgba(255,255,255,0.1)",
-                            boxShadow: "0 2px 8px rgba(220,103,67,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
+                            boxShadow: "0 2px 8px rgba(218,119,86,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
                             color: "#fff",
                           }
                         : {
@@ -1033,9 +1033,9 @@ export default function CommandCenter({
                 {sending && (
                   <div className="flex justify-start animate-fade-in">
                     <div className="flex gap-1.5 rounded-2xl rounded-bl-md px-4 py-3.5" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(220,103,67,0.6)", animation: "dot 1.4s infinite 0s" }} />
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(220,103,67,0.6)", animation: "dot 1.4s infinite 0.2s" }} />
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(220,103,67,0.6)", animation: "dot 1.4s infinite 0.4s" }} />
+                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0s" }} />
+                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.2s" }} />
+                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.4s" }} />
                     </div>
                   </div>
                 )}
@@ -1124,7 +1124,7 @@ export default function CommandCenter({
                 key={m.id}
                 onClick={() => { setSelectedModel(m.id); setModelMenuOpen(false); }}
                 className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors active:bg-white/5"
-                style={{ color: selectedModel === m.id ? "#DC6743" : "#aaa" }}
+                style={{ color: selectedModel === m.id ? "#da7756" : "#aaa" }}
               >
                 {m.label}
                 {selectedModel === m.id && <Check size={14} />}
@@ -1143,7 +1143,7 @@ export default function CommandCenter({
           <button
             onClick={() => { setPlusMenuOpen(!plusMenuOpen); setModelMenuOpen(false); }}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all active:scale-90"
-            style={{ background: plusMenuOpen ? "#DC6743" : "rgba(255,255,255,0.08)", transform: plusMenuOpen ? "rotate(45deg)" : "none" }}
+            style={{ background: plusMenuOpen ? "#da7756" : "rgba(255,255,255,0.08)", transform: plusMenuOpen ? "rotate(45deg)" : "none" }}
           >
             <span className="text-lg font-light" style={{ color: plusMenuOpen ? "#fff" : "#888" }}>+</span>
           </button>
@@ -1164,7 +1164,7 @@ export default function CommandCenter({
           <button
             onClick={() => { setModelMenuOpen(!modelMenuOpen); setPlusMenuOpen(false); }}
             className="shrink-0 flex items-center gap-0.5 text-[11px] font-medium transition-colors"
-            style={{ color: modelMenuOpen ? "#DC6743" : "#666" }}
+            style={{ color: modelMenuOpen ? "#da7756" : "#666" }}
           >
             <span>{selectedModel.split(" ")[0]}</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
@@ -1206,8 +1206,8 @@ export default function CommandCenter({
             disabled={!input.trim() || sending}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all active:scale-90 disabled:opacity-20"
             style={{
-              background: input.trim() ? "linear-gradient(135deg, #DC6743, #c2553a)" : "rgba(255,255,255,0.06)",
-              boxShadow: input.trim() ? "0 2px 8px rgba(220,103,67,0.3), inset 0 1px 0 rgba(255,255,255,0.15)" : "none",
+              background: input.trim() ? "linear-gradient(135deg, #da7756, #c36441)" : "rgba(255,255,255,0.06)",
+              boxShadow: input.trim() ? "0 2px 8px rgba(218,119,86,0.3), inset 0 1px 0 rgba(255,255,255,0.15)" : "none",
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

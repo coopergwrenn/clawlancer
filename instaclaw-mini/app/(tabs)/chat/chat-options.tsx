@@ -110,7 +110,7 @@ export default function ChatOptions({
         <button
           onClick={() => setShowInAppChat(true)}
           className="animate-fade-in-up mt-2 w-full rounded-2xl py-3 text-center text-sm font-medium stagger-2"
-          style={{ opacity: 0, color: "#DC6743" }}
+          style={{ opacity: 0, color: "#da7756" }}
         >
           Or chat right here
         </button>
@@ -130,7 +130,7 @@ export default function ChatOptions({
                       : "rounded-bl-md"
                   }`}
                   style={{
-                    background: msg.role === "user" ? "#DC6743" : "rgba(0,0,0,0.05)",
+                    background: msg.role === "user" ? "#da7756" : "rgba(0,0,0,0.05)",
                     color: msg.role === "user" ? "#fff" : "#333",
                   }}
                 >

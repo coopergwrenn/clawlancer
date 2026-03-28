@@ -104,7 +104,7 @@ export default function RootPage() {
         </div>
         <a
           href="https://worldcoin.org/download"
-          style={{ background: "linear-gradient(180deg, rgba(220,103,67,0.95), rgba(200,85,52,1))", color: "#fff", padding: "0.875rem 2rem", borderRadius: "0.75rem", fontWeight: "600", textDecoration: "none", boxShadow: "0 2px 8px rgba(220,103,67,0.3)" }}
+          style={{ background: "linear-gradient(180deg, rgba(218,119,86,0.95), rgba(200,85,52,1))", color: "#fff", padding: "0.875rem 2rem", borderRadius: "0.75rem", fontWeight: "600", textDecoration: "none", boxShadow: "0 2px 8px rgba(218,119,86,0.3)" }}
         >
           Get World App
         </a>
@@ -116,7 +116,7 @@ export default function RootPage() {
   if (state === "loading") {
     return (
       <div style={{ background: "#f8f7f4", color: "#333334", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
-        <div style={{ width: "2.5rem", height: "2.5rem", border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#DC6743", borderRadius: "50%", animation: "spin 1.2s linear infinite" }} />
+        <div style={{ width: "2.5rem", height: "2.5rem", border: "3px solid rgba(0,0,0,0.08)", borderTopColor: "#da7756", borderRadius: "50%", animation: "spin 1.2s linear infinite" }} />
         <p style={{ fontSize: "0.75rem", color: "#6b6b6b" }}>Loading InstaClaw...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>

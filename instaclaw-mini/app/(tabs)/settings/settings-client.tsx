@@ -411,7 +411,7 @@ export default function SettingsClient({
       <LinkAccountSection />
 
       {/* ── Debug — temporary ── */}
-      <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0, border: "1px solid rgba(220,103,67,0.3)" }}>
+      <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0, border: "1px solid rgba(218,119,86,0.3)" }}>
         <button
           onClick={() => router.push("/test-deeplinks")}
           className="btn-primary w-full rounded-xl py-3 text-sm font-semibold"
