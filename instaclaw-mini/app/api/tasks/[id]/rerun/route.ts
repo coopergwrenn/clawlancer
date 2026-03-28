@@ -4,6 +4,20 @@ import { getAgentStatus, supabase } from "@/lib/supabase";
 
 export const maxDuration = 120;
 
+const TASK_SUFFIX = `
+
+TASK EXECUTION MODE:
+After completing the task, append this metadata block at the END of your response:
+
+---TASK_META---
+title: [A concise title for this task, max 60 characters]
+recurring: [true/false - is this something that should repeat on a schedule?]
+frequency: [If recurring: daily/weekly/hourly. If not recurring: none]
+tools: [Comma-separated list of tools you used, e.g.: web_search, code_execution, email]
+---END_META---
+
+Put your full task result BEFORE the TASK_META block.`;
+
 /**
  * POST /api/tasks/[id]/rerun — Re-execute a completed or failed task.
  */
@@ -62,7 +76,7 @@ export async function POST(
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          messages: [{ role: "user", content: task.description }],
+          messages: [{ role: "user", content: task.description + TASK_SUFFIX }],
         }),
       });
 
