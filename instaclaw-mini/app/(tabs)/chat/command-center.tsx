@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   Send,
   Globe,
@@ -793,8 +794,6 @@ export default function CommandCenter({
                                 border: "1px solid rgba(255,255,255,0.06)",
                                 boxShadow: "inset 0 1px 2px rgba(0,0,0,0.08)",
                                 color: "#ccc",
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-word",
                                 maxHeight: "400px",
                                 overflowY: "auto",
                                 WebkitOverflowScrolling: "touch",
@@ -807,7 +806,9 @@ export default function CommandCenter({
                                   <p className="text-xs font-medium animate-pulse" style={{ color: "#a78bfa" }}>Refining...</p>
                                 </div>
                               )}
-                              {displayedContent}
+                              <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2.5 [&_h3]:mb-1 [&_hr]:my-3 [&_hr]:border-white/10 [&_strong]:text-white [&_a]:text-[#da7756] [&_a]:no-underline [&_code]:text-xs [&_code]:bg-white/5 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_pre]:my-2 [&_pre]:rounded-lg [&_pre]:bg-white/5 [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_blockquote]:border-l-2 [&_blockquote]:border-white/15 [&_blockquote]:pl-3 [&_blockquote]:text-white/60">
+                                <ReactMarkdown>{displayedContent || ""}</ReactMarkdown>
+                              </div>
                             </div>
                           </div>
                           );
@@ -1147,7 +1148,11 @@ export default function CommandCenter({
                           }
                       }
                     >
-                      {msg.content}
+                      {msg.role === "assistant" ? (
+                        <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:mt-1.5 [&_h3]:mb-0.5 [&_hr]:my-2 [&_hr]:border-white/10 [&_strong]:text-white [&_a]:text-[#da7756] [&_code]:text-xs [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_pre]:my-1.5 [&_pre]:rounded-lg [&_pre]:bg-white/5 [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        </div>
+                      ) : msg.content}
                     </div>
                   </div>
                 ))}
