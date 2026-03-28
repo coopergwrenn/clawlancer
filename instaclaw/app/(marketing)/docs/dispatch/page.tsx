@@ -55,7 +55,13 @@ export default function DispatchDocsPage() {
           encrypted WebSocket. You&apos;ll see a confirmation in Terminal:
         </p>
         <CodeBlock>{"  ✓ Connected to your agent!\n  Mode: Supervised\n  Your agent can now control this computer."}</CodeBlock>
-        <p className="mt-4 text-sm text-[var(--muted)]">
+        <p className="mt-4 mb-4">
+          <strong>4.</strong> When you give your agent a task, press{" "}
+          <strong>&apos;a&apos;</strong> in Terminal to switch to{" "}
+          <strong>autonomous mode</strong> — this lets your agent work through
+          multi-step tasks without pausing for approval on each action.
+        </p>
+        <p className="text-sm text-[var(--muted)]">
           The relay auto-reconnects if the connection drops. Press Ctrl+C to
           disconnect.
         </p>
@@ -134,7 +140,9 @@ export default function DispatchDocsPage() {
         <p className="mt-3 text-sm text-[var(--muted)]">
           Done in under 10 seconds. No clicking through Finder, no dragging
           files. The agent runs the command directly on your Mac and reports the
-          result.
+          result. Make sure you&apos;re in <strong>autonomous mode</strong>{" "}
+          (press &apos;a&apos;) so the agent can execute without waiting for
+          approval.
         </p>
       </Section>
 
@@ -145,18 +153,37 @@ export default function DispatchDocsPage() {
           Enter to approve or &apos;n&apos; to deny. Screenshots and shell
           commands are shown before executing.
         </p>
-        <h3 className="font-semibold mb-2">Autonomous</h3>
-        <p className="mb-2">
+        <h3 className="font-semibold mb-2">Autonomous (recommended for tasks)</h3>
+        <p className="mb-3">
           Auto-approves most actions so your agent can work without interruption.
           Dangerous actions (passwords, deletions, purchases, sudo) still require
-          your confirmation. Enable with:
+          your confirmation.
         </p>
+        <p className="mb-3">
+          <strong>When you give your agent a task</strong> like &quot;organize my
+          desktop&quot; or &quot;fill out this form,&quot; it will suggest enabling
+          autonomous mode so it can work through the steps without pausing for
+          approval on each one. In supervised mode, multi-step tasks require you
+          to press Enter for every single action — which gets tedious fast.
+        </p>
+        <p className="mb-2">Three ways to enable autonomous mode:</p>
+        <ul className="list-disc pl-6 space-y-2 mb-3">
+          <li>
+            <strong>Press &apos;a&apos;</strong> in the terminal window running
+            the relay — toggles between supervised and autonomous at any time
+          </li>
+          <li>
+            <strong>Start with the flag:</strong>
+          </li>
+        </ul>
         <CodeBlock>npx @instaclaw/dispatch@latest --autonomous</CodeBlock>
-        <p className="mt-3 text-sm text-[var(--muted)]">
-          Tip: Your agent will suggest switching to autonomous mode before
-          starting multi-step tasks. You can press &apos;a&apos; in Terminal at
-          any time to toggle between modes.
-        </p>
+        <ul className="list-disc pl-6 space-y-2 mt-3">
+          <li>
+            <strong>Your agent will ask:</strong> Before multi-step tasks, your
+            agent will say &quot;Press <strong>a</strong> in your terminal to
+            switch to autonomous mode&quot; — just follow its suggestion
+          </li>
+        </ul>
       </Section>
 
       <Section title="Performance">
