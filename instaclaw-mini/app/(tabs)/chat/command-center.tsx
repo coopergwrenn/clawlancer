@@ -23,6 +23,7 @@ import {
   X,
   AlertCircle,
   Archive,
+  PanelLeft,
 } from "lucide-react";
 
 // ── Types ──
@@ -1160,19 +1161,15 @@ export default function CommandCenter({
         {/* ── Chat Tab ── */}
         {tab === "chat" && (
           <div className="flex-1 flex flex-col relative overflow-hidden">
-            {/* Chat header with sidebar toggle */}
-            <div className="shrink-0 flex items-center h-10 px-3 gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            {/* Chat header with sidebar toggle — matching web app */}
+            <div className="shrink-0 flex items-center h-11 px-2 gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
               <button
-                onClick={() => setShowSidebar(true)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-95"
-                style={{ color: "#888" }}
-                title="Open conversations"
+                onClick={() => setShowSidebar((v) => !v)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
+                title={showSidebar ? "Close sidebar" : "Open conversations"}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                <PanelLeft size={18} style={{ color: "#999" }} />
               </button>
-              <span className="text-[12px] font-medium truncate" style={{ color: "#888" }}>
-                {activeConvId ? "Chat" : "New Chat"}
-              </span>
             </div>
 
             {/* Sidebar overlay */}

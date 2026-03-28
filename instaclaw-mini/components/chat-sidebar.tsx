@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, MessageSquare, X } from "lucide-react";
+import { Plus, Pencil, Trash2, MessageSquare, PanelLeft } from "lucide-react";
 
 interface Conversation {
   id: string;
@@ -36,8 +36,12 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
     setLoading(false);
   }, []);
 
+  // Load conversations when sidebar opens
   useEffect(() => {
-    if (open) loadConversations();
+    if (open) {
+      setLoading(true);
+      loadConversations();
+    }
   }, [open, loadConversations]);
 
   async function rename(id: string, title: string) {
@@ -61,88 +65,104 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
     } catch { loadConversations(); }
   }
 
+  function handleSelect(id: string) {
+    onSelect(id);
+    // Auto-close on mobile (matching web app: window.innerWidth < 640)
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+      onClose();
+    }
+  }
+
   return (
     <>
-      {/* Backdrop */}
-      {open && (
-        <div
-          className="absolute inset-0 z-30"
-          style={{ background: "rgba(0,0,0,0.4)" }}
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sidebar panel */}
+      {/* Backdrop — matching web app: rgba(0,0,0,0.15) */}
       <div
-        className="absolute top-0 left-0 bottom-0 z-40 flex flex-col"
+        className="absolute inset-0 z-30"
         style={{
-          width: "280px",
-          maxWidth: "85vw",
-          background: "rgba(15,15,15,0.92)",
+          background: open ? "rgba(0,0,0,0.3)" : "transparent",
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transition: "opacity 0.2s ease",
+        }}
+        onClick={onClose}
+      />
+
+      {/* Sidebar panel — matching web app structure exactly */}
+      <div
+        className="absolute top-0 left-0 bottom-0 z-40 flex flex-col w-[280px] max-w-[85vw]"
+        style={{
+          background: "rgba(18,18,18,0.92)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           borderRight: "1px solid rgba(255,255,255,0.06)",
-          boxShadow: "4px 0 32px rgba(0,0,0,0.3), inset 1px 0 0 rgba(255,255,255,0.04)",
+          boxShadow: "4px 0 32px rgba(0,0,0,0.25), inset 1px 0 0 rgba(255,255,255,0.04)",
           transform: open ? "translateX(0)" : "translateX(-100%)",
-          transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          transition: "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between h-11 px-3 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <span className="text-[13px] font-semibold tracking-tight" style={{ color: "#ddd" }}>Chats</span>
+        {/* Header — "Chats" + Plus + PanelLeft (matching web app) */}
+        <div
+          className="flex items-center justify-between h-11 px-3 shrink-0"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          <span className="text-[13px] font-semibold tracking-tight" style={{ color: "#eee" }}>
+            Chats
+          </span>
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => { onNewChat(); onClose(); }}
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-95"
-              style={{ color: "#888" }}
+              className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all hover:bg-white/[0.06] active:scale-95"
               title="New Chat"
             >
-              <Plus size={16} />
+              <Plus size={16} strokeWidth={2} style={{ color: "#999" }} />
             </button>
             <button
               onClick={onClose}
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-95"
-              style={{ color: "#888" }}
-              title="Close"
+              className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.06] active:scale-95"
+              title="Close sidebar"
             >
-              <X size={16} />
+              <PanelLeft size={16} style={{ color: "#999" }} />
             </button>
           </div>
         </div>
 
         {/* Conversation list */}
-        <div className="flex-1 overflow-y-auto p-2" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div className="flex-1 overflow-y-auto pt-1.5" style={{ scrollbarWidth: "thin", WebkitOverflowScrolling: "touch" }}>
           {loading ? (
-            <div className="space-y-1 animate-pulse">
+            <div className="space-y-1 p-2 animate-pulse">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-xl p-3" style={{ opacity: 0.3 }}>
-                  <div className="h-3.5 rounded-full mb-2 bg-white/10" style={{ width: "70%" }} />
-                  <div className="h-2.5 rounded-full bg-white/5" style={{ width: "90%" }} />
+                <div key={i} className="rounded-lg p-3" style={{ opacity: 0.3 }}>
+                  <div className="h-3.5 rounded-full mb-2 bg-white/[0.08]" style={{ width: "70%" }} />
+                  <div className="h-2.5 rounded-full bg-white/[0.04]" style={{ width: "90%" }} />
                 </div>
               ))}
             </div>
           ) : conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
               <MessageSquare size={24} className="mb-2.5" style={{ color: "#555" }} />
-              <p className="text-[13px]" style={{ color: "#777" }}>No conversations yet</p>
+              <p className="text-[13px]" style={{ color: "#888" }}>No conversations yet</p>
               <button
                 onClick={() => { onNewChat(); onClose(); }}
-                className="mt-2.5 text-xs font-medium transition-colors"
+                className="mt-2.5 text-xs font-medium cursor-pointer transition-colors hover:opacity-80"
                 style={{ color: "#da7756" }}
               >
                 Start a new chat
               </button>
             </div>
           ) : (
-            <div className="space-y-0.5">
+            <div className="px-1.5 space-y-px">
               {conversations.map((conv) => (
                 <div
                   key={conv.id}
-                  onClick={() => { onSelect(conv.id); onClose(); }}
-                  className="group relative rounded-lg px-2.5 py-2 cursor-pointer transition-all active:scale-[0.98]"
-                  style={{
-                    background: activeId === conv.id ? "rgba(255,255,255,0.08)" : "transparent",
-                  }}
+                  onClick={() => handleSelect(conv.id)}
+                  className={`group/conv relative rounded-lg px-2.5 py-2 cursor-pointer transition-all ${
+                    activeId === conv.id ? "" : "hover:bg-white/[0.04]"
+                  }`}
+                  style={
+                    activeId === conv.id
+                      ? { background: "rgba(255,255,255,0.07)" }
+                      : undefined
+                  }
                 >
                   {renamingId === conv.id ? (
                     <input
@@ -164,25 +184,25 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
                         <p className="text-[13px] font-medium truncate flex-1 leading-tight" style={{ color: "#ddd" }}>
                           {conv.title}
                         </p>
-                        <div className="flex items-center gap-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <div className="flex items-center gap-0 opacity-0 group-hover/conv:opacity-100 transition-opacity shrink-0">
                           <button
                             onClick={(e) => { e.stopPropagation(); setRenamingId(conv.id); setRenameDraft(conv.title); }}
-                            className="p-1 rounded-md transition-colors"
+                            className="p-1 rounded-md cursor-pointer hover:bg-white/[0.08] transition-colors"
                             title="Rename"
                           >
-                            <Pencil size={12} style={{ color: "#888" }} />
+                            <Pencil size={12} style={{ color: "#999" }} />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); archive(conv.id); }}
-                            className="p-1 rounded-md transition-colors"
+                            className="p-1 rounded-md cursor-pointer hover:bg-red-500/10 transition-colors"
                             title="Delete"
                           >
-                            <Trash2 size={12} style={{ color: "#ef4444" }} />
+                            <Trash2 size={12} style={{ color: "#999" }} />
                           </button>
                         </div>
                       </div>
                       {conv.last_message_preview && (
-                        <p className="text-[11px] truncate mt-0.5 leading-tight" style={{ color: "#666" }}>
+                        <p className="text-[11px] truncate mt-0.5 leading-tight" style={{ color: "#666", opacity: 0.8 }}>
                           {conv.last_message_preview}
                         </p>
                       )}
