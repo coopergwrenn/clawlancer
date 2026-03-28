@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit, Tokens } from "@worldcoin/minikit-js";
 import {
@@ -15,9 +15,93 @@ import {
   Mail,
   Check,
   Zap,
+  Archive,
+  RotateCw,
+  ChevronDown,
 } from "lucide-react";
 import GoogleConnectCard from "@/components/google-connect-card";
 import type { SubscriptionInfo } from "@/lib/supabase";
+
+function ArchivedTasksSection() {
+  const [open, setOpen] = useState(false);
+  const [tasks, setArchivedTasks] = useState<{ id: string; title: string; description: string; archived_at: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch("/api/tasks/list?archived=true&limit=50")
+      .then((r) => r.json())
+      .then((d) => setArchivedTasks(d.tasks || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  async function unarchive(taskId: string) {
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archive: false }),
+      });
+      setArchivedTasks((prev) => prev.filter((t) => t.id !== taskId));
+    } catch {}
+  }
+
+  return (
+    <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between"
+      >
+        <h2 className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+          Archived Tasks
+        </h2>
+        <ChevronDown
+          size={14}
+          className="text-muted transition-transform duration-300"
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0)" }}
+        />
+      </button>
+
+      <div
+        style={{
+          maxHeight: open ? "500px" : "0",
+          opacity: open ? 1 : 0,
+          overflow: "hidden",
+          transition: "max-height 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease",
+        }}
+      >
+        {loading ? (
+          <div className="py-4 flex justify-center">
+            <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "transparent" }} />
+          </div>
+        ) : tasks.length === 0 ? (
+          <p className="text-xs text-muted py-3">No archived tasks.</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {tasks.map((task) => (
+              <div key={task.id} className="flex items-center gap-3 rounded-lg bg-white/[0.02] px-3 py-2.5">
+                <Archive size={14} className="shrink-0 text-muted" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{task.title}</p>
+                  <p className="text-[10px] text-muted truncate">{task.description}</p>
+                </div>
+                <button
+                  onClick={() => unarchive(task.id)}
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "#999" }}
+                >
+                  <RotateCw size={10} /> Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function LinkAccountSection() {
   const router = useRouter();
@@ -409,6 +493,9 @@ export default function SettingsClient({
 
       {/* ── Link Account ── */}
       <LinkAccountSection />
+
+      {/* ── Archived Tasks ── */}
+      <ArchivedTasksSection />
 
       {/* ── Debug — temporary ── */}
       <section className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-4" style={{ opacity: 0, border: "1px solid rgba(218,119,86,0.3)" }}>

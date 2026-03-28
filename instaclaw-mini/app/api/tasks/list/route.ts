@@ -14,12 +14,21 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(params.get("limit") || "50"), 200);
     const offset = parseInt(params.get("offset") || "0");
 
+    const archivedFilter = params.get("archived");
+
     let query = supabase()
       .from("instaclaw_tasks")
       .select("*", { count: "exact" })
       .eq("user_id", session.userId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
+
+    // By default exclude archived; ?archived=true shows only archived
+    if (archivedFilter === "true") {
+      query = query.not("archived_at", "is", null);
+    } else {
+      query = query.is("archived_at", null);
+    }
 
     if (statusFilter) {
       const statuses = statusFilter.split(",");

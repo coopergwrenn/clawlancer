@@ -20,6 +20,7 @@ import {
   Pencil,
   X,
   AlertCircle,
+  Archive,
 } from "lucide-react";
 
 // ── Types ──
@@ -43,6 +44,7 @@ interface TaskItem {
   result: string | null;
   consecutive_failures: number;
   last_delivery_status: string | null;
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -289,7 +291,7 @@ export default function CommandCenter({
         status: "in_progress", is_recurring: false, frequency: null,
         streak: 0, next_run_at: null, last_run_at: null, processing_started_at: null,
         tools_used: [], error_message: null, result: null, consecutive_failures: 0,
-        last_delivery_status: null,
+        last_delivery_status: null, archived_at: null,
         created_at: new Date().toISOString(),
       };
       setTasks((prev) => [placeholder, ...prev]);
@@ -932,6 +934,25 @@ export default function CommandCenter({
                               <Sparkles size={11} /> Refine
                             </button>
                           )}
+
+                          {/* Archive */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ archive: true }) });
+                                if (res.ok) {
+                                  setTasks((prev) => prev.filter((t) => t.id !== task.id));
+                                  setExpandedTaskId(null);
+                                  setToast({ msg: "Task archived", type: "success" });
+                                }
+                              } catch {}
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.12)", color: "#818cf8", boxShadow: "0 1px 3px rgba(99,102,241,0.08), inset 0 1px 0 rgba(255,255,255,0.06)" }}
+                          >
+                            <Archive size={12} /> Archive
+                          </button>
 
                           {/* Delete with confirmation */}
                           {confirmDeleteId !== task.id ? (

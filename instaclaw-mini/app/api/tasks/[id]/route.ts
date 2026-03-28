@@ -104,6 +104,14 @@ export async function PATCH(
       update.frequency = body.frequency;
     }
 
+    // Archive/unarchive
+    if (body.archive === true) {
+      update.archived_at = new Date().toISOString();
+    }
+    if (body.archive === false) {
+      update.archived_at = null;
+    }
+
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ task });
     }
