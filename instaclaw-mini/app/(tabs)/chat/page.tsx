@@ -15,7 +15,7 @@ export default async function ChatPage() {
   // The command center needs a fixed height container to pin header/input
   // and scroll only messages. We calculate: 100dvh - floating nav bar height (~76px)
   return (
-    <div style={{ height: "calc(100dvh - 76px)", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "calc(100dvh - 76px)", display: "flex", flexDirection: "column", overflow: "hidden", position: "sticky", top: 0 }}>
       <CommandCenter
         userId={session.userId}
         telegramBotUsername={agent?.telegram_bot_username as string | null ?? null}

@@ -497,7 +497,7 @@ export default function CommandCenter({
         {(["tasks", "chat", "library"] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => { setTab(t); scrollRef.current?.scrollTo({ top: 0 }); }}
             className="relative px-4 py-2.5 text-[13px] font-semibold capitalize transition-all duration-300"
             style={{ color: tab === t ? "#fff" : "#555" }}
           >
