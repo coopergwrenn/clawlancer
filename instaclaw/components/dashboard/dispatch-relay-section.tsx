@@ -123,7 +123,7 @@ export function DispatchRelaySection() {
       if (data.code) {
         setPairingCode(data.code);
         setExpiresIn(data.expiresIn || 600);
-        const cmd = `npx @instaclaw/dispatch@0.6.1 --pair ${data.code}`;
+        const cmd = `npx @instaclaw/dispatch@latest --pair ${data.code}`;
         await navigator.clipboard.writeText(cmd);
         setCopiedField("connect");
         setTimeout(() => setCopiedField(null), 4000);
@@ -145,7 +145,7 @@ export function DispatchRelaySection() {
   }
 
   const npxCommand = pairingCode
-    ? `npx @instaclaw/dispatch@0.6.1 --pair ${pairingCode}`
+    ? `npx @instaclaw/dispatch@latest --pair ${pairingCode}`
     : fullCommand || "npx @instaclaw/dispatch";
 
   const formatTime = (s: number) =>

@@ -93,7 +93,7 @@ async function main() {
         console.log(`  After granting permissions and reopening ${terminal}, run:`);
         console.log("");
         if (args.pair) {
-          console.log(`  ${chalk.cyan(`npx @instaclaw/dispatch@0.5.0 --pair ${args.pair}`)}`);
+          console.log(`  ${chalk.cyan(`npx @instaclaw/dispatch@latest --pair ${args.pair}`)}`);
         } else {
           console.log(`  ${chalk.cyan("npx @instaclaw/dispatch")}`);
         }

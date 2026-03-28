@@ -20,4 +20,4 @@ if [ -z "$IP" ]; then
 fi
 
 # Output the command
-echo "{\"command\":\"npx @instaclaw/dispatch@0.5.1 --token ${TOKEN} --vm ${IP}\",\"token\":\"${TOKEN}\",\"ip\":\"${IP}\",\"port\":8765}"
+echo "{\"command\":\"npx @instaclaw/dispatch@latest --token ${TOKEN} --vm ${IP}\",\"token\":\"${TOKEN}\",\"ip\":\"${IP}\",\"port\":8765}"

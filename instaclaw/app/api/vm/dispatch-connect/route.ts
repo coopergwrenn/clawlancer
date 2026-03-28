@@ -63,8 +63,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Build the connect command — use pairing code if table exists, direct token otherwise
-    const pairCmd = `npx @instaclaw/dispatch@0.4.0 --pair ${code}`;
-    const directCmd = `npx @instaclaw/dispatch@0.4.0 --token ${vm.gateway_token} --vm ${vm.ip_address}`;
+    const pairCmd = `npx @instaclaw/dispatch@latest --pair ${code}`;
+    const directCmd = `npx @instaclaw/dispatch@latest --token ${vm.gateway_token} --vm ${vm.ip_address}`;
 
     // Check if pairing table works by trying to read the code back
     let usePairing = false;
