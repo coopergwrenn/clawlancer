@@ -110,15 +110,22 @@ if [ "$HEALTH_OK" = true ] && [ "$PROC_OK" = true ]; then
     GW_AGE=$(( $(date +%s) - GW_START_TS ))
 
     if [ "$GW_AGE" -gt 600 ]; then
-      # Gateway running 10+ min — check for ANY Telegram activity
+      # Gateway running 10+ min — check when the LAST sendMessage happened
       TODAY=$(date -u +%Y-%m-%d)
-      TG_ACTIVITY=0
+      LAST_TG_SEND=0
       if [ -f "$APP_LOG_DIR/openclaw-$TODAY.log" ]; then
-        # Check for any Telegram sends OR receives in the last 10 minutes of log
-        TG_ACTIVITY=$(tail -3000 "$APP_LOG_DIR/openclaw-$TODAY.log" 2>/dev/null | grep -c "sendMessage ok\|telegram.*send\|incoming.*message" || echo 0)
+        LAST_TG_LINE=$(tail -5000 "$APP_LOG_DIR/openclaw-$TODAY.log" 2>/dev/null | grep "sendMessage ok" | tail -1)
+        if [ -n "$LAST_TG_LINE" ]; then
+          TG_TIME=$(echo "$LAST_TG_LINE" | grep -oP '"time":"[^"]*"' | cut -d'"' -f4 | head -1)
+          if [ -n "$TG_TIME" ]; then
+            LAST_TG_SEND=$(date -d "$TG_TIME" +%s 2>/dev/null || echo 0)
+          fi
+        fi
       fi
 
-      if [ "$TG_ACTIVITY" -eq 0 ]; then
+      TG_SILENCE=$(( $(date +%s) - LAST_TG_SEND ))
+      # Dead = no sendMessage in the last 10 minutes AND gateway running 10+ min
+      if [ "$TG_SILENCE" -gt 600 ]; then
         TELEGRAM_DEAD=true
       fi
     fi
@@ -126,7 +133,7 @@ if [ "$HEALTH_OK" = true ] && [ "$PROC_OK" = true ]; then
 fi
 
 if [ "$TELEGRAM_DEAD" = true ]; then
-  do_restart "TELEGRAM_DEAD(gateway_age=${GW_AGE}s,zero_telegram_activity)" "false"
+  do_restart "TELEGRAM_DEAD(gateway_age=${GW_AGE}s,last_send=${TG_SILENCE}s_ago)" "false"
   exit 0
 fi
 
