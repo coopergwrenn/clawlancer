@@ -436,6 +436,8 @@ export default function CommandCenter({
 
   return (
     <div className="flex h-full flex-col overflow-hidden" style={{ background: "transparent" }}>
+      {/* ── Pinned header section (shrink-0, never scrolls) ── */}
+      <div className="shrink-0">
       {/* Info banner */}
       {!infoDismissed && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-1">
@@ -514,6 +516,8 @@ export default function CommandCenter({
           </button>
         ))}
       </div>
+
+      </div>{/* end shrink-0 header */}
 
       {/* Content — ONLY scrollable area */}
       <div ref={scrollRef} className="flex-1 flex flex-col overflow-y-auto" style={{ minHeight: 0, WebkitOverflowScrolling: "touch" }}>
