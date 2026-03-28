@@ -12,15 +12,21 @@ export default async function ChatPage() {
     agent = await getAgentStatus(session.userId);
   } catch { /* no agent */ }
 
-  // Fixed height container that prevents the parent scroll-area from scrolling.
-  // The CommandCenter manages its own internal scroll via flex-1 overflow-y-auto.
-  // Height = full viewport minus floating nav bar (76px).
+  // Position fixed breaks out of the parent scroll-area entirely.
+  // The CommandCenter manages its own scroll via flex-1 overflow-y-auto.
+  // Bottom 76px reserved for the floating nav bar.
   return (
     <div style={{
-      height: "calc(100dvh - 76px)",
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: "76px",
       display: "flex",
       flexDirection: "column",
       overflow: "hidden",
+      zIndex: 10,
+      background: "#000",
     }}>
       <CommandCenter
         userId={session.userId}
