@@ -19,6 +19,7 @@ import {
   Pause,
   Pencil,
   X,
+  AlertCircle,
 } from "lucide-react";
 
 // ── Types ──
@@ -556,7 +557,8 @@ export default function CommandCenter({
                     key={task.id}
                     className="glass-card rounded-xl overflow-hidden"
                     style={{
-                      border: isFailed ? "1px solid rgba(252,165,165,0.3)" : undefined,
+                      border: isFailed ? "1px solid #fca5a5" : undefined,
+                      background: isFailed ? "rgba(239,68,68,0.03)" : undefined,
                       opacity: isPaused ? 0.65 : undefined,
                     }}
                   >
@@ -584,14 +586,14 @@ export default function CommandCenter({
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="#9ca3af"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
                           </div>
                         ) : isActive ? (
-                          <div className="w-7 h-7 rounded-full relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(34,197,94,0.12) 0%, transparent 70%)", boxShadow: "0 0 12px rgba(34,197,94,0.15)" }}>
+                          <div className="w-7 h-7 rounded-full relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(34,197,94,0.12) 0%, rgba(34,197,94,0.04) 70%, transparent 100%)", boxShadow: "0 0 12px rgba(34,197,94,0.15), 0 0 4px rgba(34,197,94,0.08)" }}>
                             <div className="absolute inset-0 rounded-full" style={{ background: "conic-gradient(from 0deg, transparent 0%, rgba(34,197,94,0.45) 30%, transparent 55%)", animation: "spin 3s linear infinite" }} />
-                            <div className="w-2.5 h-2.5 rounded-full relative z-10" style={{ background: "radial-gradient(circle, #4ade80, #16a34a)" }} />
+                            <div className="w-2.5 h-2.5 rounded-full relative z-10" style={{ background: "radial-gradient(circle at 35% 30%, #4ade80, #16a34a)", boxShadow: "0 0 6px rgba(34,197,94,0.35)" }} />
                           </div>
                         ) : isProcessing ? (
-                          <div className="w-7 h-7 rounded-full relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)" }}>
+                          <div className="w-7 h-7 rounded-full relative flex items-center justify-center" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.03) 70%, transparent 100%)" }}>
                             <div className="absolute inset-0 rounded-full" style={{ background: "conic-gradient(from 0deg, transparent 0%, rgba(99,102,241,0.5) 30%, transparent 55%)", animation: "spin 2s linear infinite" }} />
-                            <div className="w-2 h-2 rounded-full relative z-10" style={{ background: "radial-gradient(circle, #818cf8, #6366f1)" }} />
+                            <div className="w-2 h-2 rounded-full relative z-10" style={{ background: "radial-gradient(circle at 35% 30%, #818cf8, #6366f1)", boxShadow: "0 0 6px rgba(99,102,241,0.35)" }} />
                           </div>
                         ) : isCompleted ? (
                           <div className="w-7 h-7 rounded-full flex items-center justify-center relative" style={{ background: "radial-gradient(circle at 35% 35%, #4a4a4a, #2a2a2acc 60%, #1a1a1a88 100%)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.2)" }}>
@@ -606,7 +608,7 @@ export default function CommandCenter({
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-[14px] truncate" style={{ color: isProcessing ? "#818cf8" : isFailed ? "#ef4444" : "#fff" }}>
+                          <p className="font-medium text-[15px] truncate" style={{ color: isProcessing ? "#6366f1" : isFailed ? "#ef4444" : "#fff" }}>
                             {isProcessing && task.title === "Processing..." ? "Working on it..." : task.title}
                           </p>
                           {/* Status dot for non-active/completed */}
@@ -617,7 +619,7 @@ export default function CommandCenter({
                             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "#ef4444" }} />
                           )}
                         </div>
-                        <p className="text-[12px] mt-0.5 truncate" style={{ color: isFailed && task.error_message ? "#f87171" : "#888" }}>
+                        <p className="text-[12px] mt-0.5 truncate" style={{ color: isFailed && task.error_message ? "#fca5a5" : "#888" }}>
                           {isFailed && task.error_message ? task.error_message : task.description}
                         </p>
                         {/* Delivery status + consecutive failures */}
@@ -639,15 +641,20 @@ export default function CommandCenter({
                       <div className="flex items-center gap-2 shrink-0">
                         {task.tools_used && task.tools_used.length > 0 && (
                           <div className="flex -space-x-1.5">
-                            {task.tools_used.slice(0, 3).map((tool) => {
-                              const toolColor = tool.includes("search") ? "#4285F4" : tool.includes("code") ? "#4285F4" : tool.includes("file") ? "#34a853" : "#71717a";
+                            {task.tools_used.slice(0, 4).map((tool) => {
+                              const toolColor = tool.includes("search") ? "#4285F4" : tool.includes("code") ? "#4285F4" : tool.includes("file") ? "#34a853" : tool.includes("telegram") ? "#2AABEE" : "#71717a";
                               return (
-                                <div key={tool} className="w-6 h-6 rounded-full flex items-center justify-center relative" style={{ background: `radial-gradient(circle at 35% 35%, ${toolColor}, ${toolColor}cc 60%, ${toolColor}88 100%)`, boxShadow: "inset 0 -1px 3px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.3), 0 1px 4px rgba(0,0,0,0.15)" }}>
-                                  <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.5) 0%, transparent 100%)" }} />
-                                  <Search size={10} className="relative z-10" style={{ color: "#fff" }} />
+                                <div key={tool} className="w-7 h-7 rounded-full flex items-center justify-center relative" style={{ background: `radial-gradient(circle at 35% 35%, ${toolColor}, ${toolColor}cc 60%, ${toolColor}88 100%)`, boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.18)" }}>
+                                  <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.55) 0%, transparent 100%)" }} />
+                                  <Search size={12} className="relative z-10" style={{ color: "#fff" }} />
                                 </div>
                               );
                             })}
+                            {task.tools_used.length > 4 && (
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-semibold" style={{ background: "radial-gradient(circle at 35% 35%, #555, #444cc 60%, #33388 100%)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.15), inset 0 2px 3px rgba(255,255,255,0.2), 0 2px 6px rgba(0,0,0,0.15)", color: "#aaa" }}>
+                                +{task.tools_used.length - 4}
+                              </div>
+                            )}
                           </div>
                         )}
                         {task.is_recurring && <Repeat size={14} style={{ color: "#888" }} />}
@@ -680,9 +687,9 @@ export default function CommandCenter({
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
                             style={isRunningNow ? {
                               background: "rgba(34,197,94,0.08)",
-                              border: "1px solid rgba(34,197,94,0.15)",
-                              boxShadow: "0 0 0 1px rgba(34,197,94,0.1), 0 1px 2px rgba(34,197,94,0.06)",
-                              color: "#22c55e",
+                              border: "1px solid rgba(34,197,94,0.12)",
+                              boxShadow: "0 0 0 1px rgba(34,197,94,0.15), 0 1px 2px rgba(34,197,94,0.06)",
+                              color: "#16a34a",
                             } : isPaused ? {
                               background: "rgba(156,163,175,0.08)",
                               border: "1px solid rgba(156,163,175,0.12)",
@@ -805,8 +812,9 @@ export default function CommandCenter({
                         })() : task.status === "in_progress" ? (
                           <p className="text-xs mt-3" style={{ color: "#888" }}>Agent is working on this task...</p>
                         ) : task.error_message ? (
-                          <div className="rounded-xl p-3.5 text-sm mt-3" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", color: "#f87171" }}>
-                            {task.error_message}
+                          <div className="rounded-xl p-3.5 text-sm mt-3 flex items-start gap-2.5" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.12)", boxShadow: "inset 0 1px 2px rgba(239,68,68,0.04)", color: "#fca5a5" }}>
+                            <AlertCircle size={16} className="shrink-0 mt-0.5" style={{ color: "#ef4444" }} />
+                            <span>{task.error_message}</span>
                           </div>
                         ) : (
                           <p className="text-xs mt-3" style={{ color: "#666" }}>No result yet.</p>
@@ -825,8 +833,8 @@ export default function CommandCenter({
                                   if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                 } catch {}
                               }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
-                              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", color: "#22c55e" }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", color: "#16a34a", boxShadow: "0 1px 3px rgba(34,197,94,0.08), inset 0 1px 0 rgba(255,255,255,0.1)" }}
                             >
                               <Play size={11} /> Run now
                             </button>
@@ -839,8 +847,8 @@ export default function CommandCenter({
                                   if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                 } catch {}
                               }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
-                              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", color: "#22c55e" }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", color: "#16a34a", boxShadow: "0 1px 3px rgba(34,197,94,0.08), inset 0 1px 0 rgba(255,255,255,0.1)" }}
                             >
                               <Play size={11} /> Resume
                             </button>
@@ -854,8 +862,8 @@ export default function CommandCenter({
                                   if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                 } catch {}
                               }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
-                              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#aaa" }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#ccc", boxShadow: "0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.06)" }}
                             >
                               <RotateCw size={11} /> Re-run
                             </button>
@@ -871,7 +879,7 @@ export default function CommandCenter({
                                   if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                 } catch {}
                               }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
                               style={{ background: "rgba(156,163,175,0.06)", border: "1px solid rgba(156,163,175,0.12)", color: "#9ca3af" }}
                             >
                               <Pause size={11} /> Pause
@@ -889,8 +897,8 @@ export default function CommandCenter({
                                   if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                 } catch {}
                               }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
-                              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#aaa" }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#ccc", boxShadow: "0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.06)" }}
                             >
                               <Check size={11} /> {isCompleted ? "Mark undone" : "Mark done"}
                             </button>
@@ -903,8 +911,8 @@ export default function CommandCenter({
                               setEditingTaskId(task.id);
                               setEditTitleDraft(task.description);
                             }}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
-                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#aaa" }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#ccc", boxShadow: "0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.06)" }}
                           >
                             <Pencil size={11} /> Edit &amp; re-run
                           </button>
@@ -918,7 +926,7 @@ export default function CommandCenter({
                                 setRefineInput("");
                                 setTimeout(() => refineRef.current?.focus(), 100);
                               }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
                               style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.12)", color: "#a78bfa" }}
                             >
                               <Sparkles size={11} /> Refine
@@ -929,7 +937,7 @@ export default function CommandCenter({
                           {confirmDeleteId !== task.id ? (
                             <button
                               onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(task.id); }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
                               style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)", color: "#f87171" }}
                             >
                               <Trash2 size={11} /> Delete
