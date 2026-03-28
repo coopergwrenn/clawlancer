@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
+import ChatSidebar from "@/components/chat-sidebar";
 import {
   Send,
   Globe,
@@ -141,6 +142,9 @@ export default function CommandCenter({
   const refineRef = useRef<HTMLInputElement>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [loadingChat, setLoadingChat] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [webSearch, setWebSearch] = useState(true);
@@ -260,13 +264,31 @@ export default function CommandCenter({
       });
   }, []);
 
-  // Load chat history
+  // Load messages for active conversation
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CHAT_KEY);
-      if (stored) setChatMsgs(JSON.parse(stored));
-    } catch {}
-  }, []);
+    if (!activeConvId) {
+      // No active conversation — try loading from localStorage (legacy)
+      try {
+        const stored = localStorage.getItem(CHAT_KEY);
+        if (stored) setChatMsgs(JSON.parse(stored));
+      } catch {}
+      return;
+    }
+    // Load from DB
+    setLoadingChat(true);
+    setChatMsgs([]);
+    fetch(`/api/chat/conversations/${activeConvId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setChatMsgs((data.messages || []).map((m: { role: string; content: string; created_at: string }) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          ts: new Date(m.created_at).getTime(),
+        })));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingChat(false));
+  }, [activeConvId]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -338,10 +360,17 @@ export default function CommandCenter({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: msg,
+          conversation_id: activeConvId,
           stream: true,
           toggles: { webSearch, deepResearch },
         }),
       });
+
+      // Capture conversation_id from response header (auto-created)
+      const returnedConvId = res.headers.get("X-Conversation-Id");
+      if (returnedConvId && !activeConvId) {
+        setActiveConvId(returnedConvId);
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -397,6 +426,16 @@ export default function CommandCenter({
         const finalMsgs = [...newMsgs, { role: "assistant" as const, content: accumulated, ts: Date.now() }];
         setChatMsgs(finalMsgs);
         localStorage.setItem(CHAT_KEY, JSON.stringify(finalMsgs.slice(-50)));
+
+        // Save assistant message to DB
+        const saveConvId = returnedConvId || activeConvId;
+        if (saveConvId) {
+          fetch("/api/chat/save-message", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversation_id: saveConvId, content: accumulated }),
+          }).catch(() => {});
+        }
       } else {
         // Non-streaming fallback
         const data = await res.json();
@@ -1120,8 +1159,38 @@ export default function CommandCenter({
 
         {/* ── Chat Tab ── */}
         {tab === "chat" && (
-          <div className="flex-1 flex flex-col px-4 py-3">
-            {chatMsgs.length === 0 && !sending ? (
+          <div className="flex-1 flex flex-col relative overflow-hidden">
+            {/* Chat header with sidebar toggle */}
+            <div className="shrink-0 flex items-center h-10 px-3 gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <button
+                onClick={() => setShowSidebar(true)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-95"
+                style={{ color: "#888" }}
+                title="Open conversations"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+              </button>
+              <span className="text-[12px] font-medium truncate" style={{ color: "#888" }}>
+                {activeConvId ? "Chat" : "New Chat"}
+              </span>
+            </div>
+
+            {/* Sidebar overlay */}
+            <ChatSidebar
+              open={showSidebar}
+              onClose={() => setShowSidebar(false)}
+              activeId={activeConvId}
+              onSelect={(id) => setActiveConvId(id)}
+              onNewChat={() => { setActiveConvId(null); setChatMsgs([]); }}
+            />
+
+            {/* Messages area */}
+            <div className="flex-1 overflow-y-auto px-4 py-3" style={{ minHeight: 0 }}>
+            {loadingChat ? (
+              <div className="flex-1 flex items-center justify-center py-16">
+                <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "transparent" }} />
+              </div>
+            ) : chatMsgs.length === 0 && !sending ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center">
                 <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.1)" }}>
                   <Zap size={24} style={{ color: "#777" }} />
@@ -1171,6 +1240,7 @@ export default function CommandCenter({
                 )}
               </div>
             )}
+            </div>{/* end messages area */}
           </div>
         )}
 

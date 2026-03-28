@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { getAgentStatus } from "@/lib/supabase";
+import { getAgentStatus, supabase } from "@/lib/supabase";
 
 /**
  * POST /api/chat/send — Send a message to the user's agent via the OpenClaw gateway.
- * Body: { message: string, stream?: boolean, toggles?: { webSearch, deepResearch } }
- * Returns: SSE stream if stream=true, otherwise { response: string }
+ * Body: { message, conversation_id?, stream?, toggles? }
+ *
+ * If conversation_id is provided, saves messages to that conversation.
+ * If null, auto-creates a new conversation.
+ * Returns: SSE stream if stream=true, otherwise { response, conversation_id }
  */
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     const body = await req.json();
-    const { message, stream: wantStream, toggles } = body;
+    const { message, conversation_id, stream: wantStream, toggles } = body;
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "Message required" }, { status: 400 });
@@ -22,7 +25,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No agent assigned" }, { status: 404 });
     }
 
-    const { supabase } = await import("@/lib/supabase");
     const { data: vmData } = await supabase()
       .from("instaclaw_vms")
       .select("gateway_url, gateway_token")
@@ -33,6 +35,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Agent not configured" }, { status: 503 });
     }
 
+    // Auto-create conversation if not provided
+    let convId = conversation_id;
+    if (!convId) {
+      const { data: newConv } = await supabase()
+        .from("instaclaw_conversations")
+        .insert({
+          user_id: session.userId,
+          title: message.slice(0, 50),
+        })
+        .select()
+        .single();
+      convId = newConv?.id;
+    }
+
+    // Save user message to DB
+    if (convId) {
+      await supabase().from("instaclaw_chat_messages").insert({
+        user_id: session.userId,
+        conversation_id: convId,
+        role: "user",
+        content: message,
+      });
+    }
+
     // Build the gateway request
     const gatewayBody: Record<string, unknown> = {
       model: "claude-sonnet-4-6",
@@ -40,7 +66,6 @@ export async function POST(req: NextRequest) {
       stream: !!wantStream,
     };
 
-    // Pass toggles if provided
     if (toggles?.webSearch) gatewayBody.web_search = true;
     if (toggles?.deepResearch) gatewayBody.deep_research = true;
 
@@ -55,28 +80,53 @@ export async function POST(req: NextRequest) {
 
     if (!gatewayRes.ok) {
       const errText = await gatewayRes.text().catch(() => "");
-      console.error("[Chat/Send] Gateway error:", gatewayRes.status, errText);
-      return NextResponse.json(
-        { error: "Agent unavailable", detail: errText },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "Agent unavailable", detail: errText }, { status: 502 });
     }
 
-    // Streaming response — pipe SSE through
+    // Streaming response — pipe through, save assistant message after
     if (wantStream && gatewayRes.body) {
-      return new Response(gatewayRes.body, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-        },
+      // For streaming, we can't easily save the response to DB mid-stream.
+      // The client will need to call a separate endpoint to save after stream completes,
+      // OR we pipe and accumulate. For now, pipe directly and let client save.
+      const headers = new Headers({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
       });
+      if (convId) {
+        headers.set("X-Conversation-Id", convId);
+      }
+      return new Response(gatewayRes.body, { headers });
     }
 
-    // Non-streaming fallback
+    // Non-streaming — save assistant response to DB
     const data = await gatewayRes.json();
     const response = data.choices?.[0]?.message?.content || "No response";
-    return NextResponse.json({ response });
+
+    if (convId) {
+      await supabase().from("instaclaw_chat_messages").insert({
+        user_id: session.userId,
+        conversation_id: convId,
+        role: "assistant",
+        content: response,
+      });
+
+      // Update conversation preview + count
+      await supabase()
+        .from("instaclaw_conversations")
+        .update({
+          last_message_preview: response.slice(0, 100),
+          message_count: await supabase()
+            .from("instaclaw_chat_messages")
+            .select("id", { count: "exact", head: true })
+            .eq("conversation_id", convId)
+            .then((r) => r.count || 0),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", convId);
+    }
+
+    return NextResponse.json({ response, conversation_id: convId });
   } catch (err) {
     console.error("[Chat/Send] Error:", err);
     return NextResponse.json(
