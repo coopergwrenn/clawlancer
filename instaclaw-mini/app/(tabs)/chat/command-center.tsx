@@ -8,6 +8,7 @@ import {
   Repeat,
   Sparkles,
   Check,
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   RotateCw,
@@ -50,6 +51,13 @@ interface ChatMsg {
   ts: number;
 }
 
+interface LibraryItem {
+  id: string;
+  content: string;
+  created_at: string;
+  run_number: number;
+}
+
 // ── Helpers ──
 
 function timeAgo(iso: string) {
@@ -70,6 +78,18 @@ function formatNextRun(iso: string | null) {
   if (mins < 60) return `Next in ${mins}m`;
   const hrs = Math.floor(mins / 60);
   return `Next in ${hrs}h ${mins % 60}m`;
+}
+
+function formatDate(iso: string | undefined | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch { return ""; }
 }
 
 const CHAT_KEY = "instaclaw-chat-history";
@@ -111,6 +131,9 @@ export default function CommandCenter({
   const [refineInput, setRefineInput] = useState("");
   const [isRefining, setIsRefining] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [runHistory, setRunHistory] = useState<LibraryItem[]>([]);
+  const [runHistoryLoading, setRunHistoryLoading] = useState(false);
+  const [currentRunIndex, setCurrentRunIndex] = useState(0);
   const refineRef = useRef<HTMLInputElement>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
@@ -539,7 +562,20 @@ export default function CommandCenter({
                   >
                     <div
                       className="p-4 flex items-start gap-3.5 cursor-pointer active:bg-white/[0.02] transition-colors"
-                      onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                      onClick={() => {
+                        const opening = expandedTaskId !== task.id;
+                        setExpandedTaskId(opening ? task.id : null);
+                        setCurrentRunIndex(0);
+                        if (opening && task.is_recurring && task.result) {
+                          setRunHistoryLoading(true);
+                          setRunHistory([]);
+                          fetch(`/api/library/list?source_task_id=${task.id}&limit=100&sort=created_at&order=desc`)
+                            .then((r) => r.json())
+                            .then((d) => setRunHistory(d.items ?? []))
+                            .catch(() => setRunHistory([]))
+                            .finally(() => setRunHistoryLoading(false));
+                        }
+                      }}
                     >
                       {/* Left status icon — matches web app exactly */}
                       <div className="shrink-0 mt-0.5">
@@ -685,32 +721,88 @@ export default function CommandCenter({
                       }}
                     >
                       <div className="px-4 pb-4 pt-0 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                        {/* Result content */}
-                        {task.result ? (
-                          <div
-                            className="rounded-xl p-3.5 text-sm leading-relaxed mt-3 relative"
-                            style={{
-                              background: "rgba(255,255,255,0.04)",
-                              border: "1px solid rgba(255,255,255,0.06)",
-                              boxShadow: "inset 0 1px 2px rgba(0,0,0,0.08)",
-                              color: "#ccc",
-                              whiteSpace: "pre-wrap",
-                              wordBreak: "break-word",
-                              maxHeight: "400px",
-                              overflowY: "auto",
-                              WebkitOverflowScrolling: "touch",
-                              opacity: isRefining && showRefineId === task.id ? 0.4 : 1,
-                              transition: "opacity 0.2s",
-                            }}
-                          >
-                            {isRefining && showRefineId === task.id && (
-                              <div className="absolute inset-0 flex items-center justify-center rounded-xl" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }}>
-                                <p className="text-xs font-medium animate-pulse" style={{ color: "#a78bfa" }}>Refining...</p>
-                              </div>
-                            )}
-                            {task.result}
+                        {/* Result with run history navigator */}
+                        {task.result ? (() => {
+                          const allRuns = runHistory;
+                          const totalRuns = allRuns.length;
+                          const hasHistory = task.is_recurring && totalRuns > 1;
+                          const displayedContent = hasHistory && allRuns[currentRunIndex]
+                            ? allRuns[currentRunIndex].content
+                            : task.result;
+                          const displayedDate = hasHistory && allRuns[currentRunIndex]
+                            ? allRuns[currentRunIndex].created_at
+                            : task.last_run_at;
+
+                          return (
+                          <div className="mt-3">
+                            {/* Run history navigator header */}
+                            <div className="flex items-center justify-between mb-1.5">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#888", opacity: 0.6 }}>
+                                Result
+                              </p>
+                              {task.is_recurring && runHistoryLoading ? (
+                                <div className="h-5 w-36 rounded-full animate-pulse" style={{ background: "rgba(255,255,255,0.06)" }} />
+                              ) : hasHistory ? (
+                                <div
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+                                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    onClick={() => setCurrentRunIndex((i) => Math.min(i + 1, totalRuns - 1))}
+                                    disabled={currentRunIndex >= totalRuns - 1}
+                                    className="p-0.5 rounded transition-all disabled:opacity-25"
+                                  >
+                                    <ChevronLeft size={12} style={{ color: "#888" }} />
+                                  </button>
+                                  <span className="text-[10px] font-medium" style={{ color: "#999", fontVariantNumeric: "tabular-nums" }}>
+                                    Run {totalRuns - currentRunIndex} of {totalRuns}
+                                  </span>
+                                  <button
+                                    onClick={() => setCurrentRunIndex((i) => Math.max(i - 1, 0))}
+                                    disabled={currentRunIndex <= 0}
+                                    className="p-0.5 rounded transition-all disabled:opacity-25"
+                                  >
+                                    <ChevronRight size={12} style={{ color: "#888" }} />
+                                  </button>
+                                  <span className="text-[9px] ml-0.5" style={{ color: "#666" }}>
+                                    {formatDate(displayedDate)}
+                                  </span>
+                                </div>
+                              ) : task.is_recurring && task.last_run_at ? (
+                                <span className="text-[9px]" style={{ color: "#666" }}>
+                                  {formatDate(task.last_run_at)}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {/* Result text */}
+                            <div
+                              className="rounded-xl p-3.5 text-sm leading-relaxed relative"
+                              style={{
+                                background: "rgba(255,255,255,0.04)",
+                                border: "1px solid rgba(255,255,255,0.06)",
+                                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.08)",
+                                color: "#ccc",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                                maxHeight: "400px",
+                                overflowY: "auto",
+                                WebkitOverflowScrolling: "touch",
+                                opacity: isRefining && showRefineId === task.id ? 0.4 : 1,
+                                transition: "opacity 0.2s",
+                              }}
+                            >
+                              {isRefining && showRefineId === task.id && (
+                                <div className="absolute inset-0 flex items-center justify-center rounded-xl" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }}>
+                                  <p className="text-xs font-medium animate-pulse" style={{ color: "#a78bfa" }}>Refining...</p>
+                                </div>
+                              )}
+                              {displayedContent}
+                            </div>
                           </div>
-                        ) : task.status === "in_progress" ? (
+                          );
+                        })() : task.status === "in_progress" ? (
                           <p className="text-xs mt-3" style={{ color: "#888" }}>Agent is working on this task...</p>
                         ) : task.error_message ? (
                           <div className="rounded-xl p-3.5 text-sm mt-3" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", color: "#f87171" }}>
