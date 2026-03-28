@@ -856,11 +856,40 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const providerRes = await fetch(providerUrl, {
-      method: "POST",
-      headers: providerHeaders,
-      body: providerBody,
-    });
+    // 90-second timeout prevents infinite hang on large image payloads
+    const abortController = new AbortController();
+    const apiTimeout = setTimeout(() => abortController.abort(), 90000);
+
+    let providerRes: Response;
+    try {
+      providerRes = await fetch(providerUrl, {
+        method: "POST",
+        headers: providerHeaders,
+        body: providerBody,
+        signal: abortController.signal,
+      });
+    } catch (fetchErr: unknown) {
+      clearTimeout(apiTimeout);
+      if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+        logger.error("LLM API timeout (90s)", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          model: requestedModel,
+        });
+        return isStreaming
+          ? friendlyAssistantResponse(
+              "That took too long to process. Try sending your message again, or without the image.",
+              requestedModel,
+              isStreaming
+            )
+          : NextResponse.json(
+              { error: "LLM API timeout — try again or send without image" },
+              { status: 504 }
+            );
+      }
+      throw fetchErr;
+    }
+    clearTimeout(apiTimeout);
 
     // --- On provider error (4xx/5xx): DON'T increment usage, log and return ---
     // But first: try Sonnet→Opus auto-retry if the router suggested it.
@@ -888,11 +917,15 @@ export async function POST(req: NextRequest) {
         const retryBody = parsedBody ? JSON.stringify(parsedBody) : body;
 
         try {
+          const retryAbort = new AbortController();
+          const retryTimeout = setTimeout(() => retryAbort.abort(), 90000);
           const retryRes = await fetch(providerUrl, {
             method: "POST",
             headers: providerHeaders,
             body: retryBody,
+            signal: retryAbort.signal,
           });
+          clearTimeout(retryTimeout);
 
           if (retryRes.ok) {
             // Retry succeeded — use this response instead
