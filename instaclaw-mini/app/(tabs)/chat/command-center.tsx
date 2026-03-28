@@ -689,11 +689,45 @@ export default function CommandCenter({
                         {task.tools_used && task.tools_used.length > 0 && (
                           <div className="flex -space-x-1.5">
                             {task.tools_used.slice(0, 4).map((tool) => {
-                              const toolColor = tool.includes("search") ? "#4285F4" : tool.includes("code") ? "#4285F4" : tool.includes("file") ? "#34a853" : tool.includes("telegram") ? "#2AABEE" : "#71717a";
+                              const t = tool.toLowerCase();
+                              // Tool color + icon matching web app TOOL_CONFIGS exactly
+                              const toolColor =
+                                t.includes("search") || t.includes("brave") ? "#4285F4"
+                                : t.includes("telegram") ? "#2AABEE"
+                                : t.includes("discord") ? "#5865F2"
+                                : t.includes("gmail") || t.includes("email") ? "#EA4335"
+                                : t.includes("code") || t.includes("python") ? "#4285F4"
+                                : t.includes("file") || t.includes("write") ? "#34a853"
+                                : t.includes("database") ? "#8b5cf6"
+                                : t.includes("calendar") ? "#4285F4"
+                                : t.includes("image") ? "#ec4899"
+                                : t.includes("cron") || t.includes("schedule") ? "#f59e0b"
+                                : t.includes("competitive") || t.includes("monitor") ? "#64748b"
+                                : "#71717a";
+
+                              // SVG icon path per tool type
+                              const iconPath =
+                                t.includes("search") || t.includes("brave")
+                                  ? <><circle cx="10.5" cy="10.5" r="5" stroke="#fff" strokeWidth="2.5" fill="none"/><line x1="14" y1="14" x2="18" y2="18" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></>
+                                : t.includes("code") || t.includes("python")
+                                  ? <><polyline points="8,6 4,10 8,14" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/><polyline points="14,6 18,10 14,14" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>
+                                : t.includes("file") || t.includes("write")
+                                  ? <><path d="M13 2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7Z" stroke="#fff" strokeWidth="2" fill="none"/><path d="M13 2v5h5" stroke="#fff" strokeWidth="2" fill="none"/></>
+                                : t.includes("telegram")
+                                  ? <path d="M18 4.5L3 10.5c-.5.2-.5.7.1.8l3.8 1.2 1.5 4.5c.2.4.5.5.9.3l2-1.7 4 3c.4.3.9.2 1-.4L19 5.5c.2-.7-.3-1.1-1-.8l0 0zM8.5 13l6.5-4.5c.2-.1.2.1.1.1L9.5 14l-.3 2.6-.9-3z" fill="#fff"/>
+                                : t.includes("email") || t.includes("gmail")
+                                  ? <><rect x="3" y="5" width="16" height="12" rx="2" stroke="#fff" strokeWidth="2" fill="none"/><path d="M3 7l8 5 8-5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round"/></>
+                                : t.includes("cron") || t.includes("schedule")
+                                  ? <><circle cx="11" cy="11" r="8" stroke="#fff" strokeWidth="2" fill="none"/><path d="M11 7v4l3 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round"/></>
+                                : t.includes("competitive") || t.includes("monitor")
+                                  ? <><circle cx="11" cy="11" r="8" stroke="#fff" strokeWidth="2" fill="none"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="#fff" strokeWidth="2" strokeLinecap="round"/><line x1="11" y1="8" x2="11" y2="14" stroke="#fff" strokeWidth="2" strokeLinecap="round"/><line x1="8" y1="11" x2="14" y2="11" stroke="#fff" strokeWidth="2" strokeLinecap="round"/></>
+                                  // Default: wrench/tool icon
+                                : <><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>;
+
                               return (
                                 <div key={tool} className="w-7 h-7 rounded-full flex items-center justify-center relative" style={{ background: `radial-gradient(circle at 35% 35%, ${toolColor}, ${toolColor}cc 60%, ${toolColor}88 100%)`, boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.18)" }}>
                                   <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.55) 0%, transparent 100%)" }} />
-                                  <Search size={12} className="relative z-10" style={{ color: "#fff" }} />
+                                  <svg width={12} height={12} viewBox="0 0 22 22" fill="none" className="relative z-10">{iconPath}</svg>
                                 </div>
                               );
                             })}
