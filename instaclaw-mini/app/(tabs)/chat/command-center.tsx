@@ -747,17 +747,17 @@ export default function CommandCenter({
                             </button>
                           )}
 
-                          {/* Edit title */}
+                          {/* Edit & re-run */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingTaskId(task.id);
-                              setEditTitleDraft(task.title);
+                              setEditTitleDraft(task.description);
                             }}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
                             style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "#aaa" }}
                           >
-                            <Pencil size={11} /> Edit
+                            <Pencil size={11} /> Edit &amp; re-run
                           </button>
 
                           {/* Delete with confirmation */}
@@ -797,30 +797,37 @@ export default function CommandCenter({
                               onChange={(e) => setEditTitleDraft(e.target.value)}
                               className="flex-1 rounded-lg px-3 py-2 text-sm bg-transparent outline-none"
                               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}
+                              placeholder="Edit prompt and re-run..."
                               autoFocus
                               onKeyDown={async (e) => {
-                                if (e.key === "Enter") {
+                                if (e.key === "Enter" && editTitleDraft.trim()) {
+                                  setEditingTaskId(null);
+                                  // Update description + re-run with edited prompt
+                                  setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, description: editTitleDraft, status: "in_progress", result: null, error_message: null } : t));
                                   try {
-                                    const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: editTitleDraft }) });
+                                    await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: editTitleDraft.slice(0, 60) }) });
+                                    const res = await fetch(`/api/tasks/${task.id}/rerun`, { method: "POST" });
                                     if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                   } catch {}
-                                  setEditingTaskId(null);
                                 }
                                 if (e.key === "Escape") setEditingTaskId(null);
                               }}
                             />
                             <button
                               onClick={async () => {
+                                if (!editTitleDraft.trim()) return;
+                                setEditingTaskId(null);
+                                setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, description: editTitleDraft, status: "in_progress", result: null, error_message: null } : t));
                                 try {
-                                  const res = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: editTitleDraft }) });
+                                  await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: editTitleDraft.slice(0, 60) }) });
+                                  const res = await fetch(`/api/tasks/${task.id}/rerun`, { method: "POST" });
                                   if (res.ok) { const d = await res.json(); if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t)); }
                                 } catch {}
-                                setEditingTaskId(null);
                               }}
-                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium"
-                              style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium"
+                              style={{ background: "rgba(220,103,67,0.1)", border: "1px solid rgba(220,103,67,0.15)", color: "#DC6743" }}
                             >
-                              Save
+                              <RotateCw size={10} /> Re-run
                             </button>
                             <button onClick={() => setEditingTaskId(null)} className="text-[11px]" style={{ color: "#888" }}>
                               <X size={14} />
