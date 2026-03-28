@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
             isRecurring = true;
             // Detect frequency from description
             if (!frequency) {
-              if (desc.includes("hourly") || desc.includes("every hour")) frequency = "hourly";
+              if (desc.includes("hourly") || desc.includes("every hour") || desc.includes("whenever") || desc.includes("real-time") || desc.includes("realtime")) frequency = "hourly";
               else if (desc.includes("weekly") || desc.includes("every week")) frequency = "weekly";
               else frequency = "daily"; // default to daily for recurring
             }
