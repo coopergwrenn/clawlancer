@@ -39,6 +39,8 @@ interface TaskItem {
   tools_used: string[];
   error_message: string | null;
   result: string | null;
+  consecutive_failures: number;
+  last_delivery_status: string | null;
   created_at: string;
 }
 
@@ -104,6 +106,12 @@ export default function CommandCenter({
   const [editTitleDraft, setEditTitleDraft] = useState("");
   const [taskError, setTaskError] = useState<string | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
+  const [failedCount, setFailedCount] = useState(0);
+  const [showRefineId, setShowRefineId] = useState<string | null>(null);
+  const [refineInput, setRefineInput] = useState("");
+  const [isRefining, setIsRefining] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const refineRef = useRef<HTMLInputElement>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -143,6 +151,26 @@ export default function CommandCenter({
     }
     loadTasks();
   }, [filter]);
+
+  // Fetch failed task count for badge on "All" filter pill
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/tasks/list?status=failed&limit=1");
+        if (res.ok) {
+          const data = await res.json();
+          setFailedCount(data.total || 0);
+        }
+      } catch {}
+    })();
+  }, [tasks]); // re-check when tasks change
+
+  // Auto-dismiss toast after 3 seconds
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // Background polling for in-progress tasks (matches web app: every 3s, 2min timeout)
   useEffect(() => {
@@ -236,7 +264,8 @@ export default function CommandCenter({
         id: tempId, title: "Working on it...", description: msg.slice(0, 500),
         status: "in_progress", is_recurring: false, frequency: null,
         streak: 0, next_run_at: null, last_run_at: null, processing_started_at: null,
-        tools_used: [], error_message: null, result: null,
+        tools_used: [], error_message: null, result: null, consecutive_failures: 0,
+        last_delivery_status: null,
         created_at: new Date().toISOString(),
       };
       setTasks((prev) => [placeholder, ...prev]);
@@ -411,7 +440,7 @@ export default function CommandCenter({
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className="shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium capitalize transition-all active:scale-95"
+            className="relative shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium capitalize transition-all active:scale-95"
             style={{
               background: filter === f
                 ? "rgba(255,255,255,0.85)"
@@ -424,6 +453,14 @@ export default function CommandCenter({
             }}
           >
             {f}
+            {f === "all" && failedCount > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                style={{ background: "#ef4444" }}
+              >
+                {failedCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -547,6 +584,19 @@ export default function CommandCenter({
                         <p className="text-[12px] mt-0.5 truncate" style={{ color: isFailed && task.error_message ? "#f87171" : "#888" }}>
                           {isFailed && task.error_message ? task.error_message : task.description}
                         </p>
+                        {/* Delivery status + consecutive failures */}
+                        <div className="flex items-center gap-2 mt-1">
+                          {task.last_delivery_status && (
+                            <span className="text-[9px] font-medium" style={{ color: task.last_delivery_status === "delivered" ? "#22c55e" : task.last_delivery_status === "delivery_failed" ? "#ef4444" : "#888" }}>
+                              {task.last_delivery_status === "delivered" ? "Delivered to Telegram" : task.last_delivery_status === "delivery_failed" ? "Delivery failed" : ""}
+                            </span>
+                          )}
+                          {isFailed && task.consecutive_failures > 1 && (
+                            <span className="text-[9px] font-medium" style={{ color: "#ef4444" }}>
+                              {task.consecutive_failures} consecutive failures
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Tools + Recurring + Chevron */}
@@ -638,7 +688,7 @@ export default function CommandCenter({
                         {/* Result content */}
                         {task.result ? (
                           <div
-                            className="rounded-xl p-3.5 text-sm leading-relaxed mt-3"
+                            className="rounded-xl p-3.5 text-sm leading-relaxed mt-3 relative"
                             style={{
                               background: "rgba(255,255,255,0.04)",
                               border: "1px solid rgba(255,255,255,0.06)",
@@ -649,8 +699,15 @@ export default function CommandCenter({
                               maxHeight: "400px",
                               overflowY: "auto",
                               WebkitOverflowScrolling: "touch",
+                              opacity: isRefining && showRefineId === task.id ? 0.4 : 1,
+                              transition: "opacity 0.2s",
                             }}
                           >
+                            {isRefining && showRefineId === task.id && (
+                              <div className="absolute inset-0 flex items-center justify-center rounded-xl" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }}>
+                                <p className="text-xs font-medium animate-pulse" style={{ color: "#a78bfa" }}>Refining...</p>
+                              </div>
+                            )}
                             {task.result}
                           </div>
                         ) : task.status === "in_progress" ? (
@@ -760,6 +817,22 @@ export default function CommandCenter({
                             <Pencil size={11} /> Edit &amp; re-run
                           </button>
 
+                          {/* Refine (only when result exists) */}
+                          {task.result && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowRefineId(showRefineId === task.id ? null : task.id);
+                                setRefineInput("");
+                                setTimeout(() => refineRef.current?.focus(), 100);
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all active:scale-95"
+                              style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.12)", color: "#a78bfa" }}
+                            >
+                              <Sparkles size={11} /> Refine
+                            </button>
+                          )}
+
                           {/* Delete with confirmation */}
                           {confirmDeleteId !== task.id ? (
                             <button
@@ -778,6 +851,7 @@ export default function CommandCenter({
                                   setTasks((prev) => prev.filter((t) => t.id !== task.id));
                                   setExpandedTaskId(null);
                                   setConfirmDeleteId(null);
+                                  setToast({ msg: "Task deleted", type: "success" });
                                 } catch {}
                               }}
                               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
@@ -788,7 +862,81 @@ export default function CommandCenter({
                           )}
                         </div>
 
-                        {/* Edit title inline */}
+                        {/* Refine input */}
+                        {showRefineId === task.id && (
+                          <div
+                            className="flex gap-2 items-center"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              maxHeight: showRefineId === task.id ? "60px" : "0",
+                              opacity: showRefineId === task.id ? 1 : 0,
+                              overflow: "hidden",
+                              transition: "max-height 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease",
+                            }}
+                          >
+                            <input
+                              ref={refineRef}
+                              type="text"
+                              value={refineInput}
+                              onChange={(e) => setRefineInput(e.target.value)}
+                              placeholder="Tell your agent what to change..."
+                              className="flex-1 rounded-lg px-3 py-2 text-sm bg-transparent outline-none"
+                              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}
+                              onKeyDown={async (e) => {
+                                if (e.key === "Enter" && refineInput.trim()) {
+                                  setIsRefining(true);
+                                  try {
+                                    const res = await fetch(`/api/tasks/${task.id}/refine`, {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ instruction: refineInput }),
+                                    });
+                                    if (res.ok) {
+                                      const d = await res.json();
+                                      if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t));
+                                      setToast({ msg: "Result refined", type: "success" });
+                                    }
+                                  } catch {}
+                                  setIsRefining(false);
+                                  setShowRefineId(null);
+                                  setRefineInput("");
+                                }
+                                if (e.key === "Escape") { setShowRefineId(null); setRefineInput(""); }
+                              }}
+                            />
+                            <button
+                              onClick={async () => {
+                                if (!refineInput.trim()) return;
+                                setIsRefining(true);
+                                try {
+                                  const res = await fetch(`/api/tasks/${task.id}/refine`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ instruction: refineInput }),
+                                  });
+                                  if (res.ok) {
+                                    const d = await res.json();
+                                    if (d.task) setTasks((prev) => prev.map((t) => t.id === task.id ? d.task : t));
+                                    setToast({ msg: "Result refined", type: "success" });
+                                  }
+                                } catch {}
+                                setIsRefining(false);
+                                setShowRefineId(null);
+                                setRefineInput("");
+                              }}
+                              disabled={isRefining}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium"
+                              style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}
+                            >
+                              {isRefining ? "..." : <Send size={12} />}
+                            </button>
+                            <button onClick={() => { setShowRefineId(null); setRefineInput(""); }}>
+                              <X size={14} style={{ color: "#888" }} />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Edit & re-run inline */}
                         {editingTaskId === task.id && (
                           <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
                             <input
@@ -1074,6 +1222,22 @@ export default function CommandCenter({
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-[9999] rounded-xl px-4 py-2.5 text-[12px] font-medium"
+          style={{
+            background: toast.type === "success" ? "rgba(34,197,94,0.9)" : "rgba(239,68,68,0.9)",
+            color: "#fff",
+            backdropFilter: "blur(12px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+            animation: "fade-in 0.2s ease-out",
+          }}
+        >
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }
