@@ -628,7 +628,7 @@ export default function CommandCenter({
                     {/* ── Expanded Result Section ── */}
                     <div
                       style={{
-                        maxHeight: expandedTaskId === task.id ? "800px" : "0",
+                        maxHeight: expandedTaskId === task.id ? "5000px" : "0",
                         opacity: expandedTaskId === task.id ? 1 : 0,
                         overflow: "hidden",
                         transition: "max-height 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease",
@@ -646,6 +646,9 @@ export default function CommandCenter({
                               color: "#ccc",
                               whiteSpace: "pre-wrap",
                               wordBreak: "break-word",
+                              maxHeight: "400px",
+                              overflowY: "auto",
+                              WebkitOverflowScrolling: "touch",
                             }}
                           >
                             {task.result}
