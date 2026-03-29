@@ -148,6 +148,13 @@
       "scripts": [],
       "auto_update": false,
       "note": "Uses Twitter API v2 via stdlib"
+    },
+    {
+      "name": "dgclaw",
+      "pip_deps": [],
+      "scripts": [],
+      "auto_update": false,
+      "note": "DegenClaw perps trading competition — bash CLI (dgclaw.sh) cloned separately via installAgdpSkill, requires ACP"
     }
   ]
 }

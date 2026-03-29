@@ -124,7 +124,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 48,
+  version: 49,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -229,6 +229,15 @@ export const VM_MANIFEST = {
       marker: "## Boundaries",
     },
 
+    // --- DegenClaw awareness (so agent knows the skill exists and can reference SKILL.md) ---
+    {
+      remotePath: "~/.openclaw/workspace/SOUL.md",
+      source: "inline",
+      content: "\\n<!-- DEGENCLAW_AWARENESS_V1 -->\\n## DegenClaw Trading Competition\\nYou have access to the DegenClaw skill — a $100K weekly perpetuals trading competition on Hyperliquid, run by Virtuals Protocol. If your user mentions trading competitions, Hyperliquid perps, DegenClaw, the $100K challenge, or wanting to compete/trade perps competitively, read and follow the dgclaw SKILL.md for the full setup and trading flow. You can help them join the competition, trade perps, manage their forum, check the leaderboard, and attract subscribers. **Always get explicit user approval before launching tokens or executing trades.**\\n",
+      mode: "append_if_marker_absent",
+      marker: "DEGENCLAW_AWARENESS",
+    },
+
     // --- Legacy: AGENTS.md philosophy section (only on VMs that still have AGENTS.md) ---
     {
       remotePath: "~/.openclaw/workspace/AGENTS.md",
@@ -309,6 +318,9 @@ export const VM_MANIFEST = {
     { skillName: "motion-graphics", localPath: "assets/template-basic/src/index.ts", remotePath: "assets/template-basic/src/index.ts" },
     { skillName: "motion-graphics", localPath: "assets/template-basic/src/Root.tsx", remotePath: "assets/template-basic/src/Root.tsx" },
     { skillName: "motion-graphics", localPath: "assets/template-basic/src/MyVideo.tsx", remotePath: "assets/template-basic/src/MyVideo.tsx" },
+    // DegenClaw trading competition — reference docs
+    { skillName: "dgclaw", localPath: "references/api.md", remotePath: "references/api.md" },
+    { skillName: "dgclaw", localPath: "references/strategy-playbook.md", remotePath: "references/strategy-playbook.md" },
   ] as ManifestExtraSkillFile[],
 
   // ── Cron jobs ──
@@ -336,7 +348,7 @@ export const VM_MANIFEST = {
   ] as ManifestCronJob[],
 
   // ── System packages (installed via sudo apt-get) ──
-  systemPackages: ["ffmpeg"],
+  systemPackages: ["ffmpeg", "jq"],
 
   // ── Python packages (installed via pip3) ──
   pythonPackages: ["openai"],

@@ -7201,6 +7201,18 @@ export async function startGateway(vm: VMRecord): Promise<boolean> {
 
 const AGDP_REPO = "https://github.com/Virtual-Protocol/openclaw-acp";
 const AGDP_DIR = "$HOME/virtuals-protocol-acp";
+
+// ── DegenClaw trading competition skill ──
+const DGCLAW_REPO = "https://github.com/Virtual-Protocol/dgclaw-skill";
+const DGCLAW_DIR = "$HOME/dgclaw-skill";
+
+// ── Virtuals Protocol Partner ID ──
+// When Virtuals delivers the partner ID program (expected 2026-03-29/30),
+// set this to our assigned partner ID. The ACP CLI will tag all agents
+// tokenized through InstaClaw's pre-installed CLI with this ID, routing
+// a share of token generation and trading fees back to InstaClaw.
+// Injection mechanism TBD — will be an env var, config key, or CLI flag.
+const ACP_PARTNER_ID = ""; // TODO: Fill in when Virtuals delivers our partner ID
 const AGDP_OFFERING = {
   name: ACP_OFFERING_API.name,
   json: ACP_OFFERING_API,
@@ -7416,15 +7428,36 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       'systemctl --user enable acp-serve.service 2>/dev/null || true',
       'echo "STEP:systemd_configured"',
       '',
-      '# Register aGDP skill directory with OpenClaw (patch JSON directly to avoid config overwrite protection)',
+      '# Clone DegenClaw trading competition skill (bash only, no npm install needed)',
+      `if [ -d "${DGCLAW_DIR}" ]; then`,
+      `  cd "${DGCLAW_DIR}" && git pull --ff-only 2>&1 || true`,
+      'else',
+      `  git clone --depth 1 ${DGCLAW_REPO} "${DGCLAW_DIR}" 2>&1`,
+      'fi',
+      `chmod +x "${DGCLAW_DIR}/scripts/dgclaw.sh" 2>/dev/null || true`,
+      '# Add dgclaw.sh to PATH via shell profile',
+      `grep -qF 'dgclaw-skill/scripts' ~/.bashrc 2>/dev/null || echo 'export PATH="$HOME/dgclaw-skill/scripts:$PATH"' >> ~/.bashrc`,
+      'echo "STEP:dgclaw_cloned"',
+      '',
+      ...(ACP_PARTNER_ID ? [
+        '# Inject InstaClaw partner ID for revenue share attribution',
+        `echo '{"partnerId":"${ACP_PARTNER_ID}"}' > "${AGDP_DIR}/partner.json"`,
+        'echo "STEP:partner_id_set"',
+        '',
+      ] : []),
+      '# Register skill directories with OpenClaw (append, preserve existing extraDirs)',
       'CONFIG_FILE="$HOME/.openclaw/openclaw.json"',
       'if [ -f "$CONFIG_FILE" ]; then',
       `  python3 -c "
 import json, sys
 with open(sys.argv[1], 'r') as f: cfg = json.load(f)
-cfg.setdefault('skills', {}).setdefault('load', {})['extraDirs'] = [sys.argv[2]]
+dirs = cfg.get('skills', {}).get('load', {}).get('extraDirs', [])
+for d in sys.argv[2:]:
+    if d not in dirs:
+        dirs.append(d)
+cfg.setdefault('skills', {}).setdefault('load', {})['extraDirs'] = dirs
 with open(sys.argv[1], 'w') as f: json.dump(cfg, f, indent=2)
-" "$CONFIG_FILE" "${AGDP_DIR}" 2>&1`,
+" "$CONFIG_FILE" "${AGDP_DIR}" "${DGCLAW_DIR}" 2>&1`,
       'else',
       '  echo "WARN:no_config_file"',
       'fi',
@@ -7529,8 +7562,12 @@ export async function uninstallAgdpSkill(vm: VMRecord): Promise<void> {
       '# Kill any lingering acp processes',
       'pkill -f "acp serve" 2>/dev/null || true',
       '',
-      '# Remove aGDP repo directory',
+      '# Remove aGDP and DegenClaw repo directories',
       `rm -rf "${AGDP_DIR}"`,
+      `rm -rf "${DGCLAW_DIR}"`,
+      '',
+      '# Remove dgclaw PATH from .bashrc',
+      `sed -i '/dgclaw-skill\\/scripts/d' ~/.bashrc 2>/dev/null || true`,
       '',
       '# Remove extraDirs config',
       `openclaw config set skills.load.extraDirs '[]'`,
