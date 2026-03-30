@@ -39,18 +39,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Already registered", registered: true }, { status: 409 });
     }
 
-    // Submit to gasless relay
+    // Submit to gasless relay — match exact format from web app's register-proof endpoint
+    const relayBody = {
+      proof,
+      walletAddress: vm.agentbook_wallet_address,
+      app_id: process.env.AGENTBOOK_APP_ID || "app_a7c3e2b6b83927251a0db5345bd7146a",
+    };
+    console.log("[AgentBook/Register] Relay body:", JSON.stringify(relayBody));
+
     const relayRes = await fetch(GASLESS_RELAY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        proof,
-        merkle_root,
-        nullifier_hash,
-        verification_level,
-        walletAddress: vm.agentbook_wallet_address,
-        app_id: process.env.NEXT_PUBLIC_APP_ID,
-      }),
+      body: JSON.stringify(relayBody),
     });
 
     const relayData = await relayRes.json().catch(() => ({}));
