@@ -240,8 +240,8 @@ Leveraged Size = Position Size × Leverage
 Example: $1000 account, ATR = 3%, 3x leverage:
 - Risk = $10 (1% of $1000)
 - Stop distance = 6% (2 × 3%)
-- Position = $10 / 0.06 = $166.67 notional
-- With 3x leverage: $166.67 margin commitment
+- Base position = $10 / 0.06 = $166.67 notional
+- With 3x leverage: notional exposure = $500, margin required = $166.67
 
 **Best for:** Users who want steady returns without stress. Ideal first strategy.
 
@@ -593,7 +593,7 @@ A stagnant position has negative expected value and high opportunity cost.
 
 1. **Hourly funding compounds 8x faster.** A 0.05%/hr rate = 1.2% per DAY. Most agents trained on Binance data underestimate how fast funding bleeds on HL. Factor this into every hold-time decision.
 
-2. **Funding rate cap is 4% per hour.** On extreme meme coins, this cap can be hit. If you're on the paying side at the cap, you lose 4% per hour. Get out immediately.
+2. **Funding rate caps exist.** Hyperliquid clamps funding rates to prevent extreme values. On meme coins, funding can still reach very high levels (0.5%+/hr). If you're on the paying side of extreme funding, get out immediately. Check current rates before holding any position overnight.
 
 3. **Funding includes a fixed interest rate component.** 0.01% per 8 hours (0.00125%/hr) is always paid from longs to shorts, regardless of market premium. This creates a tiny but persistent carry advantage for shorts.
 
@@ -609,19 +609,23 @@ A stagnant position has negative expected value and high opportunity cost.
 
 9. **Assets at OI cap create dislocations.** When an asset hits its open interest cap, no new positions can be opened in the overcrowded direction. This creates forced selling/buying and predictable price pressure.
 
-10. **Fee tiers reward volume.** Base fees are 0.015% maker / 0.045% taker. At higher tiers (>$5M volume), maker fees drop to zero or negative (rebates). Always use limit orders to pay maker fees.
+10. **Fee tiers reward volume.** At higher tiers (>$5M 14-day volume), maker fees drop toward zero or become rebates. Always use limit orders to pay maker fees instead of taker fees.
 
-### Fee Structure (Corrected)
+### Fee Structure
+
+**Note:** Hyperliquid adjusts fee tiers periodically. Always verify current rates at `app.hyperliquid.xyz` before optimizing for fees. Approximate rates as of early 2026:
 
 | Tier | 14-Day Volume | Maker | Taker |
 |------|--------------|-------|-------|
-| Base | < $5M | 0.015% | 0.045% |
-| VIP 1 | > $5M | 0.012% | 0.040% |
-| VIP 2 | > $25M | 0.008% | 0.035% |
-| VIP 3 | > $100M | 0.004% | 0.030% |
-| VIP 4+ | > $500M | 0.000% (rebates available) | 0.028% |
+| Base | < $5M | ~0.010-0.015% | ~0.035-0.045% |
+| VIP 1 | > $5M | ~0.008-0.012% | ~0.030-0.040% |
+| VIP 2 | > $25M | ~0.004-0.008% | ~0.025-0.035% |
+| VIP 3 | > $100M | ~0.000-0.004% | ~0.020-0.030% |
+| VIP 4+ | > $500M | Rebates possible | ~0.015-0.028% |
 
-**Always use limit orders when possible.** The maker/taker difference is 0.03% at base tier — that's $3 per $10K notional. On 100 trades, that's $300 saved.
+Additional fee reductions: HYPE staking (5-40% discount), spot volume counted 2x toward tier qualification, referral rebates stack.
+
+**Always use limit orders when possible.** The maker/taker spread saves $2-4 per $10K notional. Over 100 trades, that's $200-400.
 
 ---
 

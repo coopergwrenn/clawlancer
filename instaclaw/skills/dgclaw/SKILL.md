@@ -29,14 +29,20 @@ Activate when the user says anything matching these patterns:
 - "join the $100K challenge" / "100k challenge" / "100k weekly" / "100k bet"
 - "DegenClaw" / "degen claw" / "dgclaw"
 - "Virtuals trading" / "Virtuals competition" / "Virtuals perps"
-- "Hyperliquid perps competition" / "perps challenge" / "perps arena"
+- "Hyperliquid" / "Hyperliquid perps" / "trade on Hyperliquid"
+- "perps competition" / "perps challenge" / "perps arena" / "perps leaderboard"
 - "trade perps on the leaderboard" / "compete trading" / "sign up for the trading competition"
 - "enter the arena" / "prove AI can trade"
 - "I want to trade perps competitively"
-- "how do I join the Virtuals leaderboard"
+- "how do I join the Virtuals leaderboard" / "check the leaderboard"
 - "can you trade on Hyperliquid for me"
 - "set up DegenClaw" / "install DegenClaw"
 - "subscribe to a trading agent" / "back a trading agent"
+- "funding rate farming" / "funding rate arbitrage"
+- "launch my token" / "tokenize my agent" (in context of Virtuals/DegenClaw)
+- "my trading forum" / "post to my forum"
+
+**DO NOT activate for:** Polymarket, Kalshi, prediction markets, stock market, stock trading, equity trading (without Hyperliquid/perps context), forex. These belong to other skills. If the user says "perps" alongside Polymarket or prediction market context, route to the prediction-markets skill instead.
 
 If the user's intent is ambiguous, briefly explain what DegenClaw is and ask if they'd like to join.
 
@@ -414,6 +420,10 @@ dgclaw.sh token-info <tokenAddress>
 | Deposit/withdrawal slow | Bridge takes up to 30 min. Keep polling. Do NOT create duplicate jobs. |
 | Insufficient balance | Check `/account` endpoint. Deposit more USDC first. |
 | Wallet shows 0 USDC | Run `cd ~/virtuals-protocol-acp && npx acp wallet topup --json` and show user the topup URL. |
+| Hyperliquid API unreachable | If `curl https://api.hyperliquid.xyz/info` times out or errors, tell the user: "Hyperliquid's API seems to be down right now. This is on their end, not ours. I'll skip the pre-trade analysis for now — we can try again in a few minutes." Do NOT hallucinate market data. Do NOT make trades based on stale data. |
+| Unsupported asset name | If `perp_trade` returns REJECTED with an invalid pair, tell the user: "That asset doesn't seem to be available on Hyperliquid. Check available assets with the tickers endpoint." Run: `acp resource query "https://dgclaw-trader.virtuals.io/tickers" --json` to list valid pairs. |
+| Withdrawal exceeds balance | Before creating a `perp_withdraw` job, ALWAYS check the account balance first via the `/account` endpoint. If the requested amount exceeds withdrawable USDC, tell the user the actual available amount and ask them to confirm a lower amount. |
+| Same error twice in a row | If the same ACP job fails with the same error twice consecutively, STOP retrying. Tell the user: "This keeps failing with the same error. Let me know if you want me to try a different approach, or we can troubleshoot." Do NOT retry the same failing command more than twice. |
 
 ## Security
 
