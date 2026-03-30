@@ -193,17 +193,25 @@ export default function AgentBookCard() {
         <p className="text-[11px] text-center mb-4" style={{ color: "#888" }}>
           Tap the button below to complete World ID verification for your agent.
         </p>
-        <button
-          onClick={() => { window.location.href = bridgeUrl; }}
+        <a
+          href={bridgeUrl}
+          onClick={(e) => {
+            e.preventDefault();
+            // Try multiple methods to open the bridge URL
+            try { window.open(bridgeUrl, "_blank"); } catch {}
+            // Fallback: navigate directly after short delay
+            setTimeout(() => { window.location.href = bridgeUrl; }, 500);
+          }}
           className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
           style={{
             background: "linear-gradient(170deg, #1a5cff, #0044cc)",
             color: "#fff",
             boxShadow: "0 4px 16px rgba(0,68,204,0.35), inset 0 1px 0 rgba(255,255,255,0.15)",
+            textDecoration: "none",
           }}
         >
           Verify with World ID <ExternalLink size={14} />
-        </button>
+        </a>
         <div className="flex items-center justify-center gap-2 mt-3">
           <Loader2 size={12} className="animate-spin" style={{ color: "#666" }} />
           <p className="text-[10px]" style={{ color: "#666" }}>Waiting for on-chain confirmation...</p>
