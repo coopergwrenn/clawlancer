@@ -50,7 +50,7 @@ export default function AgentBookCard() {
     try {
       // Step 1: Native World ID verification via MiniKit
       const verifyResult = await MiniKit.commandsAsync.verify({
-        action: "register-agentbook",
+        action: "verify-instaclaw-agent",
         signal: walletAddress || undefined,
         verification_level: VerificationLevel.Orb,
       });
