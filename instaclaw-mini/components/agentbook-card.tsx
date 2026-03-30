@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Loader2, Check, ExternalLink } from "lucide-react";
+import { Loader2, Check, Copy } from "lucide-react";
 
 type Phase = "idle" | "loading" | "starting" | "waiting-bridge" | "bridge-ready" | "confirming" | "registered" | "error";
 
@@ -16,6 +16,7 @@ export default function AgentBookCard() {
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [copiedBridge, setCopiedBridge] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check initial status on mount
@@ -185,39 +186,40 @@ export default function AgentBookCard() {
     );
   }
 
-  // Bridge URL ready — show link to open in World App
+  // Bridge URL ready — show copyable link (WebView can't open World ID natively)
   if (phase === "bridge-ready" && bridgeUrl) {
     return (
       <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
-        <p className="text-sm font-semibold mb-2 text-center">Verify you&apos;re human</p>
+        <p className="text-sm font-semibold mb-2 text-center">Almost there!</p>
         <p className="text-[11px] text-center mb-4" style={{ color: "#888" }}>
-          Tap the button below to complete World ID verification for your agent.
+          Open this link in your phone&apos;s browser to complete on-chain verification.
         </p>
         <button
-          onClick={() => {
-            // Convert https://world.org/verify/... to worldapp:// deep link
-            // so World App opens the native verification flow instead of loading in WebView
-            const worldAppUrl = bridgeUrl
-              .replace("https://world.org/verify", "worldapp://verify")
-              .replace("https://bridge.worldcoin.org", "worldapp://verify");
-
-            // Try worldapp:// protocol first (native handler)
-            window.location.href = worldAppUrl;
-
-            // Fallback to https:// after delay if worldapp:// didn't work
-            setTimeout(() => {
-              window.location.href = bridgeUrl;
-            }, 2000);
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(bridgeUrl);
+              setCopiedBridge(true);
+              setTimeout(() => setCopiedBridge(false), 2000);
+            } catch {
+              const input = document.createElement("input");
+              input.value = bridgeUrl;
+              document.body.appendChild(input);
+              input.select();
+              document.execCommand("copy");
+              document.body.removeChild(input);
+              setCopiedBridge(true);
+              setTimeout(() => setCopiedBridge(false), 2000);
+            }
           }}
           className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
           style={{
-            background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
-            color: "#fff",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
+            background: copiedBridge ? "rgba(34,197,94,0.15)" : "linear-gradient(170deg, #2563eb, #1d4ed8)",
+            color: copiedBridge ? "#22c55e" : "#fff",
+            border: copiedBridge ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(255,255,255,0.12)",
+            boxShadow: copiedBridge ? "none" : "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
           }}
         >
-          Verify with World ID
+          {copiedBridge ? <><Check size={14} /> Link copied!</> : <><Copy size={14} /> Copy verification link</>}
         </button>
         <div className="flex items-center justify-center gap-2 mt-3">
           <Loader2 size={12} className="animate-spin" style={{ color: "#666" }} />
