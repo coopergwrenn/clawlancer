@@ -105,9 +105,10 @@ export default function AgentBookCard() {
     }
   }
 
-  // Don't render if not eligible or already registered with no need to show
+  // Don't render if loading, not eligible, or pre-register failed (wallet not ready, not verified, etc.)
   if (phase === "loading") return null;
-  if (phase === "error" && error === "Not eligible yet") return null;
+  // Hide card for any pre-register error — only show when wallet is ready or during active registration
+  if (phase === "error" && !error.includes("Registration failed") && !error.includes("Took too long") && !error.includes("Confirmation timed out")) return null;
 
   // Already registered — show success badge
   if (phase === "registered") {
