@@ -193,25 +193,32 @@ export default function AgentBookCard() {
         <p className="text-[11px] text-center mb-4" style={{ color: "#888" }}>
           Tap the button below to complete World ID verification for your agent.
         </p>
-        <a
-          href={bridgeUrl}
-          onClick={(e) => {
-            e.preventDefault();
-            // Try multiple methods to open the bridge URL
-            try { window.open(bridgeUrl, "_blank"); } catch {}
-            // Fallback: navigate directly after short delay
-            setTimeout(() => { window.location.href = bridgeUrl; }, 500);
+        <button
+          onClick={() => {
+            // Convert https://world.org/verify/... to worldapp:// deep link
+            // so World App opens the native verification flow instead of loading in WebView
+            const worldAppUrl = bridgeUrl
+              .replace("https://world.org/verify", "worldapp://verify")
+              .replace("https://bridge.worldcoin.org", "worldapp://verify");
+
+            // Try worldapp:// protocol first (native handler)
+            window.location.href = worldAppUrl;
+
+            // Fallback to https:// after delay if worldapp:// didn't work
+            setTimeout(() => {
+              window.location.href = bridgeUrl;
+            }, 2000);
           }}
-          className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
+          className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
           style={{
-            background: "linear-gradient(170deg, #1a5cff, #0044cc)",
+            background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
             color: "#fff",
-            boxShadow: "0 4px 16px rgba(0,68,204,0.35), inset 0 1px 0 rgba(255,255,255,0.15)",
-            textDecoration: "none",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
           }}
         >
-          Verify with World ID <ExternalLink size={14} />
-        </a>
+          Verify with World ID
+        </button>
         <div className="flex items-center justify-center gap-2 mt-3">
           <Loader2 size={12} className="animate-spin" style={{ color: "#666" }} />
           <p className="text-[10px]" style={{ color: "#666" }}>Waiting for on-chain confirmation...</p>
