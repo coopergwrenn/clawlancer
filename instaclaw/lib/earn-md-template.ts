@@ -75,7 +75,25 @@ python3 ~/scripts/kalshi-portfolio.py summary
 
 ---
 
-## 3. Solana DeFi Trading
+## 3. DegenClaw — Virtuals $100K Weekly Trading Competition
+
+Trade Hyperliquid perps competitively. Every week, Virtuals Protocol puts **$100K USDC** behind the top 3 agents' strategies.
+
+**How it works:**
+- Your agent trades perpetual futures on Hyperliquid with real capital
+- Ranked weekly by Sortino Ratio (40%), Return % (35%), Profit Factor (25%)
+- Top 3 agents get backed with $100K — subscribers split 50% of realized profits
+- All trades are on-chain and verifiable
+
+**How to start:** Say "join the DegenClaw trading competition" — your agent walks you through setup (Virtuals auth, token launch, funding, strategy selection). See the **dgclaw SKILL.md** for the full flow.
+
+**Your edge:** Pre-loaded with 5 strategy templates optimized for the scoring system, direct Hyperliquid API access for order book analysis, and built-in risk management (ATR-based stops, drawdown circuit breaker, position sizing formulas).
+
+**Revenue:** Competition winnings + 45% of subscriber fees + token appreciation.
+
+---
+
+## 4. Solana DeFi Trading
 
 Trade tokens on Solana via Jupiter swaps and PumpPortal sniping.
 
@@ -101,7 +119,7 @@ python3 ~/scripts/solana-positions.py
 
 ---
 
-## 4. Digital Product Sales
+## 5. Digital Product Sales
 
 Create and sell digital products — templates, prompt packs, code, toolkits.
 
@@ -123,7 +141,7 @@ Create and sell digital products — templates, prompt packs, code, toolkits.
 
 ---
 
-## 5. Freelance Services
+## 6. Freelance Services
 
 Offer services through Contra, Fiverr, or Upwork. Agent does the work, human handles account setup.
 
@@ -144,7 +162,7 @@ Offer services through Contra, Fiverr, or Upwork. Agent does the work, human han
 
 ---
 
-## 6. Video Production
+## 7. Video Production
 
 Two systems for creating videos that clients will pay for.
 
@@ -174,7 +192,7 @@ npx remotion render src/index.ts MyComp out.mp4
 
 ---
 
-## 7. E-Commerce Operations
+## 8. E-Commerce Operations
 
 Manage Shopify/Amazon/eBay stores — inventory, orders, returns, pricing.
 
@@ -194,7 +212,7 @@ Manage Shopify/Amazon/eBay stores — inventory, orders, returns, pricing.
 
 ---
 
-## 8. Financial Analysis & Reports
+## 9. Financial Analysis & Reports
 
 Pull market data via Alpha Vantage and generate analysis reports.
 
@@ -218,7 +236,7 @@ python3 ~/scripts/market-analysis.py indicators AAPL --period daily
 
 ---
 
-## 9. Competitive Intelligence
+## 10. Competitive Intelligence
 
 Research competitors, track pricing changes, generate market reports.
 
@@ -234,7 +252,7 @@ python3 ~/scripts/competitive-intel.py monitor --competitors "A,B,C"
 
 ---
 
-## 10. Email Outreach & Lead Generation
+## 11. Email Outreach & Lead Generation
 
 Your email: check \`~/.openclaw/agents/main/agent/auth-profiles.json\` for your @instaclaw.io address.
 
@@ -251,7 +269,7 @@ Your email: check \`~/.openclaw/agents/main/agent/auth-profiles.json\` for your 
 
 ---
 
-## 11. Social Media Content
+## 12. Social Media Content
 
 Generate content for Reddit, Twitter/X, LinkedIn, Instagram.
 
@@ -266,7 +284,7 @@ python3 ~/scripts/social-content.py generate --platform twitter --topic "your to
 
 ---
 
-## 12. Language Teaching
+## 13. Language Teaching
 
 Interactive language lessons via chat — 50+ languages supported.
 
@@ -277,7 +295,7 @@ Interactive language lessons via chat — 50+ languages supported.
 
 ---
 
-## 13. Ambassador Referrals
+## 14. Ambassador Referrals
 
 Earn by referring new users to InstaClaw.
 
@@ -304,6 +322,7 @@ Keep a running log in MEMORY.md:
 ## Earnings Log
 - 2026-03-24: Clawlancer bounty #123 — $50 USDC (RELEASED)
 - 2026-03-24: Polymarket — sold YES on "Topic" — +$12.50
+- 2026-03-24: DegenClaw — closed ETH long — +$85.20 (Hyperliquid perps)
 - 2026-03-23: Gumroad — Prompt Pack sale — $49
 \`\`\`
 
