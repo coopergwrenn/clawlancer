@@ -124,7 +124,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 49,
+  version: 50,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -389,6 +389,10 @@ export const VM_MANIFEST = {
     "OOMScoreAdjust": "500",        // Higher = killed first. sshd has -900. Gateway dies before sshd.
     "RuntimeMaxSec": "86400",       // Auto-restart gateway after 24h to prevent memory bloat
     "RuntimeRandomizedExtraSec": "3600", // Stagger restarts across fleet by up to 1h
+    // Virtuals Protocol partner attribution — ensures ALL child processes (agent tools,
+    // npx acp, dgclaw.sh) inherit PARTNER_ID regardless of working directory or dotenv.
+    // Confirmed by Mira @ Virtuals 2026-03-30: "inject PARTNER_ID=INSTACLAW to process.env"
+    "Environment": "PARTNER_ID=INSTACLAW",
   } as Record<string, string>,
 
   // ── Session thresholds ──
