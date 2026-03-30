@@ -61,10 +61,10 @@ export async function POST(req: NextRequest) {
     const relayData = await relayRes.json().catch(() => ({}));
 
     if (!relayRes.ok) {
-      console.error("[AgentBook/Register] Relay error:", relayRes.status, relayData);
+      console.error("[AgentBook/Register] Relay error:", relayRes.status, JSON.stringify(relayData));
+      console.error("[AgentBook/Register] Sent body:", JSON.stringify(relayBody));
       return NextResponse.json({
-        error: relayData.error || relayData.message || "On-chain registration failed",
-        detail: relayData,
+        error: `Relay ${relayRes.status}: ${JSON.stringify(relayData)}`,
       }, { status: relayRes.status });
     }
 
