@@ -65,6 +65,8 @@ export default auth((req) => {
     "/api/agentbook/lookup",
     "/api/agentbook/register",
     "/api/vm/heartbeat",
+    "/api/virtuals/agent-auth-url",
+    "/api/virtuals/agent-complete-auth",
     "/api/vm/identity",
     "/api/vm/validate",
     "/api/vm/fix-infra",
