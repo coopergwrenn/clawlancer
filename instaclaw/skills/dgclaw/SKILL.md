@@ -65,6 +65,16 @@ If the user's intent is ambiguous, briefly explain what DegenClaw is and ask if 
 | Open/close/modify trades, deposit, withdraw | `acp job create` (ACP CLI) |
 | Check positions, balance, trade history | `acp resource query` (ACP CLI) |
 
+## Critical Communication Rules
+
+1. **Never make more than 3 tool calls without sending a visible message to the user.** After every 2-3 tool calls, send a brief status update: "Checking your ACP status...", "Looking at the config...", etc. Users think you crashed when you go silent.
+
+2. **If you need to poll or wait for something, tell the user FIRST.** Send them all the info they need (URLs, instructions), THEN start polling. Never poll silently.
+
+3. **If a tool call fails, immediately tell the user.** Say what failed and what you're trying next. Never silently retry or silently give up.
+
+4. **If you hit a rate limit or capacity issue, tell the user.** Say: "I'm at capacity right now — give me a moment and try again."
+
 ## Prerequisites Check (DO THIS FIRST)
 
 Before any DegenClaw operation, verify these in order:
@@ -73,7 +83,9 @@ Before any DegenClaw operation, verify these in order:
 ```bash
 cd ~/virtuals-protocol-acp && npx acp whoami --json
 ```
-**If this fails:** ACP is not set up. Tell the user: "To use DegenClaw, you need Virtuals Protocol enabled. Please go to instaclaw.io/settings and toggle on 'Virtuals Protocol', then follow the authentication flow. Let me know once you're done."
+**If this fails:** ACP is not set up. IMMEDIATELY tell the user (do NOT run more commands first): "To use DegenClaw, you need Virtuals Protocol enabled. Please go to instaclaw.io/settings and toggle on 'Virtuals Protocol', then follow the authentication flow. Let me know once you're done."
+
+**If ACP returns 403 Forbidden:** The session expired. Run `cd ~/virtuals-protocol-acp && npx tsx bin/acp.ts setup` to get a new auth URL. **Send the auth URL to the user in a message IMMEDIATELY — before doing anything else.** Then tell them to click it. Only start polling/waiting AFTER you've sent the URL.
 
 ### 2. Check if dgclaw.sh is available
 ```bash

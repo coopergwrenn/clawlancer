@@ -85,6 +85,7 @@ export const TEMPLATE_REGISTRY: Record<string, string> = {
   SOUL_MD_LEARNED_PREFERENCES,
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
   WORKSPACE_INDEX_SCRIPT,
+  SILENCE_WATCHDOG_SCRIPT,
   // STRIP_THINKING_SCRIPT and AUTO_APPROVE_PAIRING_SCRIPT are registered
   // at runtime by ssh.ts to avoid circular imports (they're defined there
   // as template literals with interpolated values like ${512 * 1024}).
@@ -106,6 +107,209 @@ export function getTemplateContent(key: string): string {
   return content;
 }
 
+// ── Silence watchdog — universal safety net against agent going silent ──
+// Runs every 30 seconds (via cron + sleep 30). Detects when a user message
+// has gone unanswered for >60 seconds and sends a fallback directly via
+// Telegram API, bypassing OpenClaw entirely. Catches ALL silence causes:
+// rate limits, tool failures, context overflow, frozen API, dead gateway.
+const SILENCE_WATCHDOG_SCRIPT = `#!/usr/bin/env python3
+"""Silence Watchdog — universal fallback for unresponsive agents.
+
+If a user sent a message >60 seconds ago and the agent hasn't replied,
+send a fallback message directly via Telegram API and restart the gateway.
+This is the LAST LINE OF DEFENSE — independent of OpenClaw.
+"""
+import json, os, glob, time, subprocess, re, sys
+
+SILENCE_THRESHOLD_SEC = 60
+STATE_FILE = os.path.expanduser("~/.openclaw/.silence-watchdog-state.json")
+CONFIG_FILE = os.path.expanduser("~/.openclaw/openclaw.json")
+SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
+COOLDOWN_SEC = 300  # Don't send more than 1 fallback per 5 minutes
+
+FALLBACK_MSG = "Sorry about that — I hit a processing issue. Could you send that again?"
+
+def get_bot_token():
+    try:
+        with open(CONFIG_FILE) as f:
+            cfg = json.load(f)
+        channels = cfg.get("channels", {})
+        tg = channels.get("telegram", {})
+        return tg.get("botToken", "")
+    except Exception:
+        return ""
+
+def get_chat_id():
+    """Extract chat_id from the most recent session file."""
+    sessions_json = os.path.expanduser("~/.openclaw/agents/main/sessions/sessions.json")
+    try:
+        with open(sessions_json) as f:
+            data = json.load(f)
+        for k, v in data.items():
+            origin = v.get("origin", {})
+            fr = origin.get("from", "") or v.get("lastTo", "")
+            m = re.search(r"telegram:(\\d+)", fr)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return ""
+
+def get_latest_session_timing():
+    """Read the latest session file and find the last user message and last assistant message timestamps."""
+    latest_mtime = 0
+    latest_file = None
+    for f in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+        try:
+            mt = os.path.getmtime(f)
+            if mt > latest_mtime:
+                latest_mtime = mt
+                latest_file = f
+        except Exception:
+            pass
+
+    if not latest_file:
+        return None, None
+
+    last_user_ts = None
+    last_assistant_ts = None
+
+    try:
+        # Read last 30 lines (enough to find recent messages)
+        lines = subprocess.run(
+            ["tail", "-30", latest_file],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip().split("\\n")
+
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+                msg = entry.get("message", {})
+                role = msg.get("role", "")
+                ts_str = entry.get("timestamp", "")
+
+                if not ts_str:
+                    continue
+
+                # Parse ISO timestamp to epoch
+                # Handle both "2026-03-30T15:36:00.812Z" and epoch ms
+                if isinstance(ts_str, str) and "T" in ts_str:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    ts = dt.timestamp()
+                elif isinstance(ts_str, (int, float)):
+                    ts = ts_str / 1000 if ts_str > 1e12 else ts_str
+                else:
+                    continue
+
+                if role == "user":
+                    last_user_ts = ts
+                elif role == "assistant":
+                    content = msg.get("content", [])
+                    # Only count assistant messages with actual visible text (not empty, not just tool calls)
+                    has_text = False
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text" and block.get("text", "").strip():
+                            has_text = True
+                            break
+                    if has_text:
+                        last_assistant_ts = ts
+            except (json.JSONDecodeError, ValueError):
+                continue
+    except Exception:
+        pass
+
+    return last_user_ts, last_assistant_ts
+
+def read_state():
+    try:
+        with open(STATE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def write_state(data):
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+def send_telegram_fallback(bot_token, chat_id):
+    """Send fallback message directly via Telegram API — bypasses OpenClaw entirely."""
+    try:
+        import urllib.request, urllib.parse
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        data = urllib.parse.urlencode({
+            "chat_id": chat_id,
+            "text": FALLBACK_MSG,
+        }).encode()
+        req = urllib.request.Request(url, data=data, method="POST")
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except Exception:
+        return False
+
+def restart_gateway():
+    """Restart the OpenClaw gateway."""
+    try:
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        subprocess.run(
+            ["systemctl", "--user", "restart", "openclaw-gateway"],
+            env=env, timeout=15, capture_output=True
+        )
+    except Exception:
+        pass
+
+def main():
+    now = time.time()
+    state = read_state()
+
+    # Cooldown: don't spam fallbacks
+    last_fallback = state.get("last_fallback_ts", 0)
+    if now - last_fallback < COOLDOWN_SEC:
+        return
+
+    # Get bot token and chat_id
+    bot_token = get_bot_token()
+    chat_id = get_chat_id()
+    if not bot_token or not chat_id:
+        return  # No Telegram configured — nothing to watch
+
+    # Check session timing
+    last_user_ts, last_assistant_ts = get_latest_session_timing()
+
+    if last_user_ts is None:
+        return  # No user messages — nothing to check
+
+    user_age = now - last_user_ts
+
+    # User message must be recent (last 90 seconds) to be actionable
+    if user_age > 90:
+        return  # Old message — not a current silence issue
+
+    # Check if user message is unanswered for >SILENCE_THRESHOLD_SEC
+    if user_age < SILENCE_THRESHOLD_SEC:
+        return  # Still within threshold — give the agent time
+
+    # Is there an assistant response AFTER the user message?
+    if last_assistant_ts and last_assistant_ts > last_user_ts:
+        return  # Agent responded — no silence
+
+    # SILENCE DETECTED: user message is >60s old with no visible assistant response
+    # Send fallback and restart
+    sent = send_telegram_fallback(bot_token, chat_id)
+    if sent:
+        restart_gateway()
+        write_state({"last_fallback_ts": now, "trigger": "silence_detected"})
+
+if __name__ == "__main__":
+    main()
+`;
+
 // ── Push-based heartbeat script (deployed to every VM, runs hourly via cron) ──
 const PUSH_HEARTBEAT_SH = `#!/bin/bash
 # Push-based heartbeat — POSTs to instaclaw.io every hour via crontab
@@ -124,7 +328,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 50,
+  version: 51,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -287,6 +491,13 @@ export const VM_MANIFEST = {
       executable: true,
     },
     {
+      remotePath: "~/.openclaw/scripts/silence-watchdog.py",
+      source: "template",
+      templateKey: "SILENCE_WATCHDOG_SCRIPT",
+      mode: "overwrite",
+      executable: true,
+    },
+    {
       remotePath: "~/scripts/deliver_file.sh",
       source: "template",
       templateKey: "DELIVER_FILE_SCRIPT",
@@ -344,6 +555,12 @@ export const VM_MANIFEST = {
       schedule: "0 * * * *",
       command: "bash ~/.openclaw/scripts/push-heartbeat.sh",
       marker: "push-heartbeat.sh",
+    },
+    {
+      // Runs every 30 seconds: cron fires at :00, sleep fires at :30
+      schedule: "* * * * *",
+      command: "python3 ~/.openclaw/scripts/silence-watchdog.py > /dev/null 2>&1; sleep 30 && python3 ~/.openclaw/scripts/silence-watchdog.py > /dev/null 2>&1",
+      marker: "silence-watchdog.py",
     },
   ] as ManifestCronJob[],
 
