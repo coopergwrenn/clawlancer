@@ -81,17 +81,33 @@ Before any DegenClaw operation, verify these in order:
 
 ### 1. Check if ACP is configured
 ```bash
-cd ~/virtuals-protocol-acp && npx acp whoami --json
+cd ~/virtuals-protocol-acp && npx acp whoami --json 2>&1
 ```
-**If this fails:** ACP is not set up. IMMEDIATELY tell the user (do NOT run more commands first): "To use DegenClaw, you need Virtuals Protocol enabled. Please go to instaclaw.io/settings and toggle on 'Virtuals Protocol', then follow the authentication flow. Let me know once you're done."
+**If this works (returns agent info with name/wallet):** ACP is configured. Skip to step 3 (token check).
 
-**If ACP returns 403 Forbidden or "not set":** The session expired or was never completed. You MUST run the setup command to get a fresh auth URL:
+**If this fails (403, "not set", or any error):** ACP needs authentication. Use the two-step server-side flow:
+
+**Step A — Get auth URL (instant):**
 ```bash
-cd ~/virtuals-protocol-acp && npx tsx bin/acp.ts setup 2>&1
+curl -s -H "x-api-key: $GATEWAY_TOKEN" https://instaclaw.io/api/virtuals/agent-auth-url
 ```
-This will output a login link like: `https://app.virtuals.io/acp/auth?requestId=abc123...`
+This returns `{"authUrl":"https://app.virtuals.io/acp/auth?requestId=...","authRequestId":"..."}`.
 
-**CRITICAL: Send THAT EXACT URL (with the ?requestId= parameter) to the user.** Do NOT send the generic `https://app.virtuals.io/acp/auth` — the generic link does not work. The requestId is required for the CLI to capture the authentication. Send the full URL to the user IMMEDIATELY, then tell them to open it in their browser. Only start polling AFTER you've sent the URL.
+**IMMEDIATELY send the authUrl to the user.** Say: "Here's your authentication link — click it and sign in with Virtuals Protocol. Let me know once you see 'Authentication successful!'"
+
+Save the `authRequestId` value for the next step.
+
+**Step B — After user confirms they authenticated (instant):**
+```bash
+curl -s -X POST -H "x-api-key: $GATEWAY_TOKEN" -H "Content-Type: application/json" \
+  -d '{"authRequestId":"PASTE_THE_REQUEST_ID_HERE"}' \
+  https://instaclaw.io/api/virtuals/agent-complete-auth
+```
+This completes everything server-side: polls Virtuals, fetches credentials, writes config to your VM, starts ACP service. Returns `{"success":true}` when done.
+
+Verify: `cd ~/virtuals-protocol-acp && npx acp whoami --json 2>&1`
+
+**IMPORTANT:** Do NOT use `acp setup` or `npx tsx bin/acp.ts setup`. Do NOT send `https://app.virtuals.io/acp/auth` without a requestId. Always use the two-step curl flow above.
 
 ### 2. Check if dgclaw.sh is available
 ```bash
