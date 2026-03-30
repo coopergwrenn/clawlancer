@@ -85,7 +85,13 @@ cd ~/virtuals-protocol-acp && npx acp whoami --json
 ```
 **If this fails:** ACP is not set up. IMMEDIATELY tell the user (do NOT run more commands first): "To use DegenClaw, you need Virtuals Protocol enabled. Please go to instaclaw.io/settings and toggle on 'Virtuals Protocol', then follow the authentication flow. Let me know once you're done."
 
-**If ACP returns 403 Forbidden:** The session expired. Run `cd ~/virtuals-protocol-acp && npx tsx bin/acp.ts setup` to get a new auth URL. **Send the auth URL to the user in a message IMMEDIATELY — before doing anything else.** Then tell them to click it. Only start polling/waiting AFTER you've sent the URL.
+**If ACP returns 403 Forbidden or "not set":** The session expired or was never completed. You MUST run the setup command to get a fresh auth URL:
+```bash
+cd ~/virtuals-protocol-acp && npx tsx bin/acp.ts setup 2>&1
+```
+This will output a login link like: `https://app.virtuals.io/acp/auth?requestId=abc123...`
+
+**CRITICAL: Send THAT EXACT URL (with the ?requestId= parameter) to the user.** Do NOT send the generic `https://app.virtuals.io/acp/auth` — the generic link does not work. The requestId is required for the CLI to capture the authentication. Send the full URL to the user IMMEDIATELY, then tell them to open it in their browser. Only start polling AFTER you've sent the URL.
 
 ### 2. Check if dgclaw.sh is available
 ```bash
