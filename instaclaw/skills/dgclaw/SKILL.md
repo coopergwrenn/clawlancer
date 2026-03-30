@@ -89,6 +89,7 @@ cd ~/virtuals-protocol-acp && npx acp whoami --json 2>&1
 
 **Step A — Get auth URL (instant):**
 ```bash
+GATEWAY_TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env | cut -d= -f2)
 curl -s -H "x-api-key: $GATEWAY_TOKEN" https://instaclaw.io/api/virtuals/agent-auth-url
 ```
 This returns `{"authUrl":"https://app.virtuals.io/acp/auth?requestId=...","authRequestId":"..."}`.
@@ -99,6 +100,7 @@ Save the `authRequestId` value for the next step.
 
 **Step B — After user confirms they authenticated (instant):**
 ```bash
+GATEWAY_TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env | cut -d= -f2)
 curl -s -X POST -H "x-api-key: $GATEWAY_TOKEN" -H "Content-Type: application/json" \
   -d '{"authRequestId":"PASTE_THE_REQUEST_ID_HERE"}' \
   https://instaclaw.io/api/virtuals/agent-complete-auth
