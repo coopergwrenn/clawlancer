@@ -93,9 +93,9 @@ export default function AgentBookCard() {
     }
   }
 
-  // Hide if not ready
-  if (phase === "loading") return null;
-  if (phase === "error" && !error.includes("Registration failed") && !error.includes("Something went wrong")) return null;
+  // Only show for users who are already registered (via web app)
+  // On-chain registration requires agentkit-cli which can't run from mini app WebView
+  if (phase !== "registered") return null;
 
   // Registered badge
   if (phase === "registered") {
