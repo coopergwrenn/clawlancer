@@ -85,7 +85,6 @@ export const TEMPLATE_REGISTRY: Record<string, string> = {
   SOUL_MD_LEARNED_PREFERENCES,
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
   WORKSPACE_INDEX_SCRIPT,
-  SILENCE_WATCHDOG_SCRIPT,
   // STRIP_THINKING_SCRIPT and AUTO_APPROVE_PAIRING_SCRIPT are registered
   // at runtime by ssh.ts to avoid circular imports (they're defined there
   // as template literals with interpolated values like ${512 * 1024}).
@@ -492,10 +491,11 @@ export const VM_MANIFEST = {
     },
     {
       remotePath: "~/.openclaw/scripts/silence-watchdog.py",
-      source: "template",
-      templateKey: "SILENCE_WATCHDOG_SCRIPT",
+      source: "inline",
+      content: SILENCE_WATCHDOG_SCRIPT,
       mode: "overwrite",
       executable: true,
+      useSFTP: true,
     },
     {
       remotePath: "~/scripts/deliver_file.sh",
