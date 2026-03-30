@@ -151,11 +151,13 @@ export default function AgentBookCard() {
         </div>
         <button
           onClick={startRegistration}
-          className="w-full rounded-xl py-2.5 text-[12px] font-semibold transition-all flex items-center justify-center gap-2"
+          className="w-full rounded-xl py-3 text-[13px] font-bold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
           style={{
-            background: "rgba(0,92,255,0.1)",
-            border: "1px solid rgba(0,92,255,0.2)",
-            color: "#4d8eff",
+            background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "#fff",
+            boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 3px rgba(0,0,0,0.15)",
+            textShadow: "0 1px 2px rgba(0,0,0,0.2)",
           }}
         >
           Register now
