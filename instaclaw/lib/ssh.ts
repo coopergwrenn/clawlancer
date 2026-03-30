@@ -7207,12 +7207,11 @@ const DGCLAW_REPO = "https://github.com/Virtual-Protocol/dgclaw-skill";
 const DGCLAW_DIR = "$HOME/dgclaw-skill";
 
 // ── Virtuals Protocol Partner ID ──
-// When Virtuals delivers the partner ID program (expected 2026-03-29/30),
-// set this to our assigned partner ID. The ACP CLI will tag all agents
-// tokenized through InstaClaw's pre-installed CLI with this ID, routing
-// a share of token generation and trading fees back to InstaClaw.
-// Injection mechanism TBD — will be an env var, config key, or CLI flag.
-const ACP_PARTNER_ID = ""; // TODO: Fill in when Virtuals delivers our partner ID
+// Confirmed 2026-03-30 by Mira @ Virtuals: inject PARTNER_ID=INSTACLAW into
+// process.env. When a user runs `acp token launch`, the ACP CLI checks
+// process.env.PARTNER_ID and tags the agent as InstaClaw's referral.
+// Revenue share on token generation and trading fees flows back to InstaClaw.
+const ACP_PARTNER_ID = "INSTACLAW";
 const AGDP_OFFERING = {
   name: ACP_OFFERING_API.name,
   json: ACP_OFFERING_API,
@@ -7325,6 +7324,7 @@ const ACP_SERVE_WRAPPER = [
   'export NVM_DIR="$HOME/.nvm"',
   '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"',
   'export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"',
+  ...(ACP_PARTNER_ID ? [`export PARTNER_ID=${ACP_PARTNER_ID}`] : []),
   'cd ~/virtuals-protocol-acp',
   'exec npx acp serve start',
 ].join('\n');
@@ -7440,8 +7440,15 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       'echo "STEP:dgclaw_cloned"',
       '',
       ...(ACP_PARTNER_ID ? [
-        '# Inject InstaClaw partner ID for revenue share attribution',
-        `echo '{"partnerId":"${ACP_PARTNER_ID}"}' > "${AGDP_DIR}/partner.json"`,
+        '# Inject InstaClaw partner ID for Virtuals revenue share attribution',
+        '# Mira @ Virtuals: "inject PARTNER_ID=INSTACLAW to their process.env"',
+        '# Three injection points to ensure coverage:',
+        '# 1. ACP .env file (dotenv loads this when acp CLI runs)',
+        `grep -qF 'PARTNER_ID=' "${AGDP_DIR}/.env" 2>/dev/null || echo 'PARTNER_ID=${ACP_PARTNER_ID}' >> "${AGDP_DIR}/.env"`,
+        '# 2. .bashrc (available to all agent shell sessions)',
+        `grep -qF 'PARTNER_ID=' ~/.bashrc 2>/dev/null || echo 'export PARTNER_ID=${ACP_PARTNER_ID}' >> ~/.bashrc`,
+        '# 3. acp-serve wrapper script (systemd service)',
+        `sed -i '/^exec npx/i export PARTNER_ID=${ACP_PARTNER_ID}' "${AGDP_DIR}/acp-serve.sh" 2>/dev/null || true`,
         'echo "STEP:partner_id_set"',
         '',
       ] : []),
