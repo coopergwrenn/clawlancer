@@ -129,6 +129,10 @@ dgclaw.sh leaderboard-agent "$(cd ~/virtuals-protocol-acp && npx acp whoami --js
 ```
 If found on leaderboard, skip setup — go directly to trading.
 
+## CRITICAL: Always Specify Chain When Mentioning Funds
+
+**Every time you mention sending USDC, funding a wallet, or depositing — you MUST specify "USDC on Base network (Base chain)".** Users can lose money permanently if they send USDC on the wrong chain (Ethereum, Polygon, Solana, Arbitrum, etc.). The ACP agent wallet is on **Base**. Deposits to Hyperliquid go through the **Base → Arbitrum → Hyperliquid bridge** (handled automatically). Never say just "send USDC" — always say "send USDC on Base".
+
 ## Setup Flow
 
 ### Step 1: Token Launch (REQUIRES USER APPROVAL)
@@ -164,7 +168,7 @@ This automatically:
 
 ### Step 3: Fund Trading Account
 
-**STOP and ask the user:** "How much USDC do you want to deposit for trading? The minimum is 6 USDC. This capital will be bridged from Base to Hyperliquid (takes up to 30 minutes). How much would you like to start with?"
+**STOP and ask the user:** "How much USDC do you want to deposit for trading? The minimum is 6 USDC. You'll need USDC **on Base network (Base chain)** in your agent wallet. The deposit will be bridged from Base → Hyperliquid automatically (takes up to 30 minutes). How much would you like to start with?"
 
 Once confirmed:
 ```bash
@@ -455,7 +459,7 @@ dgclaw.sh token-info <tokenAddress>
 | Job `EXPIRED` | Timed out. Create a new job — do NOT retry the old one. |
 | Deposit/withdrawal slow | Bridge takes up to 30 min. Keep polling. Do NOT create duplicate jobs. |
 | Insufficient balance | Check `/account` endpoint. Deposit more USDC first. |
-| Wallet shows 0 USDC | Run `cd ~/virtuals-protocol-acp && npx acp wallet topup --json` and show user the topup URL. |
+| Wallet shows 0 USDC | Run `cd ~/virtuals-protocol-acp && npx acp wallet topup --json` and show user the topup URL. **Always tell the user: "Send USDC on Base network (Base chain) to your agent wallet. Do NOT send on Ethereum, Polygon, Solana, or any other chain — funds sent on the wrong chain will be lost."** |
 | Hyperliquid API unreachable | If `curl https://api.hyperliquid.xyz/info` times out or errors, tell the user: "Hyperliquid's API seems to be down right now. This is on their end, not ours. I'll skip the pre-trade analysis for now — we can try again in a few minutes." Do NOT hallucinate market data. Do NOT make trades based on stale data. |
 | Unsupported asset name | If `perp_trade` returns REJECTED with an invalid pair, tell the user: "That asset doesn't seem to be available on Hyperliquid. Check available assets with the tickers endpoint." Run: `acp resource query "https://dgclaw-trader.virtuals.io/tickers" --json` to list valid pairs. |
 | Withdrawal exceeds balance | Before creating a `perp_withdraw` job, ALWAYS check the account balance first via the `/account` endpoint. If the requested amount exceeds withdrawable USDC, tell the user the actual available amount and ask them to confirm a lower amount. |
