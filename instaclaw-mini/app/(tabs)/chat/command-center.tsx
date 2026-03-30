@@ -475,7 +475,7 @@ export default function CommandCenter({
   const tgUsername = telegramBotUsername?.replace(/^@/, "");
 
   return (
-    <div className="flex h-full flex-col overflow-hidden" style={{ background: "transparent" }}>
+    <div className="relative flex h-full flex-col overflow-hidden" style={{ background: "transparent" }}>
       {/* ── Pinned header section (shrink-0, never scrolls) ── */}
       <div className="shrink-0">
       {/* Info banner */}
@@ -559,8 +559,8 @@ export default function CommandCenter({
 
       </div>{/* end shrink-0 header */}
 
-      {/* Content — ONLY scrollable area */}
-      <div ref={scrollRef} className="flex-1 flex flex-col overflow-y-auto" style={{ minHeight: 0, WebkitOverflowScrolling: "touch" }}>
+      {/* Content — scrollable area, extends behind the bottom glass toolbar */}
+      <div ref={scrollRef} className="flex-1 flex flex-col overflow-y-auto" style={{ minHeight: 0, WebkitOverflowScrolling: "touch", paddingBottom: "180px" }}>
         {/* ── Tasks Tab ── */}
         {tab === "tasks" && (
           <div className="flex-1 flex flex-col px-4 py-3">
@@ -1216,7 +1216,7 @@ export default function CommandCenter({
             />
 
             {/* Messages area */}
-            <div className="flex-1 overflow-y-auto px-4 py-3" style={{ minHeight: 0 }}>
+            <div className="flex-1 overflow-y-auto px-4 py-3" style={{ minHeight: 0, paddingBottom: "180px" }}>
             {loadingChat ? (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "transparent" }} />
@@ -1289,6 +1289,23 @@ export default function CommandCenter({
         )}
       </div>
 
+      {/* ── Bottom toolbar — invisible container, pure blur fade ── */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none"
+      >
+        {/* Blur layer — uses mask so blur itself fades in smoothly */}
+        <div
+          className="absolute inset-0 -top-12"
+          style={{
+            backdropFilter: "blur(40px) saturate(1.6)",
+            WebkitBackdropFilter: "blur(40px) saturate(1.6)",
+            maskImage: "linear-gradient(to bottom, transparent 0%, black 28%)",
+            WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 28%)",
+          }}
+        />
+        {/* All interactive content — re-enable pointer events */}
+        <div className="relative pointer-events-auto">
+
       {/* Suggestion chips */}
       {(tab === "tasks" || (tab === "chat" && chatMsgs.length === 0)) && (
         <div className="flex gap-2 overflow-x-auto px-4 py-2 no-scrollbar">
@@ -1298,8 +1315,8 @@ export default function CommandCenter({
               onClick={() => handleSend(s)}
               className="shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
               style={{
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.1)",
                 color: "#ccc",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.06)",
               }}
@@ -1313,12 +1330,12 @@ export default function CommandCenter({
       {/* Active toggle pills */}
       <div className="flex flex-wrap gap-1.5 px-4 py-1">
         {webSearch && (
-          <button onClick={() => setWebSearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(66,133,244,0.1)", border: "1px solid rgba(66,133,244,0.25)", color: "#4285F4" }}>
+          <button onClick={() => setWebSearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(66,133,244,0.12)", border: "1px solid rgba(66,133,244,0.25)", color: "#4285F4" }}>
             <Globe size={11} /> Web search <span style={{ opacity: 0.5 }}>×</span>
           </button>
         )}
         {deepResearch && (
-          <button onClick={() => setDeepResearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.25)", color: "#8b5cf6" }}>
+          <button onClick={() => setDeepResearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)", color: "#8b5cf6" }}>
             <Sparkles size={11} /> Deep research <span style={{ opacity: 0.5 }}>×</span>
           </button>
         )}
@@ -1447,6 +1464,8 @@ export default function CommandCenter({
           </button>
         </div>
       </div>
+      </div>{/* end interactive content */}
+      </div>{/* end bottom toolbar */}
 
       <style>{`
         @keyframes dot { 0%,60%,100%{opacity:.3;transform:translateY(0)} 30%{opacity:1;transform:translateY(-4px)} }

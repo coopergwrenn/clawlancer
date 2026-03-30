@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ShieldAlert, X, ExternalLink } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { ShieldAlert, X, Copy, Check, ExternalLink, Loader2 } from "lucide-react";
 
 function GoogleGIcon({ size = 18 }: { size?: number }) {
   return (
@@ -21,113 +21,256 @@ interface GoogleConnectCardProps {
 }
 
 /**
- * Dismissible card prompting the user to connect Google.
- * Shows on the Home tab (prominent) and Settings tab (compact).
+ * Google connect card with TV-style pairing code flow.
+ * User never leaves the mini app — opens the link in their phone browser.
  */
 export default function GoogleConnectCard({
   onConnectStart,
   onDismiss,
   variant = "home",
 }: GoogleConnectCardProps) {
-  const [showWarning, setShowWarning] = useState(false);
+  const [step, setStep] = useState<"idle" | "warning" | "pairing" | "connected">("idle");
   const [loading, setLoading] = useState(false);
+  const [pairCode, setPairCode] = useState<string | null>(null);
+  const [pairUrl, setPairUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(600);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function handleConnect() {
+  // Poll for Google connection status
+  useEffect(() => {
+    if (step !== "pairing") return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/google/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.connected) {
+            setStep("connected");
+            onConnectStart(); // triggers parent refresh
+          }
+        }
+      } catch {}
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [step, onConnectStart]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (step !== "pairing") return;
+    timerRef.current = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          setStep("idle");
+          return 600;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [step]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  // Generate pairing code and navigate to the trampoline page.
+  // The trampoline opens Google in Chrome and auto-returns to the mini app.
+  async function handleConnectGoogle() {
     setLoading(true);
     try {
-      const res = await fetch("/api/google/connect-url");
+      const res = await fetch("/api/google/pair", { method: "POST" });
       const data = await res.json();
-      if (data.url) {
-        window.open(data.url, "_blank");
-        onConnectStart();
+      if (data.code && data.url) {
+        setPairCode(data.code);
+        setPairUrl(data.url);
+        setSecondsLeft(data.expiresIn || 600);
+        // Navigate WebView to trampoline — it opens Chrome for Google,
+        // then auto-returns to mini app when user comes back.
+        window.location.href = data.url;
+        return;
       }
     } catch {
-      console.error("Failed to get connect URL");
+      console.error("Failed to generate pairing code");
     }
     setLoading(false);
   }
 
-  // ── Pre-OAuth warning screen ──
-  if (showWarning) {
-    return (
-      <div className="animate-fade-in-up glass-card rounded-2xl p-5" style={{ opacity: 0 }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold">Before you connect</h3>
-          <button onClick={() => setShowWarning(false)} className="text-muted">
-            <X size={16} />
-          </button>
-        </div>
+  async function copyLink() {
+    if (!pairUrl) return;
+    try {
+      await navigator.clipboard.writeText(pairUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for WebView
+      const input = document.createElement("input");
+      input.value = pairUrl;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
 
-        {/* Warning explanation */}
-        <div
-          className="rounded-xl p-4 mb-4"
-          style={{
-            background: "rgba(234,179,8,0.08)",
-            border: "1px solid rgba(234,179,8,0.2)",
-          }}
-        >
-          <div className="flex items-start gap-3">
-            <ShieldAlert size={18} className="shrink-0 mt-0.5" style={{ color: "#ca8a04" }} />
-            <div>
-              <p className="text-xs font-semibold mb-1.5" style={{ color: "#92400e" }}>
-                Google will show a security warning
-              </p>
-              <p className="text-[11px] leading-relaxed mb-2" style={{ color: "#78716c" }}>
-                This is normal. We are completing Google&apos;s verification
-                process (CASA assessment). Your data is encrypted and never
-                shared.
-              </p>
-            </div>
+  const minutes = Math.floor(secondsLeft / 60);
+  const seconds = secondsLeft % 60;
+
+  // ── Connected state ──
+  if (step === "connected") {
+    return (
+      <div className="animate-fade-in-up glass-card rounded-2xl p-5" style={{ opacity: 0, border: "1px solid rgba(34,197,94,0.2)" }}>
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "rgba(34,197,94,0.15)" }}>
+            <Check size={20} style={{ color: "#22c55e" }} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: "#22c55e" }}>Google connected!</h3>
+            <p className="text-[11px] text-muted">Your agent is personalizing itself now.</p>
           </div>
         </div>
-
-        {/* Step-by-step instructions */}
-        <div className="rounded-xl p-4 mb-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-[11px] font-semibold mb-2 text-muted">When you see the warning:</p>
-          <ol className="text-[11px] leading-relaxed space-y-1.5" style={{ color: "#999", listStyle: "none", paddingLeft: 0 }}>
-            <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>1</span>
-              <span>Tap <strong>&quot;Advanced&quot;</strong> at the bottom left</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>2</span>
-              <span>Tap <strong>&quot;Go to instaclaw.io (unsafe)&quot;</strong></span>
-            </li>
-            <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>3</span>
-              <span>Grant read-only Gmail access</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>4</span>
-              <span>Return to World App when done</span>
-            </li>
-          </ol>
-        </div>
-
-        <p className="text-[10px] text-center mb-4" style={{ color: "#888" }}>
-          Opens instaclaw.io in your browser. Come back here when done.
-        </p>
-
-        <button
-          onClick={handleConnect}
-          disabled={loading}
-          className="w-full rounded-xl py-3 text-sm font-bold transition-all disabled:opacity-50"
-          style={{
-            background: "linear-gradient(-75deg, #c36441, #da7756, #e0906a, #da7756, #c36441)",
-            boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(218,119,86,0.35) 0px 4px 16px 0px",
-            color: "#fff",
-          }}
-        >
-          <span className="flex items-center justify-center gap-2">
-            {loading ? "Opening..." : "Continue to Google"}
-            {!loading && <ExternalLink size={14} />}
-          </span>
-        </button>
       </div>
     );
   }
 
-  // ── Compact card (home or settings) ──
+  // ── Pairing code screen — user stays in mini app ──
+  if (step === "pairing" && pairCode) {
+    return (
+      <div className="animate-fade-in-up glass-card rounded-2xl p-5" style={{ opacity: 0 }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold">Connect Google</h3>
+          <button onClick={() => setStep("idle")} className="text-muted">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Pairing code display */}
+        <div
+          className="rounded-xl p-4 mb-4 text-center"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <p className="text-[10px] text-muted mb-2 uppercase tracking-wider font-semibold">Your pairing code</p>
+          <p
+            className="text-3xl font-mono font-bold tracking-[0.3em] mb-2"
+            style={{ color: "#fff", letterSpacing: "0.3em" }}
+          >
+            {pairCode}
+          </p>
+          <p className="text-[10px] text-muted">
+            Expires in {minutes}:{seconds.toString().padStart(2, "0")}
+          </p>
+        </div>
+
+        {/* Instructions */}
+        <div className="rounded-xl p-4 mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <ol className="text-[12px] leading-relaxed space-y-2" style={{ color: "#bbb", listStyle: "none", paddingLeft: 0 }}>
+            <li className="flex gap-2.5">
+              <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>1</span>
+              <span>Open your phone&apos;s browser (Safari/Chrome)</span>
+            </li>
+            <li className="flex gap-2.5">
+              <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>2</span>
+              <span>Go to the link below or type <strong style={{ color: "#fff" }}>instaclaw.io/g/{pairCode}</strong></span>
+            </li>
+            <li className="flex gap-2.5">
+              <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: "rgba(218,119,86,0.15)", color: "#da7756" }}>3</span>
+              <span>Grant Gmail access, then come back here</span>
+            </li>
+          </ol>
+        </div>
+
+        {/* Copy link button */}
+        <button
+          onClick={copyLink}
+          className="w-full rounded-xl py-3 text-sm font-bold transition-all flex items-center justify-center gap-2"
+          style={{
+            background: copied ? "rgba(34,197,94,0.15)" : "linear-gradient(170deg, #c97856, #b45e3a)",
+            border: copied ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(255,255,255,0.15)",
+            color: copied ? "#22c55e" : "#fff",
+            boxShadow: copied ? "none" : "0 4px 16px rgba(200,105,60,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+          }}
+        >
+          {copied ? <><Check size={16} /> Copied!</> : <><Copy size={14} /> Copy link</>}
+        </button>
+
+        {/* Polling indicator */}
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <Loader2 size={12} className="animate-spin" style={{ color: "#666" }} />
+          <p className="text-[11px]" style={{ color: "#666" }}>
+            Waiting for Google connection...
+          </p>
+        </div>
+
+        {/* Security warning - collapsed */}
+        <div className="mt-4 rounded-lg p-3" style={{ background: "rgba(234,179,8,0.06)", border: "1px solid rgba(234,179,8,0.12)" }}>
+          <div className="flex items-start gap-2">
+            <ShieldAlert size={13} className="shrink-0 mt-0.5" style={{ color: "#ca8a04" }} />
+            <p className="text-[10px] leading-relaxed" style={{ color: "#a08050" }}>
+              Google may show a security warning — tap &quot;Advanced&quot; then &quot;Go to instaclaw.io (unsafe)&quot;. We&apos;re completing Google&apos;s CASA verification.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Warning screen (before generating code) ──
+  if (step === "warning") {
+    return (
+      <div className="animate-fade-in-up glass-card rounded-2xl p-5" style={{ opacity: 0 }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold">Connect Google</h3>
+          <button onClick={() => setStep("idle")} className="text-muted">
+            <X size={16} />
+          </button>
+        </div>
+
+        <p className="text-xs leading-relaxed text-muted mb-4">
+          Your agent will learn your writing style and schedule from Gmail metadata.
+          You&apos;ll be briefly redirected to Google to grant access, then brought right back.
+        </p>
+
+        <div className="rounded-xl p-3 mb-4" style={{ background: "rgba(234,179,8,0.06)", border: "1px solid rgba(234,179,8,0.12)" }}>
+          <div className="flex items-start gap-2">
+            <ShieldAlert size={14} className="shrink-0 mt-0.5" style={{ color: "#ca8a04" }} />
+            <p className="text-[11px] leading-relaxed" style={{ color: "#a08050" }}>
+              Google may show a security warning — this is normal. Tap &quot;Advanced&quot; then &quot;Go to instaclaw.io&quot; to continue.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleConnectGoogle}
+          disabled={loading}
+          className="w-full rounded-xl py-3 text-sm font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          style={{
+            background: "linear-gradient(170deg, #c97856, #b45e3a)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            boxShadow: "0 4px 16px rgba(200,105,60,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+            color: "#fff",
+          }}
+        >
+          {loading ? <><Loader2 size={14} className="animate-spin" /> Connecting...</> : "Connect Google"}
+        </button>
+
+        <p className="text-[10px] text-center mt-3" style={{ color: "#666" }}>
+          Only reads email metadata. Never full emails.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Compact card (settings) ──
   if (variant === "settings") {
     return (
       <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] p-3">
@@ -139,7 +282,7 @@ export default function GoogleConnectCard({
           <p className="text-[10px] text-muted">Not connected</p>
         </div>
         <button
-          onClick={() => setShowWarning(true)}
+          onClick={() => setStep("warning")}
           className="rounded-lg px-3 py-1.5 text-[11px] font-semibold"
           style={{
             background: "rgba(255,255,255,0.06)",
@@ -153,7 +296,7 @@ export default function GoogleConnectCard({
     );
   }
 
-  // ── Prominent home card ──
+  // ── Prominent home card (idle) ──
   return (
     <div className="animate-fade-in-up glass-card rounded-2xl p-5" style={{ opacity: 0 }}>
       <div className="flex items-start justify-between mb-3">
@@ -183,7 +326,7 @@ export default function GoogleConnectCard({
       </p>
 
       <button
-        onClick={() => setShowWarning(true)}
+        onClick={() => setStep("warning")}
         className="w-full rounded-xl py-3 text-sm font-semibold transition-all flex items-center justify-center gap-2.5"
         style={{
           background: "rgba(255,255,255,0.06)",

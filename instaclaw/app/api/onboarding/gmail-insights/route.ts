@@ -4,6 +4,8 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { updateMemoryMd } from "@/lib/ssh";
 
+export const maxDuration = 60;
+
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { isAgentRegistered, getNextNonce } from "@/lib/agentbook";
@@ -10,11 +10,16 @@ export const dynamic = "force-dynamic";
  * GET /api/agentbook/pre-register
  *
  * Returns AgentBook pre-registration data for verified users who haven't
- * registered yet. Used by the dashboard to show Step 2 (AgentBook widget).
+ * registered yet. Supports both NextAuth session and mini app proxy token.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) {
+  let userId = session?.user?.id;
+  if (!userId) {
+    const { validateMiniAppToken } = await import("@/lib/security");
+    userId = await validateMiniAppToken(req) ?? undefined;
+  }
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -24,7 +29,7 @@ export async function GET() {
   const { data: user } = await supabase
     .from("instaclaw_users")
     .select("world_id_verified")
-    .eq("id", session.user.id)
+    .eq("id", userId)
     .single();
 
   if (!user?.world_id_verified) {
@@ -38,7 +43,7 @@ export async function GET() {
   const { data: vm } = await supabase
     .from("instaclaw_vms")
     .select("agentbook_wallet_address, agentbook_registered")
-    .eq("assigned_to", session.user.id)
+    .eq("assigned_to", userId)
     .single();
 
   if (!vm?.agentbook_wallet_address) {

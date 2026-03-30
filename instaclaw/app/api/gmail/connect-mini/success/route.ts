@@ -56,6 +56,18 @@ export async function GET() {
       line-height: 1.6;
       margin-bottom: 1.5rem;
     }
+    .btn {
+      display: inline-block;
+      background: linear-gradient(170deg, #c97856, #b45e3a);
+      color: #fff;
+      text-decoration: none;
+      padding: 0.75rem 2rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 4px 16px rgba(200,105,60,0.35);
+    }
     .hint {
       font-size: 0.75rem;
       color: #aaa;
@@ -74,8 +86,15 @@ export async function GET() {
       </svg>
     </div>
     <h1>Google connected</h1>
-    <p>Your agent will now personalize itself based on your inbox patterns. Return to World App to continue.</p>
-    <p class="hint">You can close this tab.</p>
+    <p>Your agent will now personalize itself based on your inbox patterns.</p>
+    <a href="https://world.org/mini-app?app_id=app_a4e2de774b1bda0426e78cda2ddb8cfd" class="btn">Return to World App</a>
+    <p class="hint">Or close this tab and switch back manually.</p>
+    <script>
+      // Auto-redirect back to World App after 2 seconds
+      setTimeout(function() {
+        window.location.href = "https://world.org/mini-app?app_id=app_a4e2de774b1bda0426e78cda2ddb8cfd";
+      }, 2000);
+    </script>
   </div>
 </body>
 </html>`;

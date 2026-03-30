@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { connectSSH } from "@/lib/ssh";
@@ -11,18 +11,17 @@ export const dynamic = "force-dynamic";
  * GET /api/agentbook/get-bridge-url
  *
  * SSH into the user's VM and read /tmp/agentbook-register.log to extract
- * the World ID bridge URL. Called by the frontend every 2s after
- * start-registration kicks off the CLI.
- *
- * Returns:
- *   { status: "waiting" }              — log empty or URL not yet present
- *   { status: "ready", bridgeUrl }     — bridge URL found
- *   { status: "error", error }         — CLI failed
+ * the World ID bridge URL. Supports mini app proxy token.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
+    let userId = session?.user?.id;
+    if (!userId) {
+      const { validateMiniAppToken } = await import("@/lib/security");
+      userId = await validateMiniAppToken(req) ?? undefined;
+    }
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -30,7 +29,7 @@ export async function GET() {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("id, ip_address, ssh_port, ssh_user")
-      .eq("assigned_to", session.user.id)
+      .eq("assigned_to", userId)
       .single();
 
     if (!vm) {

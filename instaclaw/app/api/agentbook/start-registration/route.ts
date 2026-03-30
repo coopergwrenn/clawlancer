@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { connectSSH, NVM_PREAMBLE } from "@/lib/ssh";
@@ -11,14 +11,17 @@ export const dynamic = "force-dynamic";
  * POST /api/agentbook/start-registration
  *
  * SSH into the user's VM, kick off `agentkit-cli register` in a fully
- * detached process (setsid), and return immediately. The CLI writes its
- * output to /tmp/agentbook-register.log. The frontend polls
- * GET /api/agentbook/get-bridge-url to read the log and extract the URL.
+ * detached process (setsid), and return immediately. Supports mini app proxy token.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
+    let userId = session?.user?.id;
+    if (!userId) {
+      const { validateMiniAppToken } = await import("@/lib/security");
+      userId = await validateMiniAppToken(req) ?? undefined;
+    }
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -28,7 +31,7 @@ export async function POST() {
     const { data: user } = await supabase
       .from("instaclaw_users")
       .select("world_id_verified")
-      .eq("id", session.user.id)
+      .eq("id", userId)
       .single();
 
     if (!user?.world_id_verified) {
@@ -42,7 +45,7 @@ export async function POST() {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("id, ip_address, ssh_port, ssh_user, agentbook_wallet_address, agentbook_registered")
-      .eq("assigned_to", session.user.id)
+      .eq("assigned_to", userId)
       .single();
 
     if (!vm) {

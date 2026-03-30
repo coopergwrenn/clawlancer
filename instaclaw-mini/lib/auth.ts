@@ -47,7 +47,7 @@ export async function signProxyToken(userId: string): Promise<string> {
   return new SignJWT({ userId, source: "mini-app" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("60s")
+    .setExpirationTime("120s")
     .sign(PROXY_SECRET);
 }
 

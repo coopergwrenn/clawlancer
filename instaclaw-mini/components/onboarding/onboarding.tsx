@@ -235,8 +235,23 @@ export default function Onboarding() {
     setStep("verifying");
     setError(null);
     try {
+      // Guard: MiniKit must be installed (running inside World App)
+      if (!MiniKit.isInstalled()) {
+        console.error("[Onboarding] MiniKit not installed — not running in World App?");
+        setError("Please open this app inside World App.");
+        setStep("welcome");
+        return;
+      }
+
       const nonceRes = await fetch("/api/nonce");
+      if (!nonceRes.ok) {
+        console.error("[Onboarding] Nonce fetch failed:", nonceRes.status);
+        setError("Connection error. Please try again.");
+        setStep("welcome");
+        return;
+      }
       const { nonce } = await nonceRes.json();
+      console.log("[Onboarding] Got nonce, calling walletAuth...");
 
       const authResult = await MiniKit.commandsAsync.walletAuth({
         nonce,
@@ -244,8 +259,18 @@ export default function Onboarding() {
         expirationTime: new Date(Date.now() + 1000 * 60 * 60),
       });
 
+      console.log("[Onboarding] walletAuth result status:", authResult.finalPayload.status);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fp = authResult.finalPayload as any;
+      if (fp.error_code) console.error("[Onboarding] walletAuth error_code:", fp.error_code);
+      if (fp.error_message) console.error("[Onboarding] walletAuth error_message:", fp.error_message);
+
       if (authResult.finalPayload.status !== "success") {
-        setError("Sign-in was cancelled. Try again.");
+        const errorDetail = fp.error_code || fp.error_message || "unknown";
+        console.error("[Onboarding] walletAuth failed:", JSON.stringify(authResult.finalPayload));
+        setError(errorDetail === "user_rejected"
+          ? "Sign-in was cancelled. Tap below to try again."
+          : `Sign-in failed (${errorDetail}). Please try again.`);
         setStep("welcome");
         return;
       }
