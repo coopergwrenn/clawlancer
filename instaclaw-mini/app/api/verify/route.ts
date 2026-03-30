@@ -106,6 +106,14 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({ userId: existingUser.id }),
       }).catch(() => {}); // fire-and-forget
 
+      // Propagate World ID to VM + marketplace (fire-and-forget, delayed for VM)
+      setTimeout(() => {
+        proxyToInstaclaw("/api/auth/world-id/propagate", existingUser.id, {
+          method: "POST",
+          body: JSON.stringify({ proofJson: payload }),
+        }).catch(() => {});
+      }, 15000);
+
       return NextResponse.json({
         verified: true,
         merged: true,
@@ -119,6 +127,14 @@ export async function POST(req: NextRequest) {
       nullifierHash,
       payload.verification_level || "orb"
     );
+
+    // Store the full proof JSON for future Cloudflare integration
+    try {
+      await supabase()
+        .from("instaclaw_users")
+        .update({ world_id_proof_json: payload })
+        .eq("id", session.userId);
+    } catch { /* non-fatal */ }
 
     // Check for duplicate VM before provisioning
     const existingAgent = await findPotentialExistingAgent(
@@ -143,6 +159,15 @@ export async function POST(req: NextRequest) {
       method: "POST",
       body: JSON.stringify({ userId: session.userId }),
     }).catch(() => {}); // fire-and-forget
+
+    // Propagate World ID verification to VM + marketplace (fire-and-forget)
+    // Runs after VM provisioning starts — the propagate endpoint waits for the VM to exist
+    setTimeout(() => {
+      proxyToInstaclaw("/api/auth/world-id/propagate", session.userId, {
+        method: "POST",
+        body: JSON.stringify({ proofJson: payload }),
+      }).catch(() => {}); // fire-and-forget
+    }, 15000); // 15s delay to let VM provisioning complete
 
     return NextResponse.json({ verified: true, merged: false });
   } catch (err) {
