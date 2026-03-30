@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { getSupabase } from "@/lib/supabase";
+import { getAddress } from "viem";
 
 /**
  * GET /api/vm/identity — Returns the agent's identity (wallet address, VM name).
@@ -31,17 +32,25 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "wallet_address required (0x...)" }, { status: 400 });
   }
 
+  // Always store checksummed (EIP-55) — gasless relay requires it
+  let checksummed: string;
+  try {
+    checksummed = getAddress(wallet_address);
+  } catch {
+    return NextResponse.json({ error: "Invalid Ethereum address" }, { status: 400 });
+  }
+
   const supabase = getSupabase();
   const { error } = await supabase
     .from("instaclaw_vms")
-    .update({ agentbook_wallet_address: wallet_address })
+    .update({ agentbook_wallet_address: checksummed })
     .eq("id", vm.id);
 
   if (error) {
     return NextResponse.json({ error: "Failed to save wallet" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, wallet_address });
+  return NextResponse.json({ ok: true, wallet_address: checksummed });
 }
 
 async function authenticateVM(req: NextRequest) {
