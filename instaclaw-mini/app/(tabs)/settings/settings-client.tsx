@@ -237,6 +237,18 @@ export default function SettingsClient({
   const [paying, setPaying] = useState(false);
 
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [syncingWorldId, setSyncingWorldId] = useState(false);
+  const [worldIdSynced, setWorldIdSynced] = useState(false);
+
+  async function handleSyncWorldId() {
+    setSyncingWorldId(true);
+    try {
+      const res = await fetch("/api/proxy/world-id/propagate", { method: "POST" });
+      const data = await res.json();
+      if (data.propagated) setWorldIdSynced(true);
+    } catch {}
+    setSyncingWorldId(false);
+  }
 
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -312,10 +324,22 @@ export default function SettingsClient({
                 <path d="M12.0389 9.31641C12.7293 9.31641 13.2891 8.75676 13.2891 8.0664C13.2891 7.37605 12.7293 6.81641 12.0389 6.81641C11.3484 6.81641 10.7887 7.37605 10.7887 8.0664C10.7887 8.75676 11.3484 9.31641 12.0389 9.31641Z" fill="white"/>
               </svg>
             </div>
-            <div>
+            <div className="flex-1">
               <p className="text-sm font-medium">World ID Verified</p>
               <p className="text-[10px] text-success/70">Orb verification</p>
             </div>
+            {!worldIdSynced ? (
+              <button
+                onClick={handleSyncWorldId}
+                disabled={syncingWorldId}
+                className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all"
+                style={{ background: "rgba(0,92,255,0.1)", border: "1px solid rgba(0,92,255,0.2)", color: "#4d8eff" }}
+              >
+                {syncingWorldId ? "Syncing..." : "Sync to agent"}
+              </button>
+            ) : (
+              <span className="text-[10px] font-medium" style={{ color: "#22c55e" }}>Synced</span>
+            )}
           </div>
         )}
       </section>
