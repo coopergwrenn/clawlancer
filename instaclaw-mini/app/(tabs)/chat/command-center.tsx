@@ -626,27 +626,31 @@ export default function CommandCenter({
         ))}
       </div>
 
-      {/* Tabs — clean underline matching web app */}
-      <div className="relative flex px-4 pb-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        {(["tasks", "chat", "library"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => { setTab(t); scrollRef.current?.scrollTo({ top: 0 }); }}
-            className="relative px-4 py-2.5 text-[13px] font-semibold capitalize transition-all duration-300"
-            style={{ color: tab === t ? "#fff" : "#555" }}
-          >
-            {t}
-            {tab === t && (
-              <div
-                className="absolute bottom-0 left-2 right-2 h-[2.5px] rounded-full"
-                style={{
-                  background: "linear-gradient(90deg, #da7756, #e0906a)",
-                  boxShadow: "0 0 8px rgba(218,119,86,0.4)",
-                }}
-              />
-            )}
-          </button>
-        ))}
+      {/* Tabs — inset border matching web app (doesn't go edge-to-edge) */}
+      <div className="relative px-4 pb-0">
+        <div className="flex">
+          {(["tasks", "chat", "library"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => { setTab(t); scrollRef.current?.scrollTo({ top: 0 }); }}
+              className="relative px-4 py-2.5 text-[13px] font-semibold capitalize transition-all duration-300"
+              style={{ color: tab === t ? "#fff" : "#555" }}
+            >
+              {t}
+              {tab === t && (
+                <div
+                  className="absolute bottom-0 left-2 right-2 h-[2.5px] rounded-full"
+                  style={{
+                    background: "linear-gradient(90deg, #da7756, #e0906a)",
+                    boxShadow: "0 0 8px rgba(218,119,86,0.4)",
+                  }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+        {/* Inset border — stops before screen edges */}
+        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }} />
       </div>
 
       </div>{/* end shrink-0 header */}
