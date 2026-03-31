@@ -24,6 +24,7 @@ import {
   AlertCircle,
   Archive,
   PanelLeft,
+  Bookmark,
 } from "lucide-react";
 
 // ── Types ──
@@ -65,6 +66,12 @@ interface LibraryItem {
 }
 
 // ── Helpers ──
+
+function formatTime(ts: number): string {
+  try {
+    return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch { return ""; }
+}
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -156,6 +163,7 @@ export default function CommandCenter({
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState("Sonnet 4.6");
   const [isListening, setIsListening] = useState(false);
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
 
   // Check localStorage for dismissed state
   useEffect(() => {
@@ -1195,8 +1203,8 @@ export default function CommandCenter({
         {/* ── Chat Tab ── */}
         {tab === "chat" && (
           <div className="flex-1 flex flex-col relative">
-            {/* Chat header with sidebar toggle — sticky so it stays visible while scrolling */}
-            <div className="sticky top-0 z-20 flex items-center h-11 px-2 gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "#0a0a0a", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
+            {/* Chat header with sidebar toggle + title — matching web app */}
+            <div className="sticky top-0 z-20 flex items-center h-11 px-2 gap-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "#0a0a0a", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
               <button
                 onClick={() => setShowSidebar((v) => !v)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
@@ -1204,6 +1212,9 @@ export default function CommandCenter({
               >
                 <PanelLeft size={18} style={{ color: "#999" }} />
               </button>
+              <span className="text-[13px] font-medium truncate flex-1" style={{ color: "#eee" }}>
+                {activeConvId ? "Chat" : "New Chat"}
+              </span>
             </div>
 
             {/* Sidebar overlay */}
@@ -1230,42 +1241,113 @@ export default function CommandCenter({
                 <p className="mt-1 max-w-[240px] text-[12px]" style={{ color: "#777" }}>Same AI, same skills, same memory. Tap a suggestion below or type anything.</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {chatMsgs.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}>
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed ${msg.role === "user" ? "rounded-br-md" : "rounded-bl-md"}`}
-                      style={msg.role === "user"
-                        ? {
-                            background: "linear-gradient(135deg, rgba(218,119,86,0.8), rgba(194,85,58,0.85))",
-                            backdropFilter: "blur(8px)",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            boxShadow: "0 2px 8px rgba(218,119,86,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
-                            color: "#fff",
-                          }
-                        : {
-                            background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
-                            backdropFilter: "blur(12px)",
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            boxShadow: "0 1px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)",
-                            color: "#ddd",
-                          }
-                      }
-                    >
-                      {msg.role === "assistant" ? (
-                        <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:mt-1.5 [&_h3]:mb-0.5 [&_hr]:my-2 [&_hr]:border-white/10 [&_strong]:text-white [&_a]:text-[#da7756] [&_code]:text-xs [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_pre]:my-1.5 [&_pre]:rounded-lg [&_pre]:bg-white/5 [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0">
-                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+              <div className="space-y-4">
+                {chatMsgs.map((msg, i) => {
+                  const isUser = msg.role === "user";
+                  const msgKey = `${msg.ts}-${i}`;
+                  const isSaved = savedMessageIds.has(msgKey);
+
+                  return (
+                    <div key={i} className={`flex gap-2.5 ${isUser ? "justify-end" : "justify-start"} group/bubble`} style={{ animation: "bubble-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
+                      {/* Assistant avatar — glass orb with logo */}
+                      {!isUser && (
+                        <div
+                          className="w-8 h-8 rounded-full shrink-0 relative flex items-center justify-center mt-1"
+                          style={{
+                            background: "radial-gradient(circle at 35% 30%, rgba(60,60,60,0.9), rgba(40,40,40,0.7) 50%, rgba(25,25,25,0.8) 100%)",
+                            boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,255,0.15), 0 1px 4px rgba(0,0,0,0.2)",
+                          }}
+                        >
+                          <div className="absolute top-[2px] left-[4px] w-[14px] h-[7px] rounded-full pointer-events-none z-10"
+                            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)" }} />
+                          <img src="/logo.png" alt="" className="w-5 h-5 relative z-[1]" style={{ filter: "invert(1) brightness(1.2)" }} />
                         </div>
-                      ) : msg.content}
+                      )}
+
+                      {/* Message bubble + timestamp */}
+                      <div className={`max-w-[80%] relative ${isUser ? "items-end" : "items-start"}`}>
+                        <div
+                          className="relative rounded-2xl px-4 py-3 text-[13px] leading-relaxed"
+                          style={isUser
+                            ? {
+                                background: "#da7756",
+                                boxShadow: "0 2px 8px rgba(218,119,86,0.25), 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.2)",
+                                color: "#fff",
+                                borderBottomRightRadius: "4px",
+                              }
+                            : {
+                                background: "rgba(255,255,255,0.08)",
+                                boxShadow: "0 1px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)",
+                                color: "#ddd",
+                                borderBottomLeftRadius: "4px",
+                              }
+                          }
+                        >
+                          {isUser ? msg.content : (
+                            <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:mt-1.5 [&_h3]:mb-0.5 [&_hr]:my-2 [&_hr]:border-white/10 [&_strong]:text-white [&_a]:text-[#da7756] [&_code]:text-xs [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_pre]:my-1.5 [&_pre]:rounded-lg [&_pre]:bg-white/5 [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+                              <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            </div>
+                          )}
+
+                          {/* SVG bubble tails — matching web app */}
+                          {isUser ? (
+                            <svg className="absolute bottom-0 -right-[8px] w-3 h-[18px]" viewBox="0 0 12 18" fill="none">
+                              <path d="M0 0C1 8 8 14 12 18H0V0Z" fill="#da7756" />
+                            </svg>
+                          ) : (
+                            <svg className="absolute bottom-0 -left-[8px] w-3 h-[18px]" viewBox="0 0 12 18" fill="none">
+                              <path d="M12 0C11 8 4 14 0 18H12V0Z" fill="rgba(255,255,255,0.08)" />
+                            </svg>
+                          )}
+                        </div>
+
+                        {/* Timestamp + save icon */}
+                        <div className={`flex items-center gap-1 mt-1 ${isUser ? "justify-end" : "justify-start"}`}>
+                          <p className="text-[11px]" style={{ color: "#666" }}>
+                            {formatTime(msg.ts)}
+                          </p>
+                          {!isUser && msg.content.length > 0 && (
+                            <button
+                              onClick={() => {
+                                setSavedMessageIds((prev) => new Set(prev).add(msgKey));
+                              }}
+                              className={`p-0.5 rounded transition-opacity ${isSaved ? "opacity-70" : "opacity-40"}`}
+                              title={isSaved ? "Saved" : "Save to Library"}
+                            >
+                              <Bookmark size={12} style={{ color: "#666" }} fill={isSaved ? "currentColor" : "none"} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+
+                {/* Typing indicator — with avatar and tail */}
                 {sending && (
-                  <div className="flex justify-start animate-fade-in">
-                    <div className="flex gap-1.5 rounded-2xl rounded-bl-md px-4 py-3.5" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 1px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0s" }} />
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.2s" }} />
-                      <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.4s" }} />
+                  <div className="flex gap-2.5 justify-start" style={{ animation: "bubble-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
+                    <div
+                      className="w-8 h-8 rounded-full shrink-0 relative flex items-center justify-center mt-1"
+                      style={{
+                        background: "radial-gradient(circle at 35% 30%, rgba(60,60,60,0.9), rgba(40,40,40,0.7) 50%, rgba(25,25,25,0.8) 100%)",
+                        boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,255,0.15), 0 1px 4px rgba(0,0,0,0.2)",
+                      }}
+                    >
+                      <div className="absolute top-[2px] left-[4px] w-[14px] h-[7px] rounded-full pointer-events-none z-10"
+                        style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)" }} />
+                      <img src="/logo.png" alt="" className="w-5 h-5 relative z-[1]" style={{ filter: "invert(1) brightness(1.2)" }} />
+                    </div>
+                    <div className="relative">
+                      <div className="rounded-2xl px-4 py-3.5" style={{ background: "rgba(255,255,255,0.08)", boxShadow: "0 1px 6px rgba(0,0,0,0.08)", borderBottomLeftRadius: "4px" }}>
+                        <div className="flex gap-1.5">
+                          <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0s" }} />
+                          <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.2s" }} />
+                          <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.4s" }} />
+                        </div>
+                        <svg className="absolute bottom-0 -left-[8px] w-3 h-[18px]" viewBox="0 0 12 18" fill="none">
+                          <path d="M12 0C11 8 4 14 0 18H12V0Z" fill="rgba(255,255,255,0.08)" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1469,6 +1551,7 @@ export default function CommandCenter({
 
       <style>{`
         @keyframes dot { 0%,60%,100%{opacity:.3;transform:translateY(0)} 30%{opacity:1;transform:translateY(-4px)} }
+        @keyframes bubble-in { from{opacity:0;transform:scale(0.95) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
