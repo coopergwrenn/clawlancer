@@ -25,6 +25,7 @@ import {
   Archive,
   PanelLeft,
   Bookmark,
+  MessageCircle,
 } from "lucide-react";
 
 // ── Types ──
@@ -723,6 +724,28 @@ export default function CommandCenter({
           <span className="text-[13px] font-medium truncate flex-1" style={{ color: "#eee" }}>
             {activeConvId ? "Chat" : "New Chat"}
           </span>
+          {xmtpAddress && (
+            <button
+              onClick={async () => {
+                try {
+                  await fetch("/api/xmtp/init-chat", { method: "POST" });
+                  const { MiniKit } = await import("@worldcoin/minikit-js");
+                  await MiniKit.commandsAsync.chat({
+                    message: "",
+                    to: [xmtpAddress],
+                  });
+                } catch (err) { console.error("World Chat error:", err); }
+              }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
+              title="Open World Chat"
+              style={{
+                background: "linear-gradient(145deg, rgba(218,119,86,0.15), rgba(218,119,86,0.05))",
+                border: "1px solid rgba(218,119,86,0.2)",
+              }}
+            >
+              <MessageCircle size={16} style={{ color: "#da7756" }} />
+            </button>
+          )}
         </div>
       )}
 
