@@ -1569,13 +1569,25 @@ export default function CommandCenter({
         )}
 
         <div className="relative z-50 flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", boxShadow: "0 2px 8px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
-          {/* + button */}
+          {/* + button — clean glass orb matching web app */}
           <button
             onClick={() => { setPlusMenuOpen(!plusMenuOpen); setModelMenuOpen(false); }}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all active:scale-90"
-            style={{ background: plusMenuOpen ? "#da7756" : "rgba(255,255,255,0.08)", transform: plusMenuOpen ? "rotate(45deg)" : "none" }}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all active:scale-95"
+            style={{
+              background: plusMenuOpen
+                ? "#da7756"
+                : "rgba(255,255,255,0.06)",
+              border: plusMenuOpen ? "none" : "1px solid rgba(255,255,255,0.08)",
+              color: plusMenuOpen ? "#fff" : "#999",
+            }}
           >
-            <span className="text-lg font-light" style={{ color: plusMenuOpen ? "#fff" : "#888" }}>+</span>
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+              style={{ transition: "transform 0.2s", transform: plusMenuOpen ? "rotate(45deg)" : "none" }}
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
           </button>
 
           {/* Input */}
