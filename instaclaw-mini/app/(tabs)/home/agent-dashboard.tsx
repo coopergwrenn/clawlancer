@@ -316,13 +316,24 @@ export default function AgentDashboard({
             </button>
           )}
           <div
-            className={`status-badge flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${
-              isPaused
-                ? "border-warning/30 text-warning"
+            className="status-badge flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium"
+            style={{
+              color: isPaused ? "#eab308" : isHealthy ? "#22c55e" : "#ef4444",
+              background: isPaused
+                ? "rgba(234,179,8,0.08)"
                 : isHealthy
-                  ? "border-success/30 text-success"
-                  : "border-error/30 text-error"
-            }`}
+                  ? "rgba(34,197,94,0.08)"
+                  : "rgba(239,68,68,0.08)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid",
+              borderColor: isPaused
+                ? "rgba(234,179,8,0.15)"
+                : isHealthy
+                  ? "rgba(34,197,94,0.15)"
+                  : "rgba(239,68,68,0.15)",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.04)",
+            }}
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
