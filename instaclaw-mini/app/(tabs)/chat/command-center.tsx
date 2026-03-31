@@ -653,6 +653,22 @@ export default function CommandCenter({
         <div style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }} />
       </div>
 
+      {/* Chat header — pinned to header so it never separates from tabs */}
+      {tab === "chat" && (
+        <div className="flex items-center h-11 px-2 gap-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <button
+            onClick={() => setShowSidebar((v) => !v)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
+            title={showSidebar ? "Close sidebar" : "Open conversations"}
+          >
+            <PanelLeft size={18} style={{ color: "#999" }} />
+          </button>
+          <span className="text-[13px] font-medium truncate flex-1" style={{ color: "#eee" }}>
+            {activeConvId ? "Chat" : "New Chat"}
+          </span>
+        </div>
+      )}
+
       </div>{/* end shrink-0 header */}
 
       {/* Content — scrollable area, extends behind the bottom glass toolbar */}
@@ -1291,20 +1307,6 @@ export default function CommandCenter({
         {/* ── Chat Tab ── */}
         {tab === "chat" && (
           <div className="flex-1 flex flex-col relative">
-            {/* Chat header with sidebar toggle + title — matching web app */}
-            <div className="sticky top-0 z-20 flex items-center h-11 px-2 gap-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(10,10,10,0.85)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
-              <button
-                onClick={() => setShowSidebar((v) => !v)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
-                title={showSidebar ? "Close sidebar" : "Open conversations"}
-              >
-                <PanelLeft size={18} style={{ color: "#999" }} />
-              </button>
-              <span className="text-[13px] font-medium truncate flex-1" style={{ color: "#eee" }}>
-                {activeConvId ? "Chat" : "New Chat"}
-              </span>
-            </div>
-
             {/* Sidebar overlay */}
             <ChatSidebar
               open={showSidebar}
