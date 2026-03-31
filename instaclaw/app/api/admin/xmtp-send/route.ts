@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { targetAddress, message } = await req.json();
+  const body = await req.json();
+  const { targetAddress, message } = body;
   if (!targetAddress || !message) {
     return NextResponse.json({ error: "targetAddress and message required" }, { status: 400 });
   }
