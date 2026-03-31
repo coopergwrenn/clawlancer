@@ -1317,9 +1317,9 @@ export default function CommandCenter({
             />
 
             {/* Messages area */}
-            <div className="flex-1 px-4 py-3">
+            <div className="flex-1 flex flex-col px-4 py-3" style={{ minHeight: "50vh" }}>
             {loadingChat ? (
-              <div className="flex-1 flex items-center justify-center py-16">
+              <div className="flex-1 flex items-center justify-center">
                 <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "transparent" }} />
               </div>
             ) : chatMsgs.length === 0 && !sending ? (
