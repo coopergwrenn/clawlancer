@@ -90,19 +90,19 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
       <div
         className="fixed top-0 left-0 bottom-0 z-40 flex flex-col w-[280px] max-w-[85vw]"
         style={{
-          background: "rgba(18,18,18,0.92)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          borderRight: "1px solid rgba(255,255,255,0.06)",
-          boxShadow: "4px 0 32px rgba(0,0,0,0.2), inset 1px 0 0 rgba(255,255,255,0.04)",
+          background: "linear-gradient(165deg, rgba(30,30,30,0.88), rgba(18,18,18,0.92) 50%, rgba(12,12,12,0.95) 100%)",
+          backdropFilter: "blur(40px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(40px) saturate(1.4)",
+          borderRight: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "4px 0 32px rgba(0,0,0,0.25), inset 1px 0 0 rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
           transform: open ? "translateX(0)" : "translateX(-100%)",
           transition: "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        {/* Header — matching web app exactly */}
+        {/* Header */}
         <div
           className="flex items-center justify-between h-11 px-3 shrink-0"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
         >
           <span className="text-[13px] font-semibold tracking-tight" style={{ color: "#eee" }}>
             Chats
