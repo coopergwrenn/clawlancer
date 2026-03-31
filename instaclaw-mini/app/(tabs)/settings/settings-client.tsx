@@ -303,8 +303,8 @@ export default function SettingsClient({
           Account
         </h2>
         <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] p-3">
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 35% 35%, #888, #666 60%, #444 100%)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.2)" }}>
-            <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.5) 0%, transparent 100%)" }} />
+          <div className="relative flex h-8 w-8 items-center justify-center rounded-full overflow-hidden" style={{ background: "radial-gradient(circle at 35% 30%, rgba(136,136,136,0.7), rgba(136,136,136,0.3) 50%, rgba(100,100,100,0.6) 100%)", boxShadow: "0 2px 8px rgba(136,136,136,0.3), inset 0 1px 2px rgba(255,255,255,0.2)" }}>
+            <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)" }} />
             <svg className="relative z-10 w-[16px] h-[16px]" viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg">
               <path d="M18.1167 1.60446C16.2783 0.53482 14.2727 0 12.1 0C9.92731 0 7.92173 0.53482 6.08329 1.60446C4.24485 2.6741 2.7741 4.14485 1.70446 5.98329C0.634826 7.82173 0.100006 9.8273 0.100006 12C0.100006 14.1727 0.634826 16.1783 1.70446 18.0167C2.7741 19.8552 4.24485 21.3259 6.08329 22.3955C7.92173 23.4652 9.92731 24 12.1 24C14.2727 24 16.2783 23.4652 18.1167 22.3955C19.9552 21.3259 21.4259 19.8552 22.4956 18.0167C23.5652 16.1783 24.1 14.1727 24.1 12C24.1 9.8273 23.5652 7.82173 22.4956 5.98329C21.4259 4.14485 19.9552 2.6741 18.1167 1.60446ZM12.8354 16.3454C11.4649 16.3454 10.3953 15.9443 9.55962 15.1755C8.99137 14.6407 8.62369 14.0056 8.45656 13.2368H21.4259C21.2922 14.3398 20.958 15.376 20.49 16.3454H12.8688H12.8354ZM8.45656 10.7967C8.62369 10.0613 8.99137 9.39276 9.55962 8.85794C10.3953 8.08914 11.4649 7.68802 12.8354 7.68802H20.49C20.9914 8.65738 21.2922 9.6936 21.4259 10.7967H8.45656ZM3.97744 7.22006C4.8131 5.78273 5.94959 4.61282 7.38691 3.77716C8.82424 2.94151 10.3953 2.50696 12.1334 2.50696C13.8716 2.50696 15.4426 2.94151 16.88 3.77716C17.6153 4.2117 18.2504 4.71309 18.8521 5.31476H12.802C11.4315 5.31476 10.1947 5.6156 9.12508 6.18385C8.05544 6.75209 7.21978 7.55432 6.65154 8.55711C6.25042 9.25906 5.98302 10.0279 5.84931 10.8301H2.87438C3.00809 9.55989 3.4092 8.35655 4.0443 7.25348L3.97744 7.22006ZM16.8465 20.2228C15.4092 21.0585 13.8382 21.493 12.1 21.493C10.3618 21.493 8.79082 21.0585 7.35349 20.2228C5.91616 19.3872 4.77967 18.2173 3.94402 16.78C3.30892 15.6769 2.90781 14.507 2.7741 13.2368H5.74903C5.88274 14.039 6.15014 14.8078 6.55126 15.5097C7.15293 16.5125 7.98859 17.2813 9.0248 17.883C10.0944 18.4513 11.3312 18.7521 12.7017 18.7521H18.7184C18.1501 19.3203 17.5151 19.8217 16.8131 20.2228H16.8465Z" />
             </svg>
@@ -318,8 +318,8 @@ export default function SettingsClient({
         </div>
         {agent && (
           <div className="mt-2 flex items-center gap-3 rounded-xl bg-success/[0.06] p-3">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 35% 35%, #3b82f6, #1d4ed8 60%, #1e3a8a 100%)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.2)" }}>
-              <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.55) 0%, transparent 100%)" }} />
+            <div className="relative flex h-8 w-8 items-center justify-center rounded-full overflow-hidden" style={{ background: "radial-gradient(circle at 35% 30%, rgba(59,130,246,0.7), rgba(59,130,246,0.3) 50%, rgba(29,78,216,0.6) 100%)", boxShadow: "0 2px 8px rgba(59,130,246,0.3), inset 0 1px 2px rgba(255,255,255,0.2)" }}>
+              <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)" }} />
               <svg className="relative z-10 w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M17.3711 10.9277L13 12.6758V17.999H11V12.6758L6.62891 10.9277L7.37109 9.07031L12 10.9219L16.6289 9.07031L17.3711 10.9277Z" fill="white"/>
                 <path d="M12.0389 9.31641C12.7293 9.31641 13.2891 8.75676 13.2891 8.0664C13.2891 7.37605 12.7293 6.81641 12.0389 6.81641C11.3484 6.81641 10.7887 7.37605 10.7887 8.0664C10.7887 8.75676 11.3484 9.31641 12.0389 9.31641Z" fill="white"/>
@@ -343,8 +343,8 @@ export default function SettingsClient({
         {gmailConnected ? (
           <div>
             <div className="flex items-center gap-3 rounded-xl bg-success/[0.06] p-3">
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 35% 35%, #4ade80, #22c55e 60%, #15803d 100%)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.18)" }}>
-                <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.5) 0%, transparent 100%)" }} />
+              <div className="relative flex h-8 w-8 items-center justify-center rounded-full overflow-hidden" style={{ background: "radial-gradient(circle at 35% 30%, rgba(34,197,94,0.7), rgba(34,197,94,0.3) 50%, rgba(22,163,74,0.6) 100%)", boxShadow: "0 2px 8px rgba(34,197,94,0.3), inset 0 1px 2px rgba(255,255,255,0.2)" }}>
+                <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)" }} />
                 <svg className="relative z-10" width={16} height={16} viewBox="0 0 24 24" fill="none">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -407,8 +407,8 @@ export default function SettingsClient({
               Subscription
             </h2>
             <div className="mb-3 flex items-center gap-3 rounded-xl bg-accent/[0.06] p-3">
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "radial-gradient(circle at 35% 35%, #e0906a, #da7756 60%, #b45e3a 100%)", boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.18)" }}>
-                <div className="absolute rounded-full pointer-events-none" style={{ top: "8%", left: "15%", width: "45%", height: "28%", background: "linear-gradient(180deg, rgba(255,255,255,0.5) 0%, transparent 100%)" }} />
+              <div className="relative flex h-8 w-8 items-center justify-center rounded-full overflow-hidden" style={{ background: "radial-gradient(circle at 35% 30%, rgba(218,119,86,0.7), rgba(218,119,86,0.3) 50%, rgba(180,70,40,0.6) 100%)", boxShadow: "0 2px 8px rgba(218,119,86,0.35), inset 0 1px 2px rgba(255,255,255,0.2)" }}>
+                <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)" }} />
                 <Zap size={16} className="relative z-10" style={{ color: "#fff" }} />
               </div>
               <div className="flex-1">
