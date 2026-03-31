@@ -205,10 +205,12 @@ export default function CommandCenter({
   userId,
   telegramBotUsername,
   isOnline,
+  xmtpAddress,
 }: {
   userId: string;
   telegramBotUsername: string | null;
   isOnline: boolean;
+  xmtpAddress: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("tasks");
   const [filter, setFilter] = useState<Filter>("all");
@@ -608,7 +610,27 @@ export default function CommandCenter({
           <div className="glass-card flex flex-1 items-center gap-2 rounded-xl px-3 py-2.5">
             <Globe size={12} style={{ color: "#777", flexShrink: 0 }} />
             <p className="flex-1 text-[10px] leading-tight" style={{ color: "#888" }}>
-              Also on <a href={tgUsername ? `https://t.me/${tgUsername}?start=world` : "#"} style={{ color: "#aaa" }}>Telegram</a> &amp; <a href="https://instaclaw.io" style={{ color: "#aaa" }}>instaclaw.io</a>, same email to sign in. World Chat coming soon
+              Also on{" "}
+              {tgUsername && <><a href={`https://t.me/${tgUsername}?start=world`} style={{ color: "#aaa" }}>Telegram</a> &amp;{" "}</>}
+              <a href="https://instaclaw.io" style={{ color: "#aaa" }}>instaclaw.io</a>
+              {xmtpAddress && (
+                <>{" "}&amp;{" "}
+                <button
+                  onClick={async () => {
+                    try {
+                      const { MiniKit } = await import("@worldcoin/minikit-js");
+                      await MiniKit.commandsAsync.chat({
+                        message: "Hey!",
+                        to: [xmtpAddress],
+                      });
+                    } catch (err) { console.error("World Chat error:", err); }
+                  }}
+                  className="underline underline-offset-2"
+                  style={{ color: "#da7756" }}
+                >
+                  World Chat
+                </button></>
+              )}
             </p>
             <button
               onClick={() => { setInfoDismissed(true); try { localStorage.setItem("instaclaw-info-dismissed", "1"); } catch {} }}

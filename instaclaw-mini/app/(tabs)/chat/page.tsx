@@ -28,6 +28,7 @@ export default async function ChatPage() {
           userId={session.userId}
           telegramBotUsername={agent?.telegram_bot_username as string | null ?? null}
           isOnline={agent?.health_status === "healthy"}
+          xmtpAddress={agent?.xmtp_address as string | null ?? null}
         />
       </div>
     </>
