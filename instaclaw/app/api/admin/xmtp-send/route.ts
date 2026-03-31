@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "targetAddress and message required" }, { status: 400 });
   }
 
-  const vmId = "1eac973f-1691-4700-a0ba-420f1956120c"; // vm-313
+  const vmId = body.vmId || "1eac973f-1691-4700-a0ba-420f1956120c"; // default vm-313
   const supabase = getSupabase();
 
   const { data: vm } = await supabase
