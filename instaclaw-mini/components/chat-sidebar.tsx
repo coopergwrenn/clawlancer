@@ -74,9 +74,9 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
 
   return (
     <>
-      {/* Backdrop — matching web app: rgba(0,0,0,0.15) */}
+      {/* Backdrop — fixed so it covers viewport regardless of scroll */}
       <div
-        className="absolute inset-0 z-30"
+        className="fixed inset-0 z-30"
         style={{
           background: open ? "rgba(0,0,0,0.15)" : "transparent",
           opacity: open ? 1 : 0,
@@ -86,9 +86,9 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
         onClick={onClose}
       />
 
-      {/* Sidebar panel — dark theme version of web app */}
+      {/* Sidebar panel — fixed so it covers viewport regardless of scroll */}
       <div
-        className="absolute top-0 left-0 bottom-0 z-40 flex flex-col w-[280px] max-w-[85vw]"
+        className="fixed top-0 left-0 bottom-0 z-40 flex flex-col w-[280px] max-w-[85vw]"
         style={{
           background: "rgba(18,18,18,0.92)",
           backdropFilter: "blur(20px)",
