@@ -34,14 +34,29 @@ export default function TabBar() {
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 z-50 px-5"
+      className="fixed bottom-0 left-0 right-0 z-50"
       style={{
-        paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)",
-        paddingTop: "6px",
-        background: "transparent",
         pointerEvents: "none",
       }}
     >
+      {/* Blur fade — content scrolls behind this smoothly */}
+      <div
+        className="absolute inset-0 -top-8"
+        style={{
+          backdropFilter: "blur(30px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(30px) saturate(1.4)",
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 40%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 40%)",
+        }}
+      />
+      <div
+        className="relative px-5"
+        style={{
+          paddingBottom: "max(env(safe-area-inset-bottom, 8px), 8px)",
+          paddingTop: "6px",
+          pointerEvents: "none",
+        }}
+      >
       <nav
         ref={navRef}
         className="relative flex items-center justify-around rounded-full px-1 py-1"
@@ -108,6 +123,7 @@ export default function TabBar() {
           );
         })}
       </nav>
+      </div>
     </div>
   );
 }
