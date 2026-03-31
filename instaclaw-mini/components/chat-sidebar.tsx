@@ -24,6 +24,7 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
   const [loading, setLoading] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -67,10 +68,8 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
 
   function handleSelect(id: string) {
     onSelect(id);
-    // Auto-close on mobile (matching web app: window.innerWidth < 640)
-    if (typeof window !== "undefined" && window.innerWidth < 640) {
-      onClose();
-    }
+    setExpandedId(null);
+    onClose();
   }
 
   return (
@@ -79,7 +78,7 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
       <div
         className="absolute inset-0 z-30"
         style={{
-          background: open ? "rgba(0,0,0,0.3)" : "transparent",
+          background: open ? "rgba(0,0,0,0.15)" : "transparent",
           opacity: open ? 1 : 0,
           pointerEvents: open ? "auto" : "none",
           transition: "opacity 0.2s ease",
@@ -87,7 +86,7 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
         onClick={onClose}
       />
 
-      {/* Sidebar panel — matching web app structure exactly */}
+      {/* Sidebar panel — dark theme version of web app */}
       <div
         className="absolute top-0 left-0 bottom-0 z-40 flex flex-col w-[280px] max-w-[85vw]"
         style={{
@@ -95,12 +94,12 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           borderRight: "1px solid rgba(255,255,255,0.06)",
-          boxShadow: "4px 0 32px rgba(0,0,0,0.25), inset 1px 0 0 rgba(255,255,255,0.04)",
+          boxShadow: "4px 0 32px rgba(0,0,0,0.2), inset 1px 0 0 rgba(255,255,255,0.04)",
           transform: open ? "translateX(0)" : "translateX(-100%)",
           transition: "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        {/* Header — "Chats" + Plus + PanelLeft (matching web app) */}
+        {/* Header — matching web app exactly */}
         <div
           className="flex items-center justify-between h-11 px-3 shrink-0"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
@@ -150,66 +149,84 @@ export default function ChatSidebar({ open, onClose, activeId, onSelect, onNewCh
               </button>
             </div>
           ) : (
-            <div className="px-1.5 space-y-px">
-              {conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  onClick={() => handleSelect(conv.id)}
-                  className={`group/conv relative rounded-lg px-2.5 py-2 cursor-pointer transition-all ${
-                    activeId === conv.id ? "" : "hover:bg-white/[0.04]"
-                  }`}
-                  style={
-                    activeId === conv.id
-                      ? { background: "rgba(255,255,255,0.07)" }
-                      : undefined
-                  }
-                >
-                  {renamingId === conv.id ? (
-                    <input
-                      autoFocus
-                      value={renameDraft}
-                      onChange={(e) => setRenameDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") rename(conv.id, renameDraft);
-                        if (e.key === "Escape") setRenamingId(null);
-                      }}
-                      onBlur={() => renameDraft.trim() ? rename(conv.id, renameDraft) : setRenamingId(null)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full text-[13px] bg-transparent outline-none rounded px-1 -mx-1"
-                      style={{ color: "#fff", boxShadow: "0 0 0 1.5px #da7756" }}
-                    />
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between gap-1">
-                        <p className="text-[13px] font-medium truncate flex-1 leading-tight" style={{ color: "#ddd" }}>
+            <div className="px-1.5 pb-2">
+              {conversations.map((conv) => {
+                const isActive = activeId === conv.id;
+                const isExpanded = expandedId === conv.id;
+
+                return (
+                  <div
+                    key={conv.id}
+                    onClick={() => handleSelect(conv.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setExpandedId(isExpanded ? null : conv.id);
+                    }}
+                    className={`relative rounded-lg px-2.5 py-2.5 cursor-pointer transition-all ${
+                      isActive ? "" : "active:bg-white/[0.06]"
+                    }`}
+                    style={
+                      isActive
+                        ? {
+                            background: "rgba(255,255,255,0.07)",
+                            borderLeft: "2px solid #da7756",
+                            paddingLeft: "8px",
+                          }
+                        : undefined
+                    }
+                  >
+                    {renamingId === conv.id ? (
+                      <input
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") rename(conv.id, renameDraft);
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                        onBlur={() => renameDraft.trim() ? rename(conv.id, renameDraft) : setRenamingId(null)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full text-[13px] bg-transparent outline-none rounded px-1 -mx-1"
+                        style={{ color: "#fff", boxShadow: "0 0 0 1.5px #da7756" }}
+                      />
+                    ) : (
+                      <>
+                        <p className="text-[13px] font-medium truncate leading-tight" style={{ color: isActive ? "#fff" : "#ddd" }}>
                           {conv.title}
                         </p>
-                        <div className="flex items-center gap-0 opacity-0 group-hover/conv:opacity-100 transition-opacity shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setRenamingId(conv.id); setRenameDraft(conv.title); }}
-                            className="p-1 rounded-md cursor-pointer hover:bg-white/[0.08] transition-colors"
-                            title="Rename"
+                        {conv.last_message_preview && (
+                          <p className="text-[11px] truncate mt-0.5 leading-tight" style={{ color: "#666", opacity: 0.8 }}>
+                            {conv.last_message_preview}
+                          </p>
+                        )}
+
+                        {/* Action buttons — visible for active item or on tap-expand */}
+                        {(isActive || isExpanded) && (
+                          <div
+                            className="flex items-center gap-1 mt-1.5"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <Pencil size={12} style={{ color: "#999" }} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); archive(conv.id); }}
-                            className="p-1 rounded-md cursor-pointer hover:bg-red-500/10 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={12} style={{ color: "#999" }} />
-                          </button>
-                        </div>
-                      </div>
-                      {conv.last_message_preview && (
-                        <p className="text-[11px] truncate mt-0.5 leading-tight" style={{ color: "#666", opacity: 0.8 }}>
-                          {conv.last_message_preview}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
+                            <button
+                              onClick={() => { setRenamingId(conv.id); setRenameDraft(conv.title); }}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors active:scale-95"
+                              style={{ background: "rgba(255,255,255,0.06)", color: "#999" }}
+                            >
+                              <Pencil size={10} /> Rename
+                            </button>
+                            <button
+                              onClick={() => archive(conv.id)}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors active:scale-95"
+                              style={{ background: "rgba(239,68,68,0.06)", color: "#f87171" }}
+                            >
+                              <Trash2 size={10} /> Delete
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
