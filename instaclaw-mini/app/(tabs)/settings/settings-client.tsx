@@ -328,18 +328,7 @@ export default function SettingsClient({
               <p className="text-sm font-medium">World ID Verified</p>
               <p className="text-[10px] text-success/70">Orb verification</p>
             </div>
-            {!worldIdSynced ? (
-              <button
-                onClick={handleSyncWorldId}
-                disabled={syncingWorldId}
-                className="shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-bold transition-all active:scale-95"
-                style={{ background: "linear-gradient(170deg, #2563eb, #1d4ed8)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", boxShadow: "0 2px 8px rgba(37,99,235,0.3), inset 0 1px 0 rgba(255,255,255,0.2)" }}
-              >
-                {syncingWorldId ? "Syncing..." : "Sync to agent"}
-              </button>
-            ) : (
-              <span className="text-[10px] font-medium" style={{ color: "#22c55e" }}>Synced</span>
-            )}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
           </div>
         )}
       </section>
