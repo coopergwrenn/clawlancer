@@ -581,6 +581,16 @@ export default function SettingsClient({
         </button>
       </section>
 
+      {/* ── Contact Support ── */}
+      <button
+        onClick={() => { window.location.href = "mailto:help@instaclaw.io"; }}
+        className="animate-fade-in-up flex items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-medium stagger-5"
+        style={{ opacity: 0, color: "#999", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.04)" }}
+      >
+        <Mail size={16} />
+        Contact Support
+      </button>
+
       {/* ── Sign Out ── */}
       {showSignOutConfirm ? (
         <div className="animate-fade-in-up glass-card rounded-2xl p-4 stagger-5" style={{ opacity: 0, border: "1px solid rgba(239,68,68,0.25)" }}>
