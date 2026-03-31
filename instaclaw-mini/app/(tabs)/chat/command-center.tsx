@@ -1298,7 +1298,7 @@ export default function CommandCenter({
                                 borderBottomRightRadius: "4px",
                               }
                             : {
-                                background: "rgba(255,255,255,0.08)",
+                                background: "#1e1e1e",
                                 boxShadow: "0 1px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)",
                                 color: "#ddd",
                                 borderBottomLeftRadius: "4px",
@@ -1311,14 +1311,14 @@ export default function CommandCenter({
                             </div>
                           )}
 
-                          {/* SVG bubble tails — matching web app */}
+                          {/* SVG bubble tails — solid colors to match bubble backgrounds */}
                           {isUser ? (
                             <svg className="absolute bottom-0 -right-[8px] w-3 h-[18px]" viewBox="0 0 12 18" fill="none">
                               <path d="M0 0C1 8 8 14 12 18H0V0Z" fill="#da7756" />
                             </svg>
                           ) : (
                             <svg className="absolute bottom-0 -left-[8px] w-3 h-[18px]" viewBox="0 0 12 18" fill="none">
-                              <path d="M12 0C11 8 4 14 0 18H12V0Z" fill="rgba(255,255,255,0.08)" />
+                              <path d="M12 0C11 8 4 14 0 18H12V0Z" fill="#1e1e1e" />
                             </svg>
                           )}
                         </div>
@@ -1360,14 +1360,14 @@ export default function CommandCenter({
                       <img src="/logo.png" alt="" className="w-5 h-5 relative z-[1]" style={{ filter: "invert(1) brightness(1.2)" }} />
                     </div>
                     <div className="relative">
-                      <div className="rounded-2xl px-4 py-3.5" style={{ background: "rgba(255,255,255,0.08)", boxShadow: "0 1px 6px rgba(0,0,0,0.08)", borderBottomLeftRadius: "4px" }}>
+                      <div className="rounded-2xl px-4 py-3.5" style={{ background: "#1e1e1e", boxShadow: "0 1px 6px rgba(0,0,0,0.08)", borderBottomLeftRadius: "4px" }}>
                         <div className="flex gap-1.5">
                           <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0s" }} />
                           <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.2s" }} />
                           <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.4s" }} />
                         </div>
                         <svg className="absolute bottom-0 -left-[8px] w-3 h-[18px]" viewBox="0 0 12 18" fill="none">
-                          <path d="M12 0C11 8 4 14 0 18H12V0Z" fill="rgba(255,255,255,0.08)" />
+                          <path d="M12 0C11 8 4 14 0 18H12V0Z" fill="#1e1e1e" />
                         </svg>
                       </div>
                     </div>
