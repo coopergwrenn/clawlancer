@@ -39,11 +39,14 @@ export default function TabBar() {
         pointerEvents: "none",
       }}
     >
-      {/* Background fill — covers the entire nav zone so no black gap shows */}
+      {/* Blur layer — same pattern as Command Center toolbar, fades in smoothly */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 -top-10"
         style={{
-          background: "linear-gradient(to bottom, transparent 0%, rgba(10,10,10,0.85) 30%, #0a0a0a 100%)",
+          backdropFilter: "blur(40px) saturate(1.6)",
+          WebkitBackdropFilter: "blur(40px) saturate(1.6)",
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 28%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 28%)",
         }}
       />
       <div
