@@ -93,9 +93,9 @@ export default function AgentBookCard() {
     }
   }
 
-  // Hide if not ready (no wallet, not verified, etc.)
-  if (phase === "loading") return null;
-  if (phase === "error" && !error.includes("Relay") && !error.includes("failed") && !error.includes("wrong")) return null;
+  // Only show badge for users already registered via web dashboard
+  // AgentBook relay rejects mini app registrations — needs World team support
+  if (phase !== "registered") return null;
 
   // Registered badge
   if (phase === "registered") {
