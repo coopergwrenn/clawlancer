@@ -60,10 +60,28 @@ interface ChatMsg {
 
 interface LibraryItem {
   id: string;
+  title: string;
+  type: string;
   content: string;
-  created_at: string;
+  preview: string;
+  source_task_id: string | null;
+  source_chat_message_id: string | null;
   run_number: number;
+  tags: string[];
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
 }
+
+const LIBRARY_TYPES: Record<string, { icon: string; label: string }> = {
+  research: { icon: "🔍", label: "Research" },
+  draft: { icon: "✉️", label: "Draft" },
+  report: { icon: "📊", label: "Report" },
+  analysis: { icon: "📈", label: "Analysis" },
+  code: { icon: "💻", label: "Code" },
+  post: { icon: "📝", label: "Post" },
+  other: { icon: "📄", label: "Other" },
+};
 
 // ── Helpers ──
 
@@ -227,6 +245,9 @@ export default function CommandCenter({
   const [isListening, setIsListening] = useState(false);
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
   const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryExpandedId, setLibraryExpandedId] = useState<string | null>(null);
 
   // Check localStorage for dismissed state
   useEffect(() => {
@@ -335,6 +356,17 @@ export default function CommandCenter({
         // API failed — keep defaults, don't clear anything
       });
   }, []);
+
+  // Load library items when Library tab is active
+  useEffect(() => {
+    if (tab !== "library") return;
+    setLibraryLoading(true);
+    fetch("/api/library/list?limit=50&sort=created_at&order=desc")
+      .then((r) => r.json())
+      .then((data) => setLibraryItems(data.items || []))
+      .catch(() => {})
+      .finally(() => setLibraryLoading(false));
+  }, [tab]);
 
   // Refresh suggestions on demand
   const refreshSuggestions = useCallback(async () => {
@@ -1436,14 +1468,97 @@ export default function CommandCenter({
 
         {/* ── Library Tab ── */}
         {tab === "library" && (
-          <div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
-              <Search size={24} style={{ color: "#666" }} />
-            </div>
-            <p className="text-sm font-medium text-white">Library</p>
-            <p className="mt-1 max-w-[240px] text-[12px]" style={{ color: "#666" }}>
-              Saved research, drafts, and reports from your agent will appear here.
-            </p>
+          <div className="flex-1 flex flex-col px-4 py-3">
+            {libraryLoading ? (
+              <div className="space-y-2.5">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-20 animate-pulse glass-card rounded-xl" />
+                ))}
+              </div>
+            ) : libraryItems.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ minHeight: "40vh" }}>
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }}>
+                  <span className="text-2xl">📚</span>
+                </div>
+                <p className="text-sm font-medium text-white">Your library is empty</p>
+                <p className="mt-1 max-w-[240px] text-[12px]" style={{ color: "#666" }}>
+                  Completed tasks and saved chat messages will appear here automatically.
+                </p>
+                <button
+                  onClick={() => setTab("tasks")}
+                  className="mt-3 text-xs font-medium"
+                  style={{ color: "#da7756" }}
+                >
+                  Go to Tasks →
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {libraryItems.map((item) => {
+                  const typeCfg = LIBRARY_TYPES[item.type] || LIBRARY_TYPES.other;
+                  const isExpanded = libraryExpandedId === item.id;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="glass-card rounded-xl overflow-hidden"
+                      style={item.is_pinned ? { border: "1px solid rgba(255,255,255,0.12)" } : undefined}
+                    >
+                      <div
+                        className="p-4 cursor-pointer active:bg-white/[0.02] transition-colors"
+                        onClick={() => setLibraryExpandedId(isExpanded ? null : item.id)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0"
+                            style={{ background: "rgba(255,255,255,0.06)" }}
+                          >
+                            {typeCfg.icon}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-[14px] line-clamp-2 leading-tight" style={{ color: "#fff" }}>
+                              {item.title}
+                            </p>
+                            <p className="text-[11px] mt-0.5" style={{ color: "#888" }}>
+                              {typeCfg.label} · {timeAgo(item.created_at)}
+                            </p>
+                            {!isExpanded && item.preview && (
+                              <p className="text-[12px] mt-1.5 line-clamp-2 leading-relaxed" style={{ color: "#999" }}>
+                                {item.preview}
+                              </p>
+                            )}
+                          </div>
+                          <ChevronDown
+                            size={14}
+                            className="shrink-0 mt-1 transition-transform duration-300"
+                            style={{ color: "#666", transform: isExpanded ? "rotate(180deg)" : "none" }}
+                          />
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="px-4 pb-4">
+                          {item.source_task_id && (
+                            <p className="text-[10px] mb-2" style={{ color: "#666" }}>Generated from a task</p>
+                          )}
+                          {item.source_chat_message_id && (
+                            <p className="text-[10px] mb-2" style={{ color: "#666" }}>Saved from chat</p>
+                          )}
+                          <div
+                            className="rounded-xl p-3.5 text-[13px] leading-relaxed"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "#ccc" }}
+                          >
+                            <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:mt-1.5 [&_h3]:mb-0.5 [&_hr]:my-2 [&_hr]:border-white/10 [&_strong]:text-white [&_a]:text-[#da7756] [&_code]:text-xs [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_pre]:my-1.5 [&_pre]:rounded-lg [&_pre]:bg-white/5 [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+                              <ReactMarkdown>{item.content}</ReactMarkdown>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
