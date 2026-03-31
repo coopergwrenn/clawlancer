@@ -193,12 +193,12 @@ export default function AgentDashboard({
       const res = await fetch("/api/subscription/checkout-url?tier=starter");
       const data = await res.json();
       if (data.url) {
-        window.open(data.url, "_blank");
-        setWaitingForSubscribe(true);
+        window.location.href = data.url;
+      } else {
+        window.location.href = "https://instaclaw.io/upgrade?from=mini-app";
       }
     } catch {
-      window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
-      setWaitingForSubscribe(true);
+      window.location.href = "https://instaclaw.io/upgrade?from=mini-app";
     }
   }
 

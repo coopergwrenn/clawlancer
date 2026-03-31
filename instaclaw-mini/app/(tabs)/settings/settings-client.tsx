@@ -183,7 +183,7 @@ function LinkAccountSection() {
           Unlock your full web dashboard, daily credits, Telegram access, and advanced skill configuration.
         </p>
         <button
-          onClick={() => window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank")}
+          onClick={() => { window.location.href = "https://instaclaw.io/upgrade?from=mini-app"; }}
           className="w-full flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-semibold transition-all"
           style={{
             background: "rgba(255,255,255,0.04)",
@@ -439,14 +439,9 @@ export default function SettingsClient({
                 <Zap size={14} fill="currentColor" /> {paying ? "Processing..." : "Top up with WLD"}
               </button>
               <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch("/api/subscription/checkout-url?tier=starter");
-                    const data = await res.json();
-                    if (data.url) window.open(data.url, "_blank");
-                  } catch {
-                    window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
-                  }
+                onClick={() => {
+                  // Opens instaclaw.io billing in Chrome — user manages subscription there
+                  window.location.href = "https://instaclaw.io/billing?from=mini-app";
                 }}
                 className="glass-button flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
               >
@@ -475,15 +470,9 @@ export default function SettingsClient({
                 {paying ? "Processing..." : "Pay with WLD"}
               </button>
               <button
-                onClick={async () => {
-                try {
-                  const res = await fetch("/api/subscription/checkout-url?tier=starter");
-                  const data = await res.json();
-                  if (data.url) window.open(data.url, "_blank");
-                } catch {
-                  window.open("https://instaclaw.io/upgrade?from=mini-app", "_blank");
-                }
-              }}
+                onClick={() => {
+                  window.location.href = "https://instaclaw.io/upgrade?from=mini-app";
+                }}
                 className="glass-button flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold"
               >
                 Subscribe <ExternalLink size={11} />
@@ -562,7 +551,7 @@ export default function SettingsClient({
           More
         </h2>
         <button
-          onClick={() => window.open("https://instaclaw.io", "_blank")}
+          onClick={() => { window.location.href = "https://instaclaw.io"; }}
           className="flex w-full items-center justify-between rounded-lg px-1 py-3 text-sm transition-colors hover:bg-white/[0.03]"
         >
           <span>Visit instaclaw.io</span>
