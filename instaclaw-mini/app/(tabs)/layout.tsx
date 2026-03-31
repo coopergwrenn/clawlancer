@@ -7,7 +7,7 @@ export default function TabsLayout({
 }) {
   return (
     <div className="relative h-[100dvh]">
-      <div className="scroll-area h-full" style={{ paddingBottom: "90px" }}>
+      <div className="scroll-area h-full" style={{ paddingBottom: "76px" }}>
         {children}
       </div>
       <TabBar />
