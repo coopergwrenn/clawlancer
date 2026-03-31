@@ -1195,8 +1195,8 @@ export default function CommandCenter({
         {/* ── Chat Tab ── */}
         {tab === "chat" && (
           <div className="flex-1 flex flex-col relative">
-            {/* Chat header with sidebar toggle — matching web app */}
-            <div className="shrink-0 flex items-center h-11 px-2 gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            {/* Chat header with sidebar toggle — sticky so it stays visible while scrolling */}
+            <div className="sticky top-0 z-20 flex items-center h-11 px-2 gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "#0a0a0a", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
               <button
                 onClick={() => setShowSidebar((v) => !v)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
