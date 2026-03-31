@@ -78,6 +78,11 @@ export async function POST(req: NextRequest) {
       `cat > ~/.openclaw/xmtp/.env << 'ENVEOF'\n${envContent}\nENVEOF`
     );
 
+    // Update the XMTP agent script from GitHub (latest version)
+    await ssh.execCommand(
+      'source ~/.nvm/nvm.sh && curl -sL "https://raw.githubusercontent.com/coopergwrenn/clawlancer/main/instaclaw/skills/xmtp-agent/scripts/xmtp-agent.mjs" -o ~/scripts/xmtp-agent.mjs'
+    );
+
     // Restart the service
     const restart = await ssh.execCommand(
       'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user restart instaclaw-xmtp && sleep 3 && systemctl --user is-active instaclaw-xmtp'
