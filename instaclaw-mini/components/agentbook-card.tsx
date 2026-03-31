@@ -93,9 +93,9 @@ export default function AgentBookCard() {
     }
   }
 
-  // Only show for users who are already registered (via web app)
-  // On-chain registration requires agentkit-cli which can't run from mini app WebView
-  if (phase !== "registered") return null;
+  // Hide if not ready (no wallet, not verified, etc.)
+  if (phase === "loading") return null;
+  if (phase === "error" && !error.includes("Relay") && !error.includes("failed") && !error.includes("wrong")) return null;
 
   // Registered badge
   if (phase === "registered") {

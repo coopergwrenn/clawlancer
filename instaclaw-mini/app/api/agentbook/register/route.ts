@@ -39,15 +39,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Already registered", registered: true }, { status: 409 });
     }
 
-    // Ensure checksummed address (EIP-55) — relay requires it
-    const walletAddr = vm.agentbook_wallet_address.startsWith("0x")
-      ? vm.agentbook_wallet_address.slice(0, 2) + vm.agentbook_wallet_address.slice(2) // already has 0x
-      : "0x" + vm.agentbook_wallet_address;
+    const walletAddr = vm.agentbook_wallet_address;
 
-    // Submit to gasless relay — match exact format from web app's register-proof endpoint
+    // Try sending full proof payload to relay — multiple formats
+    // The relay might expect the proof as an object with all World ID fields
     const relayBody = {
-      proof,
+      proof: {
+        proof,
+        merkle_root,
+        nullifier_hash,
+        verification_level,
+      },
       walletAddress: walletAddr,
+      agent_address: walletAddr,
+      address: walletAddr,
       app_id: process.env.AGENTBOOK_APP_ID || "app_a7c3e2b6b83927251a0db5345bd7146a",
     };
     console.log("[AgentBook/Register] Relay body:", JSON.stringify(relayBody));
