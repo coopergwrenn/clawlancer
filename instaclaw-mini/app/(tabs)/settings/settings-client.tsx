@@ -606,7 +606,7 @@ export default function SettingsClient({
         <button
           onClick={() => setShowSignOutConfirm(true)}
           className="animate-fade-in-up flex items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-medium stagger-5"
-          style={{ opacity: 0, color: "#ef4444", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}
+          style={{ opacity: 0, color: "#999", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.04)" }}
         >
           <LogOut size={16} />
           Sign Out
