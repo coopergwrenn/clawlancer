@@ -103,9 +103,10 @@ process.exit(0);
     const scriptPath = "/tmp/xmtp-send-init.mjs";
     await ssh.execCommand(`cat > ${scriptPath} << 'SCRIPTEOF'\n${sendScript}\nSCRIPTEOF`);
 
+    // Ensure @xmtp/agent-sdk is installed, then run from ~/scripts
     const result = await ssh.execCommand(
-      `source ~/.nvm/nvm.sh && cd ~/scripts && node ${scriptPath} 2>&1`,
-      { execOptions: { timeout: 30000 } }
+      `source ~/.nvm/nvm.sh && cd ~/scripts && (node -e "require.resolve('@xmtp/agent-sdk')" 2>/dev/null || npm install @xmtp/agent-sdk@latest --save 2>&1 | tail -3) && node ${scriptPath} 2>&1`,
+      { execOptions: { timeout: 45000 } }
     );
 
     // Restart the XMTP service
