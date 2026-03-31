@@ -1454,13 +1454,13 @@ export default function CommandCenter({
       {/* Active toggle pills */}
       <div className="flex flex-wrap gap-1.5 px-4 py-1">
         {webSearch && (
-          <button onClick={() => setWebSearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(66,133,244,0.12)", border: "1px solid rgba(66,133,244,0.25)", color: "#4285F4" }}>
-            <Globe size={11} /> Web search <span style={{ opacity: 0.5 }}>×</span>
+          <button onClick={() => setWebSearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#ccc", boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
+            <Globe size={11} style={{ color: "#999" }} /> Web search <span style={{ color: "#666" }}>×</span>
           </button>
         )}
         {deepResearch && (
-          <button onClick={() => setDeepResearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)", color: "#8b5cf6" }}>
-            <Sparkles size={11} /> Deep research <span style={{ opacity: 0.5 }}>×</span>
+          <button onClick={() => setDeepResearch(false)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#ccc", boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.06)" }}>
+            <Sparkles size={11} style={{ color: "#999" }} /> Deep research <span style={{ color: "#666" }}>×</span>
           </button>
         )}
       </div>
