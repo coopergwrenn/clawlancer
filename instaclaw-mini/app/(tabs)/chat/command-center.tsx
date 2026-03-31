@@ -164,6 +164,7 @@ export default function CommandCenter({
   const [selectedModel, setSelectedModel] = useState("Sonnet 4.6");
   const [isListening, setIsListening] = useState(false);
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
+  const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
 
   // Check localStorage for dismissed state
   useEffect(() => {
@@ -271,6 +272,27 @@ export default function CommandCenter({
       .catch(() => {
         // API failed — keep defaults, don't clear anything
       });
+  }, []);
+
+  // Refresh suggestions on demand
+  const refreshSuggestions = useCallback(async () => {
+    setRefreshingSuggestions(true);
+    try {
+      const res = await fetch("/api/proxy/tasks/suggestions");
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          const labels = data.suggestions
+            .map((s: { label?: string; prefill?: string }) => s.label || s.prefill)
+            .filter(Boolean);
+          if (labels.length > 0) {
+            setSuggestions(labels);
+            try { localStorage.setItem("instaclaw-suggestions", JSON.stringify(labels)); } catch {}
+          }
+        }
+      }
+    } catch {}
+    setRefreshingSuggestions(false);
   }, []);
 
   // Load messages for active conversation
@@ -1406,6 +1428,26 @@ export default function CommandCenter({
               {s}
             </button>
           ))}
+          {/* Reload suggestions button — matching web app */}
+          <button
+            onClick={refreshSuggestions}
+            disabled={refreshingSuggestions}
+            className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full transition-all active:scale-95"
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.06)",
+            }}
+            title="Refresh suggestions"
+          >
+            <RefreshCw
+              size={13}
+              style={{
+                color: "#999",
+                animation: refreshingSuggestions ? "spin 1s linear infinite" : "none",
+              }}
+            />
+          </button>
         </div>
       )}
 
