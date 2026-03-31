@@ -78,9 +78,27 @@ export default async function HomePage() {
           </div>
         );
       }
-    } catch { /* fall through to provisioning */ }
+    } catch { /* fall through */ }
 
-    return <ProvisioningStatus />;
+    // Check if user has a pending WLD delegation (mid-provisioning)
+    try {
+      const { supabase: db } = await import("@/lib/supabase");
+      const { data: pendingDelegation } = await db()
+        .from("instaclaw_wld_delegations")
+        .select("id")
+        .eq("user_id", session.userId)
+        .in("status", ["confirmed", "pending_confirmation"])
+        .limit(1)
+        .single();
+
+      if (pendingDelegation) {
+        // User paid but VM not assigned yet — show provisioning status
+        return <ProvisioningStatus />;
+      }
+    } catch { /* no delegation */ }
+
+    // No agent, not verified, no pending delegation → back to onboarding
+    redirect("/");
   }
 
   return (

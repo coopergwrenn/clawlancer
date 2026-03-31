@@ -156,13 +156,8 @@ export default function ProvisioningStatus() {
         }
       } catch { /* keep polling */ }
 
-      // After all timed steps done (18s), wait a beat then finish
-      if (count >= 18 && !doneRef.current) {
-        finishAll();
-      }
-
-      // Hard timeout at 60s
-      if (count >= 60 && !doneRef.current) {
+      // Hard timeout at 90s — only finish if agent actually exists
+      if (count >= 90 && !doneRef.current) {
         clearInterval(poll);
         doneRef.current = true;
         setPhase("timeout");

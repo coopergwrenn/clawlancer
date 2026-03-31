@@ -65,60 +65,80 @@ export async function POST(req: NextRequest) {
     const existingUser = await getUserByNullifier(nullifierHash);
 
     if (existingUser && existingUser.id !== session.userId) {
-      // Merge: link wallet to existing user, delete the new row we created during walletAuth
-      await linkWalletToUser(
-        existingUser.id,
-        session.walletAddress
-      );
-      // Delete the orphan row created during walletAuth
-      await supabase()
-        .from("instaclaw_users")
-        .delete()
-        .eq("id", session.userId);
+      // Merge: link wallet to existing user, switch session to existing account
+      try {
+        console.log("[Verify] Merging accounts:", session.userId, "→", existingUser.id);
 
-      // Mark verified on the existing user
-      await markWorldIdVerified(
-        existingUser.id,
-        nullifierHash,
-        payload.verification_level || "orb"
-      );
+        // Link wallet to existing user
+        await linkWalletToUser(existingUser.id, session.walletAddress);
 
-      // Update the session cookie to point to the existing user
-      // (client will re-fetch /api/auth/me)
-      const { createSession: makeSession } = await import("@/lib/auth");
-      const { cookies } = await import("next/headers");
-      const cookieStore = await cookies();
-      const token = await makeSession({
-        userId: existingUser.id,
-        walletAddress: session.walletAddress,
-      });
-      cookieStore.set("session", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60,
-        path: "/",
-      });
+        // Delete the orphan row created during walletAuth (non-fatal if fails)
+        try {
+          await supabase()
+            .from("instaclaw_users")
+            .delete()
+            .eq("id", session.userId);
+        } catch (delErr) {
+          console.error("[Verify] Orphan delete failed (non-fatal):", delErr);
+        }
 
-      // Trigger agent provisioning if they already have a VM
-      proxyToInstaclaw("/api/vm/configure", existingUser.id, {
-        method: "POST",
-        body: JSON.stringify({ userId: existingUser.id }),
-      }).catch(() => {}); // fire-and-forget
+        // Mark verified on the existing user
+        await markWorldIdVerified(
+          existingUser.id,
+          nullifierHash,
+          payload.verification_level || "orb"
+        );
 
-      // Propagate World ID to VM + marketplace (fire-and-forget, delayed for VM)
-      setTimeout(() => {
-        proxyToInstaclaw("/api/auth/world-id/propagate", existingUser.id, {
+        // Update the session cookie to point to the existing user
+        const { createSession: makeSession } = await import("@/lib/auth");
+        const { cookies } = await import("next/headers");
+        const cookieStore = await cookies();
+        const token = await makeSession({
+          userId: existingUser.id,
+          walletAddress: session.walletAddress,
+        });
+        cookieStore.set("session", token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: "strict",
+          maxAge: 7 * 24 * 60 * 60,
+          path: "/",
+        });
+
+        // Trigger agent provisioning if they already have a VM
+        proxyToInstaclaw("/api/vm/configure", existingUser.id, {
           method: "POST",
-          body: JSON.stringify({ proofJson: payload }),
+          body: JSON.stringify({ userId: existingUser.id }),
         }).catch(() => {});
-      }, 15000);
 
-      return NextResponse.json({
-        verified: true,
-        merged: true,
-        userId: existingUser.id,
-      });
+        // Propagate World ID (fire-and-forget, delayed)
+        setTimeout(() => {
+          proxyToInstaclaw("/api/auth/world-id/propagate", existingUser.id, {
+            method: "POST",
+            body: JSON.stringify({ proofJson: payload }),
+          }).catch(() => {});
+        }, 15000);
+
+        return NextResponse.json({
+          verified: true,
+          merged: true,
+          userId: existingUser.id,
+        });
+      } catch (mergeErr) {
+        console.error("[Verify] Account merge failed:", mergeErr);
+        // Merge failed — but the user IS verified. Mark current account verified
+        // and let them proceed rather than 500ing.
+        await markWorldIdVerified(
+          session.userId,
+          nullifierHash,
+          payload.verification_level || "orb"
+        );
+        return NextResponse.json({
+          verified: true,
+          merged: false,
+          mergeError: "Account linking failed. You can use this account independently.",
+        });
+      }
     }
 
     // No merge needed — just mark verified on current user
