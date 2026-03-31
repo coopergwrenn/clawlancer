@@ -626,8 +626,8 @@ export default function CommandCenter({
         ))}
       </div>
 
-      {/* Tabs — glass with sliding underline */}
-      <div className="relative flex px-4 pb-0.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      {/* Tabs — clean underline matching web app */}
+      <div className="relative flex px-4 pb-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         {(["tasks", "chat", "library"] as Tab[]).map((t) => (
           <button
             key={t}
@@ -1288,7 +1288,7 @@ export default function CommandCenter({
         {tab === "chat" && (
           <div className="flex-1 flex flex-col relative">
             {/* Chat header with sidebar toggle + title — matching web app */}
-            <div className="sticky top-0 z-20 flex items-center h-11 px-2 gap-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "#0a0a0a", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
+            <div className="sticky top-0 z-20 flex items-center h-11 px-2 gap-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(10,10,10,0.85)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
               <button
                 onClick={() => setShowSidebar((v) => !v)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
