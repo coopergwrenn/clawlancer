@@ -12,6 +12,9 @@
  *   → Gateway processes via Claude
  *   → Agent sends response back via XMTP
  *   → User sees reply in World Chat
+ *
+ * Conversation history is persisted to disk at ~/.openclaw/xmtp/conversations.json
+ * so it survives service restarts, gateway restarts, and VM reboots.
  */
 
 import { Agent } from "@xmtp/agent-sdk";
@@ -20,14 +23,17 @@ import { join } from "path";
 
 // ── Config ──
 const HOME = process.env.HOME || "/home/openclaw";
+const XMTP_DIR = join(HOME, ".openclaw", "xmtp");
 const LOG_DIR = join(HOME, ".openclaw", "logs");
 const LOG_FILE = join(LOG_DIR, "xmtp-agent.log");
+const HISTORY_FILE = join(XMTP_DIR, "conversations.json");
 const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:18789";
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN || "";
-const MAX_HISTORY_MESSAGES = 40; // Keep last 40 messages (20 user + 20 assistant)
+const MAX_HISTORY_MESSAGES = 100; // Per conversation cap
 
-// Ensure log directory exists
+// Ensure directories exist
 mkdirSync(LOG_DIR, { recursive: true });
+mkdirSync(XMTP_DIR, { recursive: true });
 
 function log(level, msg, data) {
   const ts = new Date().toISOString();
@@ -36,9 +42,58 @@ function log(level, msg, data) {
   try { appendFileSync(LOG_FILE, line); } catch {}
 }
 
-// ── Conversation History ──
-// Per-conversation message history, keyed by XMTP conversation ID
+// ── Persistent Conversation History ──
+
+/** In-memory cache, synced to disk after each write */
 const conversationHistory = new Map();
+
+/** Pending write — coalesces rapid saves into one disk write */
+let saveTimeout = null;
+const SAVE_DEBOUNCE_MS = 500;
+
+/** Load history from disk on startup */
+function loadHistory() {
+  try {
+    if (existsSync(HISTORY_FILE)) {
+      const raw = readFileSync(HISTORY_FILE, "utf-8");
+      const data = JSON.parse(raw);
+      let totalMessages = 0;
+      for (const [convId, messages] of Object.entries(data)) {
+        if (Array.isArray(messages)) {
+          conversationHistory.set(convId, messages);
+          totalMessages += messages.length;
+        }
+      }
+      log("INFO", `Loaded ${conversationHistory.size} conversations (${totalMessages} messages) from disk`);
+    } else {
+      log("INFO", "No conversation history file found — starting fresh");
+    }
+  } catch (err) {
+    log("WARN", "Failed to load conversation history from disk — starting fresh", { error: err.message });
+  }
+}
+
+/** Save history to disk (debounced — coalesces rapid writes) */
+function scheduleSave() {
+  if (saveTimeout) return; // Already scheduled
+  saveTimeout = setTimeout(() => {
+    saveTimeout = null;
+    saveToDisk();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/** Write current history to disk */
+function saveToDisk() {
+  try {
+    const obj = {};
+    for (const [convId, messages] of conversationHistory) {
+      obj[convId] = messages;
+    }
+    writeFileSync(HISTORY_FILE, JSON.stringify(obj));
+  } catch (err) {
+    log("ERROR", "Failed to save conversation history to disk", { error: err.message });
+  }
+}
 
 function getHistory(conversationId) {
   if (!conversationHistory.has(conversationId)) {
@@ -50,12 +105,12 @@ function getHistory(conversationId) {
 function addMessage(conversationId, role, content) {
   const history = getHistory(conversationId);
   history.push({ role, content });
-  // Trim to keep only the last N messages
+  // Trim oldest messages when cap exceeded
   if (history.length > MAX_HISTORY_MESSAGES) {
-    // Remove oldest messages, but always keep pairs to avoid orphaned assistant messages
     const excess = history.length - MAX_HISTORY_MESSAGES;
     history.splice(0, excess);
   }
+  scheduleSave();
 }
 
 // ── Gateway Bridge ──
@@ -67,7 +122,7 @@ function addMessage(conversationId, role, content) {
 async function sendToGateway(conversationId, userMessage) {
   const url = `${GATEWAY_URL}/v1/chat/completions`;
 
-  // Add user message to history
+  // Add user message to history (persists to disk via debounce)
   addMessage(conversationId, "user", userMessage);
   const messages = getHistory(conversationId);
 
@@ -93,7 +148,7 @@ async function sendToGateway(conversationId, userMessage) {
     const data = await res.json();
     const reply = data.choices?.[0]?.message?.content || null;
 
-    // Add assistant response to history
+    // Add assistant response to history (persists to disk via debounce)
     if (reply) {
       addMessage(conversationId, "assistant", reply);
     }
@@ -109,13 +164,13 @@ async function sendToGateway(conversationId, userMessage) {
 
 async function main() {
   log("INFO", "Starting XMTP agent service...");
-  log("INFO", `XMTP_ENV: ${process.env.XMTP_ENV}`);
   log("INFO", `GATEWAY_URL: ${GATEWAY_URL}`);
   log("INFO", `GATEWAY_TOKEN: ${GATEWAY_TOKEN ? GATEWAY_TOKEN.slice(0, 8) + "..." : "MISSING"}`);
   log("INFO", `MAX_HISTORY: ${MAX_HISTORY_MESSAGES} messages per conversation`);
+  log("INFO", `HISTORY_FILE: ${HISTORY_FILE}`);
 
   // Load env from ~/.openclaw/xmtp/.env if it exists
-  const xmtpEnvFile = join(HOME, ".openclaw", "xmtp", ".env");
+  const xmtpEnvFile = join(XMTP_DIR, ".env");
   if (existsSync(xmtpEnvFile)) {
     const envContent = readFileSync(xmtpEnvFile, "utf-8");
     for (const line of envContent.split("\n")) {
@@ -132,6 +187,9 @@ async function main() {
     }
     log("INFO", "Loaded XMTP env from " + xmtpEnvFile);
   }
+
+  // Load conversation history from disk
+  loadHistory();
 
   // Verify required env vars
   if (!process.env.XMTP_WALLET_KEY) {
@@ -180,7 +238,7 @@ async function main() {
     log("INFO", `Users can message me at: ${agent.address}`);
 
     // Write address to a file so other scripts can read it
-    const addrFile = join(HOME, ".openclaw", "xmtp", "address");
+    const addrFile = join(XMTP_DIR, "address");
     try {
       writeFileSync(addrFile, agent.address);
       log("INFO", `Address written to ${addrFile}`);
@@ -193,16 +251,27 @@ async function main() {
     log("ERROR", "Unhandled XMTP error", { error: String(error) });
   });
 
+  // Flush history to disk before exit
+  process.on("SIGTERM", () => {
+    log("INFO", "SIGTERM received — flushing history to disk");
+    saveToDisk();
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    log("INFO", "SIGINT received — flushing history to disk");
+    saveToDisk();
+    process.exit(0);
+  });
+
   // Start listening
   await agent.start();
 
-  // Keep the process alive — agent.start() sets up streams but
-  // the Node.js event loop needs a reference to stay running
   log("INFO", "Agent is now listening for messages. Keeping process alive...");
   setInterval(() => {}, 60000);
 }
 
 main().catch((err) => {
   log("FATAL", "Agent crashed", { error: err.message, stack: err.stack });
+  saveToDisk(); // Best-effort save before crash exit
   process.exit(1);
 });
