@@ -41,7 +41,7 @@ export default function TabBar() {
     >
       {/* Blur layer — same pattern as Command Center toolbar, fades in smoothly */}
       <div
-        className="absolute inset-0 -top-10"
+        className="absolute inset-0 -top-4"
         style={{
           backdropFilter: "blur(40px) saturate(1.6)",
           WebkitBackdropFilter: "blur(40px) saturate(1.6)",
