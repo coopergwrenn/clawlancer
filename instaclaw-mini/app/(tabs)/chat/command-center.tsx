@@ -618,9 +618,12 @@ export default function CommandCenter({
                 <button
                   onClick={async () => {
                     try {
+                      // Have the agent message the user first (establishes the DM)
+                      await fetch("/api/xmtp/init-chat", { method: "POST" });
+                      // Then open World Chat
                       const { MiniKit } = await import("@worldcoin/minikit-js");
                       await MiniKit.commandsAsync.chat({
-                        message: "Hey!",
+                        message: "",
                         to: [xmtpAddress],
                       });
                     } catch (err) { console.error("World Chat error:", err); }
