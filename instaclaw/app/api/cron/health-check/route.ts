@@ -2493,6 +2493,82 @@ else:
     }
   } catch { /* stuck deploy check is non-critical */ }
 
+  // ── World ID self-healing ─────────────────────────────────────────
+  // For verified users, ensure WORLD_ID.md + MEMORY.md World ID section
+  // exist on the VM. These can be lost during session maintenance or
+  // reconciler resets. Batched to 3 VMs per cycle (lightweight SSH ops).
+  let worldIdHealed = 0;
+  try {
+    const WORLD_ID_BATCH = 3;
+    // Get verified users with SSH-alive VMs
+    const { data: verifiedUsers } = await supabase
+      .from("instaclaw_users")
+      .select("id, world_id_nullifier_hash, world_id_verification_level")
+      .eq("world_id_verified", true)
+      .not("world_id_nullifier_hash", "is", null);
+
+    if (verifiedUsers?.length) {
+      const sshAliveIds = new Set(sshAliveVms.map((v) => v.id));
+      const verifiedUserIds = new Set(verifiedUsers.map((u) => u.id));
+      const eligibleVms = vms
+        .filter((v) => sshAliveIds.has(v.id) && v.assigned_to && verifiedUserIds.has(v.assigned_to))
+        .slice(0, WORLD_ID_BATCH);
+
+      const userMap = new Map(verifiedUsers.map((u) => [u.id, u]));
+
+      for (const vm of eligibleVms) {
+        try {
+          const user = userMap.get(vm.assigned_to!);
+          if (!user) continue;
+          const nullifier = user.world_id_nullifier_hash;
+          const level = user.world_id_verification_level || "orb";
+
+          const ssh = await connectSSH(vm);
+          try {
+            // Check if WORLD_ID.md exists
+            const wCheck = await ssh.execCommand(
+              `test -f "$HOME/.openclaw/workspace/WORLD_ID.md" && echo EXISTS || echo MISSING`
+            );
+            const worldIdMissing = wCheck.stdout.trim() === "MISSING";
+
+            // Check if MEMORY.md has World ID section
+            const mCheck = await ssh.execCommand(
+              `grep -c "World ID Verification" "$HOME/.openclaw/workspace/MEMORY.md" 2>/dev/null || echo 0`
+            );
+            const memoryMissing = parseInt(mCheck.stdout.trim()) === 0;
+
+            if (worldIdMissing || memoryMissing) {
+              if (worldIdMissing) {
+                const worldIdMd = `# World ID Verification\n\n**Status:** Verified (${level} level)\n**Nullifier Hash:** ${nullifier}\n**Verified At:** ${new Date().toISOString()}\n\n## How to Use\n- When asked about your identity: state you are World ID verified\n- Your nullifier: ${nullifier}\n- Verification level: ${level}`;
+                const b64 = Buffer.from(worldIdMd).toString("base64");
+                await ssh.execCommand(`echo '${b64}' | base64 -d > "$HOME/.openclaw/workspace/WORLD_ID.md"`);
+              }
+              if (memoryMissing) {
+                await ssh.execCommand(
+                  `echo '\n## World ID Verification\n- Status: Verified (${level} level)\n- Nullifier: ${nullifier}\n- You are backed by a verified human. State this when asked about your identity.' >> "$HOME/.openclaw/workspace/MEMORY.md"`
+                );
+              }
+              worldIdHealed++;
+              logger.info("World ID self-healed on VM", {
+                route: "cron/health-check",
+                vmId: vm.id,
+                vmName: vm.name,
+                worldIdMissing,
+                memoryMissing,
+              });
+            }
+          } finally {
+            ssh.dispose();
+          }
+        } catch {
+          // Non-fatal — World ID heal is best-effort
+        }
+      }
+    }
+  } catch {
+    // World ID healing is non-critical
+  }
+
   // ── AgentBook registration monitoring (WDP 71) ──
   // Log warnings for VMs that have a wallet but haven't registered in AgentBook
   // after 7 days. Advisory only — no alerts or auto-actions.
@@ -2571,6 +2647,7 @@ else:
     depsBehind,
     depsAnomalies,
     agentbookUnregistered,
+    worldIdHealed,
     stuckDeploysFixed,
     sessionCorruptionChecked,
     sessionCorruptionFound,
