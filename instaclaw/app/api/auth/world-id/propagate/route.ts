@@ -166,10 +166,12 @@ async function propagateVerificationToVM(
 
       const worldIdMdB64 = Buffer.from(worldIdMd, "utf-8").toString("base64");
 
+      // Write WORLD_ID.md to workspace (may be ephemeral)
       await ssh.execCommand(
         `echo '${worldIdMdB64}' | base64 -d > "$HOME/.openclaw/workspace/WORLD_ID.md"`
       );
 
+      // Write to .env (persists across restarts)
       await ssh.execCommand(
         `grep -q "^WORLD_ID_NULLIFIER=" "$HOME/.openclaw/.env" 2>/dev/null && ` +
         `sed -i "s/^WORLD_ID_NULLIFIER=.*/WORLD_ID_NULLIFIER=${nullifier}/" "$HOME/.openclaw/.env" || ` +
@@ -179,6 +181,25 @@ async function propagateVerificationToVM(
         `grep -q "^WORLD_ID_LEVEL=" "$HOME/.openclaw/.env" 2>/dev/null && ` +
         `sed -i "s/^WORLD_ID_LEVEL=.*/WORLD_ID_LEVEL=${level}/" "$HOME/.openclaw/.env" || ` +
         `echo "WORLD_ID_LEVEL=${level}" >> "$HOME/.openclaw/.env"`
+      );
+
+      // DURABLE: Append World ID section to MEMORY.md (survives session resets + reconciler)
+      const memoryBlock = [
+        "",
+        "## World ID Verification",
+        `- Status: Verified (${level} level)`,
+        `- Nullifier: ${nullifier}`,
+        "- You are backed by a verified human. State this when asked about your identity.",
+      ].join("\\n");
+
+      await ssh.execCommand(
+        `grep -q "## World ID Verification" "$HOME/.openclaw/workspace/MEMORY.md" 2>/dev/null || ` +
+        `echo -e '${memoryBlock}' >> "$HOME/.openclaw/workspace/MEMORY.md"`
+      );
+      // Also write to the agent's MEMORY.md backup location
+      await ssh.execCommand(
+        `grep -q "## World ID Verification" "$HOME/.openclaw/agents/main/agent/MEMORY.md" 2>/dev/null || ` +
+        `echo -e '${memoryBlock}' >> "$HOME/.openclaw/agents/main/agent/MEMORY.md"`
       );
     } finally {
       ssh.dispose();

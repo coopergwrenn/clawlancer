@@ -348,6 +348,24 @@ async function propagateVerificationToVM(
         `sed -i "s/^WORLD_ID_LEVEL=.*/WORLD_ID_LEVEL=${level}/" "$HOME/.openclaw/.env" || ` +
         `echo "WORLD_ID_LEVEL=${level}" >> "$HOME/.openclaw/.env"`
       );
+
+      // DURABLE: Append World ID section to MEMORY.md (survives session resets + reconciler)
+      const memoryBlock = [
+        "",
+        "## World ID Verification",
+        `- Status: Verified (${level} level)`,
+        `- Nullifier: ${nullifier}`,
+        "- You are backed by a verified human. State this when asked about your identity.",
+      ].join("\\n");
+
+      await ssh.execCommand(
+        `grep -q "## World ID Verification" "$HOME/.openclaw/workspace/MEMORY.md" 2>/dev/null || ` +
+        `echo -e '${memoryBlock}' >> "$HOME/.openclaw/workspace/MEMORY.md"`
+      );
+      await ssh.execCommand(
+        `grep -q "## World ID Verification" "$HOME/.openclaw/agents/main/agent/MEMORY.md" 2>/dev/null || ` +
+        `echo -e '${memoryBlock}' >> "$HOME/.openclaw/agents/main/agent/MEMORY.md"`
+      );
     } finally {
       ssh.dispose();
     }
