@@ -15,8 +15,8 @@ export const maxDuration = 30;
  * Body: { userId: string }
  */
 export async function POST(req: NextRequest) {
-  const adminSecret = req.headers.get("x-admin-secret");
-  if (!adminSecret || adminSecret !== process.env.ADMIN_SECRET) {
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
