@@ -22,7 +22,7 @@ import { join } from "path";
 const HOME = process.env.HOME || "/home/openclaw";
 const LOG_DIR = join(HOME, ".openclaw", "logs");
 const LOG_FILE = join(LOG_DIR, "xmtp-agent.log");
-const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:3000";
+const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:18789";
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN || "";
 
 // Ensure log directory exists

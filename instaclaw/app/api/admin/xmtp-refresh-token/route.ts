@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     const envContent = [
       `XMTP_WALLET_KEY=${walletKeyMatch[1].trim()}`,
       `XMTP_ENV=production`,
-      `GATEWAY_URL=http://localhost:3000`,
+      `GATEWAY_URL=http://localhost:18789`,
       `GATEWAY_TOKEN=${vm.gateway_token}`,
       `XMTP_DB_PATH=/home/openclaw/.openclaw/xmtp/db`,
     ].join("\n");
