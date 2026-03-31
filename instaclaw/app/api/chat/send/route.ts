@@ -97,6 +97,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // C4 FIX: Pre-check credits before processing message
+  // Prevents processing messages for users with 0 credits and exhausted daily limit
+  try {
+    const { data: limitResult } = await supabase.rpc("instaclaw_check_limit_only", {
+      p_vm_id: vm.id,
+      p_tier: vm.tier || "starter",
+      p_model: vm.default_model || "sonnet",
+      p_is_heartbeat: false,
+      p_timezone: vm.user_timezone || "America/New_York",
+      p_is_virtuals: false,
+      p_is_tool_continuation: false,
+    });
+
+    if (limitResult && !limitResult.allowed) {
+      const source = limitResult.source;
+      if (source === "no_active_subscription") {
+        return NextResponse.json(
+          { error: "Your subscription is inactive. Please update your payment to continue." },
+          { status: 402 }
+        );
+      }
+      return NextResponse.json(
+        { error: "Daily credit limit reached. Credits reset at midnight or top up with WLD." },
+        { status: 429 }
+      );
+    }
+  } catch (creditCheckErr) {
+    // Non-fatal: if credit check fails, allow the message through
+    // (better to occasionally miss a check than block paying users)
+    logger.warn("Credit pre-check failed, allowing message", {
+      route: "chat/send",
+      error: String(creditCheckErr),
+      vmId: vm.id,
+    });
+  }
+
   // Get user profile for personalization
   const { data: user } = await supabase
     .from("instaclaw_users")
