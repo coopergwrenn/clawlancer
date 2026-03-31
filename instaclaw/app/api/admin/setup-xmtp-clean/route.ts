@@ -19,8 +19,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const vmId = "1eac973f-1691-4700-a0ba-420f1956120c"; // vm-313
   const supabase = getSupabase();
+
+  // Accept vmId from request body, default to vm-313 for backwards compat
+  let vmId = "1eac973f-1691-4700-a0ba-420f1956120c"; // vm-313 default
+  try {
+    const body = await req.json();
+    if (body.vmId) vmId = body.vmId;
+  } catch { /* no body — use default */ }
 
   const { data: vm } = await supabase
     .from("instaclaw_vms")
