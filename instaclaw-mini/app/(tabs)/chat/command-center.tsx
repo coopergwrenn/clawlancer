@@ -1280,8 +1280,8 @@ export default function CommandCenter({
                             boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,255,0.15), 0 1px 4px rgba(0,0,0,0.2)",
                           }}
                         >
-                          <div className="absolute top-[2px] left-[4px] w-[14px] h-[7px] rounded-full pointer-events-none z-10"
-                            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)" }} />
+                          <div className="absolute inset-0 rounded-full pointer-events-none z-10"
+                            style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.35) 0%, transparent 50%)" }} />
                           <img src="/logo.png" alt="" className="w-5 h-5 relative z-[1]" style={{ filter: "invert(1) brightness(1.2)" }} />
                         </div>
                       )}
@@ -1355,8 +1355,8 @@ export default function CommandCenter({
                         boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,255,0.15), 0 1px 4px rgba(0,0,0,0.2)",
                       }}
                     >
-                      <div className="absolute top-[2px] left-[4px] w-[14px] h-[7px] rounded-full pointer-events-none z-10"
-                        style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)" }} />
+                      <div className="absolute inset-0 rounded-full pointer-events-none z-10"
+                        style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.35) 0%, transparent 50%)" }} />
                       <img src="/logo.png" alt="" className="w-5 h-5 relative z-[1]" style={{ filter: "invert(1) brightness(1.2)" }} />
                     </div>
                     <div className="relative">
