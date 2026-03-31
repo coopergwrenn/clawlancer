@@ -80,6 +80,7 @@ export default auth((req) => {
     "/api/admin/setup-xmtp-clean", // X-Admin-Key header auth
     "/api/admin/xmtp-send", // X-Admin-Key header auth
     "/api/admin/xmtp-probe", // X-Admin-Key header auth
+    "/api/admin/propagate-world-id", // CRON_SECRET header auth
   ];
 
   const isAPI = pathname.startsWith("/api/");
