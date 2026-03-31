@@ -465,7 +465,7 @@ export default function CommandCenter({
     setSending(false);
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 100);
     inputRef.current?.focus();
-  }, [input, sending, tab, chatMsgs]);
+  }, [input, sending, tab, chatMsgs, activeConvId, webSearch, deepResearch]);
 
   // Tasks are already filtered by the API based on the filter param
   const filteredTasks = tasks;
