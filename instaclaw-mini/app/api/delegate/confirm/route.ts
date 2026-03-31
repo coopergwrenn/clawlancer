@@ -3,13 +3,20 @@ import { requireSession } from "@/lib/auth";
 import { supabase, getAgentStatus } from "@/lib/supabase";
 import { proxyToInstaclaw } from "@/lib/api";
 
+interface TxPollResult {
+  status: string;
+  hash?: string;
+  /** Raw token amount from chain (WLD has 18 decimals) */
+  amount?: string;
+}
+
 async function pollTransactionStatus(
   transactionId: string,
   appId: string,
   apiKey: string,
-  maxAttempts = 5,
-  delayMs = 2000
-): Promise<{ status: string; hash?: string }> {
+  maxAttempts = 8,
+  delayMs = 2500
+): Promise<TxPollResult> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const res = await fetch(
@@ -19,9 +26,13 @@ async function pollTransactionStatus(
 
       if (res.ok) {
         const data = await res.json();
-        console.log(`[Confirm] Poll attempt ${i + 1}: status=${data.transaction_status}`);
+        console.log(`[Confirm] Poll attempt ${i + 1}: status=${data.transaction_status}, amount=${data.token_amount ?? data.amount ?? "N/A"}`);
         if (data.transaction_status === "mined") {
-          return { status: "mined", hash: data.transactionHash };
+          return {
+            status: "mined",
+            hash: data.transactionHash,
+            amount: data.token_amount ?? data.amount ?? undefined,
+          };
         }
         if (data.transaction_status === "failed") {
           return { status: "failed" };
@@ -38,6 +49,48 @@ async function pollTransactionStatus(
     }
   }
   return { status: "pending" };
+}
+
+/**
+ * Verify the on-chain WLD amount matches what we expected.
+ * Returns true if amount is valid or if we can't verify (graceful degradation).
+ * Returns false ONLY if we can confirm the amount is wrong.
+ */
+function verifyOnChainAmount(
+  onChainAmount: string | undefined,
+  expectedWld: number
+): { valid: boolean; reason?: string } {
+  if (!onChainAmount) {
+    // API didn't return amount — log warning but don't block
+    // (World Dev Portal may not always include this field)
+    console.warn("[Confirm] On-chain amount not available from API — cannot verify amount");
+    return { valid: true, reason: "amount_not_available" };
+  }
+
+  try {
+    const expectedRaw = BigInt(expectedWld) * BigInt(10 ** 18);
+    const actualRaw = BigInt(onChainAmount);
+
+    // Allow 0.1% tolerance for rounding
+    const tolerance = expectedRaw / BigInt(1000);
+    const diff = actualRaw > expectedRaw
+      ? actualRaw - expectedRaw
+      : expectedRaw - actualRaw;
+
+    if (diff > tolerance) {
+      console.error(
+        `[Confirm] AMOUNT MISMATCH: expected ${expectedRaw.toString()} (${expectedWld} WLD), got ${actualRaw.toString()}, diff=${diff.toString()}`
+      );
+      return { valid: false, reason: `expected ${expectedWld} WLD, got different amount` };
+    }
+
+    console.log(`[Confirm] Amount verified: ${expectedWld} WLD matches on-chain`);
+    return { valid: true };
+  } catch (err) {
+    console.warn("[Confirm] Amount parse error:", err);
+    // Can't parse — don't block, but log
+    return { valid: true, reason: "parse_error" };
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -68,7 +121,6 @@ export async function POST(req: NextRequest) {
     let onChainConfirmed = false;
 
     if (!skipVerification && transactionId) {
-      // Poll for on-chain confirmation with retries
       const appId = process.env.NEXT_PUBLIC_APP_ID || "";
       const apiKey = process.env.DEV_PORTAL_API_KEY || "";
 
@@ -77,14 +129,42 @@ export async function POST(req: NextRequest) {
       if (result.status === "mined") {
         onChainConfirmed = true;
         txHash = result.hash || transactionId;
+
+        // C1 FIX: Verify on-chain amount matches expected WLD amount
+        const amountCheck = verifyOnChainAmount(result.amount, delegation.amount_wld);
+        if (!amountCheck.valid) {
+          console.error("[Confirm] BLOCKED: Amount mismatch for delegation", delegation.id, amountCheck.reason);
+          await supabase()
+            .from("instaclaw_wld_delegations")
+            .update({ status: "amount_mismatch", transaction_hash: txHash })
+            .eq("id", delegation.id);
+          return NextResponse.json(
+            { error: "Payment amount does not match. Contact support." },
+            { status: 400 }
+          );
+        }
       } else if (result.status === "failed") {
+        await supabase()
+          .from("instaclaw_wld_delegations")
+          .update({ status: "failed", transaction_hash: txHash })
+          .eq("id", delegation.id);
         return NextResponse.json(
           { error: "Transaction failed on-chain" },
           { status: 400 }
         );
+      } else {
+        // Still pending after retries — do NOT grant credits yet.
+        // Mark as pending_confirmation so a background job can retry verification.
+        await supabase()
+          .from("instaclaw_wld_delegations")
+          .update({ status: "pending_confirmation", transaction_hash: txHash })
+          .eq("id", delegation.id);
+        return NextResponse.json({
+          success: false,
+          pending: true,
+          message: "Transaction is still confirming. Credits will be added automatically once confirmed.",
+        });
       }
-      // If still "pending" after retries, proceed anyway — MiniKit.pay() returned success
-      // so World App accepted it. We'll verify asynchronously.
     }
 
     // Grant credits FIRST, then mark delegation confirmed
