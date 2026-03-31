@@ -100,12 +100,13 @@ try {
 process.exit(0);
 `;
 
-    const scriptPath = "/tmp/xmtp-send-init.mjs";
+    // Write script INTO ~/scripts/ so ESM import resolution finds node_modules there
+    const scriptPath = "~/scripts/xmtp-send-init.mjs";
     await ssh.execCommand(`cat > ${scriptPath} << 'SCRIPTEOF'\n${sendScript}\nSCRIPTEOF`);
 
-    // Ensure @xmtp/agent-sdk is installed, then run from ~/scripts
+    // Ensure @xmtp/agent-sdk is installed, then run
     const result = await ssh.execCommand(
-      `source ~/.nvm/nvm.sh && cd ~/scripts && (node -e "require.resolve('@xmtp/agent-sdk')" 2>/dev/null || npm install @xmtp/agent-sdk@latest --save 2>&1 | tail -3) && node ${scriptPath} 2>&1`,
+      `source ~/.nvm/nvm.sh && cd ~/scripts && (node -e "require.resolve('@xmtp/agent-sdk')" 2>/dev/null || npm install @xmtp/agent-sdk@latest --save 2>&1 | tail -3) && node xmtp-send-init.mjs 2>&1; rm -f xmtp-send-init.mjs`,
       { execOptions: { timeout: 45000 } }
     );
 
