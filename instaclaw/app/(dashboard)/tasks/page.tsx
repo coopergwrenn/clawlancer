@@ -538,12 +538,12 @@ function FilterPills({
 /* ─── Typing Indicator ───────────────────────────────────── */
 
 const THINKING_PHRASES = [
-  "Noodling on that...",
-  "Wrangling a response...",
-  "Scratching the ol' claw...",
-  "Cooking up an answer...",
-  "Canoodling with context...",
-  "Rounding up some thoughts...",
+  "Clawing through the data...",
+  "Sharpening the pincers...",
+  "Scuttling up an answer...",
+  "Cracking this open...",
+  "Pinching some thoughts together...",
+  "Digging through the sand...",
 ];
 
 function TypingIndicator() {
