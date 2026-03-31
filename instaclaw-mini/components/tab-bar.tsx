@@ -39,14 +39,14 @@ export default function TabBar() {
         pointerEvents: "none",
       }}
     >
-      {/* Blur fade — extends well above nav so content scrolls behind smoothly */}
+      {/* Subtle blur fade just above the nav pill */}
       <div
-        className="absolute inset-0 -top-20"
+        className="absolute inset-0 -top-3"
         style={{
-          backdropFilter: "blur(40px) saturate(1.5)",
-          WebkitBackdropFilter: "blur(40px) saturate(1.5)",
-          maskImage: "linear-gradient(to bottom, transparent 0%, black 35%)",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 35%)",
+          backdropFilter: "blur(20px) saturate(1.3)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.3)",
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 50%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 50%)",
         }}
       />
       <div
