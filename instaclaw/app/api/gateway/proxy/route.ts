@@ -498,15 +498,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // --- Check daily usage limit (read-only, no increment) ---
-    // The merged RPC also returns tier budget (tier_2_calls, tier_3_calls,
-    // sonnet_remaining, opus_remaining) for non-heartbeat calls, eliminating
-    // the need for a separate instaclaw_check_tier_budget call.
-    // Uses the original model for cost weight — routing may change it, but
-    // the 200-unit buffer absorbs any weight difference. The increment RPC
-    // always uses the final routed model for correct cost tracking.
+    // --- Atomic check + increment (C5 fix: eliminates race condition) ---
+    // Uses instaclaw_check_and_increment which does the limit check AND
+    // usage increment in a single transaction with a row lock. Two concurrent
+    // requests can no longer both pass the check — the second sees the first's
+    // increment. If the Anthropic call fails after this, the user "loses" one
+    // credit unit — acceptable tradeoff vs the race condition.
     const { data: limitResult, error: limitError } = await supabase.rpc(
-      "instaclaw_check_limit_only",
+      "instaclaw_check_and_increment",
       { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz, p_is_virtuals: isVirtuals, p_is_tool_continuation: isToolContinuation }
     );
 
@@ -1109,26 +1108,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // --- Success (2xx): increment usage AFTER confirmed provider response ---
-    supabase
-      .rpc("instaclaw_increment_usage", {
-        p_vm_id: vm.id,
-        p_model: finalModel,
-        p_is_heartbeat: isHeartbeat,
-        p_timezone: userTz,
-        p_is_virtuals: isVirtuals,
-        p_is_tool_continuation: isToolContinuation,
-      })
-      .then(({ error: incError }) => {
-        if (incError) {
-          logger.error("Failed to increment usage after successful API call", {
-            route: "gateway/proxy",
-            vmId: vm.id,
-            error: String(incError),
-            isHeartbeat,
-          });
-        }
-      });
+    // --- Usage already incremented atomically in instaclaw_check_and_increment above ---
+    // No separate increment needed. The atomic RPC handled check + increment
+    // in a single transaction with row lock (C5 fix).
 
     // --- Cron circuit breaker: track manual messages + check velocity ---
     if (isManualMessage) {
