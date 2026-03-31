@@ -107,6 +107,68 @@ function formatDate(iso: string | undefined | null): string {
 
 const CHAT_KEY = "instaclaw-chat-history";
 
+const THINKING_PHRASES = [
+  "Clawing through the data...",
+  "Sharpening the pincers...",
+  "Scuttling up an answer...",
+  "Cracking this open...",
+  "Pinching some thoughts together...",
+  "Digging through the sand...",
+];
+
+function ThinkingIndicator() {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [displayed, setDisplayed] = useState("");
+  const [phase, setPhase] = useState<"typing" | "visible" | "exit">("typing");
+
+  const phrase = THINKING_PHRASES[phraseIndex];
+
+  // Typewriter effect
+  useEffect(() => {
+    if (phase !== "typing") return;
+    if (displayed.length < phrase.length) {
+      const timer = setTimeout(() => {
+        setDisplayed(phrase.slice(0, displayed.length + 1));
+      }, 30 + Math.random() * 30);
+      return () => clearTimeout(timer);
+    } else {
+      setPhase("visible");
+      const timer = setTimeout(() => setPhase("exit"), 2200);
+      return () => clearTimeout(timer);
+    }
+  }, [displayed, phrase, phase]);
+
+  // Cycle to next phrase after exit
+  useEffect(() => {
+    if (phase !== "exit") return;
+    const timer = setTimeout(() => {
+      setPhraseIndex((i) => (i + 1) % THINKING_PHRASES.length);
+      setDisplayed("");
+      setPhase("typing");
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  return (
+    <span
+      style={{
+        opacity: phase === "exit" ? 0 : 1,
+        transform: phase === "exit" ? "translateY(-4px)" : "translateY(0)",
+        transition: "all 0.35s ease",
+        display: "inline-block",
+      }}
+    >
+      <span style={{ color: "#888" }}>{displayed}</span>
+      {phase === "typing" && (
+        <span
+          className="inline-block w-[2px] h-[14px] ml-0.5 align-middle"
+          style={{ background: "#888", animation: "cursor-blink 0.8s step-end infinite" }}
+        />
+      )}
+    </span>
+  );
+}
+
 const SUGGESTIONS = [
   "Research a topic", "Draft an email", "Summarize the news",
   "Write a social post", "Plan my week", "Track crypto prices",
@@ -1360,12 +1422,8 @@ export default function CommandCenter({
                       <img src="/logo.png" alt="" className="w-5 h-5 relative z-[1]" style={{ filter: "invert(1) brightness(1.2)" }} />
                     </div>
                     <div className="relative">
-                      <div className="rounded-2xl px-4 py-3.5" style={{ background: "#1e1e1e", boxShadow: "0 1px 6px rgba(0,0,0,0.08)", borderBottomLeftRadius: "4px" }}>
-                        <div className="flex gap-1.5">
-                          <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0s" }} />
-                          <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.2s" }} />
-                          <span className="h-2 w-2 rounded-full" style={{ background: "rgba(218,119,86,0.6)", animation: "dot 1.4s infinite 0.4s" }} />
-                        </div>
+                      <div className="rounded-2xl px-4 py-3 text-[13px] leading-relaxed" style={{ background: "#1e1e1e", boxShadow: "0 1px 6px rgba(0,0,0,0.08)", borderBottomLeftRadius: "4px" }}>
+                        <ThinkingIndicator />
                         <svg className="absolute bottom-0 -left-[8px] w-3 h-[18px]" viewBox="0 0 12 18" fill="none">
                           <path d="M12 0C11 8 4 14 0 18H12V0Z" fill="#1e1e1e" />
                         </svg>
@@ -1594,6 +1652,7 @@ export default function CommandCenter({
       <style>{`
         @keyframes dot { 0%,60%,100%{opacity:.3;transform:translateY(0)} 30%{opacity:1;transform:translateY(-4px)} }
         @keyframes bubble-in { from{opacity:0;transform:scale(0.95) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        @keyframes cursor-blink { 0%,100%{opacity:1} 50%{opacity:0} }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
