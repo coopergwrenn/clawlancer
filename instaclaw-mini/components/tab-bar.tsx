@@ -39,14 +39,14 @@ export default function TabBar() {
         pointerEvents: "none",
       }}
     >
-      {/* Blur fade — content scrolls behind this smoothly */}
+      {/* Blur fade — extends well above nav so content scrolls behind smoothly */}
       <div
-        className="absolute inset-0 -top-8"
+        className="absolute inset-0 -top-20"
         style={{
-          backdropFilter: "blur(30px) saturate(1.4)",
-          WebkitBackdropFilter: "blur(30px) saturate(1.4)",
-          maskImage: "linear-gradient(to bottom, transparent 0%, black 40%)",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 40%)",
+          backdropFilter: "blur(40px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(40px) saturate(1.5)",
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 35%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 35%)",
         }}
       />
       <div
@@ -61,12 +61,12 @@ export default function TabBar() {
         ref={navRef}
         className="relative flex items-center justify-around rounded-full px-1 py-1"
         style={{
-          background: "rgba(20, 20, 20, 0.75)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(20, 20, 20, 0.65)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid rgba(255,255,255,0.06)",
           boxShadow:
-            "0 4px 24px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)",
+            "0 2px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)",
           pointerEvents: "auto",
         }}
       >
