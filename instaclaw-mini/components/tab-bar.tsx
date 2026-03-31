@@ -39,14 +39,11 @@ export default function TabBar() {
         pointerEvents: "none",
       }}
     >
-      {/* Subtle blur fade just above the nav pill */}
+      {/* Background fill — covers the entire nav zone so no black gap shows */}
       <div
-        className="absolute inset-0 -top-3"
+        className="absolute inset-0"
         style={{
-          backdropFilter: "blur(20px) saturate(1.3)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.3)",
-          maskImage: "linear-gradient(to bottom, transparent 0%, black 50%)",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 50%)",
+          background: "linear-gradient(to bottom, transparent 0%, rgba(10,10,10,0.85) 30%, #0a0a0a 100%)",
         }}
       />
       <div
