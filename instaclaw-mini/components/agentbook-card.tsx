@@ -113,7 +113,7 @@ export default function AgentBookCard() {
           <p className="text-sm font-semibold">Registered in AgentBook</p>
           <p className="text-[10px]" style={{ color: "#888" }}>On-chain verified human agent</p>
         </div>
-        <Check size={16} style={{ color: "#005CFF" }} />
+        <Check size={16} style={{ color: "#22c55e" }} />
       </div>
     );
   }
