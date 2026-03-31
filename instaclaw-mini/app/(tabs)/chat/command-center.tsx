@@ -1307,15 +1307,6 @@ export default function CommandCenter({
         {/* ── Chat Tab ── */}
         {tab === "chat" && (
           <div className="flex-1 flex flex-col relative">
-            {/* Sidebar overlay */}
-            <ChatSidebar
-              open={showSidebar}
-              onClose={() => setShowSidebar(false)}
-              activeId={activeConvId}
-              onSelect={(id) => setActiveConvId(id)}
-              onNewChat={() => { setActiveConvId(null); setChatMsgs([]); }}
-            />
-
             {/* Messages area */}
             <div className="flex-1 flex flex-col px-4 py-3" style={{ minHeight: "50vh" }}>
             {loadingChat ? (
@@ -1674,6 +1665,17 @@ export default function CommandCenter({
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
+
+      {/* Chat sidebar — rendered at top level so fixed positioning works */}
+      {tab === "chat" && (
+        <ChatSidebar
+          open={showSidebar}
+          onClose={() => setShowSidebar(false)}
+          activeId={activeConvId}
+          onSelect={(id) => setActiveConvId(id)}
+          onNewChat={() => { setActiveConvId(null); setChatMsgs([]); }}
+        />
+      )}
 
       {/* Toast notification */}
       {toast && (
