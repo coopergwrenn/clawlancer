@@ -235,6 +235,7 @@ export default function CommandCenter({
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [worldChatLoading, setWorldChatLoading] = useState(false);
   const [loadingChat, setLoadingChat] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -727,23 +728,43 @@ export default function CommandCenter({
           {xmtpAddress && (
             <button
               onClick={async () => {
+                if (worldChatLoading) return;
+                setWorldChatLoading(true);
                 try {
-                  await fetch("/api/xmtp/init-chat", { method: "POST" });
+                  const res = await fetch("/api/xmtp/init-chat", { method: "POST" });
+                  if (!res.ok) {
+                    const err = await res.text().catch(() => "");
+                    console.error("World Chat init failed:", res.status, err);
+                    setWorldChatLoading(false);
+                    return;
+                  }
                   const { MiniKit } = await import("@worldcoin/minikit-js");
                   await MiniKit.commandsAsync.chat({
                     message: "",
                     to: [xmtpAddress],
                   });
                 } catch (err) { console.error("World Chat error:", err); }
+                setWorldChatLoading(false);
               }}
-              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/[0.05] active:scale-95 shrink-0"
+              disabled={worldChatLoading}
+              className="h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all active:scale-95 shrink-0 gap-1.5 px-2.5"
               title="Open World Chat"
               style={{
-                background: "linear-gradient(145deg, rgba(218,119,86,0.15), rgba(218,119,86,0.05))",
-                border: "1px solid rgba(218,119,86,0.2)",
+                background: worldChatLoading
+                  ? "linear-gradient(145deg, rgba(218,119,86,0.25), rgba(218,119,86,0.1))"
+                  : "linear-gradient(145deg, rgba(218,119,86,0.15), rgba(218,119,86,0.05))",
+                border: "1px solid rgba(218,119,86,0.25)",
+                opacity: worldChatLoading ? 0.7 : 1,
               }}
             >
-              <MessageCircle size={16} style={{ color: "#da7756" }} />
+              {worldChatLoading ? (
+                <div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: "rgba(218,119,86,0.3)", borderTopColor: "#da7756" }} />
+              ) : (
+                <MessageCircle size={14} style={{ color: "#da7756" }} />
+              )}
+              <span className="text-[11px] font-medium" style={{ color: "#da7756" }}>
+                {worldChatLoading ? "Opening…" : "World Chat"}
+              </span>
             </button>
           )}
         </div>
