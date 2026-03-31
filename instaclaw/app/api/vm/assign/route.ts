@@ -33,15 +33,39 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    // For web users: verify active subscription
-    // For mini app users: skip subscription check (they pay with WLD)
+    // C9 FIX: Prevent trial abuse — require World ID OR paid subscription for web users.
+    // Trialing users without World ID verification are blocked from VM assignment.
+    // This prevents unlimited free trial accounts via throwaway Google emails.
     if (!isMiniApp) {
+      const { data: user } = await supabase
+        .from("instaclaw_users")
+        .select("world_id_verified")
+        .eq("id", targetUserId)
+        .single();
+
       const { data: subscription } = await supabase
         .from("instaclaw_subscriptions")
         .select("status")
         .eq("user_id", targetUserId)
         .single();
 
+      const isTrialing = subscription?.status === "trialing";
+      const isWorldIdVerified = !!user?.world_id_verified;
+
+      // Block trialing users who haven't verified World ID
+      if (isTrialing && !isWorldIdVerified) {
+        logger.warn("Trial abuse prevention: blocking unverified trial user", {
+          route: "vm/assign",
+          userId: targetUserId,
+          subscriptionStatus: subscription?.status,
+        });
+        return NextResponse.json(
+          { error: "World ID verification required for trial accounts. Verify your identity to get started." },
+          { status: 403 }
+        );
+      }
+
+      // Standard subscription check (active or trialing+verified)
       if (!subscription || !["active", "trialing"].includes(subscription.status)) {
         return NextResponse.json(
           { error: "Active subscription required. Please subscribe to a plan first." },
@@ -49,6 +73,8 @@ export async function POST(req: NextRequest) {
         );
       }
     }
+
+    // Mini app users skip subscription check (they pay with WLD)
 
     // Check if user already has a VM
     const { data: existing } = await supabase

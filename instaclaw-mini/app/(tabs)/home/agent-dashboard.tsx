@@ -85,6 +85,8 @@ export default function AgentDashboard({
     }
   }, [searchParams]);
   const [waitingForSubscribe, setWaitingForSubscribe] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [paymentPending, setPaymentPending] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(subscription.hasSubscription);
   const [editingName, setEditingName] = useState(false);
   const [agentName, setAgentName] = useState<string>((agent as Record<string, unknown>).agent_name as string || "");
@@ -150,7 +152,11 @@ export default function AgentDashboard({
   }
 
   async function handleAddCredits() {
+    if (paymentProcessing) return; // Prevent duplicate submissions
     MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
+    setPaymentProcessing(true);
+    setPaymentPending(false);
+
     try {
       const res = await fetch("/api/delegate/initiate", {
         method: "POST",
@@ -162,6 +168,7 @@ export default function AgentDashboard({
       const recipientAddress = process.env.NEXT_PUBLIC_RECIPIENT_ADDRESS?.trim();
       if (!recipientAddress) {
         console.error("NEXT_PUBLIC_RECIPIENT_ADDRESS not configured");
+        setPaymentProcessing(false);
         return;
       }
 
@@ -173,7 +180,7 @@ export default function AgentDashboard({
       });
 
       if (payResult.finalPayload.status === "success") {
-        await fetch("/api/delegate/confirm", {
+        const confirmRes = await fetch("/api/delegate/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -181,10 +188,49 @@ export default function AgentDashboard({
             transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
           }),
         });
-        router.refresh();
+        const confirmData = await confirmRes.json();
+
+        if (confirmData.success) {
+          // Credits added immediately
+          setPaymentProcessing(false);
+          router.refresh();
+        } else if (confirmData.pending) {
+          // Transaction still confirming on-chain — poll for confirmation
+          setPaymentPending(true);
+          const maxPolls = 20; // 60 seconds total
+          for (let i = 0; i < maxPolls; i++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            try {
+              const statusRes = await fetch(`/api/delegate/status?reference=${reference}`);
+              const statusData = await statusRes.json();
+              if (statusData.confirmed) {
+                setPaymentPending(false);
+                setPaymentProcessing(false);
+                router.refresh();
+                return;
+              }
+              if (statusData.status === "failed" || statusData.status === "amount_mismatch") {
+                setPaymentPending(false);
+                setPaymentProcessing(false);
+                return;
+              }
+            } catch { /* keep polling */ }
+          }
+          // Still pending after 60s — tell user it'll arrive
+          setPaymentPending(false);
+          setPaymentProcessing(false);
+        } else {
+          // Error from confirm
+          setPaymentProcessing(false);
+        }
+      } else {
+        // User cancelled or payment failed in World App
+        setPaymentProcessing(false);
       }
     } catch (err) {
       console.error("Payment error:", err);
+      setPaymentProcessing(false);
+      setPaymentPending(false);
     }
   }
 
@@ -263,9 +309,10 @@ export default function AgentDashboard({
           <div className="flex gap-2">
             <button
               onClick={handleAddCredits}
-              className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold"
+              disabled={paymentProcessing}
+              className="btn-wld flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
             >
-              Pay 25 WLD
+              {paymentPending ? "Confirming..." : paymentProcessing ? "Processing..." : "Pay 25 WLD"}
             </button>
             <button
               onClick={handleSubscribe}
@@ -360,9 +407,10 @@ export default function AgentDashboard({
             </div>
             <button
               onClick={handleAddCredits}
-              className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold"
+              disabled={paymentProcessing}
+              className="glass-button rounded-lg px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
             >
-              + Add
+              {paymentProcessing ? "..." : "+ Add"}
             </button>
           </div>
 

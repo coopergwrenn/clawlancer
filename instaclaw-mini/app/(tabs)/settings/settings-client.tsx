@@ -255,9 +255,12 @@ export default function SettingsClient({
     router.replace("/");
   }
 
+  const [pendingPayment, setPendingPayment] = useState(false);
+
   async function handleAddCredits() {
     if (paying) return;
     setPaying(true);
+    setPendingPayment(false);
     MiniKit.commands.sendHapticFeedback({ hapticsType: "impact", style: "medium" });
     try {
       const res = await fetch("/api/delegate/initiate", {
@@ -277,7 +280,7 @@ export default function SettingsClient({
       });
 
       if (payResult.finalPayload.status === "success") {
-        await fetch("/api/delegate/confirm", {
+        const confirmRes = await fetch("/api/delegate/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -285,7 +288,34 @@ export default function SettingsClient({
             transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
           }),
         });
-        router.refresh();
+        const confirmData = await confirmRes.json();
+
+        if (confirmData.success) {
+          setPaying(false);
+          router.refresh();
+          return;
+        } else if (confirmData.pending) {
+          setPendingPayment(true);
+          for (let i = 0; i < 20; i++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            try {
+              const statusRes = await fetch(`/api/delegate/status?reference=${reference}`);
+              const statusData = await statusRes.json();
+              if (statusData.confirmed) {
+                setPendingPayment(false);
+                setPaying(false);
+                router.refresh();
+                return;
+              }
+              if (statusData.status === "failed" || statusData.status === "amount_mismatch") {
+                setPendingPayment(false);
+                setPaying(false);
+                return;
+              }
+            } catch { /* keep polling */ }
+          }
+          setPendingPayment(false);
+        }
       }
     } catch (err) {
       console.error("Payment error:", err);
@@ -439,7 +469,7 @@ export default function SettingsClient({
                 disabled={paying}
                 className="btn-primary flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
               >
-                <Zap size={14} fill="currentColor" /> {paying ? "Processing..." : "Top up with WLD"}
+                <Zap size={14} fill="currentColor" /> {pendingPayment ? "Confirming..." : paying ? "Processing..." : "Top up with WLD"}
               </button>
               <button
                 onClick={() => {
@@ -470,7 +500,7 @@ export default function SettingsClient({
                 disabled={paying}
                 className="btn-primary flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
               >
-                {paying ? "Processing..." : "Pay with WLD"}
+                {pendingPayment ? "Confirming..." : paying ? "Processing..." : "Pay with WLD"}
               </button>
               <button
                 onClick={() => {

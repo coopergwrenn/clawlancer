@@ -8,8 +8,7 @@
 -- 2. If subscription is past_due or canceled, only allow if user has overflow credits
 -- 3. Active/trialing subscriptions get normal daily limits
 
-DROP FUNCTION IF EXISTS instaclaw_check_limit_only(UUID, TEXT, TEXT, BOOLEAN, TEXT, BOOLEAN, BOOLEAN);
-
+-- No DROP — CREATE OR REPLACE swaps in place with zero downtime
 CREATE OR REPLACE FUNCTION instaclaw_check_limit_only(
   p_vm_id UUID,
   p_tier TEXT,
