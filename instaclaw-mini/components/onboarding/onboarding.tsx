@@ -416,10 +416,9 @@ export default function Onboarding() {
       }
 
       // 3. MiniKit returned success — payment went through on World App side
-      // Confirm on backend (with retry polling for on-chain confirmation)
-      // Don't block user — proceed to ready even if on-chain is still pending
       const txId = (payResult.finalPayload as Record<string, unknown>).transaction_id;
 
+      // Confirm delegation in background (don't block)
       fetch("/api/delegate/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -432,6 +431,20 @@ export default function Onboarding() {
         await MiniKit.commandsAsync.requestPermission({ permission: "notifications" as never });
       } catch { /* user declined */ }
 
+      // 4. Assign VM immediately (fast, <10s) — THEN show provisioning
+      // This is the critical fix: VM assignment is synchronous and fast.
+      // Configure runs in the background. User is never stuck without a VM.
+      setStep("delegating"); // Show spinner while assigning
+      try {
+        const assignRes = await fetch("/api/agent/assign", { method: "POST" });
+        if (!assignRes.ok) {
+          console.error("[Onboarding] VM assign failed:", assignRes.status);
+        }
+      } catch (assignErr) {
+        console.error("[Onboarding] VM assign error:", assignErr);
+      }
+
+      // Go to provisioning — VM is assigned, ProvisioningStatus will detect it
       setStep("provisioning");
     } catch (err) {
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
@@ -559,6 +572,11 @@ export default function Onboarding() {
             transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
           }),
         });
+        // Assign VM immediately
+        setStep("delegating");
+        try {
+          await fetch("/api/agent/assign", { method: "POST" });
+        } catch { /* configure will retry */ }
         setStep("provisioning");
       } else {
         setError("Payment was cancelled.");

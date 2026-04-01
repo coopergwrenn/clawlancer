@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 
 // SSH + configure-vm.sh + health check + optional data migration can take 60-150s
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const MAX_CONFIGURE_ATTEMPTS = 3;
 
