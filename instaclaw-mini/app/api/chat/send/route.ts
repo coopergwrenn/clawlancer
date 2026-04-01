@@ -60,8 +60,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Build the gateway request
+    // OpenClaw gateway requires model: "openclaw" — it routes to the configured model internally
     const gatewayBody: Record<string, unknown> = {
-      model: "claude-sonnet-4-6",
+      model: "openclaw",
       messages: [{ role: "user", content: message }],
       stream: !!wantStream,
     };
