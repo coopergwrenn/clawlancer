@@ -23,7 +23,7 @@ export async function GET() {
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select(
-        "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled"
+        "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled, bankr_wallet_id, bankr_evm_address, bankr_token_address, bankr_token_symbol"
       )
       .eq("assigned_to", session.user.id)
       .single();
@@ -95,6 +95,10 @@ export async function GET() {
           worldIdVerifiedAt: userProfile?.world_id_verified_at ?? null,
           gmailConnected: userProfile?.gmail_connected ?? false,
           gmailPopupDismissed: userProfile?.gmail_popup_dismissed ?? true,
+          bankrWalletId: vm.bankr_wallet_id ?? null,
+          bankrEvmAddress: vm.bankr_evm_address ?? null,
+          bankrTokenAddress: vm.bankr_token_address ?? null,
+          bankrTokenSymbol: vm.bankr_token_symbol ?? null,
         },
         billing,
       });

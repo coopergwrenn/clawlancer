@@ -54,6 +54,10 @@ interface UserConfig {
   worldIdNullifier?: string;
   /** World ID verification level ("orb" or "device") */
   worldIdLevel?: string;
+  /** Bankr wallet API key (bk_usr_...) — deployed to VM .env for trading skill */
+  bankrApiKey?: string;
+  /** Bankr EVM wallet address — deployed to VM .env + Wallet.md */
+  bankrEvmAddress?: string;
 }
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
@@ -3105,6 +3109,29 @@ export async function configureOpenClaw(
       ''
     );
 
+    // Deploy Bankr wallet credentials to .env for trading skill
+    if (config.bankrApiKey && config.bankrEvmAddress) {
+      scriptParts.push(
+        '# Deploy Bankr wallet credentials',
+        `grep -q "^BANKR_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s/^BANKR_API_KEY=.*/BANKR_API_KEY=${config.bankrApiKey}/" "$HOME/.openclaw/.env" || \\`,
+        `  echo "BANKR_API_KEY=${config.bankrApiKey}" >> "$HOME/.openclaw/.env"`,
+        `grep -q "^BANKR_WALLET_ADDRESS=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s/^BANKR_WALLET_ADDRESS=.*/BANKR_WALLET_ADDRESS=${config.bankrEvmAddress}/" "$HOME/.openclaw/.env" || \\`,
+        `  echo "BANKR_WALLET_ADDRESS=${config.bankrEvmAddress}" >> "$HOME/.openclaw/.env"`,
+        ''
+      );
+    }
+
+    // Install Bankr skill for wallet + trading capabilities (public repo, no auth needed)
+    scriptParts.push(
+      '# Install Bankr skill for wallet + trading capabilities',
+      'if [ ! -d "$HOME/.openclaw/skills/bankr" ]; then',
+      '  git clone --depth 1 https://github.com/BankrBot/skills "$HOME/.openclaw/skills/bankr" 2>/dev/null || true',
+      'fi',
+      ''
+    );
+
     // Deploy World ID nullifier to .env + WORLD_ID.md if user is verified
     // This ensures the agent carries its human identity proof from first boot
     if (config.worldIdNullifier) {
@@ -3291,20 +3318,40 @@ export async function configureOpenClaw(
       'echo "# Memory" > $HOME/.openclaw/workspace/MEMORY.md',
       '# Create WALLET.md template — separate bootstrap file for wallet/financial info',
       '# Stays small (<5KB) and is always fully injected regardless of MEMORY.md size',
-      'cat > $HOME/.openclaw/workspace/WALLET.md << \'WALLETEOF\'',
+    );
+
+    // Build Wallet.md content — include Bankr address if provisioned
+    const walletLines = [
       '# Wallet & Financial Configuration',
       '',
       '## Wallets',
-      '<!-- Add wallet addresses here. This file is always fully injected into context. -->',
-      '<!-- Example:',
-      '- **Primary wallet:** 0x...',
-      '- **Network:** Base / Polygon / etc.',
-      '-->',
+    ];
+    if (config.bankrEvmAddress) {
+      walletLines.push(
+        `- **Bankr Wallet:** ${config.bankrEvmAddress}`,
+        '- **Network:** Base (EVM)',
+        '- **Provider:** Bankr (bankr.bot)',
+        '- Use the bankr skill for trading, balance checks, and token operations.',
+      );
+    } else {
+      walletLines.push(
+        '<!-- Add wallet addresses here. This file is always fully injected into context. -->',
+        '<!-- Example:',
+        '- **Primary wallet:** 0x...',
+        '- **Network:** Base / Polygon / etc.',
+        '-->',
+      );
+    }
+    walletLines.push(
       '',
       '## Key Rules',
       '- Never share private keys',
       '- Always verify wallet addresses before transactions',
-      'WALLETEOF',
+    );
+
+    const walletB64 = Buffer.from(walletLines.join('\n'), 'utf-8').toString('base64');
+    scriptParts.push(
+      `echo '${walletB64}' | base64 -d > "$HOME/.openclaw/workspace/WALLET.md"`,
       '',
     );
 

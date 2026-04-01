@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
+import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
 import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
 
@@ -55,6 +56,10 @@ interface VMStatus {
     gatewayToken: string | null;
     gmailConnected: boolean;
     gmailPopupDismissed: boolean;
+    bankrWalletId: string | null;
+    bankrEvmAddress: string | null;
+    bankrTokenAddress: string | null;
+    bankrTokenSymbol: string | null;
   };
   billing?: {
     tier: string;
@@ -515,6 +520,16 @@ export default function DashboardPage() {
       <div data-tour="dash-verify">
         <WorldIDBanner />
       </div>
+
+      {/* Bankr wallet card — shows if agent has a provisioned wallet */}
+      {vm && (
+        <BankrWalletCard
+          walletId={vm.bankrWalletId}
+          evmAddress={vm.bankrEvmAddress}
+          tokenAddress={vm.bankrTokenAddress}
+          tokenSymbol={vm.bankrTokenSymbol}
+        />
+      )}
 
       {vmStatus?.status === "assigned" && vm ? (
         <>
