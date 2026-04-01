@@ -252,7 +252,22 @@ def send_telegram_fallback(bot_token, chat_id):
         return False
 
 def restart_gateway():
-    """Restart the OpenClaw gateway."""
+    """Restart the OpenClaw gateway (with lock file coordination)."""
+    # Fix 4: Check restart lock — skip if another source restarted recently
+    lock_path = "/tmp/ic-restart.lock"
+    try:
+        if os.path.exists(lock_path):
+            age = time.time() - os.path.getmtime(lock_path)
+            if age < 120:
+                return  # Another restart happened within 2 minutes — skip
+    except Exception:
+        pass
+    try:
+        # Set lock before restarting
+        with open(lock_path, "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
     try:
         env = os.environ.copy()
         env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
@@ -327,7 +342,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 51,
+  version: 52,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

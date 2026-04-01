@@ -18,6 +18,7 @@ const SSH_QUARANTINE_THRESHOLD = 6; // Auto-quarantine after 6 consecutive SSH f
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment
 const CONFIG_AUDIT_BATCH_SIZE = 10; // Max VMs to audit per cycle (raised from 3 to clear backlog faster)
 const AUTO_MIGRATE_BATCH_SIZE = 3; // Max auto-migrations per cron cycle to prevent storms
+const RESTART_GRACE_SECONDS = 120; // Skip health marking if gateway restarted within this window (Fix 1)
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
 
 export async function GET(req: NextRequest) {
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
   // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at")
+    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at, last_gateway_restart")
     .eq("status", "assigned")
     .not("gateway_url", "is", null);
 
@@ -57,16 +58,79 @@ export async function GET(req: NextRequest) {
   let sshQuarantined = 0;
   let telegramConflictsHealed = 0;
   let billingCachesCleared = 0;
+  let httpPreCheckPassed = 0;
+  let restartGraceSkipped = 0;
 
   // ========================================================================
-  // Pass 0: SSH connectivity check — catch dead SSH daemons before they
-  // waste time on gateway health checks. VMs that fail SSH get their
-  // ssh_fail_count incremented. After SSH_QUARANTINE_THRESHOLD consecutive
-  // failures, auto-quarantine the VM (mark as failed).
+  // Pass 0 (HTTP-first): Direct HTTP health check for ALL VMs.
+  // Fix 7: Use HTTP endpoint as primary monitor. Only SSH for diagnosis.
+  // This eliminates fail2ban/UFW issues and reduces SSH connections from
+  // ~200/cycle to only the unhealthy VMs that need intervention.
   // ========================================================================
   const sshAliveVms: typeof vms = [];
+  const httpFailedVms: typeof vms = [];
 
   for (const vm of vms) {
+    // Fix 1: Skip VMs in restart grace period
+    const lastRestart = vm.last_gateway_restart
+      ? new Date(vm.last_gateway_restart).getTime() : 0;
+    const inGracePeriod = Date.now() - lastRestart < RESTART_GRACE_SECONDS * 1000;
+
+    if (inGracePeriod) {
+      restartGraceSkipped++;
+      // Treat as healthy — gateway was just restarted intentionally
+      sshAliveVms.push(vm);
+      logger.info("Skipping health check — gateway in restart grace period", {
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+        secondsSinceRestart: Math.round((Date.now() - lastRestart) / 1000),
+      });
+      continue;
+    }
+
+    // HTTP-first: try direct HTTP health endpoint (no SSH needed)
+    let httpHealthy = false;
+    try {
+      const httpRes = await fetch(`http://${vm.ip_address}:18789/health`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      httpHealthy = httpRes.ok;
+    } catch {
+      // HTTP unreachable — fall through to SSH diagnosis
+    }
+
+    if (httpHealthy) {
+      // Gateway is healthy via HTTP — skip SSH for monitoring
+      httpPreCheckPassed++;
+      sshAliveVms.push(vm);
+
+      // Reset any stale failure counters
+      if ((vm.health_fail_count ?? 0) > 0 || (vm.ssh_fail_count ?? 0) > 0 || vm.health_status !== "healthy") {
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            health_status: "healthy",
+            health_fail_count: 0,
+            ssh_fail_count: 0,
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", vm.id);
+      }
+      healthy++;
+      continue;
+    }
+
+    // HTTP failed — this VM needs SSH diagnosis
+    httpFailedVms.push(vm);
+  }
+
+  // ========================================================================
+  // Pass 0b: SSH connectivity check — ONLY for VMs that failed HTTP.
+  // Fix 2: Don't mark unhealthy on first SSH failure (require 2+).
+  // ========================================================================
+
+  for (const vm of httpFailedVms) {
     const sshOk = await checkSSHConnectivity({
       id: vm.id,
       ip_address: vm.ip_address,
@@ -100,73 +164,42 @@ export async function GET(req: NextRequest) {
     });
 
     if (newSshFailCount >= SSH_QUARANTINE_THRESHOLD) {
-      // Before quarantining, try gateway HTTP health as fallback
-      let gatewayAlive = false;
-      try {
-        const gwRes = await fetch(`http://${vm.ip_address}:18789/health`, {
-          signal: AbortSignal.timeout(10000),
-        });
-        gatewayAlive = gwRes.ok;
-      } catch {
-        // Gateway unreachable — proceed with quarantine
-      }
+      // Both HTTP and SSH failed at quarantine threshold — quarantine
+      sshQuarantined++;
 
-      if (gatewayAlive) {
-        // Gateway is alive despite SSH failure — false positive, skip quarantine
-        logger.info("SSH failed but gateway HTTP health OK — skipping quarantine", {
-          route: "cron/health-check",
-          vmId: vm.id,
-          vmName: vm.name,
-          ipAddress: vm.ip_address,
-          sshFailCount: newSshFailCount,
-          assignedTo: vm.assigned_to,
-        });
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          status: "failed" as const,
+          health_status: "unhealthy",
+          ssh_fail_count: newSshFailCount,
+          last_health_check: new Date().toISOString(),
+        })
+        .eq("id", vm.id);
 
-        await supabase
-          .from("instaclaw_vms")
-          .update({
-            ssh_fail_count: 0,
-            health_status: "healthy",
-            last_health_check: new Date().toISOString(),
-          })
-          .eq("id", vm.id);
-      } else {
-        // Both SSH and HTTP failed — quarantine
-        sshQuarantined++;
+      logger.error("VM auto-quarantined: both HTTP and SSH unreachable", {
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+        ipAddress: vm.ip_address,
+        sshFailCount: newSshFailCount,
+        assignedTo: vm.assigned_to,
+      });
 
-        await supabase
-          .from("instaclaw_vms")
-          .update({
-            status: "failed" as const,
-            health_status: "unhealthy",
-            ssh_fail_count: newSshFailCount,
-            last_health_check: new Date().toISOString(),
-          })
-          .eq("id", vm.id);
-
-        logger.error("VM auto-quarantined: SSH unreachable", {
-          route: "cron/health-check",
-          vmId: vm.id,
-          vmName: vm.name,
-          ipAddress: vm.ip_address,
-          sshFailCount: newSshFailCount,
-          assignedTo: vm.assigned_to,
-        });
-
-        // Alert admin (via digest)
-        alerts.add(
-          "VM Auto-Quarantined: SSH Dead",
-          vm.name ?? vm.id,
-          `IP: ${vm.ip_address}\nSSH failures: ${newSshFailCount}\nAssigned to: ${vm.assigned_to ?? "none"}\nStatus set to "failed".`
-        );
-      }
+      alerts.add(
+        "VM Auto-Quarantined: SSH Dead",
+        vm.name ?? vm.id,
+        `IP: ${vm.ip_address}\nSSH failures: ${newSshFailCount}\nAssigned to: ${vm.assigned_to ?? "none"}\nStatus set to "failed".`
+      );
     } else {
-      // Not yet at threshold — just increment counter
+      // Fix 2: Only mark unhealthy after 2+ consecutive SSH failures (not 1).
+      // First failure is likely a transient blip — don't flip status.
+      const shouldMarkUnhealthy = newSshFailCount >= 2;
       await supabase
         .from("instaclaw_vms")
         .update({
           ssh_fail_count: newSshFailCount,
-          health_status: "unhealthy",
+          health_status: shouldMarkUnhealthy ? "unhealthy" : (vm.health_status ?? "unknown"),
           last_health_check: new Date().toISOString(),
         })
         .eq("id", vm.id);
@@ -176,8 +209,21 @@ export async function GET(req: NextRequest) {
   // Track which VMs are healthy for the config audit pass
   const healthyVmIds = new Set<string>();
 
-  // Only check gateway health on VMs with working SSH
-  for (const vm of sshAliveVms) {
+  // Add HTTP-pre-check-passed VMs directly to healthyVmIds
+  // (they already had their status updated in Pass 0)
+  for (const vm of vms ?? []) {
+    // VMs in sshAliveVms that are NOT in httpFailedVms passed HTTP
+    if (sshAliveVms.some(v => v.id === vm.id) && !httpFailedVms.some(v => v.id === vm.id)) {
+      healthyVmIds.add(vm.id);
+    }
+  }
+
+  // Build list of VMs that need SSH-based gateway health check
+  // (failed HTTP but passed SSH connectivity)
+  const needsSSHHealthCheck = sshAliveVms.filter(vm => httpFailedVms.some(v => v.id === vm.id));
+
+  // Only run SSH-based gateway health check on VMs that failed HTTP pre-check
+  for (const vm of needsSSHHealthCheck) {
     const result = await checkHealthExtended(vm, vm.gateway_token ?? undefined);
     const currentFailCount = vm.health_fail_count ?? 0;
 
@@ -294,7 +340,12 @@ else:
                 "rm -f ~/.openclaw/agents/main/sessions/.session-degraded"
               );
               const DBUS = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
-              await billingSSH.execCommand(`${DBUS} && systemctl --user restart openclaw-gateway`);
+              await billingSSH.execCommand(`touch /tmp/ic-restart.lock && ${DBUS} && systemctl --user restart openclaw-gateway`);
+              // Fix 1: Record restart for grace period
+              await supabase
+                .from("instaclaw_vms")
+                .update({ last_gateway_restart: new Date().toISOString() })
+                .eq("id", vm.id);
               billingCachesCleared++;
               logger.warn("Billing cache cleared and gateway restarted", {
                 route: "cron/health-check",
@@ -2692,6 +2743,8 @@ else:
     readyPoolTokensCleaned,
     telegramConflictsHealed,
     billingCachesCleared,
+    httpPreCheckPassed,
+    restartGraceSkipped,
     suspended,
     noSubSuspended,
     reclaimed,

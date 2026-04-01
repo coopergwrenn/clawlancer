@@ -14,6 +14,7 @@
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, type VMRecord } from "./ssh";
+import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import * as fs from "fs";
 import * as path from "path";
@@ -1160,6 +1161,18 @@ async function stepGatewayRestart(
 ): Promise<void> {
   const DBUS_PREFIX = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
   result.gatewayRestarted = true;
+
+  // Fix 1: Record restart timestamp for grace period
+  try {
+    const supabase = getSupabase();
+    await supabase
+      .from("instaclaw_vms")
+      .update({ last_gateway_restart: new Date().toISOString() })
+      .eq("id", vm.id);
+  } catch { /* non-fatal */ }
+
+  // Fix 4: Set restart lock file to prevent storms
+  await ssh.execCommand('touch /tmp/ic-restart.lock');
 
   // Restart with DBUS workaround (required for SSH sessions without a login shell)
   const restartResult = await ssh.execCommand(
