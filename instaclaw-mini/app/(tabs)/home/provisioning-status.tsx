@@ -113,6 +113,12 @@ export default function ProvisioningStatus() {
   const pollCount = useRef(0);
   const doneRef = useRef(false);
 
+  // Trigger configure on mount — ensures provisioning starts even if the
+  // verify route's fire-and-forget configure call failed or timed out
+  useEffect(() => {
+    fetch("/api/agent/retry-configure", { method: "POST" }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (doneRef.current) return;
 

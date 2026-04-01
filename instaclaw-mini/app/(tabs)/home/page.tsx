@@ -63,20 +63,8 @@ export default async function HomePage() {
         .single();
 
       if (userData?.world_id_verified) {
-        // Returning verified user — show simple status, not provisioning loop
-        return (
-          <div className="flex h-full flex-col items-center justify-center px-8" style={{ background: "#f8f7f4", color: "#333334" }}>
-            <h2 className="text-xl font-medium mb-2" style={{ fontFamily: "'Instrument Serif', Georgia, serif" }}>
-              Your agent is being configured
-            </h2>
-            <p className="text-center text-sm mb-6" style={{ color: "#6b6b6b" }}>
-              This can take a few minutes. Try the Chat or Settings tabs while you wait.
-            </p>
-            <p className="text-xs" style={{ color: "#aaa" }}>
-              Session: {session.userId.slice(0, 8)}...
-            </p>
-          </div>
-        );
+        // Returning verified user with no agent — show provisioning UI
+        return <ProvisioningStatus />;
       }
     } catch { /* fall through */ }
 

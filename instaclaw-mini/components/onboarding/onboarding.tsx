@@ -3,8 +3,9 @@
 import { MiniKit, tokenToDecimals, Tokens, VerificationLevel } from "@worldcoin/minikit-js";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import ProvisioningStatus from "@/app/(tabs)/home/provisioning-status";
 
-type Step = "welcome" | "verifying" | "collect-email" | "verify-failed" | "duplicate-found" | "delegate" | "delegating" | "ready";
+type Step = "welcome" | "verifying" | "collect-email" | "verify-failed" | "duplicate-found" | "delegate" | "delegating" | "provisioning" | "ready";
 
 const MARQUEE_ROW_1 = [
   "Personal Assistant", "Email Manager", "Scheduling Bot", "Content Creator",
@@ -431,7 +432,7 @@ export default function Onboarding() {
         await MiniKit.commandsAsync.requestPermission({ permission: "notifications" as never });
       } catch { /* user declined */ }
 
-      setStep("ready");
+      setStep("provisioning");
     } catch (err) {
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
       setError(`Error: ${msg}`);
@@ -558,7 +559,7 @@ export default function Onboarding() {
             transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
           }),
         });
-        setStep("ready");
+        setStep("provisioning");
       } else {
         setError("Payment was cancelled.");
       }
@@ -834,6 +835,11 @@ export default function Onboarding() {
           <p className="text-lg" style={{ ...serif, color: "#333334" }}>Your agent is powering up...</p>
           <p className="mt-1 text-sm" style={{ color: "#6b6b6b" }}>Deploying your personal AI</p>
         </div>
+      )}
+
+      {/* ── Provisioning — real progress UI ── */}
+      {step === "provisioning" && (
+        <ProvisioningStatus />
       )}
 
       {/* ── Ready ── */}
