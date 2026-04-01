@@ -418,33 +418,31 @@ export default function Onboarding() {
       // 3. MiniKit returned success — payment went through on World App side
       const txId = (payResult.finalPayload as Record<string, unknown>).transaction_id;
 
-      // Confirm delegation in background (don't block)
-      fetch("/api/delegate/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference, transactionId: txId }),
-      }).catch((err) => console.error("[Delegate] Confirm background error:", err));
-
       MiniKit.commands.sendHapticFeedback({ hapticsType: "notification", style: "success" });
 
       try {
         await MiniKit.commandsAsync.requestPermission({ permission: "notifications" as never });
       } catch { /* user declined */ }
 
-      // 4. Assign VM immediately (fast, <10s) — THEN show provisioning
-      // This is the critical fix: VM assignment is synchronous and fast.
-      // Configure runs in the background. User is never stuck without a VM.
-      setStep("delegating"); // Show spinner while assigning
+      // 4. Provision: confirm delegation + assign VM + fire configure (one endpoint)
+      // This matches the web app's checkout/verify pattern:
+      //   - Delegation confirm is SYNCHRONOUS (not fire-and-forget)
+      //   - VM assignment is SYNCHRONOUS (fast, <10s)
+      //   - Configure is fire-and-forget (60-90s in background)
       try {
-        const assignRes = await fetch("/api/agent/assign", { method: "POST" });
-        if (!assignRes.ok) {
-          console.error("[Onboarding] VM assign failed:", assignRes.status);
+        const provRes = await fetch("/api/agent/provision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reference, transactionId: txId }),
+        });
+        if (!provRes.ok) {
+          console.error("[Onboarding] Provision failed:", provRes.status);
         }
-      } catch (assignErr) {
-        console.error("[Onboarding] VM assign error:", assignErr);
+      } catch (provErr) {
+        console.error("[Onboarding] Provision error:", provErr);
       }
 
-      // Go to provisioning — VM is assigned, ProvisioningStatus will detect it
+      // Show provisioning UI — polls /api/agent/status for real progress
       setStep("provisioning");
     } catch (err) {
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
@@ -564,19 +562,19 @@ export default function Onboarding() {
       });
 
       if (payResult.finalPayload.status === "success") {
+        const txId2 = (payResult.finalPayload as Record<string, unknown>).transaction_id;
         await fetch("/api/pay/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reference,
-            transactionId: (payResult.finalPayload as Record<string, unknown>).transaction_id,
-          }),
+          body: JSON.stringify({ reference, transactionId: txId2 }),
         });
-        // Assign VM immediately
-        setStep("delegating");
         try {
-          await fetch("/api/agent/assign", { method: "POST" });
-        } catch { /* configure will retry */ }
+          await fetch("/api/agent/provision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reference, transactionId: txId2 }),
+          });
+        } catch { /* provision will auto-retry */ }
         setStep("provisioning");
       } else {
         setError("Payment was cancelled.");

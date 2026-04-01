@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 
 type StepStatus = "pending" | "active" | "done";
@@ -54,7 +53,7 @@ function RotatingMessage() {
 }
 
 function StepIcon({ status, justDone }: { status: StepStatus; justDone: boolean }) {
-  const size = "h-11 w-11"; // 44px — comfortable touch target
+  const size = "h-11 w-11";
 
   if (status === "done") {
     return (
@@ -99,8 +98,17 @@ function StepIcon({ status, justDone }: { status: StepStatus; justDone: boolean 
   );
 }
 
+/**
+ * ProvisioningStatus — matches web app's deploying page behavior:
+ *
+ * 1. Triggers configure on mount (belt-and-suspenders)
+ * 2. Polls /api/agent/status every 2s for REAL granular status
+ * 3. Advances steps based on actual VM state, not timers
+ * 4. Auto-retries configure at 60s if still no gateway_url
+ * 5. Shows retry button at 180s timeout
+ * 6. Redirects to dashboard when agent is healthy
+ */
 export default function ProvisioningStatus() {
-  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("provisioning");
   const [steps, setSteps] = useState<Step[]>([
     { id: "payment", label: "Payment confirmed", status: "done" },
@@ -112,9 +120,10 @@ export default function ProvisioningStatus() {
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set(["payment"]));
   const pollCount = useRef(0);
   const doneRef = useRef(false);
+  const retryFired = useRef(false);
+  const lastStatus = useRef<string>("no_vm");
 
-  // Trigger configure on mount — ensures provisioning starts even if the
-  // verify route's fire-and-forget configure call failed or timed out
+  // Trigger configure on mount
   useEffect(() => {
     fetch("/api/agent/retry-configure", { method: "POST" }).catch(() => {});
   }, []);
@@ -141,42 +150,60 @@ export default function ProvisioningStatus() {
       setTimeout(() => setPhase("complete"), 800);
     };
 
+    // Poll every 2 seconds (matches web app pattern)
     const poll = setInterval(async () => {
       pollCount.current++;
-      const count = pollCount.current;
+      const seconds = pollCount.current * 2; // 2s intervals
 
-      // Timed step progression
-      if (count === 3 && !doneRef.current) completeStep("assign", "configure");
-      if (count === 8 && !doneRef.current) completeStep("configure", "connect");
-      if (count === 12 && !doneRef.current) completeStep("connect", "health");
-      if (count === 16 && !doneRef.current) completeStep("health");
-
-      // Poll for real agent readiness
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await fetch("/api/agent/status");
         const data = await res.json();
-        if (data?.user?.agentReady) {
-          clearInterval(poll);
-          finishAll();
-          return;
+        const status = data?.status || "no_vm";
+
+        // Advance steps based on REAL status
+        if (status !== lastStatus.current) {
+          lastStatus.current = status;
+
+          if (status === "configuring" || status === "starting" || status === "ready") {
+            // VM is assigned
+            completeStep("assign", "configure");
+          }
+          if (status === "starting" || status === "ready") {
+            // Gateway URL is set — configure done
+            completeStep("configure", "connect");
+            completeStep("connect", "health");
+          }
+          if (status === "ready") {
+            // Gateway is healthy — all done
+            clearInterval(poll);
+            finishAll();
+            return;
+          }
         }
+
+        // Auto-retry at 60s if still configuring (matches web app's deploying page)
+        if (seconds >= 60 && !retryFired.current && status === "configuring") {
+          retryFired.current = true;
+          fetch("/api/agent/retry-configure", { method: "POST" }).catch(() => {});
+        }
+
       } catch { /* keep polling */ }
 
-      // Hard timeout at 180s — only finish if agent actually exists
-      if (count >= 180 && !doneRef.current) {
+      // Hard timeout at 180s
+      if (seconds >= 180 && !doneRef.current) {
         clearInterval(poll);
         doneRef.current = true;
         setPhase("timeout");
       }
-    }, 1000);
+    }, 2000);
 
     return () => clearInterval(poll);
-  }, [router]);
+  }, []);
 
   const serif = { fontFamily: "'Instrument Serif', Georgia, serif" };
   const doneCount = steps.filter((s) => s.status === "done").length;
 
-  // ── Complete: "All systems go!" with dashboard content ──
+  // ── Complete ──
   if (phase === "complete") {
     return (
       <div className="flex h-full flex-col items-center justify-center px-8 onboarding-light animate-fade-in" style={{ opacity: 0 }}>
@@ -200,7 +227,7 @@ export default function ProvisioningStatus() {
     );
   }
 
-  // ── Timeout fallback with retry ──
+  // ── Timeout with retry ──
   if (phase === "timeout") {
     return (
       <div className="flex h-full flex-col items-center justify-center px-8 onboarding-light">
@@ -214,6 +241,8 @@ export default function ProvisioningStatus() {
               setPhase("provisioning");
               doneRef.current = false;
               pollCount.current = 0;
+              retryFired.current = false;
+              lastStatus.current = "no_vm";
               setSteps([
                 { id: "payment", label: "Payment confirmed", status: "done" },
                 { id: "assign", label: "Assigning server", status: "active" },
@@ -221,7 +250,6 @@ export default function ProvisioningStatus() {
                 { id: "connect", label: "Connecting channels", status: "pending" },
                 { id: "health", label: "Final health check", status: "pending" },
               ]);
-              // Re-trigger configure
               try {
                 await fetch("/api/agent/retry-configure", { method: "POST" });
               } catch { /* fire-and-forget */ }
@@ -291,7 +319,7 @@ export default function ProvisioningStatus() {
       </p>
 
       <p className="mt-8 max-w-[280px] text-center text-[13px] leading-relaxed" style={{ color: "#aaa" }}>
-        Please don&apos;t close this screen. Your agent will be ready in about a minute.
+        This takes about a minute. Please don&apos;t close this screen.
       </p>
     </div>
   );
