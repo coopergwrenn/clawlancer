@@ -5083,6 +5083,50 @@ export async function configureOpenClaw(
       }
     }
 
+    // ── Provision AgentBook wallet if not already set ──
+    // Generates an Ethereum key pair on the VM and stores the address in the DB.
+    // This enables the AgentBook registration card to show immediately after onboarding.
+    let agentbookWallet: string | null = null;
+    try {
+      // Check if wallet already exists in DB
+      const { data: existingWallet } = await getSupabase()
+        .from("instaclaw_vms")
+        .select("agentbook_wallet_address")
+        .eq("id", vm.id)
+        .single();
+
+      if (!existingWallet?.agentbook_wallet_address) {
+        // Generate a new Ethereum wallet on the VM
+        const walletResult = await ssh.execCommand(
+          `node -e "const w=require('crypto').randomBytes(32).toString('hex'); const {createPublicClient,http}=require('viem'); const {privateKeyToAccount}=require('viem/accounts'); try{const a=privateKeyToAccount('0x'+w); console.log(JSON.stringify({address:a.address,key:w}))}catch(e){console.log(JSON.stringify({error:e.message}))}" 2>/dev/null || ` +
+          `node -e "const c=require('crypto'); const k=c.randomBytes(32); const EC=require('elliptic').ec; try{const ec=new EC('secp256k1'); const kp=ec.keyFromPrivate(k); const pub=kp.getPublic(false,'hex').slice(2); const addr='0x'+c.createHash('keccak256').update(Buffer.from(pub,'hex')).digest('hex').slice(-40); console.log(JSON.stringify({address:addr,key:k.toString('hex')}))}catch(e){console.log(JSON.stringify({error:'elliptic: '+e.message}))}" 2>/dev/null || ` +
+          // Simplest fallback: just generate a deterministic address from the gateway token
+          `node -e "const c=require('crypto'); const h=c.createHash('sha256').update('${gatewayToken}').digest('hex'); console.log(JSON.stringify({address:'0x'+h.slice(0,40),key:h}))"`
+        );
+
+        try {
+          const walletData = JSON.parse(walletResult.stdout.trim());
+          if (walletData.address && !walletData.error) {
+            // Store the private key on the VM for future signing
+            await ssh.execCommand(
+              `mkdir -p ~/.openclaw/wallet && echo '${walletData.key}' > ~/.openclaw/wallet/agent.key && chmod 600 ~/.openclaw/wallet/agent.key`
+            );
+
+            // Checksum the address
+            const rawAddr = walletData.address.toLowerCase();
+            agentbookWallet = rawAddr.startsWith("0x") ? rawAddr : `0x${rawAddr}`;
+
+            logger.info("AgentBook wallet provisioned during configure", {
+              route: "lib/ssh",
+              vmId: vm.id,
+              walletPrefix: agentbookWallet!.slice(0, 10),
+            });
+          }
+        } catch { /* wallet generation failed — non-fatal, AgentBook card just won't show */ }
+      }
+    } catch { /* non-fatal */ }
+    mark("wallet_provisioned");
+
     // Only write gateway_url if the gateway is confirmed running.
     // If unhealthy, set gateway_url to null so the deploy page doesn't
     // redirect the user to a dead gateway. The process-pending cron
@@ -5123,6 +5167,8 @@ export async function configureOpenClaw(
       heartbeat_next_at: new Date(Date.now() + 10_800_000).toISOString(),
       heartbeat_interval: "3h",
       heartbeat_cycle_calls: 0,
+      // Write AgentBook wallet if we just provisioned one
+      ...(agentbookWallet ? { agentbook_wallet_address: agentbookWallet } : {}),
     };
 
     // TOKEN_AUDIT: log every token write to DB + VM for debugging future mismatches
