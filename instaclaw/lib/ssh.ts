@@ -4923,7 +4923,7 @@ export async function configureOpenClaw(
       last_health_check: new Date().toISOString(),
       ssh_fail_count: 0,
       health_fail_count: 0,
-      config_version: 1,
+      config_version: VM_MANIFEST.version,
       // Preserve old token for grace period during rotation (prevents 401s
       // if health cron resyncs before the gateway picks up the new token)
       ...(oldToken && oldToken !== gatewayToken ? { previous_gateway_token: oldToken } : {}),
