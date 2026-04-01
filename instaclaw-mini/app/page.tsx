@@ -35,10 +35,17 @@ export default function RootPage() {
             return;
           }
           if (meData?.user?.id) {
-            // Has session but no agent — might be mid-provisioning
-            console.log("[InstaClaw] Existing session, no agent → provisioning/onboarding");
+            // Has session but no agent — check if verified (mid-provisioning) or needs onboarding
+            if (meData.user.worldIdVerified) {
+              console.log("[InstaClaw] Existing session, verified, no agent → provisioning");
+              resolved.current = true;
+              router.replace("/home");
+              return;
+            }
+            // Not verified, no agent → show onboarding (don't redirect to /home or it loops)
+            console.log("[InstaClaw] Existing session, NOT verified → onboarding");
             resolved.current = true;
-            router.replace("/home"); // home shows ProvisioningStatus if no agent
+            setState("onboarding");
             return;
           }
         }
@@ -67,9 +74,12 @@ export default function RootPage() {
               resolved.current = true;
               if (autoData.user.hasAgent) {
                 router.replace("/home");
-              } else {
-                // User exists but no agent — go to home (shows provisioning status)
+              } else if (autoData.user.worldIdVerified) {
+                // Verified but no agent — mid-provisioning
                 router.replace("/home");
+              } else {
+                // Not verified — show onboarding
+                setState("onboarding");
               }
               return;
             }
