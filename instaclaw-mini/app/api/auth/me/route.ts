@@ -29,6 +29,7 @@ export async function GET() {
         id: session.userId,
         walletAddress: session.walletAddress,
         hasAgent: !!agent,
+        agentReady: !!agent && agent.health_status === "healthy" && !!agent.gateway_url,
         xmtpAddress: agent?.xmtp_address ?? null,
         worldIdVerified: userData?.world_id_verified ?? false,
         hasEmail: !!userData?.email,

@@ -155,7 +155,7 @@ export default function ProvisioningStatus() {
       try {
         const res = await fetch("/api/auth/me");
         const data = await res.json();
-        if (data?.user?.hasAgent) {
+        if (data?.user?.agentReady) {
           clearInterval(poll);
           finishAll();
           return;

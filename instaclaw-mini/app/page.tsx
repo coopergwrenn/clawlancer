@@ -28,8 +28,14 @@ export default function RootPage() {
         const meRes = await fetch("/api/auth/me");
         if (meRes.ok) {
           const meData = await meRes.json();
+          if (meData?.user?.agentReady) {
+            console.log("[InstaClaw] Existing session + ready agent → dashboard");
+            resolved.current = true;
+            router.replace("/home");
+            return;
+          }
           if (meData?.user?.hasAgent) {
-            console.log("[InstaClaw] Existing session + agent → dashboard");
+            console.log("[InstaClaw] Existing session + agent (configuring) → home");
             resolved.current = true;
             router.replace("/home");
             return;
