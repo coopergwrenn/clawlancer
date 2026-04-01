@@ -21,7 +21,7 @@ export async function getAgentStatus(userId: string) {
   const { data, error } = await supabase()
     .from("instaclaw_vms")
     .select(
-      "id, status, health_status, credit_balance, default_model, xmtp_address, telegram_bot_token, telegram_bot_username, assigned_at, last_health_check, agent_name"
+      "id, status, health_status, credit_balance, default_model, xmtp_address, telegram_bot_token, telegram_bot_username, assigned_at, last_health_check, agent_name, gateway_url"
     )
     .eq("assigned_to", userId)
     .single();
