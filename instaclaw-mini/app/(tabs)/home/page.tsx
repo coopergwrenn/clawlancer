@@ -63,8 +63,31 @@ export default async function HomePage() {
         .single();
 
       if (userData?.world_id_verified) {
-        // Returning verified user with no agent — show provisioning UI
-        return <ProvisioningStatus />;
+        // Verified but no agent — check if they actually have a confirmed delegation
+        // If no confirmed delegation, they haven't paid → send back to onboarding
+        const { data: confirmedDel } = await db()
+          .from("instaclaw_wld_delegations")
+          .select("id")
+          .eq("user_id", session.userId)
+          .eq("status", "confirmed")
+          .limit(1)
+          .single();
+
+        // Also check for Stripe subscription (web app users)
+        const { data: activeSub } = await db()
+          .from("instaclaw_subscriptions")
+          .select("id")
+          .eq("user_id", session.userId)
+          .in("status", ["active", "trialing"])
+          .limit(1)
+          .single();
+
+        if (confirmedDel || activeSub) {
+          // Paid — show provisioning UI
+          return <ProvisioningStatus />;
+        }
+        // Verified but never paid → back to onboarding payment step
+        redirect("/");
       }
     } catch { /* fall through */ }
 

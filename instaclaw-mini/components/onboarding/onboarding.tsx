@@ -437,6 +437,12 @@ export default function Onboarding() {
         });
         if (!provRes.ok) {
           console.error("[Onboarding] Provision failed:", provRes.status);
+          if (provRes.status === 402) {
+            // Payment not verified — go back to payment step
+            setError("Payment didn't go through. Please try again.");
+            setStep("delegate");
+            return;
+          }
         }
       } catch (provErr) {
         console.error("[Onboarding] Provision error:", provErr);

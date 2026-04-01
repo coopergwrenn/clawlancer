@@ -48,13 +48,14 @@ export async function POST(req: Request) {
     }
 
     // ── Step 2: VERIFY payment exists (GATE — no payment = no VM) ──
-    // Check for any delegation with a transaction_id (MiniKit returned success)
-    // OR confirmed status. This prevents free VMs for users who never paid.
+    // Only trust CONFIRMED delegations or those with on-chain transaction_hash.
+    // MiniKit.pay() returns a transaction_id even when payment fails (e.g.,
+    // insufficient WLD) — so transaction_id alone is NOT proof of payment.
     const { data: delegation } = await supabase()
       .from("instaclaw_wld_delegations")
-      .select("id, status, transaction_id")
+      .select("id, status, transaction_id, transaction_hash")
       .eq("user_id", session.userId)
-      .not("transaction_id", "is", null)
+      .or("status.eq.confirmed,transaction_hash.not.is.null")
       .order("delegated_at", { ascending: false })
       .limit(1)
       .single();
