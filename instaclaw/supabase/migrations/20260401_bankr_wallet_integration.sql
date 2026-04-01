@@ -9,7 +9,8 @@ ALTER TABLE instaclaw_vms
   ADD COLUMN IF NOT EXISTS bankr_api_key_encrypted TEXT,
   ADD COLUMN IF NOT EXISTS bankr_token_address VARCHAR(42),
   ADD COLUMN IF NOT EXISTS bankr_token_symbol VARCHAR(10),
-  ADD COLUMN IF NOT EXISTS bankr_token_launched_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS bankr_token_launched_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS tokenization_platform VARCHAR(20);
 
 COMMENT ON COLUMN instaclaw_vms.bankr_wallet_id IS 'Bankr wallet ID (wlt_...) from partner provisioning API';
 COMMENT ON COLUMN instaclaw_vms.bankr_evm_address IS 'EVM wallet address on Base from Bankr';
@@ -17,6 +18,7 @@ COMMENT ON COLUMN instaclaw_vms.bankr_api_key_encrypted IS 'Encrypted Bankr API 
 COMMENT ON COLUMN instaclaw_vms.bankr_token_address IS 'Agent token contract address on Base (after tokenization)';
 COMMENT ON COLUMN instaclaw_vms.bankr_token_symbol IS 'Agent token symbol (e.g. $AGENT)';
 COMMENT ON COLUMN instaclaw_vms.bankr_token_launched_at IS 'When the agent token was launched';
+COMMENT ON COLUMN instaclaw_vms.tokenization_platform IS 'Which platform the agent is tokenized on: bankr, virtuals, or NULL';
 
 CREATE INDEX IF NOT EXISTS idx_vms_bankr_wallet ON instaclaw_vms(bankr_wallet_id) WHERE bankr_wallet_id IS NOT NULL;
 
@@ -79,7 +81,8 @@ BEGIN
     bankr_api_key_encrypted = NULL,
     bankr_token_address = NULL,
     bankr_token_symbol = NULL,
-    bankr_token_launched_at = NULL
+    bankr_token_launched_at = NULL,
+    tokenization_platform = NULL
   WHERE id = v_vm_id;
 
   -- Log credit zeroing (only if there were credits to reclaim)

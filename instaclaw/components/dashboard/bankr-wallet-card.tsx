@@ -8,6 +8,7 @@ interface BankrWalletCardProps {
   evmAddress: string | null;
   tokenAddress: string | null;
   tokenSymbol: string | null;
+  tokenizationPlatform: string | null;
 }
 
 export function BankrWalletCard({
@@ -15,6 +16,7 @@ export function BankrWalletCard({
   evmAddress,
   tokenAddress,
   tokenSymbol,
+  tokenizationPlatform,
 }: BankrWalletCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -125,7 +127,16 @@ export function BankrWalletCard({
       </p>
 
       {/* Token status or tokenize button */}
-      {hasToken ? (
+      {tokenizationPlatform === "virtuals" && !hasToken ? (
+        <div
+          className="rounded-lg p-3"
+          style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+        >
+          <p className="text-xs" style={{ color: "var(--muted)" }}>
+            Your agent is tokenized on Virtuals Protocol. Only one tokenization platform is allowed per agent.
+          </p>
+        </div>
+      ) : hasToken ? (
         <div
           className="rounded-lg p-3 flex items-center justify-between"
           style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}

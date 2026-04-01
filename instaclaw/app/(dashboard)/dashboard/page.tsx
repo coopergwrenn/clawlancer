@@ -60,6 +60,7 @@ interface VMStatus {
     bankrEvmAddress: string | null;
     bankrTokenAddress: string | null;
     bankrTokenSymbol: string | null;
+    tokenizationPlatform: string | null;
   };
   billing?: {
     tier: string;
@@ -528,6 +529,7 @@ export default function DashboardPage() {
           evmAddress={vm.bankrEvmAddress}
           tokenAddress={vm.bankrTokenAddress}
           tokenSymbol={vm.bankrTokenSymbol}
+          tokenizationPlatform={vm.tokenizationPlatform}
         />
       )}
 

@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   // Look up user's VM with Bankr wallet
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address")
+    .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address, tokenization_platform")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -37,8 +37,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No Bankr wallet provisioned" }, { status: 400 });
   }
 
-  if (vm.bankr_token_address) {
-    return NextResponse.json({ error: "Agent already tokenized" }, { status: 409 });
+  // Cross-platform tokenization guard — only one platform allowed
+  if (vm.tokenization_platform === "virtuals") {
+    return NextResponse.json(
+      { error: "Agent already tokenized on Virtuals Protocol. Only one tokenization platform is allowed per agent." },
+      { status: 409 }
+    );
+  }
+
+  if (vm.bankr_token_address || vm.tokenization_platform === "bankr") {
+    return NextResponse.json({ error: "Agent already tokenized on Bankr" }, { status: 409 });
   }
 
   // TODO: Call Bankr token launch API when available
