@@ -2593,11 +2593,86 @@ else:
     }
   } catch { /* agentbook checks are non-critical */ }
 
+  // ========================================================================
+  // Auto-retry pass: Assigned VMs with NO gateway_url (configure failed/timed out)
+  // These are users who paid but got stuck on "Your agent is being configured."
+  // If assigned 10+ minutes ago with no gateway_url, re-run configure.
+  // Capped at 2 per cycle to stay within Vercel timeout.
+  // ========================================================================
+  let autoConfigured = 0;
+  const AUTO_CONFIGURE_STALE_MINUTES = 10;
+  const AUTO_CONFIGURE_BATCH = 2;
+
+  const { data: stuckVms } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, assigned_to, assigned_at, ip_address, ssh_port, ssh_user, gateway_token, configure_lock_at")
+    .eq("status", "assigned")
+    .eq("provider", "linode")
+    .is("gateway_url", null)
+    .not("assigned_to", "is", null)
+    .lt("assigned_at", new Date(Date.now() - AUTO_CONFIGURE_STALE_MINUTES * 60 * 1000).toISOString())
+    .limit(AUTO_CONFIGURE_BATCH);
+
+  if (stuckVms?.length) {
+    for (const svm of stuckVms) {
+      // Skip if configure is currently locked (another process is working on it)
+      if (svm.configure_lock_at && new Date(svm.configure_lock_at).getTime() > Date.now() - 5 * 60 * 1000) {
+        continue;
+      }
+
+      logger.info("Auto-configuring stuck VM (no gateway_url)", {
+        route: "cron/health-check",
+        vmId: svm.id,
+        vmName: svm.name,
+        assignedTo: svm.assigned_to,
+        assignedAt: svm.assigned_at,
+      });
+
+      try {
+        // Call the configure endpoint internally
+        const configureUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://instaclaw.io"}/api/vm/configure`;
+        const configRes = await fetch(configureUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Key": process.env.ADMIN_API_KEY || "",
+          },
+          body: JSON.stringify({ userId: svm.assigned_to }),
+          signal: AbortSignal.timeout(120_000),
+        });
+
+        const configResult = await configRes.json().catch(() => ({}));
+        autoConfigured++;
+
+        logger.info("Auto-configure result", {
+          route: "cron/health-check",
+          vmId: svm.id,
+          vmName: svm.name,
+          configured: configResult.configured,
+          healthy: configResult.healthy,
+        });
+
+        alerts.add(
+          "Auto-Configure: Stuck VM Recovered",
+          svm.name ?? svm.id,
+          `User: ${svm.assigned_to}\nAssigned: ${svm.assigned_at}\nResult: configured=${configResult.configured} healthy=${configResult.healthy}`
+        );
+      } catch (configErr) {
+        logger.error("Auto-configure failed for stuck VM", {
+          route: "cron/health-check",
+          vmId: svm.id,
+          error: String(configErr),
+        });
+      }
+    }
+  }
+
   // Flush all collected alerts as grouped digest emails (one per alert type)
   const alertResult = await alerts.flush();
 
   return NextResponse.json({
     checked: vms.length,
+    autoConfigured,
     clobProxyHealthy,
     sshChecked,
     sshFailed,

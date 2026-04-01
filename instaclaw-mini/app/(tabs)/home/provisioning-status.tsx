@@ -194,20 +194,45 @@ export default function ProvisioningStatus() {
     );
   }
 
-  // ── Timeout fallback ──
+  // ── Timeout fallback with retry ──
   if (phase === "timeout") {
     return (
       <div className="flex h-full flex-col items-center justify-center px-8 onboarding-light">
         <h2 className="text-[28px] tracking-[-0.5px] mb-3" style={{ ...serif, color: "#333334" }}>Taking longer than expected</h2>
-        <p className="max-w-[300px] text-center text-[15px] leading-relaxed mb-8" style={{ color: "#6b6b6b" }}>
-          Your agent is almost ready. You can close this and come back, or go to the dashboard now.
+        <p className="max-w-[300px] text-center text-[15px] leading-relaxed mb-6" style={{ color: "#6b6b6b" }}>
+          Setup hit a snag. Tap retry to try again — this usually fixes it.
         </p>
-        <button
-          onClick={() => router.refresh()}
-          className="btn-primary rounded-[28px] px-10 py-4 text-base font-semibold"
-        >
-          Go to dashboard
-        </button>
+        <div className="flex flex-col gap-3 w-full max-w-[300px]">
+          <button
+            onClick={async () => {
+              setPhase("provisioning");
+              doneRef.current = false;
+              pollCount.current = 0;
+              setSteps([
+                { id: "payment", label: "Payment confirmed", status: "done" },
+                { id: "assign", label: "Assigning server", status: "active" },
+                { id: "configure", label: "Configuring agent", status: "pending" },
+                { id: "connect", label: "Connecting channels", status: "pending" },
+                { id: "health", label: "Final health check", status: "pending" },
+              ]);
+              // Re-trigger configure
+              try {
+                await fetch("/api/agent/retry-configure", { method: "POST" });
+              } catch { /* fire-and-forget */ }
+            }}
+            className="btn-primary w-full rounded-[28px] text-base font-semibold"
+            style={{ height: "56px" }}
+          >
+            Retry setup
+          </button>
+          <button
+            onClick={() => window.location.href = "/home?t=" + Date.now()}
+            className="w-full rounded-[28px] text-base font-medium"
+            style={{ height: "48px", color: "#6b6b6b", background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.08)" }}
+          >
+            Go to dashboard anyway
+          </button>
+        </div>
       </div>
     );
   }
