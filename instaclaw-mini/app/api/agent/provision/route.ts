@@ -9,17 +9,16 @@ export const maxDuration = 120;
 /**
  * POST /api/agent/provision
  *
- * THE mini app equivalent of the web app's checkout/verify endpoint.
- * Does everything synchronously in the right order:
+ * Mini app equivalent of web app's checkout/verify.
+ * CRITICAL: Only assigns a VM if a WLD delegation exists in the DB.
+ * This prevents free VM assignment for users who didn't complete payment.
  *
- *   1. Confirm WLD delegation (if reference/txId provided)
- *   2. Assign VM (fast, <10s)
- *   3. Mark onboarding complete
- *   4. Trigger configure (fire-and-forget — 60-90s in background)
- *   5. Return immediately so user sees provisioning UI
- *
- * The web app does steps 1-3 synchronously in checkout/verify, then
- * configure runs with retries. We match that pattern exactly.
+ * Flow:
+ *   1. Confirm WLD delegation (synchronous)
+ *   2. VERIFY delegation exists in DB (gate — blocks if no payment)
+ *   3. Assign VM (fast, <10s)
+ *   4. Mark onboarding complete
+ *   5. Trigger configure (fire-and-forget)
  */
 export async function POST(req: Request) {
   try {
@@ -48,7 +47,38 @@ export async function POST(req: Request) {
       }
     }
 
-    // ── Step 2: Check if user already has a VM ──
+    // ── Step 2: VERIFY payment exists (GATE — no payment = no VM) ──
+    // Check for any delegation with a transaction_id (MiniKit returned success)
+    // OR confirmed status. This prevents free VMs for users who never paid.
+    const { data: delegation } = await supabase()
+      .from("instaclaw_wld_delegations")
+      .select("id, status, transaction_id")
+      .eq("user_id", session.userId)
+      .not("transaction_id", "is", null)
+      .order("delegated_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!delegation) {
+      // Also check for Stripe subscription (web app users linking to mini app)
+      const { data: sub } = await supabase()
+        .from("instaclaw_subscriptions")
+        .select("id")
+        .eq("user_id", session.userId)
+        .in("status", ["active", "trialing"])
+        .limit(1)
+        .single();
+
+      if (!sub) {
+        console.error("[provision] No payment found for user", { userId: session.userId });
+        return NextResponse.json(
+          { error: "Payment not found. Please complete payment first." },
+          { status: 402 }
+        );
+      }
+    }
+
+    // ── Step 3: Check if user already has a VM ──
     const { data: existingVm } = await supabase()
       .from("instaclaw_vms")
       .select("id, health_status, gateway_url")
@@ -58,7 +88,7 @@ export async function POST(req: Request) {
     let vmId = existingVm?.id;
 
     if (!existingVm) {
-      // ── Step 3: Assign VM (synchronous, <10s) ──
+      // ── Step 4: Assign VM (synchronous, <10s) ──
       const assignRes = await proxyToInstaclaw("/api/vm/assign", session.userId, {
         method: "POST",
         body: JSON.stringify({
@@ -79,13 +109,13 @@ export async function POST(req: Request) {
       vmId = assignData.vm?.id;
     }
 
-    // ── Step 4: Mark onboarding complete ──
+    // ── Step 5: Mark onboarding complete ──
     await supabase()
       .from("instaclaw_users")
       .update({ onboarding_complete: true })
       .eq("id", session.userId);
 
-    // ── Step 5: Confirm pending delegations ──
+    // ── Step 6: Confirm the delegation that has a transaction_id ──
     if (vmId) {
       await supabase()
         .from("instaclaw_wld_delegations")
@@ -95,10 +125,11 @@ export async function POST(req: Request) {
           vm_id: vmId,
         })
         .eq("user_id", session.userId)
+        .not("transaction_id", "is", null)
         .in("status", ["pending", "pending_confirmation"]);
     }
 
-    // ── Step 6: Fire configure (background — don't wait) ──
+    // ── Step 7: Fire configure (background — don't wait) ──
     proxyToInstaclaw("/api/vm/configure", session.userId, {
       method: "POST",
       body: JSON.stringify({ userId: session.userId }),
