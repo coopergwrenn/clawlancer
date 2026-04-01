@@ -860,33 +860,57 @@ try:
     except Exception as e:
         print(f"Staleness check failed: {e}")
 
+    # Fix 4: Check restart lock before restarting
+    def _restart_lock_ok():
+        lock_path = "/tmp/ic-restart.lock"
+        try:
+            if os.path.exists(lock_path):
+                age = time.time() - os.path.getmtime(lock_path)
+                if age < 120:
+                    print(f"Restart skipped — lock active ({age:.0f}s old)")
+                    return False
+        except Exception:
+            pass
+        return True
+
+    def _set_restart_lock():
+        try:
+            with open("/tmp/ic-restart.lock", "w") as f:
+                f.write(str(time.time()))
+        except Exception:
+            pass
+
     # Restart gateway if we archived sessions (forces fresh session)
     if archived_sessions:
         print(f"Archived {len(archived_sessions)} oversized session(s): {archived_sessions}")
-        try:
-            subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
-            print("Gateway restarted after session archive")
-        except Exception as e:
-            print(f"Gateway restart failed: {e}")
+        if _restart_lock_ok():
+            try:
+                _set_restart_lock()
+                subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
+                print("Gateway restarted after session archive")
+            except Exception as e:
+                print(f"Gateway restart failed: {e}")
     elif total_stripped > 0 or total_truncated > 0 or total_images_stripped > 0:
         print(f"Stripped {total_stripped} thinking blocks, truncated {total_truncated} tool results, stripped {total_images_stripped} image blocks")
-        # Only restart for thinking strip if gateway has been up >60min
-        try:
-            r = subprocess.run(
-                ["systemctl", "--user", "show", "openclaw-gateway", "--property=ActiveEnterTimestamp"],
-                capture_output=True, text=True, timeout=5
-            )
-            ts_str = r.stdout.strip().split("=", 1)[-1]
-            if ts_str and ts_str != "n/a":
-                ts = datetime.strptime(ts_str, "%a %Y-%m-%d %H:%M:%S %Z").replace(tzinfo=timezone.utc)
-                uptime_mins = (datetime.now(timezone.utc) - ts).total_seconds() / 60
-                if uptime_mins > 60:
-                    print(f"Gateway uptime {uptime_mins:.0f}min > 60min, restarting to reload clean sessions")
-                    subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
-                else:
-                    print(f"Gateway uptime {uptime_mins:.0f}min < 60min, skipping restart")
-        except Exception as e:
-            print(f"Restart check failed: {e}")
+        # Only restart for thinking strip if gateway has been up >60min AND lock allows
+        if _restart_lock_ok():
+            try:
+                r = subprocess.run(
+                    ["systemctl", "--user", "show", "openclaw-gateway", "--property=ActiveEnterTimestamp"],
+                    capture_output=True, text=True, timeout=5
+                )
+                ts_str = r.stdout.strip().split("=", 1)[-1]
+                if ts_str and ts_str != "n/a":
+                    ts = datetime.strptime(ts_str, "%a %Y-%m-%d %H:%M:%S %Z").replace(tzinfo=timezone.utc)
+                    uptime_mins = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+                    if uptime_mins > 60:
+                        print(f"Gateway uptime {uptime_mins:.0f}min > 60min, restarting to reload clean sessions")
+                        _set_restart_lock()
+                        subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], timeout=30)
+                    else:
+                        print(f"Gateway uptime {uptime_mins:.0f}min < 60min, skipping restart")
+            except Exception as e:
+                print(f"Restart check failed: {e}")
 
     # Clean up archives older than 7 days
     try:
@@ -1138,7 +1162,21 @@ def kill_oldest_chrome():
     return None
 
 def restart_gateway():
-    """Restart the openclaw-gateway via systemctl."""
+    """Restart the openclaw-gateway via systemctl (with lock file coordination)."""
+    # Fix 4: Check restart lock — skip if another source restarted recently
+    lock_path = "/tmp/ic-restart.lock"
+    try:
+        if os.path.exists(lock_path):
+            age = time.time() - os.path.getmtime(lock_path)
+            if age < 120:
+                return "restart_skipped(lock_active)"
+    except Exception:
+        pass
+    try:
+        with open(lock_path, "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
     try:
         env = os.environ.copy()
         env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
@@ -2857,6 +2895,48 @@ export async function configureOpenClaw(
 
   const ssh = await connectSSH(vm);
   mark("ssh_connected");
+
+  // ── PRIVACY GUARD: Check for leftover user data and force-wipe if found ──
+  // Belt-and-suspenders: even if the reclaim path wiped, verify the VM is clean.
+  // If ANY session files or memory DB exist, the previous wipe failed or was skipped.
+  try {
+    const leftoverCheck = await ssh.execCommand(
+      'echo "sessions=$(ls ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | wc -l) memory=$(ls ~/.openclaw/memory/ 2>/dev/null | wc -l)"'
+    );
+    const match = leftoverCheck.stdout.match(/sessions=(\d+)\s+memory=(\d+)/);
+    if (match) {
+      const sessions = parseInt(match[1], 10);
+      const memFiles = parseInt(match[2], 10);
+      if (sessions > 0 || memFiles > 0) {
+        logger.warn("PRIVACY: Leftover user data found on VM — force-wiping before configure", {
+          route: "lib/ssh",
+          vmId: vm.id,
+          sessions,
+          memFiles,
+        });
+        // Stop gateway to release file locks, then full wipe
+        await ssh.execCommand(
+          'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop openclaw-gateway 2>/dev/null; pkill -9 -f "openclaw-gateway" 2>/dev/null; sleep 2'
+        );
+        await ssh.execCommand([
+          'rm -rf ~/.openclaw/agents/main/sessions/*',
+          'rm -rf ~/.openclaw/agents/main/sessions-backup/*',
+          'rm -rf ~/.openclaw/agents/main/sessions-archive/*',
+          'rm -rf ~/.openclaw/memory/*',
+          'rm -rf ~/.openclaw/workspace/*',
+          'rm -rf ~/.openclaw/backups/*',
+          'rm -rf ~/.openclaw/media/*',
+          'rm -rf ~/.openclaw/devices/*',
+          'rm -rf ~/.openclaw/canvas/*',
+          'rm -rf ~/.openclaw/notifications/*',
+          'rm -f ~/.openclaw/agents/main/agent/system-prompt.md',
+          'rm -f /tmp/openclaw/*.log',
+          'rm -rf ~/.openclaw/xmtp/conversations.json',
+        ].join(' && '));
+      }
+    }
+  } catch { /* non-fatal — the full pre-wipe later in the script will also run */ }
+  mark("privacy_guard");
 
   // Ownership guard: verify VM is still assigned to the expected user before proceeding.
   // This catches race conditions where another checkout reassigned the VM during SSH connect.
@@ -4816,6 +4896,7 @@ export async function configureOpenClaw(
       '    echo "GATEWAY_ROLLBACK_TRIGGERED"',
       '    cp ~/.openclaw/openclaw.json.last-known-good ~/.openclaw/openclaw.json',
       '    systemctl --user reset-failed openclaw-gateway 2>/dev/null || true',
+      '    touch /tmp/ic-restart.lock',
       '    systemctl --user restart openclaw-gateway 2>/dev/null || true',
       '    sleep 5',
       `    if curl -s -m 5 http://localhost:${GATEWAY_PORT}/health > /dev/null 2>&1; then`,
@@ -4976,6 +5057,7 @@ export async function configureOpenClaw(
       ssh_fail_count: 0,
       health_fail_count: 0,
       config_version: VM_MANIFEST.version,
+      last_gateway_restart: new Date().toISOString(),
       // Preserve old token for grace period during rotation (prevents 401s
       // if health cron resyncs before the gateway picks up the new token)
       ...(oldToken && oldToken !== gatewayToken ? { previous_gateway_token: oldToken } : {}),
@@ -5206,7 +5288,8 @@ else:
 
     scriptParts.push(
       '',
-      '# 4. Restart gateway',
+      '# 4. Restart gateway (with lock file for Fix 4)',
+      'touch /tmp/ic-restart.lock',
       'systemctl --user restart openclaw-gateway 2>/dev/null || (openclaw gateway stop 2>/dev/null; sleep 1; openclaw gateway start 2>/dev/null)',
       'echo "OK gateway restarted"',
     );
@@ -5264,6 +5347,7 @@ else:
         gateway_token: newToken,
         previous_gateway_token: oldToken ?? null,
         proxy_401_count: 0,
+        last_gateway_restart: new Date().toISOString(),
       })
       .eq("id", vm.id);
 
@@ -7058,10 +7142,21 @@ export async function updateChannelToken(
 }
 
 export async function restartGateway(vm: VMRecord): Promise<boolean> {
+  // Fix 1: Record restart timestamp so health cron skips grace period
+  try {
+    const supabase = getSupabase();
+    await supabase
+      .from("instaclaw_vms")
+      .update({ last_gateway_restart: new Date().toISOString() })
+      .eq("id", vm.id);
+  } catch { /* non-fatal — grace period is best-effort */ }
+
   const ssh = await connectSSH(vm);
   try {
     const script = [
       '#!/bin/bash',
+      '# Fix 4: Set restart lock file to prevent restart storms',
+      'touch /tmp/ic-restart.lock',
       '# Back up config before restart',
       'cp ~/.openclaw/openclaw.json /tmp/openclaw-backup.json 2>/dev/null || true',
       '',
