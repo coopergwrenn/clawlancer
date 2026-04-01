@@ -93,10 +93,8 @@ export default function AgentBookCard() {
     }
   }
 
-  // Show badge if registered, hide if not ready or not registered
+  // Show card for: registered (badge), idle (register prompt), error (register prompt)
   if (phase === "loading") return null;
-  if (phase !== "registered" && phase !== "idle") return null;
-  if (phase === "idle") return null; // User can register via web dashboard
 
   // Registered badge
   if (phase === "registered") {
