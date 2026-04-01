@@ -2843,6 +2843,63 @@ export async function assignVMWithSSHCheck(
     });
 
     if (sshOk) {
+      // ── PRIVACY: Wipe any leftover user data BEFORE returning to new user ──
+      // This is the FOURTH and final layer — catches dirty VMs that bypassed
+      // the reclaim wipe, the pre-wipe in configure, and the privacy guard.
+      // If the VM has ANY session files or memory data, stop the gateway and
+      // wipe everything before the new user touches it.
+      try {
+        const wipeCheck = await connectSSH({
+          id: vm.id,
+          ip_address: vm.ip_address,
+          ssh_port: vm.ssh_port ?? 22,
+          ssh_user: vm.ssh_user ?? "openclaw",
+        });
+        try {
+          const check = await wipeCheck.execCommand(
+            'echo "s=$(ls ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | wc -l) m=$(ls ~/.openclaw/memory/ 2>/dev/null | wc -l) w=$(cat ~/.openclaw/workspace/MEMORY.md 2>/dev/null | wc -c)"'
+          );
+          const match = check.stdout.match(/s=(\d+)\s+m=(\d+)\s+w=(\d+)/);
+          if (match) {
+            const [, sessions, memFiles, memSize] = match.map(Number);
+            if (sessions > 0 || memFiles > 0 || memSize > 500) {
+              logger.warn("PRIVACY: Dirty VM detected at assignment — force-wiping", {
+                vmId: vm.id, vmName: vm.name, sessions, memFiles, memSize, userId,
+              });
+              // Stop gateway + full wipe
+              await wipeCheck.execCommand(
+                'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop openclaw-gateway 2>/dev/null; pkill -9 -f "openclaw-gateway" 2>/dev/null; sleep 2'
+              );
+              await wipeCheck.execCommand([
+                'rm -rf ~/.openclaw/agents/main/sessions/*',
+                'rm -rf ~/.openclaw/agents/main/sessions-backup/*',
+                'rm -rf ~/.openclaw/agents/main/sessions-archive/*',
+                'rm -rf ~/.openclaw/memory/*',
+                'rm -rf ~/.openclaw/workspace/*',
+                'find ~/.openclaw/workspace/ -maxdepth 1 -name ".*" -not -name "." -not -name ".." -exec rm -rf {} + 2>/dev/null || true',
+                'rm -rf ~/.openclaw/backups/*',
+                'rm -rf ~/.openclaw/media/*',
+                'rm -rf ~/.openclaw/devices/*',
+                'rm -rf ~/.openclaw/canvas/*',
+                'rm -rf ~/.openclaw/notifications/*',
+                'rm -f ~/.openclaw/agents/main/agent/system-prompt.md',
+                'rm -f /tmp/openclaw/*.log',
+                'rm -f ~/.bash_history',
+                'rm -rf ~/.openclaw/xmtp/conversations.json',
+                'echo \'{"jobs":[]}\' > ~/.openclaw/cron/jobs.json 2>/dev/null || true',
+              ].join(' && '));
+            }
+          }
+        } finally {
+          wipeCheck.dispose();
+        }
+      } catch (wipeErr) {
+        // Non-fatal: configure will also wipe via privacy guard + pre-wipe
+        logger.warn("Pre-assignment wipe check failed (non-fatal)", {
+          vmId: vm.id, error: String(wipeErr),
+        });
+      }
+
       logger.info("VM assigned with SSH pre-check passed", {
         vmId: vm.id,
         vmName: vm.name,

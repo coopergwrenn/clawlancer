@@ -81,8 +81,13 @@ export async function POST(req: NextRequest) {
     const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
     const lastConfigured = vm.last_health_check ? new Date(vm.last_health_check).getTime() : 0;
 
+    // Never skip for freshly assigned VMs — they need full configure + privacy wipe
+    const assignedAt = vm.assigned_at ? new Date(vm.assigned_at).getTime() : 0;
+    const isRecentlyAssigned = assignedAt > fiveMinutesAgo;
+
     if (
       !isForced &&
+      !isRecentlyAssigned &&
       vm.health_status === "healthy" &&
       vm.gateway_url &&
       lastConfigured > fiveMinutesAgo
