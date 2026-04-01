@@ -537,6 +537,9 @@ export default function AgentDashboard({
         />
       ) : null}
 
+      {/* ── AgentBook Registration (before Google so both visible on first load) ── */}
+      <AgentBookCard />
+
       {/* Waiting indicator */}
       {waitingForOAuth && !gmailConnected && (
         <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
@@ -546,9 +549,6 @@ export default function AgentDashboard({
           </div>
         </div>
       )}
-
-      {/* ── AgentBook Registration ── */}
-      <AgentBookCard />
 
       {/* ── Discovery / Upgrade Prompt ── */}
       {showDiscovery && (
