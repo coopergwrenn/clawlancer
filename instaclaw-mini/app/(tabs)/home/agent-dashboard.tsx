@@ -508,6 +508,9 @@ export default function AgentDashboard({
         </button>
       </div>
 
+      {/* ── AgentBook Registration (before Google so both visible on first load) ── */}
+      <AgentBookCard />
+
       {/* ── Google Connection Status ── */}
       {gmailConnected ? (
         <div className="animate-fade-in-up glass-card flex items-center gap-3 rounded-2xl p-4" style={{ opacity: 0 }}>
@@ -536,9 +539,6 @@ export default function AgentDashboard({
           }}
         />
       ) : null}
-
-      {/* ── AgentBook Registration (before Google so both visible on first load) ── */}
-      <AgentBookCard />
 
       {/* Waiting indicator */}
       {waitingForOAuth && !gmailConnected && (

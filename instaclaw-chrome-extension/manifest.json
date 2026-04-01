@@ -1,12 +1,11 @@
 {
   "manifest_version": 3,
   "name": "InstaClaw Browser Relay",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Connect your browser to your InstaClaw agent — browse any site with your real login sessions.",
   "permissions": [
     "debugger",
     "tabs",
-    "activeTab",
     "storage",
     "alarms",
     "webNavigation"

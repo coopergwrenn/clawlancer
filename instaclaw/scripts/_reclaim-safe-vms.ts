@@ -132,33 +132,15 @@ async function reclaimVM(candidate: ReclaimCandidate): Promise<boolean> {
       return false;
     }
 
-    // 3. Wipe filesystem via production API (uses SSH internally)
-    // We call the admin endpoint instead of SSH directly to reuse the wipe logic
-    const adminKey = process.env.ADMIN_SECRET || process.env.CRON_SECRET || "";
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://instaclaw.io";
+    // 3. Mark as ready — configureOpenClaw() will wipe and reset on next assignment.
+    // DB reclaim already cleared all sensitive fields (tokens, creds, credits).
+    await supabase
+      .from("instaclaw_vms")
+      .update({ status: "ready" })
+      .eq("id", candidate.id);
 
-    const wipeRes = await fetch(`${baseUrl}/api/admin/vms/actions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-admin-key": adminKey,
-      },
-      body: JSON.stringify({ vmId: candidate.id, action: "wipe" }),
-    });
-
-    if (wipeRes.ok) {
-      // 4. Mark as ready
-      await supabase
-        .from("instaclaw_vms")
-        .update({ status: "ready" })
-        .eq("id", candidate.id);
-      console.log(`  ✅ ${label} reclaimed and ready`);
-      return true;
-    } else {
-      // Wipe failed — leave in provisioning state (safe, won't be assigned)
-      console.error(`  ⚠️ ${label} DB reclaimed but wipe failed (status ${wipeRes.status}). Left in provisioning.`);
-      return false;
-    }
+    console.log(`  ✅ ${label} reclaimed and ready`);
+    return true;
   } catch (err) {
     console.error(`  ❌ ${label} failed: ${err}`);
     return false;
