@@ -16,7 +16,7 @@ export const maxDuration = 600;
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
 const SSH_QUARANTINE_THRESHOLD = 6; // Auto-quarantine after 6 consecutive SSH failures (raised from 3 to reduce false positives)
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment
-const CONFIG_AUDIT_BATCH_SIZE = 3; // Max VMs to audit per cycle (staggered)
+const CONFIG_AUDIT_BATCH_SIZE = 10; // Max VMs to audit per cycle (raised from 3 to clear backlog faster)
 const AUTO_MIGRATE_BATCH_SIZE = 3; // Max auto-migrations per cron cycle to prevent storms
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
 
@@ -1287,10 +1287,11 @@ else:
   let configsAudited = 0;
   let configsFixed = 0;
 
-  const staleVms = vms.filter(
-    (vm) =>
-      healthyVmIds.has(vm.id) &&
-      (vm.config_version ?? 0) < VM_MANIFEST.version
+  // Reconcile ANY assigned VM with stale config — not just healthy ones.
+  // Previously required healthyVmIds.has(vm.id) which skipped freshly
+  // configured VMs (health=unknown) and unhealthy VMs permanently.
+  const staleVms = sshAliveVms.filter(
+    (vm) => (vm.config_version ?? 0) < VM_MANIFEST.version
   );
 
   const auditBatch = staleVms.slice(0, CONFIG_AUDIT_BATCH_SIZE);
