@@ -178,7 +178,7 @@ main().catch(err => {
       );
 
       const result = await ssh.execCommand(
-        `${NVM_PREAMBLE} && node /tmp/agentbook-register-direct.cjs 2>&1; rm -f /tmp/agentbook-register-direct.cjs`,
+        `${NVM_PREAMBLE} && cd ~/.openclaw && node /tmp/agentbook-register-direct.cjs 2>&1; rm -f /tmp/agentbook-register-direct.cjs`,
         { execOptions: { timeout: 45000 } }
       );
 
