@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid proof format" }, { status: 400 });
     }
 
-    // Submit to gasless relay on World Chain (gas sponsored)
+    // Submit to gasless relay — omit network field (v0.1.8 CLI behavior)
     const registration = {
       agent: wallet,
       root: merkle_root,
@@ -97,7 +97,6 @@ export async function POST(req: NextRequest) {
       nullifierHash: nullifier_hash,
       proof: proofArray,
       contract: AGENTBOOK_CONTRACT,
-      network: "worldchain",
     };
 
     logger.info("Submitting to AgentBook relay", {
