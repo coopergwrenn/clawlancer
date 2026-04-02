@@ -117,7 +117,10 @@ export default function AgentBookCard() {
 
   function handleOpenVerify() {
     if (bridgeUrl) {
-      window.open(bridgeUrl, "_blank");
+      // Use location.href instead of window.open — WebView may block popups
+      // The bridge URL (https://world.org/verify?...) triggers World ID
+      // verification flow within World App
+      window.location.href = bridgeUrl;
       setPhase("confirming");
     }
   }
