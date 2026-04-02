@@ -113,26 +113,26 @@ export async function POST(req: NextRequest) {
       body: relayBody.slice(0, 500),
     });
 
-    if (!relayRes.ok) {
-      return NextResponse.json(
-        { error: "Relay rejected", detail: relayBody.slice(0, 300) },
-        { status: relayRes.status }
-      );
-    }
-
-    let relayData: { txHash?: string } = {};
+    let relayData: Record<string, unknown> = {};
     try { relayData = JSON.parse(relayBody); } catch { /* */ }
 
-    // Verify on-chain
-    const registered = await isAgentRegistered(wallet);
+    logger.info("AgentBook relay full response", {
+      route: "agentbook/register-direct",
+      status: relayRes.status,
+      ok: relayRes.ok,
+      data: JSON.stringify(relayData).slice(0, 1000),
+    });
 
-    if (registered) {
+    // If relay returned a txHash, it worked
+    if (relayData.txHash) {
+      // Verify on-chain
+      const registered = await isAgentRegistered(wallet);
       await supabase
         .from("instaclaw_vms")
         .update({
           agentbook_registered: true,
           agentbook_registered_at: new Date().toISOString(),
-          agentbook_tx_hash: relayData.txHash || null,
+          agentbook_tx_hash: String(relayData.txHash),
         })
         .eq("id", vm.id);
 
@@ -143,13 +143,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Relay accepted but not confirmed yet — return optimistically
+    // If relay returned manualRegistration, it accepted the proof but wants manual submission
+    if (relayData.manualRegistration) {
+      return NextResponse.json({
+        error: "Relay requires manual submission (no gas sponsorship for this network)",
+        detail: JSON.stringify(relayData).slice(0, 500),
+        manualRegistration: relayData.manualRegistration,
+      }, { status: 422 });
+    }
+
+    if (!relayRes.ok) {
+      return NextResponse.json(
+        { error: "Relay error", detail: JSON.stringify(relayData).slice(0, 500), status: relayRes.status },
+        { status: relayRes.status }
+      );
+    }
+
     return NextResponse.json({
-      registered: true,
-      walletAddress: wallet,
-      txHash: relayData.txHash,
-      pending: true,
-    });
+      error: "Unknown relay response",
+      detail: JSON.stringify(relayData).slice(0, 500),
+    }, { status: 500 });
   } catch (err) {
     logger.error("AgentBook register-direct error", {
       error: String(err),
