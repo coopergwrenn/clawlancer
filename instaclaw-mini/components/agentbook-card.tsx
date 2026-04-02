@@ -1,40 +1,24 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 import { Loader2, Check } from "lucide-react";
-import { encodeAction, generateSignal } from "@worldcoin/idkit-core/hashing";
-import { solidityEncode } from "@worldcoin/idkit-core/hashing";
-import { VerificationLevel } from "@worldcoin/idkit-core";
 
 type Phase = "loading" | "idle" | "verifying" | "submitting" | "registered" | "error";
 
-const AGENTKIT_APP_ID = "app_a7c3e2b6b83927251a0db5345bd7146a";
-const AGENTKIT_ACTION = "agentbook-registration";
-
-// Feature flag: use native transport (sends verify directly to World App native layer)
-// Set NEXT_PUBLIC_AGENTBOOK_NATIVE=true to enable, otherwise falls back to CLI bridge URL flow
-const USE_NATIVE_TRANSPORT = process.env.NEXT_PUBLIC_AGENTBOOK_NATIVE === "true";
-
 /**
- * AgentBook registration card — triggers World ID verification natively
- * inside World App using the same native bridge as MiniKit/IDKit.
+ * AgentBook registration card — MiniKit.verify() + direct contract call.
  *
- * Flow:
- * 1. Fetch wallet + nonce from pre-register endpoint
- * 2. User taps "Register now"
- * 3. Send verify command directly to World App native layer with AgentKit's app_id
- * 4. Native World ID popup appears → user verifies
- * 5. Proof returned via postMessage → submit to backend for on-chain registration
- * 6. "Registered in AgentBook" badge
+ * 1. User taps "Register now"
+ * 2. MiniKit.verify() popup → user verifies with World ID
+ * 3. Proof submitted to register-direct route → VM calls AgentBook contract
+ * 4. "Registered in AgentBook" badge
  */
 export default function AgentBookCard() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [nonce, setNonce] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const cleanupRef = useRef<(() => void) | null>(null);
 
-  // Check status on mount
   useEffect(() => {
     (async () => {
       try {
@@ -45,7 +29,6 @@ export default function AgentBookCard() {
           setWalletAddress(data.walletAddress);
         } else if (data.walletAddress) {
           setWalletAddress(data.walletAddress);
-          setNonce(data.nonce || "0");
           setPhase("idle");
         } else {
           setPhase("error");
@@ -56,127 +39,52 @@ export default function AgentBookCard() {
         setError("Failed to check status");
       }
     })();
-
-    return () => { cleanupRef.current?.(); };
   }, []);
 
-  // ── Native transport: send verify command directly to World App native layer ──
-  async function handleRegisterNative() {
-    if (!walletAddress || nonce === null) return;
-
-    // Build the signal matching agentkit-cli: solidityEncode(['address', 'uint256'], [wallet, nonce])
-    const signal = solidityEncode(
-      ["address", "uint256"],
-      [walletAddress as `0x${string}`, BigInt(nonce)]
-    );
-
-    const verifyPayload = {
-      command: "verify",
-      version: 1,
-      payload: {
-        app_id: AGENTKIT_APP_ID,
-        action: encodeAction(AGENTKIT_ACTION),
-        signal: generateSignal(signal).digest,
-        verification_level: VerificationLevel.Orb,
-        timestamp: new Date().toISOString(),
-      },
-    };
-
-    console.log("[AgentBook] Sending native verify:", JSON.stringify(verifyPayload));
-
-    const proof = await new Promise<Record<string, unknown>>((resolve, reject) => {
-      const timeout = setTimeout(() => { cleanup(); reject(new Error("Verification timed out")); }, 300000);
-
-      function handleMessage(event: MessageEvent) {
-        const data = event.data;
-        if (data?.type === "miniapp-verify-action" || data?.command === "miniapp-verify-action") {
-          cleanup();
-          const p = data.payload ?? data;
-          if (p?.status === "error" || p?.error_code) reject(new Error(p.error_code || "Verification failed"));
-          else resolve(p);
-        }
-      }
-
-      function cleanup() {
-        clearTimeout(timeout);
-        window.removeEventListener("message", handleMessage);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        try { (window as any).MiniKit?.unsubscribe?.("miniapp-verify-action"); } catch { /* */ }
-      }
-      cleanupRef.current = cleanup;
-      window.addEventListener("message", handleMessage);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      try { const mk = (window as any).MiniKit; if (typeof mk?.subscribe === "function") mk.subscribe("miniapp-verify-action", (r: Record<string, unknown>) => { cleanup(); const p = (r as { payload?: Record<string, unknown> })?.payload ?? r; if ((p as { error_code?: string })?.error_code) reject(new Error((p as { error_code?: string }).error_code!)); else resolve(p); }); } catch { /* */ }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = window as any;
-      if (w.webkit?.messageHandlers?.minikit) w.webkit.messageHandlers.minikit.postMessage(verifyPayload);
-      else if (w.Android) w.Android.postMessage(JSON.stringify(verifyPayload));
-      else { cleanup(); reject(new Error("Not running inside World App")); }
-    });
-
-    console.log("[AgentBook] Proof received:", JSON.stringify(proof));
-    return proof;
-  }
-
-  // ── Bridge URL flow: start CLI on VM, get bridge URL, poll for registration ──
-  async function handleRegisterBridge() {
-    const startRes = await fetch("/api/proxy/agentbook/start-registration", { method: "POST" });
-    if (!startRes.ok) {
-      const d = await startRes.json().catch(() => ({}));
-      throw new Error(d.error || "Failed to start registration");
-    }
-
-    // Poll for bridge URL
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      try {
-        const urlRes = await fetch("/api/proxy/agentbook/get-bridge-url");
-        const urlData = await urlRes.json();
-        if (urlData.bridgeUrl) {
-          window.location.href = urlData.bridgeUrl;
-          // Poll for on-chain confirmation after redirect
-          return new Promise<void>((resolve) => {
-            const poll = setInterval(async () => {
-              try {
-                const r = await fetch("/api/proxy/agentbook/check-registration");
-                const d = await r.json();
-                if (d.registered) { clearInterval(poll); resolve(); }
-              } catch { /* keep polling */ }
-            }, 3000);
-            setTimeout(() => clearInterval(poll), 180000);
-          });
-        }
-        if (urlData.status === "error") throw new Error(urlData.error || "CLI failed");
-      } catch (e) { if (e instanceof Error && e.message !== "CLI failed") continue; throw e; }
-    }
-    throw new Error("Registration timed out");
-  }
-
-  // ── Main handler ──
   async function handleRegister() {
     if (phase === "verifying" || phase === "submitting") return;
     setError("");
     setPhase("verifying");
 
     try {
-      if (USE_NATIVE_TRANSPORT) {
-        const proof = await handleRegisterNative();
+      // Step 1: MiniKit.verify() — triggers native World ID popup
+      const verifyResult = await MiniKit.commandsAsync.verify({
+        action: "verify-instaclaw-agent",
+        signal: walletAddress || undefined,
+        verification_level: VerificationLevel.Orb,
+      });
 
-        // Submit proof to backend for on-chain registration
-        setPhase("submitting");
-        const regRes = await fetch("/api/agentbook/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(proof),
-        });
-        const regData = await regRes.json();
-        if (regData.registered || regRes.ok) setPhase("registered");
-        else { setError(regData.error || "Registration failed"); setPhase("idle"); }
-      } else {
-        await handleRegisterBridge();
+      console.log("[AgentBook] Verify result:", JSON.stringify(verifyResult.finalPayload));
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload = verifyResult.finalPayload as any;
+      if (payload.status !== "success") {
+        setError("Verification failed: " + (payload.status || "cancelled"));
+        setPhase("idle");
+        return;
+      }
+
+      // Step 2: Submit proof to register-direct (VM calls contract directly)
+      setPhase("submitting");
+      const regRes = await fetch("/api/proxy/agentbook/register-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          proof: payload.proof,
+          merkle_root: payload.merkle_root,
+          nullifier_hash: payload.nullifier_hash,
+          verification_level: payload.verification_level,
+        }),
+      });
+
+      const regData = await regRes.json();
+      console.log("[AgentBook] Register-direct response:", JSON.stringify(regData));
+
+      if (regData.registered) {
         setPhase("registered");
+      } else {
+        setError(regData.error || "Registration failed on-chain");
+        setPhase("idle");
       }
     } catch (err) {
       console.error("[AgentBook] Error:", err);
@@ -185,10 +93,8 @@ export default function AgentBookCard() {
     }
   }
 
-  // Loading — show nothing
   if (phase === "loading") return null;
 
-  // Registered badge
   if (phase === "registered") {
     return (
       <div className="animate-fade-in-up glass-card flex items-center gap-3 rounded-2xl p-4" style={{ opacity: 0 }}>
@@ -208,7 +114,6 @@ export default function AgentBookCard() {
     );
   }
 
-  // Verifying / submitting
   if (phase === "verifying" || phase === "submitting") {
     return (
       <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
@@ -222,7 +127,6 @@ export default function AgentBookCard() {
     );
   }
 
-  // Idle / error — register prompt
   return (
     <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
       <div className="flex items-start gap-3 mb-3">
