@@ -139,5 +139,56 @@ export default function RootPage() {
     );
   }
 
+  // Maintenance gate — block new signups while keeping existing users functional
+  if (process.env.NEXT_PUBLIC_MAINTENANCE === "true") {
+    return (
+      <div style={{
+        background: "#0a0a0a",
+        color: "#fff",
+        height: "100dvh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "1.5rem",
+        padding: "2rem",
+        textAlign: "center",
+      }}>
+        <div style={{
+          width: "64px",
+          height: "64px",
+          borderRadius: "16px",
+          background: "linear-gradient(135deg, rgba(218,119,86,0.15), rgba(218,119,86,0.05))",
+          border: "1px solid rgba(218,119,86,0.2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "28px",
+        }}>
+          🔧
+        </div>
+        <div>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+            Upgrading Systems
+          </h1>
+          <p style={{ color: "#888", fontSize: "0.875rem", maxWidth: "280px", lineHeight: 1.6 }}>
+            We&apos;re making InstaClaw even better. New agent signups will be back shortly.
+          </p>
+        </div>
+        <div style={{
+          marginTop: "0.5rem",
+          padding: "0.5rem 1rem",
+          borderRadius: "8px",
+          background: "rgba(218,119,86,0.1)",
+          border: "1px solid rgba(218,119,86,0.15)",
+          fontSize: "0.75rem",
+          color: "#da7756",
+        }}>
+          Check back soon
+        </div>
+      </div>
+    );
+  }
+
   return <Onboarding />;
 }
