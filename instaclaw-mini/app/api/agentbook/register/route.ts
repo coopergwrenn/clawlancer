@@ -41,18 +41,13 @@ export async function POST(req: NextRequest) {
 
     const walletAddr = vm.agentbook_wallet_address;
 
-    // Try sending full proof payload to relay — multiple formats
-    // The relay might expect the proof as an object with all World ID fields
+    // Match EXACTLY what the web app's register-proof route sends
+    // Web app: { proof, walletAddress, nonce, app_id }
+    // proof = raw proof object (NOT nested), nonce = 0 for first registration
     const relayBody = {
-      proof: {
-        proof,
-        merkle_root,
-        nullifier_hash,
-        verification_level,
-      },
+      proof,
       walletAddress: walletAddr,
-      agent_address: walletAddr,
-      address: walletAddr,
+      nonce: "0",
       app_id: process.env.AGENTBOOK_APP_ID || "app_a7c3e2b6b83927251a0db5345bd7146a",
     };
     console.log("[AgentBook/Register] Relay body:", JSON.stringify(relayBody));
