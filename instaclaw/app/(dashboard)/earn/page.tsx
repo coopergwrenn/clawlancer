@@ -234,7 +234,7 @@ export default function EarnPage() {
   // Update channel statuses based on VM state
   const channels = useMemo(() => {
     return CHANNELS.map((ch) => {
-      if (ch.id === "virtuals" && vmStatus?.vm?.agdpEnabled) {
+      if ((ch.id === "virtuals" || ch.id === "degenclaw") && vmStatus?.vm?.agdpEnabled) {
         return { ...ch, status: "active" as const };
       }
       return ch;
