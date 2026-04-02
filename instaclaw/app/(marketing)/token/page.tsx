@@ -1165,6 +1165,13 @@ function TokenDetails() {
                 href: MEXC_URL,
               },
               {
+                name: "LBank",
+                type: "CEX",
+                pair: "INSTACLAW / USDT",
+                note: "Centralized exchange",
+                href: "https://www.lbank.com/trade/instaclaw_usdt",
+              },
+              {
                 name: "Uniswap V2",
                 type: "DEX",
                 pair: "INSTACLAW / VIRTUAL (Base)",
@@ -1217,6 +1224,16 @@ function TokenDetails() {
                 />
               </a>
             ))}
+          </div>
+
+          {/* + more */}
+          <div
+            className="pt-4 mt-4 text-center"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              + more exchanges &mdash; actively expanding to new platforms
+            </p>
           </div>
         </motion.div>
 
