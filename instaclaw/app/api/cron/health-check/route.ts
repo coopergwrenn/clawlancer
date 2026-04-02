@@ -414,8 +414,9 @@ else:
         });
       }
 
-      // After ALERT_THRESHOLD consecutive failures, take action
-      if (newFailCount === ALERT_THRESHOLD) {
+      // After ALERT_THRESHOLD consecutive failures, take action.
+      // Retry every ALERT_THRESHOLD cycles (3, 6, 9...) not just once at exactly 3.
+      if (newFailCount >= ALERT_THRESHOLD && newFailCount % ALERT_THRESHOLD === 0) {
         // Before restarting, verify the gateway is truly down via direct HTTP.
         // The SSH-based localhost curl can fail transiently (loopback issues,
         // curl oddities) while the gateway is actually serving fine publicly.
