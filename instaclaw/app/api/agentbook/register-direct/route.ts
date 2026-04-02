@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
           functionName: "lookupHuman",
           args: [wallet],
         });
-        registered = humanId !== 0n;
+        registered = humanId !== BigInt(0);
       } catch { registered = true; /* relay succeeded, trust it */ }
 
       await supabase
