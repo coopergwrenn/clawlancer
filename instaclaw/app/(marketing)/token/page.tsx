@@ -83,12 +83,22 @@ function Hero() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2, duration: 0.5, ease: SNAPPY }}
         >
-          <Flame
-            size={14}
-            strokeWidth={1.5}
-            className="shrink-0"
-            style={{ color: "var(--accent)" }}
-          />
+          <span
+            className="shrink-0 flex items-center justify-center"
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              background: "radial-gradient(circle at 40% 35%, rgba(220,103,67,0.22), rgba(220,103,67,0.08) 70%)",
+              boxShadow: "inset 0 1px 2px rgba(255,255,255,0.4), inset 0 -1px 2px rgba(0,0,0,0.06), 0 1px 2px rgba(220,103,67,0.1)",
+            }}
+          >
+            <Flame
+              size={12}
+              strokeWidth={2}
+              style={{ color: "var(--accent)" }}
+            />
+          </span>
           <span>Deflationary by design</span>
           <span
             style={{ width: 1, height: 12, background: "var(--border)", display: "inline-block" }}
