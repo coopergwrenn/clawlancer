@@ -20,6 +20,7 @@ const CONTRACT_ADDRESS = "0xa9e23871156718c1d55e90dad1c4ea8a33480dfd";
 const BASESCAN_URL = `https://basescan.org/token/${CONTRACT_ADDRESS}`;
 const COINGECKO_URL = "https://www.coingecko.com/en/coins/instaclaw";
 const VIRTUALS_URL = "https://app.virtuals.io/virtuals/43920";
+const MEXC_URL = "https://www.mexc.com/exchange/INSTACLAW_USDT";
 
 const glassStyle = {
   background:
@@ -89,7 +90,12 @@ function Hero() {
             style={{ color: "var(--accent)" }}
           />
           <span>Deflationary by design</span>
+          <span
+            style={{ width: 1, height: 12, background: "var(--border)", display: "inline-block" }}
+          />
           <span style={{ color: "var(--accent)" }}>Virtuals Protocol</span>
+          <span style={{ opacity: 0.4 }}>&middot;</span>
+          <span style={{ color: "var(--accent)" }}>Base L2</span>
         </motion.div>
 
         {/* Headline */}
@@ -115,7 +121,7 @@ function Hero() {
         >
           Every dollar that flows through InstaClaw — subscriptions, credit
           purchases, agent token launches, trading fees — automatically buys and
-          burns $INSTACLAW on Virtuals Protocol.
+          burns $INSTACLAW.
         </motion.p>
 
         {/* CTAs */}
@@ -1003,7 +1009,8 @@ function TokenDetails() {
 
   const details = [
     { label: "Token", value: "$INSTACLAW" },
-    { label: "Platform", value: "Virtuals Protocol (Base L2)" },
+    { label: "Chain", value: "Base (Coinbase L2)" },
+    { label: "Launched Via", value: "Virtuals Protocol" },
     { label: "Total Supply", value: "1,000,000,000" },
     { label: "Circulating Supply", value: "~282,000,000 (28.2%)" },
     { label: "Max Supply", value: "1,000,000,000 (fixed, no minting)" },
@@ -1107,7 +1114,8 @@ function TokenDetails() {
             {[
               { label: "BaseScan", href: BASESCAN_URL },
               { label: "CoinGecko", href: COINGECKO_URL },
-              { label: "Buy on Virtuals", href: VIRTUALS_URL },
+              { label: "Virtuals Protocol", href: VIRTUALS_URL },
+              { label: "MEXC", href: MEXC_URL },
             ].map((link) => (
               <a
                 key={link.label}
@@ -1121,6 +1129,163 @@ function TokenDetails() {
                 <ExternalLink size={10} strokeWidth={1.5} />
               </a>
             ))}
+          </div>
+        </motion.div>
+
+        {/* Where to trade */}
+        <motion.div
+          className="mt-8 rounded-xl p-6 sm:p-8"
+          style={glassStyle}
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ delay: 0.1, duration: 0.6, ease: SNAPPY }}
+        >
+          <h3
+            className="text-xl sm:text-2xl font-normal tracking-[-0.5px] mb-5"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Where to Trade
+          </h3>
+
+          <div className="space-y-0">
+            {[
+              {
+                name: "Virtuals Protocol",
+                type: "DEX",
+                pair: "INSTACLAW / VIRTUAL",
+                note: "Primary liquidity pool",
+                href: VIRTUALS_URL,
+              },
+              {
+                name: "MEXC",
+                type: "CEX",
+                pair: "INSTACLAW / USDT",
+                note: "Centralized exchange",
+                href: MEXC_URL,
+              },
+              {
+                name: "Uniswap V2",
+                type: "DEX",
+                pair: "INSTACLAW / VIRTUAL (Base)",
+                note: "On-chain swap",
+                href: BASESCAN_URL,
+              },
+            ].map((venue, i, arr) => (
+              <a
+                key={venue.name}
+                href={venue.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between py-4 transition-opacity hover:opacity-70 group"
+                style={
+                  i < arr.length - 1
+                    ? { borderBottom: "1px solid var(--border)" }
+                    : {}
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="text-[10px] uppercase tracking-[1px] px-2 py-0.5 rounded-full font-medium"
+                    style={{
+                      background:
+                        venue.type === "CEX"
+                          ? "rgba(220,103,67,0.1)"
+                          : "rgba(0,0,0,0.05)",
+                      color:
+                        venue.type === "CEX"
+                          ? "var(--accent)"
+                          : "var(--muted)",
+                    }}
+                  >
+                    {venue.type}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">{venue.name}</p>
+                    <p
+                      className="text-xs"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {venue.pair}
+                    </p>
+                  </div>
+                </div>
+                <ExternalLink
+                  size={14}
+                  strokeWidth={1.5}
+                  style={{ color: "var(--muted)", opacity: 0.5 }}
+                />
+              </a>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Liquidity expansion */}
+        <motion.div
+          className="mt-8 rounded-xl overflow-hidden"
+          style={glassStyle}
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ delay: 0.2, duration: 0.6, ease: SNAPPY }}
+        >
+          <div
+            className="px-6 sm:px-8 py-5"
+            style={{
+              background: "rgba(220,103,67,0.04)",
+              borderBottom: "1px solid rgba(220,103,67,0.1)",
+            }}
+          >
+            <p
+              className="text-xs uppercase tracking-[2px] font-medium mb-1"
+              style={{ color: "var(--accent)" }}
+            >
+              Coming Soon
+            </p>
+            <h3
+              className="text-lg sm:text-xl font-normal tracking-[-0.5px]"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Expanding Liquidity
+            </h3>
+          </div>
+          <div className="px-6 sm:px-8 py-5">
+            <p
+              className="text-sm leading-relaxed mb-4"
+              style={{ color: "var(--muted)" }}
+            >
+              We&apos;re actively investing in new liquidity pools and exchange
+              listings to make $INSTACLAW tradable for as many people as
+              possible. More pools means deeper liquidity, tighter spreads, and
+              more efficient burns.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "Additional CEX listings",
+                "Cross-chain liquidity pools",
+                "Deeper Base DEX liquidity",
+                "Tier 1 exchange applications",
+              ].map((item) => (
+                <span
+                  key={item}
+                  className="text-xs px-3 py-1.5 rounded-full"
+                  style={{
+                    background: "rgba(0,0,0,0.04)",
+                    color: "var(--foreground)",
+                  }}
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+            <p
+              className="text-xs mt-4 leading-relaxed"
+              style={{ color: "var(--muted)", opacity: 0.7 }}
+            >
+              Every new exchange and liquidity pool makes it easier to buy
+              $INSTACLAW &mdash; and every new buyer adds to the demand side
+              while the burn steadily reduces supply.
+            </p>
           </div>
         </motion.div>
       </div>
