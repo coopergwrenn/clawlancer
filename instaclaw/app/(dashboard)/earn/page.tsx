@@ -82,6 +82,16 @@ const CHANNELS: EarningChannel[] = [
     tags: ["marketplace", "agent commerce", "virtuals", "acp", "secondary", "ai jobs"],
   },
   {
+    id: "degenclaw",
+    name: "$100K Trading Competition",
+    headline: "Compete in the Virtuals Protocol weekly $100K trading challenge on Hyperliquid",
+    description: "Your agent trades Hyperliquid perps competitively against other AI agents. Top 3 agents each week get backed with $100K USDC. Ships with 5 pre-built strategies, order book analysis, and risk management — just say \"join the 100K challenge\" to your agent.",
+    icon: TrendingUp,
+    status: "one-click",
+    effort: "One-time setup",
+    tags: ["degenclaw", "trading", "competition", "hyperliquid", "perps", "virtuals", "100k", "defi", "earn"],
+  },
+  {
     id: "prediction-markets",
     name: "Prediction Markets",
     headline: "Trade on Polymarket and Kalshi — the world's largest prediction markets",
@@ -461,6 +471,7 @@ function ChannelCard({
                     handleToggleAgdp={handleToggleAgdp}
                   />
                 )}
+                {channel.id === "degenclaw" && <DegenClawSection botUsername={vm?.telegramBotUsername} />}
                 {channel.id === "prediction-markets" && <PolymarketPanel onStatusChange={onPolymarketStatusChange} />}
                 {channel.id === "ecommerce" && <EcommerceSection botUsername={vm?.telegramBotUsername} />}
                 {channel.id === "freelance" && <FreelanceSection botUsername={vm?.telegramBotUsername} />}
@@ -1429,6 +1440,56 @@ function EcommerceSection({ botUsername }: { botUsername?: string | null }) {
 }
 
 // ── Freelance & Digital Products Section ─────────────
+
+function DegenClawSection({ botUsername }: { botUsername?: string | null }) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { label: "Weekly Prize", value: "$100K USDC", desc: "Funded by Virtuals Protocol" },
+          { label: "Scoring", value: "Sortino 40%", desc: "Risk-adjusted returns win" },
+          { label: "Your Edge", value: "5 Strategies", desc: "Pre-loaded, battle-tested" },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-lg p-4 text-center"
+            style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+          >
+            <p className="text-lg font-bold">{stat.value}</p>
+            <p className="text-xs font-medium mt-0.5">{stat.label}</p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{stat.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="rounded-lg p-4"
+        style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.12)" }}
+      >
+        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          <strong style={{ color: "var(--foreground)" }}>How it works:</strong> Your agent trades Hyperliquid perpetual futures against other AI agents.
+          Agents are ranked weekly by composite score (Sortino ratio, return %, profit factor). Top 3 agents get backed with $100K USDC.
+          Subscribers of winning agents earn 50% of realized profits with zero downside.
+          Your agent ships with direct Hyperliquid order book access, ATR-based position sizing, and drawdown circuit breakers.
+        </p>
+      </div>
+
+      <div
+        className="rounded-lg p-4"
+        style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.12)" }}
+      >
+        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+          <strong style={{ color: "rgb(34,197,94)" }}>Requires Virtuals Protocol.</strong> Enable Virtuals Protocol above first, then tell your agent to join the competition. Your agent handles authentication, token launch, and strategy setup through conversation.
+        </p>
+      </div>
+
+      <BotMessage
+        message="I want to join the DegenClaw $100K trading competition"
+        botUsername={botUsername}
+      />
+    </div>
+  );
+}
 
 function FreelanceSection({ botUsername }: { botUsername?: string | null }) {
   return (
