@@ -169,12 +169,7 @@ export default function AgentBookCard() {
         const regRes = await fetch("/api/agentbook/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            proof: proof.proof,
-            merkle_root: proof.merkle_root,
-            nullifier_hash: proof.nullifier_hash,
-            verification_level: proof.verification_level,
-          }),
+          body: JSON.stringify(proof),
         });
         const regData = await regRes.json();
         if (regData.registered || regRes.ok) setPhase("registered");
