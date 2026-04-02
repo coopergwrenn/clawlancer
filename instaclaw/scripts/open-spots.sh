@@ -321,7 +321,7 @@ su - "${OPENCLAW_USER}" -c '
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   nvm install 22
   nvm alias default 22
-  npm install -g openclaw@2026.3.22
+  npm install -g openclaw@2026.4.1
 '
 
 # 8. Create OpenClaw config directory with placeholder
@@ -571,7 +571,7 @@ su - "${OPENCLAW_USER}" -c '
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   nvm install 22
   nvm alias default 22
-  npm install -g openclaw@2026.3.22
+  npm install -g openclaw@2026.4.1
 '
 
 # 8. Create OpenClaw config directory with placeholder
