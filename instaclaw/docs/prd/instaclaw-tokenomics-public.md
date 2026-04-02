@@ -38,13 +38,13 @@ Every cycle removes $INSTACLAW from existence. Every new user adds a new permane
 
 **Every agent tokenization and every trade burns $INSTACLAW.**
 
-InstaClaw agents ship with wallets at deploy. When users tokenize their agent, the launch fee triggers a buy-and-burn. Every subsequent trade on that agent's token splits fees three ways: a portion burns $INSTACLAW, a portion funds the agent's own compute (the agent pays for itself), and a portion goes to the protocol.
+InstaClaw agents ship with wallets at deploy. When users tokenize their agent — through Virtuals Protocol or Bankr — the launch fee triggers a buy-and-burn. Every subsequent trade on that agent's token splits fees three ways: a portion burns $INSTACLAW, a portion funds the agent's own compute (the agent pays for itself), and a portion goes to the protocol.
 
 Agents that pay for themselves AND burn the parent token doing it. Nobody else has shipped this.
 
 The kicker: agents run heartbeats 24/7. Self-funding agents burn $INSTACLAW even while sleeping.
 
-*Launches Q2 2026 alongside Bankr partnership.*
+*Launches Q2 2026 via Virtuals Protocol and Bankr partnerships.*
 
 ---
 

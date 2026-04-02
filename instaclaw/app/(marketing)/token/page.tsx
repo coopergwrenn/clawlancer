@@ -436,9 +436,9 @@ const burnSources = [
     timeline: "Q2 2026",
     tagline: "Agents that pay for themselves.",
     short:
-      "Every agent tokenization triggers a burn. Every trade on an agent's token splits fees three ways: burn $INSTACLAW, fund the agent's compute, and protocol fees. Agents even burn in their sleep through 24/7 heartbeats.",
+      "Every agent tokenization \u2014 via Virtuals Protocol or Bankr \u2014 triggers a burn. Every trade on an agent's token splits fees three ways: burn $INSTACLAW, fund the agent's compute, and protocol fees. Agents even burn in their sleep through 24/7 heartbeats.",
     detail:
-      "InstaClaw agents ship with wallets at deploy. When users tokenize their agent through Bankr, the launch fee triggers an open-market buy-and-burn. Every subsequent trade on the agent's token generates ongoing burns. The agent literally funds its own inference from trading fees — and a portion of that spend burns $INSTACLAW. Self-funding agents create a virtuous cycle where market interest in an agent's token directly reduces $INSTACLAW supply.",
+      "InstaClaw agents can tokenize through Virtuals Protocol or Bankr \u2014 two independent launchpads, same burn mechanic. When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn. Every subsequent trade on the agent's token generates ongoing burns. The agent literally funds its own inference from trading fees \u2014 and a portion of that spend burns $INSTACLAW. Self-funding agents create a virtuous cycle where market interest in an agent's token directly reduces $INSTACLAW supply.",
   },
   {
     icon: CreditCard,
@@ -1116,7 +1116,7 @@ const milestones = [
   {
     date: "Q2 2026",
     title: "Agent Economy Loop",
-    description: "Agent tokenization and trading fee burns go live alongside Bankr partnership.",
+    description: "Agent tokenization and trading fee burns go live via Virtuals Protocol and Bankr partnerships.",
     active: false,
   },
   {
