@@ -89,7 +89,7 @@ function Hero() {
             style={{ color: "var(--accent)" }}
           />
           <span>Deflationary by design</span>
-          <span style={{ color: "var(--accent)" }}>Base mainnet</span>
+          <span style={{ color: "var(--accent)" }}>Virtuals Protocol</span>
         </motion.div>
 
         {/* Headline */}
@@ -115,7 +115,7 @@ function Hero() {
         >
           Every dollar that flows through InstaClaw — subscriptions, credit
           purchases, agent token launches, trading fees — automatically buys and
-          burns $INSTACLAW on Base.
+          burns $INSTACLAW on Virtuals Protocol.
         </motion.p>
 
         {/* CTAs */}
@@ -221,7 +221,7 @@ function Hero() {
 const flywheelSteps = [
   { label: "Users pay for AI agents", sub: "Fiat, WLD, or trading fees" },
   { label: "Real revenue generated", sub: "Subscriptions, credits, skill fees" },
-  { label: "10% routes to Base", sub: "Automated, no human intervention" },
+  { label: "10% routes on-chain", sub: "Automated, no human intervention" },
   { label: "Open-market buy $INSTACLAW", sub: "Daily buy-and-burn via smart contract" },
   { label: "Tokens burned forever", sub: "Permanently removed from supply" },
   { label: "Less supply, same demand", sub: "Deflationary pressure compounds" },
@@ -469,7 +469,7 @@ const burnSources = [
     short:
       "10% of every subscription payment and every WLD credit purchase automatically buys and burns $INSTACLAW. Users never touch crypto. They never see a wallet. The burn is invisible.",
     detail:
-      "Users pay $29\u2013$299/month via Stripe or buy credits with WLD in World App. Under the hood, 10% of revenue routes to a smart contract on Base that executes a daily buy-and-burn. A tractor company, a record label, an insurance agency \u2014 they\u2019re just paying for their AI agent. Every new subscriber adds permanent, recurring burn pressure that compounds month over month.",
+      "Users pay $29\u2013$299/month via Stripe or buy credits with WLD in World App. Under the hood, 10% of revenue routes to a smart contract that executes a daily buy-and-burn. A tractor company, a record label, an insurance agency \u2014 they\u2019re just paying for their AI agent. Every new subscriber adds permanent, recurring burn pressure that compounds month over month.",
   },
   {
     icon: Code,
@@ -1003,7 +1003,7 @@ function TokenDetails() {
 
   const details = [
     { label: "Token", value: "$INSTACLAW" },
-    { label: "Chain", value: "Base (Coinbase L2)" },
+    { label: "Platform", value: "Virtuals Protocol (Base L2)" },
     { label: "Total Supply", value: "1,000,000,000" },
     { label: "Circulating Supply", value: "~282,000,000 (28.2%)" },
     { label: "Max Supply", value: "1,000,000,000 (fixed, no minting)" },
