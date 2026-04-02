@@ -342,7 +342,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 52,
+  version: 53,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -380,6 +380,11 @@ export const VM_MANIFEST = {
     // Caused 3 fleet-wide outages when reverted. See commits 0cad0b7, 9e1e767.
     // Also enforced by reconciler — OpenClaw version updates reset this to default.
     "skills.limits.maxSkillsPromptChars": "500000",
+    // v52: Ensure exec tool is available — without this key the gateway may not
+    // expose the bash/exec tool to the agent. security=full + ask=off means no
+    // approval prompts (agents run autonomously via Telegram, nobody to approve).
+    "tools.exec.security": "full",
+    "tools.exec.ask": "off",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
