@@ -78,12 +78,14 @@ export default function AgentBookCard() {
       });
 
       const regData = await regRes.json();
-      console.log("[AgentBook] Register-direct response:", JSON.stringify(regData));
+      console.log("[AgentBook] Register-direct response:", regRes.status, JSON.stringify(regData));
 
       if (regData.registered) {
         setPhase("registered");
       } else {
-        setError(regData.error || "Registration failed on-chain");
+        // Show full error detail so we can diagnose
+        const detail = regData.detail ? `\n${regData.detail.slice(-150)}` : "";
+        setError(`${regData.error || "Registration failed"}${detail}`);
         setPhase("idle");
       }
     } catch (err) {
@@ -145,7 +147,7 @@ export default function AgentBookCard() {
         </div>
       </div>
       {error && (
-        <p className="text-[11px] mb-2 text-center" style={{ color: "#f87171" }}>{error}</p>
+        <p className="text-[10px] mb-2 text-left whitespace-pre-wrap break-all" style={{ color: "#f87171" }}>{error}</p>
       )}
       <button
         onClick={handleRegister}
