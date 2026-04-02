@@ -174,11 +174,11 @@ main().catch(err => {
       // Write script to VM and execute
       const scriptB64 = Buffer.from(registerScript).toString("base64");
       await ssh.execCommand(
-        `echo '${scriptB64}' | base64 -d > /tmp/agentbook-register-direct.mjs`
+        `echo '${scriptB64}' | base64 -d > /tmp/agentbook-register-direct.cjs`
       );
 
       const result = await ssh.execCommand(
-        `${NVM_PREAMBLE} && node /tmp/agentbook-register-direct.mjs 2>&1; rm -f /tmp/agentbook-register-direct.mjs`,
+        `${NVM_PREAMBLE} && node /tmp/agentbook-register-direct.cjs 2>&1; rm -f /tmp/agentbook-register-direct.cjs`,
         { execOptions: { timeout: 45000 } }
       );
 
