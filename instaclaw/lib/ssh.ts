@@ -8384,6 +8384,10 @@ export async function upgradeOpenClaw(
 ): Promise<{ success: boolean; error?: string }> {
   const ssh = await connectSSH(vm);
   try {
+    // ── Set restart lock BEFORE any stop — prevents watchdogs/health cron
+    // from restarting the gateway while the upgrade is in progress.
+    await ssh.execCommand('touch /tmp/ic-restart.lock');
+
     // ── Step 0: Kill orphaned processes ──
     // Prevents the crash loop that took down Mucus — a nohup gateway held
     // port 18789, causing systemd to fail 4,294+ times.
