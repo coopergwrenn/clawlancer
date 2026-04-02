@@ -171,9 +171,9 @@ function Hero() {
           </a>
         </motion.div>
 
-        {/* Supply stat */}
+        {/* Supply stats */}
         <motion.div
-          className="flex items-center justify-center gap-6 pt-2"
+          className="flex items-center justify-center gap-8 sm:gap-12 pt-2"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1, duration: 0.6, ease: SNAPPY }}
@@ -183,10 +183,31 @@ function Hero() {
               className="text-2xl sm:text-3xl font-normal tracking-[-0.5px]"
               style={{ fontFamily: "var(--font-serif)" }}
             >
-              1,000,000,000
+              1B
             </p>
             <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-              Fixed supply. No minting. Ever.
+              Total supply (fixed)
+            </p>
+          </div>
+          <div
+            style={{
+              width: 1,
+              height: 36,
+              background: "var(--border)",
+            }}
+          />
+          <div className="text-center">
+            <p
+              className="text-2xl sm:text-3xl font-normal tracking-[-0.5px]"
+              style={{
+                fontFamily: "var(--font-serif)",
+                color: "var(--accent)",
+              }}
+            >
+              28.2%
+            </p>
+            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+              In circulation (~282M)
             </p>
           </div>
         </motion.div>
@@ -653,7 +674,8 @@ function TheMath() {
           </p>
           <p className="text-sm mt-3" style={{ color: "var(--muted)" }}>
             Every active user generates ~$120/year in automatic buy-and-burn
-            pressure across all sources. Same math at 100 users or 10 million.
+            pressure across all sources. With only 28.2% of supply in
+            circulation, every burn hits ~3.5x harder.
           </p>
         </motion.div>
 
@@ -749,7 +771,8 @@ function TheMath() {
                 style={{ color: "var(--accent)" }}
               />
               At 10,000 users, the annual buy-and-burn budget exceeds the
-              token&apos;s entire fully diluted valuation at current prices.
+              token&apos;s entire FDV at current prices &mdash; and with only
+              28% of supply circulating, the actual price impact is amplified.
             </p>
           </div>
         </motion.div>
