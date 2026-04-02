@@ -5096,33 +5096,33 @@ export async function configureOpenClaw(
         .single();
 
       if (!existingWallet?.agentbook_wallet_address) {
-        // Generate a new Ethereum wallet on the VM
-        const walletResult = await ssh.execCommand(
-          `node -e "const w=require('crypto').randomBytes(32).toString('hex'); const {createPublicClient,http}=require('viem'); const {privateKeyToAccount}=require('viem/accounts'); try{const a=privateKeyToAccount('0x'+w); console.log(JSON.stringify({address:a.address,key:w}))}catch(e){console.log(JSON.stringify({error:e.message}))}" 2>/dev/null || ` +
-          `node -e "const c=require('crypto'); const k=c.randomBytes(32); const EC=require('elliptic').ec; try{const ec=new EC('secp256k1'); const kp=ec.keyFromPrivate(k); const pub=kp.getPublic(false,'hex').slice(2); const addr='0x'+c.createHash('keccak256').update(Buffer.from(pub,'hex')).digest('hex').slice(-40); console.log(JSON.stringify({address:addr,key:k.toString('hex')}))}catch(e){console.log(JSON.stringify({error:'elliptic: '+e.message}))}" 2>/dev/null || ` +
-          // Simplest fallback: just generate a deterministic address from the gateway token
-          `node -e "const c=require('crypto'); const h=c.createHash('sha256').update('${gatewayToken}').digest('hex'); console.log(JSON.stringify({address:'0x'+h.slice(0,40),key:h}))"`
-        );
-
+        // Generate wallet LOCALLY using viem (not on VM — viem isn't installed there)
+        // privateKeyToAccount returns EIP-55 checksummed address (required by AgentKit relay)
         try {
-          const walletData = JSON.parse(walletResult.stdout.trim());
-          if (walletData.address && !walletData.error) {
-            // Store the private key on the VM for future signing
-            await ssh.execCommand(
-              `mkdir -p ~/.openclaw/wallet && echo '${walletData.key}' > ~/.openclaw/wallet/agent.key && chmod 600 ~/.openclaw/wallet/agent.key`
-            );
+          const { privateKeyToAccount } = await import("viem/accounts");
+          const { randomBytes } = await import("crypto");
+          const key = randomBytes(32).toString("hex");
+          const account = privateKeyToAccount(`0x${key}`);
 
-            // Checksum the address
-            const rawAddr = walletData.address.toLowerCase();
-            agentbookWallet = rawAddr.startsWith("0x") ? rawAddr : `0x${rawAddr}`;
+          // Deploy private key to VM via SSH
+          await ssh.execCommand(
+            `mkdir -p ~/.openclaw/wallet && echo '${key}' > ~/.openclaw/wallet/agent.key && chmod 600 ~/.openclaw/wallet/agent.key`
+          );
 
-            logger.info("AgentBook wallet provisioned during configure", {
-              route: "lib/ssh",
-              vmId: vm.id,
-              walletPrefix: agentbookWallet!.slice(0, 10),
-            });
-          }
-        } catch { /* wallet generation failed — non-fatal, AgentBook card just won't show */ }
+          agentbookWallet = account.address;
+
+          logger.info("AgentBook wallet provisioned during configure", {
+            route: "lib/ssh",
+            vmId: vm.id,
+            wallet: agentbookWallet,
+          });
+        } catch (walletErr) {
+          logger.warn("Wallet generation failed (non-fatal)", {
+            route: "lib/ssh",
+            vmId: vm.id,
+            error: String(walletErr),
+          });
+        }
       }
     } catch { /* non-fatal */ }
     mark("wallet_provisioned");
