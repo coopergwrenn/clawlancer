@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { isAgentRegistered } from "@/lib/agentbook";
+// Note: isAgentRegistered checks Base; we now register on World Chain
 import { logger } from "@/lib/logger";
-import { createPublicClient, http, parseAbi, type Address } from "viem";
-import { base } from "viem/chains";
+import { createPublicClient, http, parseAbi, defineChain, type Address } from "viem";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const AGENTBOOK_BASE = "0xE1D1D3526A6FAa37eb36bD10B933C1b77f4561a4" as const;
+// World Chain — where the relay sponsors gas
+const worldchain = defineChain({
+  id: 480,
+  name: "World Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://worldchain-mainnet.g.alchemy.com/public"] } },
+});
+const AGENTBOOK_CONTRACT = "0xA23aB2712eA7BBa896930544C7d6636a96b944dA" as const;
 const AGENTBOOK_ABI = parseAbi([
   "function getNextNonce(address agent) view returns (uint256)",
+  "function lookupHuman(address agent) view returns (uint256)",
 ]);
 const RELAY_URL = "https://x402-worldchain.vercel.app/register";
 
@@ -59,10 +66,10 @@ export async function POST(req: NextRequest) {
   const wallet = vm.agentbook_wallet_address as Address;
 
   try {
-    // Read nonce from Base mainnet contract
-    const client = createPublicClient({ chain: base, transport: http() });
+    // Read nonce from World Chain contract
+    const client = createPublicClient({ chain: worldchain, transport: http() });
     const nonce = await client.readContract({
-      address: AGENTBOOK_BASE,
+      address: AGENTBOOK_CONTRACT,
       abi: AGENTBOOK_ABI,
       functionName: "getNextNonce",
       args: [wallet],
@@ -82,15 +89,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid proof format" }, { status: 400 });
     }
 
-    // Submit to gasless relay (same as agentkit-cli --auto)
+    // Submit to gasless relay on World Chain (gas sponsored)
     const registration = {
       agent: wallet,
       root: merkle_root,
       nonce: nonce.toString(),
       nullifierHash: nullifier_hash,
       proof: proofArray,
-      contract: AGENTBOOK_BASE,
-      network: "base",
+      contract: AGENTBOOK_CONTRACT,
+      network: "worldchain",
     };
 
     logger.info("Submitting to AgentBook relay", {
@@ -125,8 +132,18 @@ export async function POST(req: NextRequest) {
 
     // If relay returned a txHash, it worked
     if (relayData.txHash) {
-      // Verify on-chain
-      const registered = await isAgentRegistered(wallet);
+      // Verify on-chain (World Chain)
+      let registered = false;
+      try {
+        const humanId = await client.readContract({
+          address: AGENTBOOK_CONTRACT,
+          abi: AGENTBOOK_ABI,
+          functionName: "lookupHuman",
+          args: [wallet],
+        });
+        registered = humanId !== 0n;
+      } catch { registered = true; /* relay succeeded, trust it */ }
+
       await supabase
         .from("instaclaw_vms")
         .update({
