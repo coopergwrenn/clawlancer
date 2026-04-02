@@ -471,7 +471,14 @@ function ChannelCard({
                     handleToggleAgdp={handleToggleAgdp}
                   />
                 )}
-                {channel.id === "degenclaw" && <DegenClawSection botUsername={vm?.telegramBotUsername} />}
+                {channel.id === "degenclaw" && (
+                  <DegenClawSection
+                    botUsername={vm?.telegramBotUsername}
+                    agdpEnabled={!!vm?.agdpEnabled}
+                    togglingAgdp={togglingAgdp}
+                    handleToggleAgdp={handleToggleAgdp}
+                  />
+                )}
                 {channel.id === "prediction-markets" && <PolymarketPanel onStatusChange={onPolymarketStatusChange} />}
                 {channel.id === "ecommerce" && <EcommerceSection botUsername={vm?.telegramBotUsername} />}
                 {channel.id === "freelance" && <FreelanceSection botUsername={vm?.telegramBotUsername} />}
@@ -1441,7 +1448,17 @@ function EcommerceSection({ botUsername }: { botUsername?: string | null }) {
 
 // ── Freelance & Digital Products Section ─────────────
 
-function DegenClawSection({ botUsername }: { botUsername?: string | null }) {
+function DegenClawSection({
+  botUsername,
+  agdpEnabled,
+  togglingAgdp,
+  handleToggleAgdp,
+}: {
+  botUsername?: string | null;
+  agdpEnabled: boolean;
+  togglingAgdp: boolean;
+  handleToggleAgdp: (enabled: boolean) => void;
+}) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -1474,19 +1491,49 @@ function DegenClawSection({ botUsername }: { botUsername?: string | null }) {
         </p>
       </div>
 
-      <div
-        className="rounded-lg p-4"
-        style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.12)" }}
-      >
-        <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
-          <strong style={{ color: "rgb(34,197,94)" }}>Requires Virtuals Protocol.</strong> Enable Virtuals Protocol above first, then tell your agent to join the competition. Your agent handles authentication, token launch, and strategy setup through conversation.
-        </p>
-      </div>
-
-      <BotMessage
-        message="I want to join the DegenClaw $100K trading competition"
-        botUsername={botUsername}
-      />
+      {!agdpEnabled ? (
+        <div className="space-y-3">
+          <button
+            onClick={() => handleToggleAgdp(true)}
+            disabled={togglingAgdp}
+            className="w-full rounded-lg p-4 text-sm font-semibold transition-all"
+            style={{
+              background: togglingAgdp ? "rgba(59,130,246,0.08)" : "rgba(59,130,246,0.1)",
+              border: "1px solid rgba(59,130,246,0.25)",
+              color: "rgb(59,130,246)",
+              cursor: togglingAgdp ? "wait" : "pointer",
+              opacity: togglingAgdp ? 0.7 : 1,
+            }}
+          >
+            {togglingAgdp ? (
+              <span className="flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Setting up Virtuals Protocol...
+              </span>
+            ) : (
+              "Enable & Join Competition"
+            )}
+          </button>
+          <p className="text-xs text-center" style={{ color: "var(--muted)" }}>
+            This enables Virtuals Protocol on your agent (required for the competition). One-time setup, takes about 30 seconds.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div
+            className="rounded-lg p-4"
+            style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.12)" }}
+          >
+            <p className="text-xs" style={{ color: "var(--muted)", lineHeight: "1.6" }}>
+              <strong style={{ color: "rgb(34,197,94)" }}>Virtuals Protocol is enabled.</strong> Tell your agent to join the competition. It will walk you through authentication, token launch, funding, and strategy selection.
+            </p>
+          </div>
+          <BotMessage
+            message="I want to join the DegenClaw $100K trading competition"
+            botUsername={botUsername}
+          />
+        </div>
+      )}
     </div>
   );
 }
