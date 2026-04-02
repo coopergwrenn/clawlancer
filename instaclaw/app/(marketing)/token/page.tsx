@@ -982,6 +982,7 @@ function TokenDetails() {
     { label: "Token", value: "$INSTACLAW" },
     { label: "Chain", value: "Base (Coinbase L2)" },
     { label: "Total Supply", value: "1,000,000,000" },
+    { label: "Circulating Supply", value: "~282,000,000 (28.2%)" },
     { label: "Max Supply", value: "1,000,000,000 (fixed, no minting)" },
     { label: "Mechanism", value: "Deflationary \u2014 automated buy-and-burn" },
     { label: "Burn Frequency", value: "Daily" },
