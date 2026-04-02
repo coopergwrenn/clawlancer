@@ -119,8 +119,8 @@ function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7, ease: SNAPPY }}
         >
-          Every dollar that flows through InstaClaw — subscriptions, credit
-          purchases, agent token launches, trading fees — automatically buys and
+          Every dollar that flows through InstaClaw (subscriptions, credit
+          purchases, agent token launches, trading fees) automatically buys and
           burns $INSTACLAW.
         </motion.p>
 
@@ -463,9 +463,9 @@ const burnSources = [
     timeline: "Q2 2026",
     tagline: "Agents that pay for themselves.",
     short:
-      "Every agent tokenization \u2014 via Virtuals Protocol or Bankr \u2014 triggers a burn. Every trade on an agent's token splits fees three ways: burn $INSTACLAW, fund the agent's compute, and protocol fees. Agents even burn in their sleep through 24/7 heartbeats.",
+      "Every agent tokenization (via Virtuals Protocol or Bankr) triggers a burn. Every trade on an agent's token splits fees three ways: burn $INSTACLAW, fund the agent's compute, and protocol fees. Agents even burn in their sleep through 24/7 heartbeats.",
     detail:
-      "InstaClaw agents can tokenize through Virtuals Protocol or Bankr \u2014 two independent launchpads, same burn mechanic. When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn. Every subsequent trade on the agent's token generates ongoing burns. The agent literally funds its own inference from trading fees \u2014 and a portion of that spend burns $INSTACLAW. Self-funding agents create a virtuous cycle where market interest in an agent's token directly reduces $INSTACLAW supply.",
+      "InstaClaw agents can tokenize through Virtuals Protocol or Bankr. Two independent launchpads, same burn mechanic. When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn. Every subsequent trade on the agent's token generates ongoing burns. The agent literally funds its own inference from trading fees, and a portion of that spend burns $INSTACLAW. Self-funding agents create a virtuous cycle where market interest in an agent's token directly reduces $INSTACLAW supply.",
   },
   {
     icon: CreditCard,
@@ -475,7 +475,7 @@ const burnSources = [
     short:
       "10% of every subscription payment and every WLD credit purchase automatically buys and burns $INSTACLAW. Users never touch crypto. They never see a wallet. The burn is invisible.",
     detail:
-      "Users pay $29\u2013$299/month via Stripe or buy credits with WLD in World App. Under the hood, 10% of revenue routes to a smart contract that executes a daily buy-and-burn. A tractor company, a record label, an insurance agency \u2014 they\u2019re just paying for their AI agent. Every new subscriber adds permanent, recurring burn pressure that compounds month over month.",
+      "Users pay $29\u2013$299/month via Stripe or buy credits with WLD in World App. Under the hood, 10% of revenue routes to a smart contract that executes a daily buy-and-burn. A tractor company, a record label, an insurance agency. They\u2019re just paying for their AI agent. Every new subscriber adds permanent, recurring burn pressure that compounds month over month.",
   },
   {
     icon: Code,
@@ -777,7 +777,7 @@ function TheMath() {
                 style={{ color: "var(--accent)" }}
               />
               At 10,000 users, the annual buy-and-burn budget exceeds the
-              token&apos;s entire FDV at current prices &mdash; and with only
+              token&apos;s entire FDV at current prices, and with only
               28% of supply circulating, the actual price impact is amplified.
             </p>
           </div>
@@ -987,7 +987,7 @@ function WhyDifferent() {
             <span style={{ color: "var(--foreground)", fontWeight: 500 }}>
               BNB
             </span>{" "}
-            &mdash; but applied to AI agent revenue instead of exchange trading
+            , but applied to AI agent revenue instead of exchange trading
             fees. Every burn transaction is verifiable on BaseScan.
           </p>
         </motion.div>
@@ -1014,7 +1014,7 @@ function TokenDetails() {
     { label: "Total Supply", value: "1,000,000,000" },
     { label: "Circulating Supply", value: "~282,000,000 (28.2%)" },
     { label: "Max Supply", value: "1,000,000,000 (fixed, no minting)" },
-    { label: "Mechanism", value: "Deflationary \u2014 automated buy-and-burn" },
+    { label: "Mechanism", value: "Deflationary. Automated buy-and-burn." },
     { label: "Burn Frequency", value: "Daily" },
   ];
 
@@ -1232,7 +1232,7 @@ function TokenDetails() {
             style={{ borderTop: "1px solid var(--border)" }}
           >
             <p className="text-xs" style={{ color: "var(--muted)" }}>
-              + more exchanges &mdash; actively expanding to new platforms
+              + more exchanges, actively expanding to new platforms
             </p>
           </div>
         </motion.div>
@@ -1300,7 +1300,7 @@ function TokenDetails() {
               style={{ color: "var(--muted)", opacity: 0.7 }}
             >
               Every new exchange and liquidity pool makes it easier to buy
-              $INSTACLAW &mdash; and every new buyer adds to the demand side
+              $INSTACLAW, and every new buyer adds to the demand side
               while the burn steadily reduces supply.
             </p>
           </div>
@@ -1458,9 +1458,9 @@ function Closing() {
                 color: "var(--foreground)",
               }}
             >
-              &ldquo;If a billion people use InstaClaw agents every day &mdash;
+              &ldquo;If a billion people use InstaClaw agents every day,
               paying subscriptions, buying credits, tokenizing agents, calling
-              skills &mdash; every single one of those actions automatically buys
+              skills, every single one of those actions automatically buys
               and burns $INSTACLAW.&rdquo;
             </p>
           </div>
