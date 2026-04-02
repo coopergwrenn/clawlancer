@@ -67,9 +67,11 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ status: "waiting" });
       }
 
-      // Check for World ID verify URL (world.org/verify or bridge.worldcoin.org)
+      // Check for World ID verify URL
+      // idkit-core generates: https://worldcoin.org/verify?t=wld&i=...&k=...
+      // Also check world.org/verify and bridge.worldcoin.org as fallbacks
       const urlMatch = stdout.match(
-        /https:\/\/(?:world\.org\/verify|bridge\.worldcoin\.org)[^\s"')]+/
+        /https:\/\/(?:worldcoin\.org\/verify|world\.org\/verify|bridge\.worldcoin\.org)[^\s"')]+/
       );
       if (urlMatch) {
         return NextResponse.json({
@@ -78,9 +80,9 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // Broader fallback — any worldcoin/world.org URL
+      // Broader fallback — any worldcoin/world.org URL with verify
       const broadMatch = stdout.match(
-        /https:\/\/[^\s"')]*(?:worldcoin|world\.org)[^\s"')]+/
+        /https:\/\/[^\s"')]*(?:worldcoin|world\.org)[^\s"')]*verify[^\s"')]+/
       );
       if (broadMatch) {
         return NextResponse.json({
@@ -89,12 +91,15 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // Check if CLI errored out
-      if (
-        stdout.includes("Error") ||
-        stdout.includes("error:") ||
-        stdout.includes("ENOENT")
-      ) {
+      // Check if CLI errored out — comprehensive patterns
+      const errorPatterns = [
+        "Error", "error:", "ENOENT", "ETIMEDOUT", "ECONNREFUSED",
+        "command not found", "Cannot find module", "MODULE_NOT_FOUND",
+        "VERIFICATION_FAILED", "REGISTRATION_FAILED", "INVALID_PROOF",
+        "MISSING_API_URL", "fetch failed", "timed out",
+      ];
+      const hasError = errorPatterns.some(p => stdout.includes(p));
+      if (hasError) {
         logger.warn("agentkit-cli errored during registration", {
           vmId: vm.id,
           log: stdout.slice(0, 500),
@@ -102,12 +107,16 @@ export async function GET(req: NextRequest) {
         });
         return NextResponse.json({
           status: "error",
-          error: "Registration CLI failed. Check VM logs.",
+          error: "Registration CLI failed",
+          detail: stdout.slice(-300),
         });
       }
 
-      // Log exists but no URL yet — still starting
-      return NextResponse.json({ status: "waiting" });
+      // Log exists but no URL yet — still starting. Include log tail for debugging.
+      return NextResponse.json({
+        status: "waiting",
+        logTail: stdout.slice(-200),
+      });
     } finally {
       ssh.dispose();
     }

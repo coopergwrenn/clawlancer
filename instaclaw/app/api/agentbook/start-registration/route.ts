@@ -94,10 +94,17 @@ export async function POST(req: NextRequest) {
       await ssh.execCommand("rm -f /tmp/agentbook-register.log /tmp/agentbook-start.sh");
 
       // Write a launcher script to the VM — avoids shell escaping issues
+      // Try global `agentkit` binary first (installed at v0.1.3 by configureOpenClaw),
+      // fall back to npx with pinned version. Must pin to 0.1.3 — v0.1.8+ removed
+      // --network flag and switched from Base to World Chain.
       const script = [
         "#!/bin/bash",
         NVM_PREAMBLE,
-        `npx --yes @worldcoin/agentkit-cli register ${wallet} --network base --auto > /tmp/agentbook-register.log 2>&1`,
+        `if command -v agentkit &>/dev/null; then`,
+        `  agentkit register ${wallet} --network base --auto > /tmp/agentbook-register.log 2>&1`,
+        `else`,
+        `  npx --yes @worldcoin/agentkit-cli@0.1.3 register ${wallet} --network base --auto > /tmp/agentbook-register.log 2>&1`,
+        `fi`,
       ].join("\n");
       const b64 = Buffer.from(script, "utf-8").toString("base64");
 

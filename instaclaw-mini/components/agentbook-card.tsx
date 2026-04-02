@@ -65,7 +65,7 @@ export default function AgentBookCard() {
       // Step 2: Poll for bridge URL (CLI takes a few seconds to generate it)
       setPhase("waiting-url");
       let url: string | null = null;
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 30; i++) {
         await new Promise(r => setTimeout(r, 2000));
         try {
           const urlRes = await fetch("/api/proxy/agentbook/get-bridge-url");
@@ -73,6 +73,11 @@ export default function AgentBookCard() {
           if (urlData.bridgeUrl) {
             url = urlData.bridgeUrl;
             break;
+          }
+          if (urlData.status === "error") {
+            setError(urlData.error || "Registration failed");
+            setPhase("idle");
+            return;
           }
         } catch { /* keep polling */ }
       }
