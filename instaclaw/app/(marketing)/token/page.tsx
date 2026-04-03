@@ -11,7 +11,7 @@ import {
   Copy,
   Check,
   ExternalLink,
-  Zap,
+
 } from "lucide-react";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
@@ -522,8 +522,8 @@ function BurnSources() {
             className="text-sm sm:text-base max-w-lg mx-auto"
             style={{ color: "var(--muted)" }}
           >
-            No single point of failure. If trading slows, subscriptions still
-            burn. If subscriptions plateau, the marketplace keeps growing.
+            No single point of failure. Three independent engines feeding
+            the same burn. If one source slows, the others keep burning.
           </p>
         </motion.div>
 
@@ -695,7 +695,7 @@ function TheMath() {
           </p>
         </motion.div>
 
-        {/* Projections table */}
+        {/* Live burn tracker */}
         <motion.div
           className="rounded-xl overflow-hidden mb-8"
           style={glassStyle}
@@ -704,91 +704,96 @@ function TheMath() {
           viewport={{ once: true, margin: "-80px" }}
           transition={{ delay: 0.1, duration: 0.6, ease: SNAPPY }}
         >
-          <div className="p-6 sm:p-8">
+          <div className="p-6 sm:p-8 text-center">
             <h3
               className="text-xl sm:text-2xl font-normal tracking-[-0.5px] mb-6"
               style={{ fontFamily: "var(--font-serif)" }}
             >
-              Annual Buy-and-Burn Projections
+              Live Burn Tracker
             </h3>
 
-            <div className="space-y-0">
-              {/* Header */}
-              <div
-                className="grid grid-cols-3 gap-4 pb-4"
-                style={{ borderBottom: "1px solid var(--border)" }}
-              >
+            <p
+              className="text-xs uppercase tracking-[2px] mb-3"
+              style={{ color: "var(--muted)" }}
+            >
+              Total $INSTACLAW burned
+            </p>
+            <p
+              className="text-4xl sm:text-5xl font-normal tracking-[-1px] mb-2"
+              style={{
+                fontFamily: "var(--font-serif)",
+                color: "var(--foreground)",
+              }}
+            >
+              0
+            </p>
+            <p
+              className="text-xs mb-6"
+              style={{ color: "var(--muted)" }}
+            >
+              First burn: May 2026
+            </p>
+
+            {/* Placeholder stats row */}
+            <div
+              className="grid grid-cols-3 gap-4 pt-5"
+              style={{ borderTop: "1px solid var(--border)" }}
+            >
+              <div>
                 <p
-                  className="text-xs uppercase tracking-[1.5px] font-medium"
-                  style={{ color: "var(--muted)" }}
+                  className="text-lg font-normal tracking-[-0.5px]"
+                  style={{ fontFamily: "var(--font-serif)" }}
                 >
-                  Scale
+                  0
                 </p>
-                <p
-                  className="text-xs uppercase tracking-[1.5px] font-medium text-right"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Monthly
-                </p>
-                <p
-                  className="text-xs uppercase tracking-[1.5px] font-medium text-right"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Annual
+                <p className="text-[10px] uppercase tracking-[1px] mt-1" style={{ color: "var(--muted)" }}>
+                  Burned today
                 </p>
               </div>
-
-              {/* Row 1 */}
-              <div
-                className="grid grid-cols-3 gap-4 py-5"
-                style={{ borderBottom: "1px solid var(--border)" }}
-              >
-                <p className="text-sm font-medium">10,000 users</p>
-                <p className="text-sm text-right" style={{ color: "var(--muted)" }}>
-                  $103,000/mo
-                </p>
+              <div>
                 <p
-                  className="text-sm text-right font-semibold"
-                  style={{ color: "var(--accent)" }}
+                  className="text-lg font-normal tracking-[-0.5px]"
+                  style={{ fontFamily: "var(--font-serif)" }}
                 >
-                  $1,240,000/yr
+                  0
+                </p>
+                <p className="text-[10px] uppercase tracking-[1px] mt-1" style={{ color: "var(--muted)" }}>
+                  Burned this month
                 </p>
               </div>
-
-              {/* Row 2 */}
-              <div className="grid grid-cols-3 gap-4 py-5">
-                <p className="text-sm font-medium">100,000 users</p>
-                <p className="text-sm text-right" style={{ color: "var(--muted)" }}>
-                  $1,030,000/mo
-                </p>
+              <div>
                 <p
-                  className="text-sm text-right font-semibold"
-                  style={{ color: "var(--accent)" }}
+                  className="text-lg font-normal tracking-[-0.5px]"
+                  style={{ fontFamily: "var(--font-serif)" }}
                 >
-                  $12,360,000/yr
+                  0
+                </p>
+                <p className="text-[10px] uppercase tracking-[1px] mt-1" style={{ color: "var(--muted)" }}>
+                  Burn transactions
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Callout bar */}
+          {/* Verifiable bar */}
           <div
             className="px-6 sm:px-8 py-4"
             style={{
-              background: "rgba(220,103,67,0.06)",
-              borderTop: "1px solid rgba(220,103,67,0.1)",
+              background: "rgba(220,103,67,0.04)",
+              borderTop: "1px solid var(--border)",
             }}
           >
-            <p className="text-xs sm:text-sm" style={{ color: "var(--foreground)" }}>
-              <Zap
-                size={14}
-                strokeWidth={1.5}
-                className="inline mr-1.5 -mt-0.5"
+            <p className="text-xs sm:text-sm text-center" style={{ color: "var(--muted)" }}>
+              Every burn transaction is verifiable on{" "}
+              <a
+                href={BASESCAN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
                 style={{ color: "var(--accent)" }}
-              />
-              At 10,000 users, the annual buy-and-burn budget exceeds the
-              token&apos;s entire FDV at current prices, and with only
-              28% of supply circulating, the actual price impact is amplified.
+              >
+                BaseScan
+              </a>
             </p>
           </div>
         </motion.div>
