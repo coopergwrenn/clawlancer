@@ -271,79 +271,60 @@ function Flywheel() {
 
         {/* Flywheel ring — desktop */}
         <div className="hidden sm:block">
-          <div className="relative mx-auto" style={{ width: 700, height: 740 }}>
-            {/* SVG ring with flowing energy effect */}
+          <div className="relative mx-auto" style={{ width: 750, height: 740 }}>
+            {/* Base ring — subtle dashed SVG */}
             <svg
               className="absolute"
-              style={{ left: 350 - 170, top: 340 - 170, width: 340, height: 340 }}
+              style={{ left: 375 - 170, top: 340 - 170, width: 340, height: 340 }}
               viewBox="0 0 340 340"
             >
-              <defs>
-                {/* Base ring gradient */}
-                <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="rgba(220,103,67,0.12)" />
-                  <stop offset="50%" stopColor="rgba(220,103,67,0.05)" />
-                  <stop offset="100%" stopColor="rgba(220,103,67,0.12)" />
-                </linearGradient>
-                {/* Energy sweep gradient — bright head fading to transparent */}
-                <linearGradient id="energy-grad" gradientUnits="userSpaceOnUse" x1="170" y1="5" x2="170" y2="335">
-                  <stop offset="0%" stopColor="#DC6743" stopOpacity="0.6" />
-                  <stop offset="30%" stopColor="#DC6743" stopOpacity="0.15" />
-                  <stop offset="60%" stopColor="#DC6743" stopOpacity="0" />
-                  <stop offset="100%" stopColor="#DC6743" stopOpacity="0" />
-                </linearGradient>
-                {/* Glow filter for energy sweep */}
-                <filter id="energy-glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-
-              {/* Base ring — subtle dashed */}
               <circle
                 cx="170"
                 cy="170"
                 r="165"
                 fill="none"
-                stroke="url(#ring-grad)"
+                stroke="rgba(220,103,67,0.1)"
                 strokeWidth="1"
                 strokeDasharray="8 8"
               />
-
-              {/* Flowing dashes — the ring appears to move */}
-              <circle
-                cx="170"
-                cy="170"
-                r="165"
-                fill="none"
-                stroke="rgba(220,103,67,0.08)"
-                strokeWidth="1.5"
-                strokeDasharray="4 12"
-                style={{ animation: "flywheel-flow 20s linear infinite" }}
-              />
-
-              {/* Energy sweep — bright arc that rotates around the ring */}
-              <circle
-                cx="170"
-                cy="170"
-                r="165"
-                fill="none"
-                stroke="url(#energy-grad)"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray="260 776"
-                filter="url(#energy-glow)"
-                style={{ animation: "flywheel-orbit 10s linear infinite", transformOrigin: "170px 170px" }}
-              />
             </svg>
+
+            {/* Glowing energy sweep — CSS conic gradient masked to ring */}
+            <div
+              className="absolute"
+              style={{
+                left: 375 - 175,
+                top: 340 - 175,
+                width: 350,
+                height: 350,
+                borderRadius: "50%",
+                animation: "flywheel-orbit 8s linear infinite",
+                background: "conic-gradient(from 0deg, transparent 0%, transparent 50%, rgba(220,103,67,0.04) 60%, rgba(220,103,67,0.15) 75%, rgba(220,103,67,0.4) 88%, #DC6743 95%, rgba(220,103,67,0.4) 97%, transparent 100%)",
+                mask: "radial-gradient(circle, transparent 155px, black 157px, black 173px, transparent 175px)",
+                WebkitMask: "radial-gradient(circle, transparent 155px, black 157px, black 173px, transparent 175px)",
+              }}
+            />
+            {/* Glow layer behind the sweep — softer, larger */}
+            <div
+              className="absolute"
+              style={{
+                left: 375 - 175,
+                top: 340 - 175,
+                width: 350,
+                height: 350,
+                borderRadius: "50%",
+                animation: "flywheel-orbit 8s linear infinite",
+                background: "conic-gradient(from 0deg, transparent 0%, transparent 60%, rgba(220,103,67,0.08) 75%, rgba(220,103,67,0.2) 90%, rgba(220,103,67,0.08) 95%, transparent 100%)",
+                mask: "radial-gradient(circle, transparent 145px, black 150px, black 180px, transparent 185px)",
+                WebkitMask: "radial-gradient(circle, transparent 145px, black 150px, black 180px, transparent 185px)",
+                filter: "blur(6px)",
+              }}
+            />
 
             {/* Nodes — dots on ring, labels pushed outward */}
             {flywheelSteps.map((step, i) => {
               const angle = (i / flywheelSteps.length) * 2 * Math.PI - Math.PI / 2;
-              const cx = 350; // center x
+              const cx = 375; // center x
               const cy = 340; // center y
               const ringR = 165;
               const labelR = 280;
@@ -405,7 +386,7 @@ function Flywheel() {
             {/* Center label */}
             <div
               className="absolute flex flex-col items-center justify-center"
-              style={{ top: 340, left: 350, transform: "translate(-50%, -50%)" }}
+              style={{ top: 340, left: 375, transform: "translate(-50%, -50%)" }}
             >
               <Repeat
                 size={28}
