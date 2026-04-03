@@ -11,7 +11,7 @@ import {
   Copy,
   Check,
   ExternalLink,
-
+  TrendingDown,
 } from "lucide-react";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
@@ -476,7 +476,7 @@ function Flywheel() {
   );
 }
 
-/* ─── Three Burn Sources ─────────────────────────── */
+/* ─── Four Burn Sources ──────────────────────────── */
 
 const burnSources = [
   {
@@ -488,6 +488,16 @@ const burnSources = [
       "Every agent tokenization (via Virtuals Protocol or Bankr) triggers a burn. Every trade on an agent's token splits fees three ways: burn $INSTACLAW, fund the agent's compute, and protocol fees. Agents even burn in their sleep through 24/7 heartbeats.",
     detail:
       "InstaClaw agents can tokenize through Virtuals Protocol or Bankr. Two independent launchpads, same burn mechanic. When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn. Every subsequent trade on the agent's token generates ongoing burns. The agent literally funds its own inference from trading fees, and a portion of that spend burns $INSTACLAW. Self-funding agents create a virtuous cycle where market interest in an agent's token directly reduces $INSTACLAW supply.",
+  },
+  {
+    icon: TrendingDown,
+    title: "The Trading Loop",
+    timeline: "Q2 2026",
+    tagline: "Trading $INSTACLAW burns $INSTACLAW.",
+    short:
+      "10% of all $INSTACLAW trading fees received from Virtuals Protocol automatically routes to buy-and-burn. Every trade on the token itself feeds the deflationary cycle.",
+    detail:
+      "Virtuals Protocol sends token trading fees directly to the creator wallet on every $INSTACLAW trade. 10% of those fees are routed to the burn mechanism. This creates a recursive loop: the more people trade $INSTACLAW, the more gets burned. Volume fuels deflation. The token's own market activity reduces its supply.",
   },
   {
     icon: CreditCard,
@@ -528,18 +538,18 @@ function BurnSources() {
             className="text-4xl sm:text-5xl lg:text-6xl font-normal tracking-[-1px] leading-[1.05] mb-4"
             style={{ fontFamily: "var(--font-serif)" }}
           >
-            Three Independent Burn Sources
+            Four Independent Burn Sources
           </h2>
           <p
             className="text-sm sm:text-base max-w-lg mx-auto"
             style={{ color: "var(--muted)" }}
           >
-            No single point of failure. Three independent engines feeding
+            No single point of failure. Four independent engines feeding
             the same burn. If one source slows, the others keep burning.
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {burnSources.map((source, i) => (
             <motion.div
               key={source.title}
@@ -893,29 +903,23 @@ function TheMath() {
             style={{ fontFamily: "var(--font-serif)" }}
           >
             Burns by Source
-            <span
-              className="text-xs ml-2 font-normal"
-              style={{ color: "var(--muted)", fontFamily: "inherit" }}
-            >
-              at 10K users
-            </span>
           </h3>
 
           <div className="space-y-4">
             {[
               {
                 label: "Subscriptions + WLD",
-                amount: "$68,000/mo",
-                pct: 66,
+                pct: 55,
               },
-              { label: "Agent tokens + trading", amount: "$20,000/mo", pct: 19 },
-              { label: "Skill marketplace", amount: "$15,000/mo", pct: 15 },
+              { label: "$INSTACLAW trading fees", pct: 18 },
+              { label: "Agent tokens + trading", pct: 16 },
+              { label: "Skill marketplace", pct: 11 },
             ].map((row) => (
               <div key={row.label}>
                 <div className="flex justify-between items-baseline mb-1.5">
                   <p className="text-sm">{row.label}</p>
                   <p className="text-xs" style={{ color: "var(--muted)" }}>
-                    {row.amount} ({row.pct}%)
+                    {row.pct}%
                   </p>
                 </div>
                 <div
@@ -954,7 +958,7 @@ const comparisonRows = [
   {
     label: "Burn mechanism",
     typical: "None or manual team burns",
-    instaclaw: "Automated buy-and-burn from 3 independent sources",
+    instaclaw: "Automated buy-and-burn from 4 independent sources",
   },
   {
     label: "User experience",
