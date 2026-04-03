@@ -271,7 +271,7 @@ function Flywheel() {
 
         {/* Flywheel ring — desktop */}
         <div className="hidden sm:block">
-          <div className="relative mx-auto" style={{ width: 520, height: 520 }}>
+          <div className="relative mx-auto" style={{ width: 520, height: 580 }}>
             {/* SVG ring */}
             <svg
               className="absolute inset-0 w-full h-full"
@@ -320,24 +320,19 @@ function Flywheel() {
               />
             </div>
 
-            {/* Nodes positioned around the circle */}
+            {/* Nodes: dot on ring, label pushed outward */}
             {flywheelSteps.map((step, i) => {
               const angle = (i / flywheelSteps.length) * 2 * Math.PI - Math.PI / 2;
-              const radius = 200;
-              const cx = 260 + radius * Math.cos(angle);
-              const cy = 260 + radius * Math.sin(angle);
+              const dotR = 200;
+              const labelR = 260;
+              const dotX = 260 + dotR * Math.cos(angle);
+              const dotY = 260 + dotR * Math.sin(angle);
+              const labelX = 260 + labelR * Math.cos(angle);
+              const labelY = 260 + labelR * Math.sin(angle);
 
               return (
                 <motion.div
                   key={i}
-                  className="absolute"
-                  style={{
-                    left: cx,
-                    top: cy,
-                    transform: "translate(-50%, -50%)",
-                    width: 160,
-                    textAlign: "center",
-                  }}
                   initial={{ opacity: 0, scale: 0.8 }}
                   whileInView={{ opacity: 1, scale: 1 }}
                   viewport={{ once: true, margin: "-50px" }}
@@ -346,11 +341,14 @@ function Flywheel() {
                     duration: 0.5,
                     ease: SNAPPY,
                   }}
+                  style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
                 >
-                  {/* Node dot */}
+                  {/* Dot on ring */}
                   <div
-                    className="mx-auto mb-2"
                     style={{
+                      position: "absolute",
+                      left: dotX - 5,
+                      top: dotY - 5,
                       width: 10,
                       height: 10,
                       borderRadius: "50%",
@@ -358,18 +356,31 @@ function Flywheel() {
                       boxShadow: "0 0 8px rgba(220,103,67,0.3)",
                     }}
                   />
-                  <p
-                    className="text-xs sm:text-sm font-medium leading-tight"
-                    style={{ color: "var(--foreground)" }}
+                  {/* Label centered on the outward point */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: labelX,
+                      top: labelY,
+                      transform: "translate(-50%, -50%)",
+                      width: 150,
+                      textAlign: "center",
+                      pointerEvents: "auto",
+                    }}
                   >
-                    {step.label}
-                  </p>
-                  <p
-                    className="text-[10px] mt-0.5 leading-tight"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    {step.sub}
-                  </p>
+                    <p
+                      className="text-xs sm:text-sm font-medium leading-tight"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      {step.label}
+                    </p>
+                    <p
+                      className="text-[10px] mt-0.5 leading-tight"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {step.sub}
+                    </p>
+                  </div>
                 </motion.div>
               );
             })}
