@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 // Note: isAgentRegistered checks Base; we now register on World Chain
 import { logger } from "@/lib/logger";
-import { createPublicClient, http, parseAbi, defineChain, type Address } from "viem";
+import { createPublicClient, http, parseAbi, defineChain, decodeAbiParameters, type Address } from "viem";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -75,16 +75,38 @@ export async function POST(req: NextRequest) {
       args: [wallet],
     });
 
-    // Normalize proof to array format expected by relay
+    // Normalize proof — must match agentkit-cli's normalizeProof() exactly
+    // MiniKit returns ABI-encoded uint256[8] (with offset+length headers)
+    // The relay expects an array of 8 hex-encoded uint256 values
     let proofArray: string[];
-    if (typeof proof === "string" && proof.startsWith("0x")) {
-      const hex = proof.slice(2);
-      proofArray = [];
-      for (let i = 0; i < 8; i++) {
-        proofArray.push("0x" + hex.slice(i * 64, (i + 1) * 64));
-      }
-    } else if (Array.isArray(proof)) {
+    if (Array.isArray(proof)) {
       proofArray = proof;
+    } else if (typeof proof === "string" && proof.startsWith("[")) {
+      // JSON array string
+      proofArray = JSON.parse(proof);
+    } else if (typeof proof === "string" && proof.startsWith("0x")) {
+      // ABI-encoded — decode properly (strips offset+length headers)
+      try {
+        const decoded = decodeAbiParameters(
+          [{ type: "uint256[8]" }],
+          proof as `0x${string}`
+        )[0];
+        proofArray = decoded.map(
+          (v: bigint) => "0x" + v.toString(16).padStart(64, "0")
+        );
+      } catch {
+        // Fallback: if not ABI-encoded, try raw split (no headers)
+        const hex = proof.slice(2);
+        if (hex.length === 512) {
+          // Exactly 8 × 64 hex chars — no ABI headers
+          proofArray = [];
+          for (let i = 0; i < 8; i++) {
+            proofArray.push("0x" + hex.slice(i * 64, (i + 1) * 64));
+          }
+        } else {
+          return NextResponse.json({ error: "Invalid proof format", detail: `proof length: ${hex.length} chars` }, { status: 400 });
+        }
+      }
     } else {
       return NextResponse.json({ error: "Invalid proof format" }, { status: 400 });
     }
