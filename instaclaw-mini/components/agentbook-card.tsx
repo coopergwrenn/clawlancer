@@ -129,7 +129,9 @@ export default function AgentBookCard() {
       if (regData.registered) {
         setPhase("registered");
       } else {
-        setError(regData.error || "Registration failed");
+        const detail = regData.detail ? `\n${String(regData.detail).slice(0, 200)}` : "";
+        const bodyPreview = regData.bodyPreview ? `\n${String(regData.bodyPreview).slice(0, 200)}` : "";
+        setError(`${regData.error || "Registration failed"}${detail}${bodyPreview}`);
         setPhase("idle");
       }
     } catch (err) {
