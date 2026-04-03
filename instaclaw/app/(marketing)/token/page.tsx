@@ -485,9 +485,9 @@ const burnSources = [
     timeline: "Coming Soon",
     tagline: "Agents that pay for themselves.",
     short:
-      "Every InstaClaw agent can one-click tokenize through Virtuals Protocol or Bankr. The moment it does, all trading fee infrastructure kicks in automatically. Fees from the agent's token route back to fund the agent's own compute AND burn $INSTACLAW. Self-sustaining agents that burn the parent token 24/7.",
+      "Every InstaClaw agent can one-click tokenize itself. The moment it does, all trading fee infrastructure kicks in automatically. Fees from the agent's token route back to fund the agent's own compute AND burn $INSTACLAW. Self-sustaining agents that burn the parent token 24/7.",
     detail:
-      "When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn of $INSTACLAW. From that point on, every trade on the agent's token generates fees that automatically route back through Virtuals or Bankr infrastructure. Those fees split three ways: a portion funds the agent's own compute (so it pays for its own inference), a portion burns $INSTACLAW, and a portion goes to the protocol. The agent becomes fully self-sustaining from its own token's trading activity while simultaneously reducing $INSTACLAW supply with every trade.",
+      "When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn of $INSTACLAW. From that point on, every trade on the agent's token generates fees that automatically route back. Those fees split three ways: a portion funds the agent's own compute (so it pays for its own inference), a portion burns $INSTACLAW, and a portion goes to the protocol. The agent becomes fully self-sustaining from its own token's trading activity while simultaneously reducing $INSTACLAW supply with every trade.",
   },
   {
     icon: TrendingDown,
@@ -495,9 +495,9 @@ const burnSources = [
     timeline: "Coming Soon",
     tagline: "Trading $INSTACLAW burns $INSTACLAW.",
     short:
-      "10% of all $INSTACLAW trading fees received from Virtuals Protocol automatically routes to buy-and-burn. Every trade on the token itself feeds the deflationary cycle.",
+      "10% of all $INSTACLAW trading fees automatically routes to buy-and-burn. Every trade on the token itself feeds the deflationary cycle.",
     detail:
-      "Virtuals Protocol sends token trading fees directly to the creator wallet on every $INSTACLAW trade. 10% of those fees are routed to the burn mechanism. This creates a recursive loop: the more people trade $INSTACLAW, the more gets burned. Volume fuels deflation. The token's own market activity reduces its supply.",
+      "Token trading fees are sent directly to the creator wallet on every $INSTACLAW trade. 10% of those fees are routed to the burn mechanism. This creates a recursive loop: the more people trade $INSTACLAW, the more gets burned. Volume fuels deflation. The token's own market activity reduces its supply.",
   },
   {
     icon: CreditCard,
@@ -1425,13 +1425,13 @@ const milestones = [
   {
     date: "Q2 2026",
     title: "Agent Economy Loop",
-    description: "Agent tokenization and trading fee burns go live via Virtuals Protocol and Bankr partnerships.",
+    description: "Agent tokenization and trading fee burns go live via major partnerships.",
     active: false,
   },
   {
     date: "Q2 2026",
     title: "Trading Loop",
-    description: "10% of $INSTACLAW trading fees from Virtuals automatically route to buy-and-burn.",
+    description: "10% of $INSTACLAW trading fees automatically route to buy-and-burn.",
     active: false,
   },
   {
