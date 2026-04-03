@@ -503,11 +503,11 @@ const burnSources = [
     icon: CreditCard,
     title: "The Silent Engine",
     timeline: "Coming Soon",
-    tagline: "Your subscription is burning tokens right now.",
+    tagline: "Every payment burns. Users never know.",
     short:
-      "10% of every subscription payment and every WLD credit purchase automatically buys and burns $INSTACLAW. Users never touch crypto. They never see a wallet. The burn is invisible.",
+      "10% of every subscription payment and every WLD credit purchase automatically buys and burns $INSTACLAW. Users never touch crypto. They never see a wallet. The burn is invisible. And with the World Mini App launching soon, InstaClaw is opening up to 17+ million verified humans.",
     detail:
-      "Users pay $29\u2013$299/month via Stripe or buy credits with WLD in World App. Under the hood, 10% of revenue routes to a smart contract that executes a daily buy-and-burn. A solo founder running an entire business through a fleet of coordinated agents, a trader with 24/7 autonomous Polymarket strategies, a creator whose agent handles content, scheduling, and audience growth while they sleep. They\u2019re just paying for their AI agent. Every new subscriber adds permanent, recurring burn pressure that compounds month over month.",
+      "Users pay $29\u2013$299/month via Stripe or convert their free WLD grants directly into InstaClaw agent credits through the World Mini App. That\u2019s 17+ million World-verified humans who can use house money from identity verification to enter the InstaClaw ecosystem without paying a dollar out of pocket. Every subscription and every WLD conversion feeds the burn. Under the hood, 10% of all revenue routes to a smart contract that executes a daily buy-and-burn. A solo founder running an entire business through a fleet of coordinated agents, a trader with 24/7 autonomous Polymarket strategies, a creator whose agent handles content, scheduling, and audience growth while they sleep. Every new user adds a permanent burn loop that compounds month over month.",
   },
   {
     icon: Code,
