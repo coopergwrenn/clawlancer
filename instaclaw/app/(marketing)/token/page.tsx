@@ -635,6 +635,117 @@ function BurnSources() {
 
 /* ─── The Math ───────────────────────────────────── */
 
+function EstimatedProjections() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <motion.div
+      className="rounded-xl mb-8 overflow-hidden"
+      style={glassStyle}
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ delay: 0.15, duration: 0.6, ease: SNAPPY }}
+    >
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-6 sm:px-8 py-5 flex items-center justify-between cursor-pointer"
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="transition-transform duration-200"
+            style={{
+              display: "inline-block",
+              transform: open ? "rotate(90deg)" : "rotate(0deg)",
+              color: "var(--accent)",
+              fontSize: 12,
+            }}
+          >
+            &#9656;
+          </span>
+          <p
+            className="text-sm font-medium"
+            style={{ color: "var(--foreground)" }}
+          >
+            Estimated burn projections
+          </p>
+        </div>
+        <p
+          className="text-sm font-semibold"
+          style={{ color: "var(--accent)" }}
+        >
+          $1,240,000/yr
+        </p>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{
+              height: { duration: 0.3, ease: SNAPPY },
+              opacity: { duration: 0.2 },
+            }}
+            className="overflow-hidden"
+          >
+            <div
+              className="px-6 sm:px-8 pb-2"
+            >
+              <p
+                className="text-[10px] uppercase tracking-[1px] px-2 py-1 rounded-full inline-block mb-4"
+                style={{
+                  background: "rgba(0,0,0,0.05)",
+                  color: "var(--muted)",
+                }}
+              >
+                Estimates only. Not guarantees of future performance.
+              </p>
+            </div>
+
+            <div className="px-6 sm:px-8">
+              {/* Header */}
+              <div
+                className="grid grid-cols-3 gap-4 pb-3"
+                style={{ borderBottom: "1px solid var(--border)" }}
+              >
+                <p className="text-[10px] uppercase tracking-[1px]" style={{ color: "var(--muted)" }}>Scale</p>
+                <p className="text-[10px] uppercase tracking-[1px] text-right" style={{ color: "var(--muted)" }}>Monthly</p>
+                <p className="text-[10px] uppercase tracking-[1px] text-right" style={{ color: "var(--muted)" }}>Annual</p>
+              </div>
+
+              <div
+                className="grid grid-cols-3 gap-4 py-4"
+                style={{ borderBottom: "1px solid var(--border)" }}
+              >
+                <p className="text-sm">10,000 users</p>
+                <p className="text-sm text-right" style={{ color: "var(--muted)" }}>~$103,000</p>
+                <p className="text-sm text-right font-semibold" style={{ color: "var(--accent)" }}>~$1,240,000</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 py-4">
+                <p className="text-sm">100,000 users</p>
+                <p className="text-sm text-right" style={{ color: "var(--muted)" }}>~$1,030,000</p>
+                <p className="text-sm text-right font-semibold" style={{ color: "var(--accent)" }}>~$12,360,000</p>
+              </div>
+            </div>
+
+            <div className="px-6 sm:px-8 py-4">
+              <p className="text-[10px] leading-relaxed" style={{ color: "var(--muted)", opacity: 0.7 }}>
+                These figures are hypothetical estimates based on the 10% buy-and-burn
+                mechanism applied to projected revenue at various user scales. Actual
+                results will depend on product adoption, revenue mix, and market conditions.
+                This is not financial advice and should not be relied upon for investment decisions.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
 function TheMath() {
   return (
     <section
@@ -797,6 +908,9 @@ function TheMath() {
             </p>
           </div>
         </motion.div>
+
+        {/* Estimated projections (collapsible) */}
+        <EstimatedProjections />
 
         {/* Burns by source */}
         <motion.div
