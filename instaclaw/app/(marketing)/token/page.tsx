@@ -1086,9 +1086,10 @@ function WhyDifferent() {
             $INSTACLAW uses the same proven buy-and-burn model as{" "}
             <span style={{ color: "var(--foreground)", fontWeight: 500 }}>
               BNB
-            </span>{" "}
+            </span>
             , but applied to AI agent revenue instead of exchange trading
-            fees. Every burn transaction is verifiable on BaseScan.
+            fees. Plus a recursive loop where trading the token itself burns
+            the token. Every burn transaction is verifiable on BaseScan.
           </p>
         </motion.div>
       </div>
@@ -1426,6 +1427,12 @@ const milestones = [
     active: false,
   },
   {
+    date: "Q2 2026",
+    title: "Trading Loop",
+    description: "10% of $INSTACLAW trading fees from Virtuals automatically route to buy-and-burn.",
+    active: false,
+  },
+  {
     date: "Q2\u2013Q3 2026",
     title: "Silent Engine",
     description: "Subscription and WLD credit purchases begin automatically burning.",
@@ -1559,9 +1566,9 @@ function Closing() {
               }}
             >
               &ldquo;If a billion people use InstaClaw agents every day,
-              paying subscriptions, buying credits, tokenizing agents, calling
-              skills, every single one of those actions automatically buys
-              and burns $INSTACLAW.&rdquo;
+              paying subscriptions, buying credits, tokenizing agents, trading
+              the token, calling skills, every single one of those actions
+              automatically buys and burns $INSTACLAW.&rdquo;
             </p>
           </div>
 
