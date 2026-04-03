@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Get user's World App wallet address for notification
+    let notified = false;
     if (vm.assigned_to) {
       const { data: user } = await supabase
         .from("instaclaw_users")
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
 
       const worldWallet = user?.world_wallet_address;
       if (worldWallet) {
-        await sendNotification(worldWallet);
+        notified = await sendNotification(worldWallet);
       } else {
         logger.warn("No world_wallet_address for notification", {
           userId: vm.assigned_to,
@@ -72,13 +73,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    logger.info("AgentBook registration complete + notification sent", {
+    logger.info("AgentBook registration complete", {
       wallet,
       vmId: vm.id,
+      notified,
       route: "agentbook/notify-complete",
     });
 
-    return NextResponse.json({ registered: true, notified: true });
+    return NextResponse.json({ registered: true, notified });
   } catch (err) {
     logger.error("notify-complete error", {
       error: String(err),
@@ -89,11 +91,11 @@ export async function GET(req: NextRequest) {
   }
 }
 
-async function sendNotification(walletAddress: string) {
+async function sendNotification(walletAddress: string): Promise<boolean> {
   const apiKey = process.env.DEV_PORTAL_API_KEY;
   if (!apiKey) {
     logger.warn("DEV_PORTAL_API_KEY not set — skipping notification");
-    return;
+    return false;
   }
 
   try {
@@ -108,20 +110,23 @@ async function sendNotification(walletAddress: string) {
         wallet_addresses: [walletAddress],
         title: "Agent Registered!",
         message: "Your agent is now verified in AgentBook. Tap to see your badge.",
-        mini_app_path: "/home",
+        mini_app_path: `worldapp://mini-app?app_id=${WORLD_APP_ID}`,
       }),
     });
 
     const data = await res.json().catch(() => ({}));
     logger.info("Notification API response", {
       status: res.status,
-      data: JSON.stringify(data).slice(0, 200),
+      data: JSON.stringify(data).slice(0, 500),
+      walletAddress,
       route: "agentbook/notify-complete",
     });
+    return res.ok;
   } catch (err) {
     logger.warn("Failed to send notification (non-fatal)", {
       error: String(err),
       route: "agentbook/notify-complete",
     });
+    return false;
   }
 }
