@@ -819,12 +819,14 @@ function TheMath() {
               color: "var(--accent)",
             }}
           >
-            ~$120
+            $120+
           </p>
           <p className="text-sm mt-3" style={{ color: "var(--muted)" }}>
-            Every active user generates ~$120/year in automatic buy-and-burn
-            pressure across all sources. With only 28.2% of supply in
-            circulation, every burn hits ~3.5x harder.
+            Every active user generates $120+ per year in automatic
+            buy-and-burn pressure from subscriptions alone. Agent
+            tokenization, trading volume, and skill usage all stack on top.
+            With only 28.2% of supply in circulation, every burn hits ~3.5x
+            harder.
           </p>
         </motion.div>
 
