@@ -1,22 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 import { Loader2, Check } from "lucide-react";
 
 type Phase = "loading" | "idle" | "verifying" | "submitting" | "registered" | "error";
 
+const AGENTKIT_APP_ID = "app_a7c3e2b6b83927251a0db5345bd7146a";
+const AGENTKIT_ACTION = "agentbook-registration";
+
 /**
- * AgentBook registration card — MiniKit.verify() + direct contract call.
- *
- * 1. User taps "Register now"
- * 2. MiniKit.verify() popup → user verifies with World ID
- * 3. Proof submitted to register-direct route → VM calls AgentBook contract
- * 4. "Registered in AgentBook" badge
+ * AgentBook registration card — uses IDKit v4 native transport
+ * to trigger World ID verification with AgentKit's app_id directly
+ * inside World App's WebView.
  */
 export default function AgentBookCard() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [nonce, setNonce] = useState<string>("0");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -29,6 +29,7 @@ export default function AgentBookCard() {
           setWalletAddress(data.walletAddress);
         } else if (data.walletAddress) {
           setWalletAddress(data.walletAddress);
+          setNonce(data.nonce || "0");
           setPhase("idle");
         } else {
           setPhase("error");
@@ -42,50 +43,81 @@ export default function AgentBookCard() {
   }, []);
 
   async function handleRegister() {
-    if (phase === "verifying" || phase === "submitting") return;
+    if (phase === "verifying" || phase === "submitting" || !walletAddress) return;
     setError("");
     setPhase("verifying");
 
     try {
-      // Step 1: MiniKit.verify() — triggers native World ID popup
-      const verifyResult = await MiniKit.commandsAsync.verify({
-        action: "verify-instaclaw-agent",
-        signal: walletAddress || undefined,
-        verification_level: VerificationLevel.Orb,
+      // Step 1: Get rp_context from backend
+      const rpRes = await fetch("/api/agentbook/sign-request");
+      if (!rpRes.ok) {
+        const d = await rpRes.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to get RP context");
+      }
+      const rpData = await rpRes.json();
+
+      // Step 2: Use IDKit v4 with AgentKit's app_id + native transport
+      const { IDKit, orbLegacy } = await import("@worldcoin/idkit-core");
+      const { encodePacked, keccak256, pad, toHex } = await import("viem");
+
+      // Build signal matching agentkit-cli: abi.encode(['address', 'uint256'], [wallet, nonce])
+      const signal = encodePacked(
+        ["address", "uint256"],
+        [walletAddress as `0x${string}`, BigInt(nonce)]
+      );
+
+      console.log("[AgentBook] Creating IDKit request with app_id:", AGENTKIT_APP_ID);
+
+      const request = await IDKit.request({
+        app_id: AGENTKIT_APP_ID as `app_${string}`,
+        action: AGENTKIT_ACTION,
+        rp_context: {
+          rp_id: rpData.rp_id,
+          nonce: rpData.nonce,
+          created_at: rpData.created_at,
+          expires_at: rpData.expires_at,
+          signature: rpData.signature,
+        },
+        allow_legacy_proofs: true,
+        environment: "production",
+      }).preset(orbLegacy({ signal }));
+
+      console.log("[AgentBook] IDKit request created, polling for completion...");
+
+      const completion = await request.pollUntilCompletion({
+        pollInterval: 2000,
+        timeout: 300000,
       });
 
-      console.log("[AgentBook] Verify result:", JSON.stringify(verifyResult.finalPayload));
+      console.log("[AgentBook] IDKit completion:", JSON.stringify(completion));
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload = verifyResult.finalPayload as any;
-      if (payload.status !== "success") {
-        setError("Verification failed: " + (payload.status || "cancelled"));
-        setPhase("idle");
-        return;
+      if (!completion || !completion.success) {
+        throw new Error("Verification failed or timed out");
       }
 
-      // Step 2: Submit proof to register-direct (VM calls contract directly)
+      const proof = completion.result as unknown as Record<string, unknown>;
+      console.log("[AgentBook] Proof result:", JSON.stringify(proof));
+
+      // Step 3: Submit proof to relay via register-direct
       setPhase("submitting");
       const regRes = await fetch("/api/proxy/agentbook/register-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proof: payload.proof,
-          merkle_root: payload.merkle_root,
-          nullifier_hash: payload.nullifier_hash,
-          verification_level: payload.verification_level,
+          proof: proof.proof,
+          merkle_root: proof.merkle_root,
+          nullifier_hash: proof.nullifier_hash,
+          verification_level: proof.verification_level,
         }),
       });
 
       const regData = await regRes.json();
-      console.log("[AgentBook] Register-direct response:", regRes.status, JSON.stringify(regData));
+      console.log("[AgentBook] Register response:", regRes.status, JSON.stringify(regData));
 
       if (regData.registered) {
         setPhase("registered");
       } else {
-        // Show full error detail so we can diagnose
-        const detail = regData.detail ? `\n${regData.detail.slice(-150)}` : "";
-        setError(`${regData.error || "Registration failed"}${detail}`);
+        setError(regData.error || "Registration failed");
         setPhase("idle");
       }
     } catch (err) {
