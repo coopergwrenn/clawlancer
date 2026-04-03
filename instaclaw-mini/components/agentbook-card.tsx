@@ -58,11 +58,12 @@ export default function AgentBookCard() {
 
       // Step 2: Use IDKit v4 with AgentKit's app_id + native transport
       const { IDKit, orbLegacy } = await import("@worldcoin/idkit-core");
-      const { encodePacked, keccak256, pad, toHex } = await import("viem");
+      const { encodeAbiParameters } = await import("viem");
 
       // Build signal matching agentkit-cli: abi.encode(['address', 'uint256'], [wallet, nonce])
-      const signal = encodePacked(
-        ["address", "uint256"],
+      // MUST use abi.encode (not encodePacked) — padded to 32 bytes each
+      const signal = encodeAbiParameters(
+        [{ type: "address" }, { type: "uint256" }],
         [walletAddress as `0x${string}`, BigInt(nonce)]
       );
 
