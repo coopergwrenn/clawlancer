@@ -1,23 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, Check } from "lucide-react";
 
-type Phase = "loading" | "idle" | "verifying" | "submitting" | "registered" | "error";
-
-const AGENTKIT_APP_ID = "app_a7c3e2b6b83927251a0db5345bd7146a";
-const AGENTKIT_ACTION = "agentbook-registration";
+type Phase = "loading" | "idle" | "starting" | "waiting-url" | "verify" | "confirming" | "registered" | "error";
 
 /**
- * AgentBook registration card — uses IDKit v4 native transport
- * to trigger World ID verification with AgentKit's app_id directly
- * inside World App's WebView.
+ * AgentBook registration card — CLI bridge URL flow.
+ * Andy says: navigate to the deep link from the CLI and it should open the drawer.
  */
 export default function AgentBookCard() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [nonce, setNonce] = useState<string>("0");
+  const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -29,7 +26,6 @@ export default function AgentBookCard() {
           setWalletAddress(data.walletAddress);
         } else if (data.walletAddress) {
           setWalletAddress(data.walletAddress);
-          setNonce(data.nonce || "0");
           setPhase("idle");
         } else {
           setPhase("error");
@@ -40,105 +36,53 @@ export default function AgentBookCard() {
         setError("Failed to check status");
       }
     })();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
   async function handleRegister() {
-    if (phase === "verifying" || phase === "submitting" || !walletAddress) return;
+    if (phase !== "idle") return;
     setError("");
-    setPhase("verifying");
+    setPhase("starting");
 
     try {
-      // Step 1: Get rp_context from backend
-      const rpRes = await fetch("/api/agentbook/sign-request");
-      if (!rpRes.ok) {
-        const d = await rpRes.json().catch(() => ({}));
-        throw new Error(d.error || "Failed to get RP context");
-      }
-      const rpData = await rpRes.json();
-
-      // Step 2: Use IDKit v4 with AgentKit's app_id + native transport
-      const { IDKit, orbLegacy } = await import("@worldcoin/idkit-core");
-      const { encodeAbiParameters } = await import("viem");
-
-      // Build signal matching agentkit-cli: abi.encode(['address', 'uint256'], [wallet, nonce])
-      // MUST use abi.encode (not encodePacked) — padded to 32 bytes each
-      const signal = encodeAbiParameters(
-        [{ type: "address" }, { type: "uint256" }],
-        [walletAddress as `0x${string}`, BigInt(nonce)]
-      );
-
-      console.log("[AgentBook] Creating IDKit request with app_id:", AGENTKIT_APP_ID);
-
-      const request = await IDKit.request({
-        app_id: AGENTKIT_APP_ID as `app_${string}`,
-        action: AGENTKIT_ACTION,
-        rp_context: {
-          rp_id: rpData.rp_id,
-          nonce: rpData.nonce,
-          created_at: rpData.created_at,
-          expires_at: rpData.expires_at,
-          signature: rpData.signature,
-        },
-        allow_legacy_proofs: true,
-        environment: "production",
-      }).preset(orbLegacy({ signal }));
-
-      console.log("[AgentBook] IDKit request created, polling for completion...");
-
-      const completion = await request.pollUntilCompletion({
-        pollInterval: 2000,
-        timeout: 300000,
-      });
-
-      console.log("[AgentBook] IDKit completion:", JSON.stringify(completion));
-
-      console.log("[AgentBook] Raw completion:", JSON.stringify(completion));
-
-      if (!completion || !completion.success) {
-        const errMsg = completion && !completion.success
-          ? `Verification error: ${JSON.stringify(completion)}`
-          : "Verification failed or timed out";
-        throw new Error(errMsg);
+      // Step 1: Start CLI on VM
+      const startRes = await fetch("/api/proxy/agentbook/start-registration", { method: "POST" });
+      if (!startRes.ok) {
+        const d = await startRes.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to start");
       }
 
-      const result = completion.result as unknown as Record<string, unknown>;
-      console.log("[AgentBook] Result keys:", Object.keys(result));
-      console.log("[AgentBook] Full result:", JSON.stringify(result));
-
-      // IDKit v4 returns { protocol_version, nonce, action, responses, environment }
-      // The proof is inside responses[0]
-      const responses = (result.responses || result.response) as unknown[];
-      if (!responses || !Array.isArray(responses) || responses.length === 0) {
-        throw new Error(`No responses in IDKit result. Keys: ${Object.keys(result).join(", ")}`);
+      // Step 2: Poll for bridge URL
+      setPhase("waiting-url");
+      let url: string | null = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const urlRes = await fetch("/api/proxy/agentbook/get-bridge-url");
+        const urlData = await urlRes.json();
+        if (urlData.bridgeUrl) { url = urlData.bridgeUrl; break; }
+        if (urlData.status === "error") throw new Error(urlData.error || "CLI failed");
       }
+      if (!url) throw new Error("Timed out waiting for verification link");
 
-      const response = responses[0] as Record<string, unknown>;
-      console.log("[AgentBook] Response[0] keys:", Object.keys(response).join(", "));
-      console.log("[AgentBook] Response[0]:", JSON.stringify(response).slice(0, 500));
+      // Step 3: Show the link for user to tap
+      setBridgeUrl(url);
+      setPhase("verify");
 
-      // Send the first response to the backend
-      setPhase("submitting");
-      const regRes = await fetch("/api/proxy/agentbook/register-direct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(response),
-      });
+      // Step 4: Start polling for on-chain confirmation
+      pollRef.current = setInterval(async () => {
+        try {
+          const r = await fetch("/api/proxy/agentbook/check-registration");
+          const d = await r.json();
+          if (d.registered) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setPhase("registered");
+          }
+        } catch { /* keep polling */ }
+      }, 3000);
+      setTimeout(() => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }, 300000);
 
-      const regData = await regRes.json();
-      console.log("[AgentBook] Register response:", regRes.status, JSON.stringify(regData));
-
-      if (regData.registered) {
-        setPhase("registered");
-      } else {
-        const detail = regData.detail ? `\n${String(regData.detail).slice(0, 200)}` : "";
-        const bodyPreview = regData.bodyPreview ? `\n${String(regData.bodyPreview).slice(0, 200)}` : "";
-        setError(`${regData.error || "Registration failed"}${detail}${bodyPreview}`);
-        setPhase("idle");
-      }
     } catch (err) {
-      console.error("[AgentBook] Error:", err);
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg.slice(0, 300));
+      setError(err instanceof Error ? err.message : "Something went wrong");
       setPhase("idle");
     }
   }
@@ -164,13 +108,64 @@ export default function AgentBookCard() {
     );
   }
 
-  if (phase === "verifying" || phase === "submitting") {
+  // Verify step — show bridge URL as tappable link
+  if (phase === "verify" || phase === "confirming") {
+    return (
+      <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
+        <div className="flex items-start gap-3 mb-3">
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full overflow-hidden" style={{ background: "radial-gradient(circle at 35% 30%, rgba(59,130,246,0.7), rgba(59,130,246,0.3) 50%, rgba(29,78,216,0.6) 100%)", boxShadow: "0 2px 8px rgba(59,130,246,0.3), inset 0 1px 2px rgba(255,255,255,0.2)" }}>
+            <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)" }} />
+            <svg className="relative z-10 w-4 h-4" viewBox="0 0 24 24" fill="none">
+              <path d="M17.3711 10.9277L13 12.6758V17.999H11V12.6758L6.62891 10.9277L7.37109 9.07031L12 10.9219L16.6289 9.07031L17.3711 10.9277Z" fill="white"/>
+              <path d="M12.0389 9.31641C12.7293 9.31641 13.2891 8.75676 13.2891 8.0664C13.2891 7.37605 12.7293 6.81641 12.0389 6.81641C11.3484 6.81641 10.7887 7.37605 10.7887 8.0664C10.7887 8.75676 11.3484 9.31641 12.0389 9.31641Z" fill="white"/>
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold mb-0.5">
+              {phase === "confirming" ? "Waiting for confirmation..." : "Verify with World ID"}
+            </p>
+            <p className="text-[10px]" style={{ color: "#888" }}>
+              {phase === "confirming"
+                ? "Confirming on-chain registration..."
+                : "Tap below to verify your agent."}
+            </p>
+          </div>
+        </div>
+
+        {phase === "verify" && bridgeUrl && (
+          <a
+            href={bridgeUrl}
+            onClick={() => setPhase("confirming")}
+            className="w-full rounded-xl py-3 text-[13px] font-bold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+            style={{
+              background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "#fff",
+              boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
+              textDecoration: "none",
+            }}
+          >
+            Verify with World ID
+          </a>
+        )}
+
+        {phase === "confirming" && (
+          <div className="flex items-center justify-center gap-2 py-3">
+            <Loader2 size={16} className="animate-spin" style={{ color: "#4d8eff" }} />
+            <p className="text-xs" style={{ color: "#999" }}>Confirming on-chain...</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (phase === "starting" || phase === "waiting-url") {
     return (
       <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
         <div className="flex items-center justify-center gap-2 py-4">
           <Loader2 size={16} className="animate-spin" style={{ color: "#4d8eff" }} />
           <p className="text-xs" style={{ color: "#999" }}>
-            {phase === "verifying" ? "Verify in the popup..." : "Registering on-chain..."}
+            {phase === "starting" ? "Starting registration..." : "Preparing verification..."}
           </p>
         </div>
       </div>
