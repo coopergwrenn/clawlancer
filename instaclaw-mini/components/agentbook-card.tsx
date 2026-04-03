@@ -1,13 +1,22 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { MiniKit } from "@worldcoin/minikit-js";
 import { Loader2, Check } from "lucide-react";
 
-type Phase = "loading" | "idle" | "starting" | "waiting-url" | "verify" | "confirming" | "registered" | "error";
+type Phase = "loading" | "idle" | "starting" | "waiting-url" | "verify" | "registered" | "error";
 
 /**
- * AgentBook registration card — CLI bridge URL flow.
- * Andy says: navigate to the deep link from the CLI and it should open the drawer.
+ * AgentBook registration card — CLI bridge URL flow with closeMiniapp().
+ *
+ * Flow:
+ * 1. CLI generates bridge URL on VM
+ * 2. User taps "Verify with World ID" (<a href> triggers drawer)
+ * 3. closeMiniapp() closes mini app cleanly
+ * 4. User approves in World App drawer
+ * 5. CLI submits to relay → on-chain registration
+ * 6. Push notification: "Agent Registered!"
+ * 7. User taps notification → reopens mini app → badge shows
  */
 export default function AgentBookCard() {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -45,14 +54,12 @@ export default function AgentBookCard() {
     setPhase("starting");
 
     try {
-      // Step 1: Start CLI on VM
       const startRes = await fetch("/api/proxy/agentbook/start-registration", { method: "POST" });
       if (!startRes.ok) {
         const d = await startRes.json().catch(() => ({}));
         throw new Error(d.error || "Failed to start");
       }
 
-      // Step 2: Poll for bridge URL
       setPhase("waiting-url");
       let url: string | null = null;
       for (let i = 0; i < 30; i++) {
@@ -64,27 +71,28 @@ export default function AgentBookCard() {
       }
       if (!url) throw new Error("Timed out waiting for verification link");
 
-      // Step 3: Show the link for user to tap
       setBridgeUrl(url);
       setPhase("verify");
-
-      // Step 4: Start polling for on-chain confirmation
-      pollRef.current = setInterval(async () => {
-        try {
-          const r = await fetch("/api/proxy/agentbook/check-registration");
-          const d = await r.json();
-          if (d.registered) {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setPhase("registered");
-          }
-        } catch { /* keep polling */ }
-      }, 3000);
-      setTimeout(() => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }, 300000);
-
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setPhase("idle");
     }
+  }
+
+  function handleVerifyTap() {
+    // Close the mini app after a brief delay to allow the <a href> navigation to fire
+    setTimeout(() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof (MiniKit as any).closeMiniApp === "function") {
+          (MiniKit as any).closeMiniApp();
+        } else if (typeof (MiniKit as any).close === "function") {
+          (MiniKit as any).close();
+        }
+      } catch {
+        // closeMiniapp not available — that's ok, <a href> already navigated away
+      }
+    }, 500);
   }
 
   if (phase === "loading") return null;
@@ -108,8 +116,7 @@ export default function AgentBookCard() {
     );
   }
 
-  // Verify step — show bridge URL as tappable link
-  if (phase === "verify" || phase === "confirming") {
+  if (phase === "verify" && bridgeUrl) {
     return (
       <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
         <div className="flex items-start gap-3 mb-3">
@@ -121,40 +128,27 @@ export default function AgentBookCard() {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-semibold mb-0.5">
-              {phase === "confirming" ? "Waiting for confirmation..." : "Verify with World ID"}
-            </p>
+            <p className="text-sm font-semibold mb-0.5">Verify with World ID</p>
             <p className="text-[10px]" style={{ color: "#888" }}>
-              {phase === "confirming"
-                ? "Confirming on-chain registration..."
-                : "Tap below to verify your agent."}
+              Tap below to verify. The app will close briefly — you&apos;ll get a notification when done.
             </p>
           </div>
         </div>
 
-        {phase === "verify" && bridgeUrl && (
-          <a
-            href={bridgeUrl}
-            onClick={() => setPhase("confirming")}
-            className="w-full rounded-xl py-3 text-[13px] font-bold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
-            style={{
-              background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: "#fff",
-              boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
-              textDecoration: "none",
-            }}
-          >
-            Verify with World ID
-          </a>
-        )}
-
-        {phase === "confirming" && (
-          <div className="flex items-center justify-center gap-2 py-3">
-            <Loader2 size={16} className="animate-spin" style={{ color: "#4d8eff" }} />
-            <p className="text-xs" style={{ color: "#999" }}>Confirming on-chain...</p>
-          </div>
-        )}
+        <a
+          href={bridgeUrl}
+          onClick={handleVerifyTap}
+          className="w-full rounded-xl py-3 text-[13px] font-bold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+          style={{
+            background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "#fff",
+            boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
+            textDecoration: "none",
+          }}
+        >
+          Verify with World ID
+        </a>
       </div>
     );
   }

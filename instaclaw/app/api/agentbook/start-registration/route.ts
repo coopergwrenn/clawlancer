@@ -101,6 +101,10 @@ export async function POST(req: NextRequest) {
         "#!/bin/bash",
         NVM_PREAMBLE,
         `npx --yes @worldcoin/agentkit-cli@latest register ${wallet} --auto > /tmp/agentbook-register.log 2>&1`,
+        `# After CLI finishes, notify our backend (fire-and-forget)`,
+        `if grep -qi "registered" /tmp/agentbook-register.log 2>/dev/null; then`,
+        `  curl -s "https://instaclaw.io/api/agentbook/notify-complete?wallet=${wallet}" > /dev/null 2>&1 &`,
+        `fi`,
       ].join("\n");
       const b64 = Buffer.from(script, "utf-8").toString("base64");
 

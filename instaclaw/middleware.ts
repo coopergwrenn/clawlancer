@@ -64,6 +64,7 @@ export default auth((req) => {
     "/api/ambassador/badge",
     "/api/agentbook/lookup",
     "/api/agentbook/register",
+    "/api/agentbook/notify-complete",
     "/api/vm/heartbeat",
     "/api/virtuals/agent-auth-url",
     "/api/virtuals/agent-complete-auth",
