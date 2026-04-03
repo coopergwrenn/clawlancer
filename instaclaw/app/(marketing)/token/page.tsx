@@ -497,7 +497,7 @@ const burnSources = [
     short:
       "10% of every subscription payment and every WLD credit purchase automatically buys and burns $INSTACLAW. Users never touch crypto. They never see a wallet. The burn is invisible.",
     detail:
-      "Users pay $29\u2013$299/month via Stripe or buy credits with WLD in World App. Under the hood, 10% of revenue routes to a smart contract that executes a daily buy-and-burn. A crypto trader running 24/7 Polymarket strategies, a creator automating their social media, a founder who lets their agent handle research and email. They\u2019re just paying for their AI agent. Every new subscriber adds permanent, recurring burn pressure that compounds month over month.",
+      "Users pay $29\u2013$299/month via Stripe or buy credits with WLD in World App. Under the hood, 10% of revenue routes to a smart contract that executes a daily buy-and-burn. A solo founder running an entire business through a fleet of coordinated agents, a trader with 24/7 autonomous Polymarket strategies, a creator whose agent handles content, scheduling, and audience growth while they sleep. They\u2019re just paying for their AI agent. Every new subscriber adds permanent, recurring burn pressure that compounds month over month.",
   },
   {
     icon: Code,
