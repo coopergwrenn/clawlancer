@@ -650,6 +650,31 @@ function BurnSources() {
             </motion.div>
           ))}
         </div>
+
+        {/* CTA — contextual to burn sources */}
+        <motion.div
+          className="text-center mt-12"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ delay: 0.2, duration: 0.6, ease: SNAPPY }}
+        >
+          <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+            Want your own agent contributing to the burn?
+          </p>
+          <a
+            href="/signup"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold transition-all"
+            style={{
+              background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
+              color: "#ffffff",
+              boxShadow: "rgba(255,255,255,0.25) 0px 1px 1px 0px inset, rgba(220,103,67,0.15) 0px -2px 4px 0px inset",
+            }}
+          >
+            Claim Your Agent
+            <ArrowRight size={14} strokeWidth={2} />
+          </a>
+        </motion.div>
       </div>
     </section>
   );
@@ -944,6 +969,29 @@ function TheMath() {
             ))}
           </div>
         </motion.div>
+        {/* CTA — contextual to math */}
+        <motion.div
+          className="text-center mt-12"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ delay: 0.2, duration: 0.6, ease: SNAPPY }}
+        >
+          <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+            Every new user adds a permanent burn loop. Be one of them.
+          </p>
+          <a
+            href="/signup"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-all"
+            style={{
+              ...glassStyle,
+              color: "var(--foreground)",
+            }}
+          >
+            Get Your AI Agent
+            <ArrowRight size={14} strokeWidth={1.5} />
+          </a>
+        </motion.div>
       </div>
     </section>
   );
@@ -1093,6 +1141,31 @@ function WhyDifferent() {
             fees. Plus a recursive loop where trading the token itself burns
             the token. Every burn transaction is verifiable on BaseScan.
           </p>
+        </motion.div>
+
+        {/* CTA — contextual to comparison */}
+        <motion.div
+          className="text-center mt-12"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ delay: 0.2, duration: 0.6, ease: SNAPPY }}
+        >
+          <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+            Ready to use the AI agent that actually backs its own token?
+          </p>
+          <a
+            href="/signup"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold transition-all"
+            style={{
+              background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
+              color: "#ffffff",
+              boxShadow: "rgba(255,255,255,0.25) 0px 1px 1px 0px inset, rgba(220,103,67,0.15) 0px -2px 4px 0px inset",
+            }}
+          >
+            Start for Free
+            <ArrowRight size={14} strokeWidth={2} />
+          </a>
         </motion.div>
       </div>
     </section>
