@@ -190,9 +190,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Non-200 = actual error
+    // Non-200 = actual rejection
     return NextResponse.json(
-      { error: "Relay rejected", detail: JSON.stringify(relayData).slice(0, 500), httpStatus: relayRes.status },
+      { error: `Relay rejected (HTTP ${relayRes.status})`, detail: relayBody.slice(0, 500) },
       { status: relayRes.status }
     );
   } catch (err) {
