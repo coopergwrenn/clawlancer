@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   // Accept both snake_case (MiniKit) and camelCase (IDKit v4) field names
   const proof = body.proof || body.proofs;
   const merkle_root = body.merkle_root || body.merkleRoot || body.merkle_root_hash;
-  const nullifier_hash = body.nullifier_hash || body.nullifierHash;
+  const nullifier_hash = body.nullifier_hash || body.nullifierHash || body.nullifier;
 
   if (!proof || !merkle_root || !nullifier_hash) {
     // Show what we received for debugging
