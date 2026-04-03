@@ -8,11 +8,19 @@
  * Sepolia:  0xA23aB2712eA7BBa896930544C7d6636a96b944dA (Base Sepolia)
  */
 
-import { createPublicClient, http, fallback, type Address } from "viem";
+import { createPublicClient, http, fallback, defineChain, type Address } from "viem";
 import { base, baseSepolia } from "viem/chains";
+
+const worldchain = defineChain({
+  id: 480,
+  name: "World Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://worldchain-mainnet.g.alchemy.com/public"] } },
+});
 
 const AGENTBOOK_ADDRESS = "0xE1D1D3526A6FAa37eb36bD10B933C1b77f4561a4" as const;
 const AGENTBOOK_ADDRESS_SEPOLIA = "0xA23aB2712eA7BBa896930544C7d6636a96b944dA" as const;
+const AGENTBOOK_ADDRESS_WORLDCHAIN = "0xA23aB2712eA7BBa896930544C7d6636a96b944dA" as const;
 
 // Minimal ABI — only the view functions we need
 const AGENTBOOK_ABI = [
@@ -39,9 +47,12 @@ const BASE_RPC_URLS = [
   "https://base.drpc.org",
 ];
 
-type Network = "base" | "base-sepolia";
+type Network = "base" | "base-sepolia" | "worldchain";
 
 function getClient(network: Network = "base") {
+  if (network === "worldchain") {
+    return createPublicClient({ chain: worldchain, transport: http() });
+  }
   const chain = network === "base" ? base : baseSepolia;
   const transport = network === "base"
     ? fallback(BASE_RPC_URLS.map((url) => http(url, { timeout: 10_000 })))
@@ -50,6 +61,7 @@ function getClient(network: Network = "base") {
 }
 
 function getContractAddress(network: Network = "base"): Address {
+  if (network === "worldchain") return AGENTBOOK_ADDRESS_WORLDCHAIN;
   return network === "base" ? AGENTBOOK_ADDRESS : AGENTBOOK_ADDRESS_SEPOLIA;
 }
 

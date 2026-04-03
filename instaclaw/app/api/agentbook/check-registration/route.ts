@@ -48,8 +48,11 @@ export async function GET(req: NextRequest) {
 
     const wallet = vm.agentbook_wallet_address as Address;
 
-    // Check on-chain
-    const registered = await isAgentRegistered(wallet);
+    // Check on-chain — try both World Chain (v0.1.8+) and Base (v0.1.3)
+    let registered = await isAgentRegistered(wallet, "worldchain");
+    if (!registered) {
+      registered = await isAgentRegistered(wallet, "base");
+    }
     if (!registered) {
       return NextResponse.json({ registered: false });
     }

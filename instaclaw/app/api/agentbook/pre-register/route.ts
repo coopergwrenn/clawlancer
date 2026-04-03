@@ -53,13 +53,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Check on-chain status
+  // Check on-chain status — both World Chain and Base
+  const wallet = vm.agentbook_wallet_address as Address;
   const alreadyRegistered = vm.agentbook_registered ||
-    await isAgentRegistered(vm.agentbook_wallet_address as Address);
+    await isAgentRegistered(wallet, "worldchain") ||
+    await isAgentRegistered(wallet, "base");
 
   let nonce: string | null = null;
   if (!alreadyRegistered) {
-    const n = await getNextNonce(vm.agentbook_wallet_address as Address);
+    // Nonce from World Chain (v0.1.8+ target)
+    const n = await getNextNonce(wallet, "worldchain");
     nonce = n.toString();
   }
 
