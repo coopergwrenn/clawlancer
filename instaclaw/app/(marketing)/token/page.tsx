@@ -513,11 +513,11 @@ const burnSources = [
     icon: Code,
     title: "The Ecosystem Tax",
     timeline: "Coming Soon",
-    tagline: "We own the distribution. Developers pay for access.",
+    tagline: "InstaClaw is becoming a platform.",
     short:
-      "InstaClaw agents are the interface users talk to every day. Developers building skills (trading, video, data, content) need access to those users. Every skill call pays a platform fee. A portion burns $INSTACLAW. We\u2019re becoming the App Store for AI agents.",
+      "Third-party developers are building skills on top of our agent network: trading, video generation, data analysis, content creation. Every time an agent calls a skill, the developer pays a usage fee. We take a platform cut (think app store economics). A portion of that cut burns $INSTACLAW.",
     detail:
-      "This is the network effect play. Every new skill makes every agent more powerful. More powerful agents attract more users. More users make the platform more valuable to developers. More developers build more skills. Every layer of that flywheel generates platform fees, and every fee feeds the burn. The bigger InstaClaw gets, the more developers need us, and the more $INSTACLAW gets burned. This is what happens when you control the gateway between AI agents and the skills they use.",
+      "More skills make agents more useful. More useful agents attract more users. More users attract more developers. Every layer of growth compounds the burn. The bigger InstaClaw gets, the more developers need us, and the more gets burned.",
   },
 ];
 
