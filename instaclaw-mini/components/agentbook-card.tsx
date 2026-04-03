@@ -133,30 +133,20 @@ export default function AgentBookCard() {
         </div>
 
         {phase === "verify" && bridgeUrl && (
-          <>
-            <button
-              onClick={() => {
-                // Load bridge URL in hidden iframe — triggers World App drawer
-                // without navigating away from the mini app
-                const iframe = document.createElement("iframe");
-                iframe.style.display = "none";
-                iframe.src = bridgeUrl;
-                document.body.appendChild(iframe);
-                // Clean up after a moment
-                setTimeout(() => iframe.remove(), 5000);
-                setPhase("confirming");
-              }}
-              className="w-full rounded-xl py-3 text-[13px] font-bold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
-              style={{
-                background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "#fff",
-                boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
-              }}
-            >
-              Verify with World ID
-            </button>
-          </>
+          <a
+            href={bridgeUrl}
+            onClick={() => setPhase("confirming")}
+            className="w-full rounded-xl py-3 text-[13px] font-bold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+            style={{
+              background: "linear-gradient(170deg, #2563eb, #1d4ed8)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "#fff",
+              boxShadow: "0 4px 16px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
+              textDecoration: "none",
+            }}
+          >
+            Verify with World ID
+          </a>
         )}
 
         {phase === "confirming" && (
