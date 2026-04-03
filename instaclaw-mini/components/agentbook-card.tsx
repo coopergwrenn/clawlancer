@@ -104,16 +104,23 @@ export default function AgentBookCard() {
       console.log("[AgentBook] Result keys:", Object.keys(result));
       console.log("[AgentBook] Full result:", JSON.stringify(result));
 
-      // DEBUG: Show IDKit result structure so we can map fields correctly
-      const resultKeys = Object.keys(result).join(", ");
-      const resultStr = JSON.stringify(result).slice(0, 400);
+      // IDKit v4 returns { protocol_version, nonce, action, responses, environment }
+      // The proof is inside responses[0]
+      const responses = (result.responses || result.response) as unknown[];
+      if (!responses || !Array.isArray(responses) || responses.length === 0) {
+        throw new Error(`No responses in IDKit result. Keys: ${Object.keys(result).join(", ")}`);
+      }
 
-      // Send the ENTIRE result to the backend — let it figure out field names
+      const response = responses[0] as Record<string, unknown>;
+      console.log("[AgentBook] Response[0] keys:", Object.keys(response).join(", "));
+      console.log("[AgentBook] Response[0]:", JSON.stringify(response).slice(0, 500));
+
+      // Send the first response to the backend
       setPhase("submitting");
       const regRes = await fetch("/api/proxy/agentbook/register-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result),
+        body: JSON.stringify(response),
       });
 
       const regData = await regRes.json();
