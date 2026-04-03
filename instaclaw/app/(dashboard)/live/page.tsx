@@ -219,15 +219,23 @@ export default function LiveDesktopPage() {
 
             {viewerState === "error" && (
               <div className="absolute inset-0 flex flex-col items-center justify-center z-10 gap-3">
-                <p className="text-white/60 text-sm">Inline viewer unavailable</p>
-                <a
-                  href={vmInfo.fallbackVncUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 text-white/80 hover:bg-white/20 transition-colors"
-                >
-                  Open in new tab
-                </a>
+                <p className="text-white/60 text-sm">Connection dropped — retrying may help</p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setViewerState("connecting")}
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 text-white/80 hover:bg-white/20 transition-colors flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Retry
+                  </button>
+                  <a
+                    href={vmInfo.fallbackVncUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 text-white/80 hover:bg-white/20 transition-colors"
+                  >
+                    Open in new tab
+                  </a>
+                </div>
               </div>
             )}
 

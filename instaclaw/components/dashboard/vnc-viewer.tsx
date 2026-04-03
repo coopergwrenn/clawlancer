@@ -50,8 +50,9 @@ export function VncViewer({ wssUrl, viewOnly, onConnect, onDisconnect, onError }
           setStatus("disconnected");
           if (!e.detail.clean) {
             onError?.("Connection lost");
+          } else {
+            onDisconnect?.();
           }
-          onDisconnect?.();
         });
 
         rfb.addEventListener("credentialsrequired", () => {
