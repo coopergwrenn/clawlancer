@@ -513,11 +513,11 @@ const burnSources = [
     icon: Code,
     title: "The Ecosystem Tax",
     timeline: "Coming Soon",
-    tagline: "Developers pay for access. Burns follow.",
+    tagline: "InstaClaw is becoming a platform.",
     short:
-      "Third-party skill developers pay per API call to reach InstaClaw's agent network. InstaClaw takes a 15\u201320% platform fee. A portion of every fee buys and burns $INSTACLAW.",
+      "Third-party developers are building skills on top of our agent network: trading, video generation, data analysis, content creation. Every time an agent calls a skill, we take a platform cut. A portion of that cut burns $INSTACLAW.",
     detail:
-      "InstaClaw agents are the distribution layer. When developers build skills (video generation, trading, data analysis), they pay usage-based fees. InstaClaw takes a platform cut matching app store economics. More skills make agents more useful, attracting more users, attracting more developers. Classic marketplace flywheel with token burns baked into every transaction.",
+      "Every skill call is a micro-transaction. Developers pay a usage fee per API call to reach InstaClaw\u2019s agent network (think app store economics). We take a platform cut, and a portion of that cut feeds the burn. More skills make agents more useful. More useful agents attract more users. More users attract more developers. Every layer of growth compounds the burn.",
   },
 ];
 
