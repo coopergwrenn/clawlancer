@@ -271,7 +271,7 @@ function Flywheel() {
 
         {/* Flywheel ring — desktop */}
         <div className="hidden sm:block">
-          <div className="relative mx-auto" style={{ width: 520, height: 580 }}>
+          <div className="relative mx-auto" style={{ width: 520, height: 520 }}>
             {/* SVG ring */}
             <svg
               className="absolute inset-0 w-full h-full"
