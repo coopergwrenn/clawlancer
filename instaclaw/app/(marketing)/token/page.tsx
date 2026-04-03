@@ -1650,6 +1650,49 @@ export default function TokenPage() {
       <TokenDetails />
       <Timeline />
       <Closing />
+      <Disclaimer />
     </>
+  );
+}
+
+/* ─── Disclaimer ─────────────────────────────────── */
+
+function Disclaimer() {
+  return (
+    <section className="px-4 pb-12 pt-0">
+      <div
+        className="max-w-3xl mx-auto pt-8"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
+        <p
+          className="text-[10px] leading-[1.8] tracking-wide"
+          style={{ color: "var(--muted)", opacity: 0.5 }}
+        >
+          <span className="font-medium" style={{ opacity: 0.7 }}>Disclaimer.</span>{" "}
+          The information on this page is provided for informational purposes only and does
+          not constitute financial advice, investment advice, trading advice, or any other
+          kind of advice. You should not treat any of the content on this page as such.
+          InstaClaw does not recommend that any cryptocurrency should be bought, sold, or
+          held by you. Do your own due diligence and consult your financial advisor before
+          making any investment decisions. $INSTACLAW is a utility token. It is not a
+          security, equity, or investment contract. Holding $INSTACLAW does not represent
+          ownership, shares, or claim to profits of InstaClaw or any affiliated entity.
+          This page may contain forward-looking statements that involve risks and
+          uncertainties. All projections, estimates, and hypothetical figures are illustrative
+          only and are not guarantees of future performance. Actual results may differ
+          materially. The tokenomics structure described on this page is subject to change,
+          modification, or discontinuation at any time without prior notice as the product
+          and market evolve. The burn mechanisms described are dependent on the implementation
+          of smart contracts and third-party partnerships that have not yet been fully
+          deployed. There is no guarantee that any described mechanism will be implemented as
+          described or at all. Cryptocurrency is inherently volatile and risky. You could
+          lose some or all of your investment. Past performance is not indicative of future
+          results. $INSTACLAW may not be available or legal to purchase in all jurisdictions.
+          It is your responsibility to ensure compliance with applicable laws in your
+          jurisdiction. By using this page, you acknowledge that you have read and understood
+          this disclaimer.
+        </p>
+      </div>
+    </section>
   );
 }
