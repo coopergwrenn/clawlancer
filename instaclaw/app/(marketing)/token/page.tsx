@@ -272,89 +272,81 @@ function Flywheel() {
         {/* Flywheel — desktop: glass container with ring + glass pill nodes */}
         <div className="hidden sm:block">
           <motion.div
-            className="relative mx-auto rounded-2xl"
+            className="mx-auto rounded-2xl"
             style={{
               ...glassStyle,
               maxWidth: 740,
-              padding: "48px 24px",
             }}
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.6, ease: SNAPPY }}
           >
-            <div className="relative mx-auto" style={{ width: 680, height: 620 }}>
-              {/* SVG ring — pixel-centered to match cards */}
-              <svg
-                className="absolute"
-                style={{ left: 340 - 150, top: 310 - 150, width: 300, height: 300 }}
-                viewBox="0 0 300 300"
-              >
-                <circle
-                  cx="150"
-                  cy="150"
-                  r="145"
-                  fill="none"
-                  stroke="rgba(220,103,67,0.1)"
-                  strokeWidth="1"
-                  strokeDasharray="5 7"
-                />
-              </svg>
+            {/* Centering wrapper — flex centers a 0x0 anchor, everything positions from it */}
+            <div
+              className="flex items-center justify-center"
+              style={{ height: 620, padding: "0 30px" }}
+            >
+              <div className="relative" style={{ width: 0, height: 0 }}>
+                {/* SVG ring */}
+                <svg
+                  className="absolute"
+                  style={{ left: -150, top: -150, width: 300, height: 300 }}
+                  viewBox="0 0 300 300"
+                >
+                  <circle
+                    cx="150"
+                    cy="150"
+                    r="145"
+                    fill="none"
+                    stroke="rgba(220,103,67,0.1)"
+                    strokeWidth="1"
+                    strokeDasharray="5 7"
+                  />
+                </svg>
 
-              {/* Energy sweep — wrapper centers, inner rotates */}
-              <div
-                className="absolute"
-                style={{
-                  left: 340 - 155,
-                  top: 310 - 155,
-                  width: 310,
-                  height: 310,
-                }}
-              >
+                {/* Energy sweep */}
                 <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    borderRadius: "50%",
-                    animation: "flywheel-orbit 10s linear infinite",
-                    background: "conic-gradient(from 0deg, transparent 0%, transparent 55%, rgba(220,103,67,0.03) 65%, rgba(220,103,67,0.15) 78%, rgba(220,103,67,0.35) 88%, rgba(220,103,67,0.55) 94%, #DC6743 97%, rgba(220,103,67,0.35) 99%, transparent 100%)",
-                    mask: "radial-gradient(circle, transparent 138px, black 141px, black 151px, transparent 154px)",
-                    WebkitMask: "radial-gradient(circle, transparent 138px, black 141px, black 151px, transparent 154px)",
-                  }}
-                />
-              </div>
-              {/* Glow layer */}
-              <div
-                className="absolute"
-                style={{
-                  left: 340 - 155,
-                  top: 310 - 155,
-                  width: 310,
-                  height: 310,
-                }}
-              >
+                  className="absolute"
+                  style={{ left: -155, top: -155, width: 310, height: 310 }}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      animation: "flywheel-orbit 10s linear infinite",
+                      background: "conic-gradient(from 0deg, transparent 0%, transparent 55%, rgba(220,103,67,0.03) 65%, rgba(220,103,67,0.15) 78%, rgba(220,103,67,0.35) 88%, rgba(220,103,67,0.55) 94%, #DC6743 97%, rgba(220,103,67,0.35) 99%, transparent 100%)",
+                      mask: "radial-gradient(circle, transparent 138px, black 141px, black 151px, transparent 154px)",
+                      WebkitMask: "radial-gradient(circle, transparent 138px, black 141px, black 151px, transparent 154px)",
+                    }}
+                  />
+                </div>
+                {/* Glow layer */}
                 <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    borderRadius: "50%",
-                    animation: "flywheel-orbit 10s linear infinite",
-                    background: "conic-gradient(from 0deg, transparent 0%, transparent 65%, rgba(220,103,67,0.08) 78%, rgba(220,103,67,0.2) 90%, rgba(220,103,67,0.08) 97%, transparent 100%)",
-                    mask: "radial-gradient(circle, transparent 130px, black 136px, black 158px, transparent 164px)",
-                    WebkitMask: "radial-gradient(circle, transparent 130px, black 136px, black 158px, transparent 164px)",
-                    filter: "blur(8px)",
-                  }}
-                />
-              </div>
+                  className="absolute"
+                  style={{ left: -155, top: -155, width: 310, height: 310 }}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      animation: "flywheel-orbit 10s linear infinite",
+                      background: "conic-gradient(from 0deg, transparent 0%, transparent 65%, rgba(220,103,67,0.08) 78%, rgba(220,103,67,0.2) 90%, rgba(220,103,67,0.08) 97%, transparent 100%)",
+                      mask: "radial-gradient(circle, transparent 130px, black 136px, black 158px, transparent 164px)",
+                      WebkitMask: "radial-gradient(circle, transparent 130px, black 136px, black 158px, transparent 164px)",
+                      filter: "blur(8px)",
+                    }}
+                  />
+                </div>
 
-              {/* Glass pill nodes — all use 50%/50% center */}
-              {flywheelSteps.map((step, i) => {
-                const angle = (i / flywheelSteps.length) * 2 * Math.PI - Math.PI / 2;
-                const cx = 340;
-                const cy = 310;
-                const nodeR = 215;
-                const x = cx + nodeR * Math.cos(angle);
-                const y = cy + nodeR * Math.sin(angle);
+                {/* Glass pill nodes — positioned from true center (0,0) */}
+                {flywheelSteps.map((step, i) => {
+                  const angle = (i / flywheelSteps.length) * 2 * Math.PI - Math.PI / 2;
+                  const nodeR = 215;
+                  const x = nodeR * Math.cos(angle);
+                  const y = nodeR * Math.sin(angle);
 
                 return (
                   <motion.div
@@ -408,7 +400,7 @@ function Flywheel() {
               {/* Center */}
               <div
                 className="absolute flex flex-col items-center justify-center"
-                style={{ top: 310, left: 340, transform: "translate(-50%, -50%)" }}
+                style={{ top: 0, left: 0, transform: "translate(-50%, -50%)" }}
               >
                 <div
                   className="flex items-center justify-center"
@@ -427,6 +419,7 @@ function Flywheel() {
                   Forever
                 </p>
               </div>
+            </div>
             </div>
           </motion.div>
         </div>
