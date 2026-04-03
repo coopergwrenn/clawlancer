@@ -463,31 +463,18 @@ else:
           }
         }
 
-        // Send alert email to user (only if we actually restarted)
-        if (!gatewayActuallyHealthy && vm.assigned_to) {
-          const { data: user } = await supabase
-            .from("instaclaw_users")
-            .select("email")
-            .eq("id", vm.assigned_to)
-            .single();
-
-          if (user?.email) {
-            try {
-              await sendHealthAlertEmail(user.email, vm.name ?? vm.id);
-              alerted++;
-            } catch (emailErr) {
-              logger.error("Failed to send health alert email", { error: String(emailErr), route: "cron/health-check", vmId: vm.id });
-            }
-          }
-        }
-
-        // Also alert admin
-        if (!gatewayActuallyHealthy && ADMIN_EMAIL) {
+        // Health alert emails: ADMIN ONLY, ONCE PER INCIDENT.
+        // Users cannot fix VM health issues — don't spam them.
+        // Only send on the FIRST threshold crossing (fail_count == ALERT_THRESHOLD).
+        // For sustained unhealthy, the SUSTAINED_UNHEALTHY_THRESHOLD block below
+        // handles escalation via AlertCollector (batched, not per-VM emails).
+        if (!gatewayActuallyHealthy && ADMIN_EMAIL && newFailCount === ALERT_THRESHOLD) {
           try {
             await sendHealthAlertEmail(
               ADMIN_EMAIL,
               `${vm.name ?? vm.id} (user: ${vm.assigned_to})`
             );
+            alerted++;
           } catch {
             // Non-fatal
           }
