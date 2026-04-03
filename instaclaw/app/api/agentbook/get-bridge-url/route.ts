@@ -7,6 +7,8 @@ import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
 
+const RETURN_TO = "worldapp://mini-app?app_id=app_a4e2de774b1bda0426e78cda2ddb8cfd";
+
 /**
  * GET /api/agentbook/get-bridge-url
  *
@@ -74,9 +76,10 @@ export async function GET(req: NextRequest) {
         /https:\/\/(?:worldcoin\.org\/verify|world\.org\/verify|bridge\.worldcoin\.org)[^\s"')]+/
       );
       if (urlMatch) {
+        const sep = urlMatch[0].includes("?") ? "&" : "?";
         return NextResponse.json({
           status: "ready",
-          bridgeUrl: urlMatch[0],
+          bridgeUrl: `${urlMatch[0]}${sep}return_to=${encodeURIComponent(RETURN_TO)}`,
         });
       }
 
@@ -85,9 +88,10 @@ export async function GET(req: NextRequest) {
         /https:\/\/[^\s"')]*(?:worldcoin|world\.org)[^\s"')]*verify[^\s"')]+/
       );
       if (broadMatch) {
+        const sep = broadMatch[0].includes("?") ? "&" : "?";
         return NextResponse.json({
           status: "ready",
-          bridgeUrl: broadMatch[0],
+          bridgeUrl: `${broadMatch[0]}${sep}return_to=${encodeURIComponent(RETURN_TO)}`,
         });
       }
 
