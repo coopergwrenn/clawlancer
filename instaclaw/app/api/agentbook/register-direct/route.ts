@@ -43,10 +43,16 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabase();
   const body = await req.json();
-  const { proof, merkle_root, nullifier_hash } = body;
+
+  // Accept both snake_case (MiniKit) and camelCase (IDKit v4) field names
+  const proof = body.proof || body.proofs;
+  const merkle_root = body.merkle_root || body.merkleRoot || body.merkle_root_hash;
+  const nullifier_hash = body.nullifier_hash || body.nullifierHash;
 
   if (!proof || !merkle_root || !nullifier_hash) {
-    return NextResponse.json({ error: "Missing proof fields" }, { status: 400 });
+    // Show what we received for debugging
+    const keys = Object.keys(body).join(", ");
+    return NextResponse.json({ error: `Missing proof fields. Received keys: ${keys}`, bodyPreview: JSON.stringify(body).slice(0, 300) }, { status: 400 });
   }
 
   // Get user's VM + wallet

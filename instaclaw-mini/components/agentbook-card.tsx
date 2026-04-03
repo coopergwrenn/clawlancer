@@ -104,21 +104,16 @@ export default function AgentBookCard() {
       console.log("[AgentBook] Result keys:", Object.keys(result));
       console.log("[AgentBook] Full result:", JSON.stringify(result));
 
-      // IDKit v4 may use different field names — try both formats
-      const proofData = {
-        proof: result.proof || result.proofs,
-        merkle_root: result.merkle_root || result.merkleRoot,
-        nullifier_hash: result.nullifier_hash || result.nullifierHash,
-        verification_level: result.verification_level || result.verificationLevel || "orb",
-      };
-      console.log("[AgentBook] Proof data:", JSON.stringify(proofData));
+      // DEBUG: Show IDKit result structure so we can map fields correctly
+      const resultKeys = Object.keys(result).join(", ");
+      const resultStr = JSON.stringify(result).slice(0, 400);
 
-      // Step 3: Submit proof to relay via register-direct
+      // Send the ENTIRE result to the backend — let it figure out field names
       setPhase("submitting");
       const regRes = await fetch("/api/proxy/agentbook/register-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(proofData),
+        body: JSON.stringify(result),
       });
 
       const regData = await regRes.json();
