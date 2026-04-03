@@ -96,7 +96,8 @@ export async function GET(req: NextRequest) {
       .from("instaclaw_subscriptions")
       .select("*");
 
-    const dbSubByUserId = new Map<string, (typeof dbSubs extends Array<infer T> ? T : never)>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dbSubByUserId = new Map<string, any>();
     for (const s of dbSubs ?? []) {
       dbSubByUserId.set(s.user_id, s);
     }
