@@ -815,75 +815,30 @@ function TheMath() {
           viewport={{ once: true, margin: "-80px" }}
           transition={{ delay: 0.1, duration: 0.6, ease: SNAPPY }}
         >
-          <div className="p-6 sm:p-8 text-center">
+          <div className="p-8 sm:p-10 text-center">
             <h3
-              className="text-xl sm:text-2xl font-normal tracking-[-0.5px] mb-6"
+              className="text-xl sm:text-2xl font-normal tracking-[-0.5px] mb-8"
               style={{ fontFamily: "var(--font-serif)" }}
             >
               Live Burn Tracker
             </h3>
 
             <p
-              className="text-xs uppercase tracking-[2px] mb-3"
-              style={{ color: "var(--muted)" }}
-            >
-              Total $INSTACLAW burned
-            </p>
-            <p
-              className="text-4xl sm:text-5xl font-normal tracking-[-1px] mb-2"
+              className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] mb-3"
               style={{
                 fontFamily: "var(--font-serif)",
-                color: "var(--foreground)",
+                color: "var(--accent)",
               }}
             >
-              0
+              Coming May 2026
             </p>
             <p
-              className="text-xs mb-6"
+              className="text-sm max-w-sm mx-auto"
               style={{ color: "var(--muted)" }}
             >
-              First burn: May 2026
+              Real-time tracking of every $INSTACLAW token permanently removed
+              from supply. Updated daily.
             </p>
-
-            {/* Placeholder stats row */}
-            <div
-              className="grid grid-cols-3 gap-4 pt-5"
-              style={{ borderTop: "1px solid var(--border)" }}
-            >
-              <div>
-                <p
-                  className="text-lg font-normal tracking-[-0.5px]"
-                  style={{ fontFamily: "var(--font-serif)" }}
-                >
-                  0
-                </p>
-                <p className="text-[10px] uppercase tracking-[1px] mt-1" style={{ color: "var(--muted)" }}>
-                  Burned today
-                </p>
-              </div>
-              <div>
-                <p
-                  className="text-lg font-normal tracking-[-0.5px]"
-                  style={{ fontFamily: "var(--font-serif)" }}
-                >
-                  0
-                </p>
-                <p className="text-[10px] uppercase tracking-[1px] mt-1" style={{ color: "var(--muted)" }}>
-                  Burned this month
-                </p>
-              </div>
-              <div>
-                <p
-                  className="text-lg font-normal tracking-[-0.5px]"
-                  style={{ fontFamily: "var(--font-serif)" }}
-                >
-                  0
-                </p>
-                <p className="text-[10px] uppercase tracking-[1px] mt-1" style={{ color: "var(--muted)" }}>
-                  Burn transactions
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Verifiable bar */}
@@ -895,7 +850,7 @@ function TheMath() {
             }}
           >
             <p className="text-xs sm:text-sm text-center" style={{ color: "var(--muted)" }}>
-              Every burn transaction is verifiable on{" "}
+              Every burn transaction will be verifiable on{" "}
               <a
                 href={BASESCAN_URL}
                 target="_blank"
