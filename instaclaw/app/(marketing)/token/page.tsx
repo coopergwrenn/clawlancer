@@ -485,9 +485,9 @@ const burnSources = [
     timeline: "Coming Soon",
     tagline: "Agents that pay for themselves.",
     short:
-      "Every agent tokenization (via Virtuals Protocol or Bankr) triggers a burn. Every trade on an agent's token splits fees three ways: burn $INSTACLAW, fund the agent's compute, and protocol fees. Agents even burn in their sleep through 24/7 heartbeats.",
+      "Every InstaClaw agent can one-click tokenize through Virtuals Protocol or Bankr. The moment it does, all trading fee infrastructure kicks in automatically. Fees from the agent's token route back to fund the agent's own compute AND burn $INSTACLAW. Self-sustaining agents that burn the parent token 24/7.",
     detail:
-      "InstaClaw agents can tokenize through Virtuals Protocol or Bankr. Two independent launchpads, same burn mechanic. When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn. Every subsequent trade on the agent's token generates ongoing burns. The agent literally funds its own inference from trading fees, and a portion of that spend burns $INSTACLAW. Self-funding agents create a virtuous cycle where market interest in an agent's token directly reduces $INSTACLAW supply.",
+      "When a user tokenizes their agent, the launch fee triggers an open-market buy-and-burn of $INSTACLAW. From that point on, every trade on the agent's token generates fees that automatically route back through Virtuals or Bankr infrastructure. Those fees split three ways: a portion funds the agent's own compute (so it pays for its own inference), a portion burns $INSTACLAW, and a portion goes to the protocol. The agent becomes fully self-sustaining from its own token's trading activity while simultaneously reducing $INSTACLAW supply with every trade.",
   },
   {
     icon: TrendingDown,
