@@ -269,138 +269,153 @@ function Flywheel() {
           </p>
         </motion.div>
 
-        {/* Flywheel ring — desktop */}
+        {/* Flywheel — desktop: glass container with ring + glass pill nodes */}
         <div className="hidden sm:block">
-          <div className="relative mx-auto" style={{ width: 750, height: 740 }}>
-            {/* Base ring — subtle dashed SVG */}
-            <svg
-              className="absolute"
-              style={{ left: 375 - 170, top: 340 - 170, width: 340, height: 340 }}
-              viewBox="0 0 340 340"
-            >
-              <circle
-                cx="170"
-                cy="170"
-                r="165"
-                fill="none"
-                stroke="rgba(220,103,67,0.1)"
-                strokeWidth="1"
-                strokeDasharray="8 8"
+          <motion.div
+            className="relative mx-auto rounded-2xl"
+            style={{
+              ...glassStyle,
+              maxWidth: 740,
+              padding: "48px 24px",
+            }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: 0.6, ease: SNAPPY }}
+          >
+            <div className="relative mx-auto" style={{ width: 680, height: 560 }}>
+              {/* SVG ring */}
+              <svg
+                className="absolute"
+                style={{ left: 340 - 150, top: 280 - 150, width: 300, height: 300 }}
+                viewBox="0 0 300 300"
+              >
+                <circle
+                  cx="150"
+                  cy="150"
+                  r="145"
+                  fill="none"
+                  stroke="rgba(220,103,67,0.08)"
+                  strokeWidth="1"
+                  strokeDasharray="5 7"
+                />
+              </svg>
+
+              {/* Energy sweep — thin, elegant */}
+              <div
+                className="absolute"
+                style={{
+                  left: 340 - 155,
+                  top: 280 - 155,
+                  width: 310,
+                  height: 310,
+                  borderRadius: "50%",
+                  animation: "flywheel-orbit 10s linear infinite",
+                  background: "conic-gradient(from 0deg, transparent 0%, transparent 60%, rgba(220,103,67,0.02) 70%, rgba(220,103,67,0.08) 82%, rgba(220,103,67,0.2) 91%, rgba(220,103,67,0.35) 96%, rgba(220,103,67,0.08) 98%, transparent 100%)",
+                  mask: "radial-gradient(circle, transparent 140px, black 143px, black 149px, transparent 152px)",
+                  WebkitMask: "radial-gradient(circle, transparent 140px, black 143px, black 149px, transparent 152px)",
+                }}
               />
-            </svg>
+              {/* Glow layer — subtle */}
+              <div
+                className="absolute"
+                style={{
+                  left: 340 - 155,
+                  top: 280 - 155,
+                  width: 310,
+                  height: 310,
+                  borderRadius: "50%",
+                  animation: "flywheel-orbit 10s linear infinite",
+                  background: "conic-gradient(from 0deg, transparent 0%, transparent 70%, rgba(220,103,67,0.04) 82%, rgba(220,103,67,0.1) 93%, rgba(220,103,67,0.04) 97%, transparent 100%)",
+                  mask: "radial-gradient(circle, transparent 134px, black 138px, black 154px, transparent 158px)",
+                  WebkitMask: "radial-gradient(circle, transparent 134px, black 138px, black 154px, transparent 158px)",
+                  filter: "blur(6px)",
+                }}
+              />
 
-            {/* Glowing energy sweep — CSS conic gradient masked to ring */}
-            <div
-              className="absolute"
-              style={{
-                left: 375 - 175,
-                top: 340 - 175,
-                width: 350,
-                height: 350,
-                borderRadius: "50%",
-                animation: "flywheel-orbit 8s linear infinite",
-                background: "conic-gradient(from 0deg, transparent 0%, transparent 50%, rgba(220,103,67,0.04) 60%, rgba(220,103,67,0.15) 75%, rgba(220,103,67,0.4) 88%, #DC6743 95%, rgba(220,103,67,0.4) 97%, transparent 100%)",
-                mask: "radial-gradient(circle, transparent 155px, black 157px, black 173px, transparent 175px)",
-                WebkitMask: "radial-gradient(circle, transparent 155px, black 157px, black 173px, transparent 175px)",
-              }}
-            />
-            {/* Glow layer behind the sweep — softer, larger */}
-            <div
-              className="absolute"
-              style={{
-                left: 375 - 175,
-                top: 340 - 175,
-                width: 350,
-                height: 350,
-                borderRadius: "50%",
-                animation: "flywheel-orbit 8s linear infinite",
-                background: "conic-gradient(from 0deg, transparent 0%, transparent 60%, rgba(220,103,67,0.08) 75%, rgba(220,103,67,0.2) 90%, rgba(220,103,67,0.08) 95%, transparent 100%)",
-                mask: "radial-gradient(circle, transparent 145px, black 150px, black 180px, transparent 185px)",
-                WebkitMask: "radial-gradient(circle, transparent 145px, black 150px, black 180px, transparent 185px)",
-                filter: "blur(6px)",
-              }}
-            />
+              {/* Glass pill nodes */}
+              {flywheelSteps.map((step, i) => {
+                const angle = (i / flywheelSteps.length) * 2 * Math.PI - Math.PI / 2;
+                const cx = 340;
+                const cy = 280;
+                const ringR = 145;
+                const pushR = 70;
+                const x = cx + (ringR + pushR) * Math.cos(angle);
+                const y = cy + (ringR + pushR) * Math.sin(angle);
 
-            {/* Nodes — dots on ring, labels pushed outward */}
-            {flywheelSteps.map((step, i) => {
-              const angle = (i / flywheelSteps.length) * 2 * Math.PI - Math.PI / 2;
-              const cx = 375; // center x
-              const cy = 340; // center y
-              const ringR = 165;
-              const labelR = 280;
-              const dotX = cx + ringR * Math.cos(angle);
-              const dotY = cy + ringR * Math.sin(angle);
-              const labelX = cx + labelR * Math.cos(angle);
-              const labelY = cy + labelR * Math.sin(angle);
-
-              return (
-                <motion.div
-                  key={i}
-                  className="absolute"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{
-                    delay: 0.3 + i * 0.1,
-                    duration: 0.5,
-                    ease: SNAPPY,
-                  }}
-                  style={{ left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-                >
-                  {/* Dot on ring */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: dotX - 5,
-                      top: dotY - 5,
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      background: "var(--accent)",
-                      boxShadow: "0 0 8px rgba(220,103,67,0.3)",
+                return (
+                  <motion.div
+                    key={i}
+                    className="absolute"
+                    initial={{ opacity: 0, scale: 0.85 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true, margin: "-50px" }}
+                    transition={{
+                      delay: 0.3 + i * 0.08,
+                      duration: 0.5,
+                      ease: SNAPPY,
                     }}
-                  />
-                  {/* Label */}
-                  <div
                     style={{
-                      position: "absolute",
-                      left: labelX,
-                      top: labelY,
+                      left: x,
+                      top: y,
                       transform: "translate(-50%, -50%)",
-                      width: 155,
-                      textAlign: "center",
-                      pointerEvents: "auto",
                     }}
                   >
-                    <p className="text-sm font-medium leading-tight" style={{ color: "var(--foreground)" }}>
-                      {step.label}
-                    </p>
-                    <p className="text-[10px] mt-1 leading-tight" style={{ color: "var(--muted)" }}>
-                      {step.sub}
-                    </p>
-                  </div>
-                </motion.div>
-              );
-            })}
+                    <div
+                      className="px-4 py-2.5 rounded-xl text-center"
+                      style={{
+                        background: "rgba(255,255,255,0.7)",
+                        backdropFilter: "blur(8px)",
+                        WebkitBackdropFilter: "blur(8px)",
+                        boxShadow: `
+                          rgba(0,0,0,0.03) 0px 1px 2px 0px,
+                          rgba(255,255,255,0.6) 0px -1px 1px 0px inset,
+                          rgba(0,0,0,0.04) 0px 0px 0px 1px
+                        `,
+                        width: 155,
+                      }}
+                    >
+                      <p
+                        className="text-xs font-medium leading-tight"
+                        style={{ color: "var(--foreground)" }}
+                      >
+                        {step.label}
+                      </p>
+                      <p
+                        className="text-[10px] mt-1 leading-tight"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        {step.sub}
+                      </p>
+                    </div>
+                  </motion.div>
+                );
+              })}
 
-            {/* Center label */}
-            <div
-              className="absolute flex flex-col items-center justify-center"
-              style={{ top: 340, left: 375, transform: "translate(-50%, -50%)" }}
-            >
-              <Repeat
-                size={28}
-                strokeWidth={1.2}
-                style={{ color: "var(--accent)", opacity: 0.5 }}
-              />
-              <p
-                className="text-sm mt-2 font-medium"
-                style={{ color: "var(--accent)", opacity: 0.7 }}
+              {/* Center */}
+              <div
+                className="absolute flex flex-col items-center justify-center"
+                style={{ top: 280, left: 340, transform: "translate(-50%, -50%)" }}
               >
-                Forever
-              </p>
+                <div
+                  className="flex items-center justify-center"
+                  style={orbStyle(48)}
+                >
+                  <Repeat
+                    size={20}
+                    strokeWidth={1.5}
+                    style={{ color: "var(--accent)" }}
+                  />
+                </div>
+                <p
+                  className="text-xs mt-2 font-medium tracking-wide"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Forever
+                </p>
+              </div>
             </div>
-          </div>
+          </motion.div>
         </div>
 
         {/* Flywheel — mobile (vertical flow) */}
