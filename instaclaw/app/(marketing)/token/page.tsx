@@ -272,54 +272,73 @@ function Flywheel() {
         {/* Flywheel ring — desktop */}
         <div className="hidden sm:block">
           <div className="relative mx-auto" style={{ width: 700, height: 740 }}>
-            {/* SVG ring (static) */}
+            {/* SVG ring with flowing energy effect */}
             <svg
               className="absolute"
               style={{ left: 350 - 170, top: 340 - 170, width: 340, height: 340 }}
               viewBox="0 0 340 340"
             >
               <defs>
+                {/* Base ring gradient */}
                 <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="rgba(220,103,67,0.15)" />
-                  <stop offset="50%" stopColor="rgba(220,103,67,0.06)" />
-                  <stop offset="100%" stopColor="rgba(220,103,67,0.15)" />
+                  <stop offset="0%" stopColor="rgba(220,103,67,0.12)" />
+                  <stop offset="50%" stopColor="rgba(220,103,67,0.05)" />
+                  <stop offset="100%" stopColor="rgba(220,103,67,0.12)" />
                 </linearGradient>
+                {/* Energy sweep gradient — bright head fading to transparent */}
+                <linearGradient id="energy-grad" gradientUnits="userSpaceOnUse" x1="170" y1="5" x2="170" y2="335">
+                  <stop offset="0%" stopColor="#DC6743" stopOpacity="0.6" />
+                  <stop offset="30%" stopColor="#DC6743" stopOpacity="0.15" />
+                  <stop offset="60%" stopColor="#DC6743" stopOpacity="0" />
+                  <stop offset="100%" stopColor="#DC6743" stopOpacity="0" />
+                </linearGradient>
+                {/* Glow filter for energy sweep */}
+                <filter id="energy-glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
               </defs>
+
+              {/* Base ring — subtle dashed */}
               <circle
                 cx="170"
                 cy="170"
                 r="165"
                 fill="none"
                 stroke="url(#ring-grad)"
+                strokeWidth="1"
+                strokeDasharray="8 8"
+              />
+
+              {/* Flowing dashes — the ring appears to move */}
+              <circle
+                cx="170"
+                cy="170"
+                r="165"
+                fill="none"
+                stroke="rgba(220,103,67,0.08)"
                 strokeWidth="1.5"
-                strokeDasharray="6 6"
+                strokeDasharray="4 12"
+                style={{ animation: "flywheel-flow 20s linear infinite" }}
+              />
+
+              {/* Energy sweep — bright arc that rotates around the ring */}
+              <circle
+                cx="170"
+                cy="170"
+                r="165"
+                fill="none"
+                stroke="url(#energy-grad)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray="260 776"
+                filter="url(#energy-glow)"
+                style={{ animation: "flywheel-orbit 10s linear infinite", transformOrigin: "170px 170px" }}
               />
             </svg>
-
-            {/* Orbiting glow dot — CSS rotation, bulletproof */}
-            <div
-              style={{
-                position: "absolute",
-                left: 350,
-                top: 340,
-                width: 0,
-                height: 0,
-                animation: "flywheel-orbit 12s linear infinite",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  left: -5,
-                  top: -170 - 5,
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  background: "#DC6743",
-                  boxShadow: "0 0 12px 3px rgba(220,103,67,0.4)",
-                }}
-              />
-            </div>
 
             {/* Nodes — dots on ring, labels pushed outward */}
             {flywheelSteps.map((step, i) => {

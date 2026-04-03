@@ -646,10 +646,15 @@ html.lenis body {
   animation: flame-glow 3s ease-in-out infinite;
 }
 
-/* Flywheel orbiting dot */
+/* Flywheel — flowing energy ring */
 @keyframes flywheel-orbit {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes flywheel-flow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -320; }
 }
 
 /* Shimmer bar for slider loading state */
