@@ -271,11 +271,12 @@ function Flywheel() {
 
         {/* Flywheel ring — desktop */}
         <div className="hidden sm:block">
-          <div className="relative mx-auto" style={{ width: 520, height: 520 }}>
-            {/* SVG ring with animated gradient */}
+          <div className="relative mx-auto" style={{ width: 700, height: 740 }}>
+            {/* SVG ring (static) */}
             <svg
-              className="absolute inset-0 w-full h-full"
-              viewBox="0 0 520 520"
+              className="absolute"
+              style={{ left: 350 - 170, top: 340 - 170, width: 340, height: 340 }}
+              viewBox="0 0 340 340"
             >
               <defs>
                 <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
@@ -285,9 +286,9 @@ function Flywheel() {
                 </linearGradient>
               </defs>
               <circle
-                cx="260"
-                cy="260"
-                r="200"
+                cx="170"
+                cy="170"
+                r="165"
                 fill="none"
                 stroke="url(#ring-grad)"
                 strokeWidth="1.5"
@@ -295,48 +296,47 @@ function Flywheel() {
               />
             </svg>
 
-            {/* Orbiting glow dot */}
-            <motion.div
-              className="absolute"
-              animate={{
-                offsetDistance: ["0%", "100%"],
-              }}
-              transition={{
-                duration: 12,
-                ease: "linear",
-                repeat: Infinity,
-              }}
+            {/* Orbiting glow dot — CSS rotation, bulletproof */}
+            <div
               style={{
-                width: 12,
-                height: 12,
-                borderRadius: "50%",
-                background: "#DC6743",
-                boxShadow: "0 0 16px 4px rgba(220,103,67,0.4)",
                 position: "absolute",
-                top: "50%",
-                left: "50%",
-                offsetPath: "circle(200px at 0px 0px)",
+                left: 350,
+                top: 340,
+                width: 0,
+                height: 0,
+                animation: "flywheel-orbit 12s linear infinite",
               }}
-            />
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  left: -5,
+                  top: -170 - 5,
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: "#DC6743",
+                  boxShadow: "0 0 12px 3px rgba(220,103,67,0.4)",
+                }}
+              />
+            </div>
 
-            {/* Nodes positioned around the circle */}
+            {/* Nodes — dots on ring, labels pushed outward */}
             {flywheelSteps.map((step, i) => {
               const angle = (i / flywheelSteps.length) * 2 * Math.PI - Math.PI / 2;
-              const radius = 200;
-              const cx = 260 + radius * Math.cos(angle);
-              const cy = 260 + radius * Math.sin(angle);
+              const cx = 350; // center x
+              const cy = 340; // center y
+              const ringR = 165;
+              const labelR = 280;
+              const dotX = cx + ringR * Math.cos(angle);
+              const dotY = cy + ringR * Math.sin(angle);
+              const labelX = cx + labelR * Math.cos(angle);
+              const labelY = cy + labelR * Math.sin(angle);
 
               return (
                 <motion.div
                   key={i}
                   className="absolute"
-                  style={{
-                    left: cx,
-                    top: cy,
-                    transform: "translate(-50%, -50%)",
-                    width: 160,
-                    textAlign: "center",
-                  }}
                   initial={{ opacity: 0, scale: 0.8 }}
                   whileInView={{ opacity: 1, scale: 1 }}
                   viewport={{ once: true, margin: "-50px" }}
@@ -345,11 +345,14 @@ function Flywheel() {
                     duration: 0.5,
                     ease: SNAPPY,
                   }}
+                  style={{ left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
                 >
-                  {/* Node dot */}
+                  {/* Dot on ring */}
                   <div
-                    className="mx-auto mb-2"
                     style={{
+                      position: "absolute",
+                      left: dotX - 5,
+                      top: dotY - 5,
                       width: 10,
                       height: 10,
                       borderRadius: "50%",
@@ -357,18 +360,25 @@ function Flywheel() {
                       boxShadow: "0 0 8px rgba(220,103,67,0.3)",
                     }}
                   />
-                  <p
-                    className="text-xs sm:text-sm font-medium leading-tight"
-                    style={{ color: "var(--foreground)" }}
+                  {/* Label */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: labelX,
+                      top: labelY,
+                      transform: "translate(-50%, -50%)",
+                      width: 155,
+                      textAlign: "center",
+                      pointerEvents: "auto",
+                    }}
                   >
-                    {step.label}
-                  </p>
-                  <p
-                    className="text-[10px] mt-0.5 leading-tight"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    {step.sub}
-                  </p>
+                    <p className="text-sm font-medium leading-tight" style={{ color: "var(--foreground)" }}>
+                      {step.label}
+                    </p>
+                    <p className="text-[10px] mt-1 leading-tight" style={{ color: "var(--muted)" }}>
+                      {step.sub}
+                    </p>
+                  </div>
                 </motion.div>
               );
             })}
@@ -376,11 +386,7 @@ function Flywheel() {
             {/* Center label */}
             <div
               className="absolute flex flex-col items-center justify-center"
-              style={{
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-              }}
+              style={{ top: 340, left: 350, transform: "translate(-50%, -50%)" }}
             >
               <Repeat
                 size={28}

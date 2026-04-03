@@ -646,6 +646,12 @@ html.lenis body {
   animation: flame-glow 3s ease-in-out infinite;
 }
 
+/* Flywheel orbiting dot */
+@keyframes flywheel-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Shimmer bar for slider loading state */
 @keyframes hb-shimmer {
   0%   { width: 20%; opacity: 0.4; }
