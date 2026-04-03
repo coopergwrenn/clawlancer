@@ -482,7 +482,7 @@ const burnSources = [
   {
     icon: Flame,
     title: "The Agent Economy Loop",
-    timeline: "Q2 2026",
+    timeline: "Coming Soon",
     tagline: "Agents that pay for themselves.",
     short:
       "Every agent tokenization (via Virtuals Protocol or Bankr) triggers a burn. Every trade on an agent's token splits fees three ways: burn $INSTACLAW, fund the agent's compute, and protocol fees. Agents even burn in their sleep through 24/7 heartbeats.",
@@ -492,7 +492,7 @@ const burnSources = [
   {
     icon: TrendingDown,
     title: "The Trading Loop",
-    timeline: "Q2 2026",
+    timeline: "Coming Soon",
     tagline: "Trading $INSTACLAW burns $INSTACLAW.",
     short:
       "10% of all $INSTACLAW trading fees received from Virtuals Protocol automatically routes to buy-and-burn. Every trade on the token itself feeds the deflationary cycle.",
@@ -502,7 +502,7 @@ const burnSources = [
   {
     icon: CreditCard,
     title: "The Silent Engine",
-    timeline: "Q2\u2013Q3 2026",
+    timeline: "Coming Soon",
     tagline: "Your subscription is burning tokens right now.",
     short:
       "10% of every subscription payment and every WLD credit purchase automatically buys and burns $INSTACLAW. Users never touch crypto. They never see a wallet. The burn is invisible.",
