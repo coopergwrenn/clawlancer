@@ -236,7 +236,7 @@ function Hero() {
 
 const flywheelSteps = [
   { label: "Users pay for AI agents", sub: "Fiat, WLD, or trading fees" },
-  { label: "Real revenue generated", sub: "Subscriptions, credits, skill fees" },
+  { label: "Real revenue generated", sub: "Subscriptions, credits, trading fees, skill fees" },
   { label: "10% routes on-chain", sub: "Automated, no human intervention" },
   { label: "Open-market buy $INSTACLAW", sub: "Daily buy-and-burn via smart contract" },
   { label: "Tokens burned forever", sub: "Permanently removed from supply" },
