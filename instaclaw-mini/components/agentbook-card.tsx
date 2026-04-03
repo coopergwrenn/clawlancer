@@ -91,24 +91,34 @@ export default function AgentBookCard() {
 
       console.log("[AgentBook] IDKit completion:", JSON.stringify(completion));
 
+      console.log("[AgentBook] Raw completion:", JSON.stringify(completion));
+
       if (!completion || !completion.success) {
-        throw new Error("Verification failed or timed out");
+        const errMsg = completion && !completion.success
+          ? `Verification error: ${JSON.stringify(completion)}`
+          : "Verification failed or timed out";
+        throw new Error(errMsg);
       }
 
-      const proof = completion.result as unknown as Record<string, unknown>;
-      console.log("[AgentBook] Proof result:", JSON.stringify(proof));
+      const result = completion.result as unknown as Record<string, unknown>;
+      console.log("[AgentBook] Result keys:", Object.keys(result));
+      console.log("[AgentBook] Full result:", JSON.stringify(result));
+
+      // IDKit v4 may use different field names — try both formats
+      const proofData = {
+        proof: result.proof || result.proofs,
+        merkle_root: result.merkle_root || result.merkleRoot,
+        nullifier_hash: result.nullifier_hash || result.nullifierHash,
+        verification_level: result.verification_level || result.verificationLevel || "orb",
+      };
+      console.log("[AgentBook] Proof data:", JSON.stringify(proofData));
 
       // Step 3: Submit proof to relay via register-direct
       setPhase("submitting");
       const regRes = await fetch("/api/proxy/agentbook/register-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          proof: proof.proof,
-          merkle_root: proof.merkle_root,
-          nullifier_hash: proof.nullifier_hash,
-          verification_level: proof.verification_level,
-        }),
+        body: JSON.stringify(proofData),
       });
 
       const regData = await regRes.json();
@@ -122,7 +132,8 @@ export default function AgentBookCard() {
       }
     } catch (err) {
       console.error("[AgentBook] Error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg.slice(0, 300));
       setPhase("idle");
     }
   }
