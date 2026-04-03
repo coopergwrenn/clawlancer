@@ -251,19 +251,23 @@ def send_telegram_fallback(bot_token, chat_id):
     except Exception:
         return False
 
-def restart_gateway():
-    """Restart the OpenClaw gateway (with lock file coordination)."""
-    # Fix 4: Check restart lock — skip if another source restarted recently
+def should_restart():
+    """Check if a gateway restart is warranted. Returns False if restarting
+    would be pointless (recent restart by any source within 5 min)."""
     lock_path = "/tmp/ic-restart.lock"
     try:
         if os.path.exists(lock_path):
             age = time.time() - os.path.getmtime(lock_path)
-            if age < 120:
-                return  # Another restart happened within 2 minutes — skip
+            if age < 300:
+                return False  # Any source restarted within 5 min — skip
     except Exception:
         pass
+    return True
+
+def restart_gateway():
+    """Restart the OpenClaw gateway (with lock file coordination)."""
+    lock_path = "/tmp/ic-restart.lock"
     try:
-        # Set lock before restarting
         with open(lock_path, "w") as f:
             f.write(str(time.time()))
     except Exception:
@@ -314,11 +318,14 @@ def main():
         return  # Agent responded — no silence
 
     # SILENCE DETECTED: user message is >60s old with no visible assistant response
-    # Send fallback and restart
+    # Always send fallback (within cooldown) but only restart if it would help
     sent = send_telegram_fallback(bot_token, chat_id)
     if sent:
-        restart_gateway()
-        write_state({"last_fallback_ts": now, "trigger": "silence_detected"})
+        if should_restart():
+            restart_gateway()
+            write_state({"last_fallback_ts": now, "trigger": "silence_detected", "restarted": True})
+        else:
+            write_state({"last_fallback_ts": now, "trigger": "silence_detected", "restarted": False})
 
 if __name__ == "__main__":
     main()
@@ -342,7 +349,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 53,
+  version: 54,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

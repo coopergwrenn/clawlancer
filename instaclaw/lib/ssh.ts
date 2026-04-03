@@ -866,7 +866,7 @@ try:
         try:
             if os.path.exists(lock_path):
                 age = time.time() - os.path.getmtime(lock_path)
-                if age < 120:
+                if age < 300:
                     print(f"Restart skipped — lock active ({age:.0f}s old)")
                     return False
         except Exception:
