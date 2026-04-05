@@ -831,6 +831,42 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // ================================================================
+      // PROMPT CACHING — saves ~70% on Anthropic API costs.
+      // See PRD: instaclaw/docs/prd/api-cost-optimization.md
+      //
+      // 1. Add beta header so Anthropic enables caching
+      // 2. Wrap system prompt as cached content block
+      //    (OpenClaw sends string, Anthropic accepts array with cache_control)
+      // 3. First call per session = cache write (1.25x)
+      //    Subsequent calls = cache read (0.1x — 90% discount)
+      // ================================================================
+      {
+        const existingBeta = providerHeaders["anthropic-beta"] || "";
+        if (!existingBeta.includes("prompt-caching-2024-07-31")) {
+          providerHeaders["anthropic-beta"] = existingBeta
+            ? `${existingBeta},prompt-caching-2024-07-31`
+            : "prompt-caching-2024-07-31";
+        }
+      }
+
+      if (parsedBody?.system) {
+        if (typeof parsedBody.system === "string" && parsedBody.system.length > 4096) {
+          parsedBody.system = [
+            {
+              type: "text",
+              text: parsedBody.system,
+              cache_control: { type: "ephemeral" },
+            },
+          ];
+        } else if (Array.isArray(parsedBody.system)) {
+          const lastBlock = parsedBody.system[parsedBody.system.length - 1];
+          if (lastBlock && typeof lastBlock === "object" && !lastBlock.cache_control) {
+            lastBlock.cache_control = { type: "ephemeral" };
+          }
+        }
+      }
+
       // Use parsedBody if model was rewritten by the router
       providerBody = parsedBody ? JSON.stringify(parsedBody) : body;
     }
