@@ -3199,6 +3199,21 @@ export async function configureOpenClaw(
       );
     }
 
+    // Write exec-approvals.json — without correct defaults, agents can't run commands
+    // even when tools.exec.security=full in openclaw.json. The exec approval daemon
+    // has its own config file that must also be set.
+    const execApprovals = JSON.stringify({
+      version: 1,
+      defaults: { security: "full", ask: "off", askFallback: "full" },
+      agents: {},
+    }, null, 2);
+    const execApprovalsB64 = Buffer.from(execApprovals).toString("base64");
+    scriptParts.push(
+      '# Write exec-approvals.json (security=full, ask=off)',
+      `echo '${execApprovalsB64}' | base64 -d > "$HOME/.openclaw/exec-approvals.json"`,
+      ''
+    );
+
     // Deploy GATEWAY_TOKEN to .env so agent can call proxy endpoints (Sjinn, etc.)
     scriptParts.push(
       '# Deploy GATEWAY_TOKEN for proxy authentication',

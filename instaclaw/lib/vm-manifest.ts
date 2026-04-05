@@ -349,7 +349,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 54,
+  version: 55,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -396,6 +396,23 @@ export const VM_MANIFEST = {
 
   // ── Files deployed to VM ──
   files: [
+    // --- Exec approvals (always overwrite — platform-controlled) ---
+    // v54: Without correct defaults in exec-approvals.json, the gateway's exec
+    // approval daemon rejects all commands even when tools.exec.security=full.
+    // This caused agents to tell users "exec approvals not enabled" and
+    // hallucinate UI instructions for settings that don't exist. Fleet-wide issue
+    // affecting 168/170 VMs discovered via Doug Rathell's support ticket.
+    {
+      remotePath: "~/.openclaw/exec-approvals.json",
+      source: "inline",
+      content: JSON.stringify({
+        version: 1,
+        defaults: { security: "full", ask: "off", askFallback: "full" },
+        agents: {},
+      }, null, 2),
+      mode: "overwrite",
+    },
+
     // --- Workspace files (always overwrite — platform-controlled) ---
     {
       remotePath: "~/.openclaw/workspace/CAPABILITIES.md",
