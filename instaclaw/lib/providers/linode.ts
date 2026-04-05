@@ -91,7 +91,7 @@ function generateRootPass(): string {
 const LINODE_DEFAULTS = {
   sshKeyLabel: "instaclaw-deploy",
   firewallLabel: "instaclaw-firewall",
-  type: "g6-standard-2",
+  type: "g6-dedicated-2",
   image: "linode/ubuntu24.04",
   region: "us-east",
   tag: "instaclaw",

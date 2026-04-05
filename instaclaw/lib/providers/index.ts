@@ -5,7 +5,9 @@ import { linodeProvider } from "./linode";
 
 export type { CloudProvider, ServerConfig, ServerResult } from "./types";
 
-const PROVIDERS: CloudProvider[] = [hetznerProvider, digitalOceanProvider, linodeProvider];
+// Linode is the primary provider — all new VMs use Linode dedicated CPU.
+// Hetzner and DigitalOcean are legacy providers (existing VMs only, no new provisioning).
+const PROVIDERS: CloudProvider[] = [linodeProvider, hetznerProvider, digitalOceanProvider];
 
 export function getProvider(name: "hetzner" | "digitalocean" | "linode"): CloudProvider {
   const provider = PROVIDERS.find((p) => p.name === name);
