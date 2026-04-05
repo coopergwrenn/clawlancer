@@ -139,7 +139,8 @@ export default function RootPage() {
     );
   }
 
-  // Maintenance gate — block new signups while keeping existing users functional
+  // Maintenance gate — block new signups while keeping existing users functional.
+  // NEXT_PUBLIC_MAINTENANCE must be set in Vercel env vars for instaclaw-mini project.
   if (process.env.NEXT_PUBLIC_MAINTENANCE === "true") {
     return (
       <div style={{
