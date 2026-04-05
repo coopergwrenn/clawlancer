@@ -97,6 +97,8 @@ The $1,874 bill for April 1-5 was inflated by several factors:
 | Apr 4 | ~$400 | Resize operations (all VMs restarted) |
 | Apr 5 | ~$200 (partial) | Steady state beginning |
 
+**Anthropic Usage page stat:** 2.28 BILLION input tokens + 16.6 MILLION output tokens in just 5 days. The input:output ratio of 137:1 confirms that the system prompt (input) dominates cost, not agent responses (output). Reducing input tokens via caching is the #1 lever.
+
 **Steady state estimate:** $250-350/day = $7,500-10,500/mo (post-fix, 169 VMs).
 
 ### 2.3 Per-Tier Cost Analysis (Without Caching)
@@ -585,7 +587,7 @@ if (!existing.includes("prompt-caching-2024-07-31")) {
 2. Wrap the `system` field with `cache_control` (before `providerBody = JSON.stringify(parsedBody)`):
 ```typescript
 // Convert system string to cached content block
-if (typeof parsedBody?.system === "string" && parsedBody.system.length > 0) {
+if (typeof parsedBody?.system === "string" && parsedBody.system.length > 4096) {
   parsedBody.system = [
     {
       type: "text",
@@ -784,7 +786,7 @@ if (!providerHeaders["anthropic-beta"]?.includes(betaForCaching)) {
 // Enable prompt caching: wrap system prompt as cached content block
 // This makes the static system context (skills, workspace) cache at 90% discount
 // Only the first call per session pays full price; subsequent calls get cache reads
-if (parsedBody?.system && typeof parsedBody.system === "string" && parsedBody.system.length > 1024) {
+if (parsedBody?.system && typeof parsedBody.system === "string" && parsedBody.system.length > 4096) {
   parsedBody.system = [
     {
       type: "text",
@@ -893,6 +895,10 @@ Test 2 — WITH cache_control + beta header:
 | **TOTAL** | **371,109** | **322,568** | **693,677** | **100%** |
 
 *marketplace-earning references not separately measured; included in SKILL.md total.
+
+**Anomalies:**
+- **bankr** has NO SKILL.md file — only 366K of reference docs in `references/` and subdirectories. These may or may not be loading into context depending on how OpenClaw handles skills without a SKILL.md.
+- **motion-graphics** has a 301MB `node_modules/` directory inside its `assets/` folder (11,204 files). These are NOT loaded into LLM context (only `.md` files are) but waste 301MB of disk per VM.
 
 **Top 3 skills by total size consume 40% of all skill content:**
 1. language-teacher: 131K (19%)
