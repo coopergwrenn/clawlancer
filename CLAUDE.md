@@ -2,12 +2,24 @@
 
 ## Quick Commands
 
-- **"spots N"** — Run `./instaclaw/scripts/open-spots.sh N` to provision N new VMs and open spots for users. Example: "spots 3" opens 3 spots. Run from the repo root.
+- **"spots N"** or **"provision N VMs"** — Provision N new dedicated CPU VMs for the ready pool. Use the exact specs below. NEVER deviate.
+
+## VM Provisioning Standard (MANDATORY)
+
+ALL new VMs must use these exact specs:
+
+- **Provider:** Linode ONLY (never Hetzner or DigitalOcean)
+- **Type:** `g6-dedicated-2` (Dedicated 4GB — 2 dedicated vCPU, 4GB RAM, 80GB disk)
+- **Region:** `us-east`
+- **Snapshot:** `private/38016469` (instaclaw-dedicated-base — OpenClaw v2026.4.1, exec-approvals.json, Chromium, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, SHM cleanup cron, both SSH deploy keys)
+- **Cost:** $29/mo per VM (negotiated Linode rate)
+- **DB status:** `provisioning` (cloud-init-poll cron auto-marks as `ready` in ~3-5 min)
+
+NEVER use the old snapshot (private/36895419). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
 
 ## Project Structure
 
 - `instaclaw/` — Next.js app (instaclaw.io)
-- `instaclaw/scripts/open-spots.sh` — Self-contained VM provisioning script (reads creds from .env.local, talks to Hetzner + Supabase directly)
 
 ## Key Info
 
@@ -53,3 +65,27 @@ After any config change + gateway restart via SSH, wait up to 30 seconds for the
 2. Restart the gateway with the old config
 3. Report the failure
 Never leave a crash-looping gateway.
+
+### 6. Snapshot Refresh After Manifest Bumps
+
+Every time `VM_MANIFEST.version` is bumped in `vm-manifest.ts`, the base snapshot used for new VMs becomes stale. The reconciler fixes existing VMs automatically, but NEW VMs provisioned from the old snapshot start with outdated config until reconciler catches them.
+
+**After every manifest version bump, STOP and tell Cooper:**
+
+> "Manifest bumped to v{N}. The fleet reconciler will push this to existing VMs automatically. However, the base snapshot (`private/38016469`) is now stale — new VMs provisioned from it won't have these changes until reconciler runs. Should we bake a new snapshot now, or wait until we've accumulated more changes?"
+
+**When to bake a new snapshot:**
+- After 3+ manifest bumps since last snapshot
+- Before any large provisioning run (e.g., "spots 20")
+- After major changes (new scripts, new crons, new workspace files)
+- Cooper explicitly asks
+
+**Snapshot bake process:**
+1. Pick a healthy ready-pool VM (no user data)
+2. Run full reconciler on it to bring it to latest manifest
+3. Verify gateway starts clean, all crons installed, all files present
+4. Create Linode image from that VM via API
+5. Update CLAUDE.md and `reference_vm_provisioning.md` with new snapshot ID
+6. Delete the old snapshot (after confirming new one works)
+
+NEVER provision a batch of VMs from a snapshot that's >3 manifest versions behind.

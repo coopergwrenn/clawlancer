@@ -2,7 +2,7 @@
 
 **Author:** Cooper Wrenn + Claude (Opus 4.6)
 **Date:** 2026-04-06
-**Status:** Draft v3 — post-codebase-audit, post-bootstrap-verification
+**Status:** CONFIRMED — validated end-to-end on vm-050 via Telegram (April 6, 2026)
 **Priority:** P0 — #1 user complaint, directly impacts retention
 **Estimated Impact:** Transforms agents from "chatbots that forget" to "personal AI that grows with you"
 
@@ -54,14 +54,16 @@ Our investigation revealed:
 
 Build a **tiered file system** — not a single growing document — that separates identity from history from detail:
 
-1. **MEMORY.md** — Lean core identity (<5K chars). Auto-loaded at bootstrap. Rarely changes.
-2. **memory/session-log.md** — Structured session log. Agent reads on session start; auto-populated by Phase 3 hook.
-3. **memory/active-tasks.md** — Active task tracker (ALREADY EXISTS). Agent reads on session start.
+1. **MEMORY.md** — Lean core identity + Recent Sessions summary (<5K chars). Auto-loaded at bootstrap. **This is the PRIMARY cross-session channel** — confirmed working via Telegram on vm-050.
+2. **memory/session-log.md** — Full session history archive. NOT auto-loaded, but indexed by memorySearch for semantic retrieval.
+3. **memory/active-tasks.md** — Active task tracker (ALREADY EXISTS).
 4. **memory/*.md** — Detailed dated notes. On disk, searchable via SQLite index (RAG).
 
-**The agent should be able to say "let me check what we discussed last Tuesday" and pull up that specific session file** — NOT have every session's details crammed into the context window.
+**Critical finding (April 6):** OpenClaw caches MEMORY.md at **session creation**, not per-message. Writes to MEMORY.md during an active session are NOT visible until the next session starts. This is perfect for session-end summaries — they're written between sessions and loaded fresh at the start of the next one.
 
-**No massive infrastructure change needed.** The solution is primarily SOUL.md instructions + tiered file structure + keeping the memory index alive.
+**The session-end hook writes to BOTH files:** MEMORY.md "Recent Sessions" section (auto-loaded, agent sees it immediately) AND memory/session-log.md (archive, searchable). No SOUL.md compliance needed — fully automated.
+
+**No massive infrastructure change needed.** The solution is a session-end hook in strip-thinking.py + a daily memory index cron. SOUL.md instructions are bonus, not required.
 
 ---
 
@@ -404,21 +406,21 @@ memory/
 
 ### 5.6 How It All Flows
 
-**End of Session (automatic via SOUL.md instructions):**
-1. Agent writes a 3-5 sentence entry to `memory/session-log.md`
-2. Agent updates `memory/active-tasks.md` (mark completed, add new) — already instructed by existing SOUL.md
-3. If the conversation had substantial detail, write a dated file to `memory/YYYY-MM-DD.md`
-4. If the agent learned a new permanent fact, update MEMORY.md (rare)
-5. Rewrite `memory/active-tasks.md` with current state (Manus todo.md recitation pattern — exploits recency bias for compaction survival)
+**End of Session (AUTOMATED via strip-thinking.py hook — no agent compliance needed):**
+1. strip-thinking.py detects session transition (new session created)
+2. Hook calls Haiku to generate 3-5 sentence summary of previous session
+3. Hook writes summary to MEMORY.md "Recent Sessions" section (keeps last 3 entries, ~600 chars)
+4. Hook also writes full summary to `memory/session-log.md` (archive, keeps last 15 entries)
+5. **Bonus (if agent complies with SOUL.md):** Agent writes to active-tasks.md and dated memory files
 
-**Start of New Session (bootstrap + explicit reads):**
-1. OpenClaw auto-loads MEMORY.md into context (~5K chars, via `bootstrapMaxChars`)
-2. SOUL.md tells agent to check ACTIVE_TASK.md first (existing Intelligence Supplement instruction)
-3. SOUL.md tells agent to read `memory/session-log.md` + `memory/active-tasks.md` (2 tool calls, ~2-3 seconds)
-4. Agent has: who the user is + what happened last + what's in progress
-5. Total context cost after reads: ~9K chars (~2,250 tokens)
-6. If user references something older, agent uses `memorySearch` or reads specific `memory/` files
-7. **Fallback if agent skips reads:** MEMORY.md still contains recent context (updated by heartbeat Phase 0 every ≤3h)
+**Start of New Session (AUTOMATIC via bootstrap — zero agent compliance needed):**
+1. OpenClaw creates new session → loads MEMORY.md at creation time (via `bootstrapMaxChars`)
+2. Agent sees: core identity profile + "Recent Sessions" with last 3 session summaries
+3. Agent naturally references recent context when responding
+4. SOUL.md also tells agent to check ACTIVE_TASK.md and read memory files (bonus, not required)
+5. If user references something older, `memorySearch` surfaces content from memory/session-log.md
+
+**CONFIRMED (April 6, vm-050 via Telegram):** Agent said "last session you were just poking at my memory — asking what we'd worked on, checking if I remembered anything, and testing whether I knew the date (April 6)." This was auto-generated by Haiku and injected into MEMORY.md by the session-end hook. Zero agent involvement in the write or read.
 
 **What already exists (no changes needed):**
 - ACTIVE_TASK.md session resume → agent-intelligence.ts:330-340

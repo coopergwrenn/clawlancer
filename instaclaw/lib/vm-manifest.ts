@@ -19,6 +19,7 @@ import {
   AGENTS_MD_PHILOSOPHY_SECTION,
   SOUL_MD_LEARNED_PREFERENCES,
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
+  SOUL_MD_MEMORY_FILING_SYSTEM,
   WORKSPACE_INDEX_SCRIPT,
 } from "./agent-intelligence";
 import { WORKSPACE_EARN_MD } from "./earn-md-template";
@@ -349,7 +350,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 55,
+  version: 56,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -446,6 +447,19 @@ export const VM_MANIFEST = {
       ].join("\n"),
       mode: "create_if_missing",
     },
+    // --- Cross-session memory files (PRD: cross-session-memory.md) ---
+    {
+      remotePath: "~/.openclaw/workspace/memory/session-log.md",
+      source: "inline",
+      content: "# Session Log\n\n_Session summaries are appended here automatically._\n",
+      mode: "create_if_missing",
+    },
+    {
+      remotePath: "~/.openclaw/workspace/memory/active-tasks.md",
+      source: "inline",
+      content: "# Active Tasks\n\n_Tasks are tracked here automatically._\n",
+      mode: "create_if_missing",
+    },
     {
       remotePath: "~/.openclaw/workspace/EARN.md",
       source: "template",
@@ -483,6 +497,13 @@ export const VM_MANIFEST = {
       content: "\\n<!-- DEGENCLAW_AWARENESS_V1 -->\\n## DegenClaw Trading Competition\\nYou have access to the DegenClaw skill — a $100K weekly perpetuals trading competition on Hyperliquid, run by Virtuals Protocol. If your user mentions trading competitions, Hyperliquid perps, DegenClaw, the $100K challenge, or wanting to compete/trade perps competitively, read and follow the dgclaw SKILL.md for the full setup and trading flow. You can help them join the competition, trade perps, manage their forum, check the leaderboard, and attract subscribers. **Always get explicit user approval before launching tokens or executing trades.**\\n",
       mode: "append_if_marker_absent",
       marker: "DEGENCLAW_AWARENESS",
+    },
+    {
+      remotePath: "~/.openclaw/workspace/SOUL.md",
+      source: "template",
+      templateKey: "SOUL_MD_MEMORY_FILING_SYSTEM",
+      mode: "append_if_marker_absent",
+      marker: "MEMORY_FILING_SYSTEM",
     },
 
     // --- Legacy: AGENTS.md philosophy section (only on VMs that still have AGENTS.md) ---
@@ -605,6 +626,11 @@ export const VM_MANIFEST = {
       schedule: "* * * * *",
       command: "python3 ~/.openclaw/scripts/silence-watchdog.py > /dev/null 2>&1; sleep 30 && python3 ~/.openclaw/scripts/silence-watchdog.py > /dev/null 2>&1",
       marker: "silence-watchdog.py",
+    },
+    {
+      schedule: "0 4 * * *",
+      command: "/home/openclaw/.nvm/versions/node/v22.22.0/bin/openclaw memory index >> /tmp/memory-index.log 2>&1",
+      marker: "openclaw memory index",
     },
   ] as ManifestCronJob[],
 

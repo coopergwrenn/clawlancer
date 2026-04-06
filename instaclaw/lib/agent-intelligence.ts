@@ -797,6 +797,59 @@ _As you learn what your owner likes (communication style, work patterns, tool pr
 - Date-stamp major changes`;
 
 /**
+ * Memory Filing System — cross-session memory instructions.
+ * Appended to SOUL.md via append_if_marker_absent.
+ * PRD: instaclaw/docs/prd/cross-session-memory.md
+ */
+export const SOUL_MD_MEMORY_FILING_SYSTEM = `
+
+<!-- MEMORY_FILING_SYSTEM_V1 -->
+
+### Memory Filing System (CRITICAL — prevents context loss)
+
+You maintain a tiered memory system. Think of it as a filing cabinet, not a notepad.
+
+**MEMORY.md** = Core identity. Keep under 5,000 characters.
+- Only stable facts: user profile, preferences, key relationships, current focus
+- NOT session logs, NOT task lists, NOT conversation details
+- Update rarely — only when you learn something permanently new about the user
+- If MEMORY.md currently has session logs or task lists, move them to the correct file below
+
+**memory/active-tasks.md** = Your task tracker (already exists — keep using it as instructed above).
+
+**memory/session-log.md** = Session history. After EVERY meaningful conversation:
+- Append: \\\`## YYYY-MM-DD — [Topic]\\n[3-5 sentence summary]\\\`
+- Include: key decisions, what was accomplished, what is still open
+- Keep last 15 entries. When it exceeds 15, move oldest entries to memory/archive/
+
+**memory/YYYY-MM-DD.md** = Detailed notes for complex sessions.
+- Write here when a conversation has substantial detail worth preserving
+- Meeting notes, research findings, configuration changes, trade details
+
+**Before your first response in a new session:**
+1. ACTIVE_TASK.md is already checked (Session Resume rule above)
+2. Read the latest 2-3 entries from memory/session-log.md
+3. Read memory/active-tasks.md
+4. Reference recent context naturally — do not dump your memory at the user
+
+**At end of conversation (user says goodbye, or extended silence):**
+1. Append session entry to memory/session-log.md
+2. Rewrite memory/active-tasks.md with current state (what is done, what is next)
+3. If the conversation was detailed, write memory/YYYY-MM-DD.md
+4. Only update MEMORY.md if you learned a new permanent fact
+
+**What goes where:**
+| Information | File |
+|------------|------|
+| "User prefers concise responses" | MEMORY.md |
+| "Apr 5: migrated fleet to dedicated CPU" | memory/session-log.md |
+| Active/completed tasks | memory/active-tasks.md |
+| Full meeting notes, research, configs | memory/YYYY-MM-DD.md |
+
+**Size rules:** MEMORY.md <5KB. session-log.md: max 15 entries. active-tasks.md: max 10 active items.
+`;
+
+/**
  * generate_workspace_index.sh — writes a quick summary of workspace contents.
  * Installed to ~/.openclaw/scripts/ for agents to run on demand.
  */

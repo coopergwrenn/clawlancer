@@ -544,6 +544,166 @@ session_sizes_before = {}
 for _sf in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
     session_sizes_before[_sf] = os.path.getsize(_sf)
 
+# ═══════════════════════════════════════════════════════════
+# SESSION-END SUMMARY HOOK — detect session transitions,
+# generate Haiku summaries, write to MEMORY.md + session-log.md
+# PRD: instaclaw/docs/prd/cross-session-memory.md
+# ═══════════════════════════════════════════════════════════
+import subprocess as _sp
+
+_SESSION_SUMMARY_STATE = os.path.expanduser("~/.openclaw/.session-summary-state.json")
+_SESSION_LOG = os.path.join(WORKSPACE_DIR, "memory", "session-log.md")
+_MIN_MSGS_FOR_SUMMARY = 4
+_MAX_LOG_ENTRIES = 15
+
+def _load_summary_state():
+    try:
+        with open(_SESSION_SUMMARY_STATE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"last_session_mains": None, "last_check_ts": 0}
+
+def _save_summary_state(state):
+    tmp = _SESSION_SUMMARY_STATE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, _SESSION_SUMMARY_STATE)
+
+def _get_main_session_id():
+    """Get the current main session ID from sessions.json."""
+    try:
+        sj = os.path.join(SESSIONS_DIR, "sessions.json")
+        with open(sj) as f:
+            data = json.load(f)
+        for key, val in data.items():
+            if key == "agent:main:main":
+                return val.get("sessionId")
+        # Fallback: look for any telegram DM session
+        for key, val in data.items():
+            if "telegram" in key and "group" not in key and "cron" not in key:
+                return val.get("sessionId")
+    except Exception:
+        pass
+    return None
+
+def _extract_conversation(jsonl_path, max_msgs=20):
+    msgs = []
+    try:
+        with open(jsonl_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    entry = json.loads(line)
+                    msg = entry.get("message", {})
+                    role = msg.get("role", "")
+                    if role not in ("user", "assistant"): continue
+                    content = msg.get("content", "")
+                    if isinstance(content, str): text = content
+                    elif isinstance(content, list):
+                        text = " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+                    else: continue
+                    text = text.strip()
+                    if text and not text.startswith("Conversation info"):
+                        msgs.append({"role": role, "text": text[:500]})
+                except json.JSONDecodeError: pass
+    except (IOError, OSError): return []
+    return msgs[-max_msgs:]
+
+def _call_haiku_for_summary(messages):
+    gw_token = os.environ.get("GATEWAY_TOKEN", "")
+    if not gw_token: return None
+    parts = []
+    for m in messages:
+        label = "User" if m["role"] == "user" else "Agent"
+        parts.append(label + ": " + m["text"])
+    convo = "\\n".join(parts)
+    payload = json.dumps({"model":"claude-haiku-4-5-20251001","max_tokens":300,"messages":[{"role":"user","content":"Summarize this conversation in 3-5 sentences. Focus on what the user wanted, key decisions, and what is still open.\\n\\nConversation:\\n" + convo + "\\n\\nWrite ONLY the summary."}]})
+    try:
+        result = _sp.run(["curl","-s","--max-time","30","-H","Authorization: Bearer " + gw_token,"-H","Content-Type: application/json","-H","x-model-override: claude-haiku-4-5-20251001","-d",payload,"https://instaclaw.io/api/gateway/proxy"], capture_output=True, text=True, timeout=35)
+        if result.returncode != 0: return None
+        resp = json.loads(result.stdout)
+        content = resp.get("content", [])
+        if content and isinstance(content, list):
+            return content[0].get("text", "").strip()
+    except Exception: return None
+    return None
+
+def _append_session_log(summary):
+    """Write summary to session-log.md (archive) AND MEMORY.md (bootstrap-loaded)."""
+    import re as _re
+    os.makedirs(os.path.dirname(_SESSION_LOG), exist_ok=True)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # 1. Append to session-log.md (archive)
+    try: existing = open(_SESSION_LOG).read()
+    except FileNotFoundError: existing = "# Session Log\\n"
+    updated = existing + "\\n## " + today + " - Auto-Summary\\n" + summary + "\\n"
+    entries = _re.findall(r"(## \\d{4}-\\d{2}-\\d{2}[^\\n]*\\n(?:(?!## \\d{4}).)*)", updated, _re.DOTALL)
+    if len(entries) > _MAX_LOG_ENTRIES:
+        header_match = _re.match(r"(.*?)(?=## \\d{4})", updated, _re.DOTALL)
+        header = header_match.group(1) if header_match else "# Session Log\\n"
+        entries = entries[-_MAX_LOG_ENTRIES:]
+        updated = header + "\\n".join(entries)
+    tmp = _SESSION_LOG + ".tmp"
+    with open(tmp, "w") as f: f.write(updated)
+    os.replace(tmp, _SESSION_LOG)
+
+    # 2. Update MEMORY.md Recent Sessions section (bootstrap-loaded)
+    memory_path = os.path.join(WORKSPACE_DIR, "MEMORY.md")
+    try: mc = open(memory_path).read()
+    except FileNotFoundError: mc = "# MEMORY.md - Long-Term Memory\\n"
+    # Clean injection markers
+    mc = _re.sub(r"<!-- INSTACLAW:MEMORY_WRITE_URGENT:START -->.*?<!-- INSTACLAW:MEMORY_WRITE_URGENT:END -->", "", mc, flags=_re.DOTALL).strip()
+    mc = _re.sub(r"<!-- INSTACLAW:MEMORY_STALE:START -->.*?<!-- INSTACLAW:MEMORY_STALE:END -->", "", mc, flags=_re.DOTALL).strip()
+    MS = "<!-- RECENT_SESSIONS_START -->"
+    ME = "<!-- RECENT_SESSIONS_END -->"
+    short = summary[:200].rsplit(" ", 1)[0] if len(summary) > 200 else summary
+    entry = "### " + today + "\\n" + short + "\\n"
+    pat = _re.compile(_re.escape(MS) + r"(.*?)" + _re.escape(ME), _re.DOTALL)
+    m = pat.search(mc)
+    if m:
+        existing_block = m.group(1).strip()
+        existing_entries = _re.findall(r"(### \\d{4}-\\d{2}-\\d{2}\\n(?:(?!### \\d{4}).)*)", existing_block, _re.DOTALL)
+        existing_entries = [e for e in existing_entries if "### " + today not in e]
+        existing_entries = existing_entries[-2:]
+        all_entries = existing_entries + [entry]
+        new_block = MS + "\\n## Recent Sessions (auto-updated)\\n\\n" + "\\n".join(all_entries) + "\\n" + ME
+        mc = pat.sub(new_block, mc)
+    else:
+        mc = mc.rstrip() + "\\n\\n" + MS + "\\n## Recent Sessions (auto-updated)\\n\\n" + entry + "\\n" + ME
+    tmp = memory_path + ".tmp"
+    with open(tmp, "w") as f: f.write(mc + "\\n")
+    os.replace(tmp, memory_path)
+
+def run_session_end_hook():
+    """Detect session transition by tracking main session ID. Generate summary if changed."""
+    state = _load_summary_state()
+    current_main = _get_main_session_id()
+    if not current_main:
+        return
+    prev_main = state.get("last_session_mains")
+    if current_main == prev_main:
+        return  # Same session, no transition
+    if prev_main:
+        # Session changed! Summarize the previous one
+        prev_file = os.path.join(SESSIONS_DIR, prev_main + ".jsonl")
+        if os.path.exists(prev_file):
+            messages = _extract_conversation(prev_file)
+            if len(messages) >= _MIN_MSGS_FOR_SUMMARY:
+                summary = _call_haiku_for_summary(messages)
+                if summary:
+                    _append_session_log(summary)
+                    log_telemetry("session-end-hook: wrote summary (" + str(len(summary)) + " chars)")
+                else:
+                    log_telemetry("session-end-hook: haiku call failed")
+            else:
+                log_telemetry("session-end-hook: only " + str(len(messages)) + " msgs, skipping")
+    # Update state with current session ID
+    state["last_session_mains"] = current_main
+    state["last_check_ts"] = int(time.time())
+    _save_summary_state(state)
+
 total_stripped = 0
 total_truncated = 0
 total_images_stripped = 0
@@ -597,6 +757,16 @@ try:
 
     # Run daily hygiene (self-throttled to once per ~23 hours via marker file)
     daily_hygiene()
+
+    # Cross-session memory: detect session transitions, generate summaries
+    try:
+        run_session_end_hook()
+    except Exception as _hook_err:
+        try:
+            with open("/tmp/session-summary-error.log", "a") as _ef:
+                _ef.write(datetime.now(timezone.utc).isoformat() + " " + str(_hook_err) + "\\n")
+        except Exception:
+            pass
 
     for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
         file_size = os.path.getsize(jsonl_file)
