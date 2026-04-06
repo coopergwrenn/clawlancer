@@ -867,23 +867,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // TEMPORARY: Log system prompt size for API cost analysis (REMOVE AFTER VERIFICATION)
-      if (parsedBody?.system) {
-        const sysContent = Array.isArray(parsedBody.system)
-          ? parsedBody.system.map((b: { text?: string }) => b.text || "").join("")
-          : typeof parsedBody.system === "string" ? parsedBody.system : "";
-        logger.info("SYSTEM_PROMPT_SIZE", {
-          route: "gateway/proxy",
-          vmId: vm.id,
-          vmName: vm.name,
-          systemChars: sysContent.length,
-          systemTokensEst: Math.round(sysContent.length / 4),
-          systemType: Array.isArray(parsedBody.system) ? "array" : typeof parsedBody.system,
-          model: requestedModel,
-          first200: sysContent.substring(0, 200),
-          last200: sysContent.substring(Math.max(0, sysContent.length - 200)),
-        });
-      }
 
       // Use parsedBody if model was rewritten by the router
       providerBody = parsedBody ? JSON.stringify(parsedBody) : body;
