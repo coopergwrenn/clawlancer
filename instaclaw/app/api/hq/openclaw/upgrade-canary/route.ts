@@ -107,6 +107,26 @@ export async function POST(req: NextRequest) {
 
         send({ step: "find_vm", status: "done", detail: `VM ${vm.id} (${vm.ip_address})` });
 
+        // Check if already on target version — skip if so
+        send({ step: "ssh_upgrade", status: "running", detail: "Checking current version..." });
+        {
+          const checkSsh = await connectSSH(vm as VMRecord);
+          try {
+            const vCheck = await checkSsh.execCommand(
+              `${NVM_PREAMBLE} && openclaw --version`,
+            );
+            if (vCheck.stdout.includes(version)) {
+              send({ step: "ssh_upgrade", status: "done", detail: `Already on v${version} — skipping install` });
+              send({ step: "verify", status: "done", detail: `Running: ${vCheck.stdout.trim()}`, version: vCheck.stdout.trim() });
+              send({ step: "complete", status: "done", detail: "Canary already up to date", vmId: vm.id });
+              controller.close();
+              return;
+            }
+          } finally {
+            checkSsh.dispose();
+          }
+        }
+
         // Step 2: Upgrade using the hardened upgradeOpenClaw() function
         // (handles orphan cleanup, config settings, token sync, auth test)
         send({ step: "ssh_upgrade", status: "running", detail: "Starting upgrade..." });

@@ -8602,10 +8602,11 @@ export async function upgradeOpenClaw(
     );
     await new Promise((r) => setTimeout(r, 1000));
 
-    // ── Step 1: npm install ──
+    // ── Step 1: npm install (2 min timeout) ──
     onProgress?.(`Installing openclaw@${version}...`);
     const install = await ssh.execCommand(
       `${NVM_PREAMBLE} && npm install -g openclaw@${version}`,
+      { execOptions: { timeout: 120000 } },
     );
     if (install.code !== 0) {
       return {
@@ -8614,13 +8615,18 @@ export async function upgradeOpenClaw(
       };
     }
 
-    // ── Step 2: Apply all CONFIG_SPEC settings ──
-    // Covers controlUi, group policy, heartbeat, compaction, etc.
-    onProgress?.("Applying config settings...");
-    const configCommands = Object.entries(CONFIG_SPEC.settings)
-      .map(([key, val]) => `openclaw config set ${key} '${val}' 2>/dev/null || true`)
-      .join(' && ');
-    await ssh.execCommand(`${NVM_PREAMBLE} && ${configCommands}`);
+    // ── Step 2: Apply CONFIG_SPEC settings individually ──
+    // Run each config set separately with progress + timeout to avoid
+    // one giant chain that hangs the SSE stream.
+    const configEntries = Object.entries(CONFIG_SPEC.settings);
+    onProgress?.(`Applying ${configEntries.length} config settings...`);
+    for (const [key, val] of configEntries) {
+      await ssh.execCommand(
+        `${NVM_PREAMBLE} && openclaw config set ${key} '${val}' 2>/dev/null || true`,
+        { execOptions: { timeout: 15000 } },
+      );
+    }
+    onProgress?.("Config settings applied");
 
     // ── Step 3: Token verification + resync ──
     // The Mucus outage root cause: auth-profiles.json had a stale token.
@@ -8840,6 +8846,13 @@ export async function upgradeOpenClaw(
 
     return { success: true };
   } finally {
+    // ALWAYS clean up the restart lock — if this function times out or errors,
+    // a stale lock prevents the watchdog from recovering the gateway.
+    try {
+      await ssh.execCommand('rm -f /tmp/ic-restart.lock');
+    } catch {
+      // SSH may already be disconnected — that's OK, watchdog will handle
+    }
     // ssh.dispose() may have already been called if resync path was taken.
     // NodeSSH.dispose() is safe to call multiple times.
     ssh.dispose();
