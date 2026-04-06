@@ -450,8 +450,8 @@ export default function FleetUpgradePage() {
         </div>
       )}
 
-      {/* Version pin reminder — shown after fleet or canary completes */}
-      {(phase === "fleet_done" || (phase === "canary_done" && !canaryFailed)) && versionInfo && (
+      {/* Version pin reminder — shown ONLY after fleet deploy completes (not after canary) */}
+      {phase === "fleet_done" && versionInfo && (
         <div
           className="rounded-xl p-5 space-y-3"
           style={{ background: "#fffbeb", border: "1px solid #fde68a" }}
