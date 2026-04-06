@@ -8742,7 +8742,17 @@ export async function upgradeOpenClaw(
       });
     }
 
-    // ── Step 5: Restart gateway ──
+    // ── Step 5: Auto-fix legacy config keys ──
+    // OpenClaw 2026.4.5+ rejects legacy keys (channels.telegram.streamMode,
+    // tools.web.search) that were valid in 2026.4.1. Without this step,
+    // the gateway crash-loops with "Legacy config keys detected".
+    onProgress?.("Running config doctor...");
+    await ssh.execCommand(
+      `${NVM_PREAMBLE} && openclaw doctor --fix 2>/dev/null || true`,
+      { execOptions: { timeout: 30000 } },
+    );
+
+    // ── Step 6: Restart gateway ──
     onProgress?.("Restarting gateway...");
     // Clean stop + chrome cleanup + start
     await ssh.execCommand(
