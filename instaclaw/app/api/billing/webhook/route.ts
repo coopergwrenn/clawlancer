@@ -361,6 +361,10 @@ async function processEvent(event: any) {
       const customerId = subscription.customer as string;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const periodEnd = (subscription as any).current_period_end as number | undefined;
+      // Fallback: use event timestamp if Stripe didn't include period end
+      const periodEndResolved = periodEnd
+        ? new Date(periodEnd * 1000).toISOString()
+        : new Date(event.created * 1000).toISOString();
 
       // Detect tier changes (upgrades/downgrades) from the subscription's current price.
       // Stripe webhook payloads don't always expand items.data (especially for
@@ -408,9 +412,7 @@ async function processEvent(event: any) {
 
       const subUpdates: Record<string, unknown> = {
         status: subscription.status,
-        ...(periodEnd
-          ? { current_period_end: new Date(periodEnd * 1000).toISOString() }
-          : {}),
+        current_period_end: periodEndResolved,
         ...(newTier ? { tier: newTier } : {}),
       };
 
@@ -448,6 +450,8 @@ async function processEvent(event: any) {
     case "customer.subscription.deleted": {
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const deletedPeriodEnd = (subscription as any).current_period_end as number | undefined;
 
       // Find the user
       const { data: sub } = await supabase
@@ -457,10 +461,16 @@ async function processEvent(event: any) {
         .single();
 
       if (sub) {
-        // Update subscription status
+        // Update subscription status + period end (was missing, causing null bug)
         await supabase
           .from("instaclaw_subscriptions")
-          .update({ status: "canceled", payment_status: "current" })
+          .update({
+            status: "canceled",
+            payment_status: "current",
+            current_period_end: deletedPeriodEnd
+              ? new Date(deletedPeriodEnd * 1000).toISOString()
+              : new Date(event.created * 1000).toISOString(),
+          })
           .eq("user_id", sub.user_id);
 
         // Stamp the VM with last_assigned_to so we can find it for future migration
