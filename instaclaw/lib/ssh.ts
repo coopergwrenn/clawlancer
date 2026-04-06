@@ -610,8 +610,22 @@ def _extract_conversation(jsonl_path, max_msgs=20):
     except (IOError, OSError): return []
     return msgs[-max_msgs:]
 
+def _get_gateway_token():
+    """Get GATEWAY_TOKEN from environment or .env file (cron doesn't source .env)."""
+    token = os.environ.get("GATEWAY_TOKEN", "")
+    if token: return token
+    env_path = os.path.expanduser("~/.openclaw/.env")
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("GATEWAY_TOKEN="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except (FileNotFoundError, IOError): pass
+    return ""
+
 def _call_haiku_for_summary(messages):
-    gw_token = os.environ.get("GATEWAY_TOKEN", "")
+    gw_token = _get_gateway_token()
     if not gw_token: return None
     parts = []
     for m in messages:
