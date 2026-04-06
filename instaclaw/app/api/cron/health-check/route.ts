@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at, last_gateway_restart")
+    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at, last_gateway_restart, credit_balance")
     .eq("status", "assigned")
     .not("gateway_url", "is", null);
 
@@ -60,6 +60,29 @@ export async function GET(req: NextRequest) {
   let billingCachesCleared = 0;
   let httpPreCheckPassed = 0;
   let restartGraceSkipped = 0;
+  let zeroCreditSkipped = 0;
+
+  // ========================================================================
+  // Pre-fetch: active subscriptions for 0-credit VMs.
+  // VMs with 0 credits and no active subscription are dead weight — skip
+  // health checks and restarts for them to free cron cycles for paying users.
+  // ========================================================================
+  const zeroCreditVmUserIds = vms
+    .filter(v => (v.credit_balance ?? 0) <= 0 && v.assigned_to)
+    .map(v => v.assigned_to!);
+
+  const activeSubUserIds = new Set<string>();
+  if (zeroCreditVmUserIds.length > 0) {
+    const { data: activeSubs } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("user_id")
+      .in("user_id", zeroCreditVmUserIds)
+      .in("status", ["active", "trialing"]);
+
+    for (const sub of activeSubs ?? []) {
+      activeSubUserIds.add(sub.user_id);
+    }
+  }
 
   // ========================================================================
   // Pass 0 (HTTP-first): Direct HTTP health check for ALL VMs.
@@ -86,6 +109,13 @@ export async function GET(req: NextRequest) {
         vmName: vm.name,
         secondsSinceRestart: Math.round((Date.now() - lastRestart) / 1000),
       });
+      continue;
+    }
+
+    // Skip 0-credit VMs with no active subscription — they'll just crash
+    // again after restart. Don't waste cron cycles on them.
+    if ((vm.credit_balance ?? 0) <= 0 && vm.assigned_to && !activeSubUserIds.has(vm.assigned_to)) {
+      zeroCreditSkipped++;
       continue;
     }
 
@@ -2733,6 +2763,7 @@ else:
     billingCachesCleared,
     httpPreCheckPassed,
     restartGraceSkipped,
+    zeroCreditSkipped,
     suspended,
     noSubSuspended,
     reclaimed,
