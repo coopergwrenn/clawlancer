@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
     .from("instaclaw_vms")
     .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at, last_gateway_restart, credit_balance")
     .eq("status", "assigned")
+    .neq("health_status", "suspended")
     .not("gateway_url", "is", null);
 
   if (!vms?.length) {
