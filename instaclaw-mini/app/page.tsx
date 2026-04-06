@@ -1,5 +1,6 @@
 "use client";
 
+// Maintenance gate reads NEXT_PUBLIC_MAINTENANCE at build time
 import { MiniKit } from "@worldcoin/minikit-js";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
