@@ -884,7 +884,7 @@ export async function POST(req: NextRequest) {
           messagesChars: msgsLen,
           messageCount: msgCount,
           thinkingEnabled: hasThinking,
-          totalBodyChars: (providerBody || body).length,
+          totalBodyChars: JSON.stringify(parsedBody || {}).length,
         });
       }
 
