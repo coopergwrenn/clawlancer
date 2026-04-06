@@ -867,27 +867,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-
-      // TEMPORARY: Detailed token tracking for cost analysis (REMOVE AFTER 50 CALLS)
-      {
-        const msgCount = Array.isArray(parsedBody?.messages) ? parsedBody.messages.length : 0;
-        const sysLen = Array.isArray(parsedBody?.system)
-          ? parsedBody.system.reduce((a: number, b: { text?: string }) => a + (b.text?.length || 0), 0)
-          : typeof parsedBody?.system === "string" ? parsedBody.system.length : 0;
-        const msgsLen = JSON.stringify(parsedBody?.messages || []).length;
-        const hasThinking = !!parsedBody?.thinking;
-        logger.info("TOKEN_ANALYSIS", {
-          route: "gateway/proxy",
-          vmId: vm.id,
-          model: requestedModel,
-          systemChars: sysLen,
-          messagesChars: msgsLen,
-          messageCount: msgCount,
-          thinkingEnabled: hasThinking,
-          totalBodyChars: JSON.stringify(parsedBody || {}).length,
-        });
-      }
-
       // Use parsedBody if model was rewritten by the router
       providerBody = parsedBody ? JSON.stringify(parsedBody) : body;
     }
