@@ -5,7 +5,7 @@ import { logger } from "@/lib/logger";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const SUSPENSION_GRACE_DAYS = 7;
 const NO_SUB_GRACE_DAYS = 3;
@@ -14,12 +14,16 @@ const NO_SUB_GRACE_DAYS = 3;
  * GET /api/cron/suspend-check
  *
  * Lightweight dedicated suspension cron — runs independently from health-check.
- * Only does DB queries + gateway stop. No SSH health probes, no config checks.
+ * Batch-fetches data to avoid N+1 queries, then suspends VMs that are past grace.
  *
  * Checks:
  * 1. Past-due users beyond 7-day grace → suspend
  * 2. Assigned VMs with no/canceled subscription beyond 3-day grace → suspend
  * 3. Logs all actions for audit
+ *
+ * Gateway stop is best-effort — if SSH fails, we still mark the VM as suspended.
+ * The gateway will die on its own without credits, and the health cron skips
+ * suspended VMs, so there's no harm in leaving the process running briefly.
  */
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -28,7 +32,34 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getSupabase();
-  const results = { pastDueSuspended: 0, noSubSuspended: 0, errors: 0, skipped: 0 };
+  const results = { pastDueSuspended: 0, noSubSuspended: 0, errors: 0, skipped: 0, gatewayStopFailed: 0 };
+
+  // Helper: suspend a VM (DB update first, then best-effort SSH stop)
+  async function suspendVM(vm: { id: string; ip_address: string; ssh_port: number; ssh_user: string; name: string | null }, reason: string, extra: Record<string, unknown> = {}) {
+    // DB update FIRST — even if SSH fails, the VM is marked suspended
+    await supabase
+      .from("instaclaw_vms")
+      .update({
+        health_status: "suspended",
+        suspended_at: new Date().toISOString(),
+        last_health_check: new Date().toISOString(),
+      })
+      .eq("id", vm.id);
+
+    // Best-effort gateway stop — don't block on SSH failures
+    try {
+      await stopGateway(vm as VMRecord);
+    } catch {
+      results.gatewayStopFailed++;
+    }
+
+    logger.info(`Suspended VM: ${reason}`, {
+      route: "cron/suspend-check",
+      vmId: vm.id,
+      vmName: vm.name,
+      ...extra,
+    });
+  }
 
   // ── Pass 1: Past-due users beyond grace period ──
   try {
@@ -39,52 +70,41 @@ export async function GET(req: NextRequest) {
       .not("past_due_since", "is", null);
 
     if (pastDueSubs?.length) {
-      for (const sub of pastDueSubs) {
-        const daysPastDue = Math.floor(
-          (Date.now() - new Date(sub.past_due_since).getTime()) / (1000 * 60 * 60 * 24)
-        );
+      // Filter to those past grace period
+      const expiredUserIds = pastDueSubs
+        .filter(sub => {
+          const daysPastDue = (Date.now() - new Date(sub.past_due_since).getTime()) / (1000 * 60 * 60 * 24);
+          return daysPastDue >= SUSPENSION_GRACE_DAYS;
+        })
+        .map(sub => sub.user_id);
 
-        if (daysPastDue < SUSPENSION_GRACE_DAYS) {
-          results.skipped++;
-          continue;
-        }
+      results.skipped += pastDueSubs.length - expiredUserIds.length;
 
-        const { data: vm } = await supabase
+      if (expiredUserIds.length > 0) {
+        // Batch-fetch VMs for all expired users
+        const { data: vms } = await supabase
           .from("instaclaw_vms")
-          .select("id, ip_address, ssh_port, ssh_user, health_status, name")
-          .eq("assigned_to", sub.user_id)
-          .single();
+          .select("id, ip_address, ssh_port, ssh_user, health_status, name, assigned_to")
+          .in("assigned_to", expiredUserIds)
+          .eq("status", "assigned")
+          .neq("health_status", "suspended");
 
-        if (!vm || vm.health_status === "suspended") {
-          results.skipped++;
-          continue;
-        }
-
-        try {
-          await stopGateway(vm as VMRecord);
-          await supabase
-            .from("instaclaw_vms")
-            .update({
-              health_status: "suspended",
-              suspended_at: new Date().toISOString(),
-              last_health_check: new Date().toISOString(),
-            })
-            .eq("id", vm.id);
-
-          logger.info("Suspended VM: past-due beyond grace", {
-            route: "cron/suspend-check",
-            vmId: vm.id,
-            vmName: vm.name,
-            daysPastDue,
-          });
-          results.pastDueSuspended++;
-        } catch (err) {
-          logger.error("Failed to suspend past-due VM", {
-            route: "cron/suspend-check",
-            vmId: vm.id,
-            error: String(err),
-          });
-          results.errors++;
+        for (const vm of vms ?? []) {
+          try {
+            const sub = pastDueSubs.find(s => s.user_id === vm.assigned_to);
+            const daysPastDue = sub
+              ? Math.floor((Date.now() - new Date(sub.past_due_since).getTime()) / (1000 * 60 * 60 * 24))
+              : 0;
+            await suspendVM(vm, "past-due beyond grace", { daysPastDue });
+            results.pastDueSuspended++;
+          } catch (err) {
+            logger.error("Failed to suspend past-due VM", {
+              route: "cron/suspend-check",
+              vmId: vm.id,
+              error: String(err),
+            });
+            results.errors++;
+          }
         }
       }
     }
@@ -97,12 +117,24 @@ export async function GET(req: NextRequest) {
   try {
     const { data: assignedVms } = await supabase
       .from("instaclaw_vms")
-      .select("id, assigned_to, assigned_at, health_status, ip_address, ssh_port, ssh_user, name")
+      .select("id, assigned_to, assigned_at, health_status, ip_address, ssh_port, ssh_user, name, credit_balance")
       .eq("status", "assigned")
       .not("assigned_to", "is", null)
       .neq("health_status", "suspended");
 
     if (assignedVms?.length) {
+      // Batch-fetch all subscriptions for assigned VMs
+      const userIds = assignedVms.map(v => v.assigned_to!).filter(Boolean);
+      const { data: allSubs } = await supabase
+        .from("instaclaw_subscriptions")
+        .select("user_id, status")
+        .in("user_id", userIds);
+
+      const subMap: Record<string, string> = {};
+      for (const s of allSubs ?? []) {
+        subMap[s.user_id] = s.status;
+      }
+
       for (const vm of assignedVms) {
         // Skip VMs assigned less than 3 days ago
         if (vm.assigned_at) {
@@ -113,47 +145,21 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // Check subscription
-        const { data: sub } = await supabase
-          .from("instaclaw_subscriptions")
-          .select("status")
-          .eq("user_id", vm.assigned_to)
-          .single();
+        const subStatus = subMap[vm.assigned_to!];
 
         // Skip if user has active/trialing/past_due subscription
         // (past_due handled separately in Pass 1 with its own grace period)
-        if (sub && sub.status !== "canceled") continue;
+        if (subStatus && subStatus !== "canceled") continue;
 
-        // Also skip if user has WLD overflow credits (they paid, just no Stripe sub)
-        const { data: vmCredits } = await supabase
-          .from("instaclaw_vms")
-          .select("credit_balance")
-          .eq("id", vm.id)
-          .single();
-
-        if (vmCredits && vmCredits.credit_balance > 0) {
+        // Also skip if user has credits (they paid via WLD, just no Stripe sub)
+        if ((vm.credit_balance ?? 0) > 0) {
           results.skipped++;
           continue;
         }
 
-        // No subscription, no credits, past grace → suspend
+        // No subscription (or canceled), no credits, past grace → suspend
         try {
-          await stopGateway(vm as VMRecord);
-          await supabase
-            .from("instaclaw_vms")
-            .update({
-              health_status: "suspended",
-              suspended_at: new Date().toISOString(),
-              last_health_check: new Date().toISOString(),
-            })
-            .eq("id", vm.id);
-
-          logger.info("Suspended VM: no subscription or credits", {
-            route: "cron/suspend-check",
-            vmId: vm.id,
-            vmName: vm.name,
-            subStatus: sub?.status ?? "none",
-          });
+          await suspendVM(vm, "no subscription or credits", { subStatus: subStatus ?? "none" });
           results.noSubSuspended++;
         } catch (err) {
           logger.error("Failed to suspend no-sub VM", {
