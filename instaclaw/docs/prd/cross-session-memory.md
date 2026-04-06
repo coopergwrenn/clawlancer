@@ -2,7 +2,7 @@
 
 **Author:** Cooper Wrenn + Claude (Opus 4.6)
 **Date:** 2026-04-06
-**Status:** Draft — ready for review
+**Status:** Draft v3 — post-codebase-audit, post-bootstrap-verification
 **Priority:** P0 — #1 user complaint, directly impacts retention
 **Estimated Impact:** Transforms agents from "chatbots that forget" to "personal AI that grows with you"
 
@@ -19,7 +19,9 @@
 7. [Token Cost Impact](#7-token-cost-impact)
 8. [Success Metrics](#8-success-metrics)
 9. [Risk Analysis](#9-risk-analysis)
-10. [Appendices](#10-appendices)
+10. [Platform Comparison Matrix](#10-platform-comparison-matrix)
+11. [Codebase Audit — Implementation Notes](#11-codebase-audit)
+12. [Appendices](#12-appendices)
 
 ---
 
@@ -52,10 +54,10 @@ Our investigation revealed:
 
 Build a **tiered file system** — not a single growing document — that separates identity from history from detail:
 
-1. **MEMORY.md** — Lean core identity (<5K chars). Always in context. Rarely changes.
-2. **SESSION-HISTORY.md** — Structured session log. Latest entry loaded on session start.
-3. **TASKS.md** — Active task tracker. Loaded on session start.
-4. **memory/ folder** — Detailed dated notes. On disk, searchable via SQLite index (RAG).
+1. **MEMORY.md** — Lean core identity (<5K chars). Auto-loaded at bootstrap. Rarely changes.
+2. **memory/session-log.md** — Structured session log. Agent reads on session start; auto-populated by Phase 3 hook.
+3. **memory/active-tasks.md** — Active task tracker (ALREADY EXISTS). Agent reads on session start.
+4. **memory/*.md** — Detailed dated notes. On disk, searchable via SQLite index (RAG).
 
 **The agent should be able to say "let me check what we discussed last Tuesday" and pull up that specific session file** — NOT have every session's details crammed into the context window.
 
@@ -258,19 +260,32 @@ Think of this as a **filing system, not a single growing document.** The agent c
 
 ```
 ~/.openclaw/workspace/
-├── MEMORY.md           ← Core identity. Always in context. <5K chars.
-├── SESSION-HISTORY.md  ← Structured log of recent sessions. Read on demand.
-├── TASKS.md            ← Active tasks. Read on session start.
+├── MEMORY.md                  ← Core identity. Always in context. <5K chars.
 └── memory/
-    ├── 2026-04-05.md   ← Detailed session notes (dated files)
+    ├── session-log.md         ← Structured log of recent sessions (last 15)
+    ├── active-tasks.md        ← Active tasks (ALREADY EXISTS — don't recreate)
+    ├── 2026-04-05.md          ← Detailed session notes (dated files)
     ├── 2026-04-03.md
     ├── 2026-04-01.md
-    └── ...             ← Searchable via SQLite memory index (RAG)
+    ├── archive/               ← Old session-log entries moved here
+    └── main.sqlite            ← OpenClaw memory search index (FTS5 + vec0)
 ```
 
-**What goes in the context window:** MEMORY.md (~5K chars) + latest SESSION-HISTORY.md entry (~500 chars) = ~5.5K chars total. Everything else stays on disk.
+**VERIFIED (April 6, vm-050):** `bootstrapMaxChars` loads ONLY 9 named files: AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md, BOOTSTRAP.md, MEMORY.md, memory.md. See `WorkspaceBootstrapFileName` enum in OpenClaw plugin-sdk/src/agents/workspace.d.ts. **`memory/*.md` files are NOT auto-loaded.** There is no config key to add extra bootstrap files.
 
-**What stays on disk:** Detailed session notes, old history, task archives. Agent reads them when needed using `memorySearch` (semantic retrieval) or direct file reads.
+**What goes in the context window automatically:** MEMORY.md only (~5K chars). Per-file limit: 30K chars. Total across all 9 files: 150K chars (`bootstrapTotalMaxChars`).
+
+**What the agent reads on session start (via SOUL.md instruction + tool calls):** `memory/session-log.md` (~3K) + `memory/active-tasks.md` (~1K). This adds 2 file-read tool calls at session start (~2-3 seconds).
+
+**What stays on disk (never in context unless requested):** Detailed dated notes (memory/YYYY-MM-DD.md), archived session entries. Agent reads them via `memorySearch` (semantic retrieval) or direct file reads.
+
+**Defense in Depth — why this works even when agents don't read files:**
+1. Phase 3 hook writes session summary to `memory/session-log.md` (automated, no agent needed)
+2. Next heartbeat (≤3h) Phase 0 reads session-log.md → updates MEMORY.md with recent context
+3. New session starts → MEMORY.md auto-loaded (contains recent context from heartbeat)
+4. If agent ALSO reads session-log.md (SOUL.md instruction) → gets even more detail
+
+**CRITICAL FINDING: `memory/active-tasks.md` DOES NOT EXIST on vm-050** despite SOUL.md instructions telling agents to maintain it since v41 (agent-intelligence.ts:419-437). HEARTBEAT.md Phase 0.5 reads it. The file is referenced but agents are not creating it. We must create the template via manifest AND rely on the Phase 3 hook + heartbeat as primary mechanisms, not SOUL.md compliance alone.
 
 ### 5.2 MEMORY.md — Core Identity (<5K chars, always in context)
 
@@ -306,12 +321,12 @@ Polymarket trading bot, DegenClaw competition, fleet monitoring.
 - Updated rarely — when the agent learns a new permanent fact about the user.
 - NEVER contains session summaries, task lists, or conversation logs.
 
-### 5.3 SESSION-HISTORY.md — Structured Session Log (on disk, read on demand)
+### 5.3 memory/session-log.md — Structured Session Log
 
-A chronological index of sessions. The agent reads the **latest entry** on session start for immediate context, and can scan older entries when the user references past work.
+A chronological index of sessions, stored in the `memory/` directory (indexed by memorySearch). NOT auto-loaded by bootstrap — agent reads it explicitly on session start per SOUL.md instructions, OR gets the content via heartbeat Phase 0 → MEMORY.md sync.
 
 ```markdown
-# SESSION-HISTORY.md
+# Session Log
 
 ## 2026-04-05 — Infrastructure Upgrade & Price Raise
 Migrated all VMs to dedicated CPU. Fixed 16 paying users whose VMs were
@@ -333,204 +348,288 @@ SKILL.md deployed to fleet. Pending: VM verification + canary deploy.
 ```
 
 **Rules:**
-- Each entry: date, title, 3-5 sentences. Max ~200 chars per entry.
-- Keep last 10-15 entries in the file (~3K chars). Archive older to `memory/`.
+- Each entry: date, title, 3-5 sentences. ~200 chars per entry.
+- Keep last 15 entries in the file (~3K chars). Archive older to `memory/archive/`.
 - Agent writes a new entry at the end of every meaningful conversation.
-- Only the latest entry gets loaded into context on session start (~200-500 chars).
+- NOT auto-loaded by bootstrap (only 9 named files are loaded — see Section 11.4).
+- Agent reads explicitly on session start. Heartbeat Phase 0 syncs recent entries into MEMORY.md.
 
-### 5.4 TASKS.md — Active Task Tracker (read on session start)
+### 5.4 memory/active-tasks.md — ALREADY EXISTS, No Changes Needed
 
-Lightweight task file so the agent knows what's in progress across sessions.
+**This file already exists at `~/.openclaw/workspace/memory/active-tasks.md`.**
 
+SOUL.md intelligence supplement (agent-intelligence.ts:419-437) already instructs agents to:
+- Save task state every 5 actions to `ACTIVE_TASK.md`
+- Update `memory/active-tasks.md` with completed work summary
+- HEARTBEAT.md Phase 0.5 reads it for pending notifications
+
+**We do NOT create a new TASKS.md file.** The existing file and instructions are sufficient. The only addition: SOUL.md memory filing instructions should reference it in the "What Goes Where" table so agents know it's the canonical task tracker.
+
+**Existing format** (from agent-intelligence.ts:423-433):
 ```markdown
-# TASKS.md — Active
-
-- [ ] Finalize Stripe pricing ($49/$149/$399) — price raise announced for Apr 6
-- [ ] Check Brian's response about Base-only migration
-- [ ] Review DegenClaw competition results this week
-- [ ] Run Supabase production migration for AgentBook
-
-# Completed (last 5)
-- [x] Migrate fleet to dedicated CPU (2026-04-05)
-- [x] Enable Anthropic prompt caching (2026-04-05)
-- [x] Deploy watchdog v5 to fleet (2026-04-03)
+## Active Task
+Request: [exact user request]
+Status: IN_PROGRESS
+Completed:
+- [step 1 done]
+- [step 2 done]
+Next: [exact next step with specific details]
+Data: [file paths, URLs, or other context needed to resume]
+Updated: [YYYY-MM-DD HH:MM UTC]
 ```
 
-**Rules:**
-- Max 10 active tasks. When completed, move to "Completed (last 5)".
-- Agent updates this during and at end of conversations.
-- Entire file loaded on session start (~1-2K chars).
-
-### 5.5 memory/ Folder — Detailed Notes (on disk, searchable via index)
+### 5.5 memory/*.md — Detailed Notes (on disk, searchable via index)
 
 For anything too detailed for the lean files above. Dated session notes, project deep dives, research findings. The agent writes here when a conversation has substantial detail worth preserving.
 
 ```
 memory/
+├── session-log.md      ← Session history (see 5.3)
+├── active-tasks.md     ← Task tracker (already exists, see 5.4)
 ├── 2026-04-05.md       "Infrastructure upgrade: 168 VMs migrated, 16 restored..."
 ├── 2026-04-03.md       "Fleet stability fixes: restart storm root cause was..."
 ├── 2026-04-01.md       "Newsworthy meeting notes: Brian wants news curation..."
 ├── polymarket-setup.md "Polymarket trading config: CLOB proxy in Toronto..."
-└── portfolio-notes.md  "User's portfolio positions as of April 2026..."
+├── archive/            ← Old session-log entries
+└── main.sqlite         ← OpenClaw memory search index (auto-managed)
 ```
 
 **Rules:**
 - One file per session (dated) or per topic (named).
 - No size limit per file — this is the "archival" layer.
 - Agent writes here for detailed context it might need later.
-- **Never loaded into context automatically** — agent reads specific files on demand.
+- All memory/*.md files are indexed by `memorySearch` (SQLite + embeddings).
+- All memory/*.md files are included in bootstrapMaxChars budget — keep total reasonable.
 - Searchable via OpenClaw's `memorySearch` (SQLite + embeddings = RAG for personal memory).
 
 ### 5.6 How It All Flows
 
 **End of Session (automatic via SOUL.md instructions):**
-1. Agent writes a 3-5 sentence entry to SESSION-HISTORY.md
-2. Agent updates TASKS.md (mark completed, add new)
-3. If the conversation had substantial detail, write a dated file to `memory/`
+1. Agent writes a 3-5 sentence entry to `memory/session-log.md`
+2. Agent updates `memory/active-tasks.md` (mark completed, add new) — already instructed by existing SOUL.md
+3. If the conversation had substantial detail, write a dated file to `memory/YYYY-MM-DD.md`
 4. If the agent learned a new permanent fact, update MEMORY.md (rare)
+5. Rewrite `memory/active-tasks.md` with current state (Manus todo.md recitation pattern — exploits recency bias for compaction survival)
 
-**Start of New Session (automatic via bootstrap):**
-1. OpenClaw loads MEMORY.md into context (~5K chars, via `bootstrapMaxChars`)
-2. SOUL.md tells agent to read the latest SESSION-HISTORY.md entry + TASKS.md
-3. Agent has: who the user is + what happened last + what's in progress
-4. Total context cost: ~7K chars (~1,750 tokens) — well within the 30K bootstrap budget
-5. If user references something older, agent uses `memorySearch` or reads specific `memory/` files
+**Start of New Session (bootstrap + explicit reads):**
+1. OpenClaw auto-loads MEMORY.md into context (~5K chars, via `bootstrapMaxChars`)
+2. SOUL.md tells agent to check ACTIVE_TASK.md first (existing Intelligence Supplement instruction)
+3. SOUL.md tells agent to read `memory/session-log.md` + `memory/active-tasks.md` (2 tool calls, ~2-3 seconds)
+4. Agent has: who the user is + what happened last + what's in progress
+5. Total context cost after reads: ~9K chars (~2,250 tokens)
+6. If user references something older, agent uses `memorySearch` or reads specific `memory/` files
+7. **Fallback if agent skips reads:** MEMORY.md still contains recent context (updated by heartbeat Phase 0 every ≤3h)
 
-**Progressive disclosure in action:** Context window stays lean. Details are on disk. Agent pulls them in only when needed — same pattern as how we load skill descriptions (names + summaries) instead of full SKILL.md files.
+**What already exists (no changes needed):**
+- ACTIVE_TASK.md session resume → agent-intelligence.ts:330-340
+- memory/active-tasks.md maintenance → agent-intelligence.ts:437
+- HEARTBEAT.md Phase 0 memory maintenance → ssh.ts:3357-3362
+- HEARTBEAT.md Sunday consolidation → ssh.ts:3426-3436
+- strip-thinking.py memory urgency injection at 160KB → ssh.ts:111
+
+**What's actually new:**
+- `memory/session-log.md` — new file for session history
+- SOUL.md memory filing instructions — new section
+- Memory index rebuild cron — new cron job
+- Phase 3 session-end hook — new script
 
 ### 5.7 Memory Search as RAG Layer
 
 OpenClaw's `memorySearch` (SQLite + embeddings) becomes the semantic search layer across all memory files:
 
-- Indexes: MEMORY.md, SESSION-HISTORY.md, TASKS.md, all `memory/*.md` files
+- Indexes: MEMORY.md + all `memory/*.md` files (session-log.md, active-tasks.md, dated notes)
 - When user says "what did we discuss about Polymarket last week?" → agent queries memory search → gets relevant chunks from `memory/2026-04-01.md` → reads the file → responds with context
 - Daily cron rebuilds index: `openclaw memory index`
 - No external vector DB needed — OpenClaw's built-in SQLite index is sufficient
 
 ### 5.8 The Implementation — SOUL.md Instructions
 
-Add to SOUL.md:
+**What already exists in SOUL.md** (no changes needed to these):
+- Session Resume: check ACTIVE_TASK.md on every session start (agent-intelligence.ts:330-340)
+- Session Handoff: save task state every 5 actions (agent-intelligence.ts:419-437)
+- Learned Preferences: agent logs communication style (agent-intelligence.ts:783-797)
+- Operating Principles: error handling, config safety, never go silent (vm-manifest.ts:472-477)
+
+**New section to append to SOUL.md** (via `append_if_marker_absent`, marker: `MEMORY_FILING_SYSTEM`):
 
 ```markdown
-## Memory Management — Your Filing System
+<!-- MEMORY_FILING_SYSTEM_V1 -->
 
-You have a tiered memory system. Keep it organized.
+### Memory Filing System (CRITICAL — prevents context loss)
 
-### On Session Start
-1. MEMORY.md is already in your context (loaded automatically)
-2. Read the LATEST entry in ~/.openclaw/workspace/SESSION-HISTORY.md
-3. Read ~/.openclaw/workspace/TASKS.md
-4. You now have: who they are + what happened last + what's active
-5. NEVER ask "who are you?" or "what are you working on?" if any memory exists
+You maintain a tiered memory system. Think of it as a filing cabinet, not a notepad.
 
-### During Conversations
-- When you learn a NEW PERMANENT FACT about the user → update MEMORY.md (rare)
-- When a task is created/completed/changed → update TASKS.md
-- When the user references past work you don't have context for → use memory search
-  or read specific files from ~/memory/
+**MEMORY.md** = Core identity. Keep under 5,000 characters.
+- Only stable facts: user profile, preferences, key relationships, current focus
+- NOT session logs, NOT task lists, NOT conversation details
+- Update rarely — only when you learn something permanently new about the user
+- If MEMORY.md currently has session logs or task lists, move them to the correct file below
 
-### On Session End (when user says goodbye, or after extended silence)
-1. Write a 3-5 sentence entry to SESSION-HISTORY.md (date + title + summary)
-2. Update TASKS.md (mark done, add new)
-3. If the conversation had substantial detail worth preserving, write a dated file
-   to ~/memory/YYYY-MM-DD.md with the full context
-4. Run: openclaw memory index (rebuilds search index)
+**memory/active-tasks.md** = Your task tracker (already exists — keep using it as instructed above).
 
-### File Size Rules
-- MEMORY.md: <5,000 chars. Core identity only. No session logs.
-- SESSION-HISTORY.md: Keep last 10-15 entries. Archive older to ~/memory/.
-- TASKS.md: Max 10 active tasks. Keep last 5 completed.
-- memory/*.md: No limit. This is your archive.
+**memory/session-log.md** = Session history. After EVERY meaningful conversation:
+- Append: `## YYYY-MM-DD — [Topic]\n[3-5 sentence summary]`
+- Include: key decisions, what was accomplished, what's still open
+- Keep last 15 entries. When it exceeds 15, move oldest entries to memory/archive/
 
-### What Goes Where
-| Information | File | Example |
-|------------|------|---------|
-| User's name, preferences, relationships | MEMORY.md | "Prefers concise responses" |
-| What happened in a session | SESSION-HISTORY.md | "Apr 5: migrated fleet to dedicated CPU" |
-| Active and recently completed tasks | TASKS.md | "[ ] Finalize Stripe pricing" |
-| Detailed meeting notes, research, configs | memory/*.md | "polymarket-setup.md" |
-| Old session entries (>15 sessions ago) | memory/*.md | "memory/2026-03-15.md" |
+**memory/YYYY-MM-DD.md** = Detailed notes for complex sessions.
+- Write here when a conversation has substantial detail worth preserving
+- Meeting notes, research findings, configuration changes, trade details
+
+**Before your first response in a new session:**
+1. ACTIVE_TASK.md is already checked (Session Resume rule above)
+2. Read the latest 2-3 entries from memory/session-log.md
+3. Read memory/active-tasks.md
+4. Reference recent context naturally — don't dump your memory at the user
+
+**At end of conversation (user says goodbye, or extended silence):**
+1. Append session entry to memory/session-log.md
+2. Rewrite memory/active-tasks.md with current state (what's done, what's next)
+3. If the conversation was detailed, write memory/YYYY-MM-DD.md
+4. Only update MEMORY.md if you learned a new permanent fact
+
+**What goes where:**
+| Information | File |
+|------------|------|
+| "User prefers concise responses" | MEMORY.md |
+| "Apr 5: migrated fleet to dedicated CPU" | memory/session-log.md |
+| Active/completed tasks | memory/active-tasks.md |
+| Full meeting notes, research, configs | memory/YYYY-MM-DD.md |
+
+**Size rules:** MEMORY.md <5KB. session-log.md: max 15 entries. active-tasks.md: max 10 active items.
 ```
+
+**Why a new section vs modifying existing:** The existing Session Resume and Session Handoff instructions handle the *task* case (ACTIVE_TASK.md). The Memory Filing System handles the *memory* case (everything else). They're complementary, not duplicative.
 
 ### 5.9 Session End Hook (Safety Net)
 
 For guaranteed summaries even when the agent doesn't write one (timeout, crash, restart):
 
-Create a lightweight script that detects session transitions and:
-1. Reads the last 20 messages from the previous session file
-2. Calls Haiku to generate a 3-5 sentence summary
-3. Appends the summary to SESSION-HISTORY.md
-4. Rebuilds the memory index
+Create a lightweight addition to `strip-thinking.py` (already runs every minute) that:
+1. Detects session transition: new session file created AND previous session has no matching entry in `memory/session-log.md`
+2. Reads the last 20 user/assistant messages from the previous session JSONL file
+3. Calls Haiku via the proxy to generate a 3-5 sentence summary
+4. Appends the summary to `memory/session-log.md`
+5. Prunes session-log.md to last 15 entries if needed
 
-This is a fallback — the SOUL.md instructions handle the normal case.
+**Why strip-thinking.py:** It already runs every minute, already has file locking (fcntl), already manages session files, and already injects memory markers. Adding session-end detection is a natural extension — no new cron or script needed.
+
+**Session file format** (JSONL, one JSON object per line):
+```json
+{"type":"message","message":{"role":"user","content":[{"type":"text","text":"..."}]}}
+{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"..."}]}}
+```
+
+The hook can reliably parse these — extract user/assistant text blocks, skip tool_use/tool_result/thinking blocks, concatenate the last 20 message texts.
+
+**Edge case: credits hit 0, gateway stops, no new session created.** The hook won't fire. On resubscribe, `configureOpenClaw` should add a "check for unsummarized sessions" step.
+
+This is a fallback — the SOUL.md instructions handle the normal case where the agent writes its own summary before the session ends.
 
 ---
 
 ## 6. Implementation Plan
 
-### Phase 1: File Structure + SOUL.md Instructions (Day 1 — IMMEDIATE)
+### Phase 1: SOUL.md Instructions + session-log.md Template (Day 1 — IMMEDIATE)
 
-**What:** Deploy the tiered file system and SOUL.md memory instructions to all VMs.
+**What:** Deploy the Memory Filing System SOUL.md section and create session-log.md on all VMs.
+
+**Actual changes (smaller than originally scoped — we already have 80%):**
+1. Add `MEMORY_FILING_SYSTEM_V1` section to SOUL.md (Section 5.8) via `append_if_marker_absent`
+2. Create `~/.openclaw/workspace/memory/session-log.md` with header template (`create_if_missing`)
+3. Bump manifest version to v56
+4. Reconciler auto-pushes to fleet
+
+**What we DON'T need to create (already exists):**
+- `memory/active-tasks.md` — already deployed, SOUL.md already references it
+- `memory/` directory — already exists on all assigned VMs
+- Memory maintenance — HEARTBEAT.md Phase 0 already covers this (every 3h)
+- Session resume — ACTIVE_TASK.md check already in Intelligence Supplement
+- Weekly consolidation — HEARTBEAT.md Sunday cycle already covers this
+
+**Implementation in vm-manifest.ts:**
+```typescript
+// Add to files array:
+{
+  remotePath: "~/.openclaw/workspace/memory/session-log.md",
+  source: "inline",
+  content: "# Session Log\n\n_Session summaries are appended here automatically._\n",
+  mode: "create_if_missing",
+},
+// Add to SOUL.md entries:
+{
+  remotePath: "~/.openclaw/workspace/SOUL.md",
+  source: "template",
+  templateKey: "SOUL_MD_MEMORY_FILING_SYSTEM",
+  mode: "append_if_marker_absent",
+  marker: "MEMORY_FILING_SYSTEM",
+},
+```
+
+**Effort:** Very low — one SOUL.md section + two file templates + manifest bump
+**Risk:** Very low — agents gain a new behavior (session logging) but nothing breaks if they don't. Based on vm-050 audit, expect <50% agent compliance — that's fine, Phase 3 hook is the primary mechanism.
+**Impact:** Medium alone (SOUL.md compliance uncertain) → High when combined with Phase 3 hook
+
+### Phase 2: Memory Index Cron (Day 1)
+
+**What:** Add daily memory index rebuild cron to all VMs.
 
 **Changes:**
-1. Create file templates on all assigned VMs:
-   - `~/.openclaw/workspace/SESSION-HISTORY.md` (empty, with header)
-   - `~/.openclaw/workspace/TASKS.md` (empty, with header)
-   - `~/memory/` directory (mkdir -p)
-2. Slim down existing MEMORY.md to <5K chars (remove anything that belongs in other files)
-3. Add "Memory Management — Your Filing System" section to SOUL.md (from Section 5.8)
-4. Deploy via manifest v56 + fleet push
+1. Add cron to manifest: `0 4 * * * /home/openclaw/.nvm/versions/node/v22.22.0/bin/openclaw memory index >> /tmp/memory-index.log 2>&1`
+2. Fleet-push: `openclaw memory index` on all assigned VMs (one-time rebuild)
+3. Bump manifest cron entries
 
-**Effort:** Low — SOUL.md update + file creation + manifest bump
-**Risk:** Very low — agents gain new behavior (file writing) but nothing breaks if they don't do it
-**Impact:** High — agents immediately start maintaining tiered memory
+**Implementation in vm-manifest.ts:**
+```typescript
+// Add to crons array:
+{
+  schedule: "0 4 * * *",
+  command: "/home/openclaw/.nvm/versions/node/v22.22.0/bin/openclaw memory index >> /tmp/memory-index.log 2>&1",
+  marker: "openclaw memory index",
+},
+```
 
-### Phase 2: Memory Index + Daily Cron (Day 1)
+**Effort:** Very low — one cron line
+**Risk:** None — memory indexing is read-only, non-destructive
+**Impact:** Medium — enables semantic retrieval across all memory files
 
-**What:** Rebuild the memory search index on all VMs, index the new files, add daily cron.
+### Phase 3: Session End Hook in strip-thinking.py (Week 1)
 
-**Changes:**
-1. Fleet-push: `openclaw memory index` on all assigned VMs
-2. Add daily cron: `0 5 * * * openclaw memory index >> /tmp/memory-index.log 2>&1`
-3. Add to VM manifest (v56)
-
-**Effort:** Low — fleet script + cron
-**Risk:** None — memory search is read-only
-**Impact:** Medium — enables semantic retrieval across all memory files (RAG for personal memory)
-
-### Phase 3: Session End Hook — Safety Net (Week 1)
-
-**What:** Lightweight script that auto-generates session summaries when the agent doesn't.
+**What:** Add session-end detection to the existing strip-thinking.py script.
 
 **Implementation:**
-1. Detect session transition (new session file created in sessions/)
-2. Check if agent already wrote to SESSION-HISTORY.md for this session (skip if yes)
-3. Read last 20 messages from previous session
-4. Call Haiku to generate 3-5 sentence summary
-5. Append to SESSION-HISTORY.md
-6. If detailed enough, also write dated file to `~/memory/`
-7. Rebuild memory index
+1. On each run, check if a new session file was created since last check
+2. If yes, check if `memory/session-log.md` was updated today (agent already wrote summary)
+3. If no summary exists, read last 20 user/assistant messages from previous session JSONL
+4. Call Haiku via gateway proxy to generate 3-5 sentence summary
+5. Append to `memory/session-log.md`
+6. Prune session-log.md if >15 entries (move old to memory/archive/)
+7. Track last-processed session in state file (`.session-summary-state`)
 
-**Effort:** Medium — new script + cron
-**Risk:** Low — worst case summary is redundant with what agent already wrote
+**Why strip-thinking.py:** Already runs every minute, has file locking, manages session files. Natural home for this.
+
+**Effort:** Medium — Python code addition to existing script
+**Risk:** Low — worst case summary is redundant with agent-written one
 **Impact:** High — guarantees session summaries even on crash/timeout/restart
 
-### Phase 4: Memory Consolidation (Week 2-3)
+### Phase 4: Memory Consolidation + Guardrails (Week 2-3)
 
-**What:** Background process that periodically cleans up the filing system:
-1. Prune SESSION-HISTORY.md to last 15 entries (archive older to `memory/`)
-2. Merge duplicate facts in MEMORY.md
-3. Remove stale tasks from TASKS.md
-4. Rebuild memory index after cleanup
+**What:** Harden the filing system with automatic enforcement.
+
+**Changes:**
+1. Add to strip-thinking.py: if MEMORY.md > 10KB, inject consolidation marker (similar to existing urgency injection at 160KB)
+2. Lower health cron MEMORY_OVERSIZED alert from 25KB to 10KB
+3. Add health cron check: `memory/session-log.md` entry count, alert if >20 entries (cleanup not happening)
+4. Add to `configureOpenClaw`: "check for unsummarized sessions" on reactivation
 
 **Effort:** Medium
-**Risk:** Medium — need to be careful not to delete important memories
+**Risk:** Low — enforcement is advisory (marker injection), not destructive
 **Impact:** Medium — prevents file bloat over time
 
 ### Phase 5: User-Facing Memory Controls (Month 2)
 
 **What:** Let users view and manage their agent's memory via the dashboard:
-- View MEMORY.md, SESSION-HISTORY.md, TASKS.md
+- View MEMORY.md, session-log.md, active-tasks.md
 - Pin important memories (never forget)
 - Delete incorrect memories
 - View and search memory/ archive
@@ -547,13 +646,14 @@ This is a fallback — the SOUL.md instructions handle the normal case.
 ### 7.1 Memory in Context Window
 
 Current MEMORY.md: 3,405 chars (~850 tokens)
-Proposed in-context load: MEMORY.md (~5K) + latest SESSION-HISTORY.md entry (~500) + TASKS.md (~1.5K) = **~7K chars (~1,750 tokens)**
 
-**Additional cost per call:** ~900 extra tokens × $0.30/M (cached) = $0.0003/call
+**Bootstrap (auto-loaded):** Only MEMORY.md (~5K chars, ~1,250 tokens). Other memory files NOT auto-loaded (verified — see Section 11.4).
 
-**Monthly impact:** 641 calls/day × $0.0003 × 30 = **~$6/mo** — negligible.
+**Session start reads (agent tool calls):** session-log.md (~3K) + active-tasks.md (~1K) = ~4K chars (~1,000 tokens) via 2 file-read tool calls (~2-3 seconds latency).
 
-The bootstrapMaxChars budget (30,000 chars) has 23K chars of headroom. The tiered approach uses **less** context than the original single-document proposal while providing better retrieval.
+**Additional cost per session start:** ~1,000 extra tokens × $3/M input = $0.003/session. ~100 session starts/month fleet-wide = **$0.30/mo** — negligible.
+
+**bootstrapMaxChars budget:** 30K per file, 150K total across 9 named bootstrap files. MEMORY.md at 5K uses 17%. Plenty of room.
 
 ### 7.2 Session End Summary Cost
 
@@ -584,7 +684,7 @@ OpenClaw memory indexing uses OpenAI text-embedding-3-small:
 | Users reporting "agent forgot everything" | ~30% of sessions | <5% |
 | Session continuity quality (manual audit) | 0% (no context transferred) | >80% |
 | MEMORY.md size | 3,405 chars (static, stale) | <5,000 chars (lean, current) |
-| Memory files per agent | 1 (MEMORY.md only) | 4+ (MEMORY + SESSION-HISTORY + TASKS + memory/*.md) |
+| Memory files per agent | 1-2 (MEMORY.md + maybe active-tasks.md) | 4+ (MEMORY + session-log + active-tasks + dated notes) |
 | Memory index chunks per agent | 3 (just profile) | 20-50 (all files indexed for semantic search) |
 
 ### Secondary
@@ -600,39 +700,276 @@ OpenClaw memory indexing uses OpenAI text-embedding-3-small:
 
 | Guard Rail | Threshold | Action |
 |-----------|-----------|--------|
-| MEMORY.md grows beyond 5K chars | >5K | Agent prunes stale items; move detail to memory/ |
-| SESSION-HISTORY.md exceeds 15 entries | >15 | Archive oldest entries to memory/ |
-| TASKS.md exceeds 10 active items | >10 | Agent archives completed, prioritizes active |
+| MEMORY.md grows beyond 5K chars | >5K | SOUL.md instructs agent to prune; strip-thinking.py injects consolidation marker at 10KB |
+| session-log.md exceeds 15 entries | >15 | SOUL.md instructs agent to archive; Phase 3 hook enforces |
+| active-tasks.md exceeds 10 active items | >10 | SOUL.md instructs agent to archive completed tasks |
+| Total memory/*.md exceeds 50K chars | >50K | Disk bloat; weekly consolidation should prune; health cron alerts on dated file count |
 | Agent overwrites critical MEMORY.md content | Any loss of "About My User" | SOUL.md rule: never delete profile section |
 | Memory search returns irrelevant results | >3 user complaints | Audit index quality, adjust embedding model |
 | Session summary quality is poor | Manual review shows garbage | Improve summary prompt or switch from Haiku to Sonnet |
+| Memory index stale or corrupted | main.sqlite >48h old | Daily cron rebuilds; health cron alerts on staleness |
+| Agent ignores filing instructions entirely | MEMORY.md growing, session-log.md empty | Phase 3 hook writes summaries regardless; health cron detects |
 
 ---
 
 ## 9. Risk Analysis
 
+### CRITICAL FINDING: Agent Non-Compliance (Verified April 6, vm-050)
+
+**vm-050 audit revealed agents are NOT following existing SOUL.md memory instructions:**
+- `memory/active-tasks.md` — does NOT exist (never created despite instructions since v41)
+- `MEMORY.md` — static from onboarding March 31, never updated by agent (only has strip-thinking.py injection markers)
+- `memory/` directory — completely empty (no dated files, no task files)
+- Memory index — only 3 chunks, all from MEMORY.md
+
+**This means SOUL.md compliance alone is INSUFFICIENT.** The Phase 3 hook + heartbeat Phase 0 are PRIMARY mechanisms, not optional backups. The defense-in-depth chain is critical:
+1. Phase 3 hook writes summary (automated, no agent needed)
+2. Heartbeat Phase 0 syncs session-log.md → MEMORY.md (every ≤3h)
+3. Bootstrap loads MEMORY.md (guaranteed)
+
 ### Phase 1 Risks
 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|-----------|
-| Agent writes session logs into MEMORY.md instead of SESSION-HISTORY.md | Medium | Low | SOUL.md "What Goes Where" table makes it explicit |
-| Agent overwrites important memory content | Low | High | SOUL.md rule: "NEVER delete About My User section" |
-| Agent doesn't follow memory instructions | Medium | Medium | Phase 3 hook as safety net |
-| Memory content is low quality | Medium | Low | Better than nothing; will improve with prompt iteration |
-| Files accumulate without cleanup | Low | Low | Phase 4 consolidation; SOUL.md size rules |
+| Agent ignores memory filing instructions entirely | **HIGH** (empirically proven on vm-050) | Medium | Phase 3 hook + heartbeat Phase 0 are the primary mechanisms; SOUL.md is additive, not critical path |
+| Agent writes session logs into MEMORY.md instead of session-log.md | Medium | Low | SOUL.md "What Goes Where" table; heartbeat Phase 0 consolidation |
+| Agent overwrites important memory content | Low | High | SOUL.md rule + configureOpenClaw backups (ssh.ts:3095) |
+| Memory content is low quality | Medium | Low | Better than nothing; iterate on prompts |
+| Agent doesn't read session-log.md on session start | **HIGH** (confirmed: memory/*.md NOT auto-loaded by bootstrap) | Medium | MEMORY.md still has recent context (via heartbeat Phase 0); explicit reads are bonus, not critical path |
+
+### Rollback Plan
+
+**Trigger signals for rollback:**
+- Agent response quality degrades (incoherent, confused by instructions)
+- Agent enters loop trying to read/write memory files instead of responding
+- MEMORY.md gets corrupted (critical profile data deleted)
+- Gateway crashes or errors related to new SOUL.md content
+
+**What to revert:**
+1. **SOUL.md section only:** Remove `MEMORY_FILING_SYSTEM_V1` marker and content from SOUL.md. This is a single reconciler step via `vm-manifest.ts` — remove the entry from the files array, bump manifest version, reconciler auto-pushes fleet-wide (~40 min).
+2. **Files stay:** session-log.md and active-tasks.md templates are harmless empty files. Leave them.
+3. **Cron stays:** Memory index cron is read-only, non-destructive. Leave it.
+
+**Revert speed:** Manifest change → push to main → reconciler cycle (~40 min) → all VMs updated.
+
+**Phase 3 hook revert:** If the session-end hook in strip-thinking.py causes issues, revert the script template in vm-manifest.ts. Reconciler pushes the old version fleet-wide.
+
+**No manual intervention needed.** All changes are deployed via manifest + reconciler. Revert is a code change to vm-manifest.ts.
 
 ### Phase 3 Risks
 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|-----------|
-| Summary script fails silently | Medium | Low | Log errors, alert on 3+ consecutive failures |
-| Haiku generates bad summary | Low | Low | Review first 10 summaries manually |
-| Script reads wrong session file | Low | Medium | Careful file selection logic; test on canary |
-| Duplicate summary (agent + hook both write) | Medium | Low | Hook checks if agent already wrote for this session |
+| Summary script fails silently | Medium | Low | Log errors to /tmp/session-summary.log; health cron detects stale state file |
+| Haiku generates bad summary | Low | Low | Review first 10 summaries manually on canary |
+| Script reads wrong session file | Low | Medium | Track session file by path in state file; use modification time ordering |
+| Duplicate summary (agent + hook both write) | Medium | Low | Hook checks if session-log.md was modified today before generating |
+| Haiku API call fails (rate limit, credits) | Low | Low | Retry once after 5s; skip this session if still fails; next session catches up |
+
+### Edge Case Risks (from stress testing)
+
+| Risk | Probability | Impact | Mitigation |
+|------|------------|--------|-----------|
+| MEMORY.md exceeds 5K despite instructions | High | Medium | strip-thinking.py injection at 10KB (Phase 4); health cron alert at 10KB (lowered from 25KB) |
+| session-log.md grows unbounded (agent never prunes) | Medium | Medium | Phase 3 hook prunes to 15 entries; HEARTBEAT.md Sunday consolidation; health cron alert at >20 entries |
+| Abrupt session end (crash/restart/0 credits) | High | High | Phase 3 hook detects transitions; on resubscribe, configureOpenClaw checks for unsummarized sessions |
+| Fresh user cold start (no files exist) | Every signup | None | session-log.md template created by manifest; MEMORY.md template exists; graceful degradation — SOUL.md says "if no memory exists, proceed normally" |
+| Two sessions write to same file (race) | Low | Low | One gateway per VM; heartbeat isolated session; fcntl locks in strip-thinking.py; worst case: last-write-wins (both adding, not deleting) |
+| Memory index corrupted | Low | Low | Daily cron rebuilds from scratch; agent can still read files directly without index |
+| Suspended VM reactivates | Per reactivation | None | configureOpenClaw preserves memory for same user; only wipes on reassignment (ssh.ts:2956-2996) |
+| bootstrapMaxChars (30K per file) exceeded | Very low | Medium | Only MEMORY.md is bootstrap-loaded; capped at 10KB by strip-thinking.py injection; health cron alerts at 25KB |
+| SOUL.md instructions conflict with existing session resume | Low | Medium | New section complements (not replaces) existing Intelligence Supplement; tested on canary first |
+| Agent confused by filing system instructions | Low | Low | Instructions are clear with table; agents already write to MEMORY.md and active-tasks.md; this just adds structure |
 
 ---
 
-## 10. Appendices
+## 10. Platform Comparison Matrix
+
+| Dimension | Claude Code | Manus | Letta/MemGPT | ChatGPT | Our Approach |
+|-----------|------------|-------|--------------|---------|--------------|
+| Cross-session persistence | CLAUDE.md only | None (fresh sandbox) | Core memory + archival | Cloud DB, all memories every turn | MEMORY.md + memory/*.md files |
+| Compaction | 3-tier (MicroCompact → server → LLM summary) | 2-tier (drop tool output → LLM summary) | N/A (unlimited archival) | Background summarization | OpenClaw auto-compaction + memoryFlush |
+| Task continuity | None | todo.md recitation at context end | Archival search | Injected every turn | ACTIVE_TASK.md + memory/active-tasks.md |
+| Session summaries | Structured XML (7 sections) | N/A | Conversation search | Background batch processing | Phase 3 hook + SOUL.md instructions |
+| Memory search | None | File reads | Vector store (archival) | No relevance filtering | SQLite + embeddings (memorySearch) |
+| Self-editing memory | Auto-memory writes | File writes | memory_replace/insert tools | create_memory tool call | SOUL.md instructions (file writes) |
+| Consolidation | None | None | None | Background processing | HEARTBEAT.md Sunday cycle (every 3h maintenance) |
+
+**Where we're better:** Heartbeat-driven maintenance, session handoff (ACTIVE_TASK.md), fleet-scale operations, existing strip-thinking.py safety net.
+
+**Where they're better:** Claude Code's MicroCompact (zero-cost cache-aware compaction), ChatGPT's reliability (all memories every turn), Letta's structured self-editing tools, Cursor's RL-trained compression (100K→1K).
+
+**Key patterns adopted:**
+- From Manus: todo.md recitation → "rewrite active-tasks.md at end of conversation" instruction
+- From Claude Code: structured summary format → Phase 3 hook uses: topic, decisions, what's done, what's open
+- From Letta: core vs archival separation → MEMORY.md (core, <5K) vs memory/*.md (archival, searchable)
+- From ChatGPT: background processing → Phase 3 hook as reliability backstop
+- From Google ADK: periodic consolidation → HEARTBEAT.md Phase 0 every 3h + Sunday consolidation
+
+### 10.1 Deep Comparison: Retrieval Gap (Letta vs Us)
+
+Letta has a 3-tier retrieval chain: core memory → recall memory (conversation search) → archival memory (vector search). The key piece we're MISSING is **recall memory** — the ability to search old conversation transcripts. Our `memorySearch` indexes ONLY memory/*.md files, NOT session JSONL files.
+
+**Should we add it?** Not in Phase 1. Session files are 177MB across 383 files. Indexing them would be expensive and most content is tool results (web search, browser output) that aren't useful for memory. The Phase 3 hook captures the valuable content (human conversation summaries) and puts it in memory/session-log.md — which IS indexed. This is a pragmatic Letta approximation without the infrastructure cost.
+
+**Future consideration:** If users frequently reference specific past conversations ("what did I say about X last week?"), add session-transcript indexing as Phase 6.
+
+### 10.2 Deep Comparison: Auto-Memory (ChatGPT vs Us)
+
+ChatGPT decides WHAT to remember automatically — the model calls `create_memory` when it detects persistent facts. Users don't have to ask.
+
+**Can our agents do the same via SOUL.md?** Empirically NO — vm-050 proves agents ignore SOUL.md memory instructions. ChatGPT's `create_memory` works because it's a TOOL CALL that the model is fine-tuned to invoke, not a system prompt instruction.
+
+**Our equivalent:** The Phase 3 hook + heartbeat Phase 0. These are automated processes that don't depend on agent compliance. They're closer to ChatGPT's "background batch processing" than SOUL.md instructions.
+
+**Key insight:** Don't rely on agents to maintain their own memory. Build automated systems that do it FOR them. SOUL.md instructions are bonus (for agents that DO comply), not the primary mechanism.
+
+### 10.3 Deep Comparison: Claude.ai Consumer Memory
+
+Claude.ai uses **opt-in, user-controlled memory** — users explicitly save facts; no auto-extraction from conversations. "Projects" serve as shared workspaces with documents. This is intentionally minimal and user-controlled.
+
+Our approach is more ambitious — **active agent-managed memory** — which is closer to Letta/MemGPT and ChatGPT than to Claude.ai's consumer product. The tradeoff: more infrastructure, but better user experience for always-on personal agents.
+
+---
+
+## 10.5 Validation Plan (A/B Testing)
+
+### Canary Selection
+Pick 10 VMs with active users (messages in last 48h) spanning different tiers:
+- 3 Pro users ($149/mo) — high engagement
+- 5 Basic users ($49/mo) — medium engagement
+- 2 Free/trial users — low engagement
+
+**Control group:** 10 similar VMs that do NOT receive the update.
+
+### Deployment
+1. Manually SSH into 10 canary VMs
+2. Append SOUL_MD_MEMORY_FILING_SYSTEM section to SOUL.md
+3. Create `memory/session-log.md` template
+4. Create `memory/active-tasks.md` template (if doesn't exist)
+5. Rebuild memory index: `openclaw memory index`
+6. Do NOT deploy Phase 3 hook yet — test SOUL.md compliance first
+
+### Measurement (after 48 hours)
+
+| Metric | Pass | Fail |
+|--------|------|------|
+| session-log.md has ≥1 entry on ≥5/10 canary VMs | ≥5 VMs | <5 VMs |
+| MEMORY.md updated (mtime changed) on ≥5/10 canary VMs | ≥5 VMs | <5 VMs |
+| Control VMs have no session-log.md entries | 0 entries | Any entries |
+| Agent references past session in conversation (manual check on 3 VMs) | ≥1 reference | 0 references |
+| No agent errors, confusion, or degraded response quality | 0 reports | Any reports |
+
+### Pass/Fail Criteria
+- **PASS (proceed to fleet):** ≥5/10 canary VMs have session-log.md entries AND no degradation
+- **PARTIAL PASS (proceed with Phase 3 hook as primary):** <5/10 VMs comply but no degradation → confirms SOUL.md alone isn't enough, Phase 3 hook is critical
+- **FAIL (rollback):** Agent errors, confusion, or degraded quality on ≥2 VMs
+
+### Expected Outcome
+Based on vm-050 audit (agent doesn't follow existing memory instructions), we expect a **PARTIAL PASS** — some agents will comply, most won't. This validates that the Phase 3 hook + heartbeat chain is the primary mechanism, with SOUL.md as bonus. We proceed to Phase 3 regardless.
+
+---
+
+## 11. Codebase Audit — Implementation Notes
+
+### 11.1 Existing Infrastructure (already deployed, no changes needed)
+
+| Component | Location | What It Does |
+|-----------|----------|-------------|
+| ACTIVE_TASK.md resume | agent-intelligence.ts:330-340 | Check task file on every session start, resume if IN_PROGRESS |
+| memory/active-tasks.md | agent-intelligence.ts:437 | Update with completed work summary |
+| HEARTBEAT.md Phase 0 | ssh.ts:3357-3362 | Check MEMORY.md staleness every 3h, write update if >24h stale |
+| HEARTBEAT.md Phase 0.5 | ssh.ts:3364-3370 | Read active-tasks.md, deliver pending notifications |
+| Sunday consolidation | ssh.ts:3426-3436 | Weekly: if MEMORY.md >20KB, consolidate; archive old tasks; clean logs |
+| strip-thinking.py | ssh.ts:89-969 | Every 1 min: archive sessions at 200KB, inject memory urgency at 160KB, strip thinking blocks |
+| Memory staleness check | strip-thinking.py:840-862 | If MEMORY.md not updated in 24h, inject MEMORY_STALE marker |
+| Workspace backup | ssh.ts:3095-3118 | Snapshot MEMORY.md, SOUL.md, sessions before any configureOpenClaw run |
+| Privacy guard | ssh.ts:2956-2996 | Wipe previous user's data on VM reassignment |
+| Health cron memory check | health-check/route.ts:1491-1547 | Alert: MEMORY_EMPTY (<500B), MEMORY_STALE (>72h), MEMORY_OVERSIZED (>25KB) |
+
+### 11.2 Files to Create/Modify
+
+| File | Change | Mode |
+|------|--------|------|
+| `vm-manifest.ts` | Add session-log.md template to files array | `create_if_missing` |
+| `vm-manifest.ts` | Add SOUL_MD_MEMORY_FILING_SYSTEM to files array | `append_if_marker_absent` |
+| `vm-manifest.ts` | Add memory index cron to crons array | marker-based idempotent |
+| `agent-intelligence.ts` | Add SOUL_MD_MEMORY_FILING_SYSTEM constant | New export |
+| `vm-manifest.ts` | Bump MANIFEST_VERSION to 56 | Number change |
+
+### 11.3 OpenClaw Config — No Changes Needed
+
+All memory config is correct. Verified:
+- `bootstrapMaxChars: 30000` — loads MEMORY.md + memory/*.md (ssh.ts:2505)
+- `memoryFlush.enabled: true, softThresholdTokens: 8000` — pre-compaction write (ssh.ts:2513-2514)
+- `memorySearch.enabled: true` — semantic search (ssh.ts:2518)
+- `session.reset.mode: "idle", idleMinutes: 10080` — 7-day idle (ssh.ts:2529-2530)
+- `heartbeat.session: "heartbeat"` — isolated (ssh.ts:2509)
+
+### 11.4 bootstrapMaxChars — DEFINITIVE (Verified April 6, vm-050)
+
+**`WorkspaceBootstrapFileName` is a FIXED ENUM** (OpenClaw plugin-sdk/src/agents/workspace.d.ts):
+
+| Bootstrap File | Auto-Loaded? | Current Size (vm-050) |
+|---|---|---|
+| AGENTS.md | ✅ Yes | 8,586 chars |
+| SOUL.md | ✅ Yes | 27,176 chars |
+| TOOLS.md | ✅ Yes | 439 chars |
+| IDENTITY.md | ✅ Yes | 417 chars |
+| USER.md | ✅ Yes | 2,216 chars |
+| HEARTBEAT.md | ✅ Yes | 193 chars (workspace copy; full version at agents/main/agent/) |
+| BOOTSTRAP.md | ✅ Yes | 0 (consumed) |
+| MEMORY.md | ✅ Yes | 3,405 chars |
+| **Total** | | **~42K chars** |
+
+**NOT auto-loaded (confirmed):**
+- `memory/session-log.md` ❌
+- `memory/active-tasks.md` ❌
+- `memory/YYYY-MM-DD.md` ❌
+- CAPABILITIES.md ❌ (loaded as system prompt separately)
+- EARN.md ❌
+- QUICK-REFERENCE.md ❌
+
+**Per-file limit:** `bootstrapMaxChars: 30000` (we configured). Default is 20000.
+**Total limit:** `bootstrapTotalMaxChars: 150000` (default, not overridden). Current total ~42K = 28% of budget.
+
+**There is NO `extraBootstrapFiles` config key.** The `loadExtraBootstrapFiles()` function exists in source but is called programmatically by plugins, not configurable via openclaw.json.
+
+**`filterBootstrapFilesForSession()`:** Heartbeats with `lightContext: true` get ONLY HEARTBEAT.md. Regular sessions get all 9 files.
+
+**Implication:** `memory/session-log.md` and `memory/active-tasks.md` require explicit agent reads (tool calls) on session start. SOUL.md instructions tell the agent to do this. If agent doesn't comply, the defense-in-depth chain (Hook → Heartbeat → MEMORY.md) ensures MEMORY.md still has recent context.
+
+### 11.5 Fleet Push Strategy
+
+**Deployment path:** vm-manifest.ts change → manifest version bump → reconciler detects drift → auto-pushes to fleet (every ~40 min cycle).
+
+**Canary strategy:**
+1. SSH into vm-050, manually create session-log.md and append SOUL.md section
+2. Trigger a conversation, verify agent reads session-log.md on session start
+3. Verify agent writes to session-log.md at end of conversation
+4. Verify bootstrapMaxChars loads session-log.md content (check gateway logs)
+5. If all pass → merge to main → reconciler pushes fleet-wide
+
+### 11.6 Session File Format (for Phase 3 hook)
+
+JSONL at `~/.openclaw/agents/main/sessions/*.jsonl`. Each line:
+```json
+{"type":"message","message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"usage":{"input_tokens":100}}
+```
+
+Parse strategy for hook:
+1. List session files by mtime: `ls -t ~/.openclaw/agents/main/sessions/*.jsonl`
+2. Read the SECOND most recent file (previous session — newest is current)
+3. Extract lines with `role: "user"` or `role: "assistant"`, skip `tool_use`/`thinking`
+4. Take last 20 such lines → concatenate text → send to Haiku for summary
+
+### 11.7 Cron Conflicts
+
+No conflicts. Current crons run at: every minute (strip-thinking, watchdog, etc.), hourly (heartbeat). New memory index cron at 4 AM daily. strip-thinking.py's daily_hygiene runs at ~23h intervals (self-throttled). No overlap.
+
+---
+
+## 12. Appendices
 
 ### Appendix A: Current MEMORY.md Content (vm-050)
 
@@ -655,44 +992,28 @@ Total: 3,405 chars. Static. Written during onboarding. Never updated.
 
 ### Appendix B: Proposed File Templates
 
-**MEMORY.md (core identity, <5K chars):**
+**MEMORY.md template** (update in vm-manifest.ts:438-448):
 ```markdown
-# MEMORY.md
+# MEMORY.md — Core Identity
 
 ## About My User
-[Name. Role. Key traits. 2-3 sentences from onboarding.]
+_[Will be populated from onboarding conversation]_
 
 ## Key Preferences
-[Communication style, content preferences. Max 5 bullets.]
-
-## Important Relationships
-[Key people the user works with. Max 5 entries.]
+_[Communication style, content preferences — learned over time]_
 
 ## Current Focus
-[1-2 sentences on what they're currently working on. Updated rarely.]
+_[What they're working on right now]_
 ```
 
-**SESSION-HISTORY.md (session log, last 10-15 entries):**
+**memory/session-log.md template** (new, add to vm-manifest.ts):
 ```markdown
-# SESSION-HISTORY.md
+# Session Log
 
-## [YYYY-MM-DD] — [Session Title]
-[3-5 sentence summary: topics, decisions, open items.]
-
-## [YYYY-MM-DD] — [Session Title]
-[3-5 sentence summary.]
+_Session summaries are appended here automatically._
 ```
 
-**TASKS.md (active tasks):**
-```markdown
-# TASKS.md — Active
-
-- [ ] [Task description] — [context/deadline]
-- [ ] [Task description]
-
-# Completed (last 5)
-- [x] [Task] ([date])
-```
+**memory/active-tasks.md** — already exists, no template change needed. Format defined in agent-intelligence.ts:423-433.
 
 ### Appendix C: Session Data Available on Disk
 
@@ -751,6 +1072,272 @@ This data EXISTS — it just isn't surfaced to new sessions. The session end hoo
 | Replit Agent | Decision-time guidance at conversation bottom (recency bias). |
 | MemGPT | LLM as OS with virtual memory. Main context vs archival memory. Self-editing memory. |
 | OpenClaw docs | memoryFlush, memorySearch, bootstrapMaxChars, previousSessionEntry available. |
+
+---
+
+### Appendix F: Phase 3 Python Implementation Spec
+
+This code is added to `strip-thinking.py` (ssh.ts STRIP_THINKING_SCRIPT template). It runs every minute alongside existing session management.
+
+```python
+# ═══════════════════════════════════════════════════════════
+# SESSION-END SUMMARY HOOK — detect session transitions,
+# generate summaries, append to memory/session-log.md
+# ═══════════════════════════════════════════════════════════
+
+import json, os, time, subprocess, re
+from pathlib import Path
+from datetime import datetime, timezone
+
+WORKSPACE = Path.home() / ".openclaw" / "workspace"
+SESSIONS_DIR = Path.home() / ".openclaw" / "agents" / "main" / "sessions"
+STATE_FILE = Path.home() / ".openclaw" / ".session-summary-state.json"
+SESSION_LOG = WORKSPACE / "memory" / "session-log.md"
+ARCHIVE_DIR = WORKSPACE / "memory" / "archive"
+MAX_SESSION_LOG_ENTRIES = 15
+GATEWAY_PROXY_URL = os.environ.get("INSTACLAW_API_URL", "https://instaclaw.io") + "/api/gateway/proxy"
+GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "")
+MIN_MESSAGES_FOR_SUMMARY = 4  # Skip trivial sessions
+
+def load_state():
+    """Load last-processed session state."""
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"last_session_file": None, "last_check_ts": 0}
+
+def save_state(state):
+    """Atomic state save."""
+    tmp = str(STATE_FILE) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, str(STATE_FILE))
+
+def get_session_files_by_mtime():
+    """List session JSONL files sorted by modification time (newest first)."""
+    files = list(SESSIONS_DIR.glob("*.jsonl"))
+    return sorted(files, key=lambda f: f.stat().st_mtime, reverse=True)
+
+def extract_messages(session_file, max_messages=20):
+    """Extract last N user/assistant text messages from session JSONL."""
+    messages = []
+    try:
+        with open(session_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                msg = entry.get("message", {})
+                role = msg.get("role", "")
+                if role not in ("user", "assistant"):
+                    continue
+                # Extract text from content blocks
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    text = " ".join(
+                        block.get("text", "")
+                        for block in content
+                        if isinstance(block, dict) and block.get("type") == "text"
+                    )
+                else:
+                    continue
+                if text.strip():
+                    messages.append({"role": role, "text": text.strip()[:500]})
+    except (IOError, OSError):
+        return []
+    return messages[-max_messages:]  # Last N messages
+
+def session_log_has_today_entry():
+    """Check if session-log.md already has an entry for today."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        content = SESSION_LOG.read_text()
+        return f"## {today}" in content
+    except FileNotFoundError:
+        return False
+
+def generate_summary_via_haiku(messages):
+    """Call Haiku via gateway proxy to generate a session summary."""
+    if not GATEWAY_TOKEN:
+        return None
+
+    conversation = "\n".join(
+        f"{'User' if m['role'] == 'user' else 'Agent'}: {m['text']}"
+        for m in messages
+    )
+
+    prompt = f"""Summarize this conversation in 3-5 sentences. Focus on:
+- What the user wanted / was working on
+- Key decisions made
+- What's still open / unfinished
+
+Conversation:
+{conversation}
+
+Write ONLY the summary, no preamble."""
+
+    payload = json.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 300,
+        "messages": [{"role": "user", "content": prompt}],
+    })
+
+    try:
+        result = subprocess.run(
+            ["curl", "-s", "--max-time", "30",
+             "-H", f"Authorization: Bearer {GATEWAY_TOKEN}",
+             "-H", "Content-Type: application/json",
+             "-H", "x-model-override: claude-haiku-4-5-20251001",
+             "-d", payload,
+             GATEWAY_PROXY_URL],
+            capture_output=True, text=True, timeout=35
+        )
+        if result.returncode != 0:
+            return None
+        resp = json.loads(result.stdout)
+        content = resp.get("content", [])
+        if content and isinstance(content, list):
+            return content[0].get("text", "").strip()
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, IndexError):
+        return None
+    return None
+
+def append_to_session_log(summary):
+    """Append a dated entry to memory/session-log.md."""
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    SESSION_LOG.parent.mkdir(parents=True, exist_ok=True)
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Read existing content
+    try:
+        existing = SESSION_LOG.read_text()
+    except FileNotFoundError:
+        existing = "# Session Log\n"
+
+    # Append new entry after header
+    header_end = existing.find("\n\n")
+    if header_end == -1:
+        header_end = len(existing)
+    header = existing[:header_end]
+    body = existing[header_end:]
+
+    new_entry = f"\n\n## {today} — Session Summary\n{summary}"
+    updated = header + new_entry + body
+
+    # Prune to MAX_SESSION_LOG_ENTRIES
+    entries = re.findall(r"(## \d{4}-\d{2}-\d{2} —[^\n]*\n(?:(?!## \d{4}).)*)", updated, re.DOTALL)
+    if len(entries) > MAX_SESSION_LOG_ENTRIES:
+        # Archive old entries
+        overflow = entries[MAX_SESSION_LOG_ENTRIES:]
+        archive_file = ARCHIVE_DIR / f"session-log-archived-{today}.md"
+        with open(archive_file, "a") as f:
+            for entry in overflow:
+                f.write(entry + "\n")
+        # Keep only recent entries
+        entries = entries[:MAX_SESSION_LOG_ENTRIES]
+        updated = header + "\n" + "\n".join(entries)
+
+    # Atomic write
+    tmp = str(SESSION_LOG) + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(updated)
+    os.replace(tmp, str(SESSION_LOG))
+
+def run_session_end_hook():
+    """Main hook: detect session transition, generate summary if needed."""
+    state = load_state()
+    files = get_session_files_by_mtime()
+
+    if len(files) < 2:
+        return  # Need at least 2 sessions (current + previous)
+
+    current_session = str(files[0])
+    previous_session = str(files[1])
+
+    # Check if we already processed this previous session
+    if state.get("last_session_file") == previous_session:
+        return  # Already processed
+
+    # Check if the agent already wrote a session-log entry today
+    if session_log_has_today_entry():
+        # Agent handled it — just update state
+        state["last_session_file"] = previous_session
+        state["last_check_ts"] = int(time.time())
+        save_state(state)
+        return
+
+    # Check if current session is actually new (created after previous)
+    try:
+        current_mtime = files[0].stat().st_mtime
+        previous_mtime = files[1].stat().st_mtime
+        if current_mtime - previous_mtime < 60:
+            return  # Sessions too close together, likely not a real transition
+    except OSError:
+        return
+
+    # Extract messages from previous session
+    messages = extract_messages(previous_session)
+    if len(messages) < MIN_MESSAGES_FOR_SUMMARY:
+        # Trivial session, just mark as processed
+        state["last_session_file"] = previous_session
+        state["last_check_ts"] = int(time.time())
+        save_state(state)
+        return
+
+    # Generate summary
+    summary = generate_summary_via_haiku(messages)
+    if summary:
+        append_to_session_log(summary)
+
+    # Update state regardless (don't retry on failure)
+    state["last_session_file"] = previous_session
+    state["last_check_ts"] = int(time.time())
+    save_state(state)
+
+# Called from strip-thinking.py main loop:
+# try:
+#     run_session_end_hook()
+# except Exception as e:
+#     # Never let the hook crash strip-thinking.py
+#     with open("/tmp/session-summary-error.log", "a") as f:
+#         f.write(f"{datetime.now().isoformat()} {e}\n")
+```
+
+**Error handling:** Every failure mode returns silently. The hook NEVER crashes strip-thinking.py. Errors logged to `/tmp/session-summary-error.log`. State file prevents re-processing.
+
+**Detection method:** Compares modification times of the 2 most recent session files. If current session is significantly newer than previous, a transition occurred.
+
+**Duplicate prevention:** Checks if session-log.md already has a `## YYYY-MM-DD` entry for today. If agent already wrote one, skips.
+
+**Haiku call:** Goes through the gateway proxy (same auth as agent). Uses `x-model-override` header to force Haiku regardless of agent's configured model.
+
+### Appendix G: MEMORY.md Migration Plan (Existing VMs)
+
+**Current state (vm-050 audit):**
+- MEMORY.md: 3,405 chars, static onboarding profile from March 31
+- Contains strip-thinking.py injection markers (MEMORY_WRITE_URGENT + MEMORY_STALE)
+- NO session-specific content to migrate
+
+**Migration strategy: DO NOTHING to existing MEMORY.md files.**
+
+1. Injection markers are auto-removed by strip-thinking.py when the agent updates MEMORY.md
+2. The static onboarding profile IS the "core identity" we want — it's already the right content for the new structure
+3. We don't add structured sections to existing files — let agents self-organize (they add headings naturally)
+4. For NEW VMs only: the updated MEMORY.md template (Appendix B) has structured sections
+
+**If a user's MEMORY.md has session logs mixed in** (some agents DO update MEMORY.md and put everything in it):
+- The heartbeat Sunday consolidation (HEARTBEAT.md) already tells agents to prune MEMORY.md >20KB
+- The new SOUL.md Memory Filing System instructions say: "If MEMORY.md currently has session logs or task lists, move them to the correct file"
+- If the agent doesn't comply, the content stays in MEMORY.md — harmless, still gets loaded at bootstrap
+
+**No forced migration. No data loss risk. Let the system converge naturally.**
 
 ---
 
