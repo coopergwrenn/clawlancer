@@ -3,6 +3,8 @@ import { verifyHQAuth } from "@/lib/hq-auth";
 import { getSupabase } from "@/lib/supabase";
 import { upgradeOpenClaw, connectSSH, NVM_PREAMBLE, OPENCLAW_PINNED_VERSION } from "@/lib/ssh";
 import type { VMRecord } from "@/lib/ssh";
+import { reconcileVM } from "@/lib/vm-reconcile";
+import { VM_MANIFEST } from "@/lib/vm-manifest";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
@@ -108,7 +110,39 @@ export async function POST(req: NextRequest) {
                 return;
               }
 
-              // Upgrade
+              // Reconcile FIRST — push latest scripts, workspace files, crons
+              // before upgrading the binary. Ensures everything is in sync.
+              send({
+                step: "vm_upgrade",
+                status: "running",
+                vmId: vm.id,
+                ip: vm.ip_address,
+                detail: "Reconciling manifest files...",
+              });
+              try {
+                const reconcileResult = await reconcileVM(vm as VMRecord & { gateway_token?: string; api_mode?: string }, VM_MANIFEST);
+                const fixCount = reconcileResult.fixed.length;
+                if (fixCount > 0) {
+                  send({
+                    step: "vm_upgrade",
+                    status: "running",
+                    vmId: vm.id,
+                    ip: vm.ip_address,
+                    detail: `Reconciled ${fixCount} items, now upgrading binary...`,
+                  });
+                }
+              } catch (reconcileErr) {
+                // Reconcile failure is non-fatal — log and continue with upgrade
+                send({
+                  step: "vm_upgrade",
+                  status: "running",
+                  vmId: vm.id,
+                  ip: vm.ip_address,
+                  detail: `Reconcile warning: ${reconcileErr instanceof Error ? reconcileErr.message : "unknown"}, proceeding with upgrade...`,
+                });
+              }
+
+              // Upgrade binary
               const result = await upgradeOpenClaw(
                 vm as VMRecord,
                 version,
