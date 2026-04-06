@@ -2,9 +2,9 @@
 
 **Author:** Cooper Wrenn + Claude (Opus 4.6)
 **Date:** 2026-04-05
-**Status:** Draft — Phase 1 ready for immediate implementation
+**Status:** Phase 1 SHIPPED (April 5, 2026). PRD updated April 6 with corrected token measurements.
 **Priority:** P0 — directly impacts unit economics and company viability
-**Estimated Impact:** $7,700-10,500/mo in API cost reduction
+**Estimated Impact:** ~$736/mo from prompt caching (revised down from $7,714 — see Section 2.5 correction)
 
 ---
 
@@ -27,36 +27,35 @@
 
 ### The Discovery
 
-On April 5, 2026, during the infrastructure upgrade project (Phases 1-3 complete), we discovered that **Anthropic prompt caching is not enabled** anywhere in our stack. Every single API call sends 189,380 tokens of system context at full price ($3/M for Sonnet). With caching enabled, 90% of those tokens would cost $0.30/M instead — a **10x reduction on 95% of our input tokens.**
+On April 5, 2026, during the infrastructure upgrade project (Phases 1-3 complete), we discovered that **Anthropic prompt caching was not enabled** anywhere in our stack. We initially estimated 189,380 tokens of system context per call — but production measurement revealed the actual system prompt is only **14,836 tokens** (OpenClaw already uses compact skill loading). Caching was enabled the same day.
 
-This is not an architectural change. It is two lines of code in our proxy.
-
-### Current State
+### Current State (Updated April 6, 2026)
 
 | Metric | Value |
 |--------|-------|
-| Monthly Anthropic API spend | ~$11,250/mo (extrapolated from $1,874 in 5 days) |
-| Tokens per API call (system context) | 189,380 |
-| Prompt caching enabled | **NO** |
-| cache_control in OpenClaw message handler | **0 occurrences** |
-| cache_control in our proxy | **0 occurrences** |
-| anthropic-beta: prompt-caching header | **Not sent** |
-| Effective cost per Sonnet call | $0.585 |
+| Monthly Anthropic API spend | ~$7,500-9,000/mo projected* |
+| System prompt per call | 14,836 tokens (8% of input) |
+| Conversation history per call | ~170,000 tokens avg (92% of input) |
+| Prompt caching | **ENABLED** (shipped April 5) |
+| April MTD cost (6 days) | $2,248.48 |
+| Daily steady state (Apr 6) | ~$250-300/day |
 | Fleet MRR | $7,355/mo |
-| Fleet margin | **-$7,345/mo (-100%)** |
 
-### Target State
+*Apr 1-4 costs were heavily inflated: restart storms (230+ VMs restarting 100s of times, each = fresh 15K token context at full price), 150 non-paying VMs still active (~18% of usage), and resize operations restarting every VM. Real steady-state is closer to the Apr 5-6 numbers (~$250-300/day = $7,500-9,000/mo). As the month progresses with no further disruptions, the daily average will come down.
 
-| Metric | Phase 1 (Caching) | Phase 1 + Price Raise |
-|--------|-------------------|----------------------|
-| Monthly Anthropic API spend | ~$3,536/mo | ~$3,536/mo |
-| Effective cost per Sonnet call | $0.075 (cached) | $0.075 (cached) |
-| Fleet MRR | $7,355/mo | $10,945/mo ($49/$149/$399) |
-| Fleet margin | **+$152/mo (2%)** | **+$3,742/mo (34%)** |
+### What Was Done
+
+| Action | Impact | Status |
+|--------|--------|--------|
+| Enable prompt caching in proxy | ~$736/mo savings on system prompt | **SHIPPED** Apr 5 |
+| Delete 150 non-paying VMs | ~18% fewer API calls | **SHIPPED** Apr 3 |
+| Fix restart storms | Eliminated 100s of fresh-context API calls/day | **SHIPPED** Apr 2 |
+| strip-thinking.py session cap (200KB) | Limits conversation history growth | **SHIPPED** (manifest v32+) |
+| Cross-session memory hook | Haiku for summaries, not Sonnet | **SHIPPED** Apr 6 (manifest v56) |
 
 ### The Bottom Line
 
-Adding prompt caching saves more money ($7,714/mo) than the entire price raise adds in revenue ($3,590/mo). **This is the single most impactful change we can make to unit economics.**
+The original PRD estimated $7,714/mo in caching savings based on a 189K token system prompt. **The actual system prompt is only 14,836 tokens (92% smaller than estimated).** Caching saves ~$736/mo — meaningful but not transformative. The real cost driver is conversation history (92% of input tokens), which is managed by compaction + session archiving, not caching.
 
 ---
 
@@ -138,6 +137,40 @@ TEST 2 — With cache_control + beta header:
 ```
 
 **Confirmed:** OpenClaw does not use prompt caching (0 occurrences of `cache_control` in message-handler). Our proxy does not add it (0 occurrences). The `anthropic-beta: prompt-caching-2024-07-31` header is never sent.
+
+### 2.5 CORRECTION: Actual System Prompt Size (Updated April 6, 2026)
+
+**The 189,380 token estimate above was WRONG.** It was based on measuring files on disk (`wc -c` on SKILL.md + references + workspace files). In reality, OpenClaw does NOT send full SKILL.md files in the system prompt — it uses compact skill loading (names + descriptions + file paths), and agents read full skill content from disk on demand.
+
+**Verified via production TOKEN_ANALYSIS logging (April 5-6):**
+
+| Metric | Estimated (Section 2.1) | Actual (production) |
+|--------|------------------------|---------------------|
+| System prompt tokens | 189,380 | **14,836** (59,345 chars) |
+| System prompt % of input | 95%+ | **~8%** |
+| Conversation history % | ~5% | **~92%** |
+| System prompt cost per call | $0.567 | **$0.045** |
+
+**What this means for caching:**
+- Caching the system prompt saves 90% on only ~8% of input tokens (not 95%)
+- Estimated caching savings: **~$736/mo** (not $7,714/mo)
+- The real cost driver is **conversation history** (92% of input tokens), which cannot be cached
+- Conversation history is managed by OpenClaw's compaction system + strip-thinking.py session archiving
+
+**Updated Anthropic billing (April 6, 2026 — from console):**
+
+| Metric | Value |
+|--------|-------|
+| April MTD total cost | $2,248.48 (6 days) |
+| Daily average (Apr 1-5, includes chaos) | ~$400/day |
+| Daily steady state (Apr 6, post-caching) | ~$250-300/day |
+| Projected monthly (steady state) | **$7,500-9,000/mo** |
+| Input tokens MTD | ~2.7B |
+| Output tokens MTD | ~19.3M |
+| Input:output ratio | 139:1 |
+| Models used | 95%+ Sonnet 4.6, trace Opus 4.6 + Haiku 4.5 |
+
+**Phase 1 (prompt caching) is SHIPPED and working.** The savings are real but smaller than estimated because the system prompt is only 8% of input tokens. The remaining cost reduction opportunity is reducing conversation history size — which compaction, strip-thinking.py session archiving (200KB cap), and the cross-session memory system (v56) all address indirectly by keeping sessions cleaner.
 
 ---
 
