@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { configureOpenClaw, migrateUserData, testProxyRoundTrip, setupTLSBackground } from "@/lib/ssh";
+import { configureOpenClaw, migrateUserData, testProxyRoundTrip, setupTLSBackground, setupXMTP } from "@/lib/ssh";
 import { validateAdminKey, decryptApiKey } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
@@ -411,6 +411,38 @@ export async function POST(req: NextRequest) {
               userId: capturedUserId,
             });
           }
+        }
+      });
+    }
+
+    // ── Background XMTP setup (World Chat) ──
+    // Sets up XMTP agent so users can chat via World Chat.
+    // Runs in background — doesn't block the configure response.
+    // Idempotent — skips if xmtp_address is already set.
+    {
+      const capturedVm = {
+        id: vm.id,
+        ip_address: vm.ip_address,
+        ssh_port: vm.ssh_port,
+        ssh_user: vm.ssh_user,
+        gateway_token: result.gatewayToken ?? vm.gateway_token ?? "",
+      };
+      after(async () => {
+        try {
+          const xmtpResult = await setupXMTP(capturedVm);
+          if (!xmtpResult.success) {
+            logger.warn("Background XMTP setup failed (non-fatal)", {
+              route: "vm/configure",
+              vmId: vm.id,
+              error: xmtpResult.error,
+            });
+          }
+        } catch (err) {
+          logger.warn("Background XMTP setup exception (non-fatal)", {
+            route: "vm/configure",
+            vmId: vm.id,
+            error: String(err),
+          });
         }
       });
     }

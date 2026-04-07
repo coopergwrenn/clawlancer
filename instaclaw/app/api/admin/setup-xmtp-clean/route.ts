@@ -61,8 +61,9 @@ export async function POST(req: NextRequest) {
 
     // 2. Generate a brand new Ethereum wallet key
     // Using Node.js crypto on the VM to generate a random 32-byte hex key
+    // NVM must be sourced first — bare SSH sessions don't have node on PATH
     const genKeyResult = await ssh.execCommand(
-      'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+      'source ~/.nvm/nvm.sh 2>/dev/null; node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
     );
     const newWalletKey = genKeyResult.stdout.trim();
     if (!newWalletKey || newWalletKey.length !== 64) {

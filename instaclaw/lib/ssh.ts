@@ -9146,3 +9146,152 @@ export async function removeIntegrationCredentials(
     ssh.dispose();
   }
 }
+
+// ---------------------------------------------------------------------------
+// XMTP / World Chat setup
+// ---------------------------------------------------------------------------
+
+/**
+ * Set up XMTP agent on a VM so it can communicate via World Chat.
+ * Generates a fresh wallet key, deploys the agent script + systemd service,
+ * starts the service, reads the derived XMTP address, and writes it to Supabase.
+ *
+ * This is idempotent — if the VM already has an xmtp_address, it returns early.
+ * Called as a background task after configureOpenClaw completes.
+ */
+export async function setupXMTP(
+  vm: VMRecord & { gateway_token: string },
+): Promise<{ success: boolean; xmtpAddress?: string; error?: string }> {
+  const supabase = getSupabase();
+
+  // Skip if already set up
+  const { data: existing } = await supabase
+    .from("instaclaw_vms")
+    .select("xmtp_address")
+    .eq("id", vm.id)
+    .single();
+
+  if (existing?.xmtp_address) {
+    return { success: true, xmtpAddress: existing.xmtp_address };
+  }
+
+  let ssh;
+  try {
+    ssh = await connectSSH(vm);
+  } catch (err) {
+    return { success: false, error: `SSH connect failed: ${String(err).slice(0, 100)}` };
+  }
+
+  try {
+    // 1. Stop any existing XMTP service
+    await ssh.execCommand(
+      'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop instaclaw-xmtp 2>/dev/null; true'
+    );
+
+    // 2. Generate a fresh Ethereum wallet key (32 random bytes)
+    const genKeyResult = await ssh.execCommand(
+      `${NVM_PREAMBLE} && node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+    );
+    const walletKey = genKeyResult.stdout.trim();
+    if (!walletKey || walletKey.length !== 64) {
+      return { success: false, error: "Failed to generate wallet key" };
+    }
+
+    // 3. Clean old XMTP data
+    await ssh.execCommand("rm -rf ~/.openclaw/xmtp ~/.xmtp /tmp/xmtp-*");
+
+    // 4. Write .env for the XMTP agent
+    const envContent = [
+      `XMTP_WALLET_KEY=0x${walletKey}`,
+      `XMTP_ENV=production`,
+      `GATEWAY_URL=http://localhost:18789`,
+      `GATEWAY_TOKEN=${vm.gateway_token}`,
+      `XMTP_DB_PATH=/home/openclaw/.openclaw/xmtp/db`,
+    ].join("\\n");
+
+    await ssh.execCommand(
+      `mkdir -p ~/.openclaw/xmtp && printf '${envContent}\\n' > ~/.openclaw/xmtp/.env`
+    );
+
+    // 5. Ensure xmtp-agent.mjs is deployed
+    const checkScript = await ssh.execCommand("ls ~/scripts/xmtp-agent.mjs 2>/dev/null && echo exists || echo missing");
+    if (checkScript.stdout.includes("missing")) {
+      const scriptUrl = "https://raw.githubusercontent.com/coopergwrenn/clawlancer/main/instaclaw/skills/xmtp-agent/scripts/xmtp-agent.mjs";
+      await ssh.execCommand(
+        `mkdir -p ~/scripts && curl -sL "${scriptUrl}" -o ~/scripts/xmtp-agent.mjs`
+      );
+    }
+
+    // 6. Ensure @xmtp/agent-sdk is installed
+    const npmCheck = await ssh.execCommand(
+      "ls ~/scripts/node_modules/@xmtp/agent-sdk 2>/dev/null && echo present || echo missing"
+    );
+    if (npmCheck.stdout.includes("missing")) {
+      await ssh.execCommand(
+        `${NVM_PREAMBLE} && cd ~/scripts && npm install @xmtp/agent-sdk@latest 2>/dev/null`
+      );
+    }
+
+    // 7. Create/update systemd service unit
+    const serviceContent = `[Unit]
+Description=InstaClaw XMTP Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/openclaw/.nvm/versions/node/v22.22.0/bin/node /home/openclaw/scripts/xmtp-agent.mjs
+WorkingDirectory=/home/openclaw/scripts
+EnvironmentFile=/home/openclaw/.openclaw/xmtp/.env
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target`;
+
+    await ssh.execCommand(
+      `mkdir -p ~/.config/systemd/user && cat > ~/.config/systemd/user/instaclaw-xmtp.service << 'SVCEOF'\n${serviceContent}\nSVCEOF`
+    );
+
+    // 8. Reload systemd and start the service
+    await ssh.execCommand(
+      'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user daemon-reload && systemctl --user start instaclaw-xmtp'
+    );
+
+    // 9. Wait for agent to start and write its address file (up to 15s)
+    let xmtpAddress = "";
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const addrResult = await ssh.execCommand("cat ~/.openclaw/xmtp/address 2>/dev/null");
+      const addr = addrResult.stdout.trim();
+      if (addr && addr.startsWith("0x")) {
+        xmtpAddress = addr;
+        break;
+      }
+    }
+
+    if (!xmtpAddress) {
+      // Check logs for why it didn't start
+      const logs = await ssh.execCommand(
+        'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && journalctl --user -u instaclaw-xmtp --no-pager -n 10 2>/dev/null || tail -10 ~/.openclaw/logs/xmtp-agent.log 2>/dev/null || echo "no logs"'
+      );
+      return { success: false, error: `XMTP agent didn't produce address. Logs: ${logs.stdout.slice(0, 200)}` };
+    }
+
+    // 10. Write address to Supabase
+    await supabase
+      .from("instaclaw_vms")
+      .update({ xmtp_address: xmtpAddress })
+      .eq("id", vm.id);
+
+    logger.info("XMTP setup complete", {
+      vmId: vm.id,
+      xmtpAddress,
+    });
+
+    return { success: true, xmtpAddress };
+  } catch (err) {
+    return { success: false, error: String(err).slice(0, 200) };
+  } finally {
+    ssh.dispose();
+  }
+}
