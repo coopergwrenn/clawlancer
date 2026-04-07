@@ -81,7 +81,17 @@ export async function POST(req: NextRequest) {
 
     if (!gatewayRes.ok) {
       const errText = await gatewayRes.text().catch(() => "");
-      return NextResponse.json({ error: "Agent unavailable", detail: errText }, { status: 502 });
+      // Distinguish credit exhaustion from gateway errors
+      if (gatewayRes.status === 402 || errText.includes("exhausted") || errText.includes("credit")) {
+        return NextResponse.json(
+          { error: "credits_exhausted", detail: "You're out of credits. Add more to keep chatting." },
+          { status: 402 }
+        );
+      }
+      return NextResponse.json(
+        { error: "agent_unavailable", detail: errText },
+        { status: 502 }
+      );
     }
 
     // Streaming response — pipe through, save assistant message after

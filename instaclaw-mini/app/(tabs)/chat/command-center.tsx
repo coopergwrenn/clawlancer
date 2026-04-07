@@ -245,7 +245,6 @@ export default function CommandCenter({
   const [infoDismissed, setInfoDismissed] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("Sonnet 4.6");
   const [isListening, setIsListening] = useState(false);
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
   const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
@@ -503,6 +502,12 @@ export default function CommandCenter({
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        if (errData.error === "credits_exhausted" || res.status === 402) {
+          throw new Error("You're out of credits. Tap + Add on the Home tab to keep chatting.");
+        }
+        if (res.status === 502 || errData.error === "agent_unavailable") {
+          throw new Error("Your agent is restarting. Try again in a moment.");
+        }
         throw new Error(errData.error || `Error ${res.status}`);
       }
 
@@ -606,6 +611,27 @@ export default function CommandCenter({
     <div className="relative flex h-full flex-col overflow-hidden" style={{ background: "transparent" }}>
       {/* ── Pinned header section (shrink-0, never scrolls) ── */}
       <div className="shrink-0">
+      {/* Offline / starting banner */}
+      {!isOnline && (
+        <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+          <div className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2.5" style={{
+            background: "linear-gradient(145deg, rgba(245,158,11,0.08), rgba(245,158,11,0.03))",
+            border: "1px solid rgba(245,158,11,0.15)",
+          }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", boxShadow: "0 0 6px rgba(245,158,11,0.4)", animation: "pulse-dot 2s ease-in-out infinite", flexShrink: 0 }} />
+            <p className="flex-1 text-[11px]" style={{ color: "#d4a054" }}>
+              Your agent is starting up...
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-[10px] font-medium px-2 py-0.5 rounded-md"
+              style={{ color: "#f59e0b", background: "rgba(245,158,11,0.1)" }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
       {/* Info banner */}
       {!infoDismissed && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-1">
@@ -1706,24 +1732,13 @@ export default function CommandCenter({
           </div>
         )}
 
-        {/* Model dropdown */}
+        {/* Model info tooltip */}
         {modelMenuOpen && (
-          <div className="absolute bottom-full right-4 mb-2 w-40 rounded-xl p-1.5" style={{ background: "linear-gradient(145deg, rgba(30,30,30,0.9), rgba(20,20,20,0.95))", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)", zIndex: 50 }}>
-            {[
-              { id: "Haiku 4.5", label: "Haiku 4.5" },
-              { id: "Sonnet 4.6", label: "Sonnet 4.6" },
-              { id: "Opus 4.6", label: "Opus 4.6" },
-            ].map((m) => (
-              <button
-                key={m.id}
-                onClick={() => { setSelectedModel(m.id); setModelMenuOpen(false); }}
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors active:bg-white/5"
-                style={{ color: selectedModel === m.id ? "#da7756" : "#aaa" }}
-              >
-                {m.label}
-                {selectedModel === m.id && <Check size={14} />}
-              </button>
-            ))}
+          <div className="absolute bottom-full right-4 mb-2 w-52 rounded-xl p-3" style={{ background: "linear-gradient(145deg, rgba(30,30,30,0.95), rgba(20,20,20,0.98))", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)", zIndex: 50 }}>
+            <p className="text-[11px] font-medium mb-1" style={{ color: "#da7756" }}>Intelligent Model Routing</p>
+            <p className="text-[10px] leading-relaxed" style={{ color: "#888" }}>
+              Your agent automatically routes between Anthropic models based on task complexity for optimal cost and performance. Primarily uses Sonnet 4.6.
+            </p>
           </div>
         )}
 
@@ -1766,14 +1781,14 @@ export default function CommandCenter({
             className="flex-1 min-w-0 bg-transparent text-[13px] text-white placeholder:text-white/30 focus:outline-none"
           />
 
-          {/* Model selector */}
+          {/* Model info */}
           <button
             onClick={() => { setModelMenuOpen(!modelMenuOpen); setPlusMenuOpen(false); }}
-            className="shrink-0 flex items-center gap-0.5 text-[11px] font-medium transition-colors"
-            style={{ color: modelMenuOpen ? "#da7756" : "#666" }}
+            className="shrink-0 flex items-center gap-1 text-[10px] font-medium transition-colors"
+            style={{ color: modelMenuOpen ? "#da7756" : "#555" }}
           >
-            <span>{selectedModel.split(" ")[0]}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <span>Auto</span>
           </button>
 
           {/* Mic button */}
@@ -1809,7 +1824,7 @@ export default function CommandCenter({
           {/* Send button */}
           <button
             onClick={() => handleSend()}
-            disabled={!input.trim() || sending}
+            disabled={!input.trim() || sending || !isOnline}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all active:scale-90 disabled:opacity-20"
             style={{
               background: input.trim() ? "linear-gradient(135deg, #da7756, #c36441)" : "rgba(255,255,255,0.06)",

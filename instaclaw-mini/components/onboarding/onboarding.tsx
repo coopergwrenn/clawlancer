@@ -438,14 +438,26 @@ export default function Onboarding() {
         if (!provRes.ok) {
           console.error("[Onboarding] Provision failed:", provRes.status);
           if (provRes.status === 402) {
-            // Payment not verified — go back to payment step
             setError("Payment didn't go through. Please try again.");
             setStep("delegate");
             return;
           }
+          if (provRes.status === 503) {
+            setError("All agents are currently claimed. Check back soon — we restock regularly.");
+            setStep("delegate");
+            return;
+          }
+          // Other failures — show generic error with retry
+          const errData = await provRes.json().catch(() => ({}));
+          setError(errData.error || "Setup failed. Please try again.");
+          setStep("delegate");
+          return;
         }
       } catch (provErr) {
         console.error("[Onboarding] Provision error:", provErr);
+        setError("Connection error. Please try again.");
+        setStep("delegate");
+        return;
       }
 
       // Show provisioning UI — polls /api/agent/status for real progress
