@@ -257,7 +257,7 @@ su - "\${OPENCLAW_USER}" -c '
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   nvm install 22
   nvm alias default 22
-  npm install -g openclaw@2026.4.1 mcporter
+  npm install -g openclaw@2026.4.5 mcporter
 '
 
 # ── 7a. Install Python packages as openclaw user ──
