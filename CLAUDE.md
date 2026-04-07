@@ -11,7 +11,7 @@ ALL new VMs must use these exact specs:
 - **Provider:** Linode ONLY (never Hetzner or DigitalOcean)
 - **Type:** `g6-dedicated-2` (Dedicated 4GB — 2 dedicated vCPU, 4GB RAM, 80GB disk)
 - **Region:** `us-east`
-- **Snapshot:** `private/38031667` (instaclaw-base-v56-memory — OpenClaw v2026.4.5, all v56 scripts + crons + workspace files, cross-session memory hook, exec-approvals.json, Chromium, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, both SSH deploy keys. 15/15 verified.)
+- **Snapshot:** `private/38054012` (instaclaw-base-v56-memory — OpenClaw v2026.4.5, all v56 scripts + crons + workspace files, cross-session memory hook, exec-approvals.json, Chromium, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, both SSH deploy keys. 15/15 verified.)
 - **Cost:** $29/mo per VM (negotiated Linode rate)
 - **DB status:** `provisioning` (cloud-init-poll cron auto-marks as `ready` in ~3-5 min)
 
