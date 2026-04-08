@@ -85,18 +85,22 @@ export default function AgentBookOnboardModal({
   }
 
   function handleVerifyTap() {
-    setTimeout(() => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof (MiniKit as any).closeMiniApp === "function") {
-          (MiniKit as any).closeMiniApp();
-        } else if (typeof (MiniKit as any).close === "function") {
-          (MiniKit as any).close();
-        }
-      } catch {
-        // closeMiniapp not available — <a href> already navigated
+    // Close mini app IMMEDIATELY — no delay. This fires before the <a href>
+    // navigation, so the mini app closes cleanly and World App shows the
+    // AgentKit drawer on its home screen.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mk = MiniKit as any;
+      if (typeof mk.closeMiniApp === "function") {
+        mk.closeMiniApp();
+      } else if (typeof mk.close === "function") {
+        mk.close();
+      } else if (typeof mk.commands?.closeMiniApp === "function") {
+        mk.commands.closeMiniApp();
       }
-    }, 500);
+    } catch {
+      // closeMiniApp not available — <a href> will still navigate
+    }
   }
 
   // Not eligible (no World ID) — skippable
@@ -187,7 +191,7 @@ export default function AgentBookOnboardModal({
 
           <h2 className="text-lg font-bold mb-1">One last step</h2>
           <p className="text-[12px] mb-5" style={{ color: "#888", lineHeight: 1.6 }}>
-            Tap below to verify your agent with World ID. The app will close briefly — you&apos;ll get a notification when it&apos;s done.
+            Tap below to verify your agent with World ID. You&apos;ll approve on the next screen and be right back.
           </p>
 
           <a
