@@ -16,6 +16,7 @@ import {
 import GoogleConnectCard from "@/components/google-connect-card";
 import GooglePersonalizationModal from "@/components/google-personalization-modal";
 import AgentBookCard from "@/components/agentbook-card";
+import AgentBookOnboardModal from "@/components/agentbook-onboard-modal";
 import type { SubscriptionInfo } from "@/lib/supabase";
 
 interface Agent {
@@ -90,6 +91,7 @@ export default function AgentDashboard({
   const [isSubscribed, setIsSubscribed] = useState(subscription.hasSubscription);
   const [editingName, setEditingName] = useState(false);
   const [agentName, setAgentName] = useState<string>((agent as Record<string, unknown>).agent_name as string || "");
+  const [showAgentBookModal, setShowAgentBookModal] = useState(true);
   const nameInputRef = useRef<HTMLInputElement>(null);
   // Subscribers with daily limits aren't paused even at 0 credit_balance
   const isPaused = agent.credit_balance <= 0 && !isSubscribed;
@@ -294,6 +296,11 @@ export default function AgentDashboard({
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-6">
+      {/* ── AgentBook Registration Modal (shown once on first load) ── */}
+      {showAgentBookModal && (
+        <AgentBookOnboardModal onComplete={() => setShowAgentBookModal(false)} />
+      )}
+
       {/* ── Credits Exhausted Banner ── */}
       {isPaused && (
         <div className="animate-fade-in-up glass-card rounded-2xl border-warning/20 p-4" style={{ opacity: 0 }}>
