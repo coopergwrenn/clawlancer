@@ -301,6 +301,38 @@ export async function POST(req: NextRequest) {
         console.error("[Confirm] WLD subscription upsert failed (non-fatal):", subErr);
       }
 
+      // Reactivate suspended VM — credits are added, subscription is active,
+      // restart the gateway so the user can chat immediately.
+      // This mirrors the Stripe webhook's reactivation logic.
+      const { data: vmDetail } = await supabase()
+        .from("instaclaw_vms")
+        .select("id, health_status")
+        .eq("id", agent.id)
+        .single();
+
+      if (vmDetail?.health_status === "suspended") {
+        await supabase()
+          .from("instaclaw_vms")
+          .update({
+            health_status: "unknown",
+            suspended_at: null,
+            last_health_check: new Date().toISOString(),
+          })
+          .eq("id", agent.id);
+
+        // Restart gateway via the main backend (best-effort, don't block)
+        try {
+          await proxyToInstaclaw("/api/vm/configure", session.userId, {
+            method: "POST",
+            body: JSON.stringify({ userId: session.userId, force: true }),
+          });
+        } catch {
+          // Gateway will be restarted by health cron on next cycle
+        }
+
+        console.log("[Confirm] Reactivated suspended VM:", agent.id);
+      }
+
       // NOW mark delegation confirmed (credits were successfully added)
       await supabase()
         .from("instaclaw_wld_delegations")
