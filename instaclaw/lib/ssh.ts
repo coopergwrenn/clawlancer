@@ -1352,7 +1352,7 @@ def restart_gateway():
     try:
         if os.path.exists(lock_path):
             age = time.time() - os.path.getmtime(lock_path)
-            if age < 120:
+            if age < 300:
                 return "restart_skipped(lock_active)"
     except Exception:
         pass
