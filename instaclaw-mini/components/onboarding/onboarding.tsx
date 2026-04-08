@@ -431,11 +431,22 @@ export default function Onboarding() {
         await MiniKit.commandsAsync.requestPermission({ permission: "notifications" as never });
       } catch { /* user declined */ }
 
-      // 4. Provision: confirm delegation + assign VM + fire configure (one endpoint)
-      // This matches the web app's checkout/verify pattern:
-      //   - Delegation confirm is SYNCHRONOUS (not fire-and-forget)
-      //   - VM assignment is SYNCHRONOUS (fast, <10s)
-      //   - Configure is fire-and-forget (60-90s in background)
+      // 4. Confirm delegation (adds credits) — called from client because
+      //    server-side relative URL fetch doesn't work in Vercel serverless.
+      try {
+        const confirmRes = await fetch("/api/delegate/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reference, transactionId: txId }),
+        });
+        if (!confirmRes.ok) {
+          console.warn("[Onboarding] Delegation confirm returned:", confirmRes.status);
+        }
+      } catch (confirmErr) {
+        console.warn("[Onboarding] Delegation confirm error (non-fatal):", confirmErr);
+      }
+
+      // 5. Provision: assign VM + fire configure
       try {
         const provRes = await fetch("/api/agent/provision", {
           method: "POST",

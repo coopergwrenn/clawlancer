@@ -35,7 +35,6 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabase();
   const results = {
-    wldExpired: 0,
     pastDueHibernated: 0,
     noSubHibernated: 0,
     remindersSent: 0,
@@ -44,34 +43,8 @@ export async function GET(req: NextRequest) {
     gatewayStopFailed: 0,
   };
 
-  // ── Pre-pass: expire WLD subscriptions past their period end ──
-  try {
-    const now = new Date().toISOString();
-    const { data: expiredWld } = await supabase
-      .from("instaclaw_subscriptions")
-      .select("user_id")
-      .like("stripe_subscription_id", "wld_%")
-      .eq("status", "active")
-      .lt("current_period_end", now);
-
-    if (expiredWld?.length) {
-      await supabase
-        .from("instaclaw_subscriptions")
-        .update({ status: "canceled", payment_status: "current" })
-        .like("stripe_subscription_id", "wld_%")
-        .eq("status", "active")
-        .lt("current_period_end", now);
-
-      results.wldExpired = expiredWld.length;
-      logger.info("Expired WLD subscriptions canceled", {
-        route: "cron/suspend-check",
-        count: expiredWld.length,
-      });
-    }
-  } catch (err) {
-    logger.error("WLD expiry pre-pass failed", { route: "cron/suspend-check", error: String(err) });
-    results.errors++;
-  }
+  // NOTE: WLD users no longer get subscription records. They run on credits only.
+  // The hibernate check below skips VMs with credits > 0, which protects WLD users.
 
   // Helper: hibernate a VM (gateway stop + warm "sleeping" status)
   async function hibernateVM(

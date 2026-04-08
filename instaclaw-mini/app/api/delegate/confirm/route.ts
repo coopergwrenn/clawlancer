@@ -3,82 +3,9 @@ import { requireSession } from "@/lib/auth";
 import { supabase, getAgentStatus } from "@/lib/supabase";
 import { proxyToInstaclaw } from "@/lib/api";
 
-/**
- * Create or extend a subscription record for WLD delegation users.
- *
- * Why: The suspend-check cron suspends VMs with no active subscription + 0 credits.
- * WLD users pay via on-chain delegation, not Stripe, so they have no subscription
- * record. Without this, every WLD user gets suspended once they burn through credits.
- *
- * Behavior:
- * - If no subscription exists → create one (tier=starter, status=active, period=delegation expiry)
- * - If WLD subscription exists (stripe_subscription_id starts with "wld_") → extend period
- * - If Stripe subscription exists → DON'T touch it (Stripe is the source of truth)
- * - If subscription was canceled → reactivate with new period
- *
- * The suspend-check cron has a matching pre-pass that cancels WLD subscriptions
- * past their period end, so expired WLD users get the normal suspension flow.
- */
-async function ensureWLDSubscription(
-  userId: string,
-  delegation: { credits_granted: number; expires_at: string }
-) {
-  // Map credit amounts to subscription tiers (controls daily free message limit)
-  // starter = 600/day, pro = 1000/day
-  const tier = delegation.credits_granted >= 2000 ? "pro" : "starter";
-  const delegationEnd = new Date(delegation.expires_at);
-
-  const { data: existing } = await supabase()
-    .from("instaclaw_subscriptions")
-    .select("id, status, stripe_subscription_id, current_period_end")
-    .eq("user_id", userId)
-    .single();
-
-  if (existing) {
-    // Don't overwrite a real Stripe subscription — Stripe is the source of truth
-    const isWLD = !existing.stripe_subscription_id || existing.stripe_subscription_id.startsWith("wld_");
-    if (!isWLD) {
-      console.log("[Confirm] User has Stripe subscription — not creating WLD sub");
-      return;
-    }
-
-    // Extend the WLD subscription period
-    // If currently active and not expired, add the new duration on top
-    // If expired or canceled, start fresh from now
-    const currentEnd = existing.current_period_end ? new Date(existing.current_period_end) : new Date(0);
-    const isExpired = currentEnd < new Date();
-    const newEnd = isExpired ? delegationEnd : new Date(currentEnd.getTime() + (delegationEnd.getTime() - Date.now()));
-
-    await supabase()
-      .from("instaclaw_subscriptions")
-      .update({
-        status: "active",
-        payment_status: "current",
-        tier,
-        current_period_end: newEnd.toISOString(),
-      })
-      .eq("user_id", userId);
-
-    console.log("[Confirm] WLD subscription extended:", { userId, tier, newEnd: newEnd.toISOString() });
-  } else {
-    // Create new WLD subscription record
-    // stripe_subscription_id starts with "wld_" so we can identify WLD subs
-    // in the suspend-check expiry pre-pass
-    await supabase()
-      .from("instaclaw_subscriptions")
-      .insert({
-        user_id: userId,
-        stripe_customer_id: `wld_${userId.slice(0, 8)}`,
-        stripe_subscription_id: `wld_${Date.now()}`,
-        tier,
-        status: "active",
-        payment_status: "current",
-        current_period_end: delegationEnd.toISOString(),
-      });
-
-    console.log("[Confirm] WLD subscription created:", { userId, tier, periodEnd: delegationEnd.toISOString() });
-  }
-}
+// WLD users get CREDITS ONLY — no subscription. Subscriptions are created
+// only when users sign up for a Stripe plan via the upsell flow.
+// The hibernate cron checks credits > 0 to keep WLD users alive.
 
 interface TxPollResult {
   status: string;
@@ -293,15 +220,7 @@ export async function POST(req: NextRequest) {
 
       console.log("[Confirm] Credits added:", delegation.credits_granted, "to vm:", agent.id, "new balance:", newBalance);
 
-      // Create/extend subscription so suspend-check doesn't kill WLD users
-      try {
-        await ensureWLDSubscription(session.userId, delegation);
-      } catch (subErr) {
-        // Non-fatal — user has credits, subscription is a safety net
-        console.error("[Confirm] WLD subscription upsert failed (non-fatal):", subErr);
-      }
-
-      // Reactivate suspended VM — credits are added, subscription is active,
+      // Reactivate hibernating/suspended VM — credits are added,
       // restart the gateway so the user can chat immediately.
       // This mirrors the Stripe webhook's reactivation logic.
       const { data: vmDetail } = await supabase()
@@ -381,13 +300,6 @@ export async function POST(req: NextRequest) {
         } catch (configErr) {
           console.error("[Confirm] Configure proxy error:", configErr);
           // VM is assigned but not configured — health check will retry
-        }
-
-        // Create/extend subscription so suspend-check doesn't kill WLD users
-        try {
-          await ensureWLDSubscription(session.userId, delegation);
-        } catch (subErr) {
-          console.error("[Confirm] WLD subscription upsert failed (non-fatal):", subErr);
         }
 
         // Mark delegation confirmed with vm_id

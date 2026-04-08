@@ -25,29 +25,11 @@ export async function POST(req: Request) {
     const session = await requireSession();
     const body = await req.json().catch(() => ({}));
 
-    // ── Step 1: Confirm WLD delegation (synchronous) ──
-    if (body.reference && body.transactionId) {
-      try {
-        const confirmRes = await fetch(
-          `${process.env.NEXT_PUBLIC_BASE_URL || ""}/api/delegate/confirm`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reference: body.reference,
-              transactionId: body.transactionId,
-            }),
-          }
-        );
-        if (!confirmRes.ok) {
-          console.warn("[provision] Delegation confirm failed:", confirmRes.status);
-        }
-      } catch (err) {
-        console.warn("[provision] Delegation confirm error:", err);
-      }
-    }
+    // NOTE: Delegation confirm is now called from the CLIENT (onboarding.tsx)
+    // before this endpoint. Server-side relative URL fetch doesn't work
+    // in Vercel serverless functions.
 
-    // ── Step 2: VERIFY payment exists (GATE — no payment = no VM) ──
+    // ── Step 1: VERIFY payment exists (GATE — no payment = no VM) ──
     //
     // Two paths:
     // A) ONBOARDING PATH (body has reference + transactionId):
