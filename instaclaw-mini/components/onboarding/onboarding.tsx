@@ -114,20 +114,18 @@ function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direct
   const repeated = [...items, ...items, ...items, ...items];
 
   return (
-    <div className="overflow-hidden w-full" style={{ paddingTop: "clamp(2px, 0.4vh, 4px)", paddingBottom: "clamp(2px, 0.4vh, 4px)" }}>
-      <div className={`flex w-max ${cls}`} style={{ gap: "clamp(6px, 2vw, 12px)" }}>
+    <div className="overflow-hidden w-full py-1">
+      <div className={`flex gap-3 w-max ${cls}`}>
         {repeated.map((t, i) => (
           <div
             key={`${t.name}-${i}`}
-            className="shrink-0 rounded-2xl"
-            style={{ ...testimonialCardStyle, width: "clamp(180px, 50vw, 220px)", padding: "clamp(8px, 2vw, 14px)" }}
+            className="w-[220px] shrink-0 rounded-2xl p-3.5"
+            style={testimonialCardStyle}
           >
-            <div className="flex items-center gap-2" style={{ marginBottom: "clamp(4px, 1vw, 8px)" }}>
+            <div className="mb-2 flex items-center gap-2.5">
               <div
-                className="relative shrink-0 items-center justify-center overflow-hidden rounded-full flex"
+                className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
                 style={{
-                  width: "clamp(24px, 6vw, 32px)",
-                  height: "clamp(24px, 6vw, 32px)",
                   background: `radial-gradient(circle at 35% 35%, ${t.bg}dd, ${t.bg}88 40%, rgba(0,0,0,0.2) 100%)`,
                   boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.12)",
                 }}
@@ -138,11 +136,11 @@ function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direct
                 </div>
               </div>
               <div>
-                <p className="font-semibold" style={{ color: "#333334", fontSize: "clamp(9px, 2.5vw, 11px)" }}>{t.name}</p>
-                <p style={{ color: "#6b6b6b", fontSize: "clamp(8px, 2.2vw, 10px)" }}>{t.role}</p>
+                <p className="text-[11px] font-semibold" style={{ color: "#333334" }}>{t.name}</p>
+                <p className="text-[10px]" style={{ color: "#6b6b6b" }}>{t.role}</p>
               </div>
             </div>
-            <p className="leading-[1.45]" style={{ color: "#333334", fontSize: "clamp(9px, 2.5vw, 11px)" }}>
+            <p className="text-[11px] leading-[1.5]" style={{ color: "#333334" }}>
               &ldquo;{t.quote}&rdquo;
             </p>
           </div>
@@ -233,22 +231,19 @@ export default function Onboarding() {
   const [email, setEmail] = useState("");
   const [walletPayload, setWalletPayload] = useState<Record<string, unknown> | null>(null);
 
-  // Scale the middle content section proportionally to viewport height.
-  // Designed at 932px (Pro Max). On smaller screens, everything shrinks together.
-  // World App header takes ~50px, so effective height = viewport - 50.
-  const [contentScale, setContentScale] = useState(1);
+  // Proportional zoom: the design is built for iPhone Pro Max (430×932).
+  // On smaller phones, zoom < 1 scales everything identically — same layout,
+  // same proportions, just smaller. CSS zoom affects layout (unlike transform: scale).
+  const [pageZoom, setPageZoom] = useState(1);
   useEffect(() => {
-    function calcScale() {
-      const available = window.innerHeight - 50; // World App header
-      // At 882px (Pro Max - header): scale = 1.0
-      // At 617px (SE - header): scale ≈ 0.7
-      // Linear interpolation clamped between 0.65 and 1.0
-      const s = Math.min(1, Math.max(0.65, available / 882));
-      setContentScale(s);
+    function calcZoom() {
+      const hZoom = window.innerHeight / 932;
+      const wZoom = window.innerWidth / 430;
+      setPageZoom(Math.min(1, Math.min(hZoom, wZoom)));
     }
-    calcScale();
-    window.addEventListener("resize", calcScale);
-    return () => window.removeEventListener("resize", calcScale);
+    calcZoom();
+    window.addEventListener("resize", calcZoom);
+    return () => window.removeEventListener("resize", calcZoom);
   }, []);
 
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -631,41 +626,41 @@ export default function Onboarding() {
 
   // ── Render ──
   return (
-    <div className="h-[100dvh] flex flex-col onboarding-light">
+    <div className="flex flex-col onboarding-light" style={{ height: `${100 / pageZoom}dvh`, zoom: pageZoom }}>
       {/* ── Welcome ── */}
       {step === "welcome" && (
         <>
-          <div className="flex-1 flex flex-col animate-fade-in-up" style={{ opacity: 0, overflow: "hidden" }}>
-            {/* Top: title group — scales to fit any screen */}
-            <div className="flex flex-col items-center px-6" style={{ paddingTop: "clamp(8px, 3vh, 48px)" }}>
+          <div className="flex-1 flex flex-col animate-fade-in-up" style={{ opacity: 0 }}>
+            {/* Top: title group */}
+            <div className="flex flex-col items-center px-6 pt-[6vh]">
               <SpotsOpenPill />
-              <h1 className="text-center tracking-[-0.5px] leading-[1.05]" style={{ ...serif, fontSize: "clamp(28px, 7vw, 42px)" }}>
+              <h1 className="text-center text-[42px] tracking-[-0.5px] leading-[1.05]" style={serif}>
                 Claim your free
                 <br />
-                <span className="shimmer-text" style={{ ...serif, fontSize: "clamp(38px, 10vw, 64px)" }}>AI agent</span>
+                <span className="shimmer-text text-[64px]" style={serif}>AI agent</span>
               </h1>
-              <p className="max-w-[340px] text-center leading-relaxed" style={{ color: "#6b6b6b", fontSize: "clamp(11px, 3.2vw, 14px)", marginTop: "clamp(4px, 1vh, 12px)" }}>
+              <p className="mt-3 max-w-[340px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
                 Verify as a real human and your personal AI agent is ready in seconds. Powered by your WLD grant.
               </p>
             </div>
 
-            {/* Middle: marquees + testimonials — scale proportionally to viewport */}
-            <div className="flex-1 flex flex-col justify-center" style={{ minHeight: 0, gap: "clamp(2px, 0.8vh, 12px)", transform: `scale(${contentScale})`, transformOrigin: "center center" }}>
+            {/* Middle: marquees — flex-grow centers them in remaining space */}
+            <div className="flex-1 flex flex-col justify-center">
               {/* Use-case pills */}
               <div className="w-screen overflow-hidden relative">
                 <div className="absolute left-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
                 <div className="absolute right-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to left, #f8f7f4, transparent)" }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "clamp(2px, 0.6vh, 6px)" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <MarqueeRow items={MARQUEE_ROW_1} direction="left" />
                   <MarqueeRow items={MARQUEE_ROW_2} direction="right" />
                 </div>
               </div>
 
               {/* Testimonial cards */}
-              <div className="w-screen overflow-hidden relative">
+              <div className="mt-4 w-screen overflow-hidden relative">
                 <div className="absolute left-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
                 <div className="absolute right-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to left, #f8f7f4, transparent)" }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "clamp(2px, 0.6vh, 8px)" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   <TestimonialMarquee items={TESTIMONIALS_ROW_1} direction="left" />
                   <TestimonialMarquee items={TESTIMONIALS_ROW_2} direction="right" />
                 </div>
@@ -673,21 +668,21 @@ export default function Onboarding() {
             </div>
 
             {error && (
-              <div className="shrink-0 mx-6 mb-1 rounded-xl px-4 py-2" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                <p className="text-xs text-center" style={{ color: "#ef4444" }}>{error}</p>
+              <div className="mx-6 mb-2 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <p className="text-sm text-center" style={{ color: "#ef4444" }}>{error}</p>
               </div>
             )}
           </div>
 
-          {/* CTA — pinned to bottom, never overflows */}
+          {/* CTA — pinned to bottom */}
           <div
-            className="shrink-0 px-7 flex flex-col items-center"
-            style={{ paddingTop: "clamp(8px, 1.5vh, 16px)", paddingBottom: "calc(max(env(safe-area-inset-bottom, 12px), 12px) + 4px)", gap: "clamp(4px, 1vh, 12px)" }}
+            className="px-7 pt-4 flex flex-col items-center gap-3"
+            style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 12px)" }}
           >
             <button
               onClick={handleGetAgent}
-              className="btn-primary w-full rounded-[28px] font-semibold"
-              style={{ height: "clamp(48px, 7vh, 56px)", fontSize: "clamp(14px, 3.8vw, 16px)" }}
+              className="btn-primary w-full rounded-[28px] text-base font-semibold"
+              style={{ height: "56px" }}
             >
               Claim my agent
             </button>
