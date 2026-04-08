@@ -1225,7 +1225,15 @@ else:
       // Skip if user has any active/trialing/past_due subscription
       if (userSub && userSub.status !== "canceled") continue;
 
-      // No subscription or canceled — suspend
+      // Skip if user still has credits (they paid, just canceled sub)
+      const { data: vmCredits } = await supabase
+        .from("instaclaw_vms")
+        .select("credit_balance")
+        .eq("id", vm.id)
+        .single();
+      if ((vmCredits?.credit_balance ?? 0) > 0) continue;
+
+      // No subscription or canceled, AND no credits — suspend
       try {
         const { data: fullVm } = await supabase
           .from("instaclaw_vms")
