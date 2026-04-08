@@ -151,7 +151,7 @@ function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direct
 }
 
 function SpotsOpenPill() {
-  const [spots, setSpots] = useState<number>(62); // hardcoded default, updated by API
+  const [spots, setSpots] = useState<number | null>(null); // null until API responds
 
   useEffect(() => {
     fetch("/api/spots")
@@ -159,6 +159,8 @@ function SpotsOpenPill() {
       .then((d) => { if (typeof d.available === "number") setSpots(d.available); })
       .catch(() => {}); // keep hardcoded default
   }, []);
+
+  if (spots === null) return null; // Don't render until API responds
 
   const orbBg = spots >= 10
     ? "radial-gradient(circle at 35% 30%, rgba(218,119,86,0.7), rgba(218,119,86,0.4) 50%, rgba(180,70,40,0.75) 100%)"

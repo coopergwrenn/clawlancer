@@ -17,6 +17,15 @@ export async function GET() {
     // upstream unreachable
   }
 
-  // Fallback
-  return NextResponse.json({ available: 62 });
+  // Fallback — query Supabase directly if instaclaw.io is unreachable
+  try {
+    const { supabase } = await import("@/lib/supabase");
+    const { count } = await supabase()
+      .from("instaclaw_vms")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "ready");
+    return NextResponse.json({ available: count ?? 0 });
+  } catch {
+    return NextResponse.json({ available: 0 });
+  }
 }
