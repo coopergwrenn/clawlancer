@@ -310,7 +310,7 @@ export async function POST(req: NextRequest) {
         .eq("id", agent.id)
         .single();
 
-      if (vmDetail?.health_status === "suspended") {
+      if (vmDetail?.health_status === "suspended" || vmDetail?.health_status === "hibernating") {
         await supabase()
           .from("instaclaw_vms")
           .update({
@@ -330,7 +330,7 @@ export async function POST(req: NextRequest) {
           // Gateway will be restarted by health cron on next cycle
         }
 
-        console.log("[Confirm] Reactivated suspended VM:", agent.id);
+        console.log("[Confirm] Woke up VM from", vmDetail.health_status, ":", agent.id);
       }
 
       // NOW mark delegation confirmed (credits were successfully added)

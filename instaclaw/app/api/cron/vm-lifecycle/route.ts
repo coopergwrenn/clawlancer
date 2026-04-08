@@ -31,6 +31,7 @@ export const maxDuration = 300;
  */
 
 const MAX_DELETIONS_PER_CYCLE = 20;
+const HIBERNATE_TO_SUSPEND_DAYS = 14; // After 14 days hibernating → suspend (deallocate VM)
 const CANCELED_GRACE_DAYS = 3;
 const PAST_DUE_GRACE_DAYS = 7;
 const NO_SUB_GRACE_DAYS = 3;
@@ -77,6 +78,53 @@ export async function GET(req: NextRequest) {
   };
 
   let totalDeletions = 0;
+  let hibernateToSuspend = 0;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PASS 0: Transition hibernating VMs → suspended after 14 days
+  // This is when we actually save money — VM gets deallocated from Linode.
+  // ═══════════════════════════════════════════════════════════════════
+  try {
+    const { data: hibernatingVms } = await supabase
+      .from("instaclaw_vms")
+      .select("id, name, assigned_to, suspended_at, credit_balance")
+      .eq("health_status", "hibernating")
+      .not("suspended_at", "is", null);
+
+    for (const vm of hibernatingVms ?? []) {
+      const daysHibernating = (Date.now() - new Date(vm.suspended_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysHibernating < HIBERNATE_TO_SUSPEND_DAYS) continue;
+
+      // Safety: skip if user somehow got credits back
+      if ((vm.credit_balance ?? 0) > 0) continue;
+
+      // Safety: skip if subscription reactivated
+      if (vm.assigned_to) {
+        const { data: sub } = await supabase
+          .from("instaclaw_subscriptions")
+          .select("status")
+          .eq("user_id", vm.assigned_to)
+          .single();
+        if (sub?.status === "active" || sub?.status === "trialing") continue;
+      }
+
+      // Transition: hibernating → suspended
+      await supabase
+        .from("instaclaw_vms")
+        .update({ health_status: "suspended" })
+        .eq("id", vm.id);
+
+      hibernateToSuspend++;
+      logger.info("VM transitioned from hibernating to suspended", {
+        route: "cron/vm-lifecycle",
+        vmId: vm.id,
+        vmName: vm.name,
+        daysHibernating: Math.floor(daysHibernating),
+      });
+    }
+  } catch (err) {
+    report.errors.push(`Hibernate→suspend pass failed: ${String(err)}`);
+  }
 
   try {
     // ═══════════════════════════════════════════════════════════════════
@@ -411,7 +459,7 @@ export async function GET(req: NextRequest) {
     report.errors.push(String(err));
   }
 
-  return NextResponse.json(report);
+  return NextResponse.json({ ...report, hibernateToSuspend });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

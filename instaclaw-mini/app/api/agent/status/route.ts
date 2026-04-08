@@ -41,6 +41,15 @@ export async function GET() {
       });
     }
 
+    if (vm.health_status === "hibernating") {
+      return NextResponse.json({
+        status: "hibernating",
+        vmId: vm.id,
+        credits: vm.credit_balance,
+        agentName: vm.agent_name,
+      });
+    }
+
     if (vm.health_status !== "healthy") {
       return NextResponse.json({
         status: "starting",

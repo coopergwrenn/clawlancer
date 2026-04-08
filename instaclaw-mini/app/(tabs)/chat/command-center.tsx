@@ -206,11 +206,13 @@ export default function CommandCenter({
   userId,
   telegramBotUsername,
   isOnline,
+  isHibernating,
   xmtpAddress,
 }: {
   userId: string;
   telegramBotUsername: string | null;
   isOnline: boolean;
+  isHibernating?: boolean;
   xmtpAddress: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("tasks");
@@ -611,24 +613,34 @@ export default function CommandCenter({
     <div className="relative flex h-full flex-col overflow-hidden" style={{ background: "transparent" }}>
       {/* ── Pinned header section (shrink-0, never scrolls) ── */}
       <div className="shrink-0">
-      {/* Offline / starting banner */}
+      {/* Offline / hibernating / starting banner */}
       {!isOnline && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-1">
           <div className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2.5" style={{
-            background: "linear-gradient(145deg, rgba(245,158,11,0.08), rgba(245,158,11,0.03))",
-            border: "1px solid rgba(245,158,11,0.15)",
+            background: isHibernating
+              ? "linear-gradient(145deg, rgba(139,92,246,0.08), rgba(139,92,246,0.03))"
+              : "linear-gradient(145deg, rgba(245,158,11,0.08), rgba(245,158,11,0.03))",
+            border: isHibernating
+              ? "1px solid rgba(139,92,246,0.15)"
+              : "1px solid rgba(245,158,11,0.15)",
           }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", boxShadow: "0 0 6px rgba(245,158,11,0.4)", animation: "pulse-dot 2s ease-in-out infinite", flexShrink: 0 }} />
-            <p className="flex-1 text-[11px]" style={{ color: "#d4a054" }}>
-              Your agent is starting up...
+            {isHibernating ? (
+              <span style={{ fontSize: 14, flexShrink: 0 }}>&#x1F4A4;</span>
+            ) : (
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", boxShadow: "0 0 6px rgba(245,158,11,0.4)", animation: "pulse-dot 2s ease-in-out infinite", flexShrink: 0 }} />
+            )}
+            <p className="flex-1 text-[11px]" style={{ color: isHibernating ? "#a78bfa" : "#d4a054" }}>
+              {isHibernating ? "Your agent is sleeping. Add credits to wake it up." : "Your agent is starting up..."}
             </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="text-[10px] font-medium px-2 py-0.5 rounded-md"
-              style={{ color: "#f59e0b", background: "rgba(245,158,11,0.1)" }}
-            >
-              Retry
-            </button>
+            {!isHibernating && (
+              <button
+                onClick={() => window.location.reload()}
+                className="text-[10px] font-medium px-2 py-0.5 rounded-md"
+                style={{ color: "#f59e0b", background: "rgba(245,158,11,0.1)" }}
+              >
+                Retry
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -95,6 +95,7 @@ export default function AgentDashboard({
   const nameInputRef = useRef<HTMLInputElement>(null);
   // Subscribers with daily limits aren't paused even at 0 credit_balance
   const isPaused = agent.credit_balance <= 0 && !isSubscribed;
+  const isHibernating = agent.health_status === "hibernating";
 
   // Check session dismissal
   useEffect(() => {
@@ -301,8 +302,51 @@ export default function AgentDashboard({
         <AgentBookOnboardModal onComplete={() => setShowAgentBookModal(false)} />
       )}
 
+      {/* ── Hibernation Banner ── */}
+      {isHibernating && (
+        <div className="animate-fade-in-up glass-card rounded-2xl p-5" style={{ opacity: 0, border: "1px solid rgba(139,92,246,0.15)" }}>
+          <div className="flex flex-col items-center text-center gap-3">
+            <div style={{
+              width: 56, height: 56, borderRadius: 16,
+              background: "linear-gradient(135deg, rgba(139,92,246,0.12), rgba(139,92,246,0.04))",
+              border: "1px solid rgba(139,92,246,0.15)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 28,
+            }}>
+              <span>&#x1F4A4;</span>
+            </div>
+            <div>
+              <p className="text-base font-bold mb-1">Your agent is sleeping</p>
+              <p className="text-[12px]" style={{ color: "#888", lineHeight: 1.6 }}>
+                It ran out of credits and is taking a nap. Add credits to wake it up instantly — all your data is safe.
+              </p>
+            </div>
+            <button
+              onClick={handleAddCredits}
+              disabled={paymentProcessing}
+              className="w-full rounded-xl py-3 text-sm font-bold transition-all active:scale-[0.97] disabled:opacity-50"
+              style={{
+                background: "linear-gradient(170deg, #8b5cf6, #7c3aed)",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.12)",
+                boxShadow: "0 4px 16px rgba(139,92,246,0.35), inset 0 1px 0 rgba(255,255,255,0.2)",
+              }}
+            >
+              {paymentPending ? "Confirming..." : paymentProcessing ? "Processing..." : "Wake up — 25 WLD"}
+            </button>
+            <button
+              onClick={handleSubscribe}
+              className="text-[12px] font-medium"
+              style={{ color: "#8b5cf6", background: "none", border: "none" }}
+            >
+              Or subscribe for $29/mo
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Credits Exhausted Banner ── */}
-      {isPaused && (
+      {isPaused && !isHibernating && (
         <div className="animate-fade-in-up glass-card rounded-2xl border-warning/20 p-4" style={{ opacity: 0 }}>
           <div className="mb-3 flex items-center gap-2">
             <span className="status-dot-paused h-2 w-2 rounded-full" />
