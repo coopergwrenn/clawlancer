@@ -114,8 +114,8 @@ function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direct
   const repeated = [...items, ...items, ...items, ...items];
 
   return (
-    <div className="overflow-hidden w-full py-1">
-      <div className={`flex gap-3 w-max ${cls}`}>
+    <div className="overflow-hidden w-full" style={{ paddingTop: "clamp(2px, 0.4vh, 4px)", paddingBottom: "clamp(2px, 0.4vh, 4px)" }}>
+      <div className={`flex w-max ${cls}`} style={{ gap: "clamp(6px, 2vw, 12px)" }}>
         {repeated.map((t, i) => (
           <div
             key={`${t.name}-${i}`}
@@ -232,6 +232,24 @@ export default function Onboarding() {
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [walletPayload, setWalletPayload] = useState<Record<string, unknown> | null>(null);
+
+  // Scale the middle content section proportionally to viewport height.
+  // Designed at 932px (Pro Max). On smaller screens, everything shrinks together.
+  // World App header takes ~50px, so effective height = viewport - 50.
+  const [contentScale, setContentScale] = useState(1);
+  useEffect(() => {
+    function calcScale() {
+      const available = window.innerHeight - 50; // World App header
+      // At 882px (Pro Max - header): scale = 1.0
+      // At 617px (SE - header): scale ≈ 0.7
+      // Linear interpolation clamped between 0.65 and 1.0
+      const s = Math.min(1, Math.max(0.65, available / 882));
+      setContentScale(s);
+    }
+    calcScale();
+    window.addEventListener("resize", calcScale);
+    return () => window.removeEventListener("resize", calcScale);
+  }, []);
 
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -631,13 +649,13 @@ export default function Onboarding() {
               </p>
             </div>
 
-            {/* Middle: marquees — flex-grow fills remaining space */}
-            <div className="flex-1 flex flex-col justify-center" style={{ minHeight: 0, gap: "clamp(4px, 1vh, 16px)" }}>
+            {/* Middle: marquees + testimonials — scale proportionally to viewport */}
+            <div className="flex-1 flex flex-col justify-center" style={{ minHeight: 0, gap: "clamp(2px, 0.8vh, 12px)", transform: `scale(${contentScale})`, transformOrigin: "center center" }}>
               {/* Use-case pills */}
               <div className="w-screen overflow-hidden relative">
                 <div className="absolute left-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
                 <div className="absolute right-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to left, #f8f7f4, transparent)" }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "clamp(2px, 0.6vh, 6px)" }}>
                   <MarqueeRow items={MARQUEE_ROW_1} direction="left" />
                   <MarqueeRow items={MARQUEE_ROW_2} direction="right" />
                 </div>
@@ -647,7 +665,7 @@ export default function Onboarding() {
               <div className="w-screen overflow-hidden relative">
                 <div className="absolute left-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
                 <div className="absolute right-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to left, #f8f7f4, transparent)" }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "clamp(4px, 1vh, 8px)" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "clamp(2px, 0.6vh, 8px)" }}>
                   <TestimonialMarquee items={TESTIMONIALS_ROW_1} direction="left" />
                   <TestimonialMarquee items={TESTIMONIALS_ROW_2} direction="right" />
                 </div>
