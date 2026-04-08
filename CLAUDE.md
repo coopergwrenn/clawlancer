@@ -187,7 +187,15 @@ sudo rm -rf /var/log/*.gz /var/log/*.1 /var/log/*.old
 | 12 | SOUL.md has memory filing system | `grep -q MEMORY_FILING_SYSTEM ~/.openclaw/workspace/SOUL.md` |
 | 13 | memory/session-log.md exists | `test -f ~/.openclaw/workspace/memory/session-log.md` |
 | 14 | memory/active-tasks.md exists | `test -f ~/.openclaw/workspace/memory/active-tasks.md` |
-| 15 | Memory index cron installed | `crontab -l \| grep -q "openclaw memory index"` |
+| 15a | Cron: strip-thinking.py | `crontab -l \| grep -q "strip-thinking.py"` |
+| 15b | Cron: auto-approve-pairing.py | `crontab -l \| grep -q "auto-approve-pairing.py"` |
+| 15c | Cron: vm-watchdog.py | `crontab -l \| grep -q "vm-watchdog.py"` |
+| 15d | Cron: push-heartbeat.sh | `crontab -l \| grep -q "push-heartbeat.sh"` |
+| 15e | Cron: silence-watchdog.py | `crontab -l \| grep -q "silence-watchdog.py"` |
+| 15f | Cron: openclaw memory index | `crontab -l \| grep -q "openclaw memory index"` |
+| 15g | Cron: SHM cleanup | `crontab -l \| grep -q "SHM_CLEANUP"` |
+
+**CRITICAL: ALL 7 crons (15a-15g) must be present.** Missing crons caused a P0 incident on 2026-04-08 where sessions grew to 4MB+ and burned credits 20x faster (see commit 68e9e4c). The reconciler does NOT catch missing crons on freshly configured VMs — configureOpenClaw() now installs them, but they must also be in the snapshot as defense-in-depth.
 
 **8. Check disk usage — MUST be under 5.9GB:**
 ```bash

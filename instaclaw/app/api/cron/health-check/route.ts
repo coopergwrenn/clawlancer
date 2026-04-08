@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at, last_gateway_restart, credit_balance")
     .eq("status", "assigned")
     .neq("health_status", "suspended")
+    .neq("health_status", "hibernating")
     .not("gateway_url", "is", null);
 
   if (!vms?.length) {
@@ -1205,17 +1206,18 @@ else:
     .select("id, assigned_to, assigned_at, health_status, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, name, ssh_fail_count, health_fail_count, config_version, api_mode, proxy_401_count")
     .eq("status", "assigned")
     .not("assigned_to", "is", null)
-    .neq("health_status", "suspended");
+    .neq("health_status", "suspended")
+    .neq("health_status", "hibernating");
 
   if (assignedVms?.length) {
     for (const vm of assignedVms) {
-      // Skip VMs assigned less than 3 days ago (mid-checkout grace)
+      // Skip VMs assigned less than 1 day ago (24h grace for WLD users)
       if (vm.assigned_at) {
-        const daysSinceAssign = (Date.now() - new Date(vm.assigned_at).getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSinceAssign < NO_SUB_GRACE_DAYS) continue;
+        const hoursSinceAssign = (Date.now() - new Date(vm.assigned_at).getTime()) / (1000 * 60 * 60);
+        if (hoursSinceAssign < 24) continue;
       }
 
-      // Check if user has an active or past_due subscription (both are "valid enough" — past_due has its own 7-day handler above)
+      // Check if user has an active or past_due subscription
       const { data: userSub } = await supabase
         .from("instaclaw_subscriptions")
         .select("status")
@@ -1225,7 +1227,7 @@ else:
       // Skip if user has any active/trialing/past_due subscription
       if (userSub && userSub.status !== "canceled") continue;
 
-      // Skip if user still has credits (they paid, just canceled sub)
+      // Skip if user still has credits
       const { data: vmCredits } = await supabase
         .from("instaclaw_vms")
         .select("credit_balance")
@@ -1233,7 +1235,7 @@ else:
         .single();
       if ((vmCredits?.credit_balance ?? 0) > 0) continue;
 
-      // No subscription or canceled, AND no credits — suspend
+      // No subscription or canceled, AND no credits — hibernate (not suspend)
       try {
         const { data: fullVm } = await supabase
           .from("instaclaw_vms")
@@ -1248,30 +1250,11 @@ else:
         await supabase
           .from("instaclaw_vms")
           .update({
-            health_status: "suspended",
+            health_status: "hibernating",
             suspended_at: new Date().toISOString(),
             last_health_check: new Date().toISOString(),
           })
           .eq("id", vm.id);
-
-        // Send suspension email
-        const { data: user } = await supabase
-          .from("instaclaw_users")
-          .select("email")
-          .eq("id", vm.assigned_to)
-          .single();
-
-        if (user?.email) {
-          try {
-            await sendSuspendedEmail(user.email);
-          } catch (emailErr) {
-            logger.error("Failed to send no-sub suspended email", {
-              error: String(emailErr),
-              route: "cron/health-check",
-              userId: vm.assigned_to,
-            });
-          }
-        }
 
         noSubSuspended++;
         logger.info("VM suspended — no active subscription", {
@@ -1419,6 +1402,65 @@ else:
   // MEMORY.md is now a create_if_missing entry in VM_MANIFEST.files, deployed
   // by reconcileVM() during the config audit pass above.
   const memoryFilesCreated = 0;
+
+  // ========================================================================
+  // Fifth-b pass: Periodic cron audit (defense-in-depth)
+  // The reconciler only runs on stale-version VMs. Snapshot VMs configured by
+  // configureOpenClaw() get config_version=current immediately, so the reconciler
+  // never runs stepCronJobs() on them. This pass checks 5 random VMs per cycle
+  // for missing crons, regardless of config_version. Over ~1 hour, the entire
+  // fleet is covered. P0 fix for the 2026-04-08 missing crons incident.
+  // ========================================================================
+  let cronAuditChecked = 0;
+  let cronAuditFixed = 0;
+  const CRON_AUDIT_BATCH = 5;
+
+  // Pick 5 random SSH-alive VMs (not just stale ones)
+  const cronAuditPool = sshAliveVms
+    .sort(() => Math.random() - 0.5)
+    .slice(0, CRON_AUDIT_BATCH);
+
+  for (const vm of cronAuditPool) {
+    try {
+      const ssh = await connectSSH(vm);
+      try {
+        // Count how many of the 6 required cron markers are present
+        const markers = VM_MANIFEST.cronJobs.map((j) => j.marker);
+        const checkCmd = markers
+          .map((m) => `crontab -l 2>/dev/null | grep -qF "${m}" && echo P || echo A`)
+          .join("; ");
+        const result = await ssh.execCommand(checkCmd);
+        const statuses = result.stdout.trim().split("\n");
+        const missing = markers.filter((_, i) => statuses[i]?.trim() === "A");
+
+        cronAuditChecked++;
+
+        if (missing.length > 0) {
+          // Install missing crons
+          for (const job of VM_MANIFEST.cronJobs) {
+            if (!missing.includes(job.marker)) continue;
+            const cronLine = `${job.schedule} ${job.command}`;
+            const cronB64 = Buffer.from(cronLine).toString("base64");
+            await ssh.execCommand(
+              `(crontab -l 2>/dev/null; echo '${cronB64}' | base64 -d) | crontab -`
+            );
+          }
+          cronAuditFixed++;
+          logger.warn("Cron audit: installed missing crons", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            missing,
+            configVersion: vm.config_version,
+          });
+        }
+      } finally {
+        ssh.dispose();
+      }
+    } catch {
+      // Non-fatal — will catch this VM on a future cycle
+    }
+  }
 
   // ========================================================================
   // Sixth pass: Memory health monitoring
@@ -2781,6 +2823,8 @@ else:
     browsersKilled,
     configsAudited,
     configsFixed,
+    cronAuditChecked,
+    cronAuditFixed,
     memoryFilesCreated,
     memoryEmptyAlerts,
     memoryStaleWarnings,
