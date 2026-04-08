@@ -143,14 +143,28 @@ export default function RootPage() {
             return;
           }
           if (meData?.user?.id) {
-            // Has session but no agent — check if verified (mid-provisioning) or needs onboarding
+            // Has session but no agent — check if they've actually paid
             if (meData.user.worldIdVerified) {
-              console.log("[InstaClaw] Existing session, verified, no agent → provisioning");
+              // Verified — but did they pay? Check for delegation or subscription
+              try {
+                const payCheck = await fetch("/api/agent/status");
+                const payData = payCheck.ok ? await payCheck.json() : null;
+                // If they have a VM (even configuring), go to home
+                if (payData?.status && payData.status !== "no_vm") {
+                  console.log("[InstaClaw] Verified + has VM → home");
+                  resolved.current = true;
+                  router.replace("/home");
+                  return;
+                }
+              } catch {}
+              // Verified but no VM — they haven't paid yet or payment failed.
+              // Show onboarding so they can complete payment.
+              console.log("[InstaClaw] Verified but no VM — showing onboarding");
               resolved.current = true;
-              router.replace("/home");
+              setState("onboarding");
               return;
             }
-            // Not verified, no agent → show onboarding (don't redirect to /home or it loops)
+            // Not verified, no agent → show onboarding
             console.log("[InstaClaw] Existing session, NOT verified → onboarding");
             resolved.current = true;
             setState("onboarding");
@@ -183,8 +197,19 @@ export default function RootPage() {
               if (autoData.user.hasAgent) {
                 router.replace("/home");
               } else if (autoData.user.worldIdVerified) {
-                // Verified but no agent — mid-provisioning
-                router.replace("/home");
+                // Verified but no agent — check if they have a VM (paid)
+                try {
+                  const statusRes = await fetch("/api/agent/status");
+                  const statusData = statusRes.ok ? await statusRes.json() : null;
+                  if (statusData?.status && statusData.status !== "no_vm") {
+                    router.replace("/home");
+                  } else {
+                    // No VM — payment failed or incomplete, show onboarding
+                    setState("onboarding");
+                  }
+                } catch {
+                  setState("onboarding");
+                }
               } else {
                 // Not verified — show onboarding
                 setState("onboarding");
