@@ -4383,6 +4383,29 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Install manifest cron jobs (critical — strip-thinking, watchdogs, heartbeat) ──
+    // These were previously only installed by the reconciler, but the reconciler skips
+    // VMs where config_version matches manifest.version. Since configureOpenClaw() sets
+    // config_version to current, snapshot VMs never got reconciled and crons were missing.
+    // This caused sessions to grow to 4MB+ and burned credits 20x faster (P0 incident 2026-04-08).
+    {
+      const cronInstallParts: string[] = [];
+      for (const job of VM_MANIFEST.cronJobs) {
+        const cronLine = `${job.schedule} ${job.command}`;
+        const cronB64 = Buffer.from(cronLine).toString("base64");
+        cronInstallParts.push(
+          `if ! crontab -l 2>/dev/null | grep -qF "${job.marker}"; then`,
+          `  (crontab -l 2>/dev/null; echo '${cronB64}' | base64 -d) | crontab -`,
+          `fi`,
+        );
+      }
+      scriptParts.push(
+        '# Install manifest cron jobs (idempotent, marker-based)',
+        ...cronInstallParts,
+        '',
+      );
+    }
+
     // ── Deploy Code Execution & Backend Development skill ──
     // Doc-only skill — runtimes (Python, Node.js, SQLite) are pre-installed on VMs.
     try {
