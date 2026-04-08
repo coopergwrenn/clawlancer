@@ -119,13 +119,15 @@ function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direct
         {repeated.map((t, i) => (
           <div
             key={`${t.name}-${i}`}
-            className="w-[220px] shrink-0 rounded-2xl p-3.5"
-            style={testimonialCardStyle}
+            className="shrink-0 rounded-2xl"
+            style={{ ...testimonialCardStyle, width: "clamp(180px, 50vw, 220px)", padding: "clamp(8px, 2vw, 14px)" }}
           >
-            <div className="mb-2 flex items-center gap-2.5">
+            <div className="flex items-center gap-2" style={{ marginBottom: "clamp(4px, 1vw, 8px)" }}>
               <div
-                className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
+                className="relative shrink-0 items-center justify-center overflow-hidden rounded-full flex"
                 style={{
+                  width: "clamp(24px, 6vw, 32px)",
+                  height: "clamp(24px, 6vw, 32px)",
                   background: `radial-gradient(circle at 35% 35%, ${t.bg}dd, ${t.bg}88 40%, rgba(0,0,0,0.2) 100%)`,
                   boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 3px rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.12)",
                 }}
@@ -136,11 +138,11 @@ function TestimonialMarquee({ items, direction }: { items: Testimonial[]; direct
                 </div>
               </div>
               <div>
-                <p className="text-[11px] font-semibold" style={{ color: "#333334" }}>{t.name}</p>
-                <p className="text-[10px]" style={{ color: "#6b6b6b" }}>{t.role}</p>
+                <p className="font-semibold" style={{ color: "#333334", fontSize: "clamp(9px, 2.5vw, 11px)" }}>{t.name}</p>
+                <p style={{ color: "#6b6b6b", fontSize: "clamp(8px, 2.2vw, 10px)" }}>{t.role}</p>
               </div>
             </div>
-            <p className="text-[11px] leading-[1.5]" style={{ color: "#333334" }}>
+            <p className="leading-[1.45]" style={{ color: "#333334", fontSize: "clamp(9px, 2.5vw, 11px)" }}>
               &ldquo;{t.quote}&rdquo;
             </p>
           </div>
@@ -615,22 +617,22 @@ export default function Onboarding() {
       {/* ── Welcome ── */}
       {step === "welcome" && (
         <>
-          <div className="flex-1 flex flex-col animate-fade-in-up" style={{ opacity: 0 }}>
-            {/* Top: title group — pushed down a bit from top */}
-            <div className="flex flex-col items-center px-6 pt-[6vh]">
+          <div className="flex-1 flex flex-col animate-fade-in-up" style={{ opacity: 0, overflow: "hidden" }}>
+            {/* Top: title group — scales to fit any screen */}
+            <div className="flex flex-col items-center px-6" style={{ paddingTop: "clamp(8px, 3vh, 48px)" }}>
               <SpotsOpenPill />
-              <h1 className="text-center text-[42px] tracking-[-0.5px] leading-[1.05]" style={serif}>
+              <h1 className="text-center tracking-[-0.5px] leading-[1.05]" style={{ ...serif, fontSize: "clamp(28px, 7vw, 42px)" }}>
                 Claim your free
                 <br />
-                <span className="shimmer-text text-[64px]" style={serif}>AI agent</span>
+                <span className="shimmer-text" style={{ ...serif, fontSize: "clamp(38px, 10vw, 64px)" }}>AI agent</span>
               </h1>
-              <p className="mt-3 max-w-[340px] text-center text-[14px] leading-relaxed" style={{ color: "#6b6b6b" }}>
+              <p className="max-w-[340px] text-center leading-relaxed" style={{ color: "#6b6b6b", fontSize: "clamp(11px, 3.2vw, 14px)", marginTop: "clamp(4px, 1vh, 12px)" }}>
                 Verify as a real human and your personal AI agent is ready in seconds. Powered by your WLD grant.
               </p>
             </div>
 
-            {/* Middle: marquees — flex-grow centers them in remaining space */}
-            <div className="flex-1 flex flex-col justify-center">
+            {/* Middle: marquees — flex-grow fills remaining space */}
+            <div className="flex-1 flex flex-col justify-center" style={{ minHeight: 0, gap: "clamp(4px, 1vh, 16px)" }}>
               {/* Use-case pills */}
               <div className="w-screen overflow-hidden relative">
                 <div className="absolute left-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
@@ -642,10 +644,10 @@ export default function Onboarding() {
               </div>
 
               {/* Testimonial cards */}
-              <div className="mt-4 w-screen overflow-hidden relative">
+              <div className="w-screen overflow-hidden relative">
                 <div className="absolute left-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to right, #f8f7f4, transparent)" }} />
                 <div className="absolute right-0 top-0 bottom-0 w-16 z-10 pointer-events-none" style={{ background: "linear-gradient(to left, #f8f7f4, transparent)" }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "clamp(4px, 1vh, 8px)" }}>
                   <TestimonialMarquee items={TESTIMONIALS_ROW_1} direction="left" />
                   <TestimonialMarquee items={TESTIMONIALS_ROW_2} direction="right" />
                 </div>
@@ -653,21 +655,21 @@ export default function Onboarding() {
             </div>
 
             {error && (
-              <div className="mx-6 mb-2 rounded-xl px-4 py-2.5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                <p className="text-sm text-center" style={{ color: "#ef4444" }}>{error}</p>
+              <div className="shrink-0 mx-6 mb-1 rounded-xl px-4 py-2" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <p className="text-xs text-center" style={{ color: "#ef4444" }}>{error}</p>
               </div>
             )}
           </div>
 
-          {/* CTA — pinned to bottom */}
+          {/* CTA — pinned to bottom, never overflows */}
           <div
-            className="px-7 pt-4 flex flex-col items-center gap-3"
-            style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom, 20px), 20px) + 12px)" }}
+            className="shrink-0 px-7 flex flex-col items-center"
+            style={{ paddingTop: "clamp(8px, 1.5vh, 16px)", paddingBottom: "calc(max(env(safe-area-inset-bottom, 12px), 12px) + 4px)", gap: "clamp(4px, 1vh, 12px)" }}
           >
             <button
               onClick={handleGetAgent}
-              className="btn-primary w-full rounded-[28px] text-base font-semibold"
-              style={{ height: "56px" }}
+              className="btn-primary w-full rounded-[28px] font-semibold"
+              style={{ height: "clamp(48px, 7vh, 56px)", fontSize: "clamp(14px, 3.8vw, 16px)" }}
             >
               Claim my agent
             </button>
