@@ -15,7 +15,7 @@ ALL new VMs must use these exact specs:
 - **Cost:** $29/mo per VM (negotiated Linode rate)
 - **DB status:** `provisioning` (cloud-init-poll cron auto-marks as `ready` in ~3-5 min)
 
-NEVER use old snapshots (private/36895419 or private/38054012). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
+NEVER use old snapshots (private/36895419 or private/38069990). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
 
 ## Project Structure
 
