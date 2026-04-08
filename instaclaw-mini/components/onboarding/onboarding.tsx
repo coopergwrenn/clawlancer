@@ -231,19 +231,22 @@ export default function Onboarding() {
   const [email, setEmail] = useState("");
   const [walletPayload, setWalletPayload] = useState<Record<string, unknown> | null>(null);
 
-  // Proportional zoom: the design is built for iPhone Pro Max (430×932).
-  // On smaller phones, zoom < 1 scales everything identically — same layout,
-  // same proportions, just smaller. CSS zoom affects layout (unlike transform: scale).
-  const [pageZoom, setPageZoom] = useState(1);
+  // Proportional scaling: design is built for 430×852 (Pro Max minus World App chrome).
+  // On smaller phones, the entire page is scaled down via transform: scale().
+  // Unlike CSS zoom, transform: scale doesn't affect layout — the inner content
+  // always computes at 430×852, then the visual result is scaled to fit.
+  const DESIGN_W = 430;
+  const DESIGN_H = 852; // Pro Max (932) minus World App header (~80px)
+  const [scaleFactor, setScaleFactor] = useState(1);
   useEffect(() => {
-    function calcZoom() {
-      const hZoom = window.innerHeight / 932;
-      const wZoom = window.innerWidth / 430;
-      setPageZoom(Math.min(1, Math.min(hZoom, wZoom)));
+    function calc() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      setScaleFactor(Math.min(vw / DESIGN_W, vh / DESIGN_H));
     }
-    calcZoom();
-    window.addEventListener("resize", calcZoom);
-    return () => window.removeEventListener("resize", calcZoom);
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
   }, []);
 
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -626,7 +629,14 @@ export default function Onboarding() {
 
   // ── Render ──
   return (
-    <div className="flex flex-col onboarding-light" style={{ height: `${100 / pageZoom}dvh`, zoom: pageZoom }}>
+    <div className="onboarding-light" style={{
+      width: DESIGN_W,
+      height: DESIGN_H,
+      transform: `scale(${scaleFactor})`,
+      transformOrigin: "top left",
+      display: "flex",
+      flexDirection: "column" as const,
+    }}>
       {/* ── Welcome ── */}
       {step === "welcome" && (
         <>
