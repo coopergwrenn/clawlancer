@@ -85,22 +85,23 @@ export default function AgentBookOnboardModal({
   }
 
   function handleVerifyTap() {
-    // Close mini app IMMEDIATELY — no delay. This fires before the <a href>
-    // navigation, so the mini app closes cleanly and World App shows the
-    // AgentKit drawer on its home screen.
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mk = MiniKit as any;
-      if (typeof mk.closeMiniApp === "function") {
-        mk.closeMiniApp();
-      } else if (typeof mk.close === "function") {
-        mk.close();
-      } else if (typeof mk.commands?.closeMiniApp === "function") {
-        mk.commands.closeMiniApp();
+    // Let the <a href> navigation fire FIRST (it triggers the World App drawer).
+    // Then close the mini app after a short delay so the navigation isn't killed.
+    setTimeout(() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mk = MiniKit as any;
+        if (typeof mk.closeMiniApp === "function") {
+          mk.closeMiniApp();
+        } else if (typeof mk.close === "function") {
+          mk.close();
+        } else if (typeof mk.commands?.closeMiniApp === "function") {
+          mk.commands.closeMiniApp();
+        }
+      } catch {
+        // closeMiniApp not available — <a href> already navigated
       }
-    } catch {
-      // closeMiniApp not available — <a href> will still navigate
-    }
+    }, 500);
   }
 
   // Not eligible (no World ID) — skippable
