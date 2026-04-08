@@ -629,11 +629,12 @@ export default function Onboarding() {
 
   // ── Render ──
   return (
+    <div style={{ width: "100vw", height: "100dvh", overflow: "hidden", display: "flex", justifyContent: "center" }}>
     <div className="onboarding-light" style={{
       width: DESIGN_W,
       height: DESIGN_H,
       transform: `scale(${scaleFactor})`,
-      transformOrigin: "top left",
+      transformOrigin: "top center",
       display: "flex",
       flexDirection: "column" as const,
     }}>
@@ -922,6 +923,7 @@ export default function Onboarding() {
           </div>
         </>
       )}
+    </div>
     </div>
   );
 }
