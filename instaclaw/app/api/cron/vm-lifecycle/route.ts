@@ -31,7 +31,7 @@ export const maxDuration = 300;
  */
 
 const MAX_DELETIONS_PER_CYCLE = 20;
-const HIBERNATE_TO_SUSPEND_DAYS = 14; // After 14 days hibernating → suspend (deallocate VM)
+const HIBERNATE_TO_SUSPEND_DAYS = 7; // After 7 days hibernating → suspend (deallocate VM)
 const CANCELED_GRACE_DAYS = 3;
 const PAST_DUE_GRACE_DAYS = 7;
 const NO_SUB_GRACE_DAYS = 3;
