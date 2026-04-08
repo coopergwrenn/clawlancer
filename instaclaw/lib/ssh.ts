@@ -15,7 +15,7 @@ import {
   fetchAcpAgents, createAcpAgent, registerAcpOffering,
   getAcpAgentProfile, ACP_OFFERING_API,
 } from "@/lib/acp-api";
-import { VM_MANIFEST, CONFIG_SPEC, registerTemplate } from "./vm-manifest";
+import { VM_MANIFEST, CONFIG_SPEC, registerTemplate, getTemplateContent } from "./vm-manifest";
 import { reconcileVM } from "./vm-reconcile";
 import * as fs from "fs";
 import * as path from "path";
@@ -4404,6 +4404,38 @@ export async function configureOpenClaw(
         ...cronInstallParts,
         '',
       );
+    }
+
+    // ── Deploy critical script files that crons depend on ──
+    // Without the script files, cron entries are useless (silent failure).
+    // The reconciler deploys these via stepFiles(), but it never runs on
+    // freshly configured VMs. Defense-in-depth: deploy here too.
+    {
+      scriptParts.push(
+        '# Deploy critical cron script files (idempotent)',
+        'mkdir -p "$HOME/.openclaw/scripts"',
+      );
+      for (const file of VM_MANIFEST.files) {
+        if (
+          file.remotePath.includes("/.openclaw/scripts/") &&
+          "templateKey" in file &&
+          file.templateKey
+        ) {
+          try {
+            const content = getTemplateContent(file.templateKey as string);
+            const b64 = Buffer.from(content).toString("base64");
+            const remoteName = file.remotePath.replace("~", "$HOME");
+            scriptParts.push(
+              `echo '${b64}' | base64 -d > "${remoteName}"`,
+              `chmod +x "${remoteName}"`,
+            );
+          } catch {
+            // Template not registered yet at import time — skip
+            // (STRIP_THINKING_SCRIPT registers after ssh.ts loads)
+          }
+        }
+      }
+      scriptParts.push('');
     }
 
     // ── Deploy Code Execution & Backend Development skill ──

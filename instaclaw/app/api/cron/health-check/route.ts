@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
-import { VM_MANIFEST } from "@/lib/vm-manifest";
+import { VM_MANIFEST, getTemplateContent } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
 import { logger } from "@/lib/logger";
@@ -1404,53 +1404,107 @@ else:
   const memoryFilesCreated = 0;
 
   // ========================================================================
-  // Fifth-b pass: Periodic cron audit (defense-in-depth)
-  // The reconciler only runs on stale-version VMs. Snapshot VMs configured by
-  // configureOpenClaw() get config_version=current immediately, so the reconciler
-  // never runs stepCronJobs() on them. This pass checks 5 random VMs per cycle
-  // for missing crons, regardless of config_version. Over ~1 hour, the entire
-  // fleet is covered. P0 fix for the 2026-04-08 missing crons incident.
+  // Fifth-b pass: Periodic cron + script audit (defense-in-depth)
+  // Checks BOTH assigned AND ready pool VMs for missing crons + script files.
+  // The reconciler only runs on stale-version VMs, so snapshot VMs and ready
+  // pool VMs can have missing scripts/crons indefinitely. This pass:
+  // 1. Picks 5 random assigned VMs + ALL ready pool VMs
+  // 2. Checks for missing cron entries and installs them
+  // 3. Checks for missing script files and deploys them
+  // P0 fix for the 2026-04-08 missing crons incident.
   // ========================================================================
   let cronAuditChecked = 0;
   let cronAuditFixed = 0;
   const CRON_AUDIT_BATCH = 5;
 
-  // Pick 5 random SSH-alive VMs (not just stale ones)
-  const cronAuditPool = sshAliveVms
+  // Build the list of script files that crons depend on
+  const CRITICAL_SCRIPTS: { name: string; templateKey: string }[] = [];
+  for (const file of VM_MANIFEST.files) {
+    if (
+      file.remotePath.includes("/.openclaw/scripts/") &&
+      "templateKey" in file &&
+      file.templateKey
+    ) {
+      const name = file.remotePath.split("/").pop()!;
+      CRITICAL_SCRIPTS.push({ name, templateKey: file.templateKey as string });
+    }
+  }
+
+  // Include ready pool VMs — query separately since they're not in sshAliveVms
+  let cronAuditReadyPool: any[] = [];
+  try {
+    const { data: cronReadyVms } = await supabase
+      .from("instaclaw_vms")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, tier, default_model, api_mode, channels_enabled, credit_balance")
+      .eq("status", "ready");
+    cronAuditReadyPool = cronReadyVms ?? [];
+  } catch { /* non-fatal */ }
+
+  // 5 random assigned + all ready pool
+  const cronAuditAssigned = sshAliveVms
     .sort(() => Math.random() - 0.5)
     .slice(0, CRON_AUDIT_BATCH);
+  const cronAuditVms: any[] = [...cronAuditAssigned, ...cronAuditReadyPool];
 
-  for (const vm of cronAuditPool) {
+  for (const vm of cronAuditVms) {
     try {
       const ssh = await connectSSH(vm);
       try {
-        // Count how many of the 6 required cron markers are present
+        // 1. Check crons
         const markers = VM_MANIFEST.cronJobs.map((j) => j.marker);
         const checkCmd = markers
           .map((m) => `crontab -l 2>/dev/null | grep -qF "${m}" && echo P || echo A`)
           .join("; ");
         const result = await ssh.execCommand(checkCmd);
         const statuses = result.stdout.trim().split("\n");
-        const missing = markers.filter((_, i) => statuses[i]?.trim() === "A");
+        const missingCrons = markers.filter((_, i) => statuses[i]?.trim() === "A");
+
+        // 2. Check script files
+        const scriptCheckCmd = CRITICAL_SCRIPTS
+          .map((s) => `test -f ~/.openclaw/scripts/${s.name} && echo P || echo A`)
+          .join("; ");
+        const scriptResult = await ssh.execCommand(scriptCheckCmd);
+        const scriptStatuses = scriptResult.stdout.trim().split("\n");
+        const missingScripts = CRITICAL_SCRIPTS.filter((_, i) => scriptStatuses[i]?.trim() === "A");
 
         cronAuditChecked++;
 
-        if (missing.length > 0) {
-          // Install missing crons
+        // 3. Install missing crons
+        if (missingCrons.length > 0) {
           for (const job of VM_MANIFEST.cronJobs) {
-            if (!missing.includes(job.marker)) continue;
+            if (!missingCrons.includes(job.marker)) continue;
             const cronLine = `${job.schedule} ${job.command}`;
             const cronB64 = Buffer.from(cronLine).toString("base64");
             await ssh.execCommand(
               `(crontab -l 2>/dev/null; echo '${cronB64}' | base64 -d) | crontab -`
             );
           }
+        }
+
+        // 4. Deploy missing scripts
+        if (missingScripts.length > 0) {
+          await ssh.execCommand("mkdir -p ~/.openclaw/scripts");
+          for (const s of missingScripts) {
+            try {
+              const content = getTemplateContent(s.templateKey);
+              const b64 = Buffer.from(content).toString("base64");
+              await ssh.execCommand(
+                `echo '${b64}' | base64 -d > ~/.openclaw/scripts/${s.name} && chmod +x ~/.openclaw/scripts/${s.name}`
+              );
+            } catch {
+              // Template not registered yet — skip, will catch next cycle
+            }
+          }
+        }
+
+        if (missingCrons.length > 0 || missingScripts.length > 0) {
           cronAuditFixed++;
-          logger.warn("Cron audit: installed missing crons", {
+          logger.warn("Cron audit: fixed missing crons/scripts", {
             route: "cron/health-check",
             vmId: vm.id,
             vmName: vm.name,
-            missing,
+            missingCrons,
+            missingScripts: missingScripts.map((s) => s.name),
             configVersion: vm.config_version,
           });
         }
