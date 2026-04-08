@@ -32,7 +32,40 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getSupabase();
-  const results = { pastDueSuspended: 0, noSubSuspended: 0, errors: 0, skipped: 0, gatewayStopFailed: 0 };
+  const results = { wldExpired: 0, pastDueSuspended: 0, noSubSuspended: 0, errors: 0, skipped: 0, gatewayStopFailed: 0 };
+
+  // ── Pre-pass: expire WLD subscriptions past their period end ──
+  // WLD users get subscription records with stripe_subscription_id starting
+  // with "wld_". Unlike Stripe, there's no webhook to auto-cancel these.
+  // This pre-pass marks expired WLD subscriptions as "canceled" so
+  // Pass 2 can suspend them normally.
+  try {
+    const now = new Date().toISOString();
+    const { data: expiredWld } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("user_id")
+      .like("stripe_subscription_id", "wld_%")
+      .eq("status", "active")
+      .lt("current_period_end", now);
+
+    if (expiredWld?.length) {
+      await supabase
+        .from("instaclaw_subscriptions")
+        .update({ status: "canceled", payment_status: "current" })
+        .like("stripe_subscription_id", "wld_%")
+        .eq("status", "active")
+        .lt("current_period_end", now);
+
+      results.wldExpired = expiredWld.length;
+      logger.info("Expired WLD subscriptions canceled", {
+        route: "cron/suspend-check",
+        count: expiredWld.length,
+      });
+    }
+  } catch (err) {
+    logger.error("WLD expiry pre-pass failed", { route: "cron/suspend-check", error: String(err) });
+    results.errors++;
+  }
 
   // Helper: suspend a VM (DB update first, then best-effort SSH stop)
   async function suspendVM(vm: { id: string; ip_address: string; ssh_port: number; ssh_user: string; name: string | null }, reason: string, extra: Record<string, unknown> = {}) {
