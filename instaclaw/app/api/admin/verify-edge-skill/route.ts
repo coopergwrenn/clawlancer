@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { connectSSH, VMRecord } from "@/lib/ssh";
+import { validateAdminKey } from "@/lib/security";
 
 /**
  * Temporary admin endpoint to verify Edge City skill installation on a VM.
@@ -11,8 +12,7 @@ import { connectSSH, VMRecord } from "@/lib/ssh";
  * Body: { vmId: string }
  */
 export async function POST(req: NextRequest) {
-  const adminKey = req.headers.get("X-Admin-Key");
-  if (!adminKey || adminKey !== process.env.ADMIN_API_KEY) {
+  if (!validateAdminKey(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
