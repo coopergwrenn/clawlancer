@@ -84,6 +84,7 @@ export default auth((req) => {
     "/api/admin/propagate-world-id", // CRON_SECRET header auth
     "/api/admin/fleet-push-workspace", // CRON_SECRET header auth
     "/api/admin/verify-workspace", // CRON_SECRET header auth
+    "/api/admin/vm-fix", // CRON_SECRET header auth
     "/api/admin/restart-unhealthy", // CRON_SECRET header auth
     "/api/admin/xmtp-send-to-user", // Mini app proxy token or admin key
     "/api/admin/xmtp-refresh-token", // X-Admin-Key header auth
