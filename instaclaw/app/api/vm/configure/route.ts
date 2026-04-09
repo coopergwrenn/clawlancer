@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { configureOpenClaw, migrateUserData, testProxyRoundTrip, setupTLSBackground, setupXMTP } from "@/lib/ssh";
 import { validateAdminKey, decryptApiKey } from "@/lib/security";
+import { decryptBankrKey } from "@/lib/bankr-encryption";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 
@@ -232,6 +233,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Decrypt Bankr API key if present (encrypted at rest with AES-256-GCM)
+    let decryptedBankrKey: string | undefined;
+    if (vm.bankr_api_key_encrypted) {
+      try {
+        decryptedBankrKey = decryptBankrKey(vm.bankr_api_key_encrypted);
+      } catch {
+        logger.warn("Failed to decrypt Bankr API key (non-fatal)", { vmId: vm.id });
+      }
+    }
+
     // Configure OpenClaw on the VM
     const configureStart = Date.now();
     const result = await configureOpenClaw(vm, {
@@ -245,7 +256,7 @@ export async function POST(req: NextRequest) {
       gmailProfileSummary,
       worldIdNullifier: userProfile?.world_id_verified ? userProfile.world_id_nullifier_hash ?? undefined : undefined,
       worldIdLevel: userProfile?.world_id_verified ? userProfile.world_id_verification_level ?? undefined : undefined,
-      bankrApiKey: vm.bankr_api_key_encrypted ?? undefined,
+      bankrApiKey: decryptedBankrKey ?? undefined,
       bankrEvmAddress: vm.bankr_evm_address ?? undefined,
     }, userId);
 

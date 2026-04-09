@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser, stopGateway, restartGateway } from "@/lib/ssh";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
+import { encryptBankrKey } from "@/lib/bankr-encryption";
 
 // Provision a Bankr wallet for a newly assigned VM.
 // Non-fatal: if Bankr API is down, the agent still works (just without a wallet).
@@ -45,12 +46,26 @@ async function provisionBankrWallet(vmId: string, userId: string, vmIp: string) 
 
     const data = await res.json();
     const supabase = getSupabase();
+
+    // Encrypt the API key before storing — plaintext only exists in memory
+    let encryptedKey: string | null = null;
+    if (data.apiKey) {
+      try {
+        encryptedKey = encryptBankrKey(data.apiKey);
+      } catch (encErr) {
+        logger.warn("Bankr API key encryption failed — storing null", {
+          error: String(encErr),
+          vmId,
+        });
+      }
+    }
+
     await supabase
       .from("instaclaw_vms")
       .update({
         bankr_wallet_id: data.id ?? null,
         bankr_evm_address: data.evmAddress ?? null,
-        bankr_api_key_encrypted: data.apiKey ?? null, // TODO: encrypt before storing
+        bankr_api_key_encrypted: encryptedKey,
       })
       .eq("id", vmId);
 
