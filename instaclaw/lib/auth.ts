@@ -73,9 +73,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       }
 
-      // New user — read optional ambassador referral code from cookie
+      // New user — read optional ambassador referral code and partner tag from cookies
       const cookieStore = await cookies();
       const referralCode = cookieStore.get("instaclaw_referral_code")?.value ?? null;
+      const partnerCookie = cookieStore.get("instaclaw_partner")?.value ?? null;
 
       // Create the user row
       const { error } = await supabase.from("instaclaw_users").insert({
@@ -84,6 +85,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         google_id: account.providerAccountId,
         invited_by: null,
         referred_by: referralCode ? decodeURIComponent(referralCode).trim().toLowerCase() : null,
+        ...(partnerCookie ? { partner: partnerCookie } : {}),
       });
 
       if (error) {
