@@ -72,7 +72,7 @@ export async function POST(
     // Execute via gateway — retry once if agent is busy (processing a heartbeat)
     try {
       let gatewayRes: Response | null = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < 4; attempt++) {
         gatewayRes = await fetch(`${vmData.gateway_url}/v1/chat/completions`, {
           method: "POST",
           headers: {
@@ -85,10 +85,11 @@ export async function POST(
           }),
         });
 
-        if (gatewayRes.status === 400 && attempt === 0) {
+        if (gatewayRes.status === 400 && attempt < 3) {
           const peek = await gatewayRes.clone().text().catch(() => "");
           if (peek.includes("busy")) {
-            await new Promise((r) => setTimeout(r, 3000));
+            // Exponential backoff: 5s, 10s, 15s — covers 20s+ response times
+            await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
             continue;
           }
         }

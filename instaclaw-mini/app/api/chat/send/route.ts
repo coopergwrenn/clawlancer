@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     // previous request), wait 3s and retry once. OpenClaw processes one
     // request at a time — this handles the occasional collision.
     let gatewayRes: Response | null = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt++) {
       gatewayRes = await fetch(`${vmData.gateway_url}/v1/chat/completions`, {
         method: "POST",
         headers: {
@@ -84,11 +84,12 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify(gatewayBody),
       });
 
-      if (gatewayRes.status === 400) {
+      if (gatewayRes.status === 400 && attempt < 3) {
         const peek = await gatewayRes.clone().text().catch(() => "");
-        if (peek.includes("busy") && attempt === 0) {
-          await new Promise((r) => setTimeout(r, 3000));
-          continue; // retry
+        if (peek.includes("busy")) {
+          // Exponential backoff: 5s, 10s, 15s — covers 20s+ response times
+          await new Promise((r) => setTimeout(r, 5000 * (attempt + 1)));
+          continue;
         }
       }
       break;
