@@ -152,7 +152,9 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: cancelUrl ? `${origin}${cancelUrl}` : `${origin}/plan`,
-      ...(discounts ? { discounts } : {}),
+      // Stripe doesn't allow both discounts and allow_promotion_codes on the same session.
+      // Ambassador referrals get a pre-applied discount; everyone else can enter a promo code.
+      ...(discounts ? { discounts } : { allow_promotion_codes: true }),
       ...(trialDays > 0
         ? { subscription_data: { trial_period_days: trialDays } }
         : {}),
