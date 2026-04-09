@@ -245,6 +245,8 @@ export async function POST(req: NextRequest) {
       gmailProfileSummary,
       worldIdNullifier: userProfile?.world_id_verified ? userProfile.world_id_nullifier_hash ?? undefined : undefined,
       worldIdLevel: userProfile?.world_id_verified ? userProfile.world_id_verification_level ?? undefined : undefined,
+      bankrApiKey: vm.bankr_api_key_encrypted ?? undefined,
+      bankrEvmAddress: vm.bankr_evm_address ?? undefined,
     }, userId);
 
     // ── Post-configure ownership re-verification ──

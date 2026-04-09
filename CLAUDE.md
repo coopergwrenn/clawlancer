@@ -66,7 +66,22 @@ After any config change + gateway restart via SSH, wait up to 30 seconds for the
 3. Report the failure
 Never leave a crash-looping gateway.
 
-### 6. Snapshot Refresh After Manifest Bumps
+### 6. No Trailing Newlines in Environment Variables
+
+NEVER use `<<<` (here-string) or `echo` to pipe values into `vercel env add` — both add a trailing newline that corrupts API keys and secrets. Always use `printf` which does NOT append a newline:
+
+```bash
+# CORRECT:
+printf 'the_value' | npx vercel env add VAR_NAME production
+
+# WRONG — adds trailing \n:
+npx vercel env add VAR_NAME production <<< "the_value"
+echo "the_value" | npx vercel env add VAR_NAME production
+```
+
+The `BANKR_PARTNER_KEY` incident: a trailing `\n` was appended to the API key, which would have caused every Bankr API call to fail with auth errors.
+
+### 7. Snapshot Refresh After Manifest Bumps
 
 Every time `VM_MANIFEST.version` is bumped in `vm-manifest.ts`, the base snapshot used for new VMs becomes stale. The reconciler fixes existing VMs automatically, but NEW VMs provisioned from the old snapshot start with outdated config until reconciler catches them.
 
