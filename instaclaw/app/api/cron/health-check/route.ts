@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   // that finished SSH setup but haven't passed health check yet)
   const { data: vms } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, api_mode, proxy_401_count, assigned_at, last_gateway_restart, credit_balance")
+    .select("id, ip_address, ssh_port, ssh_user, gateway_url, health_status, gateway_token, health_fail_count, ssh_fail_count, assigned_to, name, config_version, tier, api_mode, proxy_401_count, assigned_at, last_gateway_restart, credit_balance")
     .eq("status", "assigned")
     .neq("health_status", "suspended")
     .neq("health_status", "hibernating")
@@ -1402,6 +1402,59 @@ else:
   // MEMORY.md is now a create_if_missing entry in VM_MANIFEST.files, deployed
   // by reconcileVM() during the config audit pass above.
   const memoryFilesCreated = 0;
+
+  // ========================================================================
+  // Fifth-a pass: Tier sync — ensure VM tier matches subscription tier
+  // The billing webhook is supposed to update instaclaw_vms.tier on upgrade,
+  // but it can silently fail (transient DB error, webhook not delivered).
+  // This pass checks ALL assigned VMs and fixes any tier mismatch.
+  // P0 fix: "Not Bored Kid" upgraded to Pro but VM stayed on Starter,
+  // giving 600/day limit instead of 1000/day for days.
+  // ========================================================================
+  let tierSynced = 0;
+  try {
+    // Batch-fetch all active/trialing subscriptions
+    const { data: activeSubs } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("user_id, tier")
+      .in("status", ["active", "trialing"]);
+
+    if (activeSubs?.length) {
+      // Build lookup: user_id → subscription tier
+      const subTierMap: Record<string, string> = {};
+      for (const sub of activeSubs) {
+        subTierMap[sub.user_id] = sub.tier;
+      }
+
+      // Check all assigned VMs for tier mismatch
+      for (const vm of vms) {
+        if (!vm.assigned_to) continue;
+        const subTier = subTierMap[vm.assigned_to];
+        if (!subTier) continue; // No active subscription
+
+        if (vm.tier && vm.tier !== subTier) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ tier: subTier })
+            .eq("id", vm.id);
+          tierSynced++;
+          logger.warn("Tier sync: VM tier corrected to match subscription", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            oldTier: vm.tier,
+            newTier: subTier,
+            userId: vm.assigned_to,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    logger.error("Tier sync pass failed", {
+      route: "cron/health-check",
+      error: String(err),
+    });
+  }
 
   // ========================================================================
   // Fifth-b pass: Periodic cron + script audit (defense-in-depth)
@@ -2879,6 +2932,7 @@ else:
     configsFixed,
     cronAuditChecked,
     cronAuditFixed,
+    tierSynced,
     memoryFilesCreated,
     memoryEmptyAlerts,
     memoryStaleWarnings,
