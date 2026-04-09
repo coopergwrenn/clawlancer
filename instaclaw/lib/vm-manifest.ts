@@ -634,7 +634,7 @@ export const VM_MANIFEST = {
     },
     {
       schedule: "0 4 * * *",
-      command: "/home/openclaw/.nvm/versions/node/v22.22.0/bin/openclaw memory index >> /tmp/memory-index.log 2>&1",
+      command: ". /home/openclaw/.nvm/nvm.sh && openclaw memory index >> /tmp/memory-index.log 2>&1",
       marker: "openclaw memory index",
     },
   ] as ManifestCronJob[],
