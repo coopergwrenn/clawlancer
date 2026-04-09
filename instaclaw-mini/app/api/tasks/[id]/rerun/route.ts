@@ -75,7 +75,7 @@ export async function POST(
           "Authorization": `Bearer ${vmData.gateway_token}`,
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: "openclaw",
           messages: [{ role: "user", content: task.description + TASK_SUFFIX }],
         }),
       });
