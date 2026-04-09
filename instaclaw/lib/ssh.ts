@@ -553,7 +553,7 @@ import subprocess as _sp
 
 _SESSION_SUMMARY_STATE = os.path.expanduser("~/.openclaw/.session-summary-state.json")
 _SESSION_LOG = os.path.join(WORKSPACE_DIR, "memory", "session-log.md")
-_MIN_MSGS_FOR_SUMMARY = 2
+_MIN_MSGS_FOR_SUMMARY = 1
 _MAX_LOG_ENTRIES = 15
 
 def _load_summary_state():
