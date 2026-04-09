@@ -1561,6 +1561,38 @@ else:
             configVersion: vm.config_version,
           });
         }
+
+        // 5. FUNCTIONAL checks — verify crons are producing output, not just existing
+        // Only run on assigned VMs (ready pool has no sessions/data)
+        if (vm.assigned_to) {
+          const funcCheck = await ssh.execCommand(`
+            ST_OK=0; MI_OK=0; SL_OK=0
+            # strip-thinking: log modified in last 60 min?
+            [ -f ~/.openclaw/logs/strip-thinking.log ] && \
+              find ~/.openclaw/logs/strip-thinking.log -mmin -60 -print -quit | grep -q . && ST_OK=1
+            # memory index: DB > 4096 bytes (has actual data)?
+            for db in $(find ~/.openclaw -name "*.sqlite" 2>/dev/null | head -1); do
+              [ -f "$db" ] && [ $(wc -c < "$db") -gt 4096 ] && MI_OK=1
+            done
+            # session-log: more than template (>4 lines)?
+            [ -f ~/.openclaw/workspace/memory/session-log.md ] && \
+              [ $(wc -l < ~/.openclaw/workspace/memory/session-log.md) -gt 4 ] && SL_OK=1
+            echo "$ST_OK|$MI_OK|$SL_OK"
+          `);
+          const [stOk, miOk, slOk] = (funcCheck.stdout.trim().split("|")).map((s) => s === "1");
+          const funcIssues: string[] = [];
+          if (!stOk) funcIssues.push("strip-thinking-stale");
+          if (!miOk) funcIssues.push("memory-index-empty");
+          if (!slOk) funcIssues.push("session-log-empty");
+          if (funcIssues.length > 0) {
+            logger.warn("Functional check: cron output missing", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+              issues: funcIssues,
+            });
+          }
+        }
       } finally {
         ssh.dispose();
       }
