@@ -15,7 +15,7 @@ InstaClaw is a hosted AI agent platform. Each user gets a dedicated VM running a
 2. **One-click tokenization** from the dashboard ("Tokenize with Bankr" button)
 3. **Self-sustaining compute loop** — trading fees from the agent's token flow back through our gateway to pay for LLM inference
 
-We have ~170 VMs in fleet, 3 paying users, and are scaling. Every new user will get a Bankr wallet automatically.
+We have ~193 assigned VMs in fleet and scaling. Every new user will get a Bankr wallet automatically.
 
 ---
 
@@ -27,12 +27,18 @@ We have ~170 VMs in fleet, 3 paying users, and are scaling. Every new user will 
 - Wallet API + Token Launch API toggles are intuitive
 
 ### Feedback
-- [ ] **TODO:** Test wallet provisioning via API after grabbing partner key
+- [x] Partner key generated successfully — "InstaClaw Production" key, no IP whitelist (Vercel dynamic IPs)
+- [x] Wallet API + Token Launch API toggles enabled
+- [ ] **TODO:** Test wallet provisioning via API (next — manual curl test before real users hit it)
+- [ ] **TODO:** Explore Token Launch tab configuration
 - [ ] **TODO:** Test token launch flow end-to-end
+- [ ] **TODO:** Create Org Wallet (for gas sponsorship — not clear if required for per-agent wallets)
 
 ### Questions
 - Is the "Org Wallet" (Create Wallet button) required before we can provision per-agent wallets via the API? Or is it only for org-level operations like gas sponsorship?
 - What's the difference between "test" and "production" orgs? Will we need a separate prod org later, or does the test org get promoted?
+- Solana Support toggle is off — should we enable it? We have Solana DeFi trading as a skill but use separate wallets. Would Bankr Solana wallets replace our current auto-provisioned Solana wallets?
+- Gas Sponsorship toggle is off — what does enabling this do? Would Bankr sponsor gas for our agents' transactions?
 
 ---
 
@@ -135,6 +141,13 @@ We want agents to charge for services (market signals, research, analysis) via x
 |---|------|----------|-------------|--------|
 | 1 | 2026-04-09 | Note | Partner key generated from dashboard. Key name: "InstaClaw Production". IP whitelist left open (Vercel dynamic IPs). | Resolved |
 | 2 | 2026-04-09 | Note | Partner dashboard UX is clean — org setup, key generation, and toggle controls all intuitive. No issues. | N/A |
+| 3 | 2026-04-09 | Note | provisionBankrWallet() wired into Stripe webhook. Calls POST /partner/wallets with idempotencyKey=instaclaw_user_{userId}, allowedIps=[vm_ip]. Non-fatal — if API down, agent deploys without wallet. | Live |
+| 4 | 2026-04-09 | Note | configureOpenClaw() reads Bankr creds from DB, deploys BANKR_API_KEY + BANKR_WALLET_ADDRESS to VM .env, clones BankrBot/skills, writes address to WALLET.md. | Live |
+| 5 | 2026-04-09 | Note | Fleet-pushed wallet routing clarity to all 193 VMs — CAPABILITIES.md wallet routing table, EARN.md channel wallet tags, WALLET.md summary, SOUL.md bankr routing. 193/193 success, 0 failures. | Verified |
+| 6 | 2026-04-09 | Design | Built cross-platform tokenization guard: `tokenization_platform` column on instaclaw_vms prevents agent from tokenizing on both Bankr AND Virtuals. Only one platform allowed. | Live |
+| 7 | 2026-04-09 | Design | Agent wallet clarity: WALLET.md now has 3-wallet summary (Bankr=trading, Virtuals=marketplace, AgentBook=identity). CAPABILITIES.md has routing table. EARN.md tags each channel with its wallet. Agents explicitly told "do not mix them." | Fleet-verified |
+| 8 | 2026-04-09 | Pending | bankr_api_key_encrypted column stores key as plaintext currently (TODO: AES-256-GCM encryption before production scale). | Needs fix |
+| 9 | 2026-04-09 | Pending | Haven't tested actual API call yet — partner key is on Vercel but no wallet has been provisioned. Next: manual curl test. | Next step |
 
 ---
 
@@ -160,10 +173,15 @@ We want agents to charge for services (market signals, research, analysis) via x
 | 2026-04-09 | Test org "Instaclaw (Test)" active on bankr.bot/partner | Done |
 | 2026-04-09 | Partner key obtained + added to Vercel production | Done |
 | 2026-04-09 | provisionBankrWallet() wired into billing webhook | Done |
-| TBD | First wallet provisioned via API (next new user signup) | Pending |
-| TBD | First agent tokenized via Bankr | Pending (blocked on token launch API) |
-| TBD | Trading fee credit loop live | Pending (blocked on webhook spec) |
-| TBD | Arena pilot with 5 users | Pending |
+| 2026-04-09 | Wallet routing clarity fleet-pushed to all 193 VMs (CAPABILITIES, EARN, WALLET, SOUL) | Done — verified 10/10 |
+| 2026-04-09 | Cross-platform tokenization guard (tokenization_platform column) | Done |
+| 2026-04-09 | 3-wallet agent instructions deployed fleet-wide | Done — verified |
+| TBD | **NEXT: Manual curl test of POST /partner/wallets** | Pending |
+| TBD | First real wallet provisioned (next new user signup) | Pending |
+| TBD | Encrypt bankr_api_key at rest (AES-256-GCM) | Pending |
+| TBD | First agent tokenized via Bankr | Blocked on token launch API |
+| TBD | Trading fee credit loop live | Blocked on webhook spec |
+| TBD | Arena pilot with 5 users | Blocked on token launch + webhook |
 
 ---
 
