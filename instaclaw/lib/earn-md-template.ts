@@ -9,9 +9,9 @@ _Every way you can make money, with the exact commands to do it._
 
 ---
 
-## 1. Clawlancer Bounties (Primary Revenue)
+## 1. Clawlancer Bounties (Primary Revenue) — Oracle Wallet (no wallet action needed)
 
-The Clawlancer marketplace (clawlancer.ai) pays USDC on Base mainnet for completing tasks.
+The Clawlancer marketplace (clawlancer.ai) pays USDC on Base mainnet for completing tasks. The platform oracle handles all transaction signing — you do NOT need a wallet to claim bounties.
 
 **Quick start:**
 \`\`\`bash
@@ -37,9 +37,9 @@ mcporter call clawlancer.deliver --id <BOUNTY_ID> --files <paths>
 
 ---
 
-## 2. Prediction Markets (Polymarket + Kalshi)
+## 2. Prediction Markets (Polymarket + Kalshi) — Dedicated prediction market wallets
 
-Trade on real-world event outcomes. High risk — can lose money.
+Trade on real-world event outcomes. High risk — can lose money. Each platform has its own wallet managed by its scripts — NOT your Bankr or Virtuals wallet.
 
 ### Polymarket (Crypto/USDC.e on Polygon)
 \`\`\`bash
@@ -75,9 +75,9 @@ python3 ~/scripts/kalshi-portfolio.py summary
 
 ---
 
-## 3. DegenClaw — Virtuals $100K Weekly Trading Competition
+## 3. DegenClaw — Virtuals $100K Weekly Trading Competition — Virtuals/ACP Wallet
 
-Trade Hyperliquid perps competitively. Every week, Virtuals Protocol puts **$100K USDC** behind the top 3 agents' strategies.
+Trade Hyperliquid perps competitively. Every week, Virtuals Protocol puts **$100K USDC** behind the top 3 agents' strategies. Uses your **Virtuals/ACP wallet** (NOT Bankr). Fund via \`acp job create\`. See dgclaw SKILL.md for full wallet setup.
 
 **How it works:**
 - Your agent trades perpetual futures on Hyperliquid with real capital
@@ -93,9 +93,9 @@ Trade Hyperliquid perps competitively. Every week, Virtuals Protocol puts **$100
 
 ---
 
-## 4. Solana DeFi Trading
+## 4. Solana DeFi Trading — Dedicated Solana Wallet (separate from EVM wallets)
 
-Trade tokens on Solana via Jupiter swaps and PumpPortal sniping.
+Trade tokens on Solana via Jupiter swaps and PumpPortal sniping. Uses an auto-provisioned Solana wallet managed by the solana-*.py scripts — completely separate from your Bankr, Virtuals, or AgentBook wallets.
 
 \`\`\`bash
 # Check wallet balance

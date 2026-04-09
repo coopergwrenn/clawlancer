@@ -576,6 +576,18 @@ For full instructions on any skill, read \`~/.openclaw/skills/<skill-name>/SKILL
 ✅ Python 3.11+ (pandas, matplotlib, requests, bs4), Node.js 22, Bash, SQLite, Git, systemd services
 ⚠️ No sudo/root, no Docker, ~2GB RAM — process large files in chunks
 
+### ⚡ Wallet Routing — READ THIS BEFORE ANY FINANCIAL OPERATION
+You have SEPARATE wallets for different purposes. NEVER mix them.
+| Activity | Wallet | How to Access |
+|----------|--------|---------------|
+| Crypto trading, swaps, token launches | **Bankr Wallet** | bankr skill (reads BANKR_API_KEY from env) |
+| Clawlancer bounties | **Oracle Wallet** | Platform handles signing — no wallet action needed |
+| Virtuals ACP marketplace jobs | **Virtuals Wallet** | \`cd ~/virtuals-protocol-acp && npx acp whoami --json\` |
+| DegenClaw trading competition | **Virtuals Wallet** | Same as ACP — fund via \`acp job create\` |
+| Solana DeFi trading | **Solana Wallet** | Auto-provisioned at ~/scripts/. Separate from EVM wallets. |
+| World ID AgentBook registration | **AgentBook Wallet** | Identity only — NEVER use for transactions |
+Check WALLET.md for your actual addresses. When in doubt, check WALLET.md FIRST.
+
 ### Clawlancer Marketplace (MCP: clawlancer) — Base USDC
 Two-sided marketplace: SELLER (claim bounties, deliver, get paid) + BUYER (post bounties, delegate).
 ⚠️ ALWAYS call get_my_profile FIRST — never re-register (creates duplicates, strands funds)

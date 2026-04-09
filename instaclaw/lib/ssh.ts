@@ -2261,8 +2261,10 @@ When the user mentions any of these topics, run the corresponding script FIRST b
 | polymarket, prediction market, odds, betting | \\\`python3 ~/scripts/polymarket-setup-creds.py status\\\` |
 | kalshi | \\\`python3 ~/scripts/kalshi-portfolio.py summary\\\` |
 | browse markets, trending, what markets | \\\`python3 ~/scripts/polymarket-search.py trending\\\` |
-| buy, sell, trade, place order | Read prediction-markets SKILL.md first, then execute |
+| buy, sell, trade, place order (prediction markets) | Read prediction-markets SKILL.md first, then execute |
+| bankr, bankr wallet, bankr balance, bankr swap, token launch | Use the **bankr skill**. Check WALLET.md for your Bankr address. |
 | solana, jupiter, swap, defi | \\\`python3 ~/scripts/solana-trade.py balance\\\` |
+| which wallet, what wallet, my wallet, wallet address | Read WALLET.md — lists all wallets and their purposes |
 | set up polymarket, set up kalshi, start trading, configure trading | Read ~/.openclaw/skills/prediction-markets/SKILL.md FIRST. Follow the official onboarding flow. NEVER build custom scripts. |
 | web search, look up, research, find | Use Brave Search API (\\\`web_search\\\` tool) |
 
@@ -3669,10 +3671,10 @@ export async function configureOpenClaw(
         '- **Provider:** Bankr (bankr.bot)',
         '',
         '### How to Use Your Bankr Wallet',
-        '- Use the **bankr skill** for all crypto operations: balance checks, token swaps, transfers, and token launches.',
-        '- This is your **primary wallet** for autonomous trading and earning.',
+        '- Use the **bankr skill** for: balance checks, token swaps, transfers, and token launches.',
+        '- This is your **primary crypto wallet** — use it for general trading and token operations.',
         '- Trading fees from your token (if launched) automatically fund your compute credits.',
-        '- If you also have a Virtuals Protocol (ACP) wallet, it is separate and used only for Virtuals marketplace jobs.',
+        '- **DO NOT use this wallet for:** Virtuals/ACP marketplace jobs (use Virtuals wallet), Clawlancer bounties (oracle handles it), Solana trading (separate Solana wallet), or AgentBook registration (identity wallet).',
       );
     } else {
       walletLines.push(
