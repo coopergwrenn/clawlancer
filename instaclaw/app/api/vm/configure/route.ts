@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     let gmailProfileSummary: string | undefined;
     const { data: userProfile } = await supabase
       .from("instaclaw_users")
-      .select("gmail_profile_summary, gmail_insights, user_timezone, world_id_nullifier_hash, world_id_verification_level, world_id_verified")
+      .select("gmail_profile_summary, gmail_insights, user_timezone, world_id_nullifier_hash, world_id_verification_level, world_id_verified, partner")
       .eq("id", userId)
       .single();
 
@@ -258,6 +258,7 @@ export async function POST(req: NextRequest) {
       worldIdLevel: userProfile?.world_id_verified ? userProfile.world_id_verification_level ?? undefined : undefined,
       bankrApiKey: decryptedBankrKey ?? undefined,
       bankrEvmAddress: vm.bankr_evm_address ?? undefined,
+      partner: userProfile?.partner ?? undefined,
     }, userId);
 
     // ── Post-configure ownership re-verification ──
@@ -305,6 +306,9 @@ export async function POST(req: NextRequest) {
     const effectiveTimezone = userProfile?.user_timezone ?? vm.user_timezone;
     if (effectiveTimezone) {
       supplementalUpdate.user_timezone = effectiveTimezone;
+    }
+    if (userProfile?.partner) {
+      supplementalUpdate.partner = userProfile.partner;
     }
     await supabase
       .from("instaclaw_vms")

@@ -58,6 +58,8 @@ interface UserConfig {
   bankrApiKey?: string;
   /** Bankr EVM wallet address — deployed to VM .env + Wallet.md */
   bankrEvmAddress?: string;
+  /** Partner tag (e.g., "edge_city") — gates partner-specific skill installation */
+  partner?: string;
 }
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
@@ -3526,6 +3528,29 @@ export async function configureOpenClaw(
       ''
     );
 
+    // Install Edge City skill (only for edge_city partners)
+    // Uses Bankr pattern: clone directly into ~/.openclaw/skills/ (already in default extraDirs)
+    if (config.partner === "edge_city") {
+      const edgeosToken = process.env.EDGEOS_BEARER_TOKEN ?? "";
+      const solaToken = process.env.SOLA_AUTH_TOKEN ?? "";
+      scriptParts.push(
+        '# Install Edge Esmeralda 2026 skill (partner: edge_city)',
+        'if [ ! -d "$HOME/.openclaw/skills/edge-esmeralda" ]; then',
+        '  git clone --depth 1 https://github.com/aromeoes/edge-agent-skill.git "$HOME/.openclaw/skills/edge-esmeralda" 2>/dev/null || true',
+        'fi',
+        '# 30-min cron to keep reference content fresh (repo auto-updates every 15 min via GitHub Actions)',
+        '(crontab -l 2>/dev/null | grep -v "edge-agent-skill" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null\') | crontab -',
+        '# Set Edge City API tokens',
+        ...(edgeosToken ? [
+          `grep -qF 'EDGEOS_BEARER_TOKEN=' "$HOME/.openclaw/.env" 2>/dev/null || echo 'EDGEOS_BEARER_TOKEN=${edgeosToken}' >> "$HOME/.openclaw/.env"`,
+        ] : []),
+        ...(solaToken ? [
+          `grep -qF 'SOLA_AUTH_TOKEN=' "$HOME/.openclaw/.env" 2>/dev/null || echo 'SOLA_AUTH_TOKEN=${solaToken}' >> "$HOME/.openclaw/.env"`,
+        ] : []),
+        ''
+      );
+    }
+
     // Deploy World ID nullifier to .env + WORLD_ID.md if user is verified
     // This ensures the agent carries its human identity proof from first boot
     if (config.worldIdNullifier) {
@@ -3767,7 +3792,29 @@ export async function configureOpenClaw(
 
     // Common workspace files (written for every VM regardless of Gmail)
     // SOUL.md now includes identity section, operating principles, and learned preferences
-    const soulB64 = Buffer.from(WORKSPACE_SOUL_MD, 'utf-8').toString('base64');
+    // For Edge City partners, append Edge Esmeralda context section
+    let soulContent = WORKSPACE_SOUL_MD;
+    if (config.partner === "edge_city") {
+      soulContent += `
+
+## Edge Esmeralda 2026
+
+You are an agent at Edge Esmeralda 2026 — a 4-week popup village in Healdsburg, CA (2026-05-30 to 2026-06-27). Your human is an attendee. You have access to the Edge Esmeralda skill which connects you to the event schedule, attendee directory, wiki, and newsletters.
+
+Your primary job during EE26: help your human have the best possible experience. Connect them with people who share their interests. Keep them informed about events. Help them navigate the community. Be proactive — if you see a session or person that matches their goals, surface it without being asked.
+
+Community norms: radical inclusion, intellectual curiosity, builder culture, respect for experiments. Edge City is about people living and building together at the frontier.
+
+When your human first messages you, start with a brief onboarding interview:
+1. What are you most excited about? What are your goals for EE26?
+2. What are you working on right now? What's your background?
+3. Who do you want to meet? What kind of connections are you looking for?
+4. Which weeks are you attending? (Week 1: May 30-Jun 6, Week 2: Jun 6-13, Week 3: Jun 13-20, Week 4: Jun 20-27)
+
+Store their answers in MEMORY.md — you'll use this for people matching and proactive suggestions throughout the event.
+`;
+    }
+    const soulB64 = Buffer.from(soulContent, 'utf-8').toString('base64');
     const capabilitiesB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');
     const quickRefB64 = Buffer.from(WORKSPACE_QUICK_REFERENCE_MD, 'utf-8').toString('base64');
     const toolsB64 = Buffer.from(WORKSPACE_TOOLS_MD_TEMPLATE, 'utf-8').toString('base64');
