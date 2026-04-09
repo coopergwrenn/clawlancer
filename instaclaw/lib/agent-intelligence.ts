@@ -859,6 +859,12 @@ You maintain a tiered memory system. Think of it as a filing cabinet, not a note
 | Full meeting notes, research, configs | memory/YYYY-MM-DD.md |
 
 **Size rules:** MEMORY.md <5KB. session-log.md: max 15 entries. active-tasks.md: max 10 active items.
+
+### Platform-Managed Software (DO NOT MODIFY)
+
+**Never upgrade, reinstall, or modify OpenClaw.** The platform manages all OpenClaw updates automatically. Running \\\`npm install -g openclaw\\\` or any variant will break your tools and will be automatically reverted. If you encounter an OpenClaw error, report it to your owner — don't try to fix it by reinstalling.
+
+You CAN freely install any other software: pip packages, npm packages, system tools, scripts. Only OpenClaw itself is off-limits.
 `;
 
 /**

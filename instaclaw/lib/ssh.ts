@@ -1771,6 +1771,51 @@ def check_runaway_processes():
         pass
     return actions
 
+def check_openclaw_version():
+    """Auto-revert unauthorized OpenClaw upgrades. Agents can install anything
+    else, but OpenClaw itself is platform-managed. If the installed version
+    doesn't match the pin file, reinstall the pinned version."""
+    pin_file = os.path.expanduser("~/.openclaw/.openclaw-pinned-version")
+    cooldown_file = os.path.expanduser("~/.openclaw/.openclaw-version-fix-at")
+    if not os.path.exists(pin_file):
+        return None  # Legacy VM — no pin, skip
+    try:
+        pinned = open(pin_file).read().strip()
+        if not pinned:
+            return None
+        # Read installed version from package.json (no NVM/subprocess needed)
+        pkg_files = glob.glob(os.path.expanduser("~/.nvm/versions/node/*/lib/node_modules/openclaw/package.json"))
+        if not pkg_files:
+            return None
+        installed = json.load(open(pkg_files[-1])).get("version", "")
+        if not installed or installed == pinned:
+            return None  # Version matches — nothing to do
+        # Cooldown: max one reinstall per hour
+        try:
+            if os.path.exists(cooldown_file):
+                last_fix = float(open(cooldown_file).read().strip())
+                if time.time() - last_fix < 3600:
+                    return f"version_mismatch(installed={installed},pinned={pinned},cooldown)"
+        except Exception:
+            pass
+        # Reinstall pinned version
+        result = subprocess.run(
+            f'. ~/.nvm/nvm.sh && npm install -g openclaw@{pinned} 2>&1 | tail -1',
+            shell=True, timeout=120, capture_output=True, text=True
+        )
+        with open(cooldown_file, "w") as f:
+            f.write(str(time.time()))
+        if result.returncode == 0:
+            # Restart gateway to use the correct version
+            env = os.environ.copy()
+            env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+            subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"],
+                           env=env, timeout=30, capture_output=True)
+            return f"version_fixed({installed}->{pinned})"
+        return f"version_fix_failed(installed={installed},pinned={pinned})"
+    except Exception:
+        return None
+
 def main():
     actions = []
     ram_pct = get_ram_pct()
@@ -1841,6 +1886,11 @@ def main():
 
     # --- Circuit breaker check ---
     circuit_breaker = check_circuit_breaker()
+
+    # --- OpenClaw version pin check ---
+    version_action = check_openclaw_version()
+    if version_action:
+        actions.append(version_action)
 
     # --- Write status file ---
     # Filter None values from actions
@@ -3397,6 +3447,12 @@ export async function configureOpenClaw(
     scriptParts.push(
       '# Write exec-approvals.json (security=full, ask=off)',
       `echo '${execApprovalsB64}' | base64 -d > "$HOME/.openclaw/exec-approvals.json"`,
+      ''
+    );
+
+    // Write OpenClaw version pin — vm-watchdog auto-reverts unauthorized upgrades
+    scriptParts.push(
+      `echo '${OPENCLAW_PINNED_VERSION}' > "$HOME/.openclaw/.openclaw-pinned-version"`,
       ''
     );
 
@@ -8664,6 +8720,11 @@ export async function upgradeOpenClaw(
       'pkill -9 -f "openclaw.*gateway" 2>/dev/null || true',
     );
     await new Promise((r) => setTimeout(r, 1000));
+
+    // ── Step 0b: Write version pin BEFORE install — watchdog reads this to
+    // determine the "correct" version. Writing first prevents the watchdog
+    // from reverting our upgrade mid-install.
+    await ssh.execCommand(`echo '${version}' > ~/.openclaw/.openclaw-pinned-version`);
 
     // ── Step 1: npm install (2 min timeout) ──
     onProgress?.(`Installing openclaw@${version}...`);

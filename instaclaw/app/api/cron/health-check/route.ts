@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser, OPENCLAW_PINNED_VERSION } from "@/lib/ssh";
 import { VM_MANIFEST, getTemplateContent } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
@@ -1593,10 +1593,27 @@ else:
               grep -q "session-end-hook" ~/.openclaw/logs/strip-thinking.log && HK=1
             # SOUL.md has memory filing? (not scored, but tracked)
             grep -q "MEMORY_FILING_SYSTEM" ~/.openclaw/workspace/SOUL.md 2>/dev/null && SOUL=1
-            echo "$ST|$MI|$MEM|$SL|$AT|$HK|$SOUL"
+            # OpenClaw version matches pin?
+            VER_OK=0
+            PKG=$(find ~/.nvm/versions/node/*/lib/node_modules/openclaw/package.json 2>/dev/null | tail -1)
+            if [ -n "$PKG" ]; then
+              INSTALLED=$(python3 -c "import json; print(json.load(open('$PKG')).get('version',''))" 2>/dev/null)
+              [ "$INSTALLED" = "${OPENCLAW_PINNED_VERSION}" ] && VER_OK=1
+            fi
+            echo "$ST|$MI|$MEM|$SL|$AT|$HK|$SOUL|$VER_OK"
           `);
           const parts = funcCheck.stdout.trim().split("|").map((s) => s.trim() === "1");
-          const [stOk, miOk, memOk, slOk, atOk, hkOk, soulOk] = parts;
+          const [stOk, miOk, memOk, slOk, atOk, hkOk, soulOk, verOk] = parts;
+
+          // Flag version mismatch
+          if (!verOk) {
+            logger.warn("OpenClaw version mismatch detected", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+              pinnedVersion: OPENCLAW_PINNED_VERSION,
+            });
+          }
 
           // Compute memory score (0-100)
           let memScore = 0;
