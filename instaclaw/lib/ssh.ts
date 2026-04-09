@@ -3685,9 +3685,15 @@ export async function configureOpenClaw(
     }
     walletLines.push(
       '',
+      '## Wallet Summary',
+      '- **Bankr Wallet** — your primary wallet for trading, swaps, and token operations. Use the bankr skill.',
+      '- **Virtuals Wallet** (if enabled) — separate wallet for Virtuals Protocol marketplace jobs only. Managed by ACP.',
+      '- **AgentBook Wallet** — identity-only wallet for World ID on-chain registration. Do NOT use for transactions.',
+      '',
       '## Key Rules',
       '- Never share private keys',
       '- Always verify wallet addresses before transactions',
+      '- Use the correct wallet for each purpose — do not mix them',
     );
 
     const walletB64 = Buffer.from(walletLines.join('\n'), 'utf-8').toString('base64');
