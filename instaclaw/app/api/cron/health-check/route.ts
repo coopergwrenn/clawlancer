@@ -1493,6 +1493,12 @@ else:
     cronAuditReadyPool = cronReadyVms ?? [];
   } catch { /* non-fatal */ }
 
+  // Memory health tracking (populated by functional checks below)
+  const memoryScores: number[] = [];
+  let memoryDegraded = 0;
+  let hookNeverFired = 0;
+  let missingSoulFiling = 0;
+
   // 5 random assigned + all ready pool
   const cronAuditAssigned = sshAliveVms
     .sort(() => Math.random() - 0.5)
@@ -1562,33 +1568,63 @@ else:
           });
         }
 
-        // 5. FUNCTIONAL checks — verify crons are producing output, not just existing
-        // Only run on assigned VMs (ready pool has no sessions/data)
+        // 5. FUNCTIONAL checks + memory health score
+        // Checks crons produce output AND scores memory system health (0-100)
         if (vm.assigned_to) {
           const funcCheck = await ssh.execCommand(`
-            ST_OK=0; MI_OK=0; SL_OK=0
-            # strip-thinking: log modified in last 60 min?
+            ST=0; MI=0; SL=0; MEM=0; AT=0; HK=0; SOUL=0
+            # strip-thinking: log modified in last 60 min? (not scored, just functional)
             [ -f ~/.openclaw/logs/strip-thinking.log ] && \
-              find ~/.openclaw/logs/strip-thinking.log -mmin -60 -print -quit | grep -q . && ST_OK=1
-            # memory index: DB > 4096 bytes (has actual data)?
-            for db in $(find ~/.openclaw -name "*.sqlite" 2>/dev/null | head -1); do
-              [ -f "$db" ] && [ $(wc -c < "$db") -gt 4096 ] && MI_OK=1
+              find ~/.openclaw/logs/strip-thinking.log -mmin -60 -print -quit | grep -q . && ST=1
+            # memory index: DB > 4096 bytes? (25 pts)
+            for db in $(find ~/.openclaw -name "main.sqlite" -path "*/memory/*" 2>/dev/null | head -1); do
+              [ -f "$db" ] && [ $(wc -c < "$db") -gt 4096 ] && MI=1
             done
-            # session-log: more than template (>4 lines)?
+            # MEMORY.md > 200 bytes? (20 pts)
+            [ -f ~/.openclaw/workspace/MEMORY.md ] && [ $(wc -c < ~/.openclaw/workspace/MEMORY.md) -gt 200 ] && MEM=1
+            # session-log.md > 4 lines? (20 pts)
             [ -f ~/.openclaw/workspace/memory/session-log.md ] && \
-              [ $(wc -l < ~/.openclaw/workspace/memory/session-log.md) -gt 4 ] && SL_OK=1
-            echo "$ST_OK|$MI_OK|$SL_OK"
+              [ $(wc -l < ~/.openclaw/workspace/memory/session-log.md) -gt 4 ] && SL=1
+            # active-tasks.md > 4 lines? (10 pts)
+            [ -f ~/.openclaw/workspace/memory/active-tasks.md ] && \
+              [ $(wc -l < ~/.openclaw/workspace/memory/active-tasks.md) -gt 4 ] && AT=1
+            # hook fired in last 7 days? (25 pts)
+            [ -f ~/.openclaw/logs/strip-thinking.log ] && \
+              grep -q "session-end-hook" ~/.openclaw/logs/strip-thinking.log && HK=1
+            # SOUL.md has memory filing? (not scored, but tracked)
+            grep -q "MEMORY_FILING_SYSTEM" ~/.openclaw/workspace/SOUL.md 2>/dev/null && SOUL=1
+            echo "$ST|$MI|$MEM|$SL|$AT|$HK|$SOUL"
           `);
-          const [stOk, miOk, slOk] = (funcCheck.stdout.trim().split("|")).map((s) => s === "1");
+          const parts = funcCheck.stdout.trim().split("|").map((s) => s.trim() === "1");
+          const [stOk, miOk, memOk, slOk, atOk, hkOk, soulOk] = parts;
+
+          // Compute memory score (0-100)
+          let memScore = 0;
+          if (memOk) memScore += 20;   // MEMORY.md has content
+          if (slOk) memScore += 20;    // session-log has entries
+          if (atOk) memScore += 10;    // active-tasks has entries
+          if (hkOk) memScore += 25;    // hook has fired
+          if (miOk) memScore += 25;    // memory index has data
+          memoryScores.push(memScore);
+
+          if (memScore < 50) {
+            memoryDegraded++;
+          }
+          if (!hkOk) hookNeverFired++;
+          if (!soulOk) missingSoulFiling++;
+
+          // Log functional issues
           const funcIssues: string[] = [];
           if (!stOk) funcIssues.push("strip-thinking-stale");
           if (!miOk) funcIssues.push("memory-index-empty");
           if (!slOk) funcIssues.push("session-log-empty");
+          if (memScore < 50) funcIssues.push(`memory_degraded(${memScore})`);
           if (funcIssues.length > 0) {
-            logger.warn("Functional check: cron output missing", {
+            logger.warn("Functional check: issues detected", {
               route: "cron/health-check",
               vmId: vm.id,
               vmName: vm.name,
+              memoryScore: memScore,
               issues: funcIssues,
             });
           }
@@ -2965,6 +3001,13 @@ else:
     cronAuditChecked,
     cronAuditFixed,
     tierSynced,
+    memoryHealth: {
+      vmsSampled: memoryScores.length,
+      avgScore: memoryScores.length > 0 ? Math.round(memoryScores.reduce((a, b) => a + b, 0) / memoryScores.length) : null,
+      degradedCount: memoryDegraded,
+      hookNeverFiredCount: hookNeverFired,
+      missingSoulFilingCount: missingSoulFiling,
+    },
     memoryFilesCreated,
     memoryEmptyAlerts,
     memoryStaleWarnings,
