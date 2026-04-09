@@ -393,6 +393,11 @@ export const VM_MANIFEST = {
     // approval prompts (agents run autonomously via Telegram, nobody to approve).
     "tools.exec.security": "full",
     "tools.exec.ask": "off",
+    // v57: Disable sandbox mode — our VMs don't have Docker installed.
+    // OpenClaw's sandbox.mode=all requires Docker for exec; without it, agents
+    // get "Sandbox mode requires Docker" on every command. Zilsun's agent was
+    // down for a week because of this (reported 2026-04-09).
+    "agents.defaults.sandbox.mode": "off",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
