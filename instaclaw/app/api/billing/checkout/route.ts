@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Get or create Stripe customer
     const { data: user } = await supabase
       .from("instaclaw_users")
-      .select("id, email, stripe_customer_id, deployment_lock_at, referred_by, invited_by")
+      .select("id, email, stripe_customer_id, deployment_lock_at, referred_by, invited_by, partner")
       .eq("id", session.user.id)
       .single();
 
@@ -119,9 +119,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If user was referred by an ambassador, ensure the coupon exists and apply it
+    // Apply partner coupon or ambassador discount (mutually exclusive with promo code entry)
     let discounts: { coupon: string }[] | undefined;
-    if (user.referred_by) {
+
+    // Partner auto-apply: Edge City partners get 100% off first month
+    if (user.partner === "edge_city" && process.env.EDGE_CITY_COUPON_ID) {
+      discounts = [{ coupon: process.env.EDGE_CITY_COUPON_ID }];
+    }
+
+    if (!discounts && user.referred_by) {
       // Verify the referral code belongs to an active ambassador
       const { data: ambassador } = await supabase
         .from("instaclaw_ambassadors")
