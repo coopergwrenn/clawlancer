@@ -40,7 +40,9 @@ InstaClaw is a hosted AI agent platform (~193 agents). Each user gets a dedicate
 - [ ] **IP rotation:** If a user's VM gets reassigned (cancel + re-subscribe), the IP changes. Is there an API to update `allowedIps` on an existing wallet without revoking the API key?
 - [ ] **Rate limit (10/min):** Fine for normal onboarding. If we ever need batch provisioning (50+ wallets), would appreciate a higher limit or burst allowance.
 - [ ] **Key recovery:** If an API key is lost, is `POST /partner/wallets/:id/api-key` the recovery path? (generates new key, replaces old one)
-- [ ] **Haven't made a real API call yet** — partner key is set up, code is wired, next step is a manual test call to verify end-to-end.
+- [x] **First API call successful (2026-04-09):** `POST /partner/wallets` returned 201 with wallet ID, EVM address, and API key. Idempotency retry returned 200 (not 409 as spec says — 200 is actually better for us, no special error handling needed).
+- [ ] **Address casing inconsistency:** First call returned EIP-55 checksummed address (`0xa3d1...1923C`), idempotency retry returned lowercase (`0xa3d1...1923c`). Minor but could trip up strict address comparisons. Suggestion: always return checksummed addresses for consistency.
+- [ ] **Idea — partner wallet pre-provisioning:** We could pre-provision wallets for our VM ready pool (before a user signs up) using sequential idempotency keys, then assign them at signup. This would shave ~500ms off onboarding. Would this be a supported pattern, or should wallets only be created at user signup time?
 
 ---
 
@@ -112,7 +114,8 @@ We want agents to charge for services (market signals, research, analysis) via x
 
 | # | Date | Severity | Description | Status |
 |---|------|----------|-------------|--------|
-| | | | (none yet — testing starts next) | |
+| 1 | 2026-04-09 | Low | Address casing inconsistency: 201 returns EIP-55 checksummed, 200 idempotency retry returns lowercase. Could trip strict comparisons. | Open |
+| 2 | 2026-04-09 | Note | Idempotency returns 200 (not 409 as spec says). Prefer this behavior — just noting the spec divergence. | Informational |
 
 ---
 
@@ -135,7 +138,8 @@ We want agents to charge for services (market signals, research, analysis) via x
 | 2026-04-01 | Architecture designed, all endpoints pre-built, DB ready |
 | 2026-04-02 | Dev org setup requested |
 | 2026-04-09 | Test org active, partner key generated, provisioning wired into onboarding |
-| Next | Manual API test → first real wallet provisioned |
+| 2026-04-09 | First wallet provisioned via API — `wlt_02hhmvrxhhljjy5g` on Base. Idempotency verified. |
+| Next | First real user signup with auto-provisioned Bankr wallet |
 
 ---
 
