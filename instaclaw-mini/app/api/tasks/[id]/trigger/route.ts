@@ -69,29 +69,41 @@ export async function POST(
       })
       .eq("id", id);
 
-    // Execute via gateway
+    // Execute via gateway — retry once if agent is busy (processing a heartbeat)
     try {
-      const gatewayRes = await fetch(`${vmData.gateway_url}/v1/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${vmData.gateway_token}`,
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          messages: [{ role: "user", content: task.description + TASK_SUFFIX }],
-        }),
-      });
+      let gatewayRes: Response | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        gatewayRes = await fetch(`${vmData.gateway_url}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${vmData.gateway_token}`,
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            messages: [{ role: "user", content: task.description + TASK_SUFFIX }],
+          }),
+        });
 
-      if (!gatewayRes.ok) {
+        if (gatewayRes.status === 400 && attempt === 0) {
+          const peek = await gatewayRes.clone().text().catch(() => "");
+          if (peek.includes("busy")) {
+            await new Promise((r) => setTimeout(r, 3000));
+            continue;
+          }
+        }
+        break;
+      }
+
+      if (!gatewayRes!.ok) {
         await supabase()
           .from("instaclaw_tasks")
-          .update({ status: "failed", error_message: `Agent is busy (${gatewayRes.status}). Tap Re-run to try again.`, processing_started_at: null })
+          .update({ status: "failed", error_message: `Agent is busy (${gatewayRes!.status}). Tap Re-run to try again.`, processing_started_at: null })
           .eq("id", id);
         return NextResponse.json({ error: "Gateway error" }, { status: 502 });
       }
 
-      const data = await gatewayRes.json();
+      const data = await gatewayRes!.json();
       const result = data.choices?.[0]?.message?.content || "";
       const cleanResult = result.replace(/---TASK_META---[\s\S]*?---END_META---/, "").trim();
 

@@ -70,19 +70,34 @@ export async function POST(req: NextRequest) {
     if (toggles?.webSearch) gatewayBody.web_search = true;
     if (toggles?.deepResearch) gatewayBody.deep_research = true;
 
-    const gatewayRes = await fetch(`${vmData.gateway_url}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${vmData.gateway_token}`,
-      },
-      body: JSON.stringify(gatewayBody),
-    });
+    // Retry logic: if agent returns 400 "busy" (processing a heartbeat or
+    // previous request), wait 3s and retry once. OpenClaw processes one
+    // request at a time — this handles the occasional collision.
+    let gatewayRes: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      gatewayRes = await fetch(`${vmData.gateway_url}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${vmData.gateway_token}`,
+        },
+        body: JSON.stringify(gatewayBody),
+      });
 
-    if (!gatewayRes.ok) {
-      const errText = await gatewayRes.text().catch(() => "");
+      if (gatewayRes.status === 400) {
+        const peek = await gatewayRes.clone().text().catch(() => "");
+        if (peek.includes("busy") && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 3000));
+          continue; // retry
+        }
+      }
+      break;
+    }
+
+    if (!gatewayRes!.ok) {
+      const errText = await gatewayRes!.text().catch(() => "");
       // Distinguish credit exhaustion from gateway errors
-      if (gatewayRes.status === 402 || errText.includes("exhausted") || errText.includes("credit")) {
+      if (gatewayRes!.status === 402 || errText.includes("exhausted") || errText.includes("credit")) {
         return NextResponse.json(
           { error: "credits_exhausted", detail: "You're out of credits. Add more to keep chatting." },
           { status: 402 }
