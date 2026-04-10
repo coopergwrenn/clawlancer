@@ -3,7 +3,22 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
+// Token launches are synchronous on Bankr's side. 30s is plenty of headroom.
 export const maxDuration = 30;
+
+const BANKR_API_URL = "https://api.bankr.bot";
+
+interface BankrLaunchResponse {
+  success?: boolean;
+  simulated?: boolean;
+  tokenAddress?: string;
+  poolId?: string;
+  txHash?: string;
+  activityId?: string;
+  chain?: string;
+  feeDistribution?: Record<string, { address: string; bps: number }>;
+  error?: string;
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -11,13 +26,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { token_name, token_symbol } = await req.json();
-
-  if (!token_name || typeof token_name !== "string" || token_name.length > 32) {
-    return NextResponse.json({ error: "Invalid token name (max 32 chars)" }, { status: 400 });
+  const partnerKey = process.env.BANKR_PARTNER_KEY;
+  if (!partnerKey) {
+    logger.error("BANKR_PARTNER_KEY not configured");
+    return NextResponse.json({ error: "Token launches not configured" }, { status: 503 });
   }
-  if (!token_symbol || typeof token_symbol !== "string" || token_symbol.length > 10) {
-    return NextResponse.json({ error: "Invalid token symbol (max 10 chars)" }, { status: 400 });
+
+  // Parse + validate input (length checks only — Bankr enforces the rest)
+  const body = await req.json().catch(() => ({}));
+  const tokenName = typeof body.token_name === "string" ? body.token_name.trim() : "";
+  const tokenSymbol = typeof body.token_symbol === "string" ? body.token_symbol.trim() : "";
+  const description = typeof body.description === "string" ? body.description.trim() : undefined;
+
+  if (!tokenName || tokenName.length < 1 || tokenName.length > 100) {
+    return NextResponse.json({ error: "Token name must be 1-100 characters" }, { status: 400 });
+  }
+  if (!tokenSymbol || tokenSymbol.length < 1 || tokenSymbol.length > 10) {
+    return NextResponse.json({ error: "Token symbol must be 1-10 characters" }, { status: 400 });
+  }
+  if (description && description.length > 500) {
+    return NextResponse.json({ error: "Description max 500 characters" }, { status: 400 });
   }
 
   const supabase = getSupabase();
@@ -33,7 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
   }
 
-  if (!vm.bankr_wallet_id) {
+  if (!vm.bankr_wallet_id || !vm.bankr_evm_address) {
     return NextResponse.json({ error: "No Bankr wallet provisioned" }, { status: 400 });
   }
 
@@ -49,35 +77,174 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Agent already tokenized on Bankr" }, { status: 409 });
   }
 
-  // TODO: Call Bankr token launch API when available
-  // The token launch endpoint is not in the current partner provisioning spec.
-  // When Bankr ships it, wire it up here:
-  //
-  // const partnerKey = process.env.BANKR_PARTNER_KEY;
-  // const res = await fetch(`https://api.bankr.bot/partner/wallets/${vm.bankr_wallet_id}/token-launch`, {
-  //   method: "POST",
-  //   headers: {
-  //     "x-partner-key": partnerKey,
-  //     "Content-Type": "application/json",
-  //   },
-  //   body: JSON.stringify({ name: token_name, symbol: token_symbol }),
-  // });
-  // const data = await res.json();
-  // const tokenAddress = data.tokenAddress;
+  // SIMULATION MODE: Run the launch through Bankr's simulateOnly path.
+  // Returns predicted tokenAddress without broadcasting on-chain. No DB state changes.
+  // Controlled by env var so we can test in dev without making real tokens.
+  const simulateOnly = process.env.BANKR_TOKEN_LAUNCH_SIMULATE === "true";
 
-  logger.info("Bankr tokenize requested (API not yet available)", {
-    user_id: session.user.id,
-    vm_id: vm.id,
-    wallet_id: vm.bankr_wallet_id,
-    token_name,
-    token_symbol,
+  // Atomic DB lock: only proceed if no other request has the lock.
+  // We claim the lock by setting tokenization_platform = 'bankr_pending' in a single
+  // UPDATE...WHERE...RETURNING. Either we get the row (lock acquired) or 0 rows
+  // (someone else got it first). NO race condition possible.
+  if (!simulateOnly) {
+    const { data: locked, error: lockErr } = await supabase
+      .from("instaclaw_vms")
+      .update({
+        tokenization_platform: "bankr_pending",
+        bankr_token_launched_at: new Date().toISOString(),
+      })
+      .eq("id", vm.id)
+      .is("tokenization_platform", null)
+      .is("bankr_token_address", null)
+      .select()
+      .single();
+
+    if (lockErr || !locked) {
+      return NextResponse.json(
+        { error: "Token launch already in progress for this agent" },
+        { status: 409 }
+      );
+    }
+  }
+
+  // Call Bankr's token launch API
+  // - Auth: X-Partner-Key (org-level deploy, our org wallet pays gas)
+  // - feeRecipient: the user's own Bankr wallet (1a — agent owns its creator fees)
+  // - Partner share (18.05%) routes automatically to our org's configured fee wallet
+  const launchPayload: Record<string, unknown> = {
+    tokenName,
+    tokenSymbol,
+    feeRecipient: {
+      type: "wallet",
+      value: vm.bankr_evm_address,
+    },
+  };
+  if (description) launchPayload.description = description;
+  if (simulateOnly) launchPayload.simulateOnly = true;
+
+  let launchData: BankrLaunchResponse;
+  try {
+    const launchRes = await fetch(`${BANKR_API_URL}/token-launches/deploy`, {
+      method: "POST",
+      headers: {
+        "X-Partner-Key": partnerKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(launchPayload),
+    });
+
+    launchData = (await launchRes.json()) as BankrLaunchResponse;
+
+    if (!launchRes.ok || !launchData.success) {
+      logger.error("Bankr token launch failed", {
+        status: launchRes.status,
+        error: launchData.error ?? "unknown",
+        userId: session.user.id,
+        vmId: vm.id,
+        simulateOnly,
+      });
+
+      // Release the lock so the user can retry
+      if (!simulateOnly) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            tokenization_platform: null,
+            bankr_token_launched_at: null,
+          })
+          .eq("id", vm.id);
+      }
+
+      return NextResponse.json(
+        { error: launchData.error ?? "Token launch failed", status: launchRes.status },
+        { status: 502 }
+      );
+    }
+  } catch (err) {
+    logger.error("Bankr token launch network error", {
+      error: String(err),
+      userId: session.user.id,
+      vmId: vm.id,
+    });
+
+    // Release the lock
+    if (!simulateOnly) {
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          tokenization_platform: null,
+          bankr_token_launched_at: null,
+        })
+        .eq("id", vm.id);
+    }
+
+    return NextResponse.json({ error: "Network error contacting Bankr" }, { status: 502 });
+  }
+
+  // Simulation: return predicted result without DB state change
+  if (simulateOnly) {
+    logger.info("Bankr token launch simulated", {
+      userId: session.user.id,
+      vmId: vm.id,
+      predictedAddress: launchData.tokenAddress,
+    });
+    return NextResponse.json({
+      simulated: true,
+      tokenAddress: launchData.tokenAddress,
+      tokenSymbol,
+      feeDistribution: launchData.feeDistribution,
+    });
+  }
+
+  // Real launch succeeded — finalize state
+  const { error: finalizeErr } = await supabase
+    .from("instaclaw_vms")
+    .update({
+      tokenization_platform: "bankr",
+      bankr_token_address: launchData.tokenAddress,
+      bankr_token_symbol: tokenSymbol,
+      bankr_token_launched_at: new Date().toISOString(),
+    })
+    .eq("id", vm.id);
+
+  if (finalizeErr) {
+    // CRITICAL: Bankr launched the token but our DB update failed.
+    // The token exists on-chain but our state is inconsistent. Log loudly so we
+    // can manually reconcile. The user's tokenize button will look like it's
+    // still in pending state, but the token is real.
+    logger.error("CRITICAL: Bankr token launched but DB finalize failed", {
+      userId: session.user.id,
+      vmId: vm.id,
+      tokenAddress: launchData.tokenAddress,
+      txHash: launchData.txHash,
+      finalizeError: finalizeErr.message,
+    });
+    return NextResponse.json(
+      {
+        error: "Token launched but state save failed — contact support",
+        tokenAddress: launchData.tokenAddress,
+        txHash: launchData.txHash,
+      },
+      { status: 500 }
+    );
+  }
+
+  logger.info("Bankr token launched successfully", {
+    userId: session.user.id,
+    vmId: vm.id,
+    tokenAddress: launchData.tokenAddress,
+    poolId: launchData.poolId,
+    txHash: launchData.txHash,
+    feeRecipient: vm.bankr_evm_address,
   });
 
-  return NextResponse.json(
-    {
-      error: "Token launch API not yet available — coming soon from Bankr team",
-      requested: { token_name, token_symbol, wallet_id: vm.bankr_wallet_id },
-    },
-    { status: 503 }
-  );
+  return NextResponse.json({
+    success: true,
+    tokenAddress: launchData.tokenAddress,
+    tokenSymbol,
+    poolId: launchData.poolId,
+    txHash: launchData.txHash,
+    chain: launchData.chain,
+    feeDistribution: launchData.feeDistribution,
+  });
 }

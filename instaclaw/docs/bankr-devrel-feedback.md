@@ -140,7 +140,10 @@ We want agents to charge for services (market signals, research, analysis) via x
 | 2026-04-02 | Dev org setup requested |
 | 2026-04-09 | Test org active, partner key generated, provisioning wired into onboarding |
 | 2026-04-09 | First wallet provisioned via API — `wlt_02hhmvrxhhljjy5g` on Base. Idempotency verified. |
-| Next | First real user signup with auto-provisioned Bankr wallet |
+| 2026-04-10 | Read live docs end-to-end. Token launch endpoint corrected (`/token-launches/deploy`, not `/partner/wallets/:id/token-launch`). |
+| 2026-04-10 | Tokenize endpoint wired up. Partner key auth, feeRecipient = user's own wallet (1a), simulateOnly env-driven, atomic DB lock to prevent race conditions. |
+| 2026-04-10 | Webhook spec drafted at instaclaw/docs/bankr-webhook-spec.md to send to Sinaver. |
+| Next | Verify partner fee wallet is configured in Token Launch tab, then test simulated launch |
 
 ---
 
