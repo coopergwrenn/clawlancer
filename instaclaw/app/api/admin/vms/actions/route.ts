@@ -4,6 +4,7 @@ import { isAdmin } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 import { resetAgentMemory, restartGateway, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
+import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -61,6 +62,10 @@ export async function POST(req: NextRequest) {
             telegram_chat_id: null,
           })
           .eq("id", vmId);
+
+        // Suspend Bankr wallet BEFORE reclaim (RPC clears bankr_wallet_id).
+        // Non-fatal — funds stay on-chain, API keys deactivated.
+        await bankrWalletLifecycle(vmId, "suspend");
 
         // Use the same RPC as billing webhook for complete DB cleanup
         await supabase.rpc("instaclaw_reclaim_vm", { p_user_id: reclaimVm.assigned_to });

@@ -6,6 +6,7 @@ import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from 
 import { AlertCollector } from "@/lib/admin-alert";
 import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
+import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -1300,6 +1301,10 @@ else:
           .from("instaclaw_vms")
           .update({ last_assigned_to: vm.assigned_to })
           .eq("id", vm.id);
+
+        // Suspend Bankr wallet BEFORE reclaim (RPC clears bankr_wallet_id).
+        // Non-fatal — funds stay on-chain, API keys deactivated.
+        await bankrWalletLifecycle(vm.id, "suspend");
 
         // Reclaim via DB (clears assignment, tokens, config)
         await supabase.rpc("instaclaw_reclaim_vm", {

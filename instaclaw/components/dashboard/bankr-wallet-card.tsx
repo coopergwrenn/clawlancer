@@ -138,23 +138,38 @@ export function BankrWalletCard({
         </div>
       ) : hasToken ? (
         <div
-          className="rounded-lg p-3 flex items-center justify-between"
+          className="rounded-lg p-3 space-y-2"
           style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
         >
-          <div>
-            <span className="text-sm font-medium">${tokenSymbol}</span>
-            <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
-              Token Active
-            </span>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm font-medium">${tokenSymbol}</span>
+              <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
+                Token Active
+              </span>
+            </div>
+            <a
+              href={`https://basescan.org/token/${tokenAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs flex items-center gap-1"
+              style={{ color: "var(--muted)" }}
+            >
+              BaseScan
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
           <a
-            href={`https://basescan.org/token/${tokenAddress}`}
+            href={`https://bankr.bot/launches/${tokenAddress}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs flex items-center gap-1"
-            style={{ color: "var(--muted)" }}
+            className="text-xs flex items-center justify-center gap-1 py-2 rounded-md hover:bg-black/5 transition-colors"
+            style={{
+              border: "1px solid var(--border)",
+              color: "var(--muted)",
+            }}
           >
-            View
+            View earnings on Bankr
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
