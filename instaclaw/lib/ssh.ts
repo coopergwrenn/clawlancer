@@ -1792,11 +1792,13 @@ def check_openclaw_version():
         installed = json.load(open(pkg_files[-1])).get("version", "")
         if not installed or installed == pinned:
             return None  # Version matches — nothing to do
-        # Cooldown: max one reinstall per hour
+        # Cooldown: max one reinstall per 10 minutes. Short enough to catch
+        # agents that keep ping-ponging the version (rogue downgrades),
+        # long enough to avoid thrashing during our own fleet upgrades.
         try:
             if os.path.exists(cooldown_file):
                 last_fix = float(open(cooldown_file).read().strip())
-                if time.time() - last_fix < 3600:
+                if time.time() - last_fix < 600:
                     return f"version_mismatch(installed={installed},pinned={pinned},cooldown)"
         except Exception:
             pass
