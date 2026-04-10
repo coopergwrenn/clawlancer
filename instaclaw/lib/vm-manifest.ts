@@ -85,6 +85,7 @@ export const TEMPLATE_REGISTRY: Record<string, string> = {
   AGENTS_MD_PHILOSOPHY_SECTION,
   SOUL_MD_LEARNED_PREFERENCES,
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
+  SOUL_MD_MEMORY_FILING_SYSTEM,
   WORKSPACE_INDEX_SCRIPT,
   // STRIP_THINKING_SCRIPT and AUTO_APPROVE_PAIRING_SCRIPT are registered
   // at runtime by ssh.ts to avoid circular imports (they're defined there

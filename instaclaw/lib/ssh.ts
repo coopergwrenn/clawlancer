@@ -7716,7 +7716,9 @@ export async function updateChannelToken(
       configCmds.unshift(`curl -s "https://api.telegram.org/bot${tokens.botToken}/deleteWebhook" > /dev/null 2>&1 || true`);
       configCmds.push(`openclaw config set channels.telegram.allowFrom '["*"]'`);
       configCmds.push(`openclaw config set channels.telegram.dmPolicy open`);
-      configCmds.push(`openclaw config set channels.telegram.streamMode partial`);
+      // OpenClaw 2026.4.5+ renamed `streamMode` → `streaming`. Legacy key
+      // crashes the gateway on startup. Fixed in audit on 2026-04-10.
+      configCmds.push(`openclaw config set channels.telegram.streaming partial`);
     }
 
     const script = [

@@ -112,7 +112,7 @@ function buildStandardConfig(vm: FullVMRecord): Record<string, unknown> {
       allowFrom: ["*"],
       dmPolicy: "open",
       groupPolicy: "open",
-      streamMode: "partial",
+      streaming: "partial",
       groups: { "*": { requireMention: false } },
     };
     (cfg.plugins as { entries: Record<string, unknown> }).entries.telegram = { enabled: true };
