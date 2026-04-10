@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, auditVMConfig, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser, OPENCLAW_PINNED_VERSION } from "@/lib/ssh";
+import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser, OPENCLAW_PINNED_VERSION } from "@/lib/ssh";
 import { VM_MANIFEST, getTemplateContent } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
@@ -17,7 +17,7 @@ export const maxDuration = 600;
 const ALERT_THRESHOLD = 3; // Send alert after 3 consecutive failures
 const SSH_QUARANTINE_THRESHOLD = 6; // Auto-quarantine after 6 consecutive SSH failures (raised from 3 to reduce false positives)
 const SUSPENSION_GRACE_DAYS = 7; // Days before suspending VM for past_due payment
-const CONFIG_AUDIT_BATCH_SIZE = 10; // Max VMs to audit per cycle (raised from 3 to clear backlog faster)
+// CONFIG_AUDIT_BATCH_SIZE moved to /api/cron/reconcile-fleet on 2026-04-10
 const AUTO_MIGRATE_BATCH_SIZE = 3; // Max auto-migrations per cron cycle to prevent storms
 const RESTART_GRACE_SECONDS = 120; // Skip health marking if gateway restarted within this window (Fix 1)
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
@@ -1347,61 +1347,23 @@ else:
 
   // ========================================================================
   // Fourth pass: Config audit for stale-version VMs
-  // Only audit healthy VMs (no point fixing config on a down gateway).
-  // Staggered: limit to CONFIG_AUDIT_BATCH_SIZE per cycle to avoid timeout.
+  //
+  // MOVED 2026-04-10 to /api/cron/reconcile-fleet (its own */3 cron). The
+  // audit pass was being starved here — earlier passes consumed most of the
+  // 600s budget and only ~1-2 of the configured 10 VMs got audited per run,
+  // making backlog clearing take 4-8 hours instead of ~17 minutes.
+  //
+  // The dedicated reconciler runs with its own 300s budget and distributed
+  // lock (instaclaw_cron_locks). Same per-VM logic (auditVMConfig →
+  // reconcileVM), same DB update, same batch size — just isolated from the
+  // noise of the rest of this route.
+  //
+  // configsAudited / configsFixed are kept in the response payload (always
+  // 0 here now) so any consumer that reads them doesn't break. The real
+  // numbers live in the reconcile-fleet response.
   // ========================================================================
-  let configsAudited = 0;
-  let configsFixed = 0;
-
-  // Reconcile ANY assigned VM with stale config — not just healthy ones.
-  // Previously required healthyVmIds.has(vm.id) which skipped freshly
-  // configured VMs (health=unknown) and unhealthy VMs permanently.
-  const staleVms = sshAliveVms.filter(
-    (vm) => (vm.config_version ?? 0) < VM_MANIFEST.version
-  );
-
-  const auditBatch = staleVms.slice(0, CONFIG_AUDIT_BATCH_SIZE);
-
-  for (const vm of auditBatch) {
-    try {
-      const auditResult = await auditVMConfig(vm);
-      configsAudited++;
-
-      if (auditResult.fixed.length > 0) {
-        configsFixed++;
-        logger.info("Config drift fixed", {
-          route: "cron/health-check",
-          vmId: vm.id,
-          vmName: vm.name,
-          fixed: auditResult.fixed,
-          alreadyCorrect: auditResult.alreadyCorrect,
-          missingFiles: auditResult.missingFiles,
-        });
-      }
-
-      if (auditResult.missingFiles.length > 0) {
-        logger.warn("Required workspace files missing", {
-          route: "cron/health-check",
-          vmId: vm.id,
-          vmName: vm.name,
-          missingFiles: auditResult.missingFiles,
-        });
-      }
-
-      // Update config_version — even if nothing was fixed, the check passed
-      await supabase
-        .from("instaclaw_vms")
-        .update({ config_version: VM_MANIFEST.version })
-        .eq("id", vm.id);
-    } catch (err) {
-      logger.error("Config audit failed", {
-        error: String(err),
-        route: "cron/health-check",
-        vmId: vm.id,
-        vmName: vm.name,
-      });
-    }
-  }
+  const configsAudited = 0;
+  const configsFixed = 0;
 
   // Fifth pass: MEMORY.md ensure — REMOVED (absorbed into VM Manifest reconciliation).
   // MEMORY.md is now a create_if_missing entry in VM_MANIFEST.files, deployed

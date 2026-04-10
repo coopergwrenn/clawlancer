@@ -14,6 +14,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/reconcile-fleet",
+      "schedule": "*/3 * * * *"
+    },
+    {
       "path": "/api/cron/cloud-init-poll",
       "schedule": "*/2 * * * *"
     },
