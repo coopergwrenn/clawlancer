@@ -97,6 +97,44 @@ Every time `VM_MANIFEST.version` is bumped in `vm-manifest.ts`, the base snapsho
 
 NEVER provision a batch of VMs from a snapshot that's >3 manifest versions behind.
 
+### 8. NEVER Manually Provision VMs (replenish-pool Owns the Pool)
+
+VM ready pool replenishment is **fully automated** via `/api/cron/replenish-pool` (runs every 5 min via Vercel cron). This cron:
+
+- Maintains the ready pool between `POOL_FLOOR` (10) and `POOL_TARGET` (15)
+- Provisions up to `MAX_PER_RUN` (10) VMs per cycle from `LINODE_SNAPSHOT_ID`
+- Uses a distributed lock (`instaclaw_cron_locks` table) to prevent concurrent runs
+- Counts ready + provisioning as in-flight inventory (prevents over-provision)
+- Sends admin alerts on critical depletion, cost ceiling, stuck VMs, lock failures
+
+**NEVER manually provision VMs** (via Linode API directly, scripts, or "spots N" commands) **while the cron is the system of record.** Manual provisioning will:
+
+- Race with the cron's `getNextVmNumber()` query → duplicate VM names
+- Push the pool past `POOL_CEILING` (30) → wasted spend
+- Confuse the cron's "in-flight" decision logic
+- Break the cron lock semantics (the lock only protects cron-vs-cron, not cron-vs-human)
+
+**The ONLY acceptable reasons to manually provision:**
+
+1. **The cron is broken or disabled.** Verify by checking Vercel cron logs and querying `instaclaw_cron_locks`. If the cron has not run successfully in >30 min, fix it FIRST. Don't paper over the issue with manual provisioning.
+2. **An emergency batch >10 VMs is needed in <10 min** (e.g., a viral launch). Even then, raise `MAX_PER_RUN` and let the cron handle it across 2-3 cycles, OR pause the cron in vercel.json before manually provisioning to avoid races.
+
+If you think you need to manually provision, **STOP and tell Cooper first.** Explain why the cron isn't sufficient. Get explicit approval. Then take the cron lock from your manual script:
+
+```typescript
+import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+
+const acquired = await tryAcquireCronLock("replenish-pool", 600, "manual-script");
+if (!acquired) throw new Error("Replenish-pool cron is currently running, aborting manual provision");
+try {
+  // ... provision VMs ...
+} finally {
+  await releaseCronLock("replenish-pool");
+}
+```
+
+**This rule applies to YOU (Claude Code) too.** Do NOT provision VMs in scripts unless you've explicitly disabled the cron and told Cooper.
+
 ---
 
 ## Snapshot Creation Process (COMPLETE REFERENCE)

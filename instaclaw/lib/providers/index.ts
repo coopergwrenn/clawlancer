@@ -7,7 +7,7 @@ export type { CloudProvider, ServerConfig, ServerResult } from "./types";
 
 // Linode is the ONLY provider for new VM provisioning.
 // Hetzner and DigitalOcean are legacy — existing VMs only, accessible via getProvider()
-// but never used for new provisioning (pool-monitor, onboarding, etc.).
+// but never used for new provisioning (replenish-pool cron, onboarding, etc.).
 const PROVIDERS: CloudProvider[] = [linodeProvider];
 
 export function getProvider(name: "hetzner" | "digitalocean" | "linode"): CloudProvider {
