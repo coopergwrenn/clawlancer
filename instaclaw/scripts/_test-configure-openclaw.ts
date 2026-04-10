@@ -39,7 +39,7 @@ for (const f of [".env.local"]) {
   } catch {}
 }
 
-import { buildOpenClawConfig, configureOpenClaw, connectSSH } from "../lib/ssh";
+import { buildOpenClawConfig, configureOpenClaw, connectSSH, GATEWAY_PORT } from "../lib/ssh";
 import { getSupabase } from "../lib/supabase";
 
 // ─── Tiny assertion harness ────────────────────────────────────────────────
@@ -150,6 +150,8 @@ interface RemoteCheck {
   label: string;
   cmd: string;
   expect: (stdout: string) => boolean;
+  /** If true, only run when a real telegram token is supplied (else skip). */
+  telegramOnly?: boolean;
 }
 
 const REMOTE_CHECKS: RemoteCheck[] = [
@@ -174,18 +176,24 @@ const REMOTE_CHECKS: RemoteCheck[] = [
   { label: "SOUL.md has MEMORY_FILING_SYSTEM_V1", cmd: "grep -q MEMORY_FILING_SYSTEM_V1 ~/.openclaw/workspace/SOUL.md && echo OK", expect: (s) => s.includes("OK") },
 
   // ── openclaw.json critical keys ──
+  // The 3 telegram.* checks are gated on a real bot token because without one
+  // we run with channels=[] (see runLiveChecks) and the telegram object is
+  // absent from openclaw.json by design.
   { label: "openclaw.json: sandbox.mode = off", cmd: "jq -r '.agents.defaults.sandbox.mode' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "off" },
-  { label: "openclaw.json: telegram.streaming = partial", cmd: "jq -r '.channels.telegram.streaming' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "partial" },
+  { label: "openclaw.json: telegram.streaming = partial", cmd: "jq -r '.channels.telegram.streaming' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "partial", telegramOnly: true },
   { label: "openclaw.json: telegram.streamMode ABSENT", cmd: "jq -r '.channels.telegram.streamMode // \"absent\"' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "absent" },
   { label: "openclaw.json: tools.exec.security = full", cmd: "jq -r '.tools.exec.security' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "full" },
   { label: "openclaw.json: tools.exec.ask = off", cmd: "jq -r '.tools.exec.ask' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "off" },
-  { label: "openclaw.json: telegram.groupPolicy = open", cmd: "jq -r '.channels.telegram.groupPolicy' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "open" },
+  { label: "openclaw.json: telegram.groupPolicy = open", cmd: "jq -r '.channels.telegram.groupPolicy' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "open", telegramOnly: true },
   { label: "openclaw.json: commands.useAccessGroups = false", cmd: "jq -r '.commands.useAccessGroups' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "false" },
   { label: "openclaw.json: reserveTokensFloor = 35000", cmd: "jq -r '.agents.defaults.compaction.reserveTokensFloor' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "35000" },
 
   // ── gateway health ──
   { label: "openclaw-gateway is active", cmd: "export XDG_RUNTIME_DIR=/run/user/$(id -u) && systemctl --user is-active openclaw-gateway", expect: (s) => s.trim() === "active" },
-  { label: "gateway health endpoint returns 200", cmd: "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8800/health", expect: (s) => s.trim() === "200" },
+  // GATEWAY_PORT (18789) imported from lib/ssh.ts to stay in sync if it ever changes.
+  // Earlier this assertion hardcoded port 8800 and always returned 000 — confirmed
+  // gateway listens on 18789 via `ss -ltnp` against a live VM (2026-04-10).
+  { label: `gateway health endpoint returns 200 (port ${GATEWAY_PORT})`, cmd: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:${GATEWAY_PORT}/health`, expect: (s) => s.trim() === "200" },
 ];
 
 async function runLiveChecks(vmId: string) {
@@ -207,13 +215,30 @@ async function runLiveChecks(vmId: string) {
     throw new Error(`VM is assigned to ${vm.assigned_to} — refusing to run destructive test on a live user's VM`);
   }
 
-  // Run configureOpenClaw with a test user
+  // Run configureOpenClaw with a test user.
+  //
+  // Telegram handling: a fake bot token causes the gateway to crash on first
+  // connect → triggers the configureOpenClaw rollback path, which copies
+  // ~/.openclaw/openclaw.json.last-known-good back over our freshly-written
+  // config and erases all the v58 keys. The 8 openclaw.json checks below
+  // would then all fail with "stdout=null" — a misleading false negative.
+  //
+  // To avoid that, only enable the telegram channel if the caller supplies a
+  // real bot token via TEST_TELEGRAM_BOT_TOKEN. Without it we run with no
+  // channels enabled, the gateway boots cleanly, no rollback fires, and the
+  // openclaw.json checks reflect what configureOpenClaw actually wrote.
+  const realToken = process.env.TEST_TELEGRAM_BOT_TOKEN;
+  const channels = realToken ? ["telegram"] : [];
+  if (!realToken) {
+    console.log("(no TEST_TELEGRAM_BOT_TOKEN set — running without telegram channel to avoid rollback)");
+  }
+
   console.log("\n→ Running configureOpenClaw...");
   await configureOpenClaw(vm as any, {
     apiMode: "all_inclusive",
     tier: "premium",
-    channels: ["telegram"],
-    telegramBotToken: process.env.TEST_TELEGRAM_BOT_TOKEN || "1234:fake-test-token-do-not-use",
+    channels,
+    ...(realToken ? { telegramBotToken: realToken } : {}),
     userName: "Acceptance Test",
     userEmail: "acceptance-test@instaclaw.io",
     botUsername: "AcceptanceTestBot",
@@ -225,6 +250,10 @@ async function runLiveChecks(vmId: string) {
   const ssh = await connectSSH(vm as any);
   try {
     for (const c of REMOTE_CHECKS) {
+      if (c.telegramOnly && !realToken) {
+        console.log(`  ⊘ ${c.label} — skipped (no TEST_TELEGRAM_BOT_TOKEN)`);
+        continue;
+      }
       const r = await ssh.execCommand(c.cmd);
       check(c.label, c.expect(r.stdout || ""), `stdout=${(r.stdout || "").trim().slice(0, 60)} stderr=${(r.stderr || "").trim().slice(0, 60)}`);
     }
