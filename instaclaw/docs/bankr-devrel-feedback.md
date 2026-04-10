@@ -13,6 +13,23 @@ InstaClaw is a hosted AI agent platform (~193 agents). Each user gets a dedicate
 
 ---
 
+## Status (2026-04-10): Ready to Ship — 3 Blockers
+
+✅ Wallet provisioning live and verified
+✅ Token launch wired and verified in simulation mode
+✅ Partner share confirmed routing to our fee wallet
+✅ Webhook endpoint built and waiting for Bankr's spec
+
+❌ **3 questions need answers before we flip `simulateOnly` to false:**
+
+1. **Wallet roles clarification.** The docs reference an "org wallet" (for funding provisioned wallets), a "deployment wallet" (for signing token launches with partner key), and a "fee wallet" (for receiving partner share of swap fees). Are these distinct wallets that need to be set up separately, or can they be the same wallet wearing three hats? Right now we have one address (`0x66eb...`) configured as both our Org Wallet and Fee Wallet — does that work for partner-key-signed token launches, or do we need a separate deployment wallet?
+
+2. **`maxWallets` quota.** What's our current quota on the test org, and what's the path to production limits? We're scaling and want to request a bump before we hit it.
+
+3. **Rate limit conflict in the docs.** Token-launching page says "1 deploy/min, 20 deploys/24h per fee recipient." Partner-api page says "50 deploys/24h (100 for Bankr Club)." Which is authoritative? Each agent uses a different fee recipient (its own wallet) so the per-recipient cap rarely bites, but the global cap matters at scale.
+
+---
+
 ## Partner Dashboard (bankr.bot/partner)
 
 ### Feedback
@@ -49,32 +66,59 @@ InstaClaw is a hosted AI agent platform (~193 agents). Each user gets a dedicate
 
 ## Token Launch API
 
-### What We Need
-We have a "Tokenize with Bankr" button built into our dashboard. It's wired and ready but returns "API not yet available" because we don't have the token launch endpoint spec.
+### How We're Using It
+- **Endpoint:** `POST /token-launches/deploy` (not under `/partner/*` namespace as we initially assumed)
+- **Auth:** `X-Partner-Key` (org-level deploy — our org wallet signs and pays gas)
+- **`feeRecipient`:** Set to each user's own Bankr wallet address — agents own their creator fees on-chain (decision 1a)
+- **Partner share routing:** 18.05% goes automatically to our configured Fee Wallet in the Token Launch tab — no per-launch config needed
+- **`simulateOnly: true`** for dev/staging — returns predicted token address without broadcasting, no gas needed
+- **Atomic DB lock:** prevents race-condition double-launches via single UPDATE...WHERE...RETURNING pattern
 
-- What's the endpoint? Our assumption: `POST /partner/wallets/:id/token-launch`
-- Request body: `{ name, symbol, description?, image? }`
-- Response: `{ tokenAddress, ... }`
+### Simulated Launch Verified (2026-04-10)
+First simulated launch returned `200 OK` with all expected fields:
+- `tokenAddress`: predicted contract address
+- `poolId`: Uniswap V4 pool ID
+- `chain`: `base`
+- `simulated`: `true`
+- `feeDistribution`: confirmed 5700/1805/1805/190/500 bps split totaling 10000 bps (100%)
 
-### Questions
-- [ ] What's the token launch API endpoint and full spec?
-- [ ] Igor mentioned: "fair launches, 100% supply to LP, fees 50% weth / 50% token." Is the fee structure configurable per-partner?
-- [ ] Can we customize the fee split so a portion funds the agent's compute? (This is the core of our self-sustaining loop)
-- [ ] Is there a programmatic equivalent to the "Token Launch" dashboard tab?
-- [ ] Base only, or multi-chain?
+### Tiny Doc Findings
+- The example response in the docs labels the 1.9% slice as `ecosystem`, but the actual API returns it as `alt`. Just a heads-up — easy fix on the docs side.
+- The `/partnership/token-launching` overview page references `/partnership/api-reference/launch-token` as a related link, but that page returns 404. Worth either creating it or removing the broken link.
+
+### Open Questions
+- **Rate limit conflict in the docs.** The token-launching page says "1 deploy/min, 20 deploys/24h per fee recipient" but the partner-api page says "50 deploys/24h (100 for Bankr Club)" — which is authoritative? Our setup uses a different fee recipient per agent, so the per-recipient limit basically never bites. But the global limit matters at scale.
+- **Custom fee splits.** The `feeSplitPercentage` parameter is mentioned in passing but not in the partner API request body schema. Is custom split configurable per-launch via API, or only in the dashboard's Token Launch tab? If it's tied to a partner-wide config, can we negotiate a higher partner share (e.g., 75% of Bankr's portion instead of 50%)?
+- **Multi-chain.** Token launches show `chain: "base"` in the response. Is Base the only supported chain for launches, or can we specify another?
 
 ---
 
 ## Webhook / Trading Fee Events
 
-### What We Need
-We have a webhook endpoint built (`/api/integrations/bankr/webhook`) with HMAC signature verification and automatic credit injection. When an agent's token generates trading fees, we convert USDC to compute credits so the agent funds its own inference.
+### Status
+**Bankr has not built webhooks yet.** The `/partnership/webhooks` page returns 404 and the partnership overview confirms no webhook infrastructure exists. Sinaver asked us to "expand more on the detail flow" so they can build it on their side.
 
-### Questions
-- [ ] Does Bankr support webhooks for trading fee events? If so, what's the payload spec?
-- [ ] How do we register a webhook URL? Dashboard config or API call?
-- [ ] What's the signature scheme? We assumed HMAC-SHA256 with a shared secret.
-- [ ] If no webhook support yet, is there a polling endpoint to check wallet balance changes?
+### What We Built (waiting for spec)
+- Webhook endpoint at `POST /api/integrations/bankr/webhook`
+- HMAC-SHA256 signature verification (`x-bankr-signature` header)
+- `trading_fee.collected` event handler
+- Idempotent credit injection via `instaclaw_add_credits()` RPC with `source: "bankr_trading_fee"` and stable `reference_id` per event
+- USDC value → InstaClaw compute credits at a configurable rate
+
+### Spec We Sent
+We drafted a full proposal at `instaclaw/docs/bankr-webhook-spec.md`. Highlights:
+- 3 events: `trading_fee.collected` (critical), `token.launched` (nice to have), `wallet.fee_claimed` (nice to have)
+- Payload schemas with both decimal and wei amounts (avoid float precision issues)
+- HMAC-SHA256 signature scheme
+- Standard retry policy (exponential backoff, 6 retries over 24h)
+- Test mode option (separate test webhook URL, or `X-Bankr-Test: true` header)
+- Stable event `id` for dedupe on retry
+
+### Open Questions for Bankr Side
+- Are token swap fees collected per-swap or batched per block?
+- Per-swap or aggregated event delivery?
+- Minimum fee threshold below which webhook is skipped?
+- Do fee-claim webhooks fire for all claims or only partner-key initiated?
 
 ---
 
@@ -117,6 +161,10 @@ We want agents to charge for services (market signals, research, analysis) via x
 |---|------|----------|-------------|--------|
 | 1 | 2026-04-09 | Low | Address casing inconsistency: 201 returns EIP-55 checksummed, 200 idempotency retry returns lowercase. Could trip strict comparisons. | Open |
 | 2 | 2026-04-09 | Note | Idempotency returns 200 (not 409 as spec says). Prefer this behavior — just noting the spec divergence. | Informational |
+| 3 | 2026-04-10 | Low | Token launch response uses `feeDistribution.alt` but docs example shows `feeDistribution.ecosystem`. Field rename or doc typo? | Open |
+| 4 | 2026-04-10 | Doc | `/partnership/api-reference/launch-token` returns 404 — referenced from token-launching page but doesn't exist. Either the page should be created or the link removed. | Open |
+| 5 | 2026-04-10 | Doc | Rate limit conflict: token-launching page says "1 deploy/min, 20/24h per fee recipient", partner-api page says "50/24h (100 Bankr Club)". Need authoritative answer. | Open |
+| 6 | 2026-04-10 | Spec ambiguity | Docs reference 3 wallet types (org wallet, deployment wallet, fee wallet) but never clarify whether they must be distinct, can be the same, or what each one is responsible for. We're using one address for all three roles — works in simulation, untested for real launches. | Open |
 
 ---
 
@@ -143,7 +191,8 @@ We want agents to charge for services (market signals, research, analysis) via x
 | 2026-04-10 | Read live docs end-to-end. Token launch endpoint corrected (`/token-launches/deploy`, not `/partner/wallets/:id/token-launch`). |
 | 2026-04-10 | Tokenize endpoint wired up. Partner key auth, feeRecipient = user's own wallet (1a), simulateOnly env-driven, atomic DB lock to prevent race conditions. |
 | 2026-04-10 | Webhook spec drafted at instaclaw/docs/bankr-webhook-spec.md to send to Sinaver. |
-| Next | Verify partner fee wallet is configured in Token Launch tab, then test simulated launch |
+| 2026-04-10 | **First simulated launch successful.** `POST /token-launches/deploy` returned 200 OK with predicted token address, pool ID, and full fee distribution. Partner share confirmed routing to our fee wallet (`0x66eb...`), creator share routing to user wallet. Math checks out: 5700+1805+1805+190+500 = 10000 bps. |
+| Next | Get answers from Sinaver on 3 pre-launch blockers, then fund org wallet with ETH and do one real launch |
 
 ---
 
