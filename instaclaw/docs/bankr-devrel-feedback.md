@@ -165,6 +165,7 @@ We want agents to charge for services (market signals, research, analysis) via x
 | 4 | 2026-04-10 | Doc | `/partnership/api-reference/launch-token` returns 404 — referenced from token-launching page but doesn't exist. Either the page should be created or the link removed. | Open |
 | 5 | 2026-04-10 | Doc | Rate limit conflict: token-launching page says "1 deploy/min, 20/24h per fee recipient", partner-api page says "50/24h (100 Bankr Club)". Need authoritative answer. | Open |
 | 6 | 2026-04-10 | Spec ambiguity | Docs reference 3 wallet types (org wallet, deployment wallet, fee wallet) but never clarify whether they must be distinct, can be the same, or what each one is responsible for. We're using one address for all three roles — works in simulation, untested for real launches. | Open |
+| 7 | 2026-04-10 | UX clarity | Dashboard shows two distinct wallet concepts: the user's personal Bankr account login (top-right user dropdown, e.g. `0x94ab...`) and the org wallet (e.g. `0x66eb...`). These are clearly different things, but a label distinguishing "Personal Wallet" vs "Org Wallet" in the dropdown would prevent confusion. | Suggestion |
 
 ---
 
