@@ -10,7 +10,7 @@
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/cron/pool-monitor",
+      "path": "/api/cron/replenish-pool",
       "schedule": "*/5 * * * *"
     },
     {
