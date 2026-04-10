@@ -3531,8 +3531,11 @@ export async function configureOpenClaw(
     // Install Edge City skill (only for edge_city partners)
     // Uses Bankr pattern: clone directly into ~/.openclaw/skills/ (already in default extraDirs)
     if (config.partner === "edge_city") {
-      const edgeosToken = process.env.EDGEOS_BEARER_TOKEN ?? "";
-      const solaToken = process.env.SOLA_AUTH_TOKEN ?? "";
+      // Always write env vars — use placeholder if real token isn't on Vercel yet.
+      // When Tule delivers the real tokens, we add them to Vercel and reconfigure flows
+      // them through automatically (sed updates existing line, echo appends if missing).
+      const edgeosToken = process.env.EDGEOS_BEARER_TOKEN || "PLACEHOLDER_WAITING_ON_TULE";
+      const solaToken = process.env.SOLA_AUTH_TOKEN || "PLACEHOLDER_WAITING_ON_TULE";
       scriptParts.push(
         '# Install Edge Esmeralda 2026 skill (partner: edge_city)',
         'if [ ! -d "$HOME/.openclaw/skills/edge-esmeralda" ]; then',
@@ -3540,13 +3543,13 @@ export async function configureOpenClaw(
         'fi',
         '# 30-min cron to keep reference content fresh (repo auto-updates every 15 min via GitHub Actions)',
         '(crontab -l 2>/dev/null | grep -v "edge-agent-skill" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null\') | crontab -',
-        '# Set Edge City API tokens',
-        ...(edgeosToken ? [
-          `grep -qF 'EDGEOS_BEARER_TOKEN=' "$HOME/.openclaw/.env" 2>/dev/null || echo 'EDGEOS_BEARER_TOKEN=${edgeosToken}' >> "$HOME/.openclaw/.env"`,
-        ] : []),
-        ...(solaToken ? [
-          `grep -qF 'SOLA_AUTH_TOKEN=' "$HOME/.openclaw/.env" 2>/dev/null || echo 'SOLA_AUTH_TOKEN=${solaToken}' >> "$HOME/.openclaw/.env"`,
-        ] : []),
+        '# Set Edge City API tokens — always write, sed-update if present, echo-append if missing',
+        `grep -q "^EDGEOS_BEARER_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s|^EDGEOS_BEARER_TOKEN=.*|EDGEOS_BEARER_TOKEN=${edgeosToken}|" "$HOME/.openclaw/.env" || \\`,
+        `  echo "EDGEOS_BEARER_TOKEN=${edgeosToken}" >> "$HOME/.openclaw/.env"`,
+        `grep -q "^SOLA_AUTH_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s|^SOLA_AUTH_TOKEN=.*|SOLA_AUTH_TOKEN=${solaToken}|" "$HOME/.openclaw/.env" || \\`,
+        `  echo "SOLA_AUTH_TOKEN=${solaToken}" >> "$HOME/.openclaw/.env"`,
         ''
       );
     }
