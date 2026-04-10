@@ -539,12 +539,12 @@ export default function Onboarding() {
   // ── Fallbacks for non-Orb users ──
 
   function handleGetVerified() {
-    // Deep link into World App's verification/Orb finder flow
-    // Uses the World App's native verify screen since we're already inside the app
-    // TODO: Replace with World Grow referral link once Cooper provides invite code
-    // Format will be: https://worldcoin.org/join/{INVITE_CODE}
-    const appId = process.env.NEXT_PUBLIC_APP_ID || "";
-    window.location.href = `https://worldcoin.org/verify?mini_app_id=${appId}`;
+    // Funnel Device-verified users into World Grow so we get referral credit
+    // when they complete Orb verification. Same invite code used on instaclaw.io.
+    // Use window.open so the mini app stays mounted — user keeps their session
+    // and can resume the flow when they return.
+    const inviteCode = process.env.NEXT_PUBLIC_WORLD_INVITE_CODE || "F4TUUHL";
+    window.open(`https://world.org/join/${inviteCode}`, "_blank");
   }
 
   function handleSubscribeInstead() {

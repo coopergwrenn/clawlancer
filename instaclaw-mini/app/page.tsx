@@ -109,7 +109,7 @@ function MaintenanceEmailForm() {
 
 export default function RootPage() {
   const router = useRouter();
-  const [state, setState] = useState<"loading" | "not-world" | "onboarding">("loading");
+  const [state, setState] = useState<"loading" | "onboarding">("loading");
   const resolved = useRef(false);
 
   useEffect(() => {
@@ -234,26 +234,6 @@ export default function RootPage() {
 
     return () => clearTimeout(forceTimer);
   }, [router]);
-
-  // Not in World App
-  if (state === "not-world") {
-    return (
-      <div style={{ background: "#f8f7f4", color: "#333334", height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "2rem", padding: "2rem", textAlign: "center" }}>
-        <div>
-          <h1 style={{ fontSize: "1.75rem", fontFamily: "'Instrument Serif', Georgia, serif", letterSpacing: "-0.5px" }}>InstaClaw</h1>
-          <p style={{ marginTop: "0.5rem", color: "#6b6b6b", fontSize: "0.875rem", maxWidth: "280px", lineHeight: "1.6" }}>
-            Open this app inside World App to get your free AI agent.
-          </p>
-        </div>
-        <a
-          href="https://worldcoin.org/download"
-          style={{ background: "linear-gradient(180deg, rgba(218,119,86,0.95), rgba(200,85,52,1))", color: "#fff", padding: "0.875rem 2rem", borderRadius: "0.75rem", fontWeight: "600", textDecoration: "none", boxShadow: "0 2px 8px rgba(218,119,86,0.3)" }}
-        >
-          Get World App
-        </a>
-      </div>
-    );
-  }
 
   // Loading
   if (state === "loading") {
