@@ -18,14 +18,17 @@ export const TIER_DISPLAY_LIMITS: Record<string, number> = {
 };
 
 /**
- * Internal limits include a 200-unit heartbeat buffer above the display limit.
- * Users see the display limit; the proxy allows up to the internal limit.
+ * Internal limits = display limits. The buffer was removed (2026-04-10) because
+ * it didn't actually let users send more messages — both buffer zone and hard
+ * block returned the same upsell response in the proxy. The 200-unit buffer
+ * was vestigial and confusing users (their count went past 1000 visibly).
+ * Heartbeats have their own separate budget (HEARTBEAT_DAILY_BUDGET).
  */
 export const TIER_INTERNAL_LIMITS: Record<string, number> = {
-  starter: 800,
-  pro: 1200,
-  power: 2700,
-  internal: 5200,
+  starter: 600,
+  pro: 1000,
+  power: 2500,
+  internal: 5000,
 };
 
 /**

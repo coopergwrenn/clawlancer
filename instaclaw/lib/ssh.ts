@@ -116,6 +116,8 @@ from datetime import datetime, timezone
 SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
 SESSIONS_JSON = os.path.join(SESSIONS_DIR, "sessions.json")
 ARCHIVE_DIR = os.path.join(SESSIONS_DIR, "archive")
+SESSION_BACKUP_DIR = os.path.expanduser("~/.openclaw/session-backups")
+SESSION_BACKUP_RETENTION_DAYS = 7
 LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
 LOG_DIR = os.path.expanduser("~/.openclaw/logs")
 LOG_FILE = os.path.join(LOG_DIR, "strip-thinking.log")
@@ -204,6 +206,39 @@ Update memory/active-tasks.md too if applicable.
 This section will be automatically removed after you update MEMORY.md.
 """
 
+def _backup_session_file(path):
+    """Copy a session JSONL file to the backup dir before deletion.
+    Forensic evidence — kept for SESSION_BACKUP_RETENTION_DAYS days.
+    Never crashes the cron — wrapped in try/except.
+    Added 2026-04-10 after losing audit trail on Not Bored Kid investigation."""
+    try:
+        if not path or not path.endswith(".jsonl") or not os.path.exists(path):
+            return
+        os.makedirs(SESSION_BACKUP_DIR, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        backup_name = f"{ts}-{os.path.basename(path)}"
+        shutil.copy2(path, os.path.join(SESSION_BACKUP_DIR, backup_name))
+    except Exception:
+        pass
+
+def _purge_old_session_backups():
+    """Delete session backups older than SESSION_BACKUP_RETENTION_DAYS."""
+    try:
+        if not os.path.isdir(SESSION_BACKUP_DIR):
+            return 0
+        cutoff = time.time() - (SESSION_BACKUP_RETENTION_DAYS * 86400)
+        deleted = 0
+        for f in glob.glob(os.path.join(SESSION_BACKUP_DIR, "*.jsonl")):
+            try:
+                if os.path.getmtime(f) < cutoff:
+                    os.remove(f)
+                    deleted += 1
+            except Exception:
+                pass
+        return deleted
+    except Exception:
+        return 0
+
 def inject_memory_section(path, marker_start, marker_end, content):
     """Append a clearly-marked section to MEMORY.md if not already present."""
     try:
@@ -264,12 +299,18 @@ def daily_hygiene():
             mtime = os.path.getmtime(f)
             if mtime < cutoff and mtime < recent_cutoff:
                 try:
+                    _backup_session_file(f)
                     os.remove(f)
                     stale_deleted += 1
                 except Exception:
                     pass
         if stale_deleted:
             print(f"daily_hygiene: deleted {stale_deleted} stale session files (>{SESSION_MAX_AGE_DAYS}d old)")
+
+        # 1b. Purge session backups older than retention window
+        backups_purged = _purge_old_session_backups()
+        if backups_purged:
+            print(f"daily_hygiene: purged {backups_purged} session backups (>{SESSION_BACKUP_RETENTION_DAYS}d old)")
 
         # 2. Rebuild sessions.json — remove entries whose .jsonl no longer exists
         try:
@@ -749,6 +790,7 @@ try:
                 archive_name = f"{degraded_sid}-autorecovery-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
                 shutil.copy2(degraded_file, os.path.join(ARCHIVE_DIR, archive_name))
                 extract_session_summary(degraded_file)
+                _backup_session_file(degraded_file)
                 os.remove(degraded_file)
                 archived_sessions.append(degraded_sid)
                 try:
@@ -835,6 +877,7 @@ try:
                 inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
                 print(f"WARNING: Session {session_id} skipped memory warning window ({file_size} bytes, no prior flag). Injected memory prompt for next session.")
 
+            _backup_session_file(jsonl_file)
             os.remove(jsonl_file)
             archived_sessions.append(session_id)
 
@@ -881,6 +924,7 @@ try:
                 archive_path = os.path.join(ARCHIVE_DIR, archive_name)
                 shutil.copy2(jsonl_file, archive_path)
                 extract_session_summary(jsonl_file)
+                _backup_session_file(jsonl_file)
                 os.remove(jsonl_file)
                 archived_sessions.append(session_id)
 
@@ -915,6 +959,7 @@ try:
                 archive_name = f"{session_id}-errorloop-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
                 archive_path = os.path.join(ARCHIVE_DIR, archive_name)
                 shutil.copy2(jsonl_file, archive_path)
+                _backup_session_file(jsonl_file)
                 os.remove(jsonl_file)
                 archived_sessions.append(session_id)
 
