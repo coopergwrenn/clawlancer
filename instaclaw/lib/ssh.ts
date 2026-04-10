@@ -8,14 +8,21 @@ import {
   AGENTS_MD_PHILOSOPHY_SECTION,
   SOUL_MD_LEARNED_PREFERENCES,
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
+  SOUL_MD_OPERATING_PRINCIPLES,
+  SOUL_MD_DEGENCLAW_AWARENESS,
+  SOUL_MD_MEMORY_FILING_SYSTEM,
   WORKSPACE_INDEX_SCRIPT,
 } from "./agent-intelligence";
+import { WORKSPACE_EARN_MD } from "./earn-md-template";
 import {
   validateAcpApiKey, getAcpAuthUrl, pollAcpAuthStatus,
   fetchAcpAgents, createAcpAgent, registerAcpOffering,
   getAcpAgentProfile, ACP_OFFERING_API,
 } from "@/lib/acp-api";
-import { VM_MANIFEST, CONFIG_SPEC, registerTemplate, getTemplateContent } from "./vm-manifest";
+import {
+  VM_MANIFEST, CONFIG_SPEC, registerTemplate, getTemplateContent,
+  PUSH_HEARTBEAT_SH, SILENCE_WATCHDOG_SCRIPT,
+} from "./vm-manifest";
 import { reconcileVM } from "./vm-reconcile";
 import * as fs from "fs";
 import * as path from "path";
@@ -1847,21 +1854,35 @@ def check_openclaw_version():
                     return f"version_mismatch(installed={installed},pinned={pinned},cooldown)"
         except Exception:
             pass
-        # Reinstall pinned version
+        # Reinstall pinned version.
+        # IMPORTANT: use /bin/bash explicitly — subprocess.run(shell=True) invokes
+        # /bin/sh which is dash on Debian, and NVM is a bash function that won't
+        # load under dash. Also avoid piping to tail — in a pipeline the exit
+        # code comes from the last command, which masks npm install failures.
         result = subprocess.run(
-            f'. ~/.nvm/nvm.sh && npm install -g openclaw@{pinned} 2>&1 | tail -1',
-            shell=True, timeout=120, capture_output=True, text=True
+            ["/bin/bash", "-lc", f". ~/.nvm/nvm.sh && npm install -g openclaw@{pinned}"],
+            timeout=180, capture_output=True, text=True
         )
         with open(cooldown_file, "w") as f:
             f.write(str(time.time()))
-        if result.returncode == 0:
-            # Restart gateway to use the correct version
-            env = os.environ.copy()
-            env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
-            subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"],
-                           env=env, timeout=30, capture_output=True)
-            return f"version_fixed({installed}->{pinned})"
-        return f"version_fix_failed(installed={installed},pinned={pinned})"
+        if result.returncode != 0:
+            return f"version_fix_failed(installed={installed},pinned={pinned},rc={result.returncode})"
+        # Post-install verification: re-read package.json and confirm the
+        # version actually changed. npm can "succeed" while leaving the wrong
+        # version in place (cached registry data, permission issues, etc.).
+        try:
+            post_pkg = glob.glob(os.path.expanduser("~/.nvm/versions/node/*/lib/node_modules/openclaw/package.json"))
+            post_installed = json.load(open(post_pkg[-1])).get("version", "") if post_pkg else ""
+        except Exception:
+            post_installed = ""
+        if post_installed != pinned:
+            return f"version_fix_noop(installed={installed},post={post_installed},pinned={pinned})"
+        # Restart gateway to use the correct version
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+        subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"],
+                       env=env, timeout=30, capture_output=True)
+        return f"version_fixed({installed}->{pinned})"
     except Exception:
         return None
 
@@ -2755,7 +2776,7 @@ Once the user responds:
  * Replaces `openclaw onboard` + 15-20 individual `openclaw config set` calls
  * with a single JSON write (~0.5s vs ~40-60s).
  */
-function buildOpenClawConfig(
+export function buildOpenClawConfig(
   config: UserConfig,
   gatewayToken: string,
   proxyBaseUrl: string,
@@ -2794,7 +2815,9 @@ function buildOpenClawConfig(
           session: "heartbeat",
         },
         compaction: {
-          reserveTokensFloor: 30000,
+          // v57: Raised from 30000 → 35000 to match VM_MANIFEST.configSettings.
+          // The reconciler enforces 35000 anyway, so this prevents drift on first boot.
+          reserveTokensFloor: 35000,
           memoryFlush: {
             enabled: true,
             softThresholdTokens: 8000,
@@ -2803,8 +2826,20 @@ function buildOpenClawConfig(
         memorySearch: {
           enabled: true,
         },
+        // v57: Disable sandbox mode — our VMs don't have Docker installed.
+        // Without this the gateway returns "Sandbox mode requires Docker" on every
+        // exec call. Reconciler enforces this too; setting it here closes the
+        // first-boot window where agents are broken until reconciler runs.
+        sandbox: {
+          mode: "off",
+        },
       },
     },
+    // v57: Tools.exec must be enabled at the top level. Without these the
+    // gateway's exec approval daemon rejects all commands and the agent
+    // tells users "exec approvals not enabled" (Doug Rathell incident).
+    // Note: tools.web/media/links are also added below — this object is
+    // overwritten via spread there.
     // v41: Evergreen session — stop the daily 4 AM session wipe.
     // Session only resets after 7 days of zero activity.
     session: {
@@ -2819,6 +2854,8 @@ function buildOpenClawConfig(
     messages: {},
     commands: {
       restart: true,
+      // v57: Group access groups disabled — required for groupPolicy=open to work.
+      useAccessGroups: false,
     },
     channels: {} as Record<string, unknown>,
     gateway: {
@@ -2867,8 +2904,16 @@ function buildOpenClawConfig(
       botToken: config.telegramBotToken,
       allowFrom: ["*"],
       dmPolicy: "open",
-      groupPolicy: "allowlist",
-      streamMode: "partial",
+      // v57: groupPolicy=open + requireMention=false matches OpenClaw 2026.2.24+
+      // schema. The legacy "allowlist" was rejected on newer gateways.
+      groupPolicy: "open",
+      groups: {
+        "*": { requireMention: false },
+      },
+      // v57: OpenClaw 2026.4.5 renamed `streamMode` → `streaming`. The legacy
+      // key crashes the gateway on startup. Reconciler can't fix this because
+      // the gateway is dead before reconcile runs. MUST be correct on first boot.
+      streaming: "partial",
     };
     (ocConfig.plugins as Record<string, unknown>).entries = {
       ...((ocConfig.plugins as Record<string, unknown>).entries as Record<string, unknown>),
@@ -2913,6 +2958,13 @@ function buildOpenClawConfig(
     },
     links: {
       timeoutSeconds: 30,
+    },
+    // v57: Exec tool — security=full + ask=off means agents run commands
+    // autonomously (no human approver on Telegram). Without this the gateway
+    // refuses every exec call. exec-approvals.json carries matching defaults.
+    exec: {
+      security: "full",
+      ask: "off",
     },
   };
 
@@ -3841,9 +3893,19 @@ export async function configureOpenClaw(
     const workspaceDir = '$HOME/.openclaw/workspace';
 
     // Common workspace files (written for every VM regardless of Gmail)
-    // SOUL.md now includes identity section, operating principles, and learned preferences
-    // For Edge City partners, append Edge Esmeralda context section
-    let soulContent = WORKSPACE_SOUL_MD;
+    // SOUL.md is built from 6 concatenated sections so first-boot SOUL.md
+    // matches what the reconciler would eventually produce. This closes the
+    // window where new VMs were missing intelligence/preferences/principles/
+    // degenclaw/memory-filing sections until the next reconciler pass.
+    // Order matches the marker order the reconciler uses on existing VMs.
+    // For Edge City partners, append Edge Esmeralda context section.
+    let soulContent =
+      WORKSPACE_SOUL_MD +
+      SOUL_MD_INTELLIGENCE_SUPPLEMENT +
+      SOUL_MD_LEARNED_PREFERENCES +
+      "\n\n" + SOUL_MD_OPERATING_PRINCIPLES +
+      SOUL_MD_DEGENCLAW_AWARENESS +
+      SOUL_MD_MEMORY_FILING_SYSTEM;
     if (config.partner === "edge_city") {
       soulContent += `
 
@@ -3868,32 +3930,47 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
     const capabilitiesB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');
     const quickRefB64 = Buffer.from(WORKSPACE_QUICK_REFERENCE_MD, 'utf-8').toString('base64');
     const toolsB64 = Buffer.from(WORKSPACE_TOOLS_MD_TEMPLATE, 'utf-8').toString('base64');
+    const earnB64 = Buffer.from(WORKSPACE_EARN_MD, 'utf-8').toString('base64');
     const indexScriptB64 = Buffer.from(WORKSPACE_INDEX_SCRIPT, 'utf-8').toString('base64');
 
     scriptParts.push(
       '# Write custom workspace files (SOUL.md — now includes identity + operating principles)',
       `echo '${soulB64}' | base64 -d > "${workspaceDir}/SOUL.md"`,
       '',
-      '# Write intelligence workspace files (CAPABILITIES.md, QUICK-REFERENCE.md, TOOLS.md, index script)',
+      '# Write intelligence workspace files (CAPABILITIES.md, QUICK-REFERENCE.md, TOOLS.md, EARN.md, index script)',
       `echo '${capabilitiesB64}' | base64 -d > "${workspaceDir}/CAPABILITIES.md"`,
       `echo '${quickRefB64}' | base64 -d > "${workspaceDir}/QUICK-REFERENCE.md"`,
       `echo '${toolsB64}' | base64 -d > "${workspaceDir}/TOOLS.md"`,
+      // EARN.md must exist on first boot — agents reference it from SOUL.md ("Earning Money").
+      // create_if_missing semantics: only write if absent so agent edits aren't clobbered on re-runs.
+      `test -f "${workspaceDir}/EARN.md" || echo '${earnB64}' | base64 -d > "${workspaceDir}/EARN.md"`,
       'mkdir -p "$HOME/.openclaw/scripts"',
       `echo '${indexScriptB64}' | base64 -d > "$HOME/.openclaw/scripts/generate_workspace_index.sh"`,
       'chmod +x "$HOME/.openclaw/scripts/generate_workspace_index.sh"',
       ''
     );
 
-    // Deploy session protection scripts (circuit breaker + watchdog)
+    // Deploy session protection scripts (circuit breaker + watchdog + safety net)
     // These are also in vm-manifest.ts for reconciliation, but must be present from first boot.
+    // The crons that invoke them are installed later in this function — without the
+    // scripts on disk those crons spam errors until the reconciler catches up.
     const stripThinkingB64 = Buffer.from(STRIP_THINKING_SCRIPT, "utf-8").toString("base64");
     const watchdogB64 = Buffer.from(VM_WATCHDOG_SCRIPT, "utf-8").toString("base64");
+    const silenceWatchdogB64 = Buffer.from(SILENCE_WATCHDOG_SCRIPT, "utf-8").toString("base64");
+    const pushHeartbeatB64 = Buffer.from(PUSH_HEARTBEAT_SH, "utf-8").toString("base64");
+    const autoApproveB64 = Buffer.from(AUTO_APPROVE_PAIRING_SCRIPT, "utf-8").toString("base64");
     scriptParts.push(
-      '# Deploy session protection scripts (circuit breaker + growth watchdog)',
+      '# Deploy session protection scripts (circuit breaker + growth watchdog + silence watchdog + heartbeat + auto-approve)',
       `echo '${stripThinkingB64}' | base64 -d > "$HOME/.openclaw/scripts/strip-thinking.py"`,
       'chmod +x "$HOME/.openclaw/scripts/strip-thinking.py"',
       `echo '${watchdogB64}' | base64 -d > "$HOME/.openclaw/scripts/vm-watchdog.py"`,
       'chmod +x "$HOME/.openclaw/scripts/vm-watchdog.py"',
+      `echo '${silenceWatchdogB64}' | base64 -d > "$HOME/.openclaw/scripts/silence-watchdog.py"`,
+      'chmod +x "$HOME/.openclaw/scripts/silence-watchdog.py"',
+      `echo '${pushHeartbeatB64}' | base64 -d > "$HOME/.openclaw/scripts/push-heartbeat.sh"`,
+      'chmod +x "$HOME/.openclaw/scripts/push-heartbeat.sh"',
+      `echo '${autoApproveB64}' | base64 -d > "$HOME/.openclaw/scripts/auto-approve-pairing.py"`,
+      'chmod +x "$HOME/.openclaw/scripts/auto-approve-pairing.py"',
       '# Pre-create sessions-backup dir for circuit breaker auto-backup',
       'mkdir -p "$HOME/.openclaw/agents/main/sessions-backup"',
       ''

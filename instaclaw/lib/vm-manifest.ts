@@ -112,7 +112,7 @@ export function getTemplateContent(key: string): string {
 // has gone unanswered for >60 seconds and sends a fallback directly via
 // Telegram API, bypassing OpenClaw entirely. Catches ALL silence causes:
 // rate limits, tool failures, context overflow, frozen API, dead gateway.
-const SILENCE_WATCHDOG_SCRIPT = `#!/usr/bin/env python3
+export const SILENCE_WATCHDOG_SCRIPT = `#!/usr/bin/env python3
 """Silence Watchdog — universal fallback for unresponsive agents.
 
 If a user sent a message >60 seconds ago and the agent hasn't replied,
@@ -333,7 +333,7 @@ if __name__ == "__main__":
 `;
 
 // ── Push-based heartbeat script (deployed to every VM, runs hourly via cron) ──
-const PUSH_HEARTBEAT_SH = `#!/bin/bash
+export const PUSH_HEARTBEAT_SH = `#!/bin/bash
 # Push-based heartbeat — POSTs to instaclaw.io every hour via crontab
 TOKEN=$(grep '^GATEWAY_TOKEN=' ~/.openclaw/.env | cut -d= -f2)
 LOGFILE=~/.openclaw/logs/heartbeat.log
@@ -350,7 +350,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 57,
+  version: 58,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
