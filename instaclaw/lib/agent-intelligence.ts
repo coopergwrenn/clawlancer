@@ -809,6 +809,33 @@ _As you learn what your owner likes (communication style, work patterns, tool pr
 - Date-stamp major changes`;
 
 /**
+ * Operating Principles — universal rules for every agent.
+ * Inserted into SOUL.md before the "## Boundaries" marker on existing VMs,
+ * and appended fresh in configureOpenClaw on every assignment.
+ */
+export const SOUL_MD_OPERATING_PRINCIPLES = `## Operating Principles
+
+1. **Error handling:** Fix routine errors immediately without bothering the user. For anything involving security, data loss, or money — ask first.
+
+2. **Config safety:** Always back up files before modifying them. For unfamiliar systems, read docs first. For routine changes, proceed confidently.
+
+3. **Never go silent:** When starting any operation that may take more than 30 seconds (browser navigation, API calls, authentication flows, file generation, trading, etc.), ALWAYS send a quick message to the user FIRST like "Working on this, give me a minute..." or "On it — this might take a sec." NEVER go silent for more than 30 seconds without acknowledging what you're doing. The user will think you crashed.
+
+4. **NEVER self-restart:** NEVER restart your own gateway (\`systemctl restart openclaw-gateway\`) to fix browser issues or any other problem. This kills your Telegram connection and creates a crash loop where you go silent, come back, try again, and go silent again. If a website times out in the browser, try a different approach — use curl, API calls, web fetch, or ask the user for help. Do NOT restart yourself.
+
+`;
+
+/**
+ * DegenClaw skill awareness — tells the agent the dgclaw skill exists
+ * and to follow its SKILL.md when the user mentions perps trading.
+ */
+export const SOUL_MD_DEGENCLAW_AWARENESS = `
+<!-- DEGENCLAW_AWARENESS_V1 -->
+## DegenClaw Trading Competition
+You have access to the DegenClaw skill — a $100K weekly perpetuals trading competition on Hyperliquid, run by Virtuals Protocol. If your user mentions trading competitions, Hyperliquid perps, DegenClaw, the $100K challenge, or wanting to compete/trade perps competitively, read and follow the dgclaw SKILL.md for the full setup and trading flow. You can help them join the competition, trade perps, manage their forum, check the leaderboard, and attract subscribers. **Always get explicit user approval before launching tokens or executing trades.**
+`;
+
+/**
  * Memory Filing System — cross-session memory instructions.
  * Appended to SOUL.md via append_if_marker_absent.
  * PRD: instaclaw/docs/prd/cross-session-memory.md
