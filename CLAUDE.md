@@ -11,11 +11,11 @@ ALL new VMs must use these exact specs:
 - **Provider:** Linode ONLY (never Hetzner or DigitalOcean)
 - **Type:** `g6-dedicated-2` (Dedicated 4GB — 2 dedicated vCPU, 4GB RAM, 80GB disk)
 - **Region:** `us-east`
-- **Snapshot:** `private/38069990` (instaclaw-base-v57-all-crons — OpenClaw v2026.4.5, all v57 scripts + 7/7 crons + gateway-watchdog v5 + 300s lock windows + exec-approvals.json + x11vnc service + memory filing system. Chromium, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, both SSH deploy keys. 21/21 verified.)
+- **Snapshot:** `private/38111101` (instaclaw-base-v58-vm-watchdog-fix — OpenClaw v2026.4.5, v58 manifest, all 7 manifest scripts at canonical v58 SHAs incl. vm-watchdog.py with /bin/bash -lc subprocess fix + version_fix_noop verification. Full concatenated SOUL.md (template + intelligence + learned-prefs + 4-rule operating principles + degenclaw awareness + memory filing system). Workspace files at canonical v58. Chromium 147, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, both SSH deploy keys, 7/7 crons, exec-approvals.json security=full. 5746 MB. 27/27 verified.)
 - **Cost:** $29/mo per VM (negotiated Linode rate)
 - **DB status:** `provisioning` (cloud-init-poll cron auto-marks as `ready` in ~3-5 min)
 
-NEVER use old snapshots (private/36895419 or private/38069990). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
+NEVER use old snapshots (private/36895419, private/38069990, or any pre-v58 image). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
 
 ## Project Structure
 
