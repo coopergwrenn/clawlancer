@@ -2933,19 +2933,16 @@ export function buildOpenClawConfig(
     };
   }
 
-  // Configure Brave web search
-  // Schema path is tools.web.search (NOT tools.webSearch — verified against
-  // OpenClaw dist resolveSearchConfig() which reads cfg?.tools?.web?.search)
-  // Also enable media understanding (image/audio/video) for all agents.
-  // Schema verified against OpenClaw v2026.3.22 redact-snapshot: tools.media.image.enabled,
-  // tools.media.audio.enabled, tools.media.video.enabled are valid config keys.
+  // Configure web search + tools.
+  // OpenClaw 2026.4.5+ moved the apiKey out of tools.web.search into
+  // plugins.entries.brave.config.webSearch. Putting apiKey in tools.web.search
+  // crashes the gateway with "Legacy config keys detected".
   ocConfig.tools = {
     ...(braveKey
       ? {
           web: {
             search: {
               provider: "brave",
-              apiKey: braveKey,
               timeoutSeconds: 30,
             },
           },
@@ -2967,6 +2964,22 @@ export function buildOpenClawConfig(
       ask: "off",
     },
   };
+
+  // Brave search plugin — apiKey lives here since OpenClaw 2026.4.5
+  if (braveKey) {
+    const existingEntries = (ocConfig.plugins as Record<string, unknown>).entries as Record<string, unknown> || {};
+    (ocConfig.plugins as Record<string, unknown>).entries = {
+      ...existingEntries,
+      brave: {
+        enabled: true,
+        config: {
+          webSearch: {
+            apiKey: braveKey,
+          },
+        },
+      },
+    };
+  }
 
   // NOTE: memory search (OpenAI embeddings) requires auth-profiles.json,
   // NOT openclaw.json. The memory.provider/remote keys in openclaw.json
