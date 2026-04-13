@@ -180,18 +180,10 @@ export function BankrWalletCard({
               onClick={() => setShowTokenForm(true)}
               className="w-full py-2.5 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
               style={{
-                background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.08)), linear-gradient(135deg, #f59e0b, #d97706)",
+                background: "linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
                 color: "white",
-                backdropFilter: "blur(2px)",
-                WebkitBackdropFilter: "blur(2px)",
-                boxShadow: `
-                  rgba(0, 0, 0, 0.08) 0px 2px 4px 0px,
-                  rgba(255, 255, 255, 0.3) 0px 1px 1px 0px inset,
-                  rgba(0, 0, 0, 0.1) 0px 2px 2px 0px inset,
-                  rgba(255, 255, 255, 0.15) 0px 0px 1.6px 3px inset
-                `,
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                textShadow: "0 1px 2px rgba(0, 0, 0, 0.15)",
+                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
+                textShadow: "0 1px 1px rgba(0, 0, 0, 0.1)",
               }}
             >
               <Sparkles className="w-4 h-4" />
@@ -248,16 +240,10 @@ export function BankrWalletCard({
                   disabled={tokenizing}
                   className="flex-1 py-2 rounded-md text-sm font-medium transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
                   style={{
-                    background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.08)), linear-gradient(135deg, #f59e0b, #d97706)",
+                    background: "linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
                     color: "white",
-                    boxShadow: `
-                      rgba(0, 0, 0, 0.08) 0px 2px 4px 0px,
-                      rgba(255, 255, 255, 0.3) 0px 1px 1px 0px inset,
-                      rgba(0, 0, 0, 0.1) 0px 2px 2px 0px inset,
-                      rgba(255, 255, 255, 0.15) 0px 0px 1.6px 3px inset
-                    `,
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    textShadow: "0 1px 2px rgba(0, 0, 0, 0.15)",
+                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
+                    textShadow: "0 1px 1px rgba(0, 0, 0, 0.1)",
                   }}
                 >
                   {tokenizing ? "Launching..." : "Launch Token"}
