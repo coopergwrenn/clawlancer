@@ -138,18 +138,20 @@ export async function GET(req: NextRequest) {
       httpPreCheckPassed++;
       sshAliveVms.push(vm);
 
-      // Reset any stale failure counters
+      // Always update last_health_check + reset any stale failure counters
+      const healthUpdate: Record<string, unknown> = {
+        last_health_check: new Date().toISOString(),
+      };
       if ((vm.health_fail_count ?? 0) > 0 || (vm.ssh_fail_count ?? 0) > 0 || vm.health_status !== "healthy") {
-        await supabase
-          .from("instaclaw_vms")
-          .update({
-            health_status: "healthy",
-            health_fail_count: 0,
-            ssh_fail_count: 0,
-            last_health_check: new Date().toISOString(),
-          })
-          .eq("id", vm.id);
+        healthUpdate.health_status = "healthy";
+        healthUpdate.health_fail_count = 0;
+        healthUpdate.ssh_fail_count = 0;
       }
+      await supabase
+        .from("instaclaw_vms")
+        .update(healthUpdate)
+        .eq("id", vm.id);
+
       healthy++;
       continue;
     }
