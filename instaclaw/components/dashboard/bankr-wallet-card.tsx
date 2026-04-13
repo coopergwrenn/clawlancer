@@ -180,10 +180,10 @@ export function BankrWalletCard({
               onClick={() => setShowTokenForm(true)}
               className="w-full py-2.5 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
               style={{
-                background: "linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+                background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
                 color: "white",
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
-                textShadow: "0 1px 1px rgba(0, 0, 0, 0.1)",
+                boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+                textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
               }}
             >
               <Sparkles className="w-4 h-4" />
@@ -240,10 +240,10 @@ export function BankrWalletCard({
                   disabled={tokenizing}
                   className="flex-1 py-2 rounded-md text-sm font-medium transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
                   style={{
-                    background: "linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
                     color: "white",
-                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
-                    textShadow: "0 1px 1px rgba(0, 0, 0, 0.1)",
+                    boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+                    textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
                   }}
                 >
                   {tokenizing ? "Launching..." : "Launch Token"}
