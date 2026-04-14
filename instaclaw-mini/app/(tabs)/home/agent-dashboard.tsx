@@ -17,6 +17,7 @@ import GoogleConnectCard from "@/components/google-connect-card";
 import GooglePersonalizationModal from "@/components/google-personalization-modal";
 import AgentBookCard from "@/components/agentbook-card";
 import AgentBookOnboardModal from "@/components/agentbook-onboard-modal";
+import BankrTokenizeCard from "@/components/bankr-tokenize-card";
 import type { SubscriptionInfo } from "@/lib/supabase";
 
 interface Agent {
@@ -541,6 +542,15 @@ export default function AgentDashboard({
           <Wallet size={14} className="text-muted" />
         </div>
       </div>
+
+      {/* ── Bankr Tokenization ── */}
+      <BankrTokenizeCard
+        walletId={(agent.bankr_wallet_id as string) ?? null}
+        evmAddress={(agent.bankr_evm_address as string) ?? null}
+        tokenAddress={(agent.bankr_token_address as string) ?? null}
+        tokenSymbol={(agent.bankr_token_symbol as string) ?? null}
+        tokenizationPlatform={(agent.tokenization_platform as string) ?? null}
+      />
 
       {/* ── Quick Actions ── */}
       <div className="animate-fade-in-up flex gap-3 stagger-2" style={{ opacity: 0 }}>

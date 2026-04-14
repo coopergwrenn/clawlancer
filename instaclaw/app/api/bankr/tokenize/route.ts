@@ -22,8 +22,19 @@ interface BankrLaunchResponse {
 }
 
 export async function POST(req: NextRequest) {
+  // Accept NextAuth session (web app) OR X-Mini-App-Token (World mini app)
+  let userId: string | undefined;
   const session = await auth();
-  if (!session?.user?.id) {
+  if (session?.user?.id) {
+    userId = userId;
+  } else {
+    const { validateMiniAppToken } = await import("@/lib/security");
+    const miniAppUserId = await validateMiniAppToken(req);
+    if (miniAppUserId) {
+      userId = miniAppUserId;
+    }
+  }
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -55,7 +66,7 @@ export async function POST(req: NextRequest) {
   const { data: vm } = await supabase
     .from("instaclaw_vms")
     .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address, tokenization_platform")
-    .eq("assigned_to", session.user.id)
+    .eq("assigned_to", userId)
     .single();
 
   if (!vm) {
@@ -140,7 +151,7 @@ export async function POST(req: NextRequest) {
       logger.error("Bankr token launch failed", {
         status: launchRes.status,
         error: launchData.error ?? "unknown",
-        userId: session.user.id,
+        userId: userId,
         vmId: vm.id,
         simulateOnly,
       });
@@ -164,7 +175,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     logger.error("Bankr token launch network error", {
       error: String(err),
-      userId: session.user.id,
+      userId: userId,
       vmId: vm.id,
     });
 
@@ -185,7 +196,7 @@ export async function POST(req: NextRequest) {
   // Simulation: return predicted result without DB state change
   if (simulateOnly) {
     logger.info("Bankr token launch simulated", {
-      userId: session.user.id,
+      userId: userId,
       vmId: vm.id,
       predictedAddress: launchData.tokenAddress,
     });
@@ -214,7 +225,7 @@ export async function POST(req: NextRequest) {
     // can manually reconcile. The user's tokenize button will look like it's
     // still in pending state, but the token is real.
     logger.error("CRITICAL: Bankr token launched but DB finalize failed", {
-      userId: session.user.id,
+      userId: userId,
       vmId: vm.id,
       tokenAddress: launchData.tokenAddress,
       txHash: launchData.txHash,
@@ -222,7 +233,7 @@ export async function POST(req: NextRequest) {
     });
     sendAdminAlertEmail(
       "CRITICAL: Bankr Token Launched But DB Save Failed",
-      `Token was deployed on-chain but instaclaw_vms update failed.\n\nUser: ${session.user.id}\nVM: ${vm.id}\nToken Address: ${launchData.tokenAddress}\nTx Hash: ${launchData.txHash}\nDB Error: ${finalizeErr.message}\n\nManual reconciliation needed: UPDATE instaclaw_vms SET bankr_token_address='${launchData.tokenAddress}', bankr_token_symbol='${tokenSymbol}', tokenization_platform='bankr', bankr_token_launched_at=NOW() WHERE id='${vm.id}';`
+      `Token was deployed on-chain but instaclaw_vms update failed.\n\nUser: ${userId}\nVM: ${vm.id}\nToken Address: ${launchData.tokenAddress}\nTx Hash: ${launchData.txHash}\nDB Error: ${finalizeErr.message}\n\nManual reconciliation needed: UPDATE instaclaw_vms SET bankr_token_address='${launchData.tokenAddress}', bankr_token_symbol='${tokenSymbol}', tokenization_platform='bankr', bankr_token_launched_at=NOW() WHERE id='${vm.id}';`
     ).catch(() => {});
     return NextResponse.json(
       {
@@ -235,7 +246,7 @@ export async function POST(req: NextRequest) {
   }
 
   logger.info("Bankr token launched successfully", {
-    userId: session.user.id,
+    userId: userId,
     vmId: vm.id,
     tokenAddress: launchData.tokenAddress,
     poolId: launchData.poolId,
