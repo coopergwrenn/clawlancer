@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown } from "lucide-react";
+import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X } from "lucide-react";
 
 interface BankrWalletCardProps {
   walletId: string | null;
@@ -79,7 +79,11 @@ export function BankrWalletCard({
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch live token price from DexScreener (client-side, no auth needed)
   // Must be before any early returns — React hooks must be called unconditionally
@@ -117,6 +121,65 @@ export function BankrWalletCard({
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function handleGenerateImage() {
+    if (!tokenName.trim()) {
+      setImageError("Enter a token name first");
+      return;
+    }
+    setImageError(null);
+    setImageLoading(true);
+    try {
+      const res = await fetch("/api/bankr/generate-token-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token_name: tokenName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImageError(data.error ?? "Generation failed");
+        return;
+      }
+      setImageUrl(data.imageUrl);
+    } catch {
+      setImageError("Generation failed — try again or skip");
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
+  async function handleUploadImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setImageError("Image must be under 5MB");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setImageError("Image must be JPG, PNG, or WebP");
+      return;
+    }
+    setImageError(null);
+    setImageLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/bankr/upload-token-image", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImageError(data.error ?? "Upload failed");
+        return;
+      }
+      setImageUrl(data.imageUrl);
+    } catch {
+      setImageError("Upload failed — try again or skip");
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
   async function handleTokenize() {
     if (!tokenName.trim() || !tokenSym.trim()) {
       setError("Token name and symbol are required");
@@ -131,6 +194,7 @@ export function BankrWalletCard({
         body: JSON.stringify({
           token_name: tokenName.trim(),
           token_symbol: tokenSym.trim().toUpperCase(),
+          ...(imageUrl ? { image: imageUrl } : {}),
         }),
       });
       const data = await res.json();
@@ -476,6 +540,81 @@ export function BankrWalletCard({
                   background: "white",
                 }}
               />
+              {/* ── Token Image (optional) ── */}
+              <div
+                className="rounded-md p-3 space-y-2"
+                style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
+              >
+                <p className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>
+                  Token Image <span style={{ opacity: 0.6 }}>(optional)</span>
+                </p>
+
+                {imageUrl ? (
+                  /* Preview state */
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={imageUrl}
+                      alt="Token PFP"
+                      className="w-14 h-14 rounded-full object-cover"
+                      style={{ border: "2px solid var(--border)" }}
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => { setImageUrl(null); setImageError(null); }}
+                        className="text-[11px] px-2 py-1 rounded flex items-center gap-1 hover:bg-black/5"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        <X className="w-3 h-3" /> Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : imageLoading ? (
+                  /* Loading state */
+                  <div className="flex items-center justify-center py-3">
+                    <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "var(--border)", borderTopColor: "transparent" }} />
+                    <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
+                      Creating your token PFP...
+                    </span>
+                  </div>
+                ) : (
+                  /* Upload / Generate buttons */
+                  <div className="flex gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleUploadImage}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex-1 py-1.5 rounded text-[11px] flex items-center justify-center gap-1 hover:bg-black/5 transition-colors"
+                      style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+                    >
+                      <Upload className="w-3 h-3" /> Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleGenerateImage}
+                      className="flex-1 py-1.5 rounded text-[11px] flex items-center justify-center gap-1 hover:bg-black/5 transition-colors"
+                      style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+                    >
+                      <Wand2 className="w-3 h-3" /> Generate
+                    </button>
+                  </div>
+                )}
+
+                {imageError && (
+                  <p className="text-[11px] text-red-500">{imageError}</p>
+                )}
+
+                <p className="text-[10px]" style={{ color: "var(--muted)", opacity: 0.6 }}>
+                  You can update this later on Bankr
+                </p>
+              </div>
+
               {error && (
                 <p className="text-xs text-red-500">{error}</p>
               )}
@@ -484,6 +623,8 @@ export function BankrWalletCard({
                   onClick={() => {
                     setShowTokenForm(false);
                     setError(null);
+                    setImageUrl(null);
+                    setImageError(null);
                   }}
                   className="flex-1 py-2 rounded-md text-sm"
                   style={{ border: "1px solid var(--border)" }}

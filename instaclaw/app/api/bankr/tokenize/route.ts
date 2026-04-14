@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
   const tokenName = typeof body.token_name === "string" ? body.token_name.trim() : "";
   const tokenSymbol = typeof body.token_symbol === "string" ? body.token_symbol.trim() : "";
   const description = typeof body.description === "string" ? body.description.trim() : undefined;
+  const image = typeof body.image === "string" ? body.image.trim() : undefined;
 
   if (!tokenName || tokenName.length < 1 || tokenName.length > 100) {
     return NextResponse.json({ error: "Token name must be 1-100 characters" }, { status: 400 });
@@ -138,6 +139,7 @@ export async function POST(req: NextRequest) {
     tokenSymbol,
     description: description ?? `AI agent token on InstaClaw. Trading fees fund autonomous compute.`,
     websiteUrl: "https://instaclaw.io",
+    ...(image ? { image } : {}),
     feeRecipient: {
       type: "wallet",
       value: vm.bankr_evm_address,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, ExternalLink, Copy, Check, TrendingUp, TrendingDown } from "lucide-react";
+import { Sparkles, ExternalLink, Copy, Check, TrendingUp, TrendingDown, Upload, Wand2, X } from "lucide-react";
 
 interface BankrTokenizeCardProps {
   walletId: string | null;
@@ -76,7 +76,11 @@ export default function BankrTokenizeCard({
   const [linkCopied, setLinkCopied] = useState(false);
   const [tweetCopied, setTweetCopied] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch live token price from DexScreener
   // Must be before any early returns — React hooks must be called unconditionally
@@ -114,6 +118,56 @@ export default function BankrTokenizeCard({
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function handleGenerateImage() {
+    if (!tokenName.trim()) {
+      setImageError("Enter a token name first");
+      return;
+    }
+    setImageError(null);
+    setImageLoading(true);
+    try {
+      const res = await fetch("/api/proxy/bankr/generate-token-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token_name: tokenName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImageError(data.error ?? "Generation failed");
+        return;
+      }
+      setImageUrl(data.imageUrl);
+    } catch {
+      setImageError("Generation failed — try again or skip");
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
+  async function handleUploadImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setImageError("Image must be under 5MB"); return; }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setImageError("Image must be JPG, PNG, or WebP"); return; }
+    setImageError(null);
+    setImageLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/proxy/bankr/upload-token-image", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) { setImageError(data.error ?? "Upload failed"); return; }
+      setImageUrl(data.imageUrl);
+    } catch {
+      setImageError("Upload failed — try again or skip");
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
   async function handleTokenize() {
     if (!tokenName.trim() || !tokenSym.trim()) {
       setError("Token name and symbol are required");
@@ -128,6 +182,7 @@ export default function BankrTokenizeCard({
         body: JSON.stringify({
           token_name: tokenName.trim(),
           token_symbol: tokenSym.trim().toUpperCase(),
+          ...(imageUrl ? { image: imageUrl } : {}),
         }),
       });
       const data = await res.json();
@@ -426,10 +481,56 @@ export default function BankrTokenizeCard({
             maxLength={10}
             className="w-full px-3 py-2.5 rounded-lg text-sm uppercase bg-black/20 border border-white/10 placeholder:text-muted/50 focus:outline-none focus:border-white/20"
           />
+          {/* ── Token Image (optional) ── */}
+          <div className="rounded-lg p-3 space-y-2 bg-white/5 border border-white/5">
+            <p className="text-[10px] font-medium text-muted">
+              Token Image <span className="opacity-50">(optional)</span>
+            </p>
+
+            {imageUrl ? (
+              <div className="flex items-center gap-3">
+                <img src={imageUrl} alt="Token PFP" className="w-12 h-12 rounded-full object-cover border border-white/10" />
+                <button
+                  type="button"
+                  onClick={() => { setImageUrl(null); setImageError(null); }}
+                  className="text-[10px] text-muted flex items-center gap-1"
+                >
+                  <X size={10} /> Remove
+                </button>
+              </div>
+            ) : imageLoading ? (
+              <div className="flex items-center justify-center py-3">
+                <div className="w-4 h-4 border-2 border-t-transparent border-white/20 rounded-full animate-spin" />
+                <span className="text-[10px] text-muted ml-2">Creating your token PFP...</span>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadImage} className="hidden" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 py-2 rounded-lg text-[11px] flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform"
+                >
+                  <Upload size={12} /> Upload
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateImage}
+                  className="flex-1 py-2 rounded-lg text-[11px] flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform"
+                >
+                  <Wand2 size={12} /> Generate
+                </button>
+              </div>
+            )}
+
+            {imageError && <p className="text-[10px] text-red-400">{imageError}</p>}
+            <p className="text-[9px] text-muted opacity-50">You can update this later on Bankr</p>
+          </div>
+
           {error && <p className="text-xs text-red-400">{error}</p>}
           <div className="flex gap-2">
             <button
-              onClick={() => { setShowForm(false); setError(null); }}
+              onClick={() => { setShowForm(false); setError(null); setImageUrl(null); setImageError(null); }}
               className="flex-1 py-2.5 rounded-lg text-sm glass-button"
             >
               Cancel

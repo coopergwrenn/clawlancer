@@ -14,6 +14,7 @@
     "@sentry/nextjs": "^10.38.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.2",
+    "@vercel/blob": "^2.3.3",
     "@worldcoin/agentkit": "^0.1.3",
     "@worldcoin/idkit": "^4.0.9",
     "canvas-confetti": "^1.9.4",
@@ -23,6 +24,7 @@
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
     "node-ssh": "^13.2.1",
+    "openai": "^6.34.0",
     "pg": "^8.20.0",
     "posthog-js": "^1.347.1",
     "qrcode.react": "^4.2.0",
@@ -31,6 +33,7 @@
     "react-markdown": "^10.1.0",
     "resend": "^6.9.1",
     "satori": "^0.25.0",
+    "sharp": "^0.34.5",
     "simple-icons": "^16.10.0",
     "stripe": "^20.3.1",
     "viem": "^2.47.1"
