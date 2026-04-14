@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   let userId: string | undefined;
   const session = await auth();
   if (session?.user?.id) {
-    userId = userId;
+    userId = session.user.id;
   } else {
     const { validateMiniAppToken } = await import("@/lib/security");
     const miniAppUserId = await validateMiniAppToken(req);
