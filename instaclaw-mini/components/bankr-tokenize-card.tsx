@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Sparkles, ExternalLink, Copy, Check, TrendingUp, TrendingDown } from "lucide-react";
 
 interface BankrTokenizeCardProps {
@@ -74,7 +74,9 @@ export default function BankrTokenizeCard({
   const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(null);
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [tweetCopied, setTweetCopied] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
+  const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch live token price from DexScreener
   // Must be before any early returns — React hooks must be called unconditionally
@@ -138,7 +140,7 @@ export default function BankrTokenizeCard({
       setLaunchSuccess({ symbol, address: addr });
       fireConfetti();
       setTimeout(() => setShowShareCard(true), 800);
-      setTimeout(() => window.location.reload(), 8000);
+      autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
     } catch {
       setError("Network error — try again");
     } finally {
@@ -148,21 +150,41 @@ export default function BankrTokenizeCard({
 
   // ── Celebration + Share Card ──
   if (launchSuccess) {
-    const tweetText = `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`;
-    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
-    const basescanUrl = `https://basescan.org/token/${launchSuccess.address}`;
+    const hasAddress = !!launchSuccess.address;
+    const tweetText = hasAddress
+      ? `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`
+      : `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.`;
+    const basescanUrl = hasAddress ? `https://basescan.org/token/${launchSuccess.address}` : "";
 
-    function handleShare() {
-      window.location.href = tweetUrl;
+    function cancelAutoReload() {
+      if (autoReloadTimer.current) {
+        clearTimeout(autoReloadTimer.current);
+        autoReloadTimer.current = null;
+      }
+    }
+
+    // Mini app: copy tweet text to clipboard, then show "Open X" button.
+    // Avoids window.location.href which navigates away and strands the user.
+    function handleCopyTweet() {
+      cancelAutoReload();
+      navigator.clipboard.writeText(tweetText);
+      setTweetCopied(true);
+    }
+
+    function handleOpenX() {
+      // Open X in the system browser — user pastes the copied text
+      window.location.href = "https://twitter.com/intent/tweet";
     }
 
     function handleCopyLink() {
+      cancelAutoReload();
       navigator.clipboard.writeText(basescanUrl);
       setLinkCopied(true);
       setTimeout(() => window.location.reload(), 1500);
     }
 
     function handleSkip() {
+      cancelAutoReload();
       window.location.reload();
     }
 
@@ -180,30 +202,50 @@ export default function BankrTokenizeCard({
         </div>
         <p className="text-xs text-muted mb-6">Your token is now trading on Base</p>
 
-        {showShareCard && (
+        {showShareCard && hasAddress && (
           <div className="w-full space-y-3">
-            <div className="flex gap-2">
-              <button
-                onClick={handleShare}
-                className="flex-[2] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                style={{ background: "#000", color: "#fff" }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                </svg>
-                Share to X
-              </button>
-              <button
-                onClick={handleCopyLink}
-                className="flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform"
-              >
-                {linkCopied ? (
-                  <><Check size={14} className="text-success" /> Copied</>
-                ) : (
-                  <><Copy size={14} /> Copy link</>
-                )}
-              </button>
-            </div>
+            {!tweetCopied ? (
+              /* Step 1: Copy tweet text */
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopyTweet}
+                  className="flex-[2] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                  style={{ background: "#000", color: "#fff" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                  Share to X
+                </button>
+                <button
+                  onClick={handleCopyLink}
+                  className="flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform"
+                >
+                  {linkCopied ? (
+                    <><Check size={14} className="text-success" /> Copied</>
+                  ) : (
+                    <><Copy size={14} /> Copy link</>
+                  )}
+                </button>
+              </div>
+            ) : (
+              /* Step 2: Tweet copied — show "Open X" to paste */
+              <div className="space-y-2">
+                <p className="text-[11px] text-success flex items-center justify-center gap-1">
+                  <Check size={12} /> Tweet copied to clipboard
+                </p>
+                <button
+                  onClick={handleOpenX}
+                  className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                  style={{ background: "#000", color: "#fff" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                  Open X to paste
+                </button>
+              </div>
+            )}
             <button onClick={handleSkip} className="text-xs text-muted">
               Maybe later
             </button>

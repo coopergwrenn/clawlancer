@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown } from "lucide-react";
 
 interface BankrWalletCardProps {
@@ -79,6 +79,7 @@ export function BankrWalletCard({
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
+  const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch live token price from DexScreener (client-side, no auth needed)
   // Must be before any early returns — React hooks must be called unconditionally
@@ -144,8 +145,8 @@ export function BankrWalletCard({
       fireConfetti();
       // Show share card after brief celebration moment
       setTimeout(() => setShowShareCard(true), 800);
-      // Auto-reload after 8s if user doesn't interact
-      setTimeout(() => window.location.reload(), 8000);
+      // Auto-reload after 8s if user doesn't interact — stored so we can cancel on interaction
+      autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
     } catch {
       setError("Network error — try again");
     } finally {
@@ -155,22 +156,35 @@ export function BankrWalletCard({
 
   // ── Celebration + Share Card ──
   if (launchSuccess) {
-    const tweetText = `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`;
+    const hasAddress = !!launchSuccess.address;
+    const tweetText = hasAddress
+      ? `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`
+      : `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.`;
     const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
-    const basescanUrl = `https://basescan.org/token/${launchSuccess.address}`;
+    const basescanUrl = hasAddress ? `https://basescan.org/token/${launchSuccess.address}` : "";
+
+    function cancelAutoReload() {
+      if (autoReloadTimer.current) {
+        clearTimeout(autoReloadTimer.current);
+        autoReloadTimer.current = null;
+      }
+    }
 
     function handleShare() {
+      cancelAutoReload();
       window.open(tweetUrl, "_blank");
-      setTimeout(() => window.location.reload(), 1000);
+      setTimeout(() => window.location.reload(), 1500);
     }
 
     function handleCopyLink() {
+      cancelAutoReload();
       navigator.clipboard.writeText(basescanUrl);
       setLinkCopied(true);
       setTimeout(() => window.location.reload(), 1500);
     }
 
     function handleSkip() {
+      cancelAutoReload();
       window.location.reload();
     }
 
@@ -193,7 +207,7 @@ export function BankrWalletCard({
           Your token is now trading on Base
         </p>
 
-        {showShareCard && (
+        {showShareCard && hasAddress && (
           <div className="w-full space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex gap-2">
               <button
