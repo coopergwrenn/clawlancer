@@ -136,12 +136,13 @@ export async function POST(req: NextRequest) {
   const launchPayload: Record<string, unknown> = {
     tokenName,
     tokenSymbol,
+    description: description ?? `AI agent token on InstaClaw. Trading fees fund autonomous compute.`,
+    websiteUrl: "https://instaclaw.io",
     feeRecipient: {
       type: "wallet",
       value: vm.bankr_evm_address,
     },
   };
-  if (description) launchPayload.description = description;
   if (simulateOnly) launchPayload.simulateOnly = true;
 
   let launchData: BankrLaunchResponse;
