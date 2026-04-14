@@ -450,6 +450,15 @@ export async function sendAdminAlertEmail(
   });
 }
 
+export async function sendCustomEmail(
+  to: string,
+  subject: string,
+  html: string
+): Promise<void> {
+  const resend = getResend();
+  await resend.emails.send({ from: FROM, replyTo: REPLY_TO, to, subject, html });
+}
+
 export async function sendCanceledEmail(email: string): Promise<void> {
   const resend = getResend();
   const billingUrl = `${getBaseUrl()}/billing`;

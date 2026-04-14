@@ -254,10 +254,15 @@ export async function POST(req: NextRequest) {
     feeRecipient: vm.bankr_evm_address,
   });
 
-  sendAdminAlertEmail(
-    `New Token Launched: $${tokenSymbol}`,
-    `User: ${userId}\nVM: ${vm.id}\nToken: $${tokenSymbol} (${tokenName})\nAddress: ${launchData.tokenAddress}\nTx: ${launchData.txHash}\n\nhttps://basescan.org/token/${launchData.tokenAddress}`
-  ).catch(() => {});
+  const launchAlert = `User: ${userId}\nVM: ${vm.id}\nToken: $${tokenSymbol} (${tokenName})\nAddress: ${launchData.tokenAddress}\nTx: ${launchData.txHash}\n\nhttps://basescan.org/token/${launchData.tokenAddress}`;
+  const launchSubject = `New Token Launched: $${tokenSymbol}`;
+  sendAdminAlertEmail(launchSubject, launchAlert).catch(() => {});
+  // Also notify Cooper's personal + instaclaw emails
+  import("@/lib/email").then(({ sendCustomEmail }) => {
+    const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#000;color:#fff;"><h1 style="font-size:24px;margin-bottom:16px;">${launchSubject}</h1><pre style="margin-top:16px;padding:16px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#ccc;white-space:pre-wrap;font-size:13px;">${launchAlert}</pre></div>`;
+    sendCustomEmail("coopergrantwrenn@gmail.com", `[InstaClaw] ${launchSubject}`, html).catch(() => {});
+    sendCustomEmail("coop@instaclaw.io", `[InstaClaw] ${launchSubject}`, html).catch(() => {});
+  }).catch(() => {});
 
   return NextResponse.json({
     success: true,
