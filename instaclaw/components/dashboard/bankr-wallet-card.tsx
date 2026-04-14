@@ -422,17 +422,6 @@ export function BankrWalletCard({
           )}
         </>
       )}
-      {/* ── TEMP TEST BUTTON — REMOVE BEFORE PUSH ── */}
-      <button
-        onClick={() => {
-          setLaunchSuccess("TEST");
-          fireConfetti();
-        }}
-        className="w-full mt-3 py-2 rounded-md text-xs font-mono"
-        style={{ background: "#ff0066", color: "white", opacity: 0.8 }}
-      >
-        TEST CELEBRATION (remove before push)
-      </button>
     </div>
   );
 }
