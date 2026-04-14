@@ -38,6 +38,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Hard block: tokenization disabled until prod Bankr org is set up.
+  // Set BANKR_TOKENIZE_ENABLED=true on Vercel to enable.
+  if (process.env.BANKR_TOKENIZE_ENABLED !== "true") {
+    return NextResponse.json(
+      { error: "Token launching is coming soon! Stay tuned." },
+      { status: 503 }
+    );
+  }
+
   const partnerKey = process.env.BANKR_PARTNER_KEY;
   if (!partnerKey) {
     logger.error("BANKR_PARTNER_KEY not configured");

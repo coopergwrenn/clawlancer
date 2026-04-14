@@ -21,6 +21,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  if (process.env.BANKR_TOKENIZE_ENABLED !== "true") {
+    return NextResponse.json({ error: "Token launching is coming soon!" }, { status: 503 });
+  }
+
   const body = await req.json().catch(() => ({}));
   const tokenName = typeof body.token_name === "string" ? body.token_name.trim() : "";
 
