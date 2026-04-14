@@ -75,7 +75,9 @@ export function BankrWalletCard({
   const [tokenSym, setTokenSym] = useState("");
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [launchSuccess, setLaunchSuccess] = useState<string | null>(null);
+  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(null);
+  const [showShareCard, setShowShareCard] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
 
   // Fetch live token price from DexScreener (client-side, no auth needed)
@@ -135,11 +137,15 @@ export function BankrWalletCard({
         setError(data.error ?? "Tokenization failed");
         return;
       }
-      // Celebration: confetti + success message, then reload
+      // Celebration: confetti + share card
       const symbol = tokenSym.trim().toUpperCase();
-      setLaunchSuccess(symbol);
+      const addr = data.tokenAddress ?? "";
+      setLaunchSuccess({ symbol, address: addr });
       fireConfetti();
-      setTimeout(() => window.location.reload(), 2500);
+      // Show share card after brief celebration moment
+      setTimeout(() => setShowShareCard(true), 800);
+      // Auto-reload after 8s if user doesn't interact
+      setTimeout(() => window.location.reload(), 8000);
     } catch {
       setError("Network error — try again");
     } finally {
@@ -147,12 +153,31 @@ export function BankrWalletCard({
     }
   }
 
-  // ── Celebration overlay ──
+  // ── Celebration + Share Card ──
   if (launchSuccess) {
+    const tweetText = `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`;
+    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
+    const basescanUrl = `https://basescan.org/token/${launchSuccess.address}`;
+
+    function handleShare() {
+      window.open(tweetUrl, "_blank");
+      setTimeout(() => window.location.reload(), 1000);
+    }
+
+    function handleCopyLink() {
+      navigator.clipboard.writeText(basescanUrl);
+      setLinkCopied(true);
+      setTimeout(() => window.location.reload(), 1500);
+    }
+
+    function handleSkip() {
+      window.location.reload();
+    }
+
     return (
       <div
         className="glass rounded-xl p-8 flex flex-col items-center justify-center text-center"
-        style={{ border: "1px solid var(--border)", minHeight: 160 }}
+        style={{ border: "1px solid var(--border)" }}
       >
         <div
           className="text-3xl font-bold mb-2"
@@ -162,11 +187,58 @@ export function BankrWalletCard({
             WebkitTextFillColor: "transparent",
           }}
         >
-          ${launchSuccess} is live!
+          ${launchSuccess.symbol} is live!
         </div>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
           Your token is now trading on Base
         </p>
+
+        {showShareCard && (
+          <div className="w-full space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex gap-2">
+              <button
+                onClick={handleShare}
+                className="flex-[2] py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                style={{
+                  background: "#000",
+                  color: "#fff",
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+                Share to X
+              </button>
+              <button
+                onClick={handleCopyLink}
+                className="flex-1 py-2.5 rounded-lg text-sm flex items-center justify-center gap-1.5 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                style={{
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
+                }}
+              >
+                {linkCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-green-600" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy link
+                  </>
+                )}
+              </button>
+            </div>
+            <button
+              onClick={handleSkip}
+              className="text-xs transition-colors hover:opacity-70"
+              style={{ color: "var(--muted)" }}
+            >
+              Maybe later
+            </button>
+          </div>
+        )}
       </div>
     );
   }
