@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
+import { sendAdminAlertEmail } from "@/lib/email";
 
 // Token launches are synchronous on Bankr's side. 30s is plenty of headroom.
 export const maxDuration = 30;
@@ -219,6 +220,10 @@ export async function POST(req: NextRequest) {
       txHash: launchData.txHash,
       finalizeError: finalizeErr.message,
     });
+    sendAdminAlertEmail(
+      "CRITICAL: Bankr Token Launched But DB Save Failed",
+      `Token was deployed on-chain but instaclaw_vms update failed.\n\nUser: ${session.user.id}\nVM: ${vm.id}\nToken Address: ${launchData.tokenAddress}\nTx Hash: ${launchData.txHash}\nDB Error: ${finalizeErr.message}\n\nManual reconciliation needed: UPDATE instaclaw_vms SET bankr_token_address='${launchData.tokenAddress}', bankr_token_symbol='${tokenSymbol}', tokenization_platform='bankr', bankr_token_launched_at=NOW() WHERE id='${vm.id}';`
+    ).catch(() => {});
     return NextResponse.json(
       {
         error: "Token launched but state save failed — contact support",
