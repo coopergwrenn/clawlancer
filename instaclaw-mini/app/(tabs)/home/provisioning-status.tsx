@@ -189,11 +189,13 @@ export default function ProvisioningStatus() {
 
       } catch { /* keep polling */ }
 
-      // Hard timeout at 180s
+      // Hard timeout at 180s — alert admin so paying users never go unnoticed
       if (seconds >= 180 && !doneRef.current) {
         clearInterval(poll);
         doneRef.current = true;
         setPhase("timeout");
+        // Fire-and-forget admin notification
+        fetch("/api/agent/provision-stuck", { method: "POST" }).catch(() => {});
       }
     }, 2000);
 

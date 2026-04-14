@@ -417,6 +417,28 @@ else:
         })
         .eq("id", vm.id);
 
+      // CRITICAL: Alert for paying users with broken agents.
+      // If a VM has credits and was assigned recently (< 30 min), the user
+      // just paid and is staring at a broken screen. Escalate immediately.
+      if (newFailCount === 3 && (vm.credit_balance ?? 0) > 0 && vm.assigned_at) {
+        const minutesSinceAssign = (Date.now() - new Date(vm.assigned_at).getTime()) / (1000 * 60);
+        if (minutesSinceAssign < 30) {
+          alerts.add(
+            "URGENT: Paying user has broken agent",
+            vm.name ?? vm.id,
+            `User just paid and their agent is unhealthy after ${Math.round(minutesSinceAssign)} minutes.\nIP: ${vm.ip_address}\nUser: ${vm.assigned_to ?? "unknown"}\nCredits: ${vm.credit_balance}\nFail count: ${newFailCount}`
+          );
+          logger.error("Paying user with broken agent — escalating", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            assignedTo: vm.assigned_to,
+            creditBalance: vm.credit_balance,
+            minutesSinceAssign: Math.round(minutesSinceAssign),
+          });
+        }
+      }
+
       // Detect crash-loop: systemd start-limit-hit (10 crashes in 5min)
       // Check on every failure to catch it early, before the alert threshold
       try {
@@ -430,11 +452,16 @@ else:
             vm.name ?? vm.id,
             `SystemD start-limit-hit (10 crashes in 5min). Auto-recovering.\nIP: ${vm.ip_address}\nUser: ${vm.assigned_to ?? "unassigned"}`
           );
-          // Auto-fix: reset-failed + restart
+          // Auto-fix: doctor --fix (repairs bad config) + reset-failed + restart
+          // Without doctor --fix, the gateway just crash-loops again with the same
+          // broken config (this caused 11 VMs to stay dead for days in Apr 2026).
           await crashLoopSsh.execCommand(
-            'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user reset-failed openclaw-gateway && systemctl --user start openclaw-gateway'
+            `${NVM_PREAMBLE} && openclaw doctor --fix 2>/dev/null || true`
           );
-          logger.warn("Auto-recovered crash-looping gateway (start-limit-hit)", {
+          await crashLoopSsh.execCommand(
+            'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user reset-failed openclaw-gateway && systemctl --user restart openclaw-gateway'
+          );
+          logger.warn("Auto-recovered crash-looping gateway with doctor --fix", {
             route: "cron/health-check",
             vmId: vm.id,
             vmName: vm.name,

@@ -7827,6 +7827,8 @@ export async function restartGateway(vm: VMRecord): Promise<boolean> {
       'sleep 2',
       '# Restore config to prevent onboard wizard from wiping channels',
       'cp /tmp/openclaw-backup.json ~/.openclaw/openclaw.json 2>/dev/null || true',
+      '# Auto-fix legacy config keys that crash the gateway (e.g. tools.web.search → plugins)',
+      'source ~/.nvm/nvm.sh && openclaw doctor --fix 2>/dev/null || true',
       '# Start via systemd so Restart=always protects against future crashes',
       'systemctl --user start openclaw-gateway',
       'sleep 5',
