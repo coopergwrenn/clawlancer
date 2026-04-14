@@ -254,6 +254,11 @@ export async function POST(req: NextRequest) {
     feeRecipient: vm.bankr_evm_address,
   });
 
+  sendAdminAlertEmail(
+    `New Token Launched: $${tokenSymbol}`,
+    `User: ${userId}\nVM: ${vm.id}\nToken: $${tokenSymbol} (${tokenName})\nAddress: ${launchData.tokenAddress}\nTx: ${launchData.txHash}\n\nhttps://basescan.org/token/${launchData.tokenAddress}`
+  ).catch(() => {});
+
   return NextResponse.json({
     success: true,
     tokenAddress: launchData.tokenAddress,
