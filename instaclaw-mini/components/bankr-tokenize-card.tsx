@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, ExternalLink, Copy, Check } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Sparkles, ExternalLink, Copy, Check, TrendingUp, TrendingDown } from "lucide-react";
 
 interface BankrTokenizeCardProps {
   walletId: string | null;
@@ -9,6 +9,53 @@ interface BankrTokenizeCardProps {
   tokenAddress: string | null;
   tokenSymbol: string | null;
   tokenizationPlatform: string | null;
+}
+
+interface TokenPrice {
+  priceUsd: string | null;
+  priceChange24h: number | null;
+  volume24h: number | null;
+}
+
+// Lightweight confetti burst — gold/amber themed
+function fireConfetti() {
+  import("canvas-confetti").then((mod) => {
+    const confetti = mod.default;
+    const gold = ["#f5a623", "#d4911d", "#fbbf24", "#f59e0b", "#fff7ed"];
+    confetti({
+      particleCount: 80,
+      spread: 70,
+      origin: { y: 0.5, x: 0.5 },
+      colors: gold,
+      ticks: 120,
+      gravity: 0.8,
+      scalar: 1.1,
+      shapes: ["circle", "square"],
+      disableForReducedMotion: true,
+    });
+    setTimeout(() => {
+      confetti({
+        particleCount: 40,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0.15, y: 0.55 },
+        colors: gold,
+        ticks: 100,
+        gravity: 0.9,
+        disableForReducedMotion: true,
+      });
+      confetti({
+        particleCount: 40,
+        angle: 120,
+        spread: 55,
+        origin: { x: 0.85, y: 0.55 },
+        colors: gold,
+        ticks: 100,
+        gravity: 0.9,
+        disableForReducedMotion: true,
+      });
+    }, 150);
+  }).catch(() => {});
 }
 
 export default function BankrTokenizeCard({
@@ -24,6 +71,31 @@ export default function BankrTokenizeCard({
   const [tokenSym, setTokenSym] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [launchSuccess, setLaunchSuccess] = useState<string | null>(null);
+  const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
+
+  // Fetch live token price from DexScreener
+  // Must be before any early returns — React hooks must be called unconditionally
+  useEffect(() => {
+    if (!tokenAddress) return;
+    const fetchPrice = async () => {
+      try {
+        const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+        const data = await res.json();
+        if (data.pairs?.length > 0) {
+          const pair = data.pairs[0];
+          setTokenPrice({
+            priceUsd: pair.priceUsd ?? null,
+            priceChange24h: pair.priceChange?.h24 ?? null,
+            volume24h: pair.volume?.h24 ?? null,
+          });
+        }
+      } catch { /* non-critical */ }
+    };
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 60_000);
+    return () => clearInterval(interval);
+  }, [tokenAddress]);
 
   // Don't render if no Bankr wallet
   if (!walletId || !evmAddress) return null;
@@ -59,7 +131,10 @@ export default function BankrTokenizeCard({
         setError(data.error ?? "Tokenization failed");
         return;
       }
-      window.location.reload();
+      const symbol = tokenSym.trim().toUpperCase();
+      setLaunchSuccess(symbol);
+      fireConfetti();
+      setTimeout(() => window.location.reload(), 2500);
     } catch {
       setError("Network error — try again");
     } finally {
@@ -67,7 +142,26 @@ export default function BankrTokenizeCard({
     }
   }
 
-  // Already tokenized on Virtuals — show message
+  // ── Celebration overlay ──
+  if (launchSuccess) {
+    return (
+      <div className="animate-fade-in-up glass-card rounded-2xl p-8 flex flex-col items-center justify-center text-center" style={{ opacity: 0, minHeight: 140 }}>
+        <div
+          className="text-2xl font-bold mb-2"
+          style={{
+            background: "linear-gradient(135deg, #f5a623, #fbbf24)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          ${launchSuccess} is live!
+        </div>
+        <p className="text-xs text-muted">Your token is now trading on Base</p>
+      </div>
+    );
+  }
+
+  // Already tokenized on Virtuals
   if (tokenizationPlatform === "virtuals" && !hasToken) {
     return (
       <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
@@ -85,53 +179,109 @@ export default function BankrTokenizeCard({
     );
   }
 
-  // Token is live — show status
+  // ── POST-LAUNCH TOKEN DASHBOARD ──
   if (hasToken) {
     return (
-      <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] font-medium tracking-wide text-muted">AGENT WALLET</span>
-          <a href="https://bankr.bot" target="_blank" rel="noopener noreferrer" className="text-[10px] text-muted flex items-center gap-1">
-            Powered by Bankr <ExternalLink size={10} />
-          </a>
-        </div>
-        <div className="flex items-center gap-2 mb-3">
-          <code className="text-xs px-2 py-1 rounded glass-inner">{shortAddress}</code>
-          <button onClick={handleCopy} className="p-1.5 rounded-lg glass-button" aria-label="Copy address">
-            {copied ? <Check size={12} className="text-success" /> : <Copy size={12} className="text-muted" />}
-          </button>
-        </div>
-        <div className="glass-inner rounded-xl p-3 space-y-2">
-          <div className="flex items-center justify-between">
+      <div className="animate-fade-in-up glass-card rounded-2xl overflow-hidden" style={{ opacity: 0 }}>
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-medium tracking-wide text-muted">AGENT WALLET</span>
+            <a href="https://bankr.bot" target="_blank" rel="noopener noreferrer" className="text-[10px] text-muted flex items-center gap-1">
+              Powered by Bankr <ExternalLink size={10} />
+            </a>
+          </div>
+
+          {/* Token header */}
+          <div className="flex items-center gap-2.5 mb-3">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold"
+              style={{
+                background: "linear-gradient(135deg, #f5a623, #d4911d)",
+                color: "white",
+                textShadow: "0 1px 1px rgba(0,0,0,0.15)",
+              }}
+            >
+              {tokenSymbol?.slice(0, 2)}
+            </div>
             <div>
-              <span className="text-sm font-bold">${tokenSymbol}</span>
-              <span className="text-[10px] text-muted ml-2">Token Active</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold">${tokenSymbol}</span>
+                <span
+                  className="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+                  style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+                >
+                  Active
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <code className="text-[10px] text-muted">{shortAddress}</code>
+                <button onClick={handleCopy} className="p-0.5" aria-label="Copy address">
+                  {copied ? <Check size={10} className="text-success" /> : <Copy size={10} className="text-muted" />}
+                </button>
+              </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            <a
-              href={`https://basescan.org/token/${tokenAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 text-center text-[11px] text-muted py-2 rounded-lg glass-button flex items-center justify-center gap-1"
-            >
-              BaseScan <ExternalLink size={10} />
-            </a>
-            <a
-              href={`https://bankr.bot/launches/${tokenAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 text-center text-[11px] text-muted py-2 rounded-lg glass-button flex items-center justify-center gap-1"
-            >
-              View earnings <ExternalLink size={10} />
-            </a>
-          </div>
+
+          {/* Price section */}
+          {tokenPrice?.priceUsd ? (
+            <div className="glass-inner rounded-xl p-3 mb-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold">
+                  ${parseFloat(tokenPrice.priceUsd) < 0.01
+                    ? parseFloat(tokenPrice.priceUsd).toExponential(2)
+                    : parseFloat(tokenPrice.priceUsd).toFixed(4)}
+                </span>
+                {tokenPrice.priceChange24h != null && (
+                  <span
+                    className="text-xs font-medium flex items-center gap-0.5"
+                    style={{ color: tokenPrice.priceChange24h >= 0 ? "#22c55e" : "#ef4444" }}
+                  >
+                    {tokenPrice.priceChange24h >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                    {tokenPrice.priceChange24h >= 0 ? "+" : ""}{tokenPrice.priceChange24h.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              {tokenPrice.volume24h != null && tokenPrice.volume24h > 0 && (
+                <p className="text-[10px] text-muted mt-1">
+                  24h vol: ${tokenPrice.volume24h.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="glass-inner rounded-xl p-3 mb-1">
+              <p className="text-[11px] text-muted">Trading on Uniswap V4</p>
+              <code className="text-[10px] text-muted">
+                {tokenAddress?.slice(0, 10)}...{tokenAddress?.slice(-6)}
+              </code>
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex border-t border-white/5">
+          <a
+            href={`https://bankr.bot/launches/${tokenAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 text-[11px] font-medium flex items-center justify-center gap-1.5 py-3 active:bg-white/5 transition-colors"
+          >
+            Manage on Bankr <ExternalLink size={10} />
+          </a>
+          <div className="w-px bg-white/5" />
+          <a
+            href={`https://basescan.org/token/${tokenAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 text-[11px] text-muted flex items-center justify-center gap-1.5 py-3 active:bg-white/5 transition-colors"
+          >
+            BaseScan <ExternalLink size={10} />
+          </a>
         </div>
       </div>
     );
   }
 
-  // No token — show tokenize flow
+  // ── No token — show tokenize flow ──
   return (
     <div className="animate-fade-in-up glass-card rounded-2xl p-4" style={{ opacity: 0 }}>
       <div className="flex items-center justify-between mb-3">

@@ -96,7 +96,27 @@ First simulated launch returned `200 OK` with all expected fields:
 ## Webhook / Trading Fee Events
 
 ### Status
-**Bankr has not built webhooks yet.** The `/partnership/webhooks` page returns 404 and the partnership overview confirms no webhook infrastructure exists. Sinaver asked us to "expand more on the detail flow" so they can build it on their side.
+**Webhooks scrapped — polling approach adopted.** Bankr provided public REST endpoints for reading fees directly, making webhooks unnecessary for MVP.
+
+### Fee Reading Endpoints (confirmed 2026-04-14, public, no auth needed)
+
+**All fees for a token (last N days):**
+```
+GET https://api.bankr.bot/public/doppler/token-fees/:tokenAddress?days=30
+```
+
+**Claimable fees for a specific beneficiary (our polling cron will use this):**
+```
+GET https://api.bankr.bot/public/doppler/claimable-fees/:tokenAddress?beneficiary=0x...
+```
+
+Not yet in the docs — Sinaver confirmed they're updating. We asked for a bulk endpoint (all fees across all tokens under a partner key in one call) for when we scale to hundreds of agents. Per-wallet works for now.
+
+### Gas Sponsorship Update (2026-04-14)
+Sinaver: *"UPDATE - gas sponsorship, wip, target before Friday: you will be able to top up gas credits with your org wallet."* Users currently need ETH to claim fees, but after Friday we can sponsor gas from our org wallet — enabling automated claim flows.
+
+### Fee Wallet Retroactivity (confirmed 2026-04-14)
+Sinaver: *"It affects only the future launches. But you can update fee recipient for prev launches, requires fee recipient signature either on contract level or we have an api."* **Not locked forever — can migrate existing tokens to multisig later.**
 
 ### What We Built (waiting for spec)
 - Webhook endpoint at `POST /api/integrations/bankr/webhook`
@@ -163,7 +183,7 @@ We want agents to charge for services (market signals, research, analysis) via x
 | 2 | 2026-04-09 | Note | Idempotency returns 200 (not 409 as spec says). Prefer this behavior — just noting the spec divergence. | Informational |
 | 3 | 2026-04-10 | Low | Token launch response uses `feeDistribution.alt` but docs example shows `feeDistribution.ecosystem`. Field rename or doc typo? | Open |
 | 4 | 2026-04-10 | Doc | `/partnership/api-reference/launch-token` returns 404 — referenced from token-launching page but doesn't exist. Either the page should be created or the link removed. | Open |
-| 5 | 2026-04-10 | Doc | Rate limit conflict: token-launching page says "1 deploy/min, 20/24h per fee recipient", partner-api page says "50/24h (100 Bankr Club)". Need authoritative answer. | Open |
+| 5 | 2026-04-10 | Doc | Rate limit conflict: token-launching page says "1 deploy/min, 20/24h per fee recipient", partner-api page says "50/24h (100 Bankr Club)". | **Resolved** — Sinaver confirmed: 1/min + 20/24h per fee recipient is correct for partner-key deploys. The 50/100 was for direct API-key deploys. |
 | 6 | 2026-04-10 | Spec ambiguity | Docs reference 3 wallet types (org wallet, deployment wallet, fee wallet) but never clarify whether they must be distinct, can be the same, or what each one is responsible for. We're using one address for all three roles — works in simulation, untested for real launches. | Open |
 | 7 | 2026-04-10 | UX clarity | Dashboard shows two distinct wallet concepts: the user's personal Bankr account login (top-right user dropdown, e.g. `0x94ab...`) and the org wallet (e.g. `0x66eb...`). These are clearly different things, but a label distinguishing "Personal Wallet" vs "Org Wallet" in the dropdown would prevent confusion. | Suggestion |
 
@@ -193,7 +213,9 @@ We want agents to charge for services (market signals, research, analysis) via x
 | 2026-04-10 | Tokenize endpoint wired up. Partner key auth, feeRecipient = user's own wallet (1a), simulateOnly env-driven, atomic DB lock to prevent race conditions. |
 | 2026-04-10 | Webhook spec drafted at instaclaw/docs/bankr-webhook-spec.md to send to Sinaver. |
 | 2026-04-10 | **First simulated launch successful.** `POST /token-launches/deploy` returned 200 OK with predicted token address, pool ID, and full fee distribution. Partner share confirmed routing to our fee wallet (`0x66eb...`), creator share routing to user wallet. Math checks out: 5700+1805+1805+190+500 = 10000 bps. |
-| Next | Get answers from Sinaver on 3 pre-launch blockers, then fund org wallet with ETH and do one real launch |
+| 2026-04-14 | **ALL BLOCKERS RESOLVED.** Sinaver answered all 5 questions — fee reading endpoints exist, gas sponsorship ships Friday, fee wallet migration is possible, rate limits clarified, alt/ecosystem doc nit confirmed. |
+| 2026-04-14 | Celebration animation + post-launch token card redesign with live DexScreener price feed |
+| Next | First real token launch test, then build Tier 2 polling cron using public fee endpoints |
 
 ---
 

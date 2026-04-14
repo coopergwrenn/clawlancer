@@ -13,6 +13,7 @@
     "@worldcoin/idkit-core": "^4.0.16",
     "@worldcoin/minikit-js": "^1.11.0",
     "@worldcoin/minikit-react": "^1.9.14",
+    "canvas-confetti": "^1.9.4",
     "jose": "^6.0.11",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
     "@tailwindcss/postcss": "^4",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
