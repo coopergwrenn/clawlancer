@@ -62,6 +62,16 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabase();
 
+  // Clear stale locks: if a previous launch attempt crashed mid-execution,
+  // the lock stays as 'bankr_pending' forever. Auto-clear after 5 minutes.
+  await supabase
+    .from("instaclaw_vms")
+    .update({ tokenization_platform: null, bankr_token_launched_at: null })
+    .eq("assigned_to", userId)
+    .eq("tokenization_platform", "bankr_pending")
+    .is("bankr_token_address", null)
+    .lt("bankr_token_launched_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+
   // Look up user's VM with Bankr wallet
   const { data: vm } = await supabase
     .from("instaclaw_vms")
