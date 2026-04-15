@@ -570,7 +570,7 @@ export function BankrWalletCard({
                   /* Shimmer loading state */
                   <div className="flex flex-col items-center py-4 gap-3">
                     <div
-                      className="w-16 h-16 rounded-xl"
+                      className="w-32 h-32 rounded-xl"
                       style={{
                         background: "linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%)",
                         backgroundSize: "200% 100%",
@@ -588,8 +588,7 @@ export function BankrWalletCard({
                     <img
                       src={imageUrl}
                       alt="Token PFP"
-                      className="w-20 h-20 rounded-xl object-cover"
-                      style={{ border: "1px solid var(--border)" }}
+                      className="w-32 h-32 rounded-xl object-cover"
                     />
                     <div className="flex gap-1.5">
                       <button
