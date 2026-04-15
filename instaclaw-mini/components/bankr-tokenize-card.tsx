@@ -125,8 +125,7 @@ export default function BankrTokenizeCard({
     const name = nameOverride || tokenName.trim() || agentName || "Agent";
     setImageError(null);
     setImageLoading(true);
-    setImageLoadingText("Reading your agent's personality...");
-    const phaseTimer = setTimeout(() => setImageLoadingText("Creating your personalized token PFP..."), 5000);
+    setImageLoadingText("Creating your token PFP...");
     try {
       const res = await fetch("/api/proxy/bankr/generate-token-image", {
         method: "POST",
@@ -142,7 +141,6 @@ export default function BankrTokenizeCard({
     } catch {
       setImageError("Generation failed — try again or skip");
     } finally {
-      clearTimeout(phaseTimer);
       setImageLoading(false);
     }
   }
@@ -500,7 +498,7 @@ export default function BankrTokenizeCard({
               /* Shimmer loading */
               <div className="flex flex-col items-center py-4 gap-3">
                 <div
-                  className="w-28 h-28 rounded-xl"
+                  className="w-24 h-24 rounded-full"
                   style={{
                     background: "linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%)",
                     backgroundSize: "200% 100%",
@@ -513,7 +511,7 @@ export default function BankrTokenizeCard({
             ) : imageUrl ? (
               /* Preview + actions */
               <div className="flex flex-col items-center gap-2.5">
-                <img src={imageUrl} alt="Token PFP" className="w-28 h-28 rounded-xl object-cover" />
+                <img src={imageUrl} alt="Token PFP" className="w-24 h-24 rounded-full object-cover" />
                 <div className="flex gap-1.5 flex-wrap justify-center">
                   <button type="button" onClick={() => handleGenerateImage()} className="text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 glass-button active:scale-[0.98]">
                     <Wand2 size={10} /> Regenerate

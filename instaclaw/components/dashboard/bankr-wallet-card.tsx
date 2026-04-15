@@ -128,9 +128,7 @@ export function BankrWalletCard({
     const name = nameOverride || tokenName.trim() || agentName || "Agent";
     setImageError(null);
     setImageLoading(true);
-    setImageLoadingText("Reading your agent's personality...");
-    // Switch to creation text after 5s (SSH reading → DALL-E generating)
-    const phaseTimer = setTimeout(() => setImageLoadingText("Creating your personalized token PFP..."), 5000);
+    setImageLoadingText("Creating your token PFP...");
     try {
       const res = await fetch("/api/bankr/generate-token-image", {
         method: "POST",
@@ -146,7 +144,6 @@ export function BankrWalletCard({
     } catch {
       setImageError("Generation failed — try again or skip");
     } finally {
-      clearTimeout(phaseTimer);
       setImageLoading(false);
     }
   }
@@ -570,7 +567,7 @@ export function BankrWalletCard({
                   /* Shimmer loading state */
                   <div className="flex flex-col items-center py-4 gap-3">
                     <div
-                      className="w-32 h-32 rounded-xl"
+                      className="w-28 h-28 rounded-full"
                       style={{
                         background: "linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%)",
                         backgroundSize: "200% 100%",
@@ -588,7 +585,7 @@ export function BankrWalletCard({
                     <img
                       src={imageUrl}
                       alt="Token PFP"
-                      className="w-32 h-32 rounded-xl object-cover"
+                      className="w-28 h-28 rounded-full object-cover"
                     />
                     <div className="flex gap-1.5">
                       <button

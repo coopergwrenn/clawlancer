@@ -4,8 +4,8 @@ import { getSupabase } from "@/lib/supabase";
 import { generateTokenImage, uploadTokenImage, readAgentPersonality } from "@/lib/token-image";
 import { logger } from "@/lib/logger";
 
-// SSH (~5s) + DALL-E (~20s) + upload (~2s) = ~27s. 45s gives headroom.
-export const maxDuration = 45;
+// SSH (~5s) + pixel art render (instant) + upload (~2s) = ~10s
+export const maxDuration = 15;
 
 export async function POST(req: NextRequest) {
   // Accept NextAuth session (web app) OR X-Mini-App-Token (World mini app)
