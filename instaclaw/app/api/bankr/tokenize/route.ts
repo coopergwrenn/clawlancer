@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
+import { connectSSH } from "@/lib/ssh";
+import type { VMRecord } from "@/lib/ssh";
 
 // Token launches are synchronous on Bankr's side. 30s is plenty of headroom.
 export const maxDuration = 30;
@@ -85,7 +87,7 @@ export async function POST(req: NextRequest) {
   // Look up user's VM with Bankr wallet
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address, tokenization_platform")
+    .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address, tokenization_platform, ip_address, ssh_port, ssh_user")
     .eq("assigned_to", userId)
     .single();
 
@@ -285,6 +287,83 @@ export async function POST(req: NextRequest) {
     sendCustomEmail("coopergrantwrenn@gmail.com", `[InstaClaw] ${launchSubject}`, html).catch(() => {});
     sendCustomEmail("coop@instaclaw.io", `[InstaClaw] ${launchSubject}`, html).catch(() => {});
   }).catch(() => {});
+
+  // Background: SSH into VM and write token info to WALLET.md + MEMORY.md
+  // Runs AFTER the response is sent — zero added latency for the user
+  const tokenAddr = launchData.tokenAddress ?? "";
+  after(async () => {
+    if (!tokenAddr || !vm.ip_address) return;
+    try {
+      // Re-check VM ownership — if reassigned between response and after(), abort
+      const { data: currentVm } = await getSupabase()
+        .from("instaclaw_vms")
+        .select("assigned_to")
+        .eq("id", vm.id)
+        .single();
+      if (currentVm?.assigned_to !== userId) {
+        logger.warn("VM reassigned before token info write — aborting", { vmId: vm.id, userId });
+        return;
+      }
+
+      const ssh = await connectSSH(vm as unknown as VMRecord, { skipDuplicateIPCheck: true });
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        const walletSection = [
+          "",
+          "## Your Token",
+          "",
+          `- **Token:** $${tokenSymbol} (${tokenName})`,
+          `- **Contract:** ${tokenAddr} (Base mainnet)`,
+          "- **Trading:** Live on Uniswap V4",
+          `- **BaseScan:** https://basescan.org/token/${tokenAddr}`,
+          `- **Manage:** https://bankr.bot/launches/${tokenAddr}`,
+          "",
+          "### How Fees Work",
+          "- 1.2% fee on every swap of your token",
+          "- 57% of that fee (creator share) goes to YOUR Bankr wallet automatically",
+          "- These fees can fund your compute credits over time",
+          "- Check your earnings at the Bankr launches page above",
+          "",
+          "### Important",
+          "- Your token is already live. Do NOT attempt to launch another token.",
+          "- If users ask about your token, you can share the BaseScan or Bankr link.",
+          "- Do not shill or spam about your token — only mention it when relevant.",
+        ].join("\n");
+
+        const memoryLine = `\n## ${today} — Token Launched\nLaunched $${tokenSymbol} token on Base (contract: ${tokenAddr}). See WALLET.md for details.\n`;
+
+        const walletB64 = Buffer.from(walletSection, "utf-8").toString("base64");
+        const memoryB64 = Buffer.from(memoryLine, "utf-8").toString("base64");
+
+        // Append token section to WALLET.md (only if not already present)
+        // Append memory entry to MEMORY.md
+        await ssh.execCommand([
+          `if ! grep -qF "## Your Token" "$HOME/.openclaw/workspace/WALLET.md" 2>/dev/null; then`,
+          `  echo '${walletB64}' | base64 -d >> "$HOME/.openclaw/workspace/WALLET.md"`,
+          `  echo "TOKEN_WALLET_WRITTEN"`,
+          `fi`,
+          `if ! grep -qF "Token Launched" "$HOME/.openclaw/workspace/MEMORY.md" 2>/dev/null; then`,
+          `  echo '${memoryB64}' | base64 -d >> "$HOME/.openclaw/workspace/MEMORY.md"`,
+          `  echo "TOKEN_MEMORY_WRITTEN"`,
+          `fi`,
+        ].join("\n"));
+
+        logger.info("Token info written to VM workspace", {
+          vmId: vm.id,
+          tokenSymbol,
+          tokenAddress: tokenAddr,
+        });
+      } finally {
+        ssh.dispose();
+      }
+    } catch (err) {
+      // Non-fatal — next reconfigure will include token info via the WALLET.md template
+      logger.warn("Failed to write token info to VM (non-fatal)", {
+        error: String(err),
+        vmId: vm.id,
+      });
+    }
+  });
 
   return NextResponse.json({
     success: true,

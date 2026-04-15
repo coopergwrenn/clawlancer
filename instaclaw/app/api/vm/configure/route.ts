@@ -258,6 +258,8 @@ export async function POST(req: NextRequest) {
       worldIdLevel: userProfile?.world_id_verified ? userProfile.world_id_verification_level ?? undefined : undefined,
       bankrApiKey: decryptedBankrKey ?? undefined,
       bankrEvmAddress: vm.bankr_evm_address ?? undefined,
+      bankrTokenAddress: vm.bankr_token_address ?? undefined,
+      bankrTokenSymbol: vm.bankr_token_symbol ?? undefined,
       partner: userProfile?.partner ?? undefined,
     }, userId);
 

@@ -65,6 +65,12 @@ interface UserConfig {
   bankrApiKey?: string;
   /** Bankr EVM wallet address — deployed to VM .env + Wallet.md */
   bankrEvmAddress?: string;
+  /** Bankr token contract address — if agent has been tokenized */
+  bankrTokenAddress?: string;
+  /** Bankr token symbol — e.g. "ALPHA" */
+  bankrTokenSymbol?: string;
+  /** Bankr token name — e.g. "AlphaTrader" */
+  bankrTokenName?: string;
   /** Partner tag (e.g., "edge_city") — gates partner-specific skill installation */
   partner?: string;
 }
@@ -3881,6 +3887,31 @@ export async function configureOpenClaw(
         '-->',
       );
     }
+    // Include token info if agent has been tokenized (belt-and-suspenders with after() SSH write)
+    if (config.bankrTokenAddress && config.bankrTokenSymbol) {
+      walletLines.push(
+        '',
+        '## Your Token',
+        '',
+        `- **Token:** $${config.bankrTokenSymbol}${config.bankrTokenName ? ` (${config.bankrTokenName})` : ''}`,
+        `- **Contract:** ${config.bankrTokenAddress} (Base mainnet)`,
+        '- **Trading:** Live on Uniswap V4',
+        `- **BaseScan:** https://basescan.org/token/${config.bankrTokenAddress}`,
+        `- **Manage:** https://bankr.bot/launches/${config.bankrTokenAddress}`,
+        '',
+        '### How Fees Work',
+        '- 1.2% fee on every swap of your token',
+        '- 57% of that fee (creator share) goes to YOUR Bankr wallet automatically',
+        '- These fees can fund your compute credits over time',
+        '- Check your earnings at the Bankr launches page above',
+        '',
+        '### Important',
+        '- Your token is already live. Do NOT attempt to launch another token.',
+        '- If users ask about your token, you can share the BaseScan or Bankr link.',
+        '- Do not shill or spam about your token — only mention it when relevant.',
+      );
+    }
+
     walletLines.push(
       '',
       '## Wallet Summary',
