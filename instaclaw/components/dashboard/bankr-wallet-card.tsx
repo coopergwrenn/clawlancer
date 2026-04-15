@@ -83,6 +83,7 @@ export function BankrWalletCard({
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
+  const [imageLoadingText, setImageLoadingText] = useState("Reading your agent's personality...");
   const [imageError, setImageError] = useState<string | null>(null);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,6 +128,9 @@ export function BankrWalletCard({
     const name = nameOverride || tokenName.trim() || agentName || "Agent";
     setImageError(null);
     setImageLoading(true);
+    setImageLoadingText("Reading your agent's personality...");
+    // Switch to creation text after 5s (SSH reading → DALL-E generating)
+    const phaseTimer = setTimeout(() => setImageLoadingText("Creating your personalized token PFP..."), 5000);
     try {
       const res = await fetch("/api/bankr/generate-token-image", {
         method: "POST",
@@ -142,6 +146,7 @@ export function BankrWalletCard({
     } catch {
       setImageError("Generation failed — try again or skip");
     } finally {
+      clearTimeout(phaseTimer);
       setImageLoading(false);
     }
   }
@@ -572,8 +577,8 @@ export function BankrWalletCard({
                         animation: "shimmer 1.5s infinite linear",
                       }}
                     />
-                    <p className="text-[11px]" style={{ color: "var(--muted)" }}>
-                      Creating your personalized token PFP...
+                    <p className="text-[11px] transition-opacity duration-300" style={{ color: "var(--muted)" }}>
+                      {imageLoadingText}
                     </p>
                     <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
                   </div>

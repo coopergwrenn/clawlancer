@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { generateTokenImage, uploadTokenImage } from "@/lib/token-image";
+import { getSupabase } from "@/lib/supabase";
+import { generateTokenImage, uploadTokenImage, readAgentPersonality } from "@/lib/token-image";
 import { logger } from "@/lib/logger";
 
-// DALL-E generation + compositing + upload can take 10-20s
-export const maxDuration = 30;
+// SSH (~5s) + DALL-E (~20s) + upload (~2s) = ~27s. 45s gives headroom.
+export const maxDuration = 45;
 
 export async function POST(req: NextRequest) {
   // Accept NextAuth session (web app) OR X-Mini-App-Token (World mini app)
@@ -33,13 +34,32 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Generate glass orb PFP via DALL-E + compositing
-    const imageBuffer = await generateTokenImage(tokenName);
+    // Step 1: Read agent personality from VM (SOUL.md + MEMORY.md)
+    // Non-fatal — if SSH fails, we generate without personality context
+    let personalityContext: string | null = null;
+    const supabase = getSupabase();
+    const { data: vm } = await supabase
+      .from("instaclaw_vms")
+      .select("id, ip_address, ssh_port, ssh_user")
+      .eq("assigned_to", userId)
+      .single();
 
-    // Upload to Supabase Storage for a permanent public URL
+    if (vm?.ip_address) {
+      personalityContext = await readAgentPersonality(vm);
+    }
+
+    // Step 2: Generate glass orb PFP via DALL-E (with personality-enriched prompt)
+    const imageBuffer = await generateTokenImage(tokenName, personalityContext);
+
+    // Step 3: Upload to Supabase Storage for a permanent public URL
     const imageUrl = await uploadTokenImage(imageBuffer, userId);
 
-    logger.info("Token PFP generated", { userId, tokenName, imageUrl });
+    logger.info("Token PFP generated", {
+      userId,
+      tokenName,
+      hasPersonality: !!personalityContext,
+      imageUrl,
+    });
 
     return NextResponse.json({ imageUrl });
   } catch (err) {

@@ -93,9 +93,16 @@ export function getThemeFromName(tokenName: string): Theme {
 }
 
 // ── DALL-E Prompt Builder ──
-export function buildDallePrompt(tokenName: string): string {
+export function buildDallePrompt(tokenName: string, personalityContext?: string): string {
   const theme = getThemeFromName(tokenName);
-  return `A 3D glass orb avatar, like a polished crystal marble. Inside the translucent glass sphere is a cute, minimalist ${theme.motif} symbol in soft ${theme.colorName} tones. The sphere has a prominent bright white specular highlight dot on the upper left, a soft gradient from light (top-left) to shadow (bottom-right) across the surface, and visible glass depth and refraction. Warm, soft lighting. Light neutral gray (#f0f0f0) background. The orb should look like a physical glass marble. Photorealistic 3D render, perfectly centered, square format, 1024x1024. No text, no labels.`;
+
+  // If we have personality context from SOUL.md/MEMORY.md, use it to enrich the motif
+  let motifDescription = theme.motif;
+  if (personalityContext) {
+    motifDescription = `${theme.motif}, with subtle visual hints reflecting this agent's personality: ${personalityContext}`;
+  }
+
+  return `A 3D glass orb avatar, like a polished crystal marble. Inside the translucent glass sphere is a cute, minimalist ${motifDescription} symbol in soft ${theme.colorName} tones. The sphere has a prominent bright white specular highlight dot on the upper left, a soft gradient from light (top-left) to shadow (bottom-right) across the surface, and visible glass depth and refraction. Warm, soft lighting. Light neutral gray (#f0f0f0) background. The orb should look like a physical glass marble. Photorealistic 3D render, perfectly centered, square format, 1024x1024. No text, no labels.`;
 }
 
 // ── Glass Orb Compositing ──
@@ -151,16 +158,68 @@ export async function compositeGlassOrb(innerImageBuffer: Buffer): Promise<Buffe
   return result;
 }
 
+// ── Read Agent Personality from VM ──
+// SSHes into the VM and reads the first ~500 chars of SOUL.md + MEMORY.md.
+// Returns a short personality summary for the DALL-E prompt, or null if SSH fails.
+export async function readAgentPersonality(
+  vm: { id: string; ip_address: string; ssh_port: number; ssh_user: string }
+): Promise<string | null> {
+  try {
+    const { connectSSH } = await import("@/lib/ssh");
+    const ssh = await connectSSH(vm as import("@/lib/ssh").VMRecord, { skipDuplicateIPCheck: true });
+    try {
+      const result = await ssh.execCommand([
+        'SOUL=$(head -c 500 "$HOME/.openclaw/workspace/SOUL.md" 2>/dev/null || echo "")',
+        'MEM=$(head -c 500 "$HOME/.openclaw/workspace/MEMORY.md" 2>/dev/null || echo "")',
+        'echo "SOUL:$SOUL"',
+        'echo "---SPLIT---"',
+        'echo "MEM:$MEM"',
+      ].join("\n"));
+
+      const output = result.stdout ?? "";
+      const parts = output.split("---SPLIT---");
+      const soul = (parts[0] ?? "").replace("SOUL:", "").trim();
+      const mem = (parts[1] ?? "").replace("MEM:", "").trim();
+
+      if (!soul && !mem) return null;
+
+      // Extract key phrases — strip markdown formatting, keep substance
+      const combined = [soul, mem].join(" ")
+        .replace(/[#*`\-\[\]()>]/g, " ")  // strip markdown
+        .replace(/\s+/g, " ")              // collapse whitespace
+        .trim()
+        .slice(0, 400);                    // keep it concise for the prompt
+
+      if (combined.length < 20) return null;
+
+      logger.info("Agent personality read", { vmId: vm.id, length: combined.length });
+      return combined;
+    } finally {
+      ssh.dispose();
+    }
+  } catch (err) {
+    logger.warn("Could not read agent personality (non-fatal)", {
+      error: String(err),
+      vmId: vm.id,
+    });
+    return null;
+  }
+}
+
 // ── Generate Token PFP with DALL-E ──
 // DALL-E generates the FULL 3D glass orb (no compositing needed).
 // The prompt asks for a photorealistic glass marble with the motif inside.
-export async function generateTokenImage(tokenName: string): Promise<Buffer> {
+// If personalityContext is provided (from SOUL.md/MEMORY.md), it enriches the motif.
+export async function generateTokenImage(
+  tokenName: string,
+  personalityContext?: string | null
+): Promise<Buffer> {
   const OpenAI = (await import("openai")).default;
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  const prompt = buildDallePrompt(tokenName);
+  const prompt = buildDallePrompt(tokenName, personalityContext ?? undefined);
 
-  logger.info("Generating token PFP", { tokenName, prompt: prompt.slice(0, 120) });
+  logger.info("Generating token PFP", { tokenName, hasPersonality: !!personalityContext, prompt: prompt.slice(0, 150) });
 
   const response = await openai.images.generate({
     model: "dall-e-3",
