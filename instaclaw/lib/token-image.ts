@@ -68,34 +68,34 @@ export function getThemeFromName(tokenName: string): Theme {
   const lower = tokenName.toLowerCase();
 
   if (/trad|alpha|bull|bear|chart|profit|fund|capital|hedge|quant|market|stock|forex|whale/.test(lower))
-    return { motif: "ascending candlestick chart lines with a glowing lightning bolt", colorName: "deep navy blue", bgHex: "#0f1729" };
+    return { motif: "rising chart line with a small lightning bolt", colorName: "golden amber", bgHex: "#f5a623" };
 
   if (/creat|art|design|paint|draw|music|write|poet|story|muse|canvas/.test(lower))
-    return { motif: "flowing luminous paint brush strokes forming an abstract spiral", colorName: "deep royal purple", bgHex: "#1a0d2e" };
+    return { motif: "flowing brush stroke spiral", colorName: "soft lavender purple", bgHex: "#b794f6" };
 
   if (/research|analys|brain|think|learn|study|data|science|intel|smart|sage|wisdom/.test(lower))
-    return { motif: "glowing neural network nodes connected by soft light paths", colorName: "deep ocean teal", bgHex: "#0a1e2d" };
+    return { motif: "connected neural nodes", colorName: "soft teal", bgHex: "#81e6d9" };
 
   if (/code|dev|hack|build|engineer|tech|cyber|stack|program|bot|auto|machine/.test(lower))
-    return { motif: "minimal code angle brackets and a blinking cursor with faint circuit traces", colorName: "deep forest green", bgHex: "#0a1a0f" };
+    return { motif: "code angle brackets and cursor", colorName: "soft mint green", bgHex: "#9ae6b4" };
 
   if (/social|community|chat|friend|connect|network|viral|share|media/.test(lower))
-    return { motif: "interconnected glowing dots forming a small constellation", colorName: "warm dark amber", bgHex: "#1f150a" };
+    return { motif: "interconnected dots constellation", colorName: "warm coral", bgHex: "#fc8181" };
 
   if (/game|play|quest|rpg|adventure|level|battle|warrior|knight/.test(lower))
-    return { motif: "a geometric crystal gem emitting soft prismatic light rays", colorName: "deep indigo", bgHex: "#120a2e" };
+    return { motif: "a geometric crystal gem", colorName: "soft indigo", bgHex: "#a3bffa" };
 
   if (/meme|degen|moon|ape|pepe|wojak|frog|dog|cat|shib/.test(lower))
-    return { motif: "a playful abstract face made of simple geometric shapes, smiling", colorName: "deep warm crimson", bgHex: "#1f0a0a" };
+    return { motif: "a playful smiling face", colorName: "warm peach", bgHex: "#fbb6ce" };
 
   // Default: abstract geometric
-  return { motif: "abstract geometric crystal facets with subtle prismatic light reflections", colorName: "dark charcoal", bgHex: "#141118" };
+  return { motif: "abstract geometric crystal facets", colorName: "warm silver", bgHex: "#cbd5e0" };
 }
 
 // ── DALL-E Prompt Builder ──
 export function buildDallePrompt(tokenName: string): string {
   const theme = getThemeFromName(tokenName);
-  return `A minimalist ${theme.motif} icon centered on a solid ${theme.colorName} (#${theme.bgHex.slice(1)}) background. Clean, simple design with subtle luminous glow effects. The icon should be centered and occupy about 60% of the frame. No text, no labels, no 3D sphere, no glass effects. Flat iconic style, square format, 1024x1024.`;
+  return `A 3D glass orb avatar, like a polished crystal marble. Inside the translucent glass sphere is a cute, minimalist ${theme.motif} symbol in soft ${theme.colorName} tones. The sphere has a prominent bright white specular highlight dot on the upper left, a soft gradient from light (top-left) to shadow (bottom-right) across the surface, and visible glass depth and refraction. Warm, soft lighting. Light neutral gray (#f0f0f0) background. The orb should look like a physical glass marble. Photorealistic 3D render, perfectly centered, square format, 1024x1024. No text, no labels.`;
 }
 
 // ── Glass Orb Compositing ──
@@ -152,13 +152,15 @@ export async function compositeGlassOrb(innerImageBuffer: Buffer): Promise<Buffe
 }
 
 // ── Generate Token PFP with DALL-E ──
+// DALL-E generates the FULL 3D glass orb (no compositing needed).
+// The prompt asks for a photorealistic glass marble with the motif inside.
 export async function generateTokenImage(tokenName: string): Promise<Buffer> {
   const OpenAI = (await import("openai")).default;
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const prompt = buildDallePrompt(tokenName);
 
-  logger.info("Generating token PFP", { tokenName, prompt: prompt.slice(0, 100) });
+  logger.info("Generating token PFP", { tokenName, prompt: prompt.slice(0, 120) });
 
   const response = await openai.images.generate({
     model: "dall-e-3",
@@ -171,13 +173,10 @@ export async function generateTokenImage(tokenName: string): Promise<Buffer> {
   const imageUrl = response.data?.[0]?.url;
   if (!imageUrl) throw new Error("DALL-E returned no image URL");
 
-  // Download the generated image
+  // Download the generated image — DALL-E renders the full 3D glass orb
   const imageRes = await fetch(imageUrl);
   if (!imageRes.ok) throw new Error(`Failed to download DALL-E image: ${imageRes.status}`);
-  const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-
-  // Composite with glass orb overlay
-  return compositeGlassOrb(imageBuffer);
+  return Buffer.from(await imageRes.arrayBuffer());
 }
 
 // ── Upload to Supabase Storage ──
