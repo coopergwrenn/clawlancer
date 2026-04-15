@@ -530,6 +530,7 @@ export default function DashboardPage() {
           tokenAddress={vm.bankrTokenAddress}
           tokenSymbol={vm.bankrTokenSymbol}
           tokenizationPlatform={vm.tokenizationPlatform}
+          agentName={vm.telegramBotUsername}
         />
       )}
 

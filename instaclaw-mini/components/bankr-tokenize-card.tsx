@@ -9,6 +9,7 @@ interface BankrTokenizeCardProps {
   tokenAddress: string | null;
   tokenSymbol: string | null;
   tokenizationPlatform: string | null;
+  agentName?: string | null;
 }
 
 interface TokenPrice {
@@ -64,6 +65,7 @@ export default function BankrTokenizeCard({
   tokenAddress,
   tokenSymbol,
   tokenizationPlatform,
+  agentName,
 }: BankrTokenizeCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -118,18 +120,15 @@ export default function BankrTokenizeCard({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function handleGenerateImage() {
-    if (!tokenName.trim()) {
-      setImageError("Enter a token name first");
-      return;
-    }
+  async function handleGenerateImage(nameOverride?: string) {
+    const name = nameOverride || tokenName.trim() || agentName || "Agent";
     setImageError(null);
     setImageLoading(true);
     try {
       const res = await fetch("/api/proxy/bankr/generate-token-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token_name: tokenName.trim() }),
+        body: JSON.stringify({ token_name: name }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -142,6 +141,11 @@ export default function BankrTokenizeCard({
     } finally {
       setImageLoading(false);
     }
+  }
+
+  function handleOpenForm() {
+    setShowForm(true);
+    handleGenerateImage(agentName || "Agent");
   }
 
   async function handleUploadImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -448,7 +452,7 @@ export default function BankrTokenizeCard({
 
       {!showForm ? (
         <button
-          onClick={() => setShowForm(true)}
+          onClick={handleOpenForm}
           className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
           style={{
             background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
@@ -481,44 +485,51 @@ export default function BankrTokenizeCard({
             maxLength={10}
             className="w-full px-3 py-2.5 rounded-lg text-sm uppercase bg-black/20 border border-white/10 placeholder:text-muted/50 focus:outline-none focus:border-white/20"
           />
-          {/* ── Token Image (optional) ── */}
-          <div className="rounded-lg p-3 space-y-2 bg-white/5 border border-white/5">
+          {/* ── Token Image (auto-generated) ── */}
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadImage} className="hidden" />
+          <div className="rounded-lg p-3 space-y-2.5 bg-white/5 border border-white/5">
             <p className="text-[10px] font-medium text-muted">
               Token Image <span className="opacity-50">(optional)</span>
             </p>
 
-            {imageUrl ? (
-              <div className="flex items-center gap-3">
-                <img src={imageUrl} alt="Token PFP" className="w-12 h-12 rounded-full object-cover border border-white/10" />
-                <button
-                  type="button"
-                  onClick={() => { setImageUrl(null); setImageError(null); }}
-                  className="text-[10px] text-muted flex items-center gap-1"
-                >
-                  <X size={10} /> Remove
-                </button>
+            {imageLoading ? (
+              /* Shimmer loading */
+              <div className="flex flex-col items-center py-4 gap-3">
+                <div
+                  className="w-16 h-16 rounded-full"
+                  style={{
+                    background: "linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%)",
+                    backgroundSize: "200% 100%",
+                    animation: "shimmer 1.5s infinite linear",
+                  }}
+                />
+                <p className="text-[10px] text-muted">Creating your personalized token PFP...</p>
+                <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
               </div>
-            ) : imageLoading ? (
-              <div className="flex items-center justify-center py-3">
-                <div className="w-4 h-4 border-2 border-t-transparent border-white/20 rounded-full animate-spin" />
-                <span className="text-[10px] text-muted ml-2">Creating your token PFP...</span>
+            ) : imageUrl ? (
+              /* Preview + actions */
+              <div className="flex flex-col items-center gap-2.5">
+                <img src={imageUrl} alt="Token PFP" className="w-16 h-16 rounded-full object-cover border border-white/10" />
+                <div className="flex gap-1.5 flex-wrap justify-center">
+                  <button type="button" onClick={() => handleGenerateImage()} className="text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 glass-button active:scale-[0.98]">
+                    <Wand2 size={10} /> Regenerate
+                  </button>
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 glass-button active:scale-[0.98]">
+                    <Upload size={10} /> Upload my own
+                  </button>
+                  <button type="button" onClick={() => { setImageUrl(null); setImageError(null); }} className="text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 text-muted active:scale-[0.98]">
+                    <X size={10} /> Remove
+                  </button>
+                </div>
               </div>
             ) : (
+              /* Fallback: generation failed or image removed */
               <div className="flex gap-2">
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadImage} className="hidden" />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 py-2 rounded-lg text-[11px] flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform"
-                >
-                  <Upload size={12} /> Upload
+                <button type="button" onClick={() => handleGenerateImage()} className="flex-1 py-2 rounded-lg text-[11px] flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform">
+                  <Wand2 size={12} /> Generate PFP
                 </button>
-                <button
-                  type="button"
-                  onClick={handleGenerateImage}
-                  className="flex-1 py-2 rounded-lg text-[11px] flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform"
-                >
-                  <Wand2 size={12} /> Generate
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="flex-1 py-2 rounded-lg text-[11px] flex items-center justify-center gap-1.5 glass-button active:scale-[0.98] transition-transform">
+                  <Upload size={12} /> Upload my own
                 </button>
               </div>
             )}

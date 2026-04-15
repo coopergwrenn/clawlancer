@@ -9,6 +9,7 @@ interface BankrWalletCardProps {
   tokenAddress: string | null;
   tokenSymbol: string | null;
   tokenizationPlatform: string | null;
+  agentName?: string | null;
 }
 
 interface TokenPrice {
@@ -68,6 +69,7 @@ export function BankrWalletCard({
   tokenAddress,
   tokenSymbol,
   tokenizationPlatform,
+  agentName,
 }: BankrWalletCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -121,18 +123,15 @@ export function BankrWalletCard({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function handleGenerateImage() {
-    if (!tokenName.trim()) {
-      setImageError("Enter a token name first");
-      return;
-    }
+  async function handleGenerateImage(nameOverride?: string) {
+    const name = nameOverride || tokenName.trim() || agentName || "Agent";
     setImageError(null);
     setImageLoading(true);
     try {
       const res = await fetch("/api/bankr/generate-token-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token_name: tokenName.trim() }),
+        body: JSON.stringify({ token_name: name }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -145,6 +144,12 @@ export function BankrWalletCard({
     } finally {
       setImageLoading(false);
     }
+  }
+
+  function handleOpenForm() {
+    setShowTokenForm(true);
+    // Auto-generate a personalized PFP immediately
+    handleGenerateImage(agentName || "Agent");
   }
 
   async function handleUploadImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -496,7 +501,7 @@ export function BankrWalletCard({
         <>
           {!showTokenForm ? (
             <button
-              onClick={() => setShowTokenForm(true)}
+              onClick={handleOpenForm}
               className="w-full py-2.5 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
               style={{
                 background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
@@ -540,68 +545,92 @@ export function BankrWalletCard({
                   background: "white",
                 }}
               />
-              {/* ── Token Image (optional) ── */}
+              {/* ── Token Image (auto-generated) ── */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleUploadImage}
+                className="hidden"
+              />
               <div
-                className="rounded-md p-3 space-y-2"
+                className="rounded-md p-3 space-y-2.5"
                 style={{ border: "1px solid var(--border)", background: "rgba(0,0,0,0.02)" }}
               >
                 <p className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>
                   Token Image <span style={{ opacity: 0.6 }}>(optional)</span>
                 </p>
 
-                {imageUrl ? (
-                  /* Preview state */
-                  <div className="flex items-center gap-3">
+                {imageLoading ? (
+                  /* Shimmer loading state */
+                  <div className="flex flex-col items-center py-4 gap-3">
+                    <div
+                      className="w-16 h-16 rounded-full"
+                      style={{
+                        background: "linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%)",
+                        backgroundSize: "200% 100%",
+                        animation: "shimmer 1.5s infinite linear",
+                      }}
+                    />
+                    <p className="text-[11px]" style={{ color: "var(--muted)" }}>
+                      Creating your personalized token PFP...
+                    </p>
+                    <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+                  </div>
+                ) : imageUrl ? (
+                  /* Preview + action buttons */
+                  <div className="flex flex-col items-center gap-2.5">
                     <img
                       src={imageUrl}
                       alt="Token PFP"
-                      className="w-14 h-14 rounded-full object-cover"
+                      className="w-20 h-20 rounded-full object-cover"
                       style={{ border: "2px solid var(--border)" }}
                     />
                     <div className="flex gap-1.5">
                       <button
                         type="button"
+                        onClick={() => handleGenerateImage()}
+                        className="text-[11px] px-2.5 py-1 rounded flex items-center gap-1 hover:bg-black/5 transition-colors"
+                        style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+                      >
+                        <Wand2 className="w-3 h-3" /> Regenerate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-[11px] px-2.5 py-1 rounded flex items-center gap-1 hover:bg-black/5 transition-colors"
+                        style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+                      >
+                        <Upload className="w-3 h-3" /> Upload my own
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => { setImageUrl(null); setImageError(null); }}
-                        className="text-[11px] px-2 py-1 rounded flex items-center gap-1 hover:bg-black/5"
+                        className="text-[11px] px-2.5 py-1 rounded flex items-center gap-1 hover:bg-black/5 transition-colors"
                         style={{ color: "var(--muted)" }}
                       >
                         <X className="w-3 h-3" /> Remove
                       </button>
                     </div>
                   </div>
-                ) : imageLoading ? (
-                  /* Loading state */
-                  <div className="flex items-center justify-center py-3">
-                    <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "var(--border)", borderTopColor: "transparent" }} />
-                    <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>
-                      Creating your token PFP...
-                    </span>
-                  </div>
                 ) : (
-                  /* Upload / Generate buttons */
+                  /* No image — generation failed or removed */
                   <div className="flex gap-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={handleUploadImage}
-                      className="hidden"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateImage()}
+                      className="flex-1 py-1.5 rounded text-[11px] flex items-center justify-center gap-1 hover:bg-black/5 transition-colors"
+                      style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+                    >
+                      <Wand2 className="w-3 h-3" /> Generate PFP
+                    </button>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className="flex-1 py-1.5 rounded text-[11px] flex items-center justify-center gap-1 hover:bg-black/5 transition-colors"
                       style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
                     >
-                      <Upload className="w-3 h-3" /> Upload
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleGenerateImage}
-                      className="flex-1 py-1.5 rounded text-[11px] flex items-center justify-center gap-1 hover:bg-black/5 transition-colors"
-                      style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
-                    >
-                      <Wand2 className="w-3 h-3" /> Generate
+                      <Upload className="w-3 h-3" /> Upload my own
                     </button>
                   </div>
                 )}

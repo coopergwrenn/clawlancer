@@ -550,6 +550,7 @@ export default function AgentDashboard({
         tokenAddress={(agent.bankr_token_address as string) ?? null}
         tokenSymbol={(agent.bankr_token_symbol as string) ?? null}
         tokenizationPlatform={(agent.tokenization_platform as string) ?? null}
+        agentName={(agent.agent_name as string) ?? (agent.telegram_bot_username as string) ?? null}
       />
 
       {/* ── Quick Actions ── */}
