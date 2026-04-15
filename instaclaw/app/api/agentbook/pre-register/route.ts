@@ -55,9 +55,26 @@ export async function GET(req: NextRequest) {
 
   // Check on-chain status — both World Chain and Base
   const wallet = vm.agentbook_wallet_address as Address;
-  const alreadyRegistered = vm.agentbook_registered ||
-    await isAgentRegistered(wallet, "worldchain") ||
-    await isAgentRegistered(wallet, "base");
+  let alreadyRegistered = !!vm.agentbook_registered;
+
+  // If DB doesn't know about it, check on-chain
+  if (!alreadyRegistered) {
+    const onChain =
+      await isAgentRegistered(wallet, "worldchain") ||
+      await isAgentRegistered(wallet, "base");
+
+    if (onChain) {
+      // Registration exists on-chain but DB missed it — backfill now
+      alreadyRegistered = true;
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          agentbook_registered: true,
+          agentbook_registered_at: new Date().toISOString(),
+        })
+        .eq("assigned_to", userId);
+    }
+  }
 
   let nonce: string | null = null;
   if (!alreadyRegistered) {
