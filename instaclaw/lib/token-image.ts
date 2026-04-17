@@ -1,224 +1,229 @@
 /**
- * Token PFP generation — procedural pixel art faces.
+ * Token PFP generation — hand-crafted pixel art faces in glass orbs.
  *
- * Architecture:
- * 1. SHA-256 hash of personality text (SOUL.md + MEMORY.md) + token name → deterministic seed
- * 2. Hash bytes determine: hair style, hair color, skin tone, expression, shirt, accessories
- * 3. 8x8 pixel art face rendered as SVG → converted to PNG via sharp
- * 4. Uploaded to Supabase Storage
+ * Matches the landing page testimonial avatar style exactly:
+ *   - 8×8 grid rendered crisp
+ *   - Glass orb container: radial gradient bg + highlight reflection + darker rim
+ *   - Curated color palettes (hair, skin, eyes, mouth, shirt, bg) from landing page
  *
- * Same agent = same face (deterministic). Different agent = different face (unique hash).
- * Matches the landing page testimonial avatar style exactly.
+ * SHA-256 hash of (tokenName + SOUL.md/MEMORY.md + variation) selects:
+ *   - 1 of N hand-crafted face templates (guaranteed face-shaped)
+ *   - Color combo from curated palettes
  *
- * Zero cost, <5ms generation, ~10KB output.
+ * Same agent = same face. Regenerate increments variation for a new combo.
+ * Zero cost, <5ms generation, ~10KB PNG.
  */
 
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
-// ── Color Palettes ──
+// ── Hand-crafted 8×8 face templates ──
+// h=hair, s=skin, e=eye, g=glasses, m=mouth, b=shirt, t=hat, space=background (orb bg)
+
+const FACE_TEMPLATES: string[][] = [
+  // 0: Male short hair (from landing — James K.)
+  ["  hhhh  ", " hhhhhh ", " hssssh ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 1: Female long hair (from landing — Sarah M. / Priya R. / Rachel S.)
+  ["  hhhh  ", " hhhhhh ", "hhsssshh", "h sese h", "h ssss h", "h smms h", "   ss   ", "  bbbb  "],
+  // 2: Male bearded (from landing — Danny W.)
+  ["  hhhh  ", " hhhhhh ", " hssssh ", "  sese  ", "  ssss  ", "  hmmh  ", "   hh   ", "  bbbb  "],
+  // 3: Female bangs (from landing — Ava L.)
+  ["  hhhh  ", " hhhhhh ", "hhsssshh", "h sese h", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 4: Tall hair (from landing — Marcus T.)
+  [" hhhhhh ", " hhhhhh ", " hssssh ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 5: Big curly female
+  [" hhhhhh ", "hhhhhhhh", "hhsssshh", "h sese h", "h ssss h", "h smms h", "   ss   ", "  bbbb  "],
+  // 6: Side part
+  [" hhhhh  ", "hhhhhhh ", " hssssh ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 7: Male with glasses
+  ["  hhhh  ", " hhhhhh ", " hssssh ", "  gege  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 8: Female with glasses
+  ["  hhhh  ", " hhhhhh ", "hhsssshh", "h gege h", "h ssss h", "h smms h", "   ss   ", "  bbbb  "],
+  // 9: Mohawk
+  ["   hh   ", "  hhhh  ", "  ssss  ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 10: Beanie (pulled down to ears)
+  ["        ", " tttttt ", "tttttttt", " tssss t", "  sese  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 11: Cap (brim over forehead)
+  ["  tttt  ", " tttttt ", "ttttttt ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 12: Spiky
+  [" h hh h ", " hhhhhh ", " hssssh ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 13: Pigtails
+  ["hh hh hh", " hhhhhh ", "hhsssshh", "h sese h", "h ssss h", "h smms h", "   ss   ", "  bbbb  "],
+  // 14: Long beard warrior
+  ["  hhhh  ", " hhhhhh ", "hhsssshh", "h sese h", "h ssss h", "h hmmh h", "  hhhh  ", "  bbbb  "],
+  // 15: Buzz cut
+  ["        ", "  hhhh  ", " hssssh ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 16: Bald
+  ["        ", "   ss   ", " ssssss ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 17: Undercut
+  ["  hhhh  ", "  hhhh  ", " hssssh ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 18: Messy/tousled
+  [" h hhh h", "hhhhhhhh", " hssssh ", "  sese  ", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 19: Short bob + bangs
+  ["  hhhh  ", " hhhhhh ", "hhhhhhhh", "h sese h", "  ssss  ", "  smms  ", "   ss   ", "  bbbb  "],
+  // 20: Female bearded (yes, some people)
+  ["  hhhh  ", " hhhhhh ", "hhsssshh", "h sese h", "h ssss h", "h hmmh h", "   hh   ", "  bbbb  "],
+];
+
+// ── Curated color palettes (from landing page testimonials) ──
 
 const HAIR_COLORS = [
-  "#1A1A2A", // black
-  "#2C1810", // dark brown
-  "#5C3A1E", // brown
-  "#6B4226", // auburn
-  "#8B6914", // dark blonde
-  "#C4A45A", // light blonde
-  "#D4A017", // golden
-  "#A0522D", // copper
-  "#4A3728", // espresso
-  "#808080", // silver
-  "#CC3333", // red
-  "#3366CC", // blue
-  "#339966", // green
-  "#CC66CC", // purple
-  "#FF6B35", // orange
-  "#1E90FF", // bright blue
+  "#5C3A1E", "#2C1810", "#1A1A2A", "#D4A017",
+  "#6B4226", "#A0522D", "#4A3728", "#C4A45A",
+  "#8B6914", "#333333", "#5A5A5A", "#3B2F2F",
+  "#7B3F00", "#D4741C", "#E8DDB5", "#1A1A1A",
 ];
 
 const SKIN_TONES = [
-  "#FFE0BD", // very light
-  "#FADDBA", // light
-  "#F5D0A9", // light-medium
-  "#D4A574", // medium
-  "#C68642", // medium-dark
-  "#8D6E4C", // dark
-  "#6B4C3B", // very dark
+  "#F5D0A9", "#FADDBA", "#FFE0BD", "#EDC9A3",
+  "#C68642", "#D4A574", "#8D6E4C", "#6B4C3B",
 ];
 
 const EYE_COLORS = [
-  "#1A1A1A", // black
-  "#4A3728", // brown
-  "#2E6B4F", // green
-  "#2E4A6B", // blue
-  "#1A1A1A", // black (weighted)
-  "#4A3728", // brown (weighted)
+  "#1A1A1A", "#1A1A1A", "#1A1A1A",
+  "#4A3728", "#4A3728",
+  "#2E4A6B", "#2E6B4F",
 ];
 
-const MOUTH_COLORS: Record<string, string[]> = {
-  happy: ["#CC6666", "#E8888A", "#D4736C"],
-  neutral: ["#B85C5C", "#A0522D", "#997766"],
-  surprised: ["#444444", "#333333", "#555555"],
-};
-
-// ── Face Templates (8x8 grids) ──
-// h=hair, s=skin, e=eye, m=mouth, b=shirt, t=hat, space=background
-
-const HAIR_TEMPLATES: string[][] = [
-  // 0: Short male
-  ["  hhhh  ", " hhhhhh ", " hssssh ", "  sese  "],
-  // 1: Long female
-  ["  hhhh  ", " hhhhhh ", "hhsssshh", "h sese h"],
-  // 2: Mohawk
-  ["   hh   ", "  hhhh  ", " hssssh ", "  sese  "],
-  // 3: Big/curly
-  [" hhhhhh ", "hhhhhhhh", "hhsssshh", "h sese h"],
-  // 4: Bald
-  ["        ", "  ssss  ", " ssssss ", "  sese  "],
-  // 5: Side part
-  [" hhhhh  ", "hhhhhhh ", " hssssh ", "  sese  "],
-  // 6: Bob
-  ["  hhhh  ", " hhhhhh ", "hhsssshh", "  sese  "],
-  // 7: Spiky
-  [" h hh h ", " hhhhhh ", " hssssh ", "  sese  "],
-  // 8: Swept
-  ["   hhhh ", "  hhhhhh", " hssssh ", "  sese  "],
-  // 9: Pigtails
-  ["hh hh hh", " hhhhhh ", "hhsssshh", "h sese h"],
+const MOUTH_COLORS = [
+  "#CC6666", "#B85C5C", "#E8888A",
+  "#A0522D", "#D4736C", "#997766", "#C85C5C",
 ];
 
-// Lower face templates based on hair type
-// "short" = no side hair on cheeks, "long" = side hair on cheeks
-function getLowerFace(isLongHair: boolean, expression: string, hasBeard: boolean): string[] {
-  const side = isLongHair ? "h" : " ";
-  const cheekRow = `${side} ssss ${side}`;
+const SHIRT_COLORS = [
+  "#6B8E9B", "#4A6FA5", "#B8860B", "#E8734A",
+  "#7CB68E", "#333333", "#9B6B8E", "#5B7553",
+  "#4A4A6A", "#5A8FA5", "#8B5A3C", "#4A8F5A",
+  "#D4A017", "#5B8DB0",
+];
 
-  let mouthRow: string;
-  switch (expression) {
-    case "happy":
-      mouthRow = `${side} smms ${side}`;
-      break;
-    case "neutral":
-      mouthRow = `${side} snns ${side}`;
-      break;
-    case "surprised":
-      mouthRow = `${side} soos ${side}`;
-      break;
-    case "smirk":
-      mouthRow = `${side} ssms ${side}`;
-      break;
-    default:
-      mouthRow = `${side} smms ${side}`;
-  }
+const BG_COLORS = [
+  "#E8DDD3", "#D5DDE5", "#E5D8C3", "#E0D5CA",
+  "#D8E5D5", "#DDDDDD", "#E5D5DE", "#D5E0D5",
+  "#D8D5E0", "#D5E0E5", "#E5DFD5", "#DAE0D5",
+];
 
-  let neckRow = "   ss   ";
-  if (hasBeard) {
-    mouthRow = `${side} hmmh ${side}`;
-    neckRow = "   hh   ";
-  }
-
-  return [cheekRow, mouthRow, neckRow, "  bbbb  "];
-}
-
-// ── HSL to Hex ──
-function hslToHex(h: number, s: number, l: number): string {
-  s /= 100;
-  l /= 100;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * color).toString(16).padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
-
-// ── Face Config from Hash ──
+const HAT_COLORS = [
+  "#2C3E50", "#E74C3C", "#27AE60", "#2980B9",
+  "#8B4513", "#333333", "#E67E22", "#9B59B6",
+  "#D4A017", "#B85C5C",
+];
 
 interface FaceConfig {
-  hairStyle: number;
+  template: number;
   hairColor: string;
   skinTone: string;
   eyeColor: string;
   mouthColor: string;
-  expression: string;
   shirtColor: string;
   bgColor: string;
-  hasBeard: boolean;
-  hasHat: boolean;
   hatColor: string;
+  glassesColor: string;
 }
 
 function hashToFaceConfig(hash: Buffer): FaceConfig {
-  const expressions = ["happy", "neutral", "surprised", "smirk"];
-  const expression = expressions[hash[4] % expressions.length];
-
-  const mouthPalette = MOUTH_COLORS[expression === "smirk" ? "happy" : expression] ?? MOUTH_COLORS.happy;
-
   return {
-    hairStyle: hash[0] % HAIR_TEMPLATES.length,
+    template: hash[0] % FACE_TEMPLATES.length,
     hairColor: HAIR_COLORS[hash[1] % HAIR_COLORS.length],
     skinTone: SKIN_TONES[hash[2] % SKIN_TONES.length],
     eyeColor: EYE_COLORS[hash[3] % EYE_COLORS.length],
-    expression,
-    mouthColor: mouthPalette[hash[5] % mouthPalette.length],
-    shirtColor: hslToHex(((hash[6] << 8) | hash[7]) % 360, 55, 52),
-    bgColor: hslToHex(((hash[8] << 8) | hash[9]) % 360, 28, 91),
-    hasBeard: hash[10] % 5 === 0,
-    hasHat: hash[11] % 5 === 0,
-    hatColor: hslToHex(((hash[12] << 8) | hash[13]) % 360, 50, 45),
+    mouthColor: MOUTH_COLORS[hash[4] % MOUTH_COLORS.length],
+    shirtColor: SHIRT_COLORS[hash[5] % SHIRT_COLORS.length],
+    bgColor: BG_COLORS[hash[6] % BG_COLORS.length],
+    hatColor: HAT_COLORS[hash[7] % HAT_COLORS.length],
+    glassesColor: "#1A1A2A",
   };
 }
 
-// ── Build the 8x8 Grid ──
+function darkenHex(hex: string, factor: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const mult = Math.max(0, 1 - factor);
+  return (
+    "#" +
+    [r, g, b]
+      .map((v) => Math.round(v * mult).toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
 
-function buildFaceGrid(config: FaceConfig): { grid: string[]; colors: Record<string, string> } {
-  const hairTop = HAIR_TEMPLATES[config.hairStyle];
-  const isLongHair = [1, 3, 6, 9].includes(config.hairStyle);
-  const lowerFace = getLowerFace(isLongHair, config.expression, config.hasBeard);
+function renderSVG(config: FaceConfig): string {
+  const template = FACE_TEMPLATES[config.template];
+  const SIZE = 512;
+  const FACE_SIZE = 384;
+  const PIXEL = FACE_SIZE / 8;
+  const OFFSET = (SIZE - FACE_SIZE) / 2;
 
-  let grid = [...hairTop, ...lowerFace];
-
-  // Apply hat: replace row 0 with hat, and make row 1 partially hat
-  if (config.hasHat && config.hairStyle !== 4) {
-    // Hat brim spans the full width of the hair
-    const originalRow0 = grid[0];
-    grid[0] = originalRow0.replace(/h/g, "t");
-    // Top of row 1 also becomes hat
-    const row1 = grid[1];
-    grid[1] = row1.replace(/h/g, (_, idx) => idx < 2 || idx > 5 ? "h" : "t");
-  }
-
-  const colors: Record<string, string> = {
+  const colorMap: Record<string, string> = {
     h: config.hairColor,
     s: config.skinTone,
     e: config.eyeColor,
+    g: config.glassesColor,
     m: config.mouthColor,
-    n: config.mouthColor, // neutral mouth uses same key
-    o: config.mouthColor, // surprised mouth
     b: config.shirtColor,
     t: config.hatColor,
   };
 
-  return { grid, colors };
+  const pixels: string[] = [];
+  for (let y = 0; y < template.length; y++) {
+    const row = template[y];
+    for (let x = 0; x < row.length; x++) {
+      const char = row[x];
+      if (char === " ") continue;
+      const color = colorMap[char];
+      if (!color) continue;
+      pixels.push(
+        `<rect x="${OFFSET + x * PIXEL}" y="${OFFSET + y * PIXEL}" width="${PIXEL}" height="${PIXEL}" fill="${color}"/>`,
+      );
+    }
+  }
+
+  const bgLight = config.bgColor;
+  const bgDark = darkenHex(config.bgColor, 0.3);
+
+  return `<svg width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+  <defs>
+    <radialGradient id="orbBg" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="${bgLight}" stop-opacity="1"/>
+      <stop offset="55%" stop-color="${bgLight}" stop-opacity="0.94"/>
+      <stop offset="100%" stop-color="${bgDark}" stop-opacity="1"/>
+    </radialGradient>
+    <radialGradient id="highlight" cx="28%" cy="22%" r="30%">
+      <stop offset="0%" stop-color="white" stop-opacity="0.65"/>
+      <stop offset="45%" stop-color="white" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="50%" cy="50%" r="50%">
+      <stop offset="88%" stop-color="black" stop-opacity="0"/>
+      <stop offset="96%" stop-color="black" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0.18"/>
+    </radialGradient>
+  </defs>
+  <rect width="${SIZE}" height="${SIZE}" fill="url(#orbBg)" shape-rendering="auto"/>
+  <g>${pixels.join("")}</g>
+  <ellipse cx="${SIZE * 0.3}" cy="${SIZE * 0.2}" rx="${SIZE * 0.2}" ry="${SIZE * 0.11}" fill="url(#highlight)" shape-rendering="auto"/>
+  <rect width="${SIZE}" height="${SIZE}" fill="url(#rim)" shape-rendering="auto"/>
+</svg>`;
 }
 
 // ── Read Agent Personality from VM ──
 export async function readAgentPersonality(
-  vm: { id: string; ip_address: string; ssh_port: number; ssh_user: string }
+  vm: { id: string; ip_address: string; ssh_port: number; ssh_user: string },
 ): Promise<string | null> {
   try {
     const { connectSSH } = await import("@/lib/ssh");
     const ssh = await connectSSH(vm as import("@/lib/ssh").VMRecord, { skipDuplicateIPCheck: true });
     try {
-      const result = await ssh.execCommand([
-        'SOUL=$(head -c 500 "$HOME/.openclaw/workspace/SOUL.md" 2>/dev/null || echo "")',
-        'MEM=$(head -c 500 "$HOME/.openclaw/workspace/MEMORY.md" 2>/dev/null || echo "")',
-        'echo "SOUL:$SOUL"',
-        'echo "---SPLIT---"',
-        'echo "MEM:$MEM"',
-      ].join("\n"));
+      const result = await ssh.execCommand(
+        [
+          'SOUL=$(head -c 500 "$HOME/.openclaw/workspace/SOUL.md" 2>/dev/null || echo "")',
+          'MEM=$(head -c 500 "$HOME/.openclaw/workspace/MEMORY.md" 2>/dev/null || echo "")',
+          'echo "SOUL:$SOUL"',
+          'echo "---SPLIT---"',
+          'echo "MEM:$MEM"',
+        ].join("\n"),
+      );
 
       const output = result.stdout ?? "";
       const parts = output.split("---SPLIT---");
@@ -227,7 +232,8 @@ export async function readAgentPersonality(
 
       if (!soul && !mem) return null;
 
-      const combined = [soul, mem].join(" ")
+      const combined = [soul, mem]
+        .join(" ")
         .replace(/[#*`\-\[\]()>]/g, " ")
         .replace(/\s+/g, " ")
         .trim()
@@ -253,55 +259,20 @@ export async function readAgentPersonality(
 export async function generateTokenImage(
   tokenName: string,
   personalityContext?: string | null,
-  variation?: number
+  variation?: number,
 ): Promise<Buffer> {
   const crypto = await import("crypto");
-
-  // Deterministic seed from personality + token name + variation
   const seedInput = `${tokenName}:${personalityContext ?? ""}:${variation ?? 0}`;
   const hash = crypto.createHash("sha256").update(seedInput).digest();
-
-  // Build face from hash
   const config = hashToFaceConfig(hash);
-  const { grid, colors } = buildFaceGrid(config);
+  const svg = renderSVG(config);
 
-  // Render SVG
-  const PIXEL = 64;
-  const SIZE_PX = 8 * PIXEL;
-  const svgParts = [
-    `<svg width="${SIZE_PX}" height="${SIZE_PX}" viewBox="0 0 ${SIZE_PX} ${SIZE_PX}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">`,
-    `<rect width="${SIZE_PX}" height="${SIZE_PX}" fill="${config.bgColor}"/>`,
-  ];
-
-  for (let y = 0; y < grid.length; y++) {
-    const row = grid[y];
-    for (let x = 0; x < row.length; x++) {
-      const char = row[x];
-      if (char === " ") continue;
-      const color = colors[char];
-      if (!color) continue;
-      svgParts.push(
-        `<rect x="${x * PIXEL}" y="${y * PIXEL}" width="${PIXEL}" height="${PIXEL}" fill="${color}"/>`
-      );
-    }
-  }
-
-  svgParts.push("</svg>");
-  const svg = svgParts.join("\n");
-
-  // Convert SVG → PNG via sharp
   const sharp = (await import("sharp")).default;
-  const pngBuffer = await sharp(Buffer.from(svg))
-    .resize(512, 512)
-    .png()
-    .toBuffer();
+  const pngBuffer = await sharp(Buffer.from(svg)).resize(512, 512).png().toBuffer();
 
   logger.info("Token face PFP generated", {
     tokenName,
-    hairStyle: config.hairStyle,
-    expression: config.expression,
-    hasBeard: config.hasBeard,
-    hasHat: config.hasHat,
+    template: config.template,
     variation: variation ?? 0,
     hasPersonality: !!personalityContext,
   });
@@ -337,7 +308,7 @@ export async function compositeGlassOrb(innerImageBuffer: Buffer): Promise<Buffe
     .png()
     .toBuffer();
   const circleMask = Buffer.from(
-    `<svg width="${SIZE}" height="${SIZE}"><circle cx="${SIZE / 2}" cy="${SIZE / 2}" r="${ORB_RADIUS}" fill="white"/></svg>`
+    `<svg width="${SIZE}" height="${SIZE}"><circle cx="${SIZE / 2}" cy="${SIZE / 2}" r="${ORB_RADIUS}" fill="white"/></svg>`,
   );
   const maskedInner = await sharp(inner)
     .composite([{ input: await sharp(circleMask).png().toBuffer(), blend: "dest-in" }])
@@ -357,28 +328,21 @@ export async function compositeGlassOrb(innerImageBuffer: Buffer): Promise<Buffe
 }
 
 // ── Upload to Supabase Storage ──
-export async function uploadTokenImage(
-  imageBuffer: Buffer,
-  userId: string
-): Promise<string> {
+export async function uploadTokenImage(imageBuffer: Buffer, userId: string): Promise<string> {
   const supabase = getSupabase();
   const fileName = `${userId}_${Date.now()}.png`;
 
-  const { error } = await supabase.storage
-    .from("token-images")
-    .upload(fileName, imageBuffer, {
-      contentType: "image/png",
-      upsert: false,
-    });
+  const { error } = await supabase.storage.from("token-images").upload(fileName, imageBuffer, {
+    contentType: "image/png",
+    upsert: false,
+  });
 
   if (error) {
     logger.error("Supabase Storage upload failed", { error: error.message, fileName });
     throw new Error(`Image upload failed: ${error.message}`);
   }
 
-  const { data: urlData } = supabase.storage
-    .from("token-images")
-    .getPublicUrl(fileName);
+  const { data: urlData } = supabase.storage.from("token-images").getPublicUrl(fileName);
 
   return urlData.publicUrl;
 }
