@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const tokenName = typeof body.token_name === "string" ? body.token_name.trim() : "";
+  const variation = typeof body.variation === "number" ? body.variation : 0;
 
   if (!tokenName) {
     return NextResponse.json({ error: "token_name is required" }, { status: 400 });
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 2: Generate glass orb PFP via DALL-E (with personality-enriched prompt)
-    const imageBuffer = await generateTokenImage(tokenName, personalityContext);
+    const imageBuffer = await generateTokenImage(tokenName, personalityContext, variation);
 
     // Step 3: Upload to Supabase Storage for a permanent public URL
     const imageUrl = await uploadTokenImage(imageBuffer, userId);

@@ -83,8 +83,9 @@ export function BankrWalletCard({
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
-  const [imageLoadingText, setImageLoadingText] = useState("Reading your agent's personality...");
+  const [imageLoadingText, setImageLoadingText] = useState("Creating your token PFP...");
   const [imageError, setImageError] = useState<string | null>(null);
+  const [imageVariation, setImageVariation] = useState(0);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,8 +125,10 @@ export function BankrWalletCard({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function handleGenerateImage(nameOverride?: string) {
+  async function handleGenerateImage(nameOverride?: string, isRegenerate?: boolean) {
     const name = nameOverride || tokenName.trim() || agentName || "Agent";
+    const nextVariation = isRegenerate ? imageVariation + 1 : imageVariation;
+    if (isRegenerate) setImageVariation(nextVariation);
     setImageError(null);
     setImageLoading(true);
     setImageLoadingText("Creating your token PFP...");
@@ -133,7 +136,7 @@ export function BankrWalletCard({
       const res = await fetch("/api/bankr/generate-token-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token_name: name }),
+        body: JSON.stringify({ token_name: name, variation: nextVariation }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -590,7 +593,7 @@ export function BankrWalletCard({
                     <div className="flex gap-1.5">
                       <button
                         type="button"
-                        onClick={() => handleGenerateImage()}
+                        onClick={() => handleGenerateImage(undefined, true)}
                         className="text-[11px] px-2.5 py-1 rounded flex items-center gap-1 hover:bg-black/5 transition-colors"
                         style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
                       >

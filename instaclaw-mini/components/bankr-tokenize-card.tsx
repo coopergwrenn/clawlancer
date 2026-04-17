@@ -80,8 +80,9 @@ export default function BankrTokenizeCard({
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
-  const [imageLoadingText, setImageLoadingText] = useState("Reading your agent's personality...");
+  const [imageLoadingText, setImageLoadingText] = useState("Creating your token PFP...");
   const [imageError, setImageError] = useState<string | null>(null);
+  const [imageVariation, setImageVariation] = useState(0);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -121,8 +122,10 @@ export default function BankrTokenizeCard({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function handleGenerateImage(nameOverride?: string) {
+  async function handleGenerateImage(nameOverride?: string, isRegenerate?: boolean) {
     const name = nameOverride || tokenName.trim() || agentName || "Agent";
+    const nextVariation = isRegenerate ? imageVariation + 1 : imageVariation;
+    if (isRegenerate) setImageVariation(nextVariation);
     setImageError(null);
     setImageLoading(true);
     setImageLoadingText("Creating your token PFP...");
@@ -130,7 +133,7 @@ export default function BankrTokenizeCard({
       const res = await fetch("/api/proxy/bankr/generate-token-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token_name: name }),
+        body: JSON.stringify({ token_name: name, variation: nextVariation }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -513,7 +516,7 @@ export default function BankrTokenizeCard({
               <div className="flex flex-col items-center gap-2.5">
                 <img src={imageUrl} alt="Token PFP" className="w-24 h-24 rounded-full object-cover" />
                 <div className="flex gap-1.5 flex-wrap justify-center">
-                  <button type="button" onClick={() => handleGenerateImage()} className="text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 glass-button active:scale-[0.98]">
+                  <button type="button" onClick={() => handleGenerateImage(undefined, true)} className="text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 glass-button active:scale-[0.98]">
                     <Wand2 size={10} /> Regenerate
                   </button>
                   <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[10px] px-2 py-1 rounded-lg flex items-center gap-1 glass-button active:scale-[0.98]">
