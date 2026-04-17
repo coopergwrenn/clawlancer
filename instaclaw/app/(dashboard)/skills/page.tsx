@@ -65,6 +65,7 @@ const EARN_SLUGS = new Set([
   "prediction-markets",
   "freelance-digital",
   "solana-defi",
+  "moltbank",
 ]);
 
 // ── Main Page ────────────────────────────────────────
@@ -95,6 +96,18 @@ export default function SkillsPage() {
   const [solanaImportModal, setSolanaImportModal] = useState(false);
   const [solanaImportKey, setSolanaImportKey] = useState("");
   const [solanaWalletOpen, setSolanaWalletOpen] = useState(false);
+
+  // Moltbank state
+  const [moltbankPairing, setMoltbankPairing] = useState<{
+    userCode: string;
+    verificationUri: string;
+  } | null>(null);
+  const [moltbankModal, setMoltbankModal] = useState(false);
+  const [moltbankPaired, setMoltbankPaired] = useState(false);
+  const [moltbankAccount, setMoltbankAccount] = useState<string | null>(null);
+  const [moltbankAccountName, setMoltbankAccountName] = useState<string | null>(null);
+  const [moltbankPolling, setMoltbankPolling] = useState(false);
+  const [moltbankAccountOpen, setMoltbankAccountOpen] = useState(false);
 
   const showToast = useCallback(
     (message: string, type: "success" | "error") => {
@@ -177,6 +190,31 @@ export default function SkillsPage() {
         if (skill.slug === "solana-defi" && !skill.enabled === false) {
           setSolanaWallet(null);
           setSolanaBalance(null);
+        }
+        // Moltbank: open pairing modal on enable, clear state on disable
+        if (skill.slug === "moltbank") {
+          if (!skill.enabled) {
+            // We just enabled it. Either we were already paired or we got a pairing payload.
+            if (data.alreadyPaired) {
+              setMoltbankPaired(true);
+              if (data.accountAddress) setMoltbankAccount(data.accountAddress);
+              if (data.accountName) setMoltbankAccountName(data.accountName);
+            } else if (data.pairing?.userCode && data.pairing?.verificationUri) {
+              setMoltbankPairing({
+                userCode: data.pairing.userCode,
+                verificationUri: data.pairing.verificationUri,
+              });
+              setMoltbankPaired(false);
+              setMoltbankModal(true);
+            }
+          } else {
+            // Just disabled it.
+            setMoltbankPaired(false);
+            setMoltbankPairing(null);
+            setMoltbankAccount(null);
+            setMoltbankAccountName(null);
+            setMoltbankAccountOpen(false);
+          }
         }
         fetchSkills();
       } else {
@@ -307,6 +345,76 @@ export default function SkillsPage() {
       fetchSolanaBalance();
     }
   }, [skills, fetchSolanaBalance]);
+
+  // ── Moltbank helpers ──
+
+  const fetchMoltbankAccountInfo = useCallback(async () => {
+    try {
+      const res = await fetch("/api/skills/moltbank/account");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.paired) {
+        setMoltbankPaired(true);
+        if (data.accountAddress) setMoltbankAccount(data.accountAddress);
+        if (data.accountName) setMoltbankAccountName(data.accountName);
+      }
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const pollMoltbankStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/skills/moltbank/status", { method: "POST" });
+      if (!res.ok) return { paired: false, expired: false };
+      const data = await res.json();
+      if (data.paired) {
+        setMoltbankPaired(true);
+        setMoltbankPairing(null);
+        setMoltbankModal(false);
+        if (data.accountAddress) setMoltbankAccount(data.accountAddress);
+        if (data.accountName) setMoltbankAccountName(data.accountName);
+        showToast("Moltbank connected", "success");
+        return { paired: true, expired: false };
+      }
+      if (data.expired) {
+        setMoltbankPairing(null);
+        setMoltbankModal(false);
+        showToast("Pairing session expired — please try again", "error");
+        return { paired: false, expired: true };
+      }
+      return { paired: false, expired: false };
+    } catch {
+      return { paired: false, expired: false };
+    }
+  }, [showToast]);
+
+  // Auto-poll every 4s while the pairing modal is open
+  useEffect(() => {
+    if (!moltbankModal || !moltbankPairing) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      setMoltbankPolling(true);
+      const r = await pollMoltbankStatus();
+      setMoltbankPolling(false);
+      if (cancelled || r.paired || r.expired) return;
+    };
+    const interval = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [moltbankModal, moltbankPairing, pollMoltbankStatus]);
+
+  // Fetch Moltbank account info when skill becomes enabled on page load
+  useEffect(() => {
+    const allSkills = Object.values(skills).flat();
+    const mbSkill = allSkills.find((s) => s.slug === "moltbank" && s.enabled && s.connected);
+    if (mbSkill && !moltbankAccount) {
+      fetchMoltbankAccountInfo();
+    }
+  }, [skills, moltbankAccount, fetchMoltbankAccountInfo]);
 
   async function handleDisconnect(skill: Skill) {
     if (disconnectingSlug) return;
@@ -555,6 +663,156 @@ export default function SkillsPage() {
                               </button>
                             </>
                           )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {/* Moltbank account + funding slide-over */}
+                  {skill.slug === "moltbank" && skill.enabled && moltbankPaired && (
+                    <>
+                      <button
+                        onClick={() => setMoltbankAccountOpen(!moltbankAccountOpen)}
+                        className="text-[10px] cursor-pointer"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        Account {moltbankAccountOpen ? "▲" : "▼"}
+                      </button>
+                      {moltbankAccountOpen && (
+                        <div
+                          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+                          onClick={() => setMoltbankAccountOpen(false)}
+                        >
+                          <div
+                            className="glass rounded-xl p-5 w-96 max-h-[80vh] overflow-y-auto space-y-3"
+                            style={{ border: "1px solid var(--border)" }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div>
+                              <h3
+                                className="text-sm font-normal tracking-[-0.2px]"
+                                style={{ fontFamily: "var(--font-serif)" }}
+                              >
+                                {moltbankAccountName
+                                  ? `${moltbankAccountName} — deposit`
+                                  : "Fund your Moltbank account"}
+                              </h3>
+                              <p
+                                className="text-[11px] mt-1"
+                                style={{ color: "var(--muted)" }}
+                              >
+                                Send USDC to this address to give your agent a balance.
+                              </p>
+                            </div>
+
+                            {/* Network warning — prevents loss of funds */}
+                            <div
+                              className="rounded-lg p-3 text-[11px] space-y-1"
+                              style={{
+                                background: "rgba(234, 88, 12, 0.08)",
+                                border: "1px solid rgba(234, 88, 12, 0.25)",
+                                color: "rgb(194, 65, 12)",
+                              }}
+                            >
+                              <div className="font-semibold">
+                                Send only USDC on Base
+                              </div>
+                              <div style={{ color: "rgb(124, 45, 18)" }}>
+                                Sending any other asset, or USDC on a different
+                                network (Ethereum, Polygon, Arbitrum, Solana, etc.),
+                                will result in loss of funds.
+                              </div>
+                            </div>
+
+                            {/* Address */}
+                            <div
+                              className="rounded-lg p-3 space-y-2"
+                              style={{
+                                background: "rgba(0,0,0,0.03)",
+                                border: "1px solid var(--border)",
+                              }}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className="text-[10px] uppercase tracking-wider"
+                                  style={{ color: "var(--muted)" }}
+                                >
+                                  Deposit address
+                                </span>
+                                <span
+                                  className="text-[10px] px-1.5 py-0.5 rounded"
+                                  style={{
+                                    background: "rgba(0, 82, 255, 0.1)",
+                                    color: "rgb(0, 82, 255)",
+                                  }}
+                                >
+                                  Base · USDC
+                                </span>
+                              </div>
+                              {moltbankAccount ? (
+                                <div className="flex items-center gap-2">
+                                  <code
+                                    className="flex-1 text-[11px] font-mono break-all"
+                                    style={{ color: "var(--foreground)" }}
+                                  >
+                                    {moltbankAccount}
+                                  </code>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(moltbankAccount);
+                                      showToast("Address copied", "success");
+                                    }}
+                                    className="text-[10px] px-2 py-1 rounded cursor-pointer shrink-0"
+                                    style={{
+                                      background: "rgba(0,0,0,0.05)",
+                                      color: "var(--foreground)",
+                                    }}
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              ) : (
+                                <div
+                                  className="text-[11px]"
+                                  style={{ color: "var(--muted)" }}
+                                >
+                                  Loading address…
+                                </div>
+                              )}
+                              {moltbankAccount && (
+                                <a
+                                  href={`https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913?a=${moltbankAccount}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] underline inline-block"
+                                  style={{ color: "var(--accent)" }}
+                                >
+                                  View USDC balance on BaseScan ↗
+                                </a>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1">
+                              <a
+                                href="https://app.moltbank.bot"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] underline"
+                                style={{ color: "var(--accent)" }}
+                              >
+                                Open Moltbank dashboard ↗
+                              </a>
+                              <button
+                                onClick={() => setMoltbankAccountOpen(false)}
+                                className="text-[10px] px-2 py-1 rounded cursor-pointer"
+                                style={{
+                                  background: "rgba(0,0,0,0.05)",
+                                  color: "var(--foreground)",
+                                }}
+                              >
+                                Close
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -830,6 +1088,178 @@ export default function SkillsPage() {
                     </span>
                   ) : (
                     "Import"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Moltbank pairing modal ── */}
+      <AnimatePresence>
+        {moltbankModal && moltbankPairing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setMoltbankModal(false);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="glass rounded-2xl p-6 w-full max-w-md space-y-4"
+              style={{
+                border: "1px solid var(--border)",
+                background: "var(--card)",
+                boxShadow: "0 16px 64px rgba(0,0,0,0.2)",
+              }}
+            >
+              <div>
+                <h3
+                  className="text-lg font-normal tracking-[-0.3px]"
+                  style={{ fontFamily: "var(--font-serif)" }}
+                >
+                  Connect Moltbank
+                </h3>
+                <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                  Open Moltbank, confirm the code, and you&apos;re done.
+                </p>
+              </div>
+
+              {/* Step 1 — open link */}
+              <div
+                className="rounded-lg p-3 space-y-2"
+                style={{
+                  background: "rgba(0,0,0,0.03)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className="text-[10px] uppercase tracking-wider"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    Step 1 — Open Moltbank
+                  </span>
+                </div>
+                <a
+                  href={moltbankPairing.verificationUri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center text-sm font-medium rounded-lg px-4 py-2.5 cursor-pointer"
+                  style={{
+                    background: "rgba(255,255,255,0.65)",
+                    backdropFilter: "blur(12px)",
+                    color: "var(--foreground)",
+                    boxShadow:
+                      "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
+                  }}
+                >
+                  Open Moltbank ↗
+                </a>
+              </div>
+
+              {/* Step 2 — confirm code */}
+              <div
+                className="rounded-lg p-3 space-y-2"
+                style={{
+                  background: "rgba(0,0,0,0.03)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className="text-[10px] uppercase tracking-wider"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    Step 2 — Confirm this code
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code
+                    className="flex-1 text-center text-lg font-mono tracking-widest py-2 rounded-md"
+                    style={{
+                      background: "rgba(255,255,255,0.6)",
+                      color: "var(--foreground)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {moltbankPairing.userCode}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(moltbankPairing.userCode);
+                      showToast("Code copied", "success");
+                    }}
+                    className="text-[11px] px-3 py-2 rounded-md cursor-pointer shrink-0"
+                    style={{
+                      background: "rgba(0,0,0,0.05)",
+                      color: "var(--foreground)",
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="text-[11px]" style={{ color: "var(--muted)" }}>
+                  The code should match what you see on Moltbank before you confirm.
+                </p>
+              </div>
+
+              {/* Polling status */}
+              <div className="flex items-center justify-center gap-2 text-[11px]" style={{ color: "var(--muted)" }}>
+                {moltbankPolling ? (
+                  <>
+                    <RotateCw className="w-3 h-3 animate-spin" />
+                    Checking…
+                  </>
+                ) : (
+                  <>Waiting for you to confirm on Moltbank</>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setMoltbankModal(false)}
+                  className="flex-1 px-4 py-2 rounded-full text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer"
+                  style={{
+                    background: "rgba(255,255,255,0.5)",
+                    backdropFilter: "blur(8px)",
+                    color: "var(--foreground)",
+                    boxShadow:
+                      "0 0 0 1px rgba(255,255,255,0.6), 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  onClick={async () => {
+                    setMoltbankPolling(true);
+                    await pollMoltbankStatus();
+                    setMoltbankPolling(false);
+                  }}
+                  disabled={moltbankPolling}
+                  className="flex-1 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50"
+                  style={{
+                    background: "rgba(255,255,255,0.65)",
+                    backdropFilter: "blur(12px)",
+                    color: "var(--foreground)",
+                    boxShadow:
+                      "0 0 0 1px rgba(255,255,255,0.7), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
+                  }}
+                >
+                  {moltbankPolling ? (
+                    <span className="flex items-center justify-center gap-1.5">
+                      <RotateCw className="w-3 h-3 animate-spin" />
+                      Checking…
+                    </span>
+                  ) : (
+                    "I confirmed it"
                   )}
                 </button>
               </div>
