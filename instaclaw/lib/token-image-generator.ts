@@ -434,10 +434,10 @@ const MOUTH_STYLES: MouthApply[] = [
   (grid, cc, row) => {
     setPixel(grid, cc, row, "m");
   },
-  // 3: Open (2×2)
+  // 3: Teeth smile (corners + bottom lip — reads as open smile with teeth showing)
   (grid, cc, row) => {
-    setPixel(grid, cc, row, "m");
-    setPixel(grid, cc + 1, row, "m");
+    setPixel(grid, cc - 1, row, "m");
+    setPixel(grid, cc + 2, row, "m");
     setPixel(grid, cc, row + 1, "m");
     setPixel(grid, cc + 1, row + 1, "m");
   },
@@ -535,9 +535,13 @@ function applyHorns(grid: Grid): void {
 }
 
 function applyScar(grid: Grid, shape: FaceShape): void {
-  // Small cheek mark — 2 pixels on right cheek
-  setPixel(grid, shape.rightEyeCol, shape.eyeRow + 1, "p");
-  setPixel(grid, shape.rightEyeCol + 1, shape.eyeRow + 2, "p");
+  // Left cheek mark — 2 pixels at leftmost skin edge (avoids earring + mouth conflicts)
+  const row1 = shape.eyeRow + 1;
+  const row2 = shape.eyeRow + 2;
+  const skin1 = shape.skin[row1];
+  const skin2 = shape.skin[row2];
+  if (skin1) setPixel(grid, skin1[0], row1, "p");
+  if (skin2) setPixel(grid, skin2[0], row2, "p");
 }
 
 function applyHalo(grid: Grid): void {
@@ -617,7 +621,7 @@ export function buildFaceGrid(hash: Buffer): Grid {
   const hasFreckles = (acc1 & 0x08) !== 0;
   const hasEarring = (acc1 & 0x10) !== 0;
   const hasMole = (acc1 & 0x20) !== 0;
-  const hasHorns = (acc1 & 0x40) !== 0;
+  const hasHorns = (hash[13] & 0x07) === 0;
   const hasScar = (acc1 & 0x80) !== 0;
   const acc2 = hash[12];
   const hasHalo = (acc2 & 0x01) !== 0 && !hasHat && !hasHorns;

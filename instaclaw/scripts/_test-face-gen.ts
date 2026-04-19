@@ -9,10 +9,10 @@ import fs from "node:fs/promises";
 import sharp from "sharp";
 import { buildFaceGrid, hashToPalette, renderFaceSVG } from "../lib/token-image-generator";
 
-const COLS = 6;
-const ROWS = 4;
-const TILE = 256;
-const GAP = 8;
+const COLS = 8;
+const ROWS = 6;
+const TILE = 192;
+const GAP = 6;
 
 async function main() {
   const count = COLS * ROWS;
