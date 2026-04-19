@@ -83,6 +83,7 @@ export default function BankrTokenizeCard({
   const [imageLoadingText, setImageLoadingText] = useState("Creating your token PFP...");
   const [imageError, setImageError] = useState<string | null>(null);
   const [imageVariation, setImageVariation] = useState(0);
+  const [personalityHash, setPersonalityHash] = useState<string | null>(null);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -128,12 +129,20 @@ export default function BankrTokenizeCard({
     if (isRegenerate) setImageVariation(nextVariation);
     setImageError(null);
     setImageLoading(true);
-    setImageLoadingText("Creating your token PFP...");
+    setImageLoadingText(
+      isRegenerate && personalityHash
+        ? "Regenerating..."
+        : "Reading your agent's personality...",
+    );
     try {
       const res = await fetch("/api/proxy/bankr/generate-token-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token_name: name, variation: nextVariation }),
+        body: JSON.stringify({
+          token_name: name,
+          variation: nextVariation,
+          personality_hash: isRegenerate ? personalityHash : null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -141,6 +150,7 @@ export default function BankrTokenizeCard({
         return;
       }
       setImageUrl(data.imageUrl);
+      if (data.personalityHash) setPersonalityHash(data.personalityHash);
     } catch {
       setImageError("Generation failed — try again or skip");
     } finally {

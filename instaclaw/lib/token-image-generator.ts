@@ -1,23 +1,23 @@
 /**
- * Pure face generation — no env/DB dependencies.
+ * Token PFP generation — 16×16 layered procedural face generator.
  *
- * 6 layered components composed from hash bytes:
- *   1. Face shape (4: oval/round/slim/square)
- *   2. Hair style (15 variations incl. bald) + hair color (20 colors w/ bold reds/pinks/blues/purples)
- *   3. Eyes (5 styles)
- *   4. Mouth (5 styles)
- *   5. Facial hair (5 options)
- *   6. Accessories toggled by hash[9]/hash[12] bits:
- *      hat, glasses, blush, freckles, earring, mole, horns, scar, halo, eyepatch
+ * Two-hash split architecture:
+ *   - personalityHash: derived from SOUL.md + MEMORY.md. Locks face identity
+ *     (shape, skin, eye color/style, hair color, glasses, mole, hat presence,
+ *     horns, halo, eyepatch). CONSTANT across regenerations of the same agent.
+ *   - variationHash:   sha256(personalityHash + variation). Varies surface
+ *     traits (hair style, hat style, mouth expression, facial hair, blush,
+ *     freckles, earring, scar). CHANGES each regeneration.
  *
- * ~45M structural × billions of color combos = unique face per agent.
+ * Result: regens of the same agent look like the same character in different
+ * outfits. Different agents look like distinct characters.
  *
- * Grid is 10×10. Rendered inside a 512×512 glass orb via SVG.
+ * Grid: 16×16 pixels rendered inside a 512×512 glass orb.
  */
 
 // ── Grid primitives ──
 export type Grid = string[][];
-export const GRID_SIZE = 10;
+export const GRID_SIZE = 16;
 
 function emptyGrid(): Grid {
   return Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(" "));
@@ -32,37 +32,101 @@ function setPixel(grid: Grid, col: number, row: number, char: string): void {
 // ── Face shapes ──
 interface FaceShape {
   skin: Array<[number, number] | null>;
-  eyeRow: number;
+  eyeRow: number;          // top row of eyes (eyes span eyeRow, eyeRow+1)
   mouthRow: number;
-  leftEyeCol: number;
-  rightEyeCol: number;
-  mouthCenterCol: number;
+  leftEyeCol: number;      // leftmost col of left eye (eyes are 2 wide)
+  rightEyeCol: number;     // leftmost col of right eye
+  mouthCenterCol: number;  // leftmost col of mouth center (mouth base is 2 wide)
 }
 
 const FACE_SHAPES: FaceShape[] = [
   // 0: Oval
   {
-    skin: [null, null, [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [3, 6], null, null],
-    eyeRow: 4, mouthRow: 6, leftEyeCol: 3, rightEyeCol: 6, mouthCenterCol: 4,
+    skin: [
+      null, null,
+      [5, 10],
+      [4, 11],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [4, 11],
+      [5, 10],
+      [7, 8],
+      null,
+    ],
+    eyeRow: 6, mouthRow: 11, leftEyeCol: 5, rightEyeCol: 9, mouthCenterCol: 7,
   },
   // 1: Round (wider middle)
   {
-    skin: [null, null, [2, 7], [1, 8], [1, 8], [1, 8], [2, 7], [3, 6], null, null],
-    eyeRow: 4, mouthRow: 6, leftEyeCol: 3, rightEyeCol: 6, mouthCenterCol: 4,
+    skin: [
+      null, null,
+      [5, 10],
+      [4, 11],
+      [3, 12],
+      [2, 13],
+      [2, 13],
+      [2, 13],
+      [2, 13],
+      [2, 13],
+      [3, 12],
+      [3, 12],
+      [4, 11],
+      [5, 10],
+      [7, 8],
+      null,
+    ],
+    eyeRow: 6, mouthRow: 11, leftEyeCol: 5, rightEyeCol: 9, mouthCenterCol: 7,
   },
-  // 2: Slim (narrow)
+  // 2: Slim
   {
-    skin: [null, null, [3, 6], [3, 6], [3, 6], [3, 6], [3, 6], [4, 5], null, null],
-    eyeRow: 4, mouthRow: 6, leftEyeCol: 3, rightEyeCol: 6, mouthCenterCol: 4,
+    skin: [
+      null, null,
+      [6, 9],
+      [5, 10],
+      [4, 11],
+      [4, 11],
+      [4, 11],
+      [4, 11],
+      [4, 11],
+      [4, 11],
+      [4, 11],
+      [4, 11],
+      [5, 10],
+      [6, 9],
+      [7, 8],
+      null,
+    ],
+    eyeRow: 6, mouthRow: 11, leftEyeCol: 5, rightEyeCol: 9, mouthCenterCol: 7,
   },
   // 3: Square (strong jaw)
   {
-    skin: [null, null, [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], null, null],
-    eyeRow: 4, mouthRow: 6, leftEyeCol: 3, rightEyeCol: 6, mouthCenterCol: 4,
+    skin: [
+      null, null,
+      [4, 11],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [3, 12],
+      [7, 8],
+      null,
+    ],
+    eyeRow: 6, mouthRow: 11, leftEyeCol: 5, rightEyeCol: 9, mouthCenterCol: 7,
   },
 ];
 
-// ── Hair styles (10×10 overlays — 'h' = hair, ' ' = no change) ──
+// ── Hair styles (16×16 patterns) ──
 interface HairStyle {
   pattern: string[];
   bald?: boolean;
@@ -71,310 +135,448 @@ interface HairStyle {
 const HAIR_STYLES: HairStyle[] = [
   // 0: Short classic
   { pattern: [
-    "   hhhh   ",
-    "  hhhhhh  ",
-    "  hhhhhh  ",
-    "  h    h  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    ".....hhhhhh.....",
+    "....hhhhhhhh....",
+    "...hhhhhhhhhh...",
+    "...h........h...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 1: Crew cut
   { pattern: [
-    "          ",
-    "   hhhh   ",
-    "  hhhhhh  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "................",
+    "....hhhhhhhh....",
+    "...hhhhhhhhhh...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 2: Buzz
+  // 2: Buzz (very minimal)
   { pattern: [
-    "          ",
-    "          ",
-    "  hhhhhh  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "................",
+    "................",
+    "....hhhhhhhh....",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 3: Spiky
   { pattern: [
-    " h hhhh h ",
-    "  hhhhhh  ",
-    "  hhhhhh  ",
-    "  h    h  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "..h.h.hhhh.h.h..",
+    "...hhhhhhhhhh...",
+    "...hhhhhhhhhh...",
+    "...h........h...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 4: Mohawk
   { pattern: [
-    "    hh    ",
-    "    hh    ",
-    "    hh    ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "......hhhh......",
+    "......hhhh......",
+    "......hhhh......",
+    "......hhhh......",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 5: Side part
+  // 5: Side part (asymmetric left-heavy)
   { pattern: [
-    "  hhhhh   ",
-    " hhhhhhh  ",
-    " hhhhhhh  ",
-    "  h    h  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "...hhhhhhh......",
+    "..hhhhhhhhh.....",
+    "..hhhhhhhhhh....",
+    "..h.........h...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 6: Afro
+  // 6: Afro (big rounded hair)
   { pattern: [
-    " hhhhhhhh ",
-    "hhhhhhhhhh",
-    "hhhhhhhhhh",
-    "hh      hh",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "..hhhhhhhhhhhh..",
+    ".hhhhhhhhhhhhhh.",
+    "hhhhhhhhhhhhhhhh",
+    "hhhhhhhhhhhhhhhh",
+    "hhh........hhhhh",
+    "hh..........hhhh",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 7: Long hair (flowing)
+  // 7: Long hair (flows down sides)
   { pattern: [
-    "   hhhh   ",
-    "  hhhhhh  ",
-    "  hhhhhh  ",
-    " h      h ",
-    " h      h ",
-    " h      h ",
-    " h      h ",
-    " hh    hh ",
-    "          ",
-    "          ",
+    "................",
+    ".....hhhhhh.....",
+    "....hhhhhhhh....",
+    "...hhhhhhhhhh...",
+    "..hh........hh..",
+    "..h..........h..",
+    "..h..........h..",
+    "..h..........h..",
+    "..h..........h..",
+    "..h..........h..",
+    "..hh........hh..",
+    "..hhh......hhh..",
+    "..hhh......hhh..",
+    "................",
+    "................",
+    "................",
   ] },
   // 8: Pigtails
   { pattern: [
-    " h  hh  h ",
-    " h hhhh h ",
-    "  hhhhhh  ",
-    "hh      hh",
-    "hh      hh",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    ".h...hhhhhh...h.",
+    ".hh..hhhhhh..hh.",
+    "..hhhhhhhhhhhh..",
+    "hhh..........hhh",
+    "hhhh........hhhh",
+    "hhh..........hhh",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 9: Topknot / bun
   { pattern: [
-    "    hh    ",
-    "   hhhh   ",
-    "  hhhhhh  ",
-    "  h    h  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "......hhhh......",
+    ".....hhhhhh.....",
+    "....hhhhhhhh....",
+    "...hhhhhhhhhh...",
+    "...h........h...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 10: Curly
+  // 10: Curly (irregular top)
   { pattern: [
-    " hhh hhh  ",
-    "hhhhhhhhh ",
-    "hhhhhhhhh ",
-    "  h    h  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "..hhh.hhh.hhhh..",
+    ".hhhhhhhhhhhhhh.",
+    "..hhhhhhhhhhhh..",
+    "..hhhhhhhhhhhh..",
+    "..h.........h...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 11: Pompadour
+  // 11: Pompadour (tall front)
   { pattern: [
-    "   hhhh   ",
-    "  hhhhhh  ",
-    " hhhhhhhh ",
-    "  h    h  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    ".....hhhhh......",
+    "....hhhhhhh.....",
+    "...hhhhhhhhh....",
+    "...hhhhhhhhhh...",
+    "...h........h...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 12: Bald (scalp gets added as skin)
+  // 12: Bald
   { pattern: [
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ], bald: true },
   // 13: Messy
   { pattern: [
-    " h hhh hh ",
-    "hhhhhhhhh ",
-    "  hhhhhh  ",
-    "  h    h  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "...h.hhh.hhh.h..",
+    ".hhhhhhhhhhhhhh.",
+    "..hhhhhhhhhhhh..",
+    "...hhhhhhhhhh...",
+    "...h........h...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 14: Slicked back
   { pattern: [
-    "          ",
-    "  hhhhhh  ",
-    " hhhhhhhh ",
-    " hh    hh ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "...hhhhhhhhhh...",
+    "..hhhhhhhhhhhh..",
+    "..hh........hh..",
+    "..h..........h..",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
 ];
 
-// ── Hats ──
+// ── Hat styles ──
 interface HatStyle {
   pattern: string[];
 }
 
 const HATS: HatStyle[] = [
-  // 0: Cap (brim on one side)
+  // 0: Baseball cap (brim left)
   { pattern: [
-    "   tttt   ",
-    "  tttttt  ",
-    "tttttttt  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    ".....tttttt.....",
+    "....tttttttt....",
+    "tttttttttttt....",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 1: Beanie
   { pattern: [
-    "          ",
-    "  tttttt  ",
-    " tttttttt ",
-    "  t    t  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "....tttttttt....",
+    "...tttttttttt...",
+    "..tttttttttttt..",
+    ".tttttttttttttt.",
+    "..t..........t..",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 2: Top hat
   { pattern: [
-    "   tttt   ",
-    "   tttt   ",
-    " tttttttt ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    ".....tttttt.....",
+    ".....tttttt.....",
+    ".....tttttt.....",
+    "...tttttttttt...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 3: Cowboy hat (wide brim)
+  // 3: Cowboy hat
   { pattern: [
-    "   tttt   ",
-    "  tttttt  ",
-    "tttttttttt",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    ".....tttttt.....",
+    "....tttttttt....",
+    "...tttttttttt...",
+    "tttttttttttttttt",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 4: Crown
   { pattern: [
-    "t  t  t  t",
-    "tttttttttt",
-    " tttttttt ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "....t.t.t.t.t...",
+    "....ttttttttt...",
+    "....ttttttttt...",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
   // 5: Headband
   { pattern: [
-    "          ",
-    "          ",
-    "  tttttt  ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "................",
+    "................",
+    "................",
+    "..tttttttttttt..",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 6: Witch hat (tall pointed)
+  // 6: Witch hat
   { pattern: [
-    "    tt    ",
-    "   ttt    ",
-    " tttttttt ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    ".......tt.......",
+    "......tttt......",
+    ".....tttttt.....",
+    "....tttttttt....",
+    "..tttttttttttt..",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
-  // 7: Hood (covers sides)
+  // 7: Hood
   { pattern: [
-    "  tttttt  ",
-    " tttttttt ",
-    " tttttttt ",
-    " t      t ",
-    " t      t ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
-    "          ",
+    "................",
+    "....tttttttt....",
+    "..tttttttttttt..",
+    ".tttttttttttttt.",
+    ".ttt........ttt.",
+    ".tt..........tt.",
+    ".tt..........tt.",
+    ".tt..........tt.",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
   ] },
 ];
 
@@ -382,35 +584,50 @@ const HATS: HatStyle[] = [
 type EyeApply = (grid: Grid, lc: number, rc: number, row: number) => void;
 
 const EYE_STYLES: EyeApply[] = [
-  // 0: Dot (default)
-  (grid, lc, rc, row) => {
-    setPixel(grid, lc, row, "e");
-    setPixel(grid, rc, row, "e");
-  },
-  // 1: Tall (2 pixels vertical — big eyes)
-  (grid, lc, rc, row) => {
-    setPixel(grid, lc, row, "e");
-    setPixel(grid, rc, row, "e");
-    setPixel(grid, lc, row + 1, "e");
-    setPixel(grid, rc, row + 1, "e");
-  },
-  // 2: Sleepy (shifted down one)
-  (grid, lc, rc, row) => {
-    setPixel(grid, lc, row + 1, "e");
-    setPixel(grid, rc, row + 1, "e");
-  },
-  // 3: Wide (extra pixel inward)
+  // 0: Standard (2×2 dark block)
   (grid, lc, rc, row) => {
     setPixel(grid, lc, row, "e");
     setPixel(grid, lc + 1, row, "e");
-    setPixel(grid, rc - 1, row, "e");
+    setPixel(grid, lc, row + 1, "e");
+    setPixel(grid, lc + 1, row + 1, "e");
     setPixel(grid, rc, row, "e");
+    setPixel(grid, rc + 1, row, "e");
+    setPixel(grid, rc, row + 1, "e");
+    setPixel(grid, rc + 1, row + 1, "e");
   },
-  // 4: Winking (left closed horizontal, right open)
+  // 1: Big (2×3 — taller)
+  (grid, lc, rc, row) => {
+    for (let r = 0; r < 3; r++) {
+      setPixel(grid, lc, row + r, "e");
+      setPixel(grid, lc + 1, row + r, "e");
+      setPixel(grid, rc, row + r, "e");
+      setPixel(grid, rc + 1, row + r, "e");
+    }
+  },
+  // 2: Sleepy (narrow — only bottom row visible)
+  (grid, lc, rc, row) => {
+    setPixel(grid, lc, row + 1, "e");
+    setPixel(grid, lc + 1, row + 1, "e");
+    setPixel(grid, rc, row + 1, "e");
+    setPixel(grid, rc + 1, row + 1, "e");
+  },
+  // 3: Wide-apart (eyes pushed outward)
+  (grid, lc, rc, row) => {
+    setPixel(grid, lc - 2, row, "e");
+    setPixel(grid, lc - 1, row, "e");
+    setPixel(grid, lc - 2, row + 1, "e");
+    setPixel(grid, lc - 1, row + 1, "e");
+    setPixel(grid, rc + 2, row, "e");
+    setPixel(grid, rc + 3, row, "e");
+    setPixel(grid, rc + 2, row + 1, "e");
+    setPixel(grid, rc + 3, row + 1, "e");
+  },
+  // 4: Squint (1 row only — horizontal line)
   (grid, lc, rc, row) => {
     setPixel(grid, lc, row, "e");
     setPixel(grid, lc + 1, row, "e");
     setPixel(grid, rc, row, "e");
+    setPixel(grid, rc + 1, row, "e");
   },
 ];
 
@@ -418,33 +635,44 @@ const EYE_STYLES: EyeApply[] = [
 type MouthApply = (grid: Grid, cc: number, row: number) => void;
 
 const MOUTH_STYLES: MouthApply[] = [
-  // 0: Small (2px)
+  // 0: Small closed (2 pixels)
   (grid, cc, row) => {
     setPixel(grid, cc, row, "m");
     setPixel(grid, cc + 1, row, "m");
   },
-  // 1: Wide smile (4px)
+  // 1: Wide smile (4 pixels)
   (grid, cc, row) => {
     setPixel(grid, cc - 1, row, "m");
     setPixel(grid, cc, row, "m");
     setPixel(grid, cc + 1, row, "m");
     setPixel(grid, cc + 2, row, "m");
   },
-  // 2: Tiny (1px)
+  // 2: Tiny (1 pixel)
   (grid, cc, row) => {
     setPixel(grid, cc, row, "m");
   },
-  // 3: Teeth smile (corners + bottom lip — reads as open smile with teeth showing)
+  // 3: Teeth smile (open mouth with visible teeth gap)
   (grid, cc, row) => {
+    // Upper lip
     setPixel(grid, cc - 1, row, "m");
+    setPixel(grid, cc, row, "m");
+    setPixel(grid, cc + 1, row, "m");
     setPixel(grid, cc + 2, row, "m");
+    // Bottom lip (row + 1 middle stays skin — that's the teeth)
     setPixel(grid, cc, row + 1, "m");
     setPixel(grid, cc + 1, row + 1, "m");
   },
-  // 4: Smirk (asymmetric right)
+  // 4: Smirk (asymmetric, shifted right)
   (grid, cc, row) => {
     setPixel(grid, cc + 1, row, "m");
     setPixel(grid, cc + 2, row, "m");
+  },
+  // 5: Frown (dips at corners)
+  (grid, cc, row) => {
+    setPixel(grid, cc, row, "m");
+    setPixel(grid, cc + 1, row, "m");
+    setPixel(grid, cc - 1, row + 1, "m");
+    setPixel(grid, cc + 2, row + 1, "m");
   },
 ];
 
@@ -454,41 +682,48 @@ type FacialApply = (grid: Grid, shape: FaceShape) => void;
 const FACIAL_HAIR: FacialApply[] = [
   // 0: None
   () => {},
-  // 1: Mustache (row above mouth)
+  // 1: Mustache
   (grid, shape) => {
     const row = shape.mouthRow - 1;
-    setPixel(grid, shape.mouthCenterCol, row, "z");
-    setPixel(grid, shape.mouthCenterCol + 1, row, "z");
+    for (let c = shape.mouthCenterCol - 1; c <= shape.mouthCenterCol + 2; c++) {
+      setPixel(grid, c, row, "z");
+    }
   },
-  // 2: Goatee (below mouth)
+  // 2: Goatee
   (grid, shape) => {
     const row = shape.mouthRow + 1;
     setPixel(grid, shape.mouthCenterCol, row, "z");
     setPixel(grid, shape.mouthCenterCol + 1, row, "z");
+    setPixel(grid, shape.mouthCenterCol, row + 1, "z");
+    setPixel(grid, shape.mouthCenterCol + 1, row + 1, "z");
   },
-  // 3: Full beard (wraps jaw)
+  // 3: Full beard
   (grid, shape) => {
     const mouthSkin = shape.skin[shape.mouthRow];
     if (mouthSkin) {
       const [start, end] = mouthSkin;
       for (let c = start; c <= end; c++) {
-        if (c === shape.mouthCenterCol || c === shape.mouthCenterCol + 1) continue;
+        if (c >= shape.mouthCenterCol - 1 && c <= shape.mouthCenterCol + 2) continue;
         setPixel(grid, c, shape.mouthRow, "z");
       }
     }
-    const chinSkin = shape.skin[shape.mouthRow + 1];
-    if (chinSkin) {
-      const [start, end] = chinSkin;
-      for (let c = start; c <= end; c++) setPixel(grid, c, shape.mouthRow + 1, "z");
+    for (let r = shape.mouthRow + 1; r <= shape.mouthRow + 2; r++) {
+      const chinSkin = shape.skin[r];
+      if (chinSkin) {
+        const [start, end] = chinSkin;
+        for (let c = start; c <= end; c++) setPixel(grid, c, r, "z");
+      }
     }
   },
-  // 4: Chin strap (jaw edges only)
+  // 4: Chin strap
   (grid, shape) => {
-    const chinSkin = shape.skin[shape.mouthRow + 1];
-    if (chinSkin) {
-      const [start, end] = chinSkin;
-      setPixel(grid, start, shape.mouthRow + 1, "z");
-      setPixel(grid, end, shape.mouthRow + 1, "z");
+    for (let r = shape.mouthRow + 1; r <= shape.mouthRow + 2; r++) {
+      const chinSkin = shape.skin[r];
+      if (chinSkin) {
+        const [start, end] = chinSkin;
+        setPixel(grid, start, r, "z");
+        setPixel(grid, end, r, "z");
+      }
     }
   },
 ];
@@ -500,18 +735,28 @@ function applyBlush(grid: Grid, shape: FaceShape): void {
   if (!skinRow) return;
   const [start, end] = skinRow;
   setPixel(grid, start, row, "r");
+  setPixel(grid, start + 1, row, "r");
   setPixel(grid, end, row, "r");
+  setPixel(grid, end - 1, row, "r");
 }
 
 function applyFreckles(grid: Grid, shape: FaceShape): void {
-  const row = shape.mouthRow - 1;
-  const skinRow = shape.skin[row];
-  if (!skinRow) return;
-  const [start, end] = skinRow;
-  setPixel(grid, start + 1, row, "f");
-  setPixel(grid, end - 1, row, "f");
-  setPixel(grid, 4, shape.eyeRow + 1, "f");
-  setPixel(grid, 5, shape.eyeRow + 1, "f");
+  const row1 = shape.eyeRow + 2;
+  const row2 = shape.mouthRow - 2;
+  const skin1 = shape.skin[row1];
+  const skin2 = shape.skin[row2];
+  if (skin1) {
+    const [start, end] = skin1;
+    setPixel(grid, start + 1, row1, "f");
+    setPixel(grid, start + 2, row1, "f");
+    setPixel(grid, end - 1, row1, "f");
+    setPixel(grid, end - 2, row1, "f");
+  }
+  if (skin2) {
+    const [start, end] = skin2;
+    setPixel(grid, start + 1, row2, "f");
+    setPixel(grid, end - 1, row2, "f");
+  }
 }
 
 function applyEarring(grid: Grid, shape: FaceShape): void {
@@ -520,75 +765,117 @@ function applyEarring(grid: Grid, shape: FaceShape): void {
   if (!skinRow) return;
   const [, end] = skinRow;
   setPixel(grid, end + 1, row, "o");
+  setPixel(grid, end + 1, row + 1, "o");
 }
 
 function applyMole(grid: Grid, shape: FaceShape): void {
-  setPixel(grid, shape.mouthCenterCol - 1, shape.mouthRow - 1, "x");
+  setPixel(grid, shape.mouthCenterCol - 2, shape.mouthRow - 1, "x");
 }
 
 function applyHorns(grid: Grid): void {
-  // Devil horns: corner pixels that attach to the head's top
-  setPixel(grid, 1, 0, "v");
   setPixel(grid, 2, 1, "v");
-  setPixel(grid, 8, 0, "v");
-  setPixel(grid, 7, 1, "v");
+  setPixel(grid, 3, 2, "v");
+  setPixel(grid, 13, 1, "v");
+  setPixel(grid, 12, 2, "v");
 }
 
 function applyScar(grid: Grid, shape: FaceShape): void {
-  // Left cheek mark — 2 pixels at leftmost skin edge (avoids earring + mouth conflicts)
-  const row1 = shape.eyeRow + 1;
-  const row2 = shape.eyeRow + 2;
+  const row1 = shape.eyeRow + 2;
+  const row2 = shape.eyeRow + 3;
   const skin1 = shape.skin[row1];
   const skin2 = shape.skin[row2];
   if (skin1) setPixel(grid, skin1[0], row1, "p");
-  if (skin2) setPixel(grid, skin2[0], row2, "p");
+  if (skin2) setPixel(grid, skin2[0] + 1, row2, "p");
 }
 
 function applyHalo(grid: Grid): void {
-  // Gold ring floating above head — ring-shape using 6 pixels
+  for (let c = 4; c <= 11; c++) setPixel(grid, c, 0, "a");
   setPixel(grid, 3, 0, "a");
-  setPixel(grid, 4, 0, "a");
-  setPixel(grid, 5, 0, "a");
-  setPixel(grid, 6, 0, "a");
-  setPixel(grid, 2, 0, "a");
-  setPixel(grid, 7, 0, "a");
+  setPixel(grid, 12, 0, "a");
 }
 
 function applyEyepatch(grid: Grid, shape: FaceShape): void {
-  // Covers left eye entirely
-  setPixel(grid, shape.leftEyeCol - 1, shape.eyeRow, "y");
-  setPixel(grid, shape.leftEyeCol, shape.eyeRow, "y");
-  setPixel(grid, shape.leftEyeCol + 1, shape.eyeRow, "y");
-  setPixel(grid, shape.leftEyeCol, shape.eyeRow - 1, "y");
+  for (let c = shape.leftEyeCol - 1; c <= shape.leftEyeCol + 2; c++) {
+    setPixel(grid, c, shape.eyeRow - 1, "y");
+    setPixel(grid, c, shape.eyeRow, "y");
+    setPixel(grid, c, shape.eyeRow + 1, "y");
+    setPixel(grid, c, shape.eyeRow + 2, "y");
+  }
 }
 
 function applyGlasses(grid: Grid, shape: FaceShape): void {
-  // Frame around eyes, leaving eye pixels visible
   const row = shape.eyeRow;
   const lc = shape.leftEyeCol;
   const rc = shape.rightEyeCol;
-  setPixel(grid, lc - 1, row, "g"); // left outer
-  setPixel(grid, lc + 1, row, "g"); // bridge left
-  setPixel(grid, rc - 1, row, "g"); // bridge right
-  setPixel(grid, rc + 1, row, "g"); // right outer
-  // Top frame pixels (subtle)
+  // Left lens frame
+  setPixel(grid, lc - 1, row - 1, "g");
   setPixel(grid, lc, row - 1, "g");
+  setPixel(grid, lc + 1, row - 1, "g");
+  setPixel(grid, lc + 2, row - 1, "g");
+  setPixel(grid, lc - 1, row, "g");
+  setPixel(grid, lc + 2, row, "g");
+  setPixel(grid, lc - 1, row + 1, "g");
+  setPixel(grid, lc + 2, row + 1, "g");
+  setPixel(grid, lc - 1, row + 2, "g");
+  setPixel(grid, lc, row + 2, "g");
+  setPixel(grid, lc + 1, row + 2, "g");
+  setPixel(grid, lc + 2, row + 2, "g");
+  // Right lens frame
+  setPixel(grid, rc - 1, row - 1, "g");
   setPixel(grid, rc, row - 1, "g");
+  setPixel(grid, rc + 1, row - 1, "g");
+  setPixel(grid, rc + 2, row - 1, "g");
+  setPixel(grid, rc - 1, row, "g");
+  setPixel(grid, rc + 2, row, "g");
+  setPixel(grid, rc - 1, row + 1, "g");
+  setPixel(grid, rc + 2, row + 1, "g");
+  setPixel(grid, rc - 1, row + 2, "g");
+  setPixel(grid, rc, row + 2, "g");
+  setPixel(grid, rc + 1, row + 2, "g");
+  setPixel(grid, rc + 2, row + 2, "g");
 }
 
 function applyShirt(grid: Grid): void {
-  setPixel(grid, 4, 8, "s");
-  setPixel(grid, 5, 8, "s");
-  for (let c = 1; c <= 8; c++) setPixel(grid, c, 9, "b");
+  for (let c = 2; c <= 13; c++) setPixel(grid, c, 15, "b");
+  for (let c = 3; c <= 12; c++) setPixel(grid, c, 14, "b");
 }
 
-// ── Build a face grid from hash ──
-export function buildFaceGrid(hash: Buffer): Grid {
+// ── Main builder (two-hash split) ──
+export function buildFaceGrid(personalityHash: Buffer, variationHash: Buffer): Grid {
   const grid = emptyGrid();
+  const pH = personalityHash;
+  const vH = variationHash;
 
-  // Face shape
-  const shapeIdx = hash[0] % FACE_SHAPES.length;
+  // ── LOCKED TRAITS (identity — stays constant across regens) ──
+  const shapeIdx = pH[0] % FACE_SHAPES.length;
   const shape = FACE_SHAPES[shapeIdx];
+  const eyeStyleIdx = pH[2] % EYE_STYLES.length;
+  const finalEyeStyleIdx = shapeIdx === 2 && eyeStyleIdx === 3 ? 0 : eyeStyleIdx;
+
+  const pAcc = pH[5];
+  const hasGlasses = (pAcc & 0x01) !== 0;
+  const hasMole = (pAcc & 0x02) !== 0;
+  const hasHat = (pAcc & 0x04) !== 0;
+  const hasEyepatch = (pAcc & 0x08) !== 0 && !hasGlasses;
+  const hasHorns = (pH[13] & 0x07) === 0; // 1/8
+  const hasHalo = (pAcc & 0x10) !== 0 && !hasHat && !hasHorns;
+  const isBald = (pH[6] & 0x0F) === 0; // 1/16
+
+  // ── VARYING TRAITS (outfit/expression — changes per regen) ──
+  let hairIdx = vH[0] % 14; // 0-13 (skip bald index 12 — handled separately)
+  if (hairIdx >= 12) hairIdx += 1;
+  const hair = isBald ? HAIR_STYLES[12] : HAIR_STYLES[hairIdx];
+
+  const hatIdx = vH[1] % HATS.length;
+  const mouthStyleIdx = vH[2] % MOUTH_STYLES.length;
+  const finalMouthStyleIdx = shapeIdx === 2 && mouthStyleIdx === 1 ? 0 : mouthStyleIdx;
+
+  const facialHairIdx = vH[3] % FACIAL_HAIR.length;
+  const vAcc = vH[4];
+  const hasBlush = (vAcc & 0x01) !== 0;
+  const hasFreckles = (vAcc & 0x02) !== 0;
+  const hasEarring = (vAcc & 0x04) !== 0;
+  const hasScar = (vAcc & 0x08) !== 0;
 
   // 1. Skin
   for (let r = 0; r < GRID_SIZE; r++) {
@@ -599,13 +886,14 @@ export function buildFaceGrid(hash: Buffer): Grid {
     }
   }
 
-  // 2. Hair (or bald scalp)
-  const hairIdx = hash[1] % HAIR_STYLES.length;
-  const hair = HAIR_STYLES[hairIdx];
+  // 2. Bald scalp fill
   if (hair.bald) {
-    for (let c = 3; c <= 6; c++) setPixel(grid, c, 0, "s");
-    for (let c = 2; c <= 7; c++) setPixel(grid, c, 1, "s");
+    for (let c = 5; c <= 10; c++) setPixel(grid, c, 2, "s");
+    for (let c = 4; c <= 11; c++) setPixel(grid, c, 3, "s");
+    for (let c = 3; c <= 12; c++) setPixel(grid, c, 4, "s");
   }
+
+  // 3. Hair
   for (let r = 0; r < GRID_SIZE; r++) {
     const row = hair.pattern[r];
     for (let c = 0; c < GRID_SIZE; c++) {
@@ -613,23 +901,8 @@ export function buildFaceGrid(hash: Buffer): Grid {
     }
   }
 
-  // Accessory bits
-  const acc1 = hash[9];
-  const hasHat = (acc1 & 0x01) !== 0;
-  const hasGlasses = (acc1 & 0x02) !== 0;
-  const hasBlush = (acc1 & 0x04) !== 0;
-  const hasFreckles = (acc1 & 0x08) !== 0;
-  const hasEarring = (acc1 & 0x10) !== 0;
-  const hasMole = (acc1 & 0x20) !== 0;
-  const hasHorns = (hash[13] & 0x07) === 0;
-  const hasScar = (acc1 & 0x80) !== 0;
-  const acc2 = hash[12];
-  const hasHalo = (acc2 & 0x01) !== 0 && !hasHat && !hasHorns;
-  const hasEyepatch = (acc2 & 0x02) !== 0;
-
-  // 3. Hat (overrides hair/scalp)
+  // 4. Hat
   if (hasHat) {
-    const hatIdx = hash[10] % HATS.length;
     const hat = HATS[hatIdx];
     for (let r = 0; r < GRID_SIZE; r++) {
       const row = hat.pattern[r];
@@ -639,46 +912,41 @@ export function buildFaceGrid(hash: Buffer): Grid {
     }
   }
 
-  // 4. Horns (only if no hat)
+  // 5. Horns (only if no hat)
   if (hasHorns && !hasHat) applyHorns(grid);
 
-  // 5. Halo (only if no hat/horns)
+  // 6. Halo
   if (hasHalo) applyHalo(grid);
 
-  // 6. Eyes
-  const eyeStyleIdx = hash[2] % EYE_STYLES.length;
-  EYE_STYLES[eyeStyleIdx](grid, shape.leftEyeCol, shape.rightEyeCol, shape.eyeRow);
+  // 7. Eyes
+  EYE_STYLES[finalEyeStyleIdx](grid, shape.leftEyeCol, shape.rightEyeCol, shape.eyeRow);
 
-  // 7. Glasses (overrides eye area)
+  // 8. Glasses
   if (hasGlasses) applyGlasses(grid, shape);
 
-  // 8. Eyepatch (overrides left eye even through glasses)
+  // 9. Eyepatch
   if (hasEyepatch) applyEyepatch(grid, shape);
 
-  // 9. Mouth (slim face → no wide mouth)
-  let mouthStyleIdx = hash[3] % MOUTH_STYLES.length;
-  if (shapeIdx === 2 && mouthStyleIdx === 1) mouthStyleIdx = 0;
-  MOUTH_STYLES[mouthStyleIdx](grid, shape.mouthCenterCol, shape.mouthRow);
+  // 10. Mouth
+  MOUTH_STYLES[finalMouthStyleIdx](grid, shape.mouthCenterCol, shape.mouthRow);
 
-  // 10. Facial hair (skip if open mouth)
-  const facialHairIdx = hash[4] % FACIAL_HAIR.length;
-  if (mouthStyleIdx !== 3) FACIAL_HAIR[facialHairIdx](grid, shape);
+  // 11. Facial hair (skip if teeth smile)
+  if (finalMouthStyleIdx !== 3) FACIAL_HAIR[facialHairIdx](grid, shape);
 
-  // 11. Accessories
+  // 12. Accessories
   if (hasBlush) applyBlush(grid, shape);
   if (hasFreckles) applyFreckles(grid, shape);
   if (hasEarring) applyEarring(grid, shape);
   if (hasMole) applyMole(grid, shape);
   if (hasScar) applyScar(grid, shape);
 
-  // 12. Shirt + neck
+  // 13. Shirt
   applyShirt(grid);
 
   return grid;
 }
 
 // ── Color palettes ──
-// Hair: 15 natural + 5 bold = 20 slots (25% bold)
 const HAIR_COLORS = [
   "#5C3A1E", "#2C1810", "#1A1A2A", "#D4A017",
   "#6B4226", "#A0522D", "#4A3728", "#C4A45A",
@@ -687,7 +955,6 @@ const HAIR_COLORS = [
   "#E63946", "#FF69B4", "#3B82F6", "#9D4EDD", "#06A77D",
 ];
 
-// Skin: 10 natural + 4 fantasy = 14 slots (~28% fantasy)
 const SKIN_TONES = [
   "#F5D0A9", "#FADDBA", "#FFE0BD", "#EDC9A3",
   "#D4A574", "#C68642", "#8D6E4C", "#6B4C3B",
@@ -695,7 +962,6 @@ const SKIN_TONES = [
   "#7DB87D", "#B87DB8", "#7DA8C8", "#D48888",
 ];
 
-// Eyes: weighted toward natural, some exotic
 const EYE_COLORS = [
   "#1A1A1A", "#1A1A1A", "#1A1A1A",
   "#4A3728", "#4A3728",
@@ -751,16 +1017,18 @@ export interface Palette {
   earring: string;
 }
 
-export function hashToPalette(hash: Buffer): Palette {
+export function hashToPalette(personalityHash: Buffer, _variationHash: Buffer): Palette {
+  // ALL colors locked to personality — regen keeps the signature palette.
+  const pH = personalityHash;
   return {
-    hair: HAIR_COLORS[hash[16] % HAIR_COLORS.length],
-    skin: SKIN_TONES[hash[17] % SKIN_TONES.length],
-    eye: EYE_COLORS[hash[18] % EYE_COLORS.length],
-    mouth: MOUTH_COLORS[hash[19] % MOUTH_COLORS.length],
-    shirt: SHIRT_COLORS[hash[20] % SHIRT_COLORS.length],
-    bg: BG_COLORS[hash[21] % BG_COLORS.length],
-    hat: HAT_COLORS[hash[22] % HAT_COLORS.length],
-    earring: EARRING_COLORS[hash[23] % EARRING_COLORS.length],
+    hair: HAIR_COLORS[pH[16] % HAIR_COLORS.length],
+    skin: SKIN_TONES[pH[17] % SKIN_TONES.length],
+    eye: EYE_COLORS[pH[18] % EYE_COLORS.length],
+    mouth: MOUTH_COLORS[pH[19] % MOUTH_COLORS.length],
+    shirt: SHIRT_COLORS[pH[20] % SHIRT_COLORS.length],
+    bg: BG_COLORS[pH[21] % BG_COLORS.length],
+    hat: HAT_COLORS[pH[22] % HAT_COLORS.length],
+    earring: EARRING_COLORS[pH[23] % EARRING_COLORS.length],
   };
 }
 
@@ -777,11 +1045,11 @@ export function darkenHex(hex: string, factor: number): string {
   );
 }
 
-// ── Render SVG (glass orb container + face) ──
+// ── Render SVG ──
 export function renderFaceSVG(grid: Grid, palette: Palette): string {
   const SIZE = 512;
-  const FACE_PX = 400;
-  const PIXEL = FACE_PX / GRID_SIZE; // 40
+  const FACE_PX = 416;
+  const PIXEL = FACE_PX / GRID_SIZE; // 26px per grid pixel
   const OFFSET = (SIZE - FACE_PX) / 2;
 
   const colorMap: Record<string, string> = {
@@ -842,4 +1110,21 @@ export function renderFaceSVG(grid: Grid, palette: Palette): string {
   <ellipse cx="${SIZE * 0.3}" cy="${SIZE * 0.2}" rx="${SIZE * 0.2}" ry="${SIZE * 0.11}" fill="url(#highlight)" shape-rendering="auto"/>
   <rect width="${SIZE}" height="${SIZE}" fill="url(#rim)" shape-rendering="auto"/>
 </svg>`;
+}
+
+// ── Hash helpers ──
+export function computePersonalityHashHex(personalityText: string): string {
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(personalityText).digest("hex").slice(0, 32);
+}
+
+export function personalityHashBuffer(personalityHashHex: string): Buffer {
+  // Pad/extend to 32 bytes by re-hashing — ensures buffer has 32 bytes for byte access
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(personalityHashHex).digest();
+}
+
+export function variationHashBuffer(personalityHashHex: string, variation: number): Buffer {
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(`${personalityHashHex}:${variation}`).digest();
 }

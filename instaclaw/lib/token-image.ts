@@ -7,7 +7,14 @@
 
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
-import { buildFaceGrid, hashToPalette, renderFaceSVG } from "@/lib/token-image-generator";
+import {
+  buildFaceGrid,
+  hashToPalette,
+  renderFaceSVG,
+  computePersonalityHashHex,
+  personalityHashBuffer,
+  variationHashBuffer,
+} from "@/lib/token-image-generator";
 
 // ── Read Agent Personality from VM ──
 export async function readAgentPersonality(vm: {
@@ -62,18 +69,35 @@ export async function readAgentPersonality(vm: {
   }
 }
 
-// ── Generate Unique Face PFP ──
+// ── Generate Token Image ──
+// Two code paths:
+//   (A) First call — pass personalityContext text; we hash it, use it, return the hex hash.
+//   (B) Regenerate — pass personalityHashHex (cached client-side); we skip re-hashing the text.
 export async function generateTokenImage(
   tokenName: string,
-  personalityContext?: string | null,
-  variation?: number,
-): Promise<Buffer> {
-  const crypto = await import("crypto");
-  const seedInput = `${tokenName}:${personalityContext ?? ""}:${variation ?? 0}`;
-  const hash = crypto.createHash("sha256").update(seedInput).digest();
+  opts: {
+    personalityContext?: string | null;
+    personalityHashHex?: string | null;
+    variation?: number;
+  } = {},
+): Promise<{ buffer: Buffer; personalityHashHex: string }> {
+  const variation = opts.variation ?? 0;
 
-  const grid = buildFaceGrid(hash);
-  const palette = hashToPalette(hash);
+  // Derive personality hash hex — from cache if provided, from text if not, from token name as fallback
+  let pHashHex: string;
+  if (opts.personalityHashHex) {
+    pHashHex = opts.personalityHashHex;
+  } else if (opts.personalityContext && opts.personalityContext.length >= 20) {
+    pHashHex = computePersonalityHashHex(opts.personalityContext);
+  } else {
+    pHashHex = computePersonalityHashHex(`fallback:${tokenName}`);
+  }
+
+  const pHash = personalityHashBuffer(pHashHex);
+  const vHash = variationHashBuffer(pHashHex, variation);
+
+  const grid = buildFaceGrid(pHash, vHash);
+  const palette = hashToPalette(pHash, vHash);
   const svg = renderFaceSVG(grid, palette);
 
   const sharp = (await import("sharp")).default;
@@ -81,11 +105,12 @@ export async function generateTokenImage(
 
   logger.info("Token face PFP generated", {
     tokenName,
-    variation: variation ?? 0,
-    hasPersonality: !!personalityContext,
+    variation,
+    fromCache: !!opts.personalityHashHex,
+    hasPersonalityText: !!opts.personalityContext,
   });
 
-  return pngBuffer;
+  return { buffer: pngBuffer, personalityHashHex: pHashHex };
 }
 
 // ── Glass Orb Compositing (for user uploads only) ──
