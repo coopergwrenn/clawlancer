@@ -8,9 +8,7 @@
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import {
-  buildFaceGrid,
-  hashToPalette,
-  renderFaceSVG,
+  buildCrabImage,
   computePersonalityHashHex,
   personalityHashBuffer,
   variationHashBuffer,
@@ -117,12 +115,7 @@ export async function generateTokenImage(
   const pHash = personalityHashBuffer(pHashHex);
   const vHash = variationHashBuffer(pHashHex, variation);
 
-  const grid = buildFaceGrid(pHash, vHash);
-  const palette = hashToPalette(pHash, vHash);
-  const svg = renderFaceSVG(grid, palette);
-
-  const sharp = (await import("sharp")).default;
-  const pngBuffer = await sharp(Buffer.from(svg)).resize(512, 512).png().toBuffer();
+  const pngBuffer = await buildCrabImage(pHash, vHash);
 
   logger.info("Token face PFP generated", {
     tokenName,
