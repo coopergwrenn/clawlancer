@@ -89,8 +89,44 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
   };
 }
 
+// Build the glass-orb SVG background — radial gradient + highlight + rim
+// for the signature 3D orb depth effect. Same bg color, different lighting.
+function orbBackgroundSVG(bgLight: string, bgDark: string, size: number): string {
+  return `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="orbBg" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="${bgLight}" stop-opacity="1"/>
+      <stop offset="55%" stop-color="${bgLight}" stop-opacity="0.94"/>
+      <stop offset="100%" stop-color="${bgDark}" stop-opacity="1"/>
+    </radialGradient>
+  </defs>
+  <rect width="${size}" height="${size}" fill="url(#orbBg)"/>
+</svg>`;
+}
+
+// Build the orb highlight + rim overlay SVG (rendered on TOP of the crab
+// to sit the orb "glass" over everything — preserves the 3D look).
+function orbHighlightSVG(size: number): string {
+  return `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="highlight" cx="28%" cy="22%" r="30%">
+      <stop offset="0%" stop-color="white" stop-opacity="0.35"/>
+      <stop offset="45%" stop-color="white" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="50%" cy="50%" r="50%">
+      <stop offset="88%" stop-color="black" stop-opacity="0"/>
+      <stop offset="96%" stop-color="black" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0.22"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="${size * 0.3}" cy="${size * 0.2}" rx="${size * 0.2}" ry="${size * 0.11}" fill="url(#highlight)"/>
+  <rect width="${size}" height="${size}" fill="url(#rim)"/>
+</svg>`;
+}
+
 // ── Core image builder ──
-// Returns a PNG buffer of the finished token PFP.
+// Pipeline: orb-gradient bg → hue-tinted crab → glass-highlight + rim overlay
 export async function buildCrabImage(
   personalityHash: Buffer,
   variationHash: Buffer,
@@ -101,44 +137,36 @@ export async function buildCrabImage(
   const hueShift = HUE_SHIFTS[personalityHash[0] % HUE_SHIFTS.length];
   // Background — VARIES per regen
   const bgHex = BG_COLORS[variationHash[0] % BG_COLORS.length];
-  const bgRgb = hexToRgb(bgHex);
+  const bgDark = darkenHex(bgHex, 0.3);
 
+  // Step 1: hue-shift the base crab (flattened to opaque black bg first)
   const base = loadBaseBuffer();
-  const meta = await sharp(base).metadata();
-  const W = meta.width ?? 1024;
-  const H = meta.height ?? 1024;
-
-  // Step 1: flatten base against its own (black) bg so we have a clean RGB image,
-  // then hue-shift. Resize to OUTPUT_SIZE early so all downstream buffers match.
   const tintedRgb = await sharp(base)
     .flatten({ background: "#000000" })
     .modulate({ hue: hueShift })
     .resize(OUTPUT_SIZE, OUTPUT_SIZE, { kernel: "nearest" })
     .toBuffer();
 
-  // Step 2: derive alpha mask from the tinted crab's luminance
-  // Black bg (lum < 25) → 0 (transparent); crab → 255 (opaque)
-  const alphaMask = await sharp(tintedRgb)
-    .greyscale()
-    .threshold(25)
-    .toBuffer();
+  // Step 2: alpha mask from luminance (black bg → transparent, crab → opaque)
+  const alphaMask = await sharp(tintedRgb).greyscale().threshold(25).toBuffer();
 
-  // Step 3: attach alpha to tinted → RGBA crab
-  const crabWithAlpha = await sharp(tintedRgb)
-    .joinChannel(alphaMask)
+  // Step 3: RGBA crab with transparent bg
+  const crabWithAlpha = await sharp(tintedRgb).joinChannel(alphaMask).png().toBuffer();
+
+  // Step 4: rasterize the orb bg SVG (radial gradient)
+  const orbBg = await sharp(Buffer.from(orbBackgroundSVG(bgHex, bgDark, OUTPUT_SIZE)))
     .png()
     .toBuffer();
 
-  // Step 4: build bg canvas at OUTPUT_SIZE + composite crab on top
-  const final = await sharp({
-    create: {
-      width: OUTPUT_SIZE,
-      height: OUTPUT_SIZE,
-      channels: 3,
-      background: { r: bgRgb.r, g: bgRgb.g, b: bgRgb.b },
-    },
-  })
-    .composite([{ input: crabWithAlpha, top: 0, left: 0 }])
+  // Step 5: rasterize the orb highlight + rim SVG (glass effects)
+  const orbOverlay = await sharp(Buffer.from(orbHighlightSVG(OUTPUT_SIZE))).png().toBuffer();
+
+  // Step 6: stack — orb bg → crab → highlight/rim
+  const final = await sharp(orbBg)
+    .composite([
+      { input: crabWithAlpha, top: 0, left: 0 },
+      { input: orbOverlay, top: 0, left: 0 },
+    ])
     .png()
     .toBuffer();
 
