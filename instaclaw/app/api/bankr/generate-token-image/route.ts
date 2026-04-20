@@ -41,22 +41,57 @@ export async function POST(req: NextRequest) {
   try {
     let personalityContext: string | null = null;
     let skippedSSH = false;
+    let vmStatus = "not_checked";
+    let sshDurationMs = 0;
 
     if (cachedPersonalityHash) {
-      // Regeneration — client already has the personality hash from the first call.
-      // Skip SSH entirely (keeps regen fast).
       skippedSSH = true;
+      vmStatus = "cached_hash_passed";
     } else {
-      // First generation — SSH in to read SOUL.md + MEMORY.md.
       const supabase = getSupabase();
-      const { data: vm } = await supabase
+      const { data: vm, error: vmError } = await supabase
         .from("instaclaw_vms")
-        .select("id, ip_address, ssh_port, ssh_user")
+        .select("id, ip_address, ssh_port, ssh_user, status, assigned_to")
         .eq("assigned_to", userId)
         .single();
 
-      if (vm?.ip_address) {
+      if (vmError) {
+        vmStatus = `db_error:${vmError.code ?? "unknown"}`;
+        logger.warn("Token PFP: VM lookup failed", {
+          userId,
+          vmErrorCode: vmError.code,
+          vmErrorMessage: vmError.message?.slice(0, 200),
+        });
+      } else if (!vm) {
+        vmStatus = "no_vm_assigned";
+        logger.warn("Token PFP: no VM assigned to user", { userId });
+      } else if (!vm.ip_address) {
+        vmStatus = `vm_no_ip:${vm.status ?? "unknown"}`;
+        logger.warn("Token PFP: VM has no ip_address", {
+          userId,
+          vmId: vm.id,
+          vmStatus: vm.status,
+        });
+      } else {
+        const sshStart = Date.now();
         personalityContext = await readAgentPersonality(vm);
+        sshDurationMs = Date.now() - sshStart;
+        if (personalityContext) {
+          vmStatus = `vm_ssh_ok:got_${personalityContext.length}chars`;
+          logger.info("Token PFP: SSH read succeeded", {
+            userId,
+            vmId: vm.id,
+            sshDurationMs,
+            personalityLength: personalityContext.length,
+          });
+        } else {
+          vmStatus = "vm_ssh_returned_null";
+          logger.warn("Token PFP: SSH returned null personality (see prior warn log for cause)", {
+            userId,
+            vmId: vm.id,
+            sshDurationMs,
+          });
+        }
       }
     }
 
@@ -73,6 +108,8 @@ export async function POST(req: NextRequest) {
       tokenName,
       variation,
       skippedSSH,
+      vmStatus,
+      sshDurationMs,
       hasPersonality: !!personalityContext,
       imageUrl,
     });

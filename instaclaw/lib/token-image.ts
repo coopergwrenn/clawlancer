@@ -44,7 +44,15 @@ export async function readAgentPersonality(vm: {
       const soul = (parts[0] ?? "").replace("SOUL:", "").trim();
       const mem = (parts[1] ?? "").replace("MEM:", "").trim();
 
-      if (!soul && !mem) return null;
+      if (!soul && !mem) {
+        logger.warn("Agent personality: SOUL.md and MEMORY.md both empty on VM", {
+          vmId: vm.id,
+          soulLength: soul.length,
+          memLength: mem.length,
+          rawOutputLength: output.length,
+        });
+        return null;
+      }
 
       const combined = [soul, mem]
         .join(" ")
@@ -53,9 +61,22 @@ export async function readAgentPersonality(vm: {
         .trim()
         .slice(0, 400);
 
-      if (combined.length < 20) return null;
+      if (combined.length < 20) {
+        logger.warn("Agent personality: combined SOUL+MEMORY text too short", {
+          vmId: vm.id,
+          combinedLength: combined.length,
+          soulLength: soul.length,
+          memLength: mem.length,
+        });
+        return null;
+      }
 
-      logger.info("Agent personality read", { vmId: vm.id, length: combined.length });
+      logger.info("Agent personality read", {
+        vmId: vm.id,
+        combinedLength: combined.length,
+        soulLength: soul.length,
+        memLength: mem.length,
+      });
       return combined;
     } finally {
       ssh.dispose();

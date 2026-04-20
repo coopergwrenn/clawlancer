@@ -3076,6 +3076,7 @@ export async function connectSSH(vm: VMRecord, opts?: { skipDuplicateIPCheck?: b
         port: vm.ssh_port,
         username,
         privateKey,
+        readyTimeout: 10_000,
       });
       if (username !== vm.ssh_user) {
         logger.warn("SSH connected with fallback user", {
