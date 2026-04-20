@@ -1,12 +1,11 @@
 /**
- * Token PFP generation — Candidate 02 base + HD meme-canon trait overlays.
+ * Token PFP generation — Candidate 02 + HD meme-canon traits.
  *
- * Each overlay is drawn as HD SVG (not pixel blocks) at 1024×1024, composited
- * on top of the hue-tinted Candidate 02 master. Accessories are BIG, BOLD,
- * and instantly recognizable — crypto-twitter memecanon meets pixel-crab.
+ * Designed for DASHBOARD PREVIEW READABILITY (~128-160px display).
+ * Every accessory uses thick strokes (40-80px) and big features (150-400px)
+ * so the trait survives downsampling from 1024 → 160px.
  *
- * LOCKED per personality: shell hue, eye style, eyewear, gold chain, clown nose
- * VARIES per regen:       bg color, hat, held item, mouth accessory
+ * Rule: if a feature is smaller than ~150px at 1024, it disappears at preview.
  */
 
 import path from "node:path";
@@ -15,7 +14,7 @@ import fs from "node:fs";
 const BASE_IMAGE_PATH = path.join(process.cwd(), "public", "assets", "crab-base.png");
 const OUTPUT_SIZE = 1024;
 
-// Key feature positions on the 1024×1024 base (sampled from PNG)
+// Key feature positions on the 1024×1024 base
 const LEFT_EYE_X = 352;
 const RIGHT_EYE_X = 676;
 const EYE_Y = 388;
@@ -39,27 +38,33 @@ function svg(body: string): string {
   return `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 }
 
-// Draw a "$" sign at (cx, cy) with given size and color
+// Draw a BOLD "$" sign as an S-curve with vertical line — actually reads as money
 function dollarSign(cx: number, cy: number, size: number, color: string): string {
-  const w = size * 0.6;   // width of horizontals
-  const h = size;         // vertical
-  const t = Math.max(3, size * 0.12); // stroke thickness
+  const w = size * 0.55;
+  const h = size;
+  const t = Math.max(10, size * 0.2); // stroke thickness
+  const left = cx - w / 2;
+  const right = cx + w / 2;
+  const top = cy - h / 2;
+  const bottom = cy + h / 2;
+  // Path traces S: top-right → top-left → mid-left → mid-right → bottom-right → bottom-left
+  const sPath = `M ${right} ${top + t/2}
+                 L ${left} ${top + t/2}
+                 L ${left} ${cy - t/4}
+                 L ${right} ${cy + t/4}
+                 L ${right} ${bottom - t/2}
+                 L ${left} ${bottom - t/2}`;
   return `
-    <rect x="${cx - t/2}" y="${cy - h/2}" width="${t}" height="${h}" fill="${color}"/>
-    <rect x="${cx - w/2}" y="${cy - h/2}" width="${w}" height="${t}" fill="${color}"/>
-    <rect x="${cx - w/2}" y="${cy - t/2}" width="${w}" height="${t}" fill="${color}"/>
-    <rect x="${cx - w/2}" y="${cy + h/2 - t}" width="${w}" height="${t}" fill="${color}"/>
+    <path d="${sPath}" stroke="${color}" stroke-width="${t}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="${cx - t/2}" y="${top - t/3}" width="${t}" height="${h + t*2/3}" fill="${color}"/>
   `;
 }
 
 // ── Shell hue shifts (LOCKED per personality) ──
 const HUE_SHIFTS = [
-  0, 0,
-  -15, -30, -45,
-  15, 30, 60,
-  90, 120, 150,
-  180, 210, 240,
-  270, 300, 330,
+  0, 0, -15, -30, -45,
+  15, 30, 60, 90, 120, 150,
+  180, 210, 240, 270, 300, 330,
 ];
 
 // ── Background palette (VARIES per regen) ──
@@ -74,21 +79,20 @@ const BG_COLORS = [
 ];
 
 // ────────────────────────────────────────────────────────────────
-// LAYER: EYES (LOCKED per personality)
+// EYES — all big enough to read at preview size (60px+ features)
 // ────────────────────────────────────────────────────────────────
-type EyeStyle = "dot" | "wide" | "angry" | "sleepy" | "hearts" | "dollar" | "x_eyes" | "laser" | "pepe";
+type EyeStyle = "dot" | "wide" | "angry" | "hearts" | "dollar" | "x_eyes" | "laser" | "pepe";
 
 function pickEye(h: Buffer): EyeStyle {
   const v = h[8] % 100;
-  if (v < 45) return "dot";
-  if (v < 60) return "wide";
-  if (v < 72) return "angry";
-  if (v < 82) return "sleepy";
-  if (v < 88) return "hearts";
-  if (v < 92) return "dollar";
-  if (v < 95) return "x_eyes";
-  if (v < 98) return "laser";    // legendary
-  return "pepe";                  // legendary
+  if (v < 50) return "dot";
+  if (v < 65) return "wide";
+  if (v < 75) return "angry";
+  if (v < 83) return "hearts";
+  if (v < 89) return "dollar";
+  if (v < 94) return "x_eyes";
+  if (v < 98) return "laser";
+  return "pepe";
 }
 
 function eyesSVG(style: EyeStyle): string {
@@ -98,200 +102,158 @@ function eyesSVG(style: EyeStyle): string {
 
   if (style === "wide") {
     return svg(`
-      <circle cx="${lx}" cy="${y}" r="32" fill="${black}"/>
-      <circle cx="${rx}" cy="${y}" r="32" fill="${black}"/>
-      <circle cx="${lx - 10}" cy="${y - 10}" r="9" fill="${white}"/>
-      <circle cx="${rx - 10}" cy="${y - 10}" r="9" fill="${white}"/>
+      <circle cx="${lx}" cy="${y}" r="48" fill="${black}"/>
+      <circle cx="${rx}" cy="${y}" r="48" fill="${black}"/>
+      <circle cx="${lx - 14}" cy="${y - 14}" r="14" fill="${white}"/>
+      <circle cx="${rx - 14}" cy="${y - 14}" r="14" fill="${white}"/>
     `);
   }
   if (style === "angry") {
+    // Thick angry eyebrows + narrow eyes
     return svg(`
-      <!-- Angry eyebrows -->
-      <polygon points="${lx - 50},${y - 50} ${lx + 30},${y - 15} ${lx + 30},${y - 5} ${lx - 50},${y - 30}" fill="${black}"/>
-      <polygon points="${rx + 50},${y - 50} ${rx - 30},${y - 15} ${rx - 30},${y - 5} ${rx + 50},${y - 30}" fill="${black}"/>
-      <!-- Narrow angry eyes -->
-      <rect x="${lx - 18}" y="${y}" width="36" height="10" fill="${black}"/>
-      <rect x="${rx - 18}" y="${y}" width="36" height="10" fill="${black}"/>
-    `);
-  }
-  if (style === "sleepy") {
-    return svg(`
-      <!-- Long lashes / closed eye lines -->
-      <rect x="${lx - 38}" y="${y + 8}" width="76" height="8" fill="${black}"/>
-      <rect x="${rx - 38}" y="${y + 8}" width="76" height="8" fill="${black}"/>
-      <path d="M ${lx - 40} ${y + 16} Q ${lx - 30} ${y + 26} ${lx - 20} ${y + 16}" stroke="${black}" stroke-width="4" fill="none"/>
-      <path d="M ${rx + 20} ${y + 16} Q ${rx + 30} ${y + 26} ${rx + 40} ${y + 16}" stroke="${black}" stroke-width="4" fill="none"/>
+      <polygon points="${lx - 70},${y - 70} ${lx + 40},${y - 10} ${lx + 40},${y + 10} ${lx - 70},${y - 40}" fill="${black}"/>
+      <polygon points="${rx + 70},${y - 70} ${rx - 40},${y - 10} ${rx - 40},${y + 10} ${rx + 70},${y - 40}" fill="${black}"/>
+      <rect x="${lx - 28}" y="${y + 5}" width="56" height="18" fill="${black}"/>
+      <rect x="${rx - 28}" y="${y + 5}" width="56" height="18" fill="${black}"/>
     `);
   }
   if (style === "hearts") {
     const heart = (cx: number, cy: number) => `
-      <path d="M ${cx} ${cy + 28}
-               C ${cx - 40} ${cy}, ${cx - 40} ${cy - 30}, ${cx - 15} ${cy - 30}
-               C ${cx - 5} ${cy - 30}, ${cx} ${cy - 22}, ${cx} ${cy - 15}
-               C ${cx} ${cy - 22}, ${cx + 5} ${cy - 30}, ${cx + 15} ${cy - 30}
-               C ${cx + 40} ${cy - 30}, ${cx + 40} ${cy}, ${cx} ${cy + 28} Z" fill="${red}"/>
+      <path d="M ${cx} ${cy + 45}
+               C ${cx - 55} ${cy + 10}, ${cx - 55} ${cy - 35}, ${cx - 20} ${cy - 35}
+               C ${cx - 8} ${cy - 35}, ${cx} ${cy - 25}, ${cx} ${cy - 15}
+               C ${cx} ${cy - 25}, ${cx + 8} ${cy - 35}, ${cx + 20} ${cy - 35}
+               C ${cx + 55} ${cy - 35}, ${cx + 55} ${cy + 10}, ${cx} ${cy + 45} Z"
+        fill="${red}" stroke="#8B0000" stroke-width="5"/>
     `;
     return svg(heart(lx, y) + heart(rx, y));
   }
   if (style === "dollar") {
     return svg(`
-      ${dollarSign(lx, y + 5, 56, green)}
-      ${dollarSign(rx, y + 5, 56, green)}
+      ${dollarSign(lx, y + 5, 70, green)}
+      ${dollarSign(rx, y + 5, 70, green)}
     `);
   }
   if (style === "x_eyes") {
     const xMark = (cx: number, cy: number) => `
-      <line x1="${cx - 22}" y1="${cy - 22}" x2="${cx + 22}" y2="${cy + 22}" stroke="${black}" stroke-width="10" stroke-linecap="round"/>
-      <line x1="${cx + 22}" y1="${cy - 22}" x2="${cx - 22}" y2="${cy + 22}" stroke="${black}" stroke-width="10" stroke-linecap="round"/>
+      <line x1="${cx - 30}" y1="${cy - 30}" x2="${cx + 30}" y2="${cy + 30}" stroke="${black}" stroke-width="20" stroke-linecap="round"/>
+      <line x1="${cx + 30}" y1="${cy - 30}" x2="${cx - 30}" y2="${cy + 30}" stroke="${black}" stroke-width="20" stroke-linecap="round"/>
     `;
     return svg(xMark(lx, y) + xMark(rx, y));
   }
   if (style === "laser") {
-    // Full-width red beams blasting from eyes
+    // Full-width red beam — UNMISTAKABLE at any size
     return svg(`
-      <!-- Bright beam base -->
-      <rect x="0" y="${y - 18}" width="1024" height="36" fill="${red}" opacity="0.85"/>
-      <!-- Inner hot white core -->
-      <rect x="0" y="${y - 8}" width="1024" height="16" fill="${white}" opacity="0.75"/>
-      <!-- Eye origin glows -->
-      <circle cx="${lx}" cy="${y}" r="40" fill="${red}"/>
-      <circle cx="${rx}" cy="${y}" r="40" fill="${red}"/>
-      <circle cx="${lx}" cy="${y}" r="20" fill="${white}"/>
-      <circle cx="${rx}" cy="${y}" r="20" fill="${white}"/>
+      <rect x="0" y="${y - 40}" width="1024" height="80" fill="${red}" opacity="0.9"/>
+      <rect x="0" y="${y - 18}" width="1024" height="36" fill="${white}" opacity="0.75"/>
+      <circle cx="${lx}" cy="${y}" r="70" fill="${red}"/>
+      <circle cx="${rx}" cy="${y}" r="70" fill="${red}"/>
+      <circle cx="${lx}" cy="${y}" r="32" fill="${white}"/>
+      <circle cx="${rx}" cy="${y}" r="32" fill="${white}"/>
     `);
   }
   if (style === "pepe") {
-    // Big googly eyes with off-center pupils (Pepe-style)
     return svg(`
-      <circle cx="${lx}" cy="${y - 4}" r="44" fill="${white}" stroke="${black}" stroke-width="4"/>
-      <circle cx="${rx}" cy="${y - 4}" r="44" fill="${white}" stroke="${black}" stroke-width="4"/>
-      <circle cx="${lx + 12}" cy="${y + 6}" r="16" fill="${black}"/>
-      <circle cx="${rx + 12}" cy="${y + 6}" r="16" fill="${black}"/>
-      <circle cx="${lx + 15}" cy="${y + 3}" r="4" fill="${white}"/>
-      <circle cx="${rx + 15}" cy="${y + 3}" r="4" fill="${white}"/>
+      <circle cx="${lx}" cy="${y - 6}" r="60" fill="${white}" stroke="${black}" stroke-width="8"/>
+      <circle cx="${rx}" cy="${y - 6}" r="60" fill="${white}" stroke="${black}" stroke-width="8"/>
+      <circle cx="${lx + 18}" cy="${y + 8}" r="24" fill="${black}"/>
+      <circle cx="${rx + 18}" cy="${y + 8}" r="24" fill="${black}"/>
+      <circle cx="${lx + 22}" cy="${y + 4}" r="6" fill="${white}"/>
+      <circle cx="${rx + 22}" cy="${y + 4}" r="6" fill="${white}"/>
     `);
   }
   return "";
 }
 
 // ────────────────────────────────────────────────────────────────
-// LAYER: EYEWEAR (LOCKED per personality)
+// EYEWEAR — all big, bold, with heavy strokes
 // ────────────────────────────────────────────────────────────────
-type Eyewear = "none" | "sunglasses" | "deal_with_it" | "3d_glasses" | "monocle" | "eyepatch" | "laser_visor";
+type Eyewear = "none" | "sunglasses" | "deal_with_it" | "3d_glasses" | "eyepatch" | "laser_visor";
 
 function pickEyewear(h: Buffer): Eyewear {
   const v = h[9] % 100;
   if (v < 55) return "none";
-  if (v < 68) return "sunglasses";
-  if (v < 78) return "deal_with_it";
-  if (v < 84) return "3d_glasses";
-  if (v < 90) return "monocle";
-  if (v < 95) return "eyepatch";
+  if (v < 70) return "sunglasses";
+  if (v < 82) return "deal_with_it";
+  if (v < 90) return "3d_glasses";
+  if (v < 96) return "eyepatch";
   return "laser_visor";
 }
 
 function eyewearSVG(wear: Eyewear): string {
   if (wear === "none") return "";
   const lx = LEFT_EYE_X, rx = RIGHT_EYE_X, y = EYE_Y;
-  const black = "#1A1A1A", gold = "#FFD700", goldDark = "#C89B0A";
-  const red = "#E63946", cyan = "#2EC4B6", white = "#FFFFFF";
+  const black = "#1A1A1A", red = "#E63946", cyan = "#2EC4B6", white = "#FFFFFF";
 
   if (wear === "sunglasses") {
-    // Big aviator-style sunglasses with bridge
     return svg(`
-      <ellipse cx="${lx}" cy="${y}" rx="65" ry="50" fill="${black}"/>
-      <ellipse cx="${rx}" cy="${y}" rx="65" ry="50" fill="${black}"/>
-      <rect x="${lx + 50}" y="${y - 8}" width="${rx - lx - 100}" height="12" fill="${black}"/>
-      <!-- Lens glint -->
-      <ellipse cx="${lx - 25}" cy="${y - 18}" rx="18" ry="10" fill="${white}" opacity="0.35"/>
-      <ellipse cx="${rx - 25}" cy="${y - 18}" rx="18" ry="10" fill="${white}" opacity="0.35"/>
+      <ellipse cx="${lx}" cy="${y}" rx="85" ry="65" fill="${black}"/>
+      <ellipse cx="${rx}" cy="${y}" rx="85" ry="65" fill="${black}"/>
+      <rect x="${lx + 60}" y="${y - 15}" width="${rx - lx - 120}" height="28" fill="${black}"/>
+      <!-- Prominent lens glint -->
+      <ellipse cx="${lx - 30}" cy="${y - 25}" rx="26" ry="16" fill="${white}" opacity="0.5"/>
+      <ellipse cx="${rx - 30}" cy="${y - 25}" rx="26" ry="16" fill="${white}" opacity="0.5"/>
     `);
   }
   if (wear === "deal_with_it") {
-    // Classic pixelated sliding-down sunglasses — thick black rectangular bar
-    // Slightly tilted for "sliding" effect, with pixel step edges
     return svg(`
-      <g transform="rotate(-4 ${lx} ${y + 20})">
-        <!-- Main bar -->
-        <rect x="${lx - 95}" y="${y - 10}" width="${rx - lx + 195}" height="48" fill="${black}"/>
-        <!-- Top pixel step -->
-        <rect x="${lx - 90}" y="${y - 22}" width="${rx - lx + 185}" height="12" fill="${black}"/>
-        <!-- Highlight dots (pixel-art shine) -->
-        <rect x="${lx - 70}" y="${y}" width="20" height="8" fill="${white}"/>
-        <rect x="${rx - 70}" y="${y}" width="20" height="8" fill="${white}"/>
+      <g transform="rotate(-5 ${lx} ${y + 25})">
+        <rect x="${lx - 120}" y="${y - 15}" width="${rx - lx + 240}" height="60" fill="${black}"/>
+        <rect x="${lx - 115}" y="${y - 30}" width="${rx - lx + 230}" height="18" fill="${black}"/>
+        <rect x="${lx - 85}" y="${y + 5}" width="30" height="12" fill="${white}"/>
+        <rect x="${rx - 85}" y="${y + 5}" width="30" height="12" fill="${white}"/>
       </g>
     `);
   }
   if (wear === "3d_glasses") {
     return svg(`
-      <!-- Cardboard frame -->
-      <rect x="${lx - 75}" y="${y - 45}" width="${rx - lx + 150}" height="95" rx="6" fill="${black}"/>
-      <!-- Red lens -->
-      <rect x="${lx - 60}" y="${y - 30}" width="115" height="65" fill="${red}" opacity="0.75"/>
-      <!-- Cyan lens -->
-      <rect x="${rx - 55}" y="${y - 30}" width="115" height="65" fill="${cyan}" opacity="0.75"/>
-      <!-- Frame outlines -->
-      <rect x="${lx - 60}" y="${y - 30}" width="115" height="65" fill="none" stroke="${black}" stroke-width="6"/>
-      <rect x="${rx - 55}" y="${y - 30}" width="115" height="65" fill="none" stroke="${black}" stroke-width="6"/>
-    `);
-  }
-  if (wear === "monocle") {
-    return svg(`
-      <!-- Gold ring around right eye -->
-      <circle cx="${rx}" cy="${y}" r="62" fill="none" stroke="${gold}" stroke-width="14"/>
-      <circle cx="${rx}" cy="${y}" r="62" fill="none" stroke="${goldDark}" stroke-width="4"/>
-      <!-- Subtle lens tint -->
-      <circle cx="${rx}" cy="${y}" r="55" fill="${white}" opacity="0.08"/>
-      <!-- Glint -->
-      <ellipse cx="${rx - 20}" cy="${y - 22}" rx="15" ry="10" fill="${white}" opacity="0.45"/>
-      <!-- Chain -->
-      <path d="M ${rx + 60} ${y + 20} Q ${rx + 110} ${y + 80} ${rx + 140} ${y + 160}" stroke="${gold}" stroke-width="5" fill="none"/>
+      <rect x="${lx - 95}" y="${y - 55}" width="${rx - lx + 190}" height="115" rx="10" fill="${black}"/>
+      <rect x="${lx - 75}" y="${y - 38}" width="140" height="80" fill="${red}"/>
+      <rect x="${rx - 65}" y="${y - 38}" width="140" height="80" fill="${cyan}"/>
+      <rect x="${lx - 75}" y="${y - 38}" width="140" height="80" fill="none" stroke="${black}" stroke-width="10"/>
+      <rect x="${rx - 65}" y="${y - 38}" width="140" height="80" fill="none" stroke="${black}" stroke-width="10"/>
     `);
   }
   if (wear === "eyepatch") {
     return svg(`
-      <!-- Big dark patch over left eye -->
-      <ellipse cx="${lx}" cy="${y}" rx="85" ry="70" fill="${black}"/>
-      <!-- Strap across face, diagonal -->
-      <path d="M ${lx - 100} ${y - 80} L ${rx + 60} ${y + 80}" stroke="${black}" stroke-width="12"/>
+      <ellipse cx="${lx}" cy="${y}" rx="110" ry="85" fill="${black}"/>
+      <!-- Diagonal strap -->
+      <polygon points="${lx - 150},${y - 110} ${lx - 80},${y - 160} ${rx + 90},${y + 120} ${rx + 30},${y + 170}" fill="${black}"/>
     `);
   }
   if (wear === "laser_visor") {
     return svg(`
-      <!-- Dark horizontal band across face -->
-      <rect x="170" y="${y - 30}" width="684" height="75" rx="10" fill="${black}"/>
-      <!-- Red laser strip glowing -->
-      <rect x="170" y="${y + 4}" width="684" height="18" fill="${red}"/>
-      <rect x="170" y="${y + 10}" width="684" height="6" fill="${white}" opacity="0.8"/>
+      <rect x="150" y="${y - 45}" width="724" height="100" rx="12" fill="${black}"/>
+      <rect x="150" y="${y + 5}" width="724" height="30" fill="${red}"/>
+      <rect x="150" y="${y + 12}" width="724" height="12" fill="${white}" opacity="0.9"/>
     `);
   }
   return "";
 }
 
 // ────────────────────────────────────────────────────────────────
-// LAYER: HATS (VARIES per regen)
+// HATS — all span at least 300px wide so they read at preview
 // ────────────────────────────────────────────────────────────────
 type Hat =
   | "none" | "crown" | "degen_crown" | "cowboy" | "top_hat" | "beanie"
-  | "baseball" | "chef" | "party" | "headphones" | "halo" | "devil_horns"
+  | "baseball" | "chef" | "party" | "halo" | "devil_horns"
   | "tinfoil" | "jester";
 
 function pickHat(h: Buffer): Hat {
   const v = h[10] % 100;
   if (v < 40) return "none";
-  if (v < 48) return "cowboy";
-  if (v < 55) return "beanie";
-  if (v < 62) return "baseball";
-  if (v < 68) return "top_hat";
-  if (v < 73) return "chef";
-  if (v < 78) return "party";
-  if (v < 83) return "headphones";
+  if (v < 49) return "cowboy";
+  if (v < 57) return "beanie";
+  if (v < 64) return "baseball";
+  if (v < 70) return "top_hat";
+  if (v < 76) return "chef";
+  if (v < 82) return "party";
   if (v < 88) return "crown";
   if (v < 92) return "degen_crown";
   if (v < 95) return "tinfoil";
-  if (v < 97) return "jester";    // rare
-  if (v < 98) return "halo";       // legendary
-  return "devil_horns";            // rare
+  if (v < 97) return "jester";
+  if (v < 99) return "halo";
+  return "devil_horns";
 }
 
 function hatSVG(hat: Hat, h: Buffer): string {
@@ -302,599 +264,375 @@ function hatSVG(hat: Hat, h: Buffer): string {
   const black = "#1A1A1A", gold = "#FFD700", goldDark = "#C89B0A", white = "#FFFFFF";
 
   if (hat === "crown") {
-    // 5 gold spikes + band with 3 gems
     return svg(`
-      <!-- Band -->
-      <rect x="300" y="340" width="424" height="70" fill="${gold}"/>
-      <rect x="300" y="390" width="424" height="20" fill="${goldDark}"/>
-      <!-- Spikes -->
-      <polygon points="310,340 340,220 370,340" fill="${gold}"/>
-      <polygon points="385,340 420,180 455,340" fill="${gold}"/>
-      <polygon points="470,340 512,150 554,340" fill="${gold}"/>
-      <polygon points="569,340 604,180 639,340" fill="${gold}"/>
-      <polygon points="654,340 684,220 714,340" fill="${gold}"/>
-      <!-- Spike highlights -->
-      <polygon points="340,220 345,235 350,220" fill="#FFF4B8"/>
-      <polygon points="420,180 425,200 430,180" fill="#FFF4B8"/>
-      <polygon points="512,150 517,175 522,150" fill="#FFF4B8"/>
-      <polygon points="604,180 609,200 614,180" fill="#FFF4B8"/>
-      <polygon points="684,220 689,235 694,220" fill="#FFF4B8"/>
-      <!-- Gems -->
-      <circle cx="400" cy="375" r="16" fill="#E63946"/>
-      <circle cx="400" cy="375" r="16" fill="none" stroke="#8B0000" stroke-width="3"/>
-      <circle cx="512" cy="375" r="20" fill="#3B82F6"/>
-      <circle cx="512" cy="375" r="20" fill="none" stroke="#1E3A8A" stroke-width="3"/>
-      <circle cx="624" cy="375" r="16" fill="#27AE60"/>
-      <circle cx="624" cy="375" r="16" fill="none" stroke="#0E6924" stroke-width="3"/>
+      <rect x="290" y="340" width="444" height="80" fill="${gold}"/>
+      <rect x="290" y="400" width="444" height="22" fill="${goldDark}"/>
+      <polygon points="295,340 330,200 365,340" fill="${gold}"/>
+      <polygon points="370,340 420,150 470,340" fill="${gold}"/>
+      <polygon points="470,340 512,120 554,340" fill="${gold}"/>
+      <polygon points="554,340 604,150 654,340" fill="${gold}"/>
+      <polygon points="659,340 694,200 729,340" fill="${gold}"/>
+      <circle cx="400" cy="380" r="20" fill="#E63946" stroke="#8B0000" stroke-width="4"/>
+      <circle cx="512" cy="380" r="24" fill="#3B82F6" stroke="#1E3A8A" stroke-width="4"/>
+      <circle cx="624" cy="380" r="20" fill="#27AE60" stroke="#0E6924" stroke-width="4"/>
     `);
   }
   if (hat === "degen_crown") {
-    // TILTED gold crown with dripping gold drops — on-chain meme energy
     return svg(`
-      <g transform="rotate(-12 512 350)">
-        <!-- Band -->
-        <rect x="280" y="340" width="464" height="70" fill="${gold}"/>
-        <rect x="280" y="390" width="464" height="20" fill="${goldDark}"/>
-        <!-- Spikes — irregular heights for "degen" feel -->
-        <polygon points="295,340 325,200 360,340" fill="${gold}"/>
-        <polygon points="375,340 420,140 465,340" fill="${gold}"/>
-        <polygon points="478,340 512,160 546,340" fill="${gold}"/>
-        <polygon points="559,340 604,180 649,340" fill="${gold}"/>
-        <polygon points="664,340 705,220 740,340" fill="${gold}"/>
-        <!-- Gems -->
-        <circle cx="420" cy="375" r="18" fill="#E63946"/>
-        <circle cx="512" cy="375" r="22" fill="#3B82F6"/>
-        <circle cx="604" cy="375" r="18" fill="#9D4EDD"/>
+      <g transform="rotate(-14 512 360)">
+        <rect x="275" y="340" width="474" height="80" fill="${gold}"/>
+        <rect x="275" y="400" width="474" height="22" fill="${goldDark}"/>
+        <polygon points="290,340 320,170 360,340" fill="${gold}"/>
+        <polygon points="370,340 420,130 470,340" fill="${gold}"/>
+        <polygon points="478,340 512,140 548,340" fill="${gold}"/>
+        <polygon points="554,340 604,160 654,340" fill="${gold}"/>
+        <polygon points="664,340 700,190 740,340" fill="${gold}"/>
+        <circle cx="420" cy="385" r="22" fill="#E63946"/>
+        <circle cx="512" cy="385" r="26" fill="#3B82F6"/>
+        <circle cx="604" cy="385" r="22" fill="#9D4EDD"/>
       </g>
-      <!-- Gold drops dripping -->
-      <ellipse cx="310" cy="470" rx="10" ry="18" fill="${gold}"/>
-      <ellipse cx="310" cy="470" rx="4" ry="6" fill="${white}" opacity="0.6"/>
-      <ellipse cx="600" cy="480" rx="12" ry="22" fill="${gold}"/>
-      <ellipse cx="600" cy="480" rx="5" ry="8" fill="${white}" opacity="0.6"/>
-      <ellipse cx="420" cy="445" rx="8" ry="15" fill="${gold}"/>
-      <ellipse cx="730" cy="465" rx="10" ry="20" fill="${gold}"/>
+      <!-- Gold drops -->
+      <ellipse cx="300" cy="480" rx="16" ry="26" fill="${gold}"/>
+      <ellipse cx="600" cy="490" rx="18" ry="30" fill="${gold}"/>
+      <ellipse cx="420" cy="455" rx="14" ry="22" fill="${gold}"/>
+      <ellipse cx="730" cy="475" rx="16" ry="26" fill="${gold}"/>
     `);
   }
   if (hat === "cowboy") {
-    // Wide brim + tall dome + band
     return svg(`
-      <!-- Dome -->
-      <ellipse cx="512" cy="340" rx="120" ry="100" fill="${hatColor}"/>
-      <!-- Indent on crown -->
-      <rect x="472" y="270" width="80" height="40" rx="20" fill="${hatDark}"/>
-      <!-- Wide brim -->
-      <ellipse cx="512" cy="410" rx="280" ry="36" fill="${hatColor}"/>
-      <ellipse cx="512" cy="420" rx="280" ry="30" fill="${hatDark}"/>
-      <!-- Band -->
-      <rect x="390" y="360" width="244" height="22" fill="${hatDark}"/>
-      <!-- Star on band -->
-      <polygon points="512,362 517,375 530,375 520,383 524,396 512,389 500,396 504,383 494,375 507,375"
-               fill="${gold}"/>
+      <ellipse cx="512" cy="340" rx="150" ry="120" fill="${hatColor}"/>
+      <rect x="462" y="260" width="100" height="50" rx="24" fill="${hatDark}"/>
+      <ellipse cx="512" cy="410" rx="320" ry="50" fill="${hatColor}"/>
+      <ellipse cx="512" cy="424" rx="320" ry="40" fill="${hatDark}"/>
+      <rect x="380" y="360" width="264" height="30" fill="${hatDark}"/>
+      <polygon points="512,360 520,378 540,378 525,390 530,408 512,398 494,408 499,390 484,378 504,378" fill="${gold}"/>
     `);
   }
   if (hat === "top_hat") {
     return svg(`
-      <!-- Tall cylinder -->
-      <rect x="400" y="150" width="224" height="240" fill="${black}"/>
-      <!-- Band -->
-      <rect x="400" y="340" width="224" height="30" fill="${hatColor}"/>
-      <!-- Brim -->
-      <rect x="330" y="380" width="364" height="28" rx="4" fill="${black}"/>
-      <!-- Highlight stripe on cylinder -->
-      <rect x="410" y="160" width="10" height="180" fill="#3A3A3A"/>
+      <rect x="390" y="130" width="244" height="260" fill="${black}"/>
+      <rect x="390" y="340" width="244" height="38" fill="${hatColor}"/>
+      <rect x="310" y="380" width="404" height="40" rx="6" fill="${black}"/>
+      <rect x="400" y="140" width="14" height="200" fill="#3A3A3A"/>
     `);
   }
   if (hat === "beanie") {
     return svg(`
-      <!-- Beanie dome -->
-      <path d="M 270 400 Q 270 180 512 170 Q 754 180 754 400 Z" fill="${hatColor}"/>
-      <!-- Fold band -->
-      <rect x="270" y="370" width="484" height="45" fill="${hatDark}"/>
-      <!-- Knit ridges -->
-      <line x1="330" y1="200" x2="340" y2="370" stroke="${hatDark}" stroke-width="4"/>
-      <line x1="420" y1="180" x2="425" y2="370" stroke="${hatDark}" stroke-width="4"/>
-      <line x1="512" y1="175" x2="512" y2="370" stroke="${hatDark}" stroke-width="4"/>
-      <line x1="604" y1="180" x2="599" y2="370" stroke="${hatDark}" stroke-width="4"/>
-      <line x1="694" y1="200" x2="684" y2="370" stroke="${hatDark}" stroke-width="4"/>
-      <!-- Pom-pom -->
-      <circle cx="512" cy="155" r="34" fill="${white}"/>
-      <circle cx="500" cy="140" r="12" fill="#DDDDDD"/>
+      <path d="M 250 410 Q 250 160 512 150 Q 774 160 774 410 Z" fill="${hatColor}"/>
+      <rect x="250" y="375" width="524" height="55" fill="${hatDark}"/>
+      <circle cx="512" cy="140" r="40" fill="${white}"/>
+      <circle cx="498" cy="122" r="14" fill="#DDDDDD"/>
     `);
   }
   if (hat === "baseball") {
     return svg(`
-      <!-- Dome -->
-      <ellipse cx="512" cy="320" rx="170" ry="110" fill="${hatColor}"/>
-      <!-- Brim extending to the LEFT (classic cap pose) -->
-      <path d="M 360 380 Q 150 390 100 380 L 100 410 Q 150 420 360 410 Z" fill="${hatColor}"/>
-      <path d="M 360 390 Q 150 400 100 390 L 100 410 Q 150 420 360 410 Z" fill="${hatDark}"/>
-      <!-- Button on top -->
-      <circle cx="512" cy="220" r="10" fill="${hatDark}"/>
-      <!-- Front logo highlight -->
-      <circle cx="512" cy="310" r="24" fill="${hatDark}"/>
-      <circle cx="512" cy="310" r="14" fill="${white}"/>
+      <ellipse cx="512" cy="320" rx="190" ry="130" fill="${hatColor}"/>
+      <path d="M 340 380 Q 130 395 70 380 L 70 420 Q 130 430 340 410 Z" fill="${hatColor}"/>
+      <path d="M 340 400 Q 130 410 70 400 L 70 420 Q 130 430 340 410 Z" fill="${hatDark}"/>
+      <circle cx="512" cy="215" r="14" fill="${hatDark}"/>
+      <circle cx="512" cy="310" r="36" fill="${hatDark}"/>
+      <circle cx="512" cy="310" r="22" fill="${white}"/>
     `);
   }
   if (hat === "chef") {
     return svg(`
-      <!-- Puffy top (3 pillows) -->
-      <circle cx="420" cy="230" r="80" fill="${white}"/>
-      <circle cx="512" cy="200" r="90" fill="${white}"/>
-      <circle cx="604" cy="230" r="80" fill="${white}"/>
-      <!-- Mushroom fold -->
-      <rect x="370" y="260" width="284" height="120" rx="30" fill="${white}"/>
-      <!-- Band -->
-      <rect x="370" y="370" width="284" height="30" fill="#DDDDDD"/>
-      <!-- Subtle shading -->
-      <path d="M 370 320 Q 512 280 654 320" stroke="#CCCCCC" stroke-width="4" fill="none"/>
+      <circle cx="420" cy="220" r="100" fill="${white}"/>
+      <circle cx="512" cy="180" r="115" fill="${white}"/>
+      <circle cx="604" cy="220" r="100" fill="${white}"/>
+      <rect x="360" y="260" width="304" height="150" rx="40" fill="${white}"/>
+      <rect x="360" y="380" width="304" height="40" fill="#DDDDDD"/>
     `);
   }
   if (hat === "party") {
     return svg(`
-      <!-- Cone -->
-      <polygon points="512,120 380,410 644,410" fill="${hatColor}"/>
-      <!-- Stripes -->
-      <polygon points="512,120 478,180 545,180" fill="${white}"/>
-      <polygon points="490,230 462,295 562,295 534,230" fill="${white}"/>
-      <polygon points="442,340 416,410 608,410 582,340" fill="${white}"/>
-      <!-- Band at base -->
-      <rect x="360" y="400" width="304" height="18" fill="${hatDark}"/>
-      <!-- Pom-pom -->
-      <circle cx="512" cy="114" r="26" fill="${gold}"/>
-      <circle cx="512" cy="114" r="14" fill="${white}" opacity="0.5"/>
-    `);
-  }
-  if (hat === "headphones") {
-    return svg(`
-      <!-- Arc band -->
-      <path d="M 200 420 Q 512 100 824 420" fill="none" stroke="${black}" stroke-width="32"/>
-      <path d="M 200 420 Q 512 110 824 420" fill="none" stroke="#3A3A3A" stroke-width="12"/>
-      <!-- Ear cups -->
-      <circle cx="200" cy="420" r="80" fill="${black}"/>
-      <circle cx="200" cy="420" r="55" fill="${hatColor}"/>
-      <circle cx="200" cy="420" r="55" fill="none" stroke="${black}" stroke-width="4"/>
-      <circle cx="824" cy="420" r="80" fill="${black}"/>
-      <circle cx="824" cy="420" r="55" fill="${hatColor}"/>
-      <circle cx="824" cy="420" r="55" fill="none" stroke="${black}" stroke-width="4"/>
-      <!-- Brand dot -->
-      <circle cx="200" cy="420" r="12" fill="${white}"/>
-      <circle cx="824" cy="420" r="12" fill="${white}"/>
+      <polygon points="512,100 370,420 654,420" fill="${hatColor}"/>
+      <polygon points="512,100 472,175 552,175" fill="${white}"/>
+      <polygon points="486,225 455,295 570,295 538,225" fill="${white}"/>
+      <polygon points="434,350 405,420 619,420 590,350" fill="${white}"/>
+      <rect x="350" y="405" width="324" height="24" fill="${hatDark}"/>
+      <circle cx="512" cy="92" r="34" fill="${gold}"/>
     `);
   }
   if (hat === "halo") {
+    // SOLID gold ellipse (disc) floating above — guaranteed to render at preview
     return svg(`
-      <!-- Bright gold ring floating above -->
-      <ellipse cx="512" cy="160" rx="180" ry="36" fill="none" stroke="${gold}" stroke-width="20"/>
-      <ellipse cx="512" cy="160" rx="180" ry="36" fill="none" stroke="#FFF4B8" stroke-width="8"/>
-      <!-- Glow halo -->
-      <ellipse cx="512" cy="160" rx="220" ry="50" fill="none" stroke="${gold}" stroke-width="4" opacity="0.4"/>
+      <ellipse cx="512" cy="170" rx="200" ry="50" fill="${gold}"/>
+      <ellipse cx="512" cy="170" rx="200" ry="50" fill="none" stroke="${goldDark}" stroke-width="8"/>
+      <ellipse cx="512" cy="160" rx="170" ry="28" fill="#FFF4B8" opacity="0.6"/>
+      <!-- Glow -->
+      <ellipse cx="512" cy="170" rx="240" ry="62" fill="none" stroke="${gold}" stroke-width="10" opacity="0.4"/>
     `);
   }
   if (hat === "devil_horns") {
     const horn = "#8B0000", hornLight = "#C94A3F";
     return svg(`
-      <!-- Left horn (curved outward) -->
-      <path d="M 380 400 Q 300 280 330 180 Q 380 240 420 400 Z" fill="${horn}" stroke="${hornLight}" stroke-width="5"/>
-      <!-- Right horn -->
-      <path d="M 644 400 Q 724 280 694 180 Q 644 240 604 400 Z" fill="${horn}" stroke="${hornLight}" stroke-width="5"/>
-      <!-- Horn highlights -->
-      <path d="M 336 300 Q 355 240 340 190" stroke="${hornLight}" stroke-width="6" fill="none"/>
-      <path d="M 688 300 Q 669 240 684 190" stroke="${hornLight}" stroke-width="6" fill="none"/>
+      <path d="M 370 410 Q 280 260 330 150 Q 400 230 440 410 Z" fill="${horn}" stroke="${hornLight}" stroke-width="8"/>
+      <path d="M 654 410 Q 744 260 694 150 Q 624 230 584 410 Z" fill="${horn}" stroke="${hornLight}" stroke-width="8"/>
     `);
   }
   if (hat === "tinfoil") {
     return svg(`
-      <!-- Crumpled silvery cone -->
-      <polygon points="512,140 355,400 669,400" fill="#B0B0B0"/>
-      <!-- Highlight stripe -->
-      <polygon points="512,140 405,400 470,400 480,240" fill="#E8E8E8"/>
-      <!-- Crumpled details -->
-      <polygon points="420,310 450,320 430,340" fill="#888"/>
-      <polygon points="570,280 600,295 580,315" fill="#888"/>
-      <polygon points="490,240 510,250 495,260" fill="#888"/>
-      <!-- Band at bottom -->
-      <rect x="330" y="390" width="364" height="25" fill="#999"/>
-      <rect x="330" y="410" width="364" height="12" fill="#666"/>
-      <!-- Antenna -->
-      <line x1="512" y1="140" x2="512" y2="70" stroke="#666" stroke-width="5"/>
-      <circle cx="512" cy="64" r="10" fill="#333"/>
-      <circle cx="512" cy="64" r="4" fill="${gold}"/>
+      <polygon points="512,120 340,410 684,410" fill="#B0B0B0"/>
+      <polygon points="512,120 395,410 465,410 475,220" fill="#E8E8E8"/>
+      <polygon points="420,320 455,335 435,355" fill="#777"/>
+      <polygon points="570,290 605,305 585,325" fill="#777"/>
+      <rect x="315" y="395" width="394" height="35" fill="#999"/>
+      <rect x="315" y="420" width="394" height="16" fill="#666"/>
+      <line x1="512" y1="120" x2="512" y2="50" stroke="#555" stroke-width="8"/>
+      <circle cx="512" cy="42" r="16" fill="#333"/>
+      <circle cx="512" cy="42" r="6" fill="${gold}"/>
     `);
   }
   if (hat === "jester") {
-    // Multicolored jester hat with drooping horns + bells
-    const red = "#E63946", yellow = "#F4D04D", greenColor = "#27AE60";
+    const red = "#E63946", yellow = "#F4D04D", green = "#27AE60";
     return svg(`
-      <!-- Base band -->
-      <rect x="330" y="360" width="364" height="55" fill="${yellow}"/>
-      <rect x="330" y="405" width="364" height="15" fill="${goldDark}"/>
-      <!-- Red diamond pattern on band -->
-      <polygon points="380,360 405,390 380,415 355,390" fill="${red}"/>
-      <polygon points="460,360 485,390 460,415 435,390" fill="${red}"/>
-      <polygon points="540,360 565,390 540,415 515,390" fill="${red}"/>
-      <polygon points="620,360 645,390 620,415 595,390" fill="${red}"/>
-      <!-- Left drooping horn (red) -->
-      <path d="M 400 360 Q 240 230 200 380 Q 220 400 250 380 Q 300 330 400 360 Z" fill="${red}"/>
-      <!-- Middle horn (yellow, straight up then drooping right) -->
-      <path d="M 490 360 Q 480 180 560 200 Q 570 300 540 360 Z" fill="${yellow}"/>
-      <!-- Right horn (green) -->
-      <path d="M 624 360 Q 784 230 824 380 Q 804 400 774 380 Q 724 330 624 360 Z" fill="${greenColor}"/>
-      <!-- Bells at tips -->
-      <circle cx="210" cy="380" r="26" fill="${gold}"/>
-      <circle cx="210" cy="380" r="26" fill="none" stroke="${goldDark}" stroke-width="3"/>
-      <rect x="206" y="400" width="8" height="14" fill="${goldDark}"/>
-      <circle cx="550" cy="200" r="22" fill="${gold}"/>
-      <circle cx="550" cy="200" r="22" fill="none" stroke="${goldDark}" stroke-width="3"/>
-      <rect x="546" y="218" width="8" height="12" fill="${goldDark}"/>
-      <circle cx="814" cy="380" r="26" fill="${gold}"/>
-      <circle cx="814" cy="380" r="26" fill="none" stroke="${goldDark}" stroke-width="3"/>
-      <rect x="810" y="400" width="8" height="14" fill="${goldDark}"/>
+      <rect x="310" y="360" width="404" height="60" fill="${yellow}"/>
+      <rect x="310" y="410" width="404" height="18" fill="${goldDark}"/>
+      <polygon points="370,360 400,396 370,422 340,396" fill="${red}"/>
+      <polygon points="450,360 480,396 450,422 420,396" fill="${red}"/>
+      <polygon points="530,360 560,396 530,422 500,396" fill="${red}"/>
+      <polygon points="610,360 640,396 610,422 580,396" fill="${red}"/>
+      <path d="M 390 360 Q 200 210 160 380 Q 180 410 220 385 Q 280 320 390 360 Z" fill="${red}"/>
+      <path d="M 490 360 Q 475 160 570 190 Q 580 310 540 360 Z" fill="${yellow}"/>
+      <path d="M 634 360 Q 824 210 864 380 Q 844 410 804 385 Q 744 320 634 360 Z" fill="${green}"/>
+      <circle cx="170" cy="380" r="30" fill="${gold}" stroke="${goldDark}" stroke-width="5"/>
+      <rect x="165" y="405" width="10" height="16" fill="${goldDark}"/>
+      <circle cx="560" cy="190" r="26" fill="${gold}" stroke="${goldDark}" stroke-width="5"/>
+      <circle cx="854" cy="380" r="30" fill="${gold}" stroke="${goldDark}" stroke-width="5"/>
+      <rect x="849" y="405" width="10" height="16" fill="${goldDark}"/>
     `);
   }
   return "";
 }
 
 // ────────────────────────────────────────────────────────────────
-// LAYER: HELD ITEMS (VARIES per regen) — shown in right claw
+// HELD ITEMS — all 200px+ at 1024, positioned at right claw
 // ────────────────────────────────────────────────────────────────
 type HeldItem =
   | "none" | "money_bag" | "diamond" | "rocket" | "cash_stack"
-  | "green_candle" | "money_printer" | "trophy" | "coffee" | "laptop"
-  | "briefcase" | "sword" | "gm_bubble";
+  | "green_candle" | "trophy" | "coffee" | "laptop" | "briefcase"
+  | "gm_bubble";
 
 function pickItem(h: Buffer): HeldItem {
   const v = h[7] % 100;
   if (v < 55) return "none";
-  if (v < 63) return "money_bag";
-  if (v < 70) return "diamond";
-  if (v < 76) return "coffee";
-  if (v < 81) return "cash_stack";
-  if (v < 86) return "laptop";
-  if (v < 90) return "briefcase";
-  if (v < 93) return "trophy";
-  if (v < 96) return "green_candle";
-  if (v < 98) return "rocket";
-  if (v < 99) return "money_printer";
+  if (v < 64) return "money_bag";
+  if (v < 71) return "diamond";
+  if (v < 77) return "coffee";
+  if (v < 83) return "cash_stack";
+  if (v < 88) return "laptop";
+  if (v < 92) return "briefcase";
+  if (v < 95) return "trophy";
+  if (v < 97) return "green_candle";
+  if (v < 99) return "rocket";
   return "gm_bubble";
 }
 
 function itemSVG(item: HeldItem): string {
   if (item === "none") return "";
-  // Items positioned in right claw area
-  const cx = 730, cy = 280;
+  const cx = 760, cy = 280;
   const gold = "#FFD700", goldDark = "#C89B0A", green = "#2EA040", white = "#FFFFFF";
   const black = "#1A1A1A";
 
   if (item === "money_bag") {
     const bag = "#8B4513", bagDark = "#5C2C0A";
     return svg(`
-      <!-- Bag body -->
-      <ellipse cx="${cx}" cy="${cy + 40}" rx="90" ry="100" fill="${bag}"/>
-      <ellipse cx="${cx}" cy="${cy + 40}" rx="90" ry="100" fill="none" stroke="${bagDark}" stroke-width="4"/>
-      <!-- Shadow on right -->
-      <ellipse cx="${cx + 30}" cy="${cy + 60}" rx="60" ry="80" fill="${bagDark}" opacity="0.3"/>
-      <!-- Drawstring -->
-      <rect x="${cx - 40}" y="${cy - 70}" width="80" height="25" fill="${bagDark}"/>
-      <path d="M ${cx - 40} ${cy - 70} Q ${cx - 55} ${cy - 95} ${cx - 25} ${cy - 105}" stroke="${bagDark}" stroke-width="5" fill="none"/>
-      <path d="M ${cx + 40} ${cy - 70} Q ${cx + 55} ${cy - 95} ${cx + 25} ${cy - 105}" stroke="${bagDark}" stroke-width="5" fill="none"/>
-      <!-- Big $ on bag -->
-      ${dollarSign(cx, cy + 50, 70, green)}
+      <ellipse cx="${cx}" cy="${cy + 50}" rx="110" ry="120" fill="${bag}"/>
+      <ellipse cx="${cx + 35}" cy="${cy + 70}" rx="70" ry="90" fill="${bagDark}" opacity="0.35"/>
+      <rect x="${cx - 50}" y="${cy - 80}" width="100" height="32" fill="${bagDark}"/>
+      <path d="M ${cx - 50} ${cy - 80} Q ${cx - 70} ${cy - 110} ${cx - 30} ${cy - 125}" stroke="${bagDark}" stroke-width="8" fill="none"/>
+      <path d="M ${cx + 50} ${cy - 80} Q ${cx + 70} ${cy - 110} ${cx + 30} ${cy - 125}" stroke="${bagDark}" stroke-width="8" fill="none"/>
+      ${dollarSign(cx, cy + 60, 90, green)}
     `);
   }
   if (item === "diamond") {
     const dia = "#7FE6FF", shine = "#FFFFFF", deep = "#3088B3";
     return svg(`
-      <!-- Big rhombus diamond -->
-      <polygon points="${cx},${cy - 90} ${cx + 80},${cy + 10} ${cx},${cy + 110} ${cx - 80},${cy + 10}" fill="${dia}"/>
-      <!-- Facet highlights -->
-      <polygon points="${cx},${cy - 90} ${cx + 80},${cy + 10} ${cx + 30},${cy + 10} ${cx - 20},${cy - 30}" fill="${shine}"/>
-      <polygon points="${cx},${cy - 90} ${cx - 80},${cy + 10} ${cx - 30},${cy + 10} ${cx + 20},${cy - 30}" fill="#B0F0FF"/>
-      <polygon points="${cx - 80},${cy + 10} ${cx},${cy + 110} ${cx + 80},${cy + 10}" fill="none" stroke="${deep}" stroke-width="4"/>
-      <!-- Sparkles -->
-      <g fill="${shine}">
-        <polygon points="${cx - 20},${cy - 60} ${cx - 12},${cy - 50} ${cx - 20},${cy - 40} ${cx - 28},${cy - 50}"/>
-        <polygon points="${cx + 45},${cy - 10} ${cx + 52},${cy - 3} ${cx + 45},${cy + 4} ${cx + 38},${cy - 3}"/>
-        <polygon points="${cx - 50},${cy + 50} ${cx - 44},${cy + 56} ${cx - 50},${cy + 62} ${cx - 56},${cy + 56}"/>
-      </g>
+      <polygon points="${cx},${cy - 110} ${cx + 100},${cy + 20} ${cx},${cy + 130} ${cx - 100},${cy + 20}"
+               fill="${dia}" stroke="${deep}" stroke-width="6"/>
+      <polygon points="${cx},${cy - 110} ${cx + 100},${cy + 20} ${cx + 40},${cy + 20} ${cx - 20},${cy - 40}" fill="${shine}"/>
+      <polygon points="${cx},${cy - 110} ${cx - 100},${cy + 20} ${cx - 40},${cy + 20} ${cx + 20},${cy - 40}" fill="#B0F0FF"/>
+      <polygon points="${cx - 15},${cy - 70} ${cx - 5},${cy - 60} ${cx - 15},${cy - 50} ${cx - 25},${cy - 60}" fill="${shine}"/>
     `);
   }
   if (item === "rocket") {
-    const body = "#E8E8E8", stripe = "#E63946", flame = "#FF8800", flameHot = "#FFDD00", fin = "#BB0000";
+    const body = "#E8E8E8", stripe = "#E63946", flame = "#FF8800", flameHot = "#FFDD00", fin = "#8B0000";
     return svg(`
-      <g transform="translate(0, -40)">
-        <!-- Nose cone -->
-        <polygon points="${cx},${cy - 100} ${cx - 45},${cy - 10} ${cx + 45},${cy - 10}" fill="${stripe}"/>
-        <!-- Body -->
-        <rect x="${cx - 45}" y="${cy - 10}" width="90" height="120" fill="${body}"/>
-        <!-- Window -->
-        <circle cx="${cx}" cy="${cy + 25}" r="18" fill="#3B82F6"/>
-        <circle cx="${cx}" cy="${cy + 25}" r="18" fill="none" stroke="${black}" stroke-width="3"/>
-        <!-- Stripe -->
-        <rect x="${cx - 45}" y="${cy + 70}" width="90" height="12" fill="${stripe}"/>
-        <!-- Fins -->
-        <polygon points="${cx - 45},${cy + 70} ${cx - 80},${cy + 130} ${cx - 45},${cy + 110}" fill="${fin}"/>
-        <polygon points="${cx + 45},${cy + 70} ${cx + 80},${cy + 130} ${cx + 45},${cy + 110}" fill="${fin}"/>
-        <!-- Flame -->
-        <polygon points="${cx - 40},${cy + 110} ${cx},${cy + 220} ${cx + 40},${cy + 110}" fill="${flame}"/>
-        <polygon points="${cx - 20},${cy + 110} ${cx},${cy + 180} ${cx + 20},${cy + 110}" fill="${flameHot}"/>
-      </g>
+      <polygon points="${cx},${cy - 140} ${cx - 55},${cy - 30} ${cx + 55},${cy - 30}" fill="${stripe}"/>
+      <rect x="${cx - 55}" y="${cy - 30}" width="110" height="150" fill="${body}" stroke="${black}" stroke-width="4"/>
+      <circle cx="${cx}" cy="${cy + 15}" r="24" fill="#3B82F6" stroke="${black}" stroke-width="5"/>
+      <rect x="${cx - 55}" y="${cy + 85}" width="110" height="18" fill="${stripe}"/>
+      <polygon points="${cx - 55},${cy + 85} ${cx - 100},${cy + 160} ${cx - 55},${cy + 130}" fill="${fin}"/>
+      <polygon points="${cx + 55},${cy + 85} ${cx + 100},${cy + 160} ${cx + 55},${cy + 130}" fill="${fin}"/>
+      <polygon points="${cx - 48},${cy + 120} ${cx},${cy + 250} ${cx + 48},${cy + 120}" fill="${flame}"/>
+      <polygon points="${cx - 24},${cy + 120} ${cx},${cy + 210} ${cx + 24},${cy + 120}" fill="${flameHot}"/>
     `);
   }
   if (item === "cash_stack") {
     return svg(`
-      <!-- Back bills offset -->
-      <rect x="${cx - 95}" y="${cy - 20}" width="180" height="70" fill="${green}" transform="rotate(-4 ${cx - 5} ${cy + 15})"/>
-      <rect x="${cx - 90}" y="${cy - 15}" width="180" height="75" fill="#3CB054" transform="rotate(3 ${cx} ${cy + 20})"/>
-      <!-- Top bill -->
-      <rect x="${cx - 85}" y="${cy - 10}" width="180" height="80" rx="4" fill="${green}"/>
-      <rect x="${cx - 85}" y="${cy - 10}" width="180" height="80" rx="4" fill="none" stroke="#1F6E2E" stroke-width="3"/>
-      <!-- Big $ -->
-      ${dollarSign(cx + 5, cy + 30, 58, white)}
-      <!-- Corner numbers -->
-      <rect x="${cx - 78}" y="${cy - 4}" width="16" height="12" fill="${white}" opacity="0.9"/>
-      <rect x="${cx + 70}" y="${cy + 52}" width="16" height="12" fill="${white}" opacity="0.9"/>
+      <rect x="${cx - 100}" y="${cy - 25}" width="200" height="80" fill="${green}" transform="rotate(-5 ${cx} ${cy + 15})"/>
+      <rect x="${cx - 95}" y="${cy - 18}" width="200" height="85" fill="#3CB054" transform="rotate(4 ${cx} ${cy + 24})"/>
+      <rect x="${cx - 90}" y="${cy - 10}" width="200" height="90" rx="6" fill="${green}" stroke="#1F6E2E" stroke-width="5"/>
+      ${dollarSign(cx + 5, cy + 35, 70, white)}
     `);
   }
   if (item === "green_candle") {
-    // Trading chart green candle — moon shot
     return svg(`
-      <!-- Wick -->
-      <line x1="${cx}" y1="${cy - 110}" x2="${cx}" y2="${cy + 130}" stroke="#1F6E2E" stroke-width="5"/>
-      <!-- Candle body -->
-      <rect x="${cx - 40}" y="${cy - 60}" width="80" height="160" fill="${green}"/>
-      <rect x="${cx - 40}" y="${cy - 60}" width="80" height="160" fill="none" stroke="#1F6E2E" stroke-width="4"/>
-      <!-- Arrow UP -->
-      <polygon points="${cx - 30},${cy - 110} ${cx},${cy - 170} ${cx + 30},${cy - 110}" fill="${green}"/>
-      <!-- Up-only text lines (ticker-ish) -->
-      <rect x="${cx - 18}" y="${cy - 20}" width="36" height="4" fill="#1F6E2E"/>
-      <rect x="${cx - 18}" y="${cy + 5}" width="36" height="4" fill="#1F6E2E"/>
-      <rect x="${cx - 18}" y="${cy + 30}" width="36" height="4" fill="#1F6E2E"/>
-    `);
-  }
-  if (item === "money_printer") {
-    return svg(`
-      <!-- Printer body -->
-      <rect x="${cx - 90}" y="${cy}" width="180" height="100" rx="8" fill="#3A3A3A"/>
-      <rect x="${cx - 90}" y="${cy + 5}" width="180" height="20" fill="#555555"/>
-      <rect x="${cx - 80}" y="${cy + 70}" width="160" height="10" fill="#222"/>
-      <!-- Paper output slot -->
-      <rect x="${cx - 70}" y="${cy - 5}" width="140" height="10" fill="${black}"/>
-      <!-- BRRR buttons -->
-      <circle cx="${cx - 60}" cy="${cy + 55}" r="6" fill="#E63946"/>
-      <circle cx="${cx - 40}" cy="${cy + 55}" r="6" fill="${green}"/>
-      <!-- Cash flying out -->
-      <rect x="${cx - 55}" y="${cy - 75}" width="110" height="60" fill="${green}" transform="rotate(-8 ${cx} ${cy - 45})"/>
-      ${dollarSign(cx - 2, cy - 45, 40, white)}
-      <rect x="${cx - 70}" y="${cy - 140}" width="100" height="55" fill="${green}" transform="rotate(15 ${cx - 20} ${cy - 112})"/>
-      ${dollarSign(cx - 20, cy - 112, 34, white)}
+      <line x1="${cx}" y1="${cy - 140}" x2="${cx}" y2="${cy + 140}" stroke="#1F6E2E" stroke-width="10"/>
+      <rect x="${cx - 55}" y="${cy - 70}" width="110" height="170" fill="${green}" stroke="#1F6E2E" stroke-width="6"/>
+      <polygon points="${cx - 40},${cy - 140} ${cx},${cy - 200} ${cx + 40},${cy - 140}" fill="${green}" stroke="#1F6E2E" stroke-width="5"/>
     `);
   }
   if (item === "trophy") {
     return svg(`
-      <!-- Cup -->
-      <path d="M ${cx - 80} ${cy - 90} L ${cx + 80} ${cy - 90} L ${cx + 60} ${cy + 30} L ${cx - 60} ${cy + 30} Z" fill="${gold}"/>
-      <!-- Shadow -->
-      <path d="M ${cx - 80} ${cy - 90} L ${cx + 80} ${cy - 90} L ${cx + 80} ${cy - 70} L ${cx - 80} ${cy - 70} Z" fill="${goldDark}"/>
-      <!-- Handles -->
-      <path d="M ${cx - 80} ${cy - 70} Q ${cx - 130} ${cy - 50} ${cx - 90} ${cy - 10}" stroke="${gold}" stroke-width="14" fill="none"/>
-      <path d="M ${cx + 80} ${cy - 70} Q ${cx + 130} ${cy - 50} ${cx + 90} ${cy - 10}" stroke="${gold}" stroke-width="14" fill="none"/>
-      <!-- Stem -->
-      <rect x="${cx - 20}" y="${cy + 30}" width="40" height="35" fill="${goldDark}"/>
-      <!-- Base -->
-      <rect x="${cx - 60}" y="${cy + 65}" width="120" height="25" fill="${gold}"/>
-      <!-- Star on cup -->
-      <polygon points="${cx},${cy - 70} ${cx + 8},${cy - 50} ${cx + 28},${cy - 50} ${cx + 13},${cy - 35} ${cx + 19},${cy - 15} ${cx},${cy - 28} ${cx - 19},${cy - 15} ${cx - 13},${cy - 35} ${cx - 28},${cy - 50} ${cx - 8},${cy - 50}" fill="${white}"/>
+      <path d="M ${cx - 100} ${cy - 110} L ${cx + 100} ${cy - 110} L ${cx + 75} ${cy + 30} L ${cx - 75} ${cy + 30} Z"
+            fill="${gold}" stroke="${goldDark}" stroke-width="5"/>
+      <path d="M ${cx - 100} ${cy - 90} Q ${cx - 160} ${cy - 60} ${cx - 115} ${cy - 10}" stroke="${gold}" stroke-width="22" fill="none"/>
+      <path d="M ${cx + 100} ${cy - 90} Q ${cx + 160} ${cy - 60} ${cx + 115} ${cy - 10}" stroke="${gold}" stroke-width="22" fill="none"/>
+      <rect x="${cx - 28}" y="${cy + 30}" width="56" height="40" fill="${goldDark}"/>
+      <rect x="${cx - 80}" y="${cy + 70}" width="160" height="32" fill="${gold}"/>
+      <polygon points="${cx},${cy - 85} ${cx + 12},${cy - 60} ${cx + 40},${cy - 60} ${cx + 18},${cy - 40} ${cx + 28},${cy - 10} ${cx},${cy - 28} ${cx - 28},${cy - 10} ${cx - 18},${cy - 40} ${cx - 40},${cy - 60} ${cx - 12},${cy - 60}" fill="${white}"/>
     `);
   }
   if (item === "coffee") {
-    const mug = "#6B3410", mugDark = "#3A1E08", rim = "#8B5A30", steam = "#E8E8E8";
+    const mug = "#6B3410", mugDark = "#3A1E08", rim = "#8B5A30", steam = "#FFFFFF";
     return svg(`
-      <!-- Mug body -->
-      <rect x="${cx - 60}" y="${cy - 30}" width="120" height="120" rx="10" fill="${mug}"/>
-      <rect x="${cx - 60}" y="${cy - 30}" width="120" height="25" fill="${rim}"/>
-      <rect x="${cx - 60}" y="${cy + 80}" width="120" height="10" fill="${mugDark}"/>
-      <!-- Handle -->
-      <path d="M ${cx + 60} ${cy} Q ${cx + 130} ${cy + 15} ${cx + 60} ${cy + 60}" stroke="${mug}" stroke-width="20" fill="none"/>
-      <path d="M ${cx + 60} ${cy} Q ${cx + 130} ${cy + 15} ${cx + 60} ${cy + 60}" stroke="${mugDark}" stroke-width="6" fill="none"/>
-      <!-- Coffee surface -->
-      <ellipse cx="${cx}" cy="${cy - 18}" rx="52" ry="10" fill="#2A1400"/>
-      <!-- Steam wisps -->
-      <path d="M ${cx - 20} ${cy - 80} Q ${cx - 10} ${cy - 110} ${cx - 20} ${cy - 140}" stroke="${steam}" stroke-width="8" fill="none" opacity="0.8"/>
-      <path d="M ${cx + 10} ${cy - 80} Q ${cx + 20} ${cy - 110} ${cx + 10} ${cy - 140}" stroke="${steam}" stroke-width="8" fill="none" opacity="0.8"/>
-      <path d="M ${cx - 5} ${cy - 95} Q ${cx + 5} ${cy - 120} ${cx - 5} ${cy - 145}" stroke="${steam}" stroke-width="6" fill="none" opacity="0.6"/>
+      <rect x="${cx - 75}" y="${cy - 40}" width="150" height="150" rx="12" fill="${mug}"/>
+      <rect x="${cx - 75}" y="${cy - 40}" width="150" height="32" fill="${rim}"/>
+      <path d="M ${cx + 75} ${cy} Q ${cx + 160} ${cy + 15} ${cx + 75} ${cy + 75}" stroke="${mug}" stroke-width="30" fill="none"/>
+      <path d="M ${cx + 75} ${cy} Q ${cx + 160} ${cy + 15} ${cx + 75} ${cy + 75}" stroke="${mugDark}" stroke-width="12" fill="none"/>
+      <ellipse cx="${cx}" cy="${cy - 22}" rx="65" ry="12" fill="#2A1400"/>
+      <path d="M ${cx - 20} ${cy - 95} Q ${cx - 5} ${cy - 135} ${cx - 20} ${cy - 175}" stroke="${steam}" stroke-width="14" fill="none" opacity="0.85"/>
+      <path d="M ${cx + 20} ${cy - 95} Q ${cx + 35} ${cy - 135} ${cx + 20} ${cy - 175}" stroke="${steam}" stroke-width="14" fill="none" opacity="0.85"/>
     `);
   }
   if (item === "laptop") {
     return svg(`
-      <!-- Back screen -->
-      <rect x="${cx - 90}" y="${cy - 80}" width="180" height="120" rx="6" fill="#2A2A2A"/>
-      <rect x="${cx - 82}" y="${cy - 72}" width="164" height="104" fill="#4AC8FF"/>
-      <!-- Code-ish lines on screen -->
-      <rect x="${cx - 75}" y="${cy - 60}" width="40" height="6" fill="${white}"/>
-      <rect x="${cx - 75}" y="${cy - 48}" width="70" height="6" fill="${white}"/>
-      <rect x="${cx - 75}" y="${cy - 36}" width="55" height="6" fill="${white}"/>
-      <rect x="${cx - 75}" y="${cy - 24}" width="80" height="6" fill="${white}"/>
-      <rect x="${cx - 75}" y="${cy - 12}" width="45" height="6" fill="${white}"/>
-      <rect x="${cx - 75}" y="${cy}" width="60" height="6" fill="${white}"/>
-      <!-- Base / keyboard -->
-      <rect x="${cx - 105}" y="${cy + 40}" width="210" height="28" rx="4" fill="#1A1A1A"/>
-      <rect x="${cx - 100}" y="${cy + 45}" width="200" height="8" fill="#333"/>
+      <rect x="${cx - 110}" y="${cy - 100}" width="220" height="150" rx="8" fill="#2A2A2A"/>
+      <rect x="${cx - 100}" y="${cy - 90}" width="200" height="130" fill="#4AC8FF"/>
+      <rect x="${cx - 92}" y="${cy - 78}" width="50" height="10" fill="${white}"/>
+      <rect x="${cx - 92}" y="${cy - 60}" width="90" height="10" fill="${white}"/>
+      <rect x="${cx - 92}" y="${cy - 42}" width="70" height="10" fill="${white}"/>
+      <rect x="${cx - 92}" y="${cy - 24}" width="100" height="10" fill="${white}"/>
+      <rect x="${cx - 92}" y="${cy - 6}" width="60" height="10" fill="${white}"/>
+      <rect x="${cx - 92}" y="${cy + 12}" width="80" height="10" fill="${white}"/>
+      <rect x="${cx - 130}" y="${cy + 50}" width="260" height="36" rx="6" fill="#1A1A1A"/>
     `);
   }
   if (item === "briefcase") {
     const leather = "#3A1E08", strap = "#1A0A00", lock = gold;
     return svg(`
-      <!-- Handle -->
-      <rect x="${cx - 40}" y="${cy - 100}" width="80" height="22" rx="10" fill="${strap}"/>
-      <rect x="${cx - 34}" y="${cy - 92}" width="68" height="6" fill="${leather}"/>
-      <!-- Case body -->
-      <rect x="${cx - 95}" y="${cy - 78}" width="190" height="140" rx="10" fill="${leather}"/>
-      <!-- Seam -->
-      <rect x="${cx - 95}" y="${cy}" width="190" height="8" fill="${strap}"/>
-      <!-- Corners -->
-      <rect x="${cx - 95}" y="${cy - 78}" width="14" height="140" fill="${strap}" opacity="0.4"/>
-      <rect x="${cx + 81}" y="${cy - 78}" width="14" height="140" fill="${strap}" opacity="0.4"/>
-      <!-- Lock -->
-      <rect x="${cx - 14}" y="${cy - 10}" width="28" height="22" rx="4" fill="${lock}"/>
-      <circle cx="${cx}" cy="${cy + 1}" r="5" fill="${strap}"/>
-    `);
-  }
-  if (item === "sword") {
-    const blade = "#E0E0E8", edge = "#FFFFFF", hilt = "#8B4513", grip = "#3A1E08";
-    return svg(`
-      <!-- Blade -->
-      <rect x="${cx - 10}" y="${cy - 150}" width="20" height="190" fill="${blade}"/>
-      <polygon points="${cx},${cy - 180} ${cx - 10},${cy - 150} ${cx + 10},${cy - 150}" fill="${edge}"/>
-      <line x1="${cx - 2}" y1="${cy - 150}" x2="${cx - 2}" y2="${cy + 40}" stroke="${edge}" stroke-width="4"/>
-      <!-- Crossguard -->
-      <rect x="${cx - 65}" y="${cy + 35}" width="130" height="20" fill="${hilt}"/>
-      <!-- Grip -->
-      <rect x="${cx - 14}" y="${cy + 55}" width="28" height="60" fill="${grip}"/>
-      <!-- Pommel -->
-      <circle cx="${cx}" cy="${cy + 125}" r="16" fill="${hilt}"/>
+      <rect x="${cx - 50}" y="${cy - 125}" width="100" height="28" rx="12" fill="${strap}"/>
+      <rect x="${cx - 40}" y="${cy - 117}" width="80" height="10" fill="${leather}"/>
+      <rect x="${cx - 110}" y="${cy - 95}" width="220" height="170" rx="12" fill="${leather}"/>
+      <rect x="${cx - 110}" y="${cy - 8}" width="220" height="12" fill="${strap}"/>
+      <rect x="${cx - 20}" y="${cy - 14}" width="40" height="34" rx="6" fill="${lock}" stroke="${strap}" stroke-width="3"/>
     `);
   }
   if (item === "gm_bubble") {
-    // White speech bubble with simplified GM letters (drawn as shapes)
     return svg(`
-      <!-- Bubble -->
-      <rect x="${cx - 115}" y="${cy - 80}" width="230" height="130" rx="24" fill="${white}" stroke="${black}" stroke-width="6"/>
-      <!-- Tail -->
-      <polygon points="${cx - 30},${cy + 50} ${cx - 60},${cy + 100} ${cx + 10},${cy + 50}" fill="${white}" stroke="${black}" stroke-width="6"/>
-      <polygon points="${cx - 30},${cy + 50} ${cx - 60},${cy + 100} ${cx + 10},${cy + 50}" fill="${white}"/>
-      <!-- G (C-shape) -->
-      <path d="M ${cx - 70} ${cy - 40} Q ${cx - 90} ${cy - 40} ${cx - 90} ${cy - 15} Q ${cx - 90} ${cy + 10} ${cx - 70} ${cy + 10} L ${cx - 40} ${cy + 10} L ${cx - 40} ${cy - 10} L ${cx - 55} ${cy - 10}" stroke="${black}" stroke-width="10" fill="none" stroke-linecap="round"/>
-      <!-- M (three verticals connected) -->
-      <path d="M ${cx + 10} ${cy + 10} L ${cx + 10} ${cy - 40} L ${cx + 40} ${cy - 5} L ${cx + 70} ${cy - 40} L ${cx + 70} ${cy + 10}" stroke="${black}" stroke-width="10" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+      <rect x="${cx - 135}" y="${cy - 100}" width="270" height="160" rx="28" fill="${white}" stroke="${black}" stroke-width="8"/>
+      <polygon points="${cx - 40},${cy + 55} ${cx - 80},${cy + 130} ${cx + 20},${cy + 55}"
+               fill="${white}" stroke="${black}" stroke-width="8"/>
+      <polygon points="${cx - 38},${cy + 57} ${cx - 75},${cy + 120} ${cx + 18},${cy + 57}" fill="${white}"/>
+      <!-- G -->
+      <path d="M ${cx - 80} ${cy - 55} L ${cx - 105} ${cy - 55} L ${cx - 105} ${cy + 20} L ${cx - 40} ${cy + 20} L ${cx - 40} ${cy - 10} L ${cx - 65} ${cy - 10}"
+            stroke="${black}" stroke-width="16" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- M -->
+      <path d="M ${cx + 10} ${cy + 20} L ${cx + 10} ${cy - 55} L ${cx + 45} ${cy - 15} L ${cx + 80} ${cy - 55} L ${cx + 80} ${cy + 20}"
+            stroke="${black}" stroke-width="16" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     `);
   }
   return "";
 }
 
 // ────────────────────────────────────────────────────────────────
-// LAYER: GOLD CHAIN around body (LOCKED — rarity flex)
+// GOLD CHAIN — visible chunky links + $ medallion
 // ────────────────────────────────────────────────────────────────
 function pickGoldChain(h: Buffer): boolean {
-  // Rare — locked to personality
-  return (h[14] % 12) === 0;
+  return (h[14] % 10) === 0;
 }
 
 function goldChainSVG(): string {
   const gold = "#FFD700", goldDark = "#C89B0A";
   return svg(`
-    <!-- Chain arc around body -->
-    <path d="M 260 580 Q 420 680 512 660 Q 604 680 770 580" stroke="${gold}" stroke-width="22" fill="none"/>
-    <path d="M 260 580 Q 420 680 512 660 Q 604 680 770 580" stroke="${goldDark}" stroke-width="8" fill="none"/>
-    <!-- Chain link details (small gold blobs along the path) -->
-    <circle cx="300" cy="610" r="12" fill="${gold}" stroke="${goldDark}" stroke-width="2"/>
-    <circle cx="360" cy="640" r="12" fill="${gold}" stroke="${goldDark}" stroke-width="2"/>
-    <circle cx="430" cy="662" r="12" fill="${gold}" stroke="${goldDark}" stroke-width="2"/>
-    <circle cx="600" cy="662" r="12" fill="${gold}" stroke="${goldDark}" stroke-width="2"/>
-    <circle cx="670" cy="640" r="12" fill="${gold}" stroke="${goldDark}" stroke-width="2"/>
-    <circle cx="730" cy="610" r="12" fill="${gold}" stroke="${goldDark}" stroke-width="2"/>
-    <!-- Medallion -->
-    <circle cx="512" cy="710" r="44" fill="${gold}"/>
-    <circle cx="512" cy="710" r="44" fill="none" stroke="${goldDark}" stroke-width="5"/>
-    ${dollarSign(512, 712, 48, goldDark)}
+    <!-- Main chain arc (thick) -->
+    <path d="M 250 580 Q 420 690 512 660 Q 604 690 774 580" stroke="${gold}" stroke-width="30" fill="none"/>
+    <path d="M 250 580 Q 420 690 512 660 Q 604 690 774 580" stroke="${goldDark}" stroke-width="12" fill="none"/>
+    <!-- Link circles for texture -->
+    <circle cx="290" cy="610" r="18" fill="${gold}" stroke="${goldDark}" stroke-width="3"/>
+    <circle cx="360" cy="645" r="18" fill="${gold}" stroke="${goldDark}" stroke-width="3"/>
+    <circle cx="430" cy="668" r="18" fill="${gold}" stroke="${goldDark}" stroke-width="3"/>
+    <circle cx="600" cy="668" r="18" fill="${gold}" stroke="${goldDark}" stroke-width="3"/>
+    <circle cx="670" cy="645" r="18" fill="${gold}" stroke="${goldDark}" stroke-width="3"/>
+    <circle cx="730" cy="610" r="18" fill="${gold}" stroke="${goldDark}" stroke-width="3"/>
+    <!-- Big medallion -->
+    <circle cx="512" cy="720" r="60" fill="${gold}" stroke="${goldDark}" stroke-width="8"/>
+    ${dollarSign(512, 722, 70, goldDark)}
   `);
 }
 
 // ────────────────────────────────────────────────────────────────
-// LAYER: MOUTH + CLOWN NOSE (VARIES per regen)
+// MOUTH — big recognizable accessories only
 // ────────────────────────────────────────────────────────────────
-type Mouth = "none" | "cigarette" | "pipe" | "joint" | "gold_tooth" | "tongue" | "clown_nose";
+type Mouth = "none" | "cigarette" | "joint" | "tongue" | "clown_nose";
 
 function pickMouth(h: Buffer): Mouth {
   const v = h[12] % 100;
-  if (v < 65) return "none";
-  if (v < 75) return "cigarette";
-  if (v < 82) return "pipe";
-  if (v < 88) return "joint";
-  if (v < 93) return "gold_tooth";
-  if (v < 96) return "tongue";
+  if (v < 72) return "none";
+  if (v < 83) return "cigarette";
+  if (v < 90) return "joint";
+  if (v < 95) return "tongue";
   return "clown_nose";
 }
 
 function mouthSVG(mouth: Mouth): string {
   if (mouth === "none") return "";
-  const white = "#F5F5F5", red = "#E63946", brown = "#5C2C0A", pink = "#FF69B4";
-  const gold = "#FFD700", ember = "#FF8800", smoke = "#BFBFBF";
-
-  // Mouth protrudes from right side of face
-  const mx = 570, my = 490;
+  const white = "#F5F5F5", red = "#E63946", pink = "#FF69B4";
+  const ember = "#FF8800", smoke = "#BFBFBF";
+  const mx = 580, my = 490;
 
   if (mouth === "cigarette") {
     return svg(`
-      <rect x="${mx}" y="${my}" width="150" height="16" rx="4" fill="${white}"/>
-      <rect x="${mx + 150}" y="${my}" width="18" height="16" fill="${ember}"/>
-      <rect x="${mx + 152}" y="${my + 2}" width="14" height="12" fill="${red}"/>
-      <!-- Smoke -->
-      <circle cx="${mx + 180}" cy="${my - 30}" r="14" fill="${smoke}" opacity="0.55"/>
-      <circle cx="${mx + 210}" cy="${my - 70}" r="18" fill="${smoke}" opacity="0.4"/>
-      <circle cx="${mx + 250}" cy="${my - 120}" r="22" fill="${smoke}" opacity="0.3"/>
-    `);
-  }
-  if (mouth === "pipe") {
-    return svg(`
-      <!-- Stem -->
-      <rect x="${mx}" y="${my + 10}" width="120" height="18" rx="6" fill="${brown}"/>
-      <!-- Bowl -->
-      <rect x="${mx + 100}" y="${my - 30}" width="45" height="60" rx="8" fill="${brown}"/>
-      <!-- Tobacco glow -->
-      <rect x="${mx + 108}" y="${my - 25}" width="30" height="15" rx="4" fill="${ember}"/>
-      <circle cx="${mx + 123}" cy="${my - 18}" r="6" fill="${red}"/>
-      <!-- Smoke -->
-      <circle cx="${mx + 140}" cy="${my - 80}" r="16" fill="${smoke}" opacity="0.5"/>
-      <circle cx="${mx + 170}" cy="${my - 130}" r="20" fill="${smoke}" opacity="0.35"/>
+      <rect x="${mx}" y="${my}" width="180" height="26" rx="6" fill="${white}" stroke="#CCC" stroke-width="3"/>
+      <rect x="${mx + 180}" y="${my}" width="28" height="26" fill="${ember}"/>
+      <rect x="${mx + 184}" y="${my + 3}" width="20" height="20" fill="${red}"/>
+      <circle cx="${mx + 220}" cy="${my - 40}" r="20" fill="${smoke}" opacity="0.6"/>
+      <circle cx="${mx + 250}" cy="${my - 90}" r="26" fill="${smoke}" opacity="0.45"/>
+      <circle cx="${mx + 285}" cy="${my - 150}" r="32" fill="${smoke}" opacity="0.3"/>
     `);
   }
   if (mouth === "joint") {
     return svg(`
-      <!-- Bigger than cigarette, slightly tilted -->
-      <g transform="rotate(-6 ${mx + 60} ${my + 8})">
-        <rect x="${mx}" y="${my}" width="170" height="22" rx="6" fill="${white}"/>
-        <!-- Crinkled end -->
-        <rect x="${mx}" y="${my - 2}" width="30" height="4" fill="${white}"/>
-        <rect x="${mx}" y="${my + 22}" width="30" height="4" fill="${white}"/>
-        <!-- Ember -->
-        <rect x="${mx + 170}" y="${my}" width="22" height="22" fill="${ember}"/>
-        <rect x="${mx + 172}" y="${my + 2}" width="18" height="18" fill="${red}"/>
+      <g transform="rotate(-8 ${mx + 80} ${my + 15})">
+        <rect x="${mx}" y="${my}" width="200" height="32" rx="6" fill="${white}" stroke="#DDD" stroke-width="3"/>
+        <rect x="${mx + 200}" y="${my}" width="32" height="32" fill="${ember}"/>
+        <rect x="${mx + 204}" y="${my + 3}" width="24" height="26" fill="${red}"/>
       </g>
-      <!-- Puffy smoke rings -->
-      <circle cx="${mx + 210}" cy="${my - 40}" r="22" fill="${smoke}" opacity="0.55"/>
-      <circle cx="${mx + 210}" cy="${my - 40}" r="22" fill="none" stroke="#909090" stroke-width="3" opacity="0.5"/>
-      <circle cx="${mx + 260}" cy="${my - 95}" r="28" fill="${smoke}" opacity="0.45"/>
-      <circle cx="${mx + 260}" cy="${my - 95}" r="28" fill="none" stroke="#909090" stroke-width="3" opacity="0.4"/>
-      <circle cx="${mx + 310}" cy="${my - 160}" r="32" fill="${smoke}" opacity="0.35"/>
-    `);
-  }
-  if (mouth === "gold_tooth") {
-    return svg(`
-      <rect x="${mx - 20}" y="${my}" width="24" height="30" fill="${gold}"/>
-      <rect x="${mx - 20}" y="${my}" width="8" height="30" fill="${white}" opacity="0.4"/>
-      <rect x="${mx - 20}" y="${my}" width="24" height="30" fill="none" stroke="#C89B0A" stroke-width="2"/>
+      <circle cx="${mx + 250}" cy="${my - 60}" r="32" fill="${smoke}" opacity="0.65"/>
+      <circle cx="${mx + 250}" cy="${my - 60}" r="32" fill="none" stroke="#909090" stroke-width="5" opacity="0.6"/>
+      <circle cx="${mx + 300}" cy="${my - 130}" r="38" fill="${smoke}" opacity="0.5"/>
+      <circle cx="${mx + 300}" cy="${my - 130}" r="38" fill="none" stroke="#909090" stroke-width="5" opacity="0.5"/>
+      <circle cx="${mx + 350}" cy="${my - 200}" r="42" fill="${smoke}" opacity="0.35"/>
     `);
   }
   if (mouth === "tongue") {
     return svg(`
-      <ellipse cx="${mx}" cy="${my + 30}" rx="30" ry="42" fill="${pink}"/>
-      <line x1="${mx}" y1="${my + 10}" x2="${mx}" y2="${my + 60}" stroke="#D64A8F" stroke-width="4"/>
+      <ellipse cx="${mx - 10}" cy="${my + 40}" rx="50" ry="60" fill="${pink}" stroke="#D64A8F" stroke-width="5"/>
+      <line x1="${mx - 10}" y1="${my + 5}" x2="${mx - 10}" y2="${my + 80}" stroke="#D64A8F" stroke-width="6"/>
     `);
   }
   if (mouth === "clown_nose") {
-    // Big red nose in the center of the face
     return svg(`
-      <circle cx="512" cy="500" r="50" fill="${red}"/>
-      <circle cx="512" cy="500" r="50" fill="none" stroke="#8B0000" stroke-width="5"/>
-      <!-- Highlight -->
-      <ellipse cx="495" cy="485" rx="18" ry="12" fill="${white}" opacity="0.55"/>
+      <circle cx="512" cy="505" r="70" fill="${red}" stroke="#8B0000" stroke-width="8"/>
+      <ellipse cx="488" cy="485" rx="24" ry="16" fill="${white}" opacity="0.6"/>
     `);
   }
   return "";
 }
 
 // ────────────────────────────────────────────────────────────────
-// Orb background SVG (glass effect)
+// Orb background / highlight
 // ────────────────────────────────────────────────────────────────
 function orbBackgroundSVG(bgLight: string, bgDark: string, size: number): string {
   return `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
@@ -950,7 +688,6 @@ export async function buildCrabImage(
   const item = pickItem(variationHash);
   const mouth = pickMouth(variationHash);
 
-  // Base: hue-tinted Candidate 02
   const base = loadBaseBuffer();
   const tintedRgb = await sharp(base)
     .flatten({ background: "#000000" })
@@ -972,7 +709,6 @@ export async function buildCrabImage(
     .png()
     .toBuffer();
 
-  // Rasterize overlays
   const raster = async (s: string) =>
     sharp(Buffer.from(s)).resize(OUTPUT_SIZE, OUTPUT_SIZE, { fit: "fill" }).png().toBuffer();
 
@@ -982,12 +718,9 @@ export async function buildCrabImage(
   const itemPng = item === "none" ? null : await raster(itemSVG(item));
   const mouthPng = mouth === "none" ? null : await raster(mouthSVG(mouth));
   const chainPng = hasChain ? await raster(goldChainSVG()) : null;
-
   const orbBg = await raster(orbBackgroundSVG(bgHex, bgDark, OUTPUT_SIZE));
   const orbOverlay = await raster(orbHighlightSVG(OUTPUT_SIZE));
 
-  // Composite order: bg → crab → chain → eyes → eyewear → mouth → hat → item → glass
-  // (Chain under face; hat last so it's on top; item above hat so it's grippable)
   const layers: Buffer[] = [crabWithAlpha];
   if (chainPng) layers.push(chainPng);
   if (eyesPng) layers.push(eyesPng);
@@ -1022,7 +755,7 @@ export function variationHashBuffer(personalityHashHex: string, variation: numbe
   return crypto.createHash("sha256").update(`${personalityHashHex}:${variation}`).digest();
 }
 
-// ── Legacy API stubs ──
+// ── Legacy stubs ──
 export type Grid = (string | null)[][];
 export const GRID_SIZE = 28;
 export interface Palette { bg: string; }
