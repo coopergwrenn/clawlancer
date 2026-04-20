@@ -24,18 +24,36 @@ interface BankrLaunchResponse {
 }
 
 export async function POST(req: NextRequest) {
+  const DIAG_ID = Math.random().toString(36).slice(2, 10);
+  try {
+  logger.info("tokenize:start", { diagId: DIAG_ID });
   // Accept NextAuth session (web app) OR X-Mini-App-Token (World mini app)
   let userId: string | undefined;
-  const session = await auth();
-  if (session?.user?.id) {
-    userId = session.user.id;
-  } else {
-    const { validateMiniAppToken } = await import("@/lib/security");
-    const miniAppUserId = await validateMiniAppToken(req);
-    if (miniAppUserId) {
-      userId = miniAppUserId;
+  let authStage = "auth_start";
+  try {
+    const session = await auth();
+    authStage = "auth_returned";
+    if (session?.user?.id) {
+      userId = session.user.id;
+      authStage = "nextauth_ok";
+    } else {
+      const { validateMiniAppToken } = await import("@/lib/security");
+      const miniAppUserId = await validateMiniAppToken(req);
+      if (miniAppUserId) {
+        userId = miniAppUserId;
+        authStage = "miniapp_ok";
+      }
     }
+  } catch (authErr) {
+    logger.error("tokenize:auth_threw", {
+      diagId: DIAG_ID,
+      authStage,
+      error: String(authErr),
+      stack: authErr instanceof Error ? authErr.stack?.slice(0, 500) : undefined,
+    });
+    return NextResponse.json({ error: "Auth check failed", diagId: DIAG_ID }, { status: 500 });
   }
+  logger.info("tokenize:auth_done", { diagId: DIAG_ID, authStage, hasUserId: !!userId });
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -73,23 +91,47 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabase();
+  logger.info("tokenize:supabase_client_ok", { diagId: DIAG_ID });
 
   // Clear stale locks: if a previous launch attempt crashed mid-execution,
   // the lock stays as 'bankr_pending' forever. Auto-clear after 5 minutes.
-  await supabase
-    .from("instaclaw_vms")
-    .update({ tokenization_platform: null, bankr_token_launched_at: null })
-    .eq("assigned_to", userId)
-    .eq("tokenization_platform", "bankr_pending")
-    .is("bankr_token_address", null)
-    .lt("bankr_token_launched_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+  try {
+    await supabase
+      .from("instaclaw_vms")
+      .update({ tokenization_platform: null, bankr_token_launched_at: null })
+      .eq("assigned_to", userId)
+      .eq("tokenization_platform", "bankr_pending")
+      .is("bankr_token_address", null)
+      .lt("bankr_token_launched_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+  } catch (stErr) {
+    logger.error("tokenize:stale_lock_clear_threw", { diagId: DIAG_ID, error: String(stErr) });
+  }
+  logger.info("tokenize:stale_lock_cleared", { diagId: DIAG_ID });
 
   // Look up user's VM with Bankr wallet
-  const { data: vm } = await supabase
+  const { data: vm, error: vmErr } = await supabase
     .from("instaclaw_vms")
     .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address, tokenization_platform, ip_address, ssh_port, ssh_user")
     .eq("assigned_to", userId)
     .single();
+
+  if (vmErr) {
+    logger.error("tokenize:vm_lookup_err", {
+      diagId: DIAG_ID,
+      code: vmErr.code,
+      message: vmErr.message?.slice(0, 300),
+      details: vmErr.details?.slice(0, 300),
+    });
+  }
+  logger.info("tokenize:vm_lookup_done", {
+    diagId: DIAG_ID,
+    hasVm: !!vm,
+    vmId: vm?.id,
+    hasWallet: !!vm?.bankr_wallet_id,
+    hasEvm: !!vm?.bankr_evm_address,
+    tokenizationPlatform: vm?.tokenization_platform,
+    hasTokenAddr: !!vm?.bankr_token_address,
+  });
 
   if (!vm) {
     return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
@@ -374,4 +416,17 @@ export async function POST(req: NextRequest) {
     chain: launchData.chain,
     feeDistribution: launchData.feeDistribution,
   });
+  } catch (outerErr) {
+    logger.error("tokenize:OUTER_UNHANDLED", {
+      diagId: DIAG_ID,
+      error: String(outerErr),
+      name: outerErr instanceof Error ? outerErr.name : undefined,
+      message: outerErr instanceof Error ? outerErr.message : undefined,
+      stack: outerErr instanceof Error ? outerErr.stack?.slice(0, 1500) : undefined,
+    });
+    return NextResponse.json(
+      { error: "Internal error — diagId " + DIAG_ID, diagId: DIAG_ID },
+      { status: 500 }
+    );
+  }
 }
