@@ -6,8 +6,9 @@ import { sendAdminAlertEmail } from "@/lib/email";
 import { connectSSH } from "@/lib/ssh";
 import type { VMRecord } from "@/lib/ssh";
 
-// Token launches are synchronous on Bankr's side. 30s is plenty of headroom.
-export const maxDuration = 30;
+// Token launches are synchronous on Bankr's side. Bumped to 60s because real
+// (non-simulate) deploys include on-chain tx + Uniswap V4 pool creation + fee wiring.
+export const maxDuration = 60;
 
 const BANKR_API_URL = "https://api.bankr.bot";
 
@@ -201,6 +202,14 @@ export async function POST(req: NextRequest) {
   if (simulateOnly) launchPayload.simulateOnly = true;
 
   let launchData: BankrLaunchResponse;
+  const bankrStart = Date.now();
+  logger.info("tokenize:bankr_fetch_start", {
+    diagId: DIAG_ID,
+    simulateOnly,
+    payloadKeys: Object.keys(launchPayload),
+    hasImage: !!image,
+    imageLength: image?.length ?? 0,
+  });
   try {
     const launchRes = await fetch(`${BANKR_API_URL}/token-launches/deploy`, {
       method: "POST",
@@ -210,8 +219,21 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify(launchPayload),
     });
+    logger.info("tokenize:bankr_fetch_returned", {
+      diagId: DIAG_ID,
+      status: launchRes.status,
+      ok: launchRes.ok,
+      elapsedMs: Date.now() - bankrStart,
+    });
 
     launchData = (await launchRes.json()) as BankrLaunchResponse;
+    logger.info("tokenize:bankr_json_parsed", {
+      diagId: DIAG_ID,
+      success: launchData.success,
+      hasError: !!launchData.error,
+      hasTokenAddress: !!launchData.tokenAddress,
+      elapsedMs: Date.now() - bankrStart,
+    });
 
     if (!launchRes.ok || !launchData.success) {
       logger.error("Bankr token launch failed", {
