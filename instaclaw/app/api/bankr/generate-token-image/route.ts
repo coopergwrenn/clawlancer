@@ -34,6 +34,16 @@ export async function POST(req: NextRequest) {
   const cachedPersonalityHash =
     typeof body.personality_hash === "string" ? body.personality_hash : null;
 
+  logger.info("genpfp:body_received", {
+    userId,
+    rawVariation: body.variation,
+    rawVariationType: typeof body.variation,
+    parsedVariation: variation,
+    rawPersonalityHash: body.personality_hash ? `${String(body.personality_hash).slice(0, 12)}...` : null,
+    rawPersonalityHashType: typeof body.personality_hash,
+    bodyKeys: Object.keys(body),
+  });
+
   if (!tokenName) {
     return NextResponse.json({ error: "token_name is required" }, { status: 400 });
   }

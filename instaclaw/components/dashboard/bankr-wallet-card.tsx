@@ -129,6 +129,13 @@ export function BankrWalletCard({
   async function handleGenerateImage(nameOverride?: string, isRegenerate?: boolean) {
     const name = nameOverride || tokenName.trim() || agentName || "Agent";
     const nextVariation = isRegenerate ? imageVariation + 1 : imageVariation;
+    console.log("[PFP] handleGenerateImage called", {
+      isRegenerate,
+      currentImageVariation: imageVariation,
+      nextVariation,
+      hasCachedPersonalityHash: !!personalityHash,
+      personalityHashPreview: personalityHash ? personalityHash.slice(0, 12) : null,
+    });
     if (isRegenerate) setImageVariation(nextVariation);
     setImageError(null);
     setImageLoading(true);
