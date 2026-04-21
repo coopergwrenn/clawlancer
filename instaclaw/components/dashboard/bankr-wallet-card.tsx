@@ -250,11 +250,15 @@ export function BankrWalletCard({
   // ── Celebration + Share Card ──
   if (launchSuccess) {
     const hasAddress = !!launchSuccess.address;
+    // Chart/trade share URL — DexScreener is the canonical crypto-Twitter surface.
+    // Bankr launches are V4+Doppler so app.uniswap.org can't reliably route them;
+    // bankr.bot/launches/:addr is fee management only. DexScreener indexes the pool
+    // within minutes and renders chart + an embedded swap widget.
+    const chartUrl = hasAddress ? `https://dexscreener.com/base/${launchSuccess.address}` : "";
     const tweetText = hasAddress
-      ? `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`
+      ? `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\n${chartUrl}`
       : `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.`;
     const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
-    const basescanUrl = hasAddress ? `https://basescan.org/token/${launchSuccess.address}` : "";
 
     function cancelAutoReload() {
       if (autoReloadTimer.current) {
@@ -271,7 +275,7 @@ export function BankrWalletCard({
 
     function handleCopyLink() {
       cancelAutoReload();
-      navigator.clipboard.writeText(basescanUrl);
+      navigator.clipboard.writeText(chartUrl);
       setLinkCopied(true);
       setTimeout(() => window.location.reload(), 1500);
     }
@@ -493,19 +497,47 @@ export function BankrWalletCard({
             )}
           </div>
 
-          {/* Action buttons */}
+          {/* Primary CTA — Trade on Bankr (the only reliable V4/Doppler trade surface today) */}
+          <a
+            href="https://bankr.bot/terminal"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.005] active:scale-[0.995]"
+            style={{
+              background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+              color: "white",
+              textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            Trade on Bankr
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+
+          {/* Secondary row — chart, fee management, explorer */}
           <div
             className="flex gap-0 border-t"
             style={{ borderColor: "var(--border)" }}
           >
             <a
+              href={`https://dexscreener.com/base/${tokenAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 text-[11px] flex items-center justify-center gap-1 py-2.5 hover:bg-black/5 transition-colors"
+              style={{ color: "var(--muted)" }}
+            >
+              View Chart
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <div style={{ width: 1, background: "var(--border)" }} />
+            <a
               href={`https://bankr.bot/launches/${tokenAddress}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 text-xs font-medium flex items-center justify-center gap-1.5 py-3 hover:bg-black/5 transition-colors"
-              style={{ color: "var(--foreground)" }}
+              className="flex-1 text-[11px] flex items-center justify-center gap-1 py-2.5 hover:bg-black/5 transition-colors"
+              style={{ color: "var(--muted)" }}
             >
-              Manage on Bankr
+              Manage Fees
               <ExternalLink className="w-3 h-3" />
             </a>
             <div style={{ width: 1, background: "var(--border)" }} />
@@ -513,7 +545,7 @@ export function BankrWalletCard({
               href={`https://basescan.org/token/${tokenAddress}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 text-xs flex items-center justify-center gap-1.5 py-3 hover:bg-black/5 transition-colors"
+              className="flex-1 text-[11px] flex items-center justify-center gap-1 py-2.5 hover:bg-black/5 transition-colors"
               style={{ color: "var(--muted)" }}
             >
               BaseScan
