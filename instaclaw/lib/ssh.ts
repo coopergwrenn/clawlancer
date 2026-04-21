@@ -79,6 +79,15 @@ interface UserConfig {
 // Bump this after fleet upgrades (separate from the SSH upgrade flow).
 export const OPENCLAW_PINNED_VERSION = "2026.4.5";
 
+// Pinned @bankr/cli version installed on every VM during configureOpenClaw().
+// Floating (latest) is a time-bomb — Bankr ships a breaking CLI change and every
+// new user provision breaks silently. Pinning lets us upgrade on our schedule.
+//
+// IMPORTANT: When bumping this, ALSO bump VM_MANIFEST.version so the reconciler
+// re-runs configureOpenClaw across the fleet and upgrades existing VMs.
+// Mirror of the OPENCLAW_PINNED_VERSION discipline above.
+export const BANKR_CLI_PINNED_VERSION = "0.2.15";
+
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
 // Also loads LD_LIBRARY_PATH for userspace browser libs (libxkbcommon, libcairo, etc.)
@@ -3644,6 +3653,25 @@ export async function configureOpenClaw(
       'if [ ! -d "$HOME/.openclaw/skills/bankr" ]; then',
       '  git clone --depth 1 https://github.com/BankrBot/skills "$HOME/.openclaw/skills/bankr" 2>/dev/null || true',
       'fi',
+      ''
+    );
+
+    // v60+: Install @bankr/cli (pinned) so the agent can run wallet ops directly
+    // from chat — `bankr fees claim --yes`, transfers, etc. CLI reads BANKR_API_KEY
+    // from ~/.openclaw/.env (deployed above). Empirically verified that partner-
+    // provisioned `bk_usr_...` keys authenticate the CLI when the wallet is in
+    // our prod org. Version-pinned to BANKR_CLI_PINNED_VERSION; only reinstalls
+    // when the installed version doesn't match (so reconciler upgrades existing
+    // VMs on a manifest bump). Fail-soft so install issues don't block configure.
+    scriptParts.push(
+      '# Install @bankr/cli (pinned) for in-agent wallet operations',
+      `${NVM_PREAMBLE} && (`,
+      `  CURRENT=$(bankr --version 2>/dev/null | head -1 | tr -d "[:space:]")`,
+      `  if [ "$CURRENT" != "${BANKR_CLI_PINNED_VERSION}" ]; then`,
+      `    echo "Installing @bankr/cli@${BANKR_CLI_PINNED_VERSION} (current: \${CURRENT:-none})"`,
+      `    npm install -g @bankr/cli@${BANKR_CLI_PINNED_VERSION} 2>&1 | tail -3`,
+      `  fi`,
+      `) || true`,
       ''
     );
 
