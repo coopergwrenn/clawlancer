@@ -753,6 +753,12 @@ export const WORKSPACE_TOOLS_MD_TEMPLATE = `# TOOLS.md — Your Personal Tool No
 _This file is YOURS. Update it as you discover tools, workarounds, and useful commands._
 _It won't be overwritten by system updates._
 
+## Wallet, Token, Fees — Ground Truth
+
+When the user asks about their wallet address, token, creator fees, claim status, or
+any crypto balance: WALLET.md has the ground truth — read it first. Do NOT fabricate
+wallet addresses or fee amounts from memory.
+
 ## Discovered Tools
 
 _(Add tools you discover here with notes on how they work)_
