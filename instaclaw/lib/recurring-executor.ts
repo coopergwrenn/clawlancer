@@ -126,14 +126,17 @@ Return ONLY the result content — do NOT include any TASK_META block.`;
 
     try {
       const gatewayUrl = vm.gateway_url!.replace(/\/+$/, "");
+      // See comment in app/api/chat/send/route.ts — gateway requires model="openclaw";
+      // per-request model override goes in x-openclaw-model header.
       const gatewayRes = await fetch(`${gatewayUrl}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           "authorization": `Bearer ${vm.gateway_token!}`,
+          "x-openclaw-model": rawModel,
         },
         body: JSON.stringify({
-          model: rawModel,
+          model: "openclaw",
           max_tokens: MAX_TOKENS,
           messages: [
             { role: "system", content: systemPrompt },

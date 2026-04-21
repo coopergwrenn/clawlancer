@@ -161,9 +161,10 @@ async function executeTask(
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 
-        // Gateway uses OpenAI chat completions format (non-streaming for tasks)
+        // See comment in /api/chat/send — gateway requires model="openclaw";
+        // per-request model override goes in x-openclaw-model header.
         const gatewayBody = JSON.stringify({
-          model,
+          model: "openclaw",
           max_tokens: MAX_TOKENS,
           messages: [
             { role: "system", content: systemPrompt },
@@ -177,6 +178,7 @@ async function executeTask(
           headers: {
             "content-type": "application/json",
             "authorization": `Bearer ${vm.gateway_token!}`,
+            "x-openclaw-model": model,
           },
           body: gatewayBody,
           signal: controller.signal,

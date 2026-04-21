@@ -237,9 +237,13 @@ export async function POST(req: NextRequest) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
 
-      // Gateway uses OpenAI chat completions format
+      // OpenClaw gateway's /v1/chat/completions requires `model` to be
+      // "openclaw" or "openclaw/<agentId>" — it rejects Anthropic-format ids
+      // with HTTP 400. The per-request model override travels in the
+      // x-openclaw-model header, which the gateway's
+      // resolveOpenAiCompatModelOverride parses and applies.
       const gatewayBody = JSON.stringify({
-        model,
+        model: "openclaw",
         max_tokens: MAX_TOKENS,
         messages: [
           { role: "system", content: systemPrompt },
@@ -253,6 +257,7 @@ export async function POST(req: NextRequest) {
         headers: {
           "content-type": "application/json",
           "authorization": `Bearer ${vm.gateway_token!}`,
+          "x-openclaw-model": model,
         },
         body: gatewayBody,
         signal: controller.signal,
