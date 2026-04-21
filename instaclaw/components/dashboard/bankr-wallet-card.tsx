@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X } from "lucide-react";
+import { HowToBuy } from "./how-to-buy";
 
 interface BankrWalletCardProps {
   walletId: string | null;
@@ -341,6 +342,9 @@ export function BankrWalletCard({
                 )}
               </button>
             </div>
+            <div className="text-left">
+              <HowToBuy tokenAddress={launchSuccess.address} tokenSymbol={launchSuccess.symbol} />
+            </div>
             <button
               onClick={handleSkip}
               className="text-xs transition-colors hover:opacity-70"
@@ -513,6 +517,14 @@ export function BankrWalletCard({
             Trade on Bankr
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
+
+          {/* How-to-buy disclosure — V4/Doppler tokens need a short explainer */}
+          <div
+            className="px-4 pt-3 pb-2"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
+            <HowToBuy tokenAddress={tokenAddress!} tokenSymbol={tokenSymbol} />
+          </div>
 
           {/* Secondary row — chart, fee management, explorer */}
           <div
