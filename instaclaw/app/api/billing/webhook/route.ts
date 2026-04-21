@@ -4,85 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser, stopGateway, restartGateway } from "@/lib/ssh";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
-import { encryptBankrKey } from "@/lib/bankr-encryption";
-
-// Provision a Bankr wallet for a newly assigned VM.
-// Non-fatal: if Bankr API is down, the agent still works (just without a wallet).
-async function provisionBankrWallet(vmId: string, userId: string, vmIp: string) {
-  const partnerKey = process.env.BANKR_PARTNER_KEY;
-  if (!partnerKey) return; // Not configured — skip silently
-
-  try {
-    const res = await fetch("https://api.bankr.bot/partner/wallets", {
-      method: "POST",
-      headers: {
-        "x-partner-key": partnerKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        idempotencyKey: `instaclaw_user_${userId}`,
-        apiKey: {
-          permissions: {
-            agentApiEnabled: true,
-            llmGatewayEnabled: false,
-            readOnly: false,
-          },
-          allowedIps: [vmIp],
-        },
-      }),
-    });
-
-    // 409 = idempotency key already used — wallet already exists, treat as success
-    if (!res.ok && res.status !== 409) {
-      const errText = await res.text().catch(() => "unknown");
-      logger.warn("Bankr wallet provisioning failed (non-fatal)", {
-        status: res.status,
-        error: errText,
-        userId,
-        vmId,
-      });
-      return;
-    }
-
-    const data = await res.json();
-    const supabase = getSupabase();
-
-    // Encrypt the API key before storing — plaintext only exists in memory
-    let encryptedKey: string | null = null;
-    if (data.apiKey) {
-      try {
-        encryptedKey = encryptBankrKey(data.apiKey);
-      } catch (encErr) {
-        logger.warn("Bankr API key encryption failed — storing null", {
-          error: String(encErr),
-          vmId,
-        });
-      }
-    }
-
-    await supabase
-      .from("instaclaw_vms")
-      .update({
-        bankr_wallet_id: data.id ?? null,
-        bankr_evm_address: data.evmAddress ?? null,
-        bankr_api_key_encrypted: encryptedKey,
-      })
-      .eq("id", vmId);
-
-    logger.info("Bankr wallet provisioned", {
-      vmId,
-      userId,
-      walletId: data.id,
-      evmAddress: data.evmAddress,
-    });
-  } catch (err) {
-    logger.warn("Bankr wallet provisioning error (non-fatal)", {
-      error: String(err),
-      userId,
-      vmId,
-    });
-  }
-}
+import { provisionBankrWallet } from "@/lib/bankr-provision";
 
 // Give the function enough time for background processing via after().
 // The response to Stripe is sent immediately (line 43) — maxDuration only
@@ -365,8 +287,15 @@ async function processEvent(event: any) {
           break;
         }
 
-        // Provision Bankr wallet for the agent (non-fatal — agent works without it)
-        await provisionBankrWallet(vm.id, userId, vm.ip_address);
+        // Provision Bankr wallet for the agent (non-fatal — agent works without it).
+        // Idempotency key `instaclaw_user_${userId}` means webhook retries return
+        // the SAME wallet rather than minting duplicates.
+        await provisionBankrWallet({
+          vmId: vm.id,
+          userId,
+          vmIp: vm.ip_address,
+          idempotencyKey: `instaclaw_user_${userId}`,
+        });
 
         // VM assigned — trigger configuration with retry.
         // This runs inside after() so the Stripe response is already sent.
