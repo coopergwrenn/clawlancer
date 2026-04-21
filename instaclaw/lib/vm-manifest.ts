@@ -351,7 +351,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 58,
+  version: 59,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -399,6 +399,19 @@ export const VM_MANIFEST = {
     // get "Sandbox mode requires Docker" on every command. Zilsun's agent was
     // down for a week because of this (reported 2026-04-09).
     "agents.defaults.sandbox.mode": "off",
+    // v59: Enable OpenClaw's OpenAI-compatible POST /v1/chat/completions endpoint
+    // on the gateway (disabled by default per the runtime schema). Without this,
+    // Vercel's /api/chat/send (Command Center) hits 404 on the gateway and falls
+    // back to direct Anthropic — which has no workspace files (SOUL.md, MEMORY.md)
+    // and no tools, so the agent answers wallet/token questions as if it has no
+    // identity. With this enabled, Command Center routes through the same
+    // chat.send dispatcher as Telegram (resolveOpenAiCompatibleHttpSenderIsOwner
+    // returns true on shared-secret gateway auth), spawns a session under the
+    // openai:* prefix, and triggers the same analyzeBootstrapBudget pipeline that
+    // injects SOUL.md / USER.md / MEMORY.md / AGENTS.md into the system prompt.
+    // Schema validated via `openclaw config set gateway.openai.chatCompletionsEnabled
+    // true --dry-run` -> "Dry run successful: 1 update(s) validated".
+    "gateway.openai.chatCompletionsEnabled": "true",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
