@@ -351,7 +351,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 60,
+  version: 61,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -399,19 +399,30 @@ export const VM_MANIFEST = {
     // get "Sandbox mode requires Docker" on every command. Zilsun's agent was
     // down for a week because of this (reported 2026-04-09).
     "agents.defaults.sandbox.mode": "off",
-    // v59: Enable OpenClaw's OpenAI-compatible POST /v1/chat/completions endpoint
-    // on the gateway (disabled by default per the runtime schema). Without this,
-    // Vercel's /api/chat/send (Command Center) hits 404 on the gateway and falls
-    // back to direct Anthropic — which has no workspace files (SOUL.md, MEMORY.md)
-    // and no tools, so the agent answers wallet/token questions as if it has no
-    // identity. With this enabled, Command Center routes through the same
-    // chat.send dispatcher as Telegram (resolveOpenAiCompatibleHttpSenderIsOwner
-    // returns true on shared-secret gateway auth), spawns a session under the
-    // openai:* prefix, and triggers the same analyzeBootstrapBudget pipeline that
-    // injects SOUL.md / USER.md / MEMORY.md / AGENTS.md into the system prompt.
-    // Schema validated via `openclaw config set gateway.openai.chatCompletionsEnabled
-    // true --dry-run` -> "Dry run successful: 1 update(s) validated".
-    "gateway.openai.chatCompletionsEnabled": "true",
+    // v61: Enable OpenClaw's OpenAI-compatible POST /v1/chat/completions endpoint.
+    // Disabled by default per the runtime schema. Without this, Vercel's three
+    // gateway-calling paths all fall back to direct Anthropic (no workspace
+    // files, no tools, no agent identity):
+    //   - instaclaw.io /api/chat/send (Command Center web chat)
+    //   - instaclaw-mini /api/chat/send (World mini-app chat)
+    //   - instaclaw-mini /api/tasks/{create,trigger,rerun,refine} (task runner)
+    //
+    // CORRECTION FROM v59/v60: The earlier config key
+    // `gateway.openai.chatCompletionsEnabled` is REJECTED by OpenClaw 2026.4.5's
+    // runtime schema with "Unrecognized key: openai". The reconciler's config-set
+    // loop had `2>/dev/null || true` which swallowed this error on every VM —
+    // DB config_version advanced even though the flag never landed. v61 uses the
+    // schema-valid path verified by actual `openclaw config set`:
+    //   openclaw config set gateway.http.endpoints.chatCompletions.enabled true
+    //   → "Updated gateway.http.endpoints.chatCompletions.enabled. Restart the gateway to apply." (exit 0)
+    //   → After restart, POST /v1/chat/completions returns 400 "Invalid `model`"
+    //     (endpoint is live; rejects unknown model names — separate fix in the
+    //     Vercel chat/send route to pass model="openclaw" + x-openclaw-model header).
+    //
+    // The silent-failure pattern (config_version advances on failed sets) is
+    // being addressed in a separate diff — do NOT trust config_version alone
+    // until that lands.
+    "gateway.http.endpoints.chatCompletions.enabled": "true",
   } as Record<string, string>,
 
   // ── Files deployed to VM ──
