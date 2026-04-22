@@ -17,8 +17,133 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getSupabase();
+  const dryRun = req.nextUrl.searchParams.get("dryRun") === "1";
   let assigned = 0;
   let retried = 0;
+  let pass0Recovered = 0;
+  const pass0Preview: Array<{ userId: string; email: string; tier: string; subStatus: string }> = [];
+
+  // -----------------------------------------------------------------
+  // Pass 0: Recover paid users with no VM + onboarding_complete=false
+  //
+  // Authoritative source: instaclaw_subscriptions (they paid).
+  // Catches orphans whose pending_users row was deleted by Pass 4 before
+  // Pass 1 could assign a VM — e.g., pool was empty when their webhook fired.
+  //
+  // Only active/trialing are auto-recovered. past_due subs are intentionally
+  // excluded: they need payment resolution first. Once payment succeeds, the
+  // customer.subscription.updated webhook flips status=active and this pass
+  // picks them up on the next cron cycle.
+  //
+  // Does NOT use pending_users as a staging area because:
+  //   - telegram_bot_token is NOT NULL in the schema (blocks null-inserts)
+  //   - configure route already handles "no pending row" case with defaults
+  //     derived from the subscription (see app/api/vm/configure/route.ts:106-178)
+  //
+  // Dry-run: GET /api/cron/process-pending?dryRun=1 — returns preview list,
+  // no DB writes, no VM assignments.
+  //
+  // Limit of 3 per cycle. Pass 1 already takes up to 10; Pass 0 running at 5
+  // too could drain the pool in one cycle (15 > POOL_TARGET=15). 3 keeps it
+  // additive without outpacing replenish. Backlog drains over multiple cycles.
+  // -----------------------------------------------------------------
+  {
+    const { data: orphans, error: orphanErr } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("user_id, tier, status, instaclaw_users!inner(email, onboarding_complete)")
+      .in("status", ["active", "trialing"])
+      .eq("instaclaw_users.onboarding_complete", false)
+      .limit(3);
+
+    if (orphanErr) {
+      logger.error("Pass 0: orphan query failed", {
+        route: "cron/process-pending",
+        error: String(orphanErr),
+      });
+    }
+
+    for (const o of orphans ?? []) {
+      // Safety: onboarding_complete=false + active sub SHOULD imply no VM,
+      // but don't trust that invariant in a recovery path.
+      const { data: existingVm } = await supabase
+        .from("instaclaw_vms")
+        .select("id")
+        .eq("assigned_to", o.user_id)
+        .maybeSingle();
+      if (existingVm) continue;
+
+      const email = (o as { instaclaw_users?: { email?: string } }).instaclaw_users?.email ?? "(unknown)";
+      pass0Preview.push({ userId: o.user_id, email, tier: o.tier, subStatus: o.status });
+
+      if (dryRun) continue;
+
+      logger.warn("Pass 0: orphaned paid user — attempting recovery", {
+        route: "cron/process-pending",
+        userId: o.user_id,
+        tier: o.tier,
+        email,
+      });
+
+      // Clear any stale deployment_lock_at so assignment proceeds cleanly.
+      await supabase
+        .from("instaclaw_users")
+        .update({ deployment_lock_at: null })
+        .eq("id", o.user_id);
+
+      const vm = await assignVMWithSSHCheck(o.user_id);
+      if (!vm) break; // pool empty — bail, retry next cycle
+
+      try {
+        const configRes = await fetch(
+          `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+            },
+            body: JSON.stringify({ userId: o.user_id }),
+          }
+        );
+        if (configRes.ok) {
+          pass0Recovered++;
+          logger.info("Pass 0: orphan recovered", {
+            route: "cron/process-pending",
+            userId: o.user_id,
+            vmId: vm.id,
+          });
+          if (email !== "(unknown)") {
+            try {
+              await sendVMReadyEmail(
+                email,
+                `${process.env.NEXTAUTH_URL}/dashboard`
+              );
+            } catch (emailErr) {
+              logger.warn("Pass 0: VM ready email failed (non-fatal)", {
+                route: "cron/process-pending",
+                userId: o.user_id,
+                error: String(emailErr),
+              });
+            }
+          }
+        } else {
+          logger.error("Pass 0: configure returned non-OK", {
+            route: "cron/process-pending",
+            userId: o.user_id,
+            vmId: vm.id,
+            status: configRes.status,
+          });
+        }
+      } catch (err) {
+        logger.error("Pass 0: configure call threw", {
+          error: String(err),
+          route: "cron/process-pending",
+          userId: o.user_id,
+          vmId: vm.id,
+        });
+      }
+    }
+  }
 
   // -----------------------------------------------------------------
   // Pass 1: Assign VMs to pending users who don't have one yet
@@ -466,6 +591,13 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
+    dryRun: dryRun || undefined,
+    pass0: {
+      recovered: pass0Recovered,
+      // Preview is only populated in dryRun mode to keep normal responses lean.
+      preview: dryRun ? pass0Preview : undefined,
+      wouldRecover: dryRun ? pass0Preview.length : undefined,
+    },
     pending: pending?.length ?? 0,
     assigned,
     retried,
