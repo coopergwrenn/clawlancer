@@ -16,6 +16,7 @@ import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } 
 import { connectSSH, NVM_PREAMBLE, type VMRecord } from "./ssh";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
+import { TIER_DISPLAY_LIMITS } from "./credit-constants";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -28,6 +29,53 @@ export interface ReconcileResult {
   gatewayRestartNeeded: boolean;
   gatewayRestarted: boolean;
   gatewayHealthy: boolean;
+  /**
+   * Per-key config-set failures observed in strict mode (non-empty only when
+   * `strict: true` was passed). Each entry is `"key: reason"`. If this array
+   * is non-empty, the caller MUST NOT advance `config_version` for this VM.
+   */
+  strictErrors: string[];
+  /**
+   * Canary probe outcome — only populated when `strict: true`.
+   *   true  → proxy round-trip succeeded, response asserted "READY"
+   *   false → round-trip failed (also pushed into `strictErrors` as "canary: ...")
+   *   null  → canary was skipped: either strict mode was off, the VM has no
+   *           gateway_token (BYOK), or the VM was at its daily budget limit.
+   */
+  canaryHealthy: boolean | null;
+  /**
+   * True when the canary step skipped specifically because the VM was at
+   * ≥95% of its daily message limit (budget guard). Surfaced separately
+   * from `canaryHealthy: null` so the cron can track "how often budget
+   * is blocking coverage" vs "how often canary legitimately ran".
+   */
+  canarySkippedBudget: boolean;
+}
+
+export interface ReconcileOptions {
+  /** If true, log intended changes without writing. Existing behavior. */
+  dryRun?: boolean;
+  /**
+   * Strict mode. When true:
+   *   - stepConfigSettings runs each `openclaw config set` INDIVIDUALLY
+   *     (no `&& ... || true` batch), captures per-key exit codes + stderr,
+   *     and records failures in `result.strictErrors`.
+   *   - stepCanaryProbe runs AFTER the normal reconciler steps (unless the
+   *     caller explicitly opts out via `canary: false`).
+   *   - The caller (reconcile-fleet cron / admin endpoint) is responsible
+   *     for NOT bumping config_version when `strictErrors.length > 0`.
+   *
+   * Default false. When false, behavior is bit-identical to the previous
+   * implementation (batched config set with silent failures, no canary).
+   */
+  strict?: boolean;
+  /**
+   * Strict-mode canary toggle. Only meaningful when `strict: true`.
+   * Default true. Set to false to skip the canary round-trip (e.g., when
+   * the DB kill-switch `canary_enabled=false` — Anthropic rate-limit
+   * emergency). Config-set strict validation still runs.
+   */
+  canary?: boolean;
 }
 
 // ── Reconciliation engine ──
@@ -35,9 +83,11 @@ export interface ReconcileResult {
 export async function reconcileVM(
   vm: VMRecord & { gateway_token?: string; api_mode?: string },
   manifest: typeof VM_MANIFEST,
-  options?: { dryRun?: boolean },
+  options?: ReconcileOptions,
 ): Promise<ReconcileResult> {
   const dryRun = options?.dryRun ?? false;
+  const strict = options?.strict ?? false;
+  const canaryEnabled = options?.canary ?? true;
   const result: ReconcileResult = {
     fixed: [],
     alreadyCorrect: [],
@@ -45,86 +95,186 @@ export async function reconcileVM(
     gatewayRestartNeeded: false,
     gatewayRestarted: false,
     gatewayHealthy: true,
+    strictErrors: [],
+    canaryHealthy: null,
+    canarySkippedBudget: false,
   };
 
   const ssh = await connectSSH(vm);
-  try {
+
+  // ── Strict-mode outer deadline ──
+  // Budget the ENTIRE reconcile (all steps including canary) at 180s when
+  // strict: true. Without this, pathological VMs (stuck openclaw CLI, slow
+  // SSH) can burn the full Vercel 300s budget on a single VM and stall the
+  // whole cron batch. Implemented via Promise.race — accept the limitation
+  // that in-flight SSH commands may complete after the deadline (see
+  // phase-2c-v2-todo.md for signal-threaded cancellation).
+  const STRICT_DEADLINE_MS = 180_000;
+  const STRICT_WARN_AT_MS = 150_000;
+  let currentStep: string = "init";
+  const warnTimer = strict
+    ? setTimeout(() => {
+        logger.warn("reconcileVM: approaching 180s strict deadline", {
+          route: "reconcileVM",
+          vmId: vm.id,
+          currentStep,
+          elapsedMs: STRICT_WARN_AT_MS,
+        });
+      }, STRICT_WARN_AT_MS)
+    : null;
+
+  const runSteps = async (): Promise<void> => {
     // ── Step 0: Pre-audit workspace backup ──
+    currentStep = "backup";
     await stepBackup(ssh);
 
     // ── Step 0b: Remove _placeholder key from openclaw.json ──
     // Some VMs were provisioned with {"_placeholder": true} which fails
     // OpenClaw's strict config validator, blocking all config set operations.
+    currentStep = "placeholder";
     await stepRemovePlaceholder(ssh, result, dryRun);
 
     // ── Step 0c: Workspace integrity — ensure critical files exist ──
+    currentStep = "workspace-integrity";
     await stepWorkspaceIntegrity(ssh, result, dryRun);
 
     // ── Step 1: Config settings ──
-    await stepConfigSettings(ssh, manifest, result, dryRun);
+    currentStep = "config-settings";
+    await stepConfigSettings(ssh, manifest, result, dryRun, strict);
 
     // ── Step 2: Files ──
+    currentStep = "files";
     await stepFiles(ssh, vm, manifest, result, dryRun);
 
     // ── Step 2b: Bootstrap safety ──
+    currentStep = "bootstrap-consumed";
     await stepBootstrapConsumed(ssh, result, dryRun);
 
     // ── Step 2c: Rename video-production → motion-graphics ──
+    currentStep = "rename-video-skill";
     await stepRenameVideoSkill(ssh, result, dryRun);
 
     // ── Step 2d: Fix blank identity in SOUL.md + remove legacy IDENTITY.md ──
+    currentStep = "fix-blank-identity";
     await stepFixBlankIdentity(ssh, result, dryRun);
 
     // ── Step 2e: Remove duplicate skill directories that waste prompt budget ──
+    currentStep = "remove-duplicate-skills";
     await stepRemoveDuplicateSkills(ssh, result, dryRun);
 
     // ── Step 3: Skills ──
+    currentStep = "skills";
     await stepSkills(ssh, vm, manifest, result, dryRun);
 
     // ── Step 3b: Remotion dependencies (npm install in motion-graphics template) ──
+    currentStep = "remotion-deps";
     await stepRemotionDeps(ssh, result, dryRun);
 
     // ── Step 4: Cron jobs ──
+    currentStep = "cron-jobs";
     await stepCronJobs(ssh, manifest, result, dryRun);
 
     // ── Step 5: System packages ──
+    currentStep = "system-packages";
     await stepSystemPackages(ssh, manifest, result, dryRun);
 
     // ── Step 6: Python packages ──
+    currentStep = "python-packages";
     await stepPythonPackages(ssh, manifest, result, dryRun);
 
     // ── Step 7: Env vars ──
+    currentStep = "env-vars";
     await stepEnvVars(ssh, vm, manifest, result, dryRun);
 
     // ── Step 8: Auth profiles ──
+    currentStep = "auth-profiles";
     const authProfileFixed = await stepAuthProfiles(ssh, vm, result, dryRun);
 
     // ── Step 8b: Clear stale provider cooldown from auth-profiles.json ──
+    currentStep = "clear-provider-cooldown";
     const cooldownCleared = await stepClearProviderCooldown(ssh, result, dryRun);
     if (cooldownCleared) result.gatewayRestartNeeded = true;
 
     // ── Step 8c: Systemd unit overrides (KillMode, crash-loop breaker, Chrome cleanup) ──
+    currentStep = "systemd-unit";
     await stepSystemdUnit(ssh, manifest, result, dryRun);
 
     // ── Step 8d: sshd OOM protection (OOMScoreAdjust=-900 drop-in) ──
+    currentStep = "sshd-protection";
     await stepSSHDProtection(ssh, result, dryRun);
 
     // ── Step 8e: Clean stale memory entries (proxy down, geoblock, etc.) ──
+    currentStep = "clean-stale-memory";
     await stepCleanStaleMemory(ssh, result, dryRun);
 
     // ── Step 8f: Caddy UI block (redirect / to instaclaw.io/dashboard) ──
+    currentStep = "caddy-ui-block";
     await stepCaddyUIBlock(ssh, result, dryRun);
 
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
     if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun) {
+      currentStep = "gateway-restart";
       result.gatewayRestartNeeded = true;
       await stepGatewayRestart(ssh, vm, result);
     }
 
-    return result;
+    // ── Step 10: Canary probe (strict mode only) ──
+    if (strict && canaryEnabled) {
+      currentStep = "canary";
+      await stepCanaryProbe(vm, result);
+    } else if (strict && !canaryEnabled) {
+      // DB kill-switch `canary_enabled=false` — strict config validation
+      // still ran above, just don't run the round-trip. Leave
+      // canaryHealthy=null so the caller knows the check was skipped.
+      logger.info("stepCanaryProbe: skipped (canary_enabled=false)", {
+        route: "reconcileVM",
+        vmId: vm.id,
+      });
+    }
+    currentStep = "done";
+  };
+
+  try {
+    if (strict) {
+      // Race the step runner against a 180s rejection. On deadline win, we
+      // fall into the catch with a sentinel error and record the timeout in
+      // strictErrors — any in-flight SSH command continues on the VM side
+      // but our client returns cleanly.
+      await Promise.race([
+        runSteps(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("__STRICT_DEADLINE__")), STRICT_DEADLINE_MS),
+        ),
+      ]);
+    } else {
+      await runSteps();
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message === "__STRICT_DEADLINE__") {
+      // Deadline win — record the timeout in strictErrors and let the
+      // finally dispose SSH. In-flight SSH commands may still execute on
+      // the VM side; the reconciler is idempotent so next cron cycle
+      // re-evaluates and fixes whatever partial state resulted.
+      const msg = `deadline: strict reconcile timeout after ${STRICT_DEADLINE_MS}ms (last step: ${currentStep})`;
+      result.strictErrors.push(msg);
+      logger.error("reconcileVM: strict deadline exceeded", {
+        route: "reconcileVM",
+        vmId: vm.id,
+        lastStep: currentStep,
+        deadlineMs: STRICT_DEADLINE_MS,
+      });
+    } else {
+      // Non-deadline error — re-throw so the caller (auditVMConfig →
+      // reconcile-fleet) catches it as a normal audit failure. The finally
+      // block still runs ssh.dispose() + clearTimeout.
+      throw err;
+    }
   } finally {
+    if (warnTimer) clearTimeout(warnTimer);
     ssh.dispose();
   }
+
+  return result;
 }
 
 // ── Step implementations ──
@@ -256,6 +406,7 @@ async function stepConfigSettings(
   manifest: typeof VM_MANIFEST,
   result: ReconcileResult,
   dryRun: boolean,
+  strict: boolean,
 ): Promise<void> {
   const settings = manifest.configSettings;
   const keys = Object.keys(settings);
@@ -289,12 +440,131 @@ async function stepConfigSettings(
     return;
   }
 
-  // Batch fix drifted settings
-  const fixCommands = settingsToFix
-    .map((key) => `openclaw config set ${key} '${settings[key]}' || true`)
-    .join(' && ');
-  await ssh.execCommand(`${NVM_PREAMBLE} && ${fixCommands}`);
-  result.fixed.push(...settingsToFix);
+  if (!strict) {
+    // Default (non-strict) path — BIT-IDENTICAL to the previous implementation.
+    // Batched, `|| true` per key, no error capture. Preserved so Phase 2c
+    // diffs deploy dormant when STRICT_RECONCILE_VM_IDS is unset, and existing
+    // per-VM reconciles from callers that don't pass `strict: true` behave
+    // exactly as they do today.
+    const fixCommands = settingsToFix
+      .map((key) => `openclaw config set ${key} '${settings[key]}' || true`)
+      .join(' && ');
+    await ssh.execCommand(`${NVM_PREAMBLE} && ${fixCommands}`);
+    result.fixed.push(...settingsToFix);
+    return;
+  }
+
+  // Strict path — per-key execution, no silent swallowing.
+  //
+  // We run each `openclaw config set` individually so a single exit code
+  // + stderr maps to a single key. Any non-zero exit → the key is NOT
+  // counted in `result.fixed` and the error is recorded in
+  // `result.strictErrors`. Caller inspects strictErrors before bumping
+  // config_version.
+  //
+  // This is the regression fix for the v59/v60 incident: a schema-rejected
+  // key (`gateway.openai.chatCompletionsEnabled`) was silently swallowed by
+  // `|| true`, config_version advanced, and every VM in the fleet looked
+  // "up to date" while chat completions were disabled in prod.
+  for (const key of settingsToFix) {
+    const val = settings[key];
+    const cmd = `${NVM_PREAMBLE} && openclaw config set ${key} '${val}'`;
+    const res = await ssh.execCommand(cmd, { execOptions: { timeout: 15000 } });
+    if (res.code === 0) {
+      result.fixed.push(key);
+    } else {
+      const reason = (res.stderr || res.stdout || `exit ${res.code}`).slice(0, 300).trim();
+      result.strictErrors.push(`${key}: ${reason}`);
+    }
+  }
+}
+
+/**
+ * Canary probe — strict mode only.
+ *
+ * Sends a REAL user-chat request (not the default "ping" probe) through the
+ * proxy with `x-strict-canary: true` so the proxy's heartbeat classification
+ * is bypassed and the request hits Anthropic haiku — not the MiniMax
+ * heartbeat shortcut. This is the whole point of strict canary: it catches
+ * Anthropic-path breakage that the default ping probe silently misses.
+ *
+ * Writes the outcome to `result.canaryHealthy`:
+ *   true  → proxy round-trip passed, response contains "READY"
+ *   false → round-trip failed (also pushed into strictErrors as "canary: ...")
+ *   null  → probe skipped (no gateway_token, or VM at budget limit)
+ *
+ * Budget guard: if the VM is already at 95%+ of its daily message limit when
+ * the canary would fire, skip to avoid pushing the user over their quota.
+ * Logged as `canary skipped: vm at budget limit` and recorded in the
+ * per-batch counter so we can track how often this fires.
+ */
+async function stepCanaryProbe(
+  vm: VMRecord & {
+    gateway_token?: string;
+    api_mode?: string;
+    tier?: string | null;
+    user_timezone?: string | null;
+  },
+  result: ReconcileResult,
+): Promise<void> {
+  if (!vm.gateway_token) {
+    // BYOK VMs and pre-configured VMs have no platform token — the round-trip
+    // probe doesn't apply. Null signals "skipped, not tested" to the caller.
+    result.canaryHealthy = null;
+    return;
+  }
+
+  // ── Budget guard ───────────────────────────────────────────────────────
+  // Skip canary (DON'T fail it) if the target VM is already at ≥95% of its
+  // daily tier limit. Firing here would push them over and degrade UX.
+  // Tradeoff: miss canary coverage for that VM until next cycle; accept.
+  // See phase-2c-v2-todo.md for canary-budget-bypass RPC flag (canary
+  // wouldn't count against user quota at all).
+  try {
+    const tier = (vm.tier ?? "starter") as string;
+    const limit = TIER_DISPLAY_LIMITS[tier] ?? TIER_DISPLAY_LIMITS.starter;
+    const userTz = vm.user_timezone ?? "America/New_York";
+    const supabase = getSupabase();
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: userTz });
+    const { data: usage } = await supabase
+      .from("instaclaw_daily_usage")
+      .select("message_count")
+      .eq("vm_id", vm.id)
+      .eq("usage_date", today)
+      .maybeSingle();
+    const count = usage?.message_count ?? 0;
+    if (limit > 0 && count / limit >= 0.95) {
+      logger.info("stepCanaryProbe: skipped (vm at budget limit)", {
+        route: "reconcileVM",
+        vmId: vm.id,
+        tier,
+        count,
+        limit,
+        pct: Math.round((count / limit) * 100),
+      });
+      result.canaryHealthy = null;
+      result.canarySkippedBudget = true;
+      return;
+    }
+  } catch (budgetErr) {
+    // Budget lookup failure is non-fatal — fall through to run canary normally.
+    logger.warn("stepCanaryProbe: budget check failed (proceeding anyway)", {
+      route: "reconcileVM",
+      vmId: vm.id,
+      error: String(budgetErr),
+    });
+  }
+
+  // Lazy import to avoid pulling ssh.ts's heavy graph into vm-reconcile when
+  // strict mode isn't exercised.
+  const { testProxyRoundTrip } = await import("./ssh");
+  // strictCanary: true forces the "Reply with one word: READY" content + the
+  // x-strict-canary bypass header, routing through Anthropic haiku not MiniMax.
+  const probe = await testProxyRoundTrip(vm.gateway_token, 1, { strictCanary: true });
+  result.canaryHealthy = probe.success;
+  if (!probe.success) {
+    result.strictErrors.push(`canary: ${probe.error ?? "round-trip failed"}`);
+  }
 }
 
 async function stepFiles(

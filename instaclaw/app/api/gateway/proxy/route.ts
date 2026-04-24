@@ -196,6 +196,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // --- Phase 2c strict canary bypass ---
+    // When the strict-mode reconciler in vm-reconcile.ts fires a canary
+    // probe, it tags the request with `x-strict-canary: true`. That tells
+    // this proxy to skip ALL heartbeat classification (timing-based + ping-
+    // detection + content-based) so the canary takes the genuine user-chat
+    // code path through Anthropic instead of the MiniMax-rerouted heartbeat
+    // path.
+    //
+    // Without this bypass, strict canaries silently route to MiniMax during
+    // the heartbeat-recent/heartbeat-due window (~2.8% of the time normally,
+    // 100% if the VM has a stuck heartbeat) — defeating the point of strict
+    // mode, which is supposed to catch exactly that class of silent failure.
+    //
+    // Security: this flag only flips classification FROM heartbeat (cheap,
+    // minimax) TO user-chat (expensive, anthropic). It makes the call more
+    // expensive, not less. Not exploitable.
+    const strictCanaryHeader = req.headers.get("x-strict-canary");
+    const strictCanaryBypass =
+      typeof strictCanaryHeader === "string" &&
+      strictCanaryHeader.toLowerCase() === "true";
+    if (strictCanaryBypass) {
+      logger.info("proxy: strict canary bypass active", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        gatewayTokenPrefix: gatewayToken.slice(0, 8) + "...",
+      });
+    }
+
     // --- Reject VMs with no api_mode set (misconfigured) ---
     if (!vm.api_mode) {
       logger.error("VM has null api_mode — blocking request", {
@@ -442,7 +470,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const isHeartbeat = !!(heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage);
+    // Strict canary bypass (header set by vm-reconcile's stepCanaryProbe)
+    // hard-overrides heartbeat classification so the canary hits the real
+    // Anthropic user-chat path, not the MiniMax heartbeat shortcut. See the
+    // rationale in the bypass-detection block above.
+    const isHeartbeat = strictCanaryBypass
+      ? false
+      : !!(heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage);
 
     // --- Detect manual user message (for cron circuit breaker) ---
     // A "manual message" is a real user-initiated chat message:

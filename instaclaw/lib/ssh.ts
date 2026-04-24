@@ -6173,13 +6173,34 @@ export async function checkVMTokenDrift(
 
 /**
  * Test the full proxy round-trip: VM gateway token → instaclaw.io proxy → Anthropic → response.
- * Used after configure to verify proxy auth works end-to-end (catches token mismatch issues).
+ *
+ * Two modes:
+ *   - default (`strictCanary` omitted/false): sends `content: "ping"` which
+ *     the proxy classifies as a heartbeat and reroutes to MiniMax. Cheap,
+ *     validates gateway-auth + proxy-path + MiniMax-integration. Used by
+ *     configure and health-check where we only need "gateway responsive".
+ *   - strict canary (`strictCanary: true`): sends a non-ping prompt + the
+ *     `x-strict-canary: true` header so the proxy bypasses heartbeat
+ *     classification and the request takes the real user-chat path through
+ *     Anthropic haiku. Validates proxy-auth + proxy-path + Anthropic-integration.
+ *     Used by Phase 2c strict-mode reconciler — catches Anthropic-path
+ *     breakage that the default canary silently misses.
+ *
+ * Timeouts: each fetch is bounded by an explicit 30s AbortSignal (up from
+ * Node's ~300s undici default). Proxy itself caps upstream fetch at 90s,
+ * so 30s at this layer catches client-side hangs (DNS, TCP, proxy middleware).
+ *
+ * Returns {success, error} — error is human-readable and includes the URL.
  */
+const TEST_PROXY_ROUND_TRIP_TIMEOUT_MS = 30_000;
+
 export async function testProxyRoundTrip(
   gatewayToken: string,
-  maxRetries = 2
+  maxRetries = 2,
+  options?: { strictCanary?: boolean }
 ): Promise<{ success: boolean; error?: string }> {
   const baseUrl = (process.env.NEXTAUTH_URL || "https://instaclaw.io").trim();
+  const strictCanary = options?.strictCanary === true;
 
   // Test both /v1/messages (legacy) and /v1/responses (OpenClaw >=2026.2.3)
   // to catch missing route issues early.
@@ -6189,7 +6210,7 @@ export async function testProxyRoundTrip(
   ];
 
   for (const url of endpoints) {
-    const result = await testProxyEndpoint(url, gatewayToken, maxRetries);
+    const result = await testProxyEndpoint(url, gatewayToken, maxRetries, strictCanary);
     if (!result.success) {
       return result;
     }
@@ -6201,43 +6222,103 @@ export async function testProxyRoundTrip(
 async function testProxyEndpoint(
   url: string,
   gatewayToken: string,
-  maxRetries: number
+  maxRetries: number,
+  strictCanary: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  // Strict canary: non-ping content + bypass header so the proxy doesn't
+  // reroute to MiniMax. Assert that the response actually contains "READY"
+  // so we catch the "proxy returned 200 but the upstream is misconfigured
+  // and returned garbage" class of failure.
+  // Default probe: "ping" → cheap MiniMax route, status-200-only assertion.
+  const content = strictCanary
+    ? "Reply with one word: READY"
+    : "ping";
+  const maxTokens = strictCanary ? 10 : 1;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": gatewayToken,
+    "anthropic-version": "2023-06-01",
+  };
+  if (strictCanary) {
+    headers["x-strict-canary"] = "true";
+  }
+  const body = JSON.stringify({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: maxTokens,
+    messages: [{ role: "user", content }],
+  });
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const fetchStart = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TEST_PROXY_ROUND_TRIP_TIMEOUT_MS);
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": gatewayToken,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 1,
-          messages: [{ role: "user", content: "ping" }],
-        }),
+        headers,
+        body,
+        signal: controller.signal,
       });
+      clearTimeout(timer);
+      const durationMs = Date.now() - fetchStart;
 
-      if (res.status === 200) {
-        return { success: true };
+      if (res.status !== 200) {
+        const errBody = await res.text().catch(() => "");
+        const snippet = errBody.slice(0, 200);
+        logger.warn("testProxyRoundTrip: non-200", {
+          url, status: res.status, durationMs, attempt, strictCanary,
+          snippet,
+        });
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        return { success: false, error: `${url}: HTTP ${res.status}: ${snippet}` };
       }
 
-      const body = await res.text().catch(() => "");
-      const snippet = body.slice(0, 200);
-
-      if (attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, 3000));
-        continue;
+      // Strict canary asserts on response body (case-insensitive "READY").
+      // Default mode accepts status 200 alone.
+      if (strictCanary) {
+        const bodyText = await res.text().catch(() => "");
+        // Response may be JSON (standard) or SSE (if upstream streamed).
+        // Plain text contains check covers both — we're just looking for
+        // the word "READY" somewhere in the response surface.
+        if (!/ready/i.test(bodyText)) {
+          const snippet = bodyText.slice(0, 200);
+          logger.warn("testProxyRoundTrip: strict canary missing READY assertion", {
+            url, durationMs, attempt, snippet,
+          });
+          if (attempt < maxRetries) {
+            await new Promise((r) => setTimeout(r, 3000));
+            continue;
+          }
+          return {
+            success: false,
+            error: `${url}: HTTP 200 but response missing READY: ${snippet}`,
+          };
+        }
       }
 
-      return { success: false, error: `${url}: HTTP ${res.status}: ${snippet}` };
+      logger.info("testProxyRoundTrip: success", {
+        url, durationMs, attempt, strictCanary,
+      });
+      return { success: true };
     } catch (err) {
+      clearTimeout(timer);
+      const durationMs = Date.now() - fetchStart;
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      logger.warn("testProxyRoundTrip: fetch threw", {
+        url, durationMs, attempt, strictCanary,
+        isAbort, error: String(err),
+      });
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, 3000));
         continue;
       }
-      return { success: false, error: `${url}: ${String(err)}` };
+      return {
+        success: false,
+        error: isAbort ? `${url}: timeout after ${TEST_PROXY_ROUND_TRIP_TIMEOUT_MS}ms` : `${url}: ${String(err)}`,
+      };
     }
   }
 
@@ -6483,12 +6564,21 @@ export interface AuditResult {
   missingFiles: string[];
 }
 
-export async function auditVMConfig(vm: VMRecord & { gateway_token?: string; api_mode?: string }): Promise<AuditResult> {
-  const reconcileResult = await reconcileVM(vm, VM_MANIFEST);
+export async function auditVMConfig(
+  vm: VMRecord & { gateway_token?: string; api_mode?: string; tier?: string | null; user_timezone?: string | null },
+  options?: { strict?: boolean; dryRun?: boolean; canary?: boolean },
+): Promise<AuditResult & { strictErrors: string[]; canaryHealthy: boolean | null; canarySkippedBudget: boolean }> {
+  const reconcileResult = await reconcileVM(vm, VM_MANIFEST, options);
   return {
     fixed: reconcileResult.fixed,
     alreadyCorrect: reconcileResult.alreadyCorrect,
     missingFiles: [], // Now handled inside reconcileVM
+    // Surface strict-mode outcomes so callers (reconcile-fleet cron,
+    // /api/admin/reconcile-vm) can gate config_version advancement on them.
+    // Empty/null/false in the default (non-strict) path.
+    strictErrors: reconcileResult.strictErrors,
+    canaryHealthy: reconcileResult.canaryHealthy,
+    canarySkippedBudget: reconcileResult.canarySkippedBudget,
   };
 }
 
