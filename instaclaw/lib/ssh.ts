@@ -9536,6 +9536,7 @@ export async function removeIntegrationCredentials(
  */
 export async function setupXMTP(
   vm: VMRecord & { gateway_token: string },
+  userWalletAddress?: string,
 ): Promise<{ success: boolean; xmtpAddress?: string; error?: string }> {
   const supabase = getSupabase();
 
@@ -9576,13 +9577,24 @@ export async function setupXMTP(
     await ssh.execCommand("rm -rf ~/.openclaw/xmtp ~/.xmtp /tmp/xmtp-*");
 
     // 4. Write .env for the XMTP agent
-    const envContent = [
+    const envLines = [
       `XMTP_WALLET_KEY=0x${walletKey}`,
       `XMTP_ENV=production`,
       `GATEWAY_URL=http://localhost:18789`,
       `GATEWAY_TOKEN=${vm.gateway_token}`,
       `XMTP_DB_PATH=/home/openclaw/.openclaw/xmtp/db`,
-    ].join("\\n");
+    ];
+    if (userWalletAddress) {
+      if (/^0x[a-fA-F0-9]{40}$/.test(userWalletAddress)) {
+        envLines.push(`USER_WALLET_ADDRESS=${userWalletAddress}`);
+      } else {
+        logger.warn("setupXMTP: malformed userWalletAddress, skipping USER_WALLET_ADDRESS env", {
+          vmId: vm.id,
+          prefix: userWalletAddress.slice(0, 10),
+        });
+      }
+    }
+    const envContent = envLines.join("\\n");
 
     await ssh.execCommand(
       `mkdir -p ~/.openclaw/xmtp && printf '${envContent}\\n' > ~/.openclaw/xmtp/.env`

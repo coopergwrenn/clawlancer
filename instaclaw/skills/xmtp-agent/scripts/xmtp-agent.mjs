@@ -160,6 +160,55 @@ async function sendToGateway(conversationId, userMessage) {
   }
 }
 
+// ── Proactive Greeting (auto first-message on provisioning) ──
+
+/**
+ * If USER_WALLET_ADDRESS is set in the agent env, send the user a proactive
+ * greeting so the World Chat DM is established without requiring the user
+ * to message first. Fire-and-forget — the start handler does not await this.
+ *
+ * Idempotent via a marker file so service restarts (Restart=on-failure) do
+ * not re-greet. The marker lives in XMTP_DIR which setupXMTP wipes on fresh
+ * provisioning, so a re-provisioned VM correctly sends a fresh greeting.
+ *
+ * Failures do not crash the agent. If the send fails, the marker is NOT
+ * written — the next agent restart will retry once.
+ */
+async function sendProactiveGreeting(agent) {
+  const userAddr = process.env.USER_WALLET_ADDRESS;
+  if (!userAddr) {
+    log("INFO", "USER_WALLET_ADDRESS not set — skipping proactive greeting (reactive mode)");
+    return;
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(userAddr)) {
+    log("WARN", "USER_WALLET_ADDRESS has invalid format — skipping proactive greeting", { prefix: userAddr.slice(0, 10) });
+    return;
+  }
+
+  const markerFile = join(XMTP_DIR, ".greeting-sent");
+  if (existsSync(markerFile)) {
+    log("INFO", "Proactive greeting already sent (marker present) — skipping");
+    return;
+  }
+
+  const greeting = "Hey! I'm your InstaClaw agent. You can chat with me right here in World Chat — same AI, same skills, same memory as Telegram and the mini app.";
+
+  try {
+    const dm = await agent.createDmWithAddress(userAddr);
+    await dm.sendText(greeting);
+    log("INFO", "Proactive greeting sent", { target: userAddr.slice(0, 10) + "..." });
+    try {
+      writeFileSync(markerFile, new Date().toISOString());
+    } catch (e) {
+      log("WARN", `Failed to write greeting marker: ${e}`);
+    }
+  } catch (err) {
+    log("ERROR", "Failed to send proactive greeting", { error: err?.message || String(err) });
+    // Do NOT write marker — next agent restart will retry
+  }
+}
+
 // ── Main ──
 
 async function main() {
@@ -245,6 +294,12 @@ async function main() {
     } catch (e) {
       log("WARN", `Failed to write address file: ${e}`);
     }
+
+    // Fire proactive first-message in background. Non-blocking so this handler
+    // returns fast and setupXMTP's address-file poller is not delayed.
+    sendProactiveGreeting(agent).catch((err) => {
+      log("WARN", `sendProactiveGreeting threw: ${err?.message || err}`);
+    });
   });
 
   agent.on("unhandledError", (error) => {
