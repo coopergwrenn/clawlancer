@@ -7,6 +7,7 @@ import { AlertCollector } from "@/lib/admin-alert";
 import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
+import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -22,12 +23,65 @@ const AUTO_MIGRATE_BATCH_SIZE = 3; // Max auto-migrations per cron cycle to prev
 const RESTART_GRACE_SECONDS = 120; // Skip health marking if gateway restarted within this window (Fix 1)
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL ?? "";
 
+// ─── Hang-protection (added after 2026-04-26 outage) ────────────────────────
+// Per-VM deadline wrapping the unhealthy-VM SSH-heavy loop. Without this, one
+// stuck VM (SSH connects but commands hang) could block the entire cron batch
+// for the full 600s maxDuration, eventually causing the next cron cycle to
+// pile on top via the (previously absent) cron lock.
+const PER_VM_DEADLINE_MS = 90_000;
+const CRON_NAME = "health-check";
+const CRON_LOCK_TTL_SECONDS = 660; // > maxDuration with 60s headroom
+
+/**
+ * Run `fn` with an outer Promise.race deadline. Returns `{ok, value}` on
+ * success or `{ok: false, deadline: true}` on timeout. Callers loop+continue
+ * past deadline misses so a single stuck VM can't break the batch.
+ *
+ * In-flight SSH commands may continue executing on the VM side after the
+ * deadline (Promise.race doesn't cancel the loser); the next cron cycle
+ * re-evaluates state idempotently, so partial-state risk is bounded.
+ */
+async function raceWithDeadline<T>(
+  fn: () => Promise<T>,
+  ms: number,
+  label: string,
+): Promise<{ ok: true; value: T } | { ok: false; deadline: true; ms: number; label: string }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`__DEADLINE__:${label}`)), ms);
+  });
+  try {
+    const value = await Promise.race([fn(), deadline]);
+    return { ok: true, value };
+  } catch (err) {
+    if (err instanceof Error && err.message === `__DEADLINE__:${label}`) {
+      return { ok: false, deadline: true, ms, label };
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function GET(req: NextRequest) {
   // Verify cron secret
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Distributed lock — prevents the same cron piling up multiple instances
+  // during outages or when individual runs slow down. Same pattern reconcile-
+  // fleet already uses.
+  const lockAcquired = await tryAcquireCronLock(CRON_NAME, CRON_LOCK_TTL_SECONDS);
+  if (!lockAcquired) {
+    logger.info("health-check: lock held, skipping", { route: "cron/health-check" });
+    return NextResponse.json({ skipped: "lock_held" });
+  }
+
+  let perVmDeadlineHits = 0;
+
+  try {
 
   const supabase = getSupabase();
 
@@ -257,8 +311,16 @@ export async function GET(req: NextRequest) {
   // (failed HTTP but passed SSH connectivity)
   const needsSSHHealthCheck = sshAliveVms.filter(vm => httpFailedVms.some(v => v.id === vm.id));
 
-  // Only run SSH-based gateway health check on VMs that failed HTTP pre-check
+  // Only run SSH-based gateway health check on VMs that failed HTTP pre-check.
+  //
+  // Per-VM deadline: each iteration of this loop is bounded by PER_VM_DEADLINE_MS
+  // (90s) so one stuck VM (SSH connects but commands hang on a wedged process)
+  // cannot block the entire batch. On deadline, we log + continue to the next VM.
+  // Idempotent reconciler semantics mean the next cron cycle re-evaluates that VM
+  // cleanly. Helper: raceWithDeadline at the top of this file.
   for (const vm of needsSSHHealthCheck) {
+    const __vmStart = Date.now();
+    const __deadlineResult = await raceWithDeadline(async () => {
     const result = await checkHealthExtended(vm, vm.gateway_token ?? undefined);
     const currentFailCount = vm.health_fail_count ?? 0;
 
@@ -669,6 +731,19 @@ else:
           );
         }
       }
+    }
+    }, PER_VM_DEADLINE_MS, `vm:${vm.id}`);
+    // End of per-VM deadline-wrapped block. On deadline-miss, log + skip.
+    if (!__deadlineResult.ok) {
+      perVmDeadlineHits++;
+      logger.error("health-check: per-VM deadline exceeded — skipping VM", {
+        route: "cron/health-check",
+        vmId: vm.id,
+        vmName: vm.name,
+        deadlineMs: __deadlineResult.ms,
+        elapsedMs: Date.now() - __vmStart,
+      });
+      continue;
     }
   }
 
@@ -3050,5 +3125,11 @@ else:
     sessionCorruptionFound,
     alertDigestsSent: alertResult.sent,
     alertDigestsSkipped: alertResult.skipped,
+    perVmDeadlineHits,
   });
+  } finally {
+    // Always release the cron lock — finally guarantees cleanup even on
+    // uncaught throws so the next cron run isn't blocked.
+    await releaseCronLock(CRON_NAME);
+  }
 }
