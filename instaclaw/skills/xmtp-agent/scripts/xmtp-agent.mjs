@@ -274,6 +274,15 @@ async function main() {
 
   // ── Handle new DM conversations ──
   agent.on("dm", async (ctx) => {
+    // When sendProactiveGreeting created the DM itself, this dm event also
+    // fires (the agent is one party of a new conversation). Suppress the
+    // reactive greeting in that case — otherwise the user receives two
+    // greetings back-to-back. The proactive marker is the authoritative
+    // signal that the canonical greeting has already been delivered.
+    if (existsSync(join(XMTP_DIR, ".greeting-sent"))) {
+      log("INFO", "DM event with proactive marker present — skipping reactive greeting");
+      return;
+    }
     const sender = ctx.message?.senderInboxId || ctx.message?.senderAddress || "unknown";
     log("INFO", `New DM conversation from ${sender}`);
     await ctx.conversation.sendText(
