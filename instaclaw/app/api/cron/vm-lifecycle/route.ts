@@ -28,13 +28,13 @@ import {
 import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
-// 900s — Pass 1 v2 (freeze) does serial Linode operations: shutdown wait
-// (≤90s) + image-available wait (≤600s) + DB update + delete = ~12 min/VM
-// worst case. With MAX_FREEZE_PER_RUN=2, two serial freezes fit in 1380s
-// worst case — over the 900 budget but typical-case is well under. The
-// budget is sized for the typical-case (~3 min/freeze) plus margin for
-// other passes (Pass -1 orphan + Pass 0 + Pass 2 trim).
-export const maxDuration = 900;
+// 800s — the published Vercel Pro maxDuration cap (900s is Enterprise-only).
+// Pass 1 v2 (freeze) does serial Linode ops: shutdown (≤90s) + image-available
+// (≤600s) + DB update + delete = ~12 min/VM worst case. With
+// MAX_FREEZE_PER_RUN=2 the typical-case fits comfortably; worst-case 1380s
+// would exceed the budget — we'd lose the 2nd freeze mid-execution but the
+// 1st would have completed cleanly (DB updated before instance delete).
+export const maxDuration = 800;
 
 /**
  * VM Lifecycle Cron — Automated deletion of suspended VMs from Linode.
