@@ -1,5 +1,28 @@
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
+import { PostHog } from "posthog-node";
+
+// PostHog server-side singleton. Reused across warm function invocations.
+// Returns null if no key is configured (dev/staging without analytics).
+let posthogClient: PostHog | null | undefined = undefined;
+function getPosthog(): PostHog | null {
+  if (posthogClient !== undefined) return posthogClient;
+  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  if (!key) {
+    posthogClient = null;
+    return null;
+  }
+  try {
+    posthogClient = new PostHog(key, {
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
+      flushAt: 1,         // send on every capture — no batching for serverless
+      flushInterval: 0,   // disable interval-based flush
+    });
+  } catch {
+    posthogClient = null;
+  }
+  return posthogClient;
+}
 
 /**
  * Onboarding journey event types. Append new ones here; the DB column is
@@ -39,6 +62,7 @@ export async function logOnboardingEvent(params: {
   vmId?: string | null;
   metadata?: Record<string, unknown> | null;
 }): Promise<void> {
+  // ── 1. Supabase insert (source of truth for SQL queries / joins) ──
   try {
     const supabase = getSupabase();
     const { error } = await supabase.from("instaclaw_onboarding_events").insert({
@@ -48,7 +72,7 @@ export async function logOnboardingEvent(params: {
       metadata: params.metadata ?? null,
     });
     if (error) {
-      logger.warn("logOnboardingEvent: insert failed (non-fatal)", {
+      logger.warn("logOnboardingEvent: Supabase insert failed (non-fatal)", {
         eventType: params.eventType,
         userId: params.userId,
         vmId: params.vmId ?? null,
@@ -56,10 +80,36 @@ export async function logOnboardingEvent(params: {
       });
     }
   } catch (err) {
-    logger.warn("logOnboardingEvent: threw (non-fatal)", {
+    logger.warn("logOnboardingEvent: Supabase threw (non-fatal)", {
       eventType: params.eventType,
       userId: params.userId,
       error: String(err),
     });
+  }
+
+  // ── 2. PostHog parallel emit (funnel dashboard / cohort tooling) ──
+  // Same 7 event names as the DB column — direct cross-reference.
+  // Failures here are independent of the Supabase write above; either
+  // surface can succeed alone.
+  const ph = getPosthog();
+  if (ph) {
+    try {
+      ph.capture({
+        distinctId: params.userId,
+        event: params.eventType,
+        properties: {
+          ...(params.metadata ?? {}),
+          vm_id: params.vmId ?? null,
+          source: "server",
+        },
+      });
+      await ph.flush();
+    } catch (err) {
+      logger.warn("logOnboardingEvent: PostHog capture failed (non-fatal)", {
+        eventType: params.eventType,
+        userId: params.userId,
+        error: String(err),
+      });
+    }
   }
 }
