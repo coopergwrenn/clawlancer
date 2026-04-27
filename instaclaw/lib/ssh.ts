@@ -9701,13 +9701,51 @@ export async function setupXMTP(
       `mkdir -p ~/.openclaw/xmtp && printf '${envContent}\\n' > ~/.openclaw/xmtp/.env`
     );
 
-    // 5. Ensure xmtp-agent.mjs is deployed
-    const checkScript = await ssh.execCommand("ls ~/scripts/xmtp-agent.mjs 2>/dev/null && echo exists || echo missing");
-    if (checkScript.stdout.includes("missing")) {
-      const scriptUrl = "https://raw.githubusercontent.com/coopergwrenn/clawlancer/main/instaclaw/skills/xmtp-agent/scripts/xmtp-agent.mjs";
-      await ssh.execCommand(
-        `mkdir -p ~/scripts && curl -sL "${scriptUrl}" -o ~/scripts/xmtp-agent.mjs`
-      );
+    // 5. Refresh xmtp-agent.mjs from main on every configure.
+    //
+    // This is the auto-deploy mechanism for agent script changes — any
+    // merge to main propagates to the next provision/reconfigure with no
+    // snapshot rebake required. Atomic replace via mktemp + mv: a failed
+    // curl never corrupts the existing on-disk file. Sanity checks
+    // before mv:
+    //   - curl -fsSL: fail on HTTP 4xx/5xx, follow redirects, silent
+    //     but show errors on stderr
+    //   - --max-time 20: bounded wall time so a stuck connection can't
+    //     hang configure
+    //   - [ -s "$tmp" ]: temp file is non-empty
+    //   - shebang sniff: first line starts with "#!" (rejects an HTML
+    //     error page or other non-script payload)
+    // Three terminal log markers tell us which path was taken.
+    {
+      const scriptUrl =
+        "https://raw.githubusercontent.com/coopergwrenn/clawlancer/main/instaclaw/skills/xmtp-agent/scripts/xmtp-agent.mjs";
+      const refreshCmd =
+        `mkdir -p ~/scripts && ` +
+        `tmp=$(mktemp ~/scripts/.xmtp-agent.mjs.XXXXXX) && ` +
+        `if curl -fsSL --max-time 20 "${scriptUrl}" -o "$tmp" && [ -s "$tmp" ] && head -1 "$tmp" | grep -q "^#!"; then ` +
+        `  mv -f "$tmp" ~/scripts/xmtp-agent.mjs && echo XMTP_AGENT_REFRESHED; ` +
+        `else ` +
+        `  rm -f "$tmp"; ` +
+        `  if [ -f ~/scripts/xmtp-agent.mjs ]; then echo XMTP_AGENT_KEPT_EXISTING; else echo XMTP_AGENT_DOWNLOAD_FAILED_NO_FALLBACK; fi; ` +
+        `fi`;
+      const refreshResult = await ssh.execCommand(refreshCmd);
+      if (refreshResult.stdout.includes("XMTP_AGENT_REFRESHED")) {
+        logger.info("XMTP agent script refreshed from main", { vmId: vm.id });
+      } else if (refreshResult.stdout.includes("XMTP_AGENT_KEPT_EXISTING")) {
+        logger.warn("XMTP agent script refresh failed — kept existing on-disk file", {
+          vmId: vm.id,
+          stderr: refreshResult.stderr?.slice(0, 200),
+        });
+      } else {
+        logger.error("XMTP agent script refresh failed and no existing copy on disk", {
+          vmId: vm.id,
+          stderr: refreshResult.stderr?.slice(0, 200),
+        });
+        return {
+          success: false,
+          error: "xmtp-agent.mjs unavailable: download failed and no existing file",
+        };
+      }
     }
 
     // 6. Ensure @xmtp/agent-sdk is installed
