@@ -1,5 +1,9 @@
 -- Per-user onboarding journey event log.
 --
+-- Applied to production: 2026-04-27 (via Supabase dashboard SQL editor;
+-- the supabase CLI db push path is currently blocked by orphan migrations
+-- 20260332/20260333 left over from the AgentBook rollout).
+--
 -- Captures each step of a user's signup → first-message journey so we can:
 --   1. Compute funnel conversion (verify → pay → assigned → configured → greeted)
 --   2. Diagnose where users drop off
