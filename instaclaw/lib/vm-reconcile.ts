@@ -13,7 +13,7 @@
  */
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
-import { connectSSH, NVM_PREAMBLE, type VMRecord } from "./ssh";
+import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, type VMRecord } from "./ssh";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
@@ -169,6 +169,13 @@ export async function reconcileVM(
     // ── Step 3b: Remotion dependencies (npm install in motion-graphics template) ──
     currentStep = "remotion-deps";
     await stepRemotionDeps(ssh, result, dryRun);
+
+    // ── Step 3c: Pinned npm globals (@bankr/cli + openclaw) ──
+    // Closes the rollout gap: bumping BANKR_CLI_PINNED_VERSION or
+    // OPENCLAW_PINNED_VERSION in lib/ssh.ts now propagates fleet-wide via
+    // reconcile, not just on first configureOpenClaw().
+    currentStep = "npm-pin-drift";
+    await stepNpmPinDrift(ssh, result, dryRun);
 
     // ── Step 4: Cron jobs ──
     currentStep = "cron-jobs";
@@ -1013,6 +1020,90 @@ async function stepRemotionDeps(
   }
 
   result.fixed.push('remotion deps (npm install in motion-graphics template)');
+}
+
+/**
+ * Step 3c: Detect & fix drift on globally-pinned npm packages — @bankr/cli and
+ * openclaw. Both pins live in lib/ssh.ts (BANKR_CLI_PINNED_VERSION,
+ * OPENCLAW_PINNED_VERSION) and were previously only enforced inside
+ * configureOpenClaw(), which doesn't run on existing assigned VMs. Without this
+ * step, bumping a pin requires a manual fleet patch.
+ *
+ * Two independent inline checks (no generic abstraction):
+ *   - bankr: version comparison + reinstall, no service restart needed
+ *   - openclaw: same pattern, but ALSO updates ~/.openclaw/.openclaw-pinned-version
+ *     before the install (so vm-watchdog doesn't revert the upgrade as
+ *     "unauthorized") and marks gatewayRestartNeeded so the new binary loads
+ *     into the running gateway via the existing Step 9 restart path.
+ *
+ * Fail-soft: a transient npm registry hiccup logs to result.errors and lets
+ * reconcile continue. Next cycle re-evaluates and retries — idempotent.
+ */
+async function stepNpmPinDrift(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // ── @bankr/cli pin ──
+  const bankrCurr = (await ssh.execCommand(
+    `${NVM_PREAMBLE} && bankr --version 2>/dev/null | head -1 | tr -d "[:space:]" || true`,
+  )).stdout.trim();
+
+  if (bankrCurr === BANKR_CLI_PINNED_VERSION) {
+    result.alreadyCorrect.push(`@bankr/cli (${BANKR_CLI_PINNED_VERSION})`);
+  } else if (dryRun) {
+    result.fixed.push(`[dry-run] @bankr/cli ${bankrCurr || "missing"} → ${BANKR_CLI_PINNED_VERSION}`);
+  } else {
+    const install = await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm install -g @bankr/cli@${BANKR_CLI_PINNED_VERSION} 2>&1 | tail -5`,
+      { execOptions: { timeout: 120_000 } },
+    );
+    const verify = (await ssh.execCommand(
+      `${NVM_PREAMBLE} && bankr --version 2>/dev/null | head -1 | tr -d "[:space:]"`,
+    )).stdout.trim();
+    if (verify === BANKR_CLI_PINNED_VERSION) {
+      result.fixed.push(`@bankr/cli ${bankrCurr || "missing"} → ${BANKR_CLI_PINNED_VERSION}`);
+    } else {
+      result.errors.push(
+        `@bankr/cli install failed: was=${bankrCurr || "missing"} got=${verify || "(empty)"} npm-tail=${(install.stdout + install.stderr).slice(-200)}`,
+      );
+    }
+  }
+
+  // ── openclaw pin ──
+  // openclaw --version output: "OpenClaw 2026.4.5 (3e72c03)" — extract semver
+  const openclawCurr = (await ssh.execCommand(
+    `${NVM_PREAMBLE} && openclaw --version 2>/dev/null | grep -oE "[0-9]+\\.[0-9]+\\.[0-9]+" | head -1 || true`,
+  )).stdout.trim();
+
+  if (openclawCurr === OPENCLAW_PINNED_VERSION) {
+    result.alreadyCorrect.push(`openclaw (${OPENCLAW_PINNED_VERSION})`);
+  } else if (dryRun) {
+    result.fixed.push(`[dry-run] openclaw ${openclawCurr || "missing"} → ${OPENCLAW_PINNED_VERSION}`);
+  } else {
+    // Update the pinned-version file FIRST so vm-watchdog cron treats the
+    // upcoming install as authorized and doesn't revert it.
+    await ssh.execCommand(
+      `echo '${OPENCLAW_PINNED_VERSION}' > "$HOME/.openclaw/.openclaw-pinned-version"`,
+    );
+    const install = await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
+      { execOptions: { timeout: 180_000 } },
+    );
+    const verify = (await ssh.execCommand(
+      `${NVM_PREAMBLE} && openclaw --version 2>/dev/null | grep -oE "[0-9]+\\.[0-9]+\\.[0-9]+" | head -1`,
+    )).stdout.trim();
+    if (verify === OPENCLAW_PINNED_VERSION) {
+      result.fixed.push(`openclaw ${openclawCurr || "missing"} → ${OPENCLAW_PINNED_VERSION}`);
+      // The running gateway holds the OLD binary in memory; trigger Step 9
+      // restart so the new version actually loads.
+      result.gatewayRestartNeeded = true;
+    } else {
+      result.errors.push(
+        `openclaw install failed: was=${openclawCurr || "missing"} got=${verify || "(empty)"} npm-tail=${(install.stdout + install.stderr).slice(-200)}`,
+      );
+    }
+  }
 }
 
 async function stepSkills(
