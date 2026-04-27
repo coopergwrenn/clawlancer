@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
+import { logOnboardingEvent } from "@/lib/onboarding-events";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,20 @@ export async function POST(req: NextRequest) {
       userId: vm.assigned_to,
       wasNew,
     });
+
+    // Onboarding journey event: this is the canonical "wow moment" — the
+    // user just received their first proactive World Chat message. Only
+    // emit on first-time delivery to keep the event log clean.
+    if (wasNew) {
+      await logOnboardingEvent({
+        userId: vm.assigned_to,
+        eventType: "first_message_sent",
+        vmId: vm.id,
+        metadata: {
+          vm_name: vm.name,
+        },
+      });
+    }
 
     return NextResponse.json({ recorded: wasNew });
   } catch (err) {

@@ -5,6 +5,7 @@ import { validateAdminKey, decryptApiKey } from "@/lib/security";
 import { decryptBankrKey } from "@/lib/bankr-encryption";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
+import { logOnboardingEvent } from "@/lib/onboarding-events";
 
 // SSH + configure-vm.sh + health check + optional data migration can take 60-150s
 export const maxDuration = 300;
@@ -245,6 +246,21 @@ export async function POST(req: NextRequest) {
 
     // Configure OpenClaw on the VM
     const configureStart = Date.now();
+
+    // Onboarding journey event: configure begins. Fires for every attempt
+    // (including reconfigures of existing VMs) so we can compute attempt
+    // counts and time-to-success per user.
+    await logOnboardingEvent({
+      userId: userId!,
+      eventType: "configure_started",
+      vmId: vm.id,
+      metadata: {
+        vm_name: vm.name,
+        api_mode: effectiveApiMode,
+        attempt: (vm.configure_attempts ?? 0) + 1,
+      },
+    });
+
     const result = await configureOpenClaw(vm, {
       telegramBotToken: effectiveTelegramToken,
       apiMode: effectiveApiMode,
@@ -485,6 +501,22 @@ export async function POST(req: NextRequest) {
               vmId: vm.id,
               error: xmtpResult.error,
             });
+          } else {
+            // Onboarding journey event: XMTP rails are wired (agent has
+            // an address, env file is written). The proactive greeting
+            // fires asynchronously after this and is captured separately
+            // by the first_message_sent event.
+            await logOnboardingEvent({
+              userId: capturedUserIdForXmtp,
+              eventType: "xmtp_setup_completed",
+              vmId: vm.id,
+              metadata: {
+                vm_name: vm.name,
+                xmtp_address_prefix: xmtpResult.xmtpAddress?.slice(0, 10) ?? null,
+                user_wallet_was_set: !!userWalletAddress,
+                greeting_already_sent: userGreetingAlreadySent,
+              },
+            });
           }
         } catch (err) {
           logger.warn("Background XMTP setup exception (non-fatal)", {
@@ -506,6 +538,20 @@ export async function POST(req: NextRequest) {
         route_setup: `${configureStart - routeStart}ms`,
         configureOpenClaw: `${Date.now() - configureStart}ms`,
         route_total: `${routeEnd - routeStart}ms`,
+      },
+    });
+
+    // Onboarding journey event: configure pipeline succeeded. Captures
+    // duration for time-to-success funnels. Does NOT fire on the early
+    // skip path (line ~104) — that's a no-op, not a completion.
+    await logOnboardingEvent({
+      userId: userId!,
+      eventType: "configure_completed",
+      vmId: vm.id,
+      metadata: {
+        vm_name: vm.name,
+        configure_duration_ms: Date.now() - configureStart,
+        gateway_verified: result.gatewayVerified,
       },
     });
 

@@ -239,6 +239,14 @@ export async function markWorldIdVerified(
     })
     .eq("id", userId);
   if (error) throw error;
+
+  // Onboarding journey event (non-fatal, fire-and-forget).
+  const { logOnboardingEvent } = await import("./onboarding-events");
+  await logOnboardingEvent({
+    userId,
+    eventType: "world_id_verified",
+    metadata: { verification_level: verificationLevel },
+  });
 }
 
 // ── Duplicate VM prevention ──
