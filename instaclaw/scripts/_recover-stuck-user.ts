@@ -37,8 +37,10 @@ function arg(name: string): string | undefined {
 
 const EMAIL = arg("email");
 const EXEC = process.argv.includes("--exec");
+const ALLOW_PAST_DUE = process.argv.includes("--allow-past-due");
+const ALLOW_TRIALING = process.argv.includes("--allow-trialing");
 
-if (!EMAIL) { console.error("usage: --email=<email> [--exec]"); process.exit(2); }
+if (!EMAIL) { console.error("usage: --email=<email> [--exec] [--allow-past-due] [--allow-trialing]"); process.exit(2); }
 
 function log(step: string, msg: string) {
   console.log(`[${new Date().toISOString()}] ${step}: ${msg}`);
@@ -60,7 +62,19 @@ function log(step: string, msg: string) {
     .eq("user_id", user.id).single();
   if (!sub) { log("1", "ABORT: no subscription row"); process.exit(1); }
   log("1", `sub: tier=${sub.tier} status=${sub.status} payment_status=${sub.payment_status}`);
-  if (sub.status !== "active") { log("1", `ABORT: sub.status=${sub.status} (need active)`); process.exit(1); }
+  const okStatuses = new Set(["active"]);
+  if (ALLOW_PAST_DUE) okStatuses.add("past_due");
+  if (ALLOW_TRIALING) okStatuses.add("trialing");
+  if (!okStatuses.has(sub.status)) {
+    log("1", `ABORT: sub.status=${sub.status} (allowed: ${[...okStatuses].join(",")})`);
+    process.exit(1);
+  }
+  if (sub.status === "past_due") {
+    log("1", `WARN: proceeding with past_due sub — user will need Stripe comp to retain access`);
+  }
+  if (sub.status === "trialing") {
+    log("1", `INFO: proceeding with trialing sub — VM will be terminated when trial ends if no upgrade`);
+  }
 
   // ───────── Step 2: no existing VM ─────────
   log("2", `check for existing VM assignment`);
