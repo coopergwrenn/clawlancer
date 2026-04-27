@@ -28,7 +28,13 @@ import {
 import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// 900s — Pass 1 v2 (freeze) does serial Linode operations: shutdown wait
+// (≤90s) + image-available wait (≤600s) + DB update + delete = ~12 min/VM
+// worst case. With MAX_FREEZE_PER_RUN=2, two serial freezes fit in 1380s
+// worst case — over the 900 budget but typical-case is well under. The
+// budget is sized for the typical-case (~3 min/freeze) plus margin for
+// other passes (Pass -1 orphan + Pass 0 + Pass 2 trim).
+export const maxDuration = 900;
 
 /**
  * VM Lifecycle Cron — Automated deletion of suspended VMs from Linode.
@@ -470,25 +476,44 @@ export async function GET(req: NextRequest) {
   // ═══════════════════════════════════════════════════════════════════
   if (settings.vmLifecycleV2Enabled) {
     try {
+      // PRD rule 2: skip any VM with proxy activity in the last 7 days.
+      // last_proxy_call_at is the canonical "user attempted to use the VM"
+      // signal — set on every successful gateway/proxy call. SSH file-mtime
+      // checks miss paywall-bouncing users (proxy hits don't touch ~/.openclaw).
+      const proxyActivityCutoff = new Date(
+        Date.now() - 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
       const { data: candidates } = await supabase
         .from("instaclaw_vms")
         .select(
-          "id, name, ip_address, ssh_port, ssh_user, provider_server_id, assigned_to, credit_balance, bankr_token_address, suspended_at, status, health_status, region, lifecycle_locked_at"
+          "id, name, ip_address, ssh_port, ssh_user, provider_server_id, assigned_to, credit_balance, bankr_token_address, suspended_at, status, health_status, region, lifecycle_locked_at, last_proxy_call_at, frozen_image_id"
         )
         .in("health_status", ["suspended", "hibernating"])
         .eq("provider", "linode")
         .eq("status", "assigned")
         .not("suspended_at", "is", null)
-        .not("provider_server_id", "is", null);
+        .not("provider_server_id", "is", null)
+        // Skip thaw-pending-verification rows (frozen_image_id still set
+        // post-thaw means SSH never verified — the previous thaw is in a
+        // hold state and we shouldn't re-freeze and overwrite the image).
+        .is("frozen_image_id", null)
+        // Skip VMs with proxy activity in the last 7 days. PostgREST .or
+        // syntax: column.op.value comma column.op.value — combined with
+        // existing .eq filters via implicit AND.
+        .or(`last_proxy_call_at.is.null,last_proxy_call_at.lt.${proxyActivityCutoff}`);
 
       logger.info("vm-lifecycle: Pass 1 v2 (freeze) — candidates queried", {
         route: "cron/vm-lifecycle", runId, count: candidates?.length ?? 0, dryRun,
       });
 
-      let freezeCount = 0;
+      let freezeAttempts = 0;
       for (const vm of candidates ?? []) {
-        if (freezeCount >= MAX_FREEZE_PER_RUN) {
-          logger.info("vm-lifecycle: Pass 1 v2 cap reached", {
+        // Cap on ATTEMPTS not just successes — Linode's image-create rate
+        // limit (~50/hr) counts attempts including failures, so a bad day
+        // hitting rate limits could otherwise burn through the candidate
+        // list trying every VM.
+        if (freezeAttempts >= MAX_FREEZE_PER_RUN) {
+          logger.info("vm-lifecycle: Pass 1 v2 attempt cap reached", {
             route: "cron/vm-lifecycle", runId, cap: MAX_FREEZE_PER_RUN,
           });
           break;
@@ -509,6 +534,12 @@ export async function GET(req: NextRequest) {
         // re-checks Stripe live, but skip the call entirely for these).
         if (vm.assigned_to && isProtectedUser(vm.assigned_to)) {
           report.pass1_v2_skipped_safety++;
+          if (!dryRun) {
+            await logLifecycleEvent(
+              supabase, vm, vm.assigned_to ?? null, "(protected)", null,
+              "freeze_skipped_safety", "protected user",
+            );
+          }
           continue;
         }
 
@@ -540,11 +571,24 @@ export async function GET(req: NextRequest) {
           lifecycle_locked_at: vm.lifecycle_locked_at ?? null,
         };
 
-        const result = await freezeVM(supabase, candidate, dryRun, runId);
+        // Per-VM try/catch — a single Linode API throw must NOT kill the rest
+        // of the pass. Convert thrown errors into a freeze_failed result and
+        // continue to the next candidate.
+        freezeAttempts++;
+        let result: Awaited<ReturnType<typeof freezeVM>>;
+        try {
+          result = await freezeVM(supabase, candidate, dryRun, runId);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error("vm-lifecycle: freezeVM threw — caught and continuing", {
+            route: "cron/vm-lifecycle", runId,
+            vmId: vm.id, vmName: vm.name, error: msg,
+          });
+          result = { success: false, reason: `freezeVM threw: ${msg.slice(0, 200)}` };
+        }
 
         if (result.success) {
           report.pass1_v2_frozen++;
-          freezeCount++;
           report.freezes.push({
             vm_name: vm.name ?? vm.id,
             ip_address: vm.ip_address,
@@ -555,11 +599,18 @@ export async function GET(req: NextRequest) {
             action: dryRun ? "WOULD_FREEZE" : "FROZEN",
             image_id: result.imageId ?? null,
           });
+          if (!dryRun) {
+            await logLifecycleEvent(
+              supabase, vm, vm.assigned_to ?? null, userEmail, null,
+              "frozen",
+              `${result.reason}${result.imageId ? ` image=${result.imageId}` : ""}${result.imageSizeMb ? ` ${result.imageSizeMb}MB` : ""}`,
+            );
+          }
         } else {
           // Distinguish "expected skip" (safety check fired) from "operation
           // failure" (snapshot/API error). Both increment a counter, but we
           // keep them separate so the email tells us which.
-          const isSkip = /refuse|paid credits|active|activity|lock|wrong status|wrong health|no provider/i.test(result.reason);
+          const isSkip = /refuse|paid credits|active|activity|failing closed|lock|wrong status|wrong health|no provider|unexpected activity-check/i.test(result.reason);
           if (isSkip) {
             report.pass1_v2_skipped_safety++;
           } else {
@@ -576,6 +627,13 @@ export async function GET(req: NextRequest) {
             action: isSkip ? "SKIP" : "FAILED",
             image_id: null,
           });
+          if (!dryRun) {
+            await logLifecycleEvent(
+              supabase, vm, vm.assigned_to ?? null, userEmail, null,
+              isSkip ? "freeze_skipped_safety" : "freeze_failed",
+              result.reason,
+            );
+          }
         }
       }
 
