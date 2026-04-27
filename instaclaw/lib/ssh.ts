@@ -9636,8 +9636,9 @@ export async function removeIntegrationCredentials(
  * Called as a background task after configureOpenClaw completes.
  */
 export async function setupXMTP(
-  vm: VMRecord & { gateway_token: string },
+  vm: VMRecord & { gateway_token: string; name?: string },
   userWalletAddress?: string,
+  userGreetingAlreadySent?: boolean,
 ): Promise<{ success: boolean; xmtpAddress?: string; error?: string }> {
   const supabase = getSupabase();
 
@@ -9691,10 +9692,21 @@ export async function setupXMTP(
       } else {
         logger.warn("setupXMTP: malformed userWalletAddress, skipping USER_WALLET_ADDRESS env", {
           vmId: vm.id,
+          vmName: vm.name,
           prefix: userWalletAddress.slice(0, 10),
         });
       }
     }
+    // Per-user greeting marker (cross-VM): if the user was already greeted
+    // on a prior VM, signal the agent to skip the proactive greeting so a
+    // re-provision doesn't double-greet from a fresh VM with no on-disk marker.
+    if (userGreetingAlreadySent) {
+      envLines.push(`USER_GREETING_ALREADY_SENT=true`);
+    }
+    // URL the agent uses to call back after a successful greeting send.
+    // Defaults to https://instaclaw.io if NEXTAUTH_URL is unset (dev fallback).
+    const instaclawApiUrl = process.env.NEXTAUTH_URL || "https://instaclaw.io";
+    envLines.push(`INSTACLAW_API_URL=${instaclawApiUrl}`);
     const envContent = envLines.join("\\n");
 
     await ssh.execCommand(
@@ -9730,16 +9742,26 @@ export async function setupXMTP(
         `fi`;
       const refreshResult = await ssh.execCommand(refreshCmd);
       if (refreshResult.stdout.includes("XMTP_AGENT_REFRESHED")) {
-        logger.info("XMTP agent script refreshed from main", { vmId: vm.id });
-      } else if (refreshResult.stdout.includes("XMTP_AGENT_KEPT_EXISTING")) {
-        logger.warn("XMTP agent script refresh failed — kept existing on-disk file", {
+        logger.info("XMTP agent script refreshed from main", {
           vmId: vm.id,
+          vmName: vm.name,
+        });
+      } else if (refreshResult.stdout.includes("XMTP_AGENT_KEPT_EXISTING")) {
+        // Surfaced as warn so we can grep Vercel logs for fallback frequency.
+        // Recurring hits on this line = GitHub raw availability problem on the
+        // new-VM provisioning critical path → would warrant snapshot rebake.
+        logger.warn("XMTP agent script refresh failed — kept existing on-disk file (FALLBACK)", {
+          vmId: vm.id,
+          vmName: vm.name,
           stderr: refreshResult.stderr?.slice(0, 200),
+          alert: "xmtp-agent-refresh-fallback",
         });
       } else {
         logger.error("XMTP agent script refresh failed and no existing copy on disk", {
           vmId: vm.id,
+          vmName: vm.name,
           stderr: refreshResult.stderr?.slice(0, 200),
+          alert: "xmtp-agent-refresh-no-fallback",
         });
         return {
           success: false,
