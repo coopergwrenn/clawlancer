@@ -13,7 +13,7 @@
  */
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
-import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, type VMRecord } from "./ssh";
+import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, toOpenClawModel, type VMRecord } from "./ssh";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
@@ -176,6 +176,16 @@ export async function reconcileVM(
     // reconcile, not just on first configureOpenClaw().
     currentStep = "npm-pin-drift";
     await stepNpmPinDrift(ssh, result, dryRun);
+
+    // ── Step 3d: Enforce agents.defaults.model.primary ──
+    // OpenClaw's built-in default is openai/gpt-5.4. If model.primary is
+    // <unset> (which can happen if updateModel() was never called for a VM),
+    // every chat completion silently bills OpenAI instead of Anthropic.
+    // See incident 2026-04-27: 4 VMs with <unset> model.primary accumulated
+    // ~$500 of OpenAI spend in a month. Per-VM target is computed from
+    // vm.default_model and mapped via toOpenClawModel().
+    currentStep = "model-primary-pin";
+    await stepEnforceModelPrimary(ssh, vm, result, dryRun);
 
     // ── Step 4: Cron jobs ──
     currentStep = "cron-jobs";
@@ -1104,6 +1114,58 @@ async function stepNpmPinDrift(
       );
     }
   }
+}
+
+/**
+ * Step 3d: Enforce agents.defaults.model.primary on every VM.
+ *
+ * Without this, OpenClaw falls back to its built-in default (openai/gpt-5.4)
+ * for any VM whose model.primary key is missing — silently routing every chat
+ * completion to OpenAI instead of Anthropic. See incident 2026-04-27.
+ *
+ * Per-VM target is computed from vm.default_model (DB) mapped via
+ * toOpenClawModel(). If a drift is detected, set the value and trigger a
+ * gateway restart (Step 9) so the new model takes effect.
+ *
+ * Fail-soft: a config-set failure logs to result.errors and lets reconcile
+ * continue; next cycle re-evaluates and retries.
+ */
+async function stepEnforceModelPrimary(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const dbModel = (vm as VMRecord & { default_model?: string | null }).default_model || "claude-sonnet-4-6";
+  const targetPrimary = toOpenClawModel(dbModel);
+
+  const cur = (await ssh.execCommand(
+    `cat ~/.openclaw/openclaw.json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("agents",{}).get("defaults",{}).get("model",{}).get("primary","<unset>"))'`,
+  )).stdout.trim();
+
+  if (cur === targetPrimary) {
+    result.alreadyCorrect.push(`agents.defaults.model.primary (${targetPrimary})`);
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] agents.defaults.model.primary: ${cur} → ${targetPrimary}`);
+    return;
+  }
+
+  const r = await ssh.execCommand(
+    `${NVM_PREAMBLE} && openclaw config set agents.defaults.model.primary '${targetPrimary}' 2>&1`,
+    { execOptions: { timeout: 30_000 } },
+  );
+  if (r.code !== 0) {
+    result.errors.push(`model.primary set failed (cur=${cur} target=${targetPrimary}): ${(r.stdout + r.stderr).slice(-200)}`);
+    return;
+  }
+
+  // The running gateway has the OLD model loaded; trigger Step 9 restart so
+  // the new value takes effect on the next chat completion.
+  result.gatewayRestartNeeded = true;
+  result.fixed.push(`agents.defaults.model.primary: ${cur} → ${targetPrimary}`);
 }
 
 async function stepSkills(

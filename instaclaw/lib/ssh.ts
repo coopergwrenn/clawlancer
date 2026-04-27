@@ -2278,7 +2278,7 @@ function assertSafeShellArg(value: string, label: string): void {
 }
 
 // Map InstaClaw model IDs (Anthropic format) to OpenClaw provider/model format
-function toOpenClawModel(model: string): string {
+export function toOpenClawModel(model: string): string {
   const map: Record<string, string> = {
     "minimax-m2.5": "anthropic/minimax-m2.5",
     "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",
