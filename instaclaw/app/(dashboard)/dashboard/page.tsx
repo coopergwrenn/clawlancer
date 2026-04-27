@@ -23,6 +23,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
 import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
+import { AgentWalletFundingCard } from "@/components/dashboard/agent-wallet-funding-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
 import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
 
@@ -532,6 +533,12 @@ export default function DashboardPage() {
           tokenizationPlatform={vm.tokenizationPlatform}
           agentName={vm.telegramBotUsername}
         />
+      )}
+
+      {/* Gas funding guide — only shows when an EVM address is provisioned.
+          Bridge until auto-gas sponsorship rolls out fleet-wide. */}
+      {vm?.bankrEvmAddress && (
+        <AgentWalletFundingCard evmAddress={vm.bankrEvmAddress} />
       )}
 
       {vmStatus?.status === "assigned" && vm ? (
