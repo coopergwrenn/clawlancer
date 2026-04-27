@@ -11,11 +11,11 @@ ALL new VMs must use these exact specs:
 - **Provider:** Linode ONLY (never Hetzner or DigitalOcean)
 - **Type:** `g6-dedicated-2` (Dedicated 4GB — 2 dedicated vCPU, 4GB RAM, 80GB disk)
 - **Region:** `us-east`
-- **Snapshot:** `private/38111101` (instaclaw-base-v58-vm-watchdog-fix — OpenClaw v2026.4.5, v58 manifest, all 7 manifest scripts at canonical v58 SHAs incl. vm-watchdog.py with /bin/bash -lc subprocess fix + version_fix_noop verification. Full concatenated SOUL.md (template + intelligence + learned-prefs + 4-rule operating principles + degenclaw awareness + memory filing system). Workspace files at canonical v58. Chromium 147, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, both SSH deploy keys, 7/7 crons, exec-approvals.json security=full. 5746 MB. 27/27 verified.)
+- **Snapshot:** `private/38458138` (instaclaw-base-v62-bankr-cli-0.3.1 — baked 2026-04-27 from v58 base. OpenClaw v2026.4.5, **@bankr/cli@0.3.1** (was 0.2.15 in v58 — bumped for direct claim API target POST /token-launches/:tokenAddress/fees/claim). All other v58 contents preserved: v58 manifest scripts at canonical SHAs, full concatenated SOUL.md, workspace files at canonical v58, Chromium 147, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, both SSH deploy keys, 7/7 crons, exec-approvals.json security=full. 5296 MB. 7/7 verified.)
 - **Cost:** $29/mo per VM (negotiated Linode rate)
 - **DB status:** `provisioning` (cloud-init-poll cron auto-marks as `ready` in ~3-5 min)
 
-NEVER use old snapshots (private/36895419, private/38069990, or any pre-v58 image). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
+NEVER use old snapshots (private/36895419, private/38069990, private/38111101 (v58), or any pre-v62 image). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
 
 ## Project Structure
 
