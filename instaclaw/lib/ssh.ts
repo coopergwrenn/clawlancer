@@ -5830,7 +5830,12 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
     if (vmError) {
       logger.error("Failed to update VM record", { error: String(vmError), route: "lib/ssh", vmId: vm.id, timeline });
-      throw new Error("Failed to update VM record in database");
+      // Expose the underlying Postgres error so admin debugging doesn't require
+      // Vercel log access. Code + message + details captured.
+      const vmErrAny = vmError as { code?: string; message?: string; details?: string; hint?: string };
+      throw new Error(
+        `Failed to update VM record in database: code=${vmErrAny.code ?? "?"} ${vmErrAny.message ?? String(vmError)}${vmErrAny.details ? ` | details=${vmErrAny.details}` : ""}${vmErrAny.hint ? ` | hint=${vmErrAny.hint}` : ""}`
+      );
     }
 
     // If ownership guard was active and no rows were updated, the VM was reassigned
