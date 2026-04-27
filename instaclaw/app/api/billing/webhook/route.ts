@@ -5,6 +5,8 @@ import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser, stopGateway,
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
+import { thawVM } from "@/lib/vm-freeze-thaw";
+import { randomUUID } from "node:crypto";
 
 // Give the function enough time for background processing via after().
 // The response to Stripe is sent immediately (line 43) — maxDuration only
@@ -451,6 +453,74 @@ async function processEvent(event: any) {
             userId: sub.user_id,
             newTier,
             priceId: currentPriceId,
+          });
+        }
+      }
+
+      // Phase 3 — auto-thaw on subscription reactivation.
+      //
+      // If the user's new status is active/trialing AND they have a frozen
+      // VM, provision a new instance from their personal snapshot. thawVM()
+      // is a no-op if there's no frozen VM for the user, so it's safe to
+      // call on every subscription.updated event without checking the prior
+      // status (avoids missing edge cases like webhook retries where we
+      // don't have the old status available).
+      //
+      // Wrapped in try/catch — a thaw failure must NOT block the webhook
+      // (Stripe will retry the whole event, and a retry would just freeze
+      // again on the next vm-lifecycle pass).
+      if (subscription.status === "active" || subscription.status === "trialing") {
+        try {
+          const { data: subRow } = await supabase
+            .from("instaclaw_subscriptions")
+            .select("user_id")
+            .eq("stripe_customer_id", customerId)
+            .single();
+          if (subRow?.user_id) {
+            // Cheap pre-check before invoking the (heavy) thawVM provisioning
+            // path — most subscription.updated events won't be reactivations.
+            const { data: frozen } = await supabase
+              .from("instaclaw_vms")
+              .select("id")
+              .eq("assigned_to", subRow.user_id)
+              .eq("status", "frozen")
+              .not("frozen_image_id", "is", null)
+              .limit(1);
+            if (frozen && frozen.length > 0) {
+              const runId = randomUUID();
+              logger.info("billing/webhook: triggering auto-thaw", {
+                route: "billing/webhook",
+                userId: subRow.user_id,
+                subscriptionStatus: subscription.status,
+                runId,
+              });
+              const result = await thawVM(supabase, subRow.user_id, false, runId);
+              if (!result.success) {
+                logger.error("billing/webhook: auto-thaw failed", {
+                  route: "billing/webhook",
+                  userId: subRow.user_id,
+                  reason: result.reason,
+                  runId,
+                });
+                sendAdminAlertEmail(
+                  "VM Auto-Thaw Failed",
+                  `User ${subRow.user_id} reactivated but auto-thaw failed.\nReason: ${result.reason}\nRun ID: ${runId}\n\nManual thaw: POST /api/admin/thaw-vm with { user_id: "${subRow.user_id}" }`,
+                ).catch(() => {});
+              } else {
+                logger.info("billing/webhook: auto-thaw succeeded", {
+                  route: "billing/webhook",
+                  userId: subRow.user_id,
+                  newIp: result.newIp,
+                  runId,
+                });
+              }
+            }
+          }
+        } catch (err) {
+          logger.error("billing/webhook: auto-thaw threw", {
+            route: "billing/webhook",
+            customerId,
+            error: err instanceof Error ? err.message : String(err),
           });
         }
       }

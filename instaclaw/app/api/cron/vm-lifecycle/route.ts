@@ -18,6 +18,13 @@ import {
   vmHasCredits,
   logOrphan,
 } from "@/lib/vm-lifecycle-helpers";
+import {
+  freezeVM,
+  MAX_FREEZE_PER_RUN,
+  FREEZE_GRACE_SUSPENDED_DAYS,
+  FREEZE_GRACE_HIBERNATING_DAYS,
+  type FreezeCandidate,
+} from "@/lib/vm-freeze-thaw";
 import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
@@ -80,6 +87,11 @@ export async function GET(req: NextRequest) {
     pass1_wipe_failed: 0,
     pass1_delete_failed: 0,
     pass2_pool_trimmed: 0,
+    // Pass 1 v2 (freeze) — populated only when vmLifecycleV2Enabled
+    pass1_v2_frozen: 0,
+    pass1_v2_skipped_grace: 0,
+    pass1_v2_skipped_safety: 0,
+    pass1_v2_freeze_failed: 0,
     circuit_breaker_tripped: false,
     deletions: [] as Array<{
       vm_name: string;
@@ -87,6 +99,16 @@ export async function GET(req: NextRequest) {
       user_email: string;
       reason: string;
       action: string;
+    }>,
+    freezes: [] as Array<{
+      vm_name: string;
+      ip_address: string;
+      user_email: string;
+      health_status: string;
+      days_since_pause: number;
+      reason: string;
+      action: string;
+      image_id: string | null;
     }>,
     errors: [] as string[],
   };
@@ -378,10 +400,20 @@ export async function GET(req: NextRequest) {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // PASS 0: Transition hibernating VMs → suspended after 14 days
-  // This is when we actually save money — VM gets deallocated from Linode.
+  // PASS 0: Transition hibernating VMs → suspended after 7 days
+  //
+  // LEGACY PATH ONLY. When vmLifecycleV2Enabled=true, Pass 1 v2 freezes
+  // hibernating VMs directly at 90 days — the suspended transition is no
+  // longer needed because freezing handles deallocation. Skip Pass 0 in
+  // v2 to avoid prematurely flipping health_status before Pass 1 v2 sees
+  // the row.
   // ═══════════════════════════════════════════════════════════════════
   try {
+    if (settings.vmLifecycleV2Enabled) {
+      logger.info("vm-lifecycle: Pass 0 skipped (v2 enabled — freeze handles hibernating)", {
+        route: "cron/vm-lifecycle", runId,
+      });
+    } else {
     const { data: hibernatingVms } = await supabase
       .from("instaclaw_vms")
       .select("id, name, assigned_to, suspended_at, credit_balance")
@@ -419,14 +451,162 @@ export async function GET(req: NextRequest) {
         daysHibernating: Math.floor(daysHibernating),
       });
     }
+    } // close: legacy Pass 0 (v2 disabled) branch
   } catch (err) {
     report.errors.push(`Hibernate→suspend pass failed: ${String(err)}`);
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // PASS 1 v2: FREEZE suspended/hibernating VMs past grace period
+  //
+  // Active only when vmLifecycleV2Enabled=true. Replaces legacy Pass 1's
+  // hard-delete with snapshot-then-delete. Different grace per status:
+  //   - suspended:    FREEZE_GRACE_SUSPENDED_DAYS days post-suspended_at
+  //   - hibernating:  FREEZE_GRACE_HIBERNATING_DAYS days post-suspended_at
+  // Cap MAX_FREEZE_PER_RUN per cycle (Linode image rate limit).
+  //
+  // All safety checks live in lib/vm-freeze-thaw.ts:freezeVM(). The route
+  // just gathers candidates and counts results.
+  // ═══════════════════════════════════════════════════════════════════
+  if (settings.vmLifecycleV2Enabled) {
+    try {
+      const { data: candidates } = await supabase
+        .from("instaclaw_vms")
+        .select(
+          "id, name, ip_address, ssh_port, ssh_user, provider_server_id, assigned_to, credit_balance, bankr_token_address, suspended_at, status, health_status, region, lifecycle_locked_at"
+        )
+        .in("health_status", ["suspended", "hibernating"])
+        .eq("provider", "linode")
+        .eq("status", "assigned")
+        .not("suspended_at", "is", null)
+        .not("provider_server_id", "is", null);
+
+      logger.info("vm-lifecycle: Pass 1 v2 (freeze) — candidates queried", {
+        route: "cron/vm-lifecycle", runId, count: candidates?.length ?? 0, dryRun,
+      });
+
+      let freezeCount = 0;
+      for (const vm of candidates ?? []) {
+        if (freezeCount >= MAX_FREEZE_PER_RUN) {
+          logger.info("vm-lifecycle: Pass 1 v2 cap reached", {
+            route: "cron/vm-lifecycle", runId, cap: MAX_FREEZE_PER_RUN,
+          });
+          break;
+        }
+
+        const suspendedAt = new Date(vm.suspended_at);
+        const daysSincePause = (Date.now() - suspendedAt.getTime()) / (1000 * 60 * 60 * 24);
+        const graceDays = vm.health_status === "hibernating"
+          ? FREEZE_GRACE_HIBERNATING_DAYS
+          : FREEZE_GRACE_SUSPENDED_DAYS;
+
+        if (daysSincePause < graceDays) {
+          report.pass1_v2_skipped_grace++;
+          continue;
+        }
+
+        // Protected user — never freeze (defense in depth; freezeVM also
+        // re-checks Stripe live, but skip the call entirely for these).
+        if (vm.assigned_to && isProtectedUser(vm.assigned_to)) {
+          report.pass1_v2_skipped_safety++;
+          continue;
+        }
+
+        // Get user email for logging
+        let userEmail = "unassigned";
+        if (vm.assigned_to) {
+          const { data: user } = await supabase
+            .from("instaclaw_users")
+            .select("email")
+            .eq("id", vm.assigned_to)
+            .single();
+          userEmail = user?.email ?? "unknown";
+        }
+
+        const candidate: FreezeCandidate = {
+          id: vm.id,
+          name: vm.name ?? null,
+          ip_address: vm.ip_address,
+          ssh_port: vm.ssh_port,
+          ssh_user: vm.ssh_user,
+          provider_server_id: vm.provider_server_id ?? null,
+          assigned_to: vm.assigned_to ?? null,
+          health_status: vm.health_status ?? null,
+          status: vm.status ?? null,
+          suspended_at: vm.suspended_at,
+          credit_balance: vm.credit_balance ?? null,
+          bankr_token_address: vm.bankr_token_address ?? null,
+          region: vm.region ?? null,
+          lifecycle_locked_at: vm.lifecycle_locked_at ?? null,
+        };
+
+        const result = await freezeVM(supabase, candidate, dryRun, runId);
+
+        if (result.success) {
+          report.pass1_v2_frozen++;
+          freezeCount++;
+          report.freezes.push({
+            vm_name: vm.name ?? vm.id,
+            ip_address: vm.ip_address,
+            user_email: userEmail,
+            health_status: vm.health_status ?? "?",
+            days_since_pause: Math.floor(daysSincePause),
+            reason: result.reason,
+            action: dryRun ? "WOULD_FREEZE" : "FROZEN",
+            image_id: result.imageId ?? null,
+          });
+        } else {
+          // Distinguish "expected skip" (safety check fired) from "operation
+          // failure" (snapshot/API error). Both increment a counter, but we
+          // keep them separate so the email tells us which.
+          const isSkip = /refuse|paid credits|active|activity|lock|wrong status|wrong health|no provider/i.test(result.reason);
+          if (isSkip) {
+            report.pass1_v2_skipped_safety++;
+          } else {
+            report.pass1_v2_freeze_failed++;
+            report.errors.push(`freeze failed for ${vm.name}: ${result.reason}`);
+          }
+          report.freezes.push({
+            vm_name: vm.name ?? vm.id,
+            ip_address: vm.ip_address,
+            user_email: userEmail,
+            health_status: vm.health_status ?? "?",
+            days_since_pause: Math.floor(daysSincePause),
+            reason: result.reason,
+            action: isSkip ? "SKIP" : "FAILED",
+            image_id: null,
+          });
+        }
+      }
+
+      logger.info("vm-lifecycle: Pass 1 v2 complete", {
+        route: "cron/vm-lifecycle", runId, dryRun,
+        frozen: report.pass1_v2_frozen,
+        skippedGrace: report.pass1_v2_skipped_grace,
+        skippedSafety: report.pass1_v2_skipped_safety,
+        failed: report.pass1_v2_freeze_failed,
+      });
+    } catch (err) {
+      report.errors.push(`Pass 1 v2 (freeze) failed: ${String(err)}`);
+      logger.error("vm-lifecycle: Pass 1 v2 fatal error", {
+        route: "cron/vm-lifecycle", runId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   try {
     // ═══════════════════════════════════════════════════════════════════
-    // PASS 1: Delete suspended VMs past their grace period
+    // PASS 1 (LEGACY): Delete suspended VMs past their grace period
+    //
+    // Skipped when vmLifecycleV2Enabled=true (Pass 1 v2 above replaces it).
     // ═══════════════════════════════════════════════════════════════════
+
+    if (settings.vmLifecycleV2Enabled) {
+      logger.info("vm-lifecycle: Pass 1 legacy skipped (v2 enabled — freeze pass ran)", {
+        route: "cron/vm-lifecycle", runId,
+      });
+    } else {
 
     const { data: suspendedVms } = await supabase
       .from("instaclaw_vms")
@@ -660,8 +840,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    } // close: legacy Pass 1 (v2 disabled) branch
+
     // ═══════════════════════════════════════════════════════════════════
     // PASS 2: Trim ready pool if over maximum (30)
+    // Runs regardless of v2 — pool trimming is unrelated to freeze flow.
     // ═══════════════════════════════════════════════════════════════════
 
     const MAX_POOL_SIZE = 30;
@@ -717,10 +900,15 @@ export async function GET(req: NextRequest) {
     // ═══════════════════════════════════════════════════════════════════
 
     const orphanDeletes = orphanReport.deleted_db_dead + orphanReport.deleted_no_db;
-    if (report.pass1_deleted > 0 || orphanDeletes > 0 || report.circuit_breaker_tripped) {
+    const anyAction =
+      report.pass1_deleted > 0 ||
+      report.pass1_v2_frozen > 0 ||
+      orphanDeletes > 0 ||
+      report.circuit_breaker_tripped;
+    if (anyAction) {
       const subject = dryRun
-        ? `VM Lifecycle DRY RUN: ${report.pass1_deleted} suspended + ${orphanDeletes} orphan would be deleted`
-        : `VM Lifecycle: ${report.pass1_deleted} suspended + ${orphanDeletes} orphan deleted`;
+        ? `VM Lifecycle DRY RUN: ${report.pass1_v2_frozen} frozen + ${report.pass1_deleted} deleted + ${orphanDeletes} orphan`
+        : `VM Lifecycle: ${report.pass1_v2_frozen} frozen + ${report.pass1_deleted} deleted + ${orphanDeletes} orphan`;
 
       const body = [
         `VM lifecycle cron ran at ${new Date().toISOString()}${dryRun ? " (DRY RUN)" : ""}`,
@@ -739,7 +927,13 @@ export async function GET(req: NextRequest) {
         `Skipped (lifecycle lock held): ${orphanReport.skipped_locked}`,
         `Linode DELETE failed: ${orphanReport.delete_failed}`,
         "",
-        `── Pass 1 (suspended grace, v2_enabled=${settings.vmLifecycleV2Enabled}) ──`,
+        `── Pass 1 v2 (FREEZE, v2_enabled=${settings.vmLifecycleV2Enabled}) ──`,
+        `Frozen: ${report.pass1_v2_frozen}`,
+        `Skipped (grace period): ${report.pass1_v2_skipped_grace}`,
+        `Skipped (safety): ${report.pass1_v2_skipped_safety}`,
+        `Freeze failed (operation error): ${report.pass1_v2_freeze_failed}`,
+        "",
+        `── Pass 1 LEGACY (active when v2_enabled=false) ──`,
         `Suspended VMs deleted: ${report.pass1_deleted}`,
         `Skipped (safety): ${report.pass1_skipped_safety}`,
         `Skipped (grace period): ${report.pass1_skipped_grace}`,
@@ -748,6 +942,15 @@ export async function GET(req: NextRequest) {
         `Pool trimmed: ${report.pass2_pool_trimmed}`,
         `Circuit breaker: ${report.circuit_breaker_tripped ? "TRIPPED" : "OK"}`,
         "",
+        ...(report.freezes.length > 0
+          ? [
+              "Freeze attempts:",
+              ...report.freezes.map(
+                (f) => `  ${f.action} ${f.vm_name} (${f.ip_address}) — ${f.user_email} — ${f.health_status} ${f.days_since_pause}d — ${f.reason}${f.image_id ? ` [image=${f.image_id}]` : ""}`,
+              ),
+              "",
+            ]
+          : []),
         "Deletions:",
         ...report.deletions.map(
           (d) => `  ${d.action} ${d.vm_name} (${d.ip_address}) — ${d.user_email} — ${d.reason}`
