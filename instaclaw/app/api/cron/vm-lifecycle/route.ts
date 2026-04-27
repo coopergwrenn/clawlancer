@@ -5,6 +5,20 @@ import { sendAdminAlertEmail } from "@/lib/email";
 import { getProvider } from "@/lib/providers";
 import { logger } from "@/lib/logger";
 import type { VMRecord } from "@/lib/ssh";
+import {
+  PROTECTED_INFRA_LINODE_IDS,
+  ORPHAN_MIN_AGE_MINUTES,
+  MAX_ORPHAN_DELETES_PER_RUN,
+  linodeCost,
+  listAllLinodes,
+  deleteLinodeInstance,
+  readLifecycleSettings,
+  sshHasRecentActivity,
+  userHasLiveSubscription,
+  vmHasCredits,
+  logOrphan,
+} from "@/lib/vm-lifecycle-helpers";
+import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -79,6 +93,289 @@ export async function GET(req: NextRequest) {
 
   let totalDeletions = 0;
   let hibernateToSuspend = 0;
+
+  // Phase 2 additions ─────────────────────────────────────────────────
+  // Read kill switches once per run for a consistent view across all passes.
+  // See instaclaw/docs/prd-vm-cost-optimization.md for what each controls.
+  // Wrap in try/catch — if Supabase is partially down we MUST still allow
+  // the route to return a 500 cleanly rather than crashing the function.
+  // Default-to-safe (both flags false) means Pass -1 is OFF during outages.
+  let settings: Awaited<ReturnType<typeof readLifecycleSettings>> = {
+    orphanReconciliationEnabled: false,
+    vmLifecycleV2Enabled: false,
+  };
+  try {
+    settings = await readLifecycleSettings(supabase);
+  } catch (err) {
+    logger.error("vm-lifecycle: readLifecycleSettings threw, defaulting to all-OFF", {
+      route: "cron/vm-lifecycle",
+      error: err instanceof Error ? err.message : String(err),
+    });
+    report.errors.push(`Settings read failed: ${String(err)}`);
+  }
+  const runId = randomUUID();
+  // Pass -1 has its OWN deletion counter, NOT shared with totalDeletions.
+  // Otherwise Pass -1 deleting up to MAX_ORPHAN_DELETES_PER_RUN would
+  // immediately trip Pass 1's MAX_DELETIONS_PER_CYCLE circuit breaker
+  // (both 20) and starve Pass 1 of its budget every cron cycle.
+  let orphanDeletions = 0;
+  const orphanReport = {
+    candidates: 0,
+    deleted_db_dead: 0,
+    deleted_no_db: 0,
+    skipped_active: 0,
+    skipped_credits: 0,
+    skipped_safety: 0,
+    skipped_too_young: 0,
+    skipped_bad_date: 0,
+    skipped_infra: 0,
+    skipped_locked: 0,
+    delete_failed: 0,
+  };
+
+  logger.info("vm-lifecycle: run start", {
+    route: "cron/vm-lifecycle",
+    runId,
+    dryRun,
+    settings,
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PASS -1: Linode → DB orphan reconciliation
+  //
+  // Lists every running Linode and finds:
+  //   (a) Linodes whose DB row says terminated/failed/destroyed (DB-dead
+  //       orphans — historically un-deleted by this cron because Pass 1
+  //       only queries DB rows where health_status='suspended').
+  //   (b) Linodes with no DB row at all (failed-provision orphans — DB
+  //       insert never happened so the cron has no way to find them).
+  //
+  // Pure deletes — no freeze. By definition these have no live user
+  // (DB says terminated, OR no DB row = nobody assigned to begin with).
+  // SSH activity check defends the last edge case (ghost VM that somehow
+  // got reused).
+  //
+  // Gated by orphan_reconciliation_enabled (default true). Flip to false
+  // in instaclaw_admin_settings to disable Pass -1 without redeploy.
+  // ═══════════════════════════════════════════════════════════════════
+  if (settings.orphanReconciliationEnabled) {
+    try {
+      const linodes = await listAllLinodes();
+      const running = linodes.filter((l) => l.status === "running");
+
+      // Pull every Linode-provider DB row regardless of status — we need
+      // BOTH alive (assigned/ready/provisioning/configuring) AND dead
+      // (terminated/failed/destroyed) so we can categorize correctly.
+      const { data: allVms } = await supabase
+        .from("instaclaw_vms")
+        .select(
+          "id, name, ip_address, provider_server_id, status, health_status, assigned_to, credit_balance, lifecycle_locked_at"
+        )
+        .eq("provider", "linode");
+
+      const dbByPsid = new Map<string, NonNullable<typeof allVms>[number]>();
+      for (const vm of allVms ?? []) {
+        if (vm.provider_server_id) dbByPsid.set(String(vm.provider_server_id), vm);
+      }
+
+      const deadStatuses = new Set(["terminated", "failed", "destroyed"]);
+
+      for (const l of running) {
+        // Pass -1's own counter — independent from Pass 1's totalDeletions
+        // budget so Pass -1 can't starve Pass 1 of its deletion quota.
+        if (orphanDeletions >= MAX_ORPHAN_DELETES_PER_RUN) break;
+
+        const psid = String(l.id);
+        const dbRow = dbByPsid.get(psid);
+
+        // Determine if this Linode is a candidate (DB-dead OR not-in-DB).
+        const isDbDead = !!dbRow && deadStatuses.has(dbRow.status ?? "");
+        const isNotInDb = !dbRow;
+        if (!isDbDead && !isNotInDb) continue; // healthy assigned/ready/provisioning — Pass 0/1 territory
+
+        orphanReport.candidates++;
+
+        // ── Safety check: protected infra ──
+        if (PROTECTED_INFRA_LINODE_IDS.has(psid)) {
+          orphanReport.skipped_infra++;
+          await logOrphan(supabase, {
+            linodeId: l.id, vmLabel: l.label, vmDbId: dbRow?.id ?? null,
+            userId: dbRow?.assigned_to ?? null, userEmail: null,
+            action: "skip_infra", reason: "linode id in PROTECTED_INFRA_LINODE_IDS",
+            linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+            monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+          });
+          continue;
+        }
+
+        // ── Safety check: minimum age (anti-race with replenish-pool) ──
+        // Date.parse returns NaN for malformed input. NaN < anything is
+        // false, which means a malformed `created` would FAIL OPEN (bypass
+        // the age guard). Explicitly guard against that — fail closed by
+        // skipping any Linode whose created date we can't parse.
+        const createdMs = Date.parse(l.created);
+        if (Number.isNaN(createdMs)) {
+          orphanReport.skipped_bad_date++;
+          await logOrphan(supabase, {
+            linodeId: l.id, vmLabel: l.label, vmDbId: dbRow?.id ?? null,
+            userId: dbRow?.assigned_to ?? null, userEmail: null,
+            action: "skip_bad_date",
+            reason: `unparseable created timestamp ${JSON.stringify(l.created).slice(0, 60)} — failing closed`,
+            linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+            monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+          });
+          continue;
+        }
+        const ageMinutes = (Date.now() - createdMs) / 60000;
+        if (ageMinutes < ORPHAN_MIN_AGE_MINUTES) {
+          orphanReport.skipped_too_young++;
+          await logOrphan(supabase, {
+            linodeId: l.id, vmLabel: l.label, vmDbId: dbRow?.id ?? null,
+            userId: dbRow?.assigned_to ?? null, userEmail: null,
+            action: "skip_too_young",
+            reason: `age=${Math.round(ageMinutes)}min, threshold=${ORPHAN_MIN_AGE_MINUTES}min (likely just-provisioned, DB row may be in flight)`,
+            linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+            monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+          });
+          continue;
+        }
+
+        // ── Safety check: credit_balance > 0 (PRD rule 3) ──
+        // World mini app users (and any user with leftover paid credits)
+        // are protected even when their DB row says terminated. We never
+        // delete VM data while there's a non-zero balance.
+        if (dbRow && vmHasCredits(dbRow.credit_balance)) {
+          orphanReport.skipped_credits++;
+          await logOrphan(supabase, {
+            linodeId: l.id, vmLabel: l.label, vmDbId: dbRow.id,
+            userId: dbRow.assigned_to ?? null, userEmail: null,
+            action: "skip_credits",
+            reason: `credit_balance=${dbRow.credit_balance} > 0 (paid credits remain) — refuse to delete`,
+            linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+            monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+          });
+          continue;
+        }
+
+        // ── Safety check: lifecycle lock held? ──
+        if (dbRow?.lifecycle_locked_at) {
+          const lockAge = (Date.now() - Date.parse(dbRow.lifecycle_locked_at)) / 60000;
+          if (lockAge < 15) {
+            orphanReport.skipped_locked++;
+            await logOrphan(supabase, {
+              linodeId: l.id, vmLabel: l.label, vmDbId: dbRow.id,
+              userId: dbRow.assigned_to ?? null, userEmail: null,
+              action: "skip_locked",
+              reason: `lifecycle_locked_at age=${Math.round(lockAge)}min (operation in flight)`,
+              linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+              monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+            });
+            continue;
+          }
+          // Lock older than 15 min = stuck. Log warning and proceed.
+          logger.warn("vm-lifecycle: stale lifecycle_locked_at, proceeding", {
+            route: "cron/vm-lifecycle", runId,
+            vmId: dbRow.id, lockAgeMin: Math.round(lockAge),
+          });
+        }
+
+        // ── Safety check: re-verify Stripe (only if we have a user_id) ──
+        // For "DB-dead" rows we still re-check because a stale dead row
+        // might belong to a user who's actively paying on a *different* VM.
+        if (dbRow?.assigned_to) {
+          const liveSub = await userHasLiveSubscription(supabase, dbRow.assigned_to);
+          if (liveSub) {
+            orphanReport.skipped_active++;
+            await logOrphan(supabase, {
+              linodeId: l.id, vmLabel: l.label, vmDbId: dbRow.id,
+              userId: dbRow.assigned_to, userEmail: null,
+              action: "skip_active",
+              reason: "user has active/trialing Stripe subscription — refuse to delete",
+              linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+              monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+            });
+            continue;
+          }
+        }
+
+        // ── Safety check: SSH activity (last-line defense) ──
+        // Even pure orphans get SSH-checked. If anything's been modified
+        // recently, somebody's using this VM and we DO NOT delete.
+        const ip = l.ipv4?.[0];
+        const activity = ip
+          ? await sshHasRecentActivity(ip)
+          : { active: false, reason: "no-ipv4" };
+        if (activity.active) {
+          orphanReport.skipped_safety++;
+          await logOrphan(supabase, {
+            linodeId: l.id, vmLabel: l.label, vmDbId: dbRow?.id ?? null,
+            userId: dbRow?.assigned_to ?? null, userEmail: null,
+            action: "skip_safety",
+            reason: `SSH activity detected: ${activity.reason}`,
+            linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+            monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+          });
+          continue;
+        }
+
+        // All safety checks passed → delete (or pretend to in dry-run).
+        const action: "delete_db_dead" | "delete_no_db" = isDbDead ? "delete_db_dead" : "delete_no_db";
+        if (!dryRun) {
+          try {
+            await deleteLinodeInstance(l.id);
+            // Mirror DB state for db-dead rows. (No DB row to update for
+            // not-in-db case — the entire point is there isn't one.)
+            if (dbRow) {
+              await supabase
+                .from("instaclaw_vms")
+                .update({ status: "destroyed", health_status: "unhealthy" })
+                .eq("id", dbRow.id);
+            }
+          } catch (err) {
+            orphanReport.delete_failed++;
+            await logOrphan(supabase, {
+              linodeId: l.id, vmLabel: l.label, vmDbId: dbRow?.id ?? null,
+              userId: dbRow?.assigned_to ?? null, userEmail: null,
+              action: "delete_failed",
+              reason: `Linode DELETE call failed: ${(err as Error).message.slice(0, 200)}`,
+              linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+              monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+            });
+            continue;
+          }
+        }
+
+        if (action === "delete_db_dead") orphanReport.deleted_db_dead++;
+        else orphanReport.deleted_no_db++;
+        orphanDeletions++;
+
+        await logOrphan(supabase, {
+          linodeId: l.id, vmLabel: l.label, vmDbId: dbRow?.id ?? null,
+          userId: dbRow?.assigned_to ?? null, userEmail: null,
+          action,
+          reason: isDbDead
+            ? `db_status=${dbRow!.status} health=${dbRow!.health_status}, ssh ${activity.reason}`
+            : `not in DB, ssh ${activity.reason}, age=${Math.round(ageMinutes / 60)}h`,
+          linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
+          monthlyCostUsd: linodeCost(l.type), runId, dryRun,
+        });
+      }
+
+      logger.info("vm-lifecycle: Pass -1 complete", {
+        route: "cron/vm-lifecycle", runId, dryRun, ...orphanReport,
+      });
+    } catch (err) {
+      report.errors.push(`Pass -1 (orphan reconciliation) failed: ${String(err)}`);
+      logger.error("vm-lifecycle: Pass -1 fatal error", {
+        route: "cron/vm-lifecycle", runId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else {
+    logger.info("vm-lifecycle: Pass -1 disabled by kill switch", {
+      route: "cron/vm-lifecycle", runId,
+    });
+  }
 
   // ═══════════════════════════════════════════════════════════════════
   // PASS 0: Transition hibernating VMs → suspended after 14 days
@@ -419,14 +716,30 @@ export async function GET(req: NextRequest) {
     // REPORT
     // ═══════════════════════════════════════════════════════════════════
 
-    if (report.pass1_deleted > 0 || report.circuit_breaker_tripped) {
+    const orphanDeletes = orphanReport.deleted_db_dead + orphanReport.deleted_no_db;
+    if (report.pass1_deleted > 0 || orphanDeletes > 0 || report.circuit_breaker_tripped) {
       const subject = dryRun
-        ? `VM Lifecycle DRY RUN: ${report.pass1_deleted} VMs would be deleted`
-        : `VM Lifecycle: ${report.pass1_deleted} VMs deleted`;
+        ? `VM Lifecycle DRY RUN: ${report.pass1_deleted} suspended + ${orphanDeletes} orphan would be deleted`
+        : `VM Lifecycle: ${report.pass1_deleted} suspended + ${orphanDeletes} orphan deleted`;
 
       const body = [
         `VM lifecycle cron ran at ${new Date().toISOString()}${dryRun ? " (DRY RUN)" : ""}`,
+        `Run ID: ${runId}`,
         "",
+        `── Pass -1 (orphan reconciliation, enabled=${settings.orphanReconciliationEnabled}) ──`,
+        `Candidates considered: ${orphanReport.candidates}`,
+        `Deleted (DB-dead orphan): ${orphanReport.deleted_db_dead}`,
+        `Deleted (not-in-DB orphan): ${orphanReport.deleted_no_db}`,
+        `Skipped (live subscription): ${orphanReport.skipped_active}`,
+        `Skipped (paid credits remain): ${orphanReport.skipped_credits}`,
+        `Skipped (SSH activity): ${orphanReport.skipped_safety}`,
+        `Skipped (too young, anti-race): ${orphanReport.skipped_too_young}`,
+        `Skipped (unparseable created date): ${orphanReport.skipped_bad_date}`,
+        `Skipped (protected infra): ${orphanReport.skipped_infra}`,
+        `Skipped (lifecycle lock held): ${orphanReport.skipped_locked}`,
+        `Linode DELETE failed: ${orphanReport.delete_failed}`,
+        "",
+        `── Pass 1 (suspended grace, v2_enabled=${settings.vmLifecycleV2Enabled}) ──`,
         `Suspended VMs deleted: ${report.pass1_deleted}`,
         `Skipped (safety): ${report.pass1_skipped_safety}`,
         `Skipped (grace period): ${report.pass1_skipped_grace}`,
@@ -442,6 +755,8 @@ export async function GET(req: NextRequest) {
         ...(report.errors.length > 0
           ? ["", "Errors:", ...report.errors.map((e) => `  - ${e}`)]
           : []),
+        "",
+        `Orphan deletion log: SELECT * FROM instaclaw_orphan_deletion_log WHERE run_id='${runId}' ORDER BY created_at;`,
       ].join("\n");
 
       await sendAdminAlertEmail(subject, body).catch(() => {});
@@ -449,17 +764,27 @@ export async function GET(req: NextRequest) {
 
     logger.info("VM lifecycle cron complete", {
       route: "cron/vm-lifecycle",
+      runId,
       ...report,
+      orphan: orphanReport,
+      settings,
     });
   } catch (err) {
     logger.error("VM lifecycle cron failed", {
       route: "cron/vm-lifecycle",
+      runId,
       error: String(err),
     });
     report.errors.push(String(err));
   }
 
-  return NextResponse.json({ ...report, hibernateToSuspend });
+  return NextResponse.json({
+    ...report,
+    runId,
+    settings,
+    orphan: orphanReport,
+    hibernateToSuspend,
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
