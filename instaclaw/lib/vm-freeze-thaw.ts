@@ -38,10 +38,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Per-cron-run cap on freeze operations. Linode rate-limits image creation
- * at ~50/hour per account. Cron runs every 6h, so 5/run × 4 runs/day = 20/day.
- * Below the rate limit with margin. 70-VM initial backlog clears in ~3.5 days.
+ * at ~50/hour per account. Worst-case freeze ≈ 90s shutdown + 600s image
+ * wait = 690s. With route maxDuration=900s, two freezes serial fits with
+ * margin (1380s would not). Cap is 2/run × 4 runs/day = 8/day; 70-VM
+ * backlog clears in ~9 days at this rate, but safety > speed.
  */
-export const MAX_FREEZE_PER_RUN = 5;
+export const MAX_FREEZE_PER_RUN = 2;
 
 /** Suspended VMs eligible for freeze after this many days post-suspension. */
 export const FREEZE_GRACE_SUSPENDED_DAYS = 30;
@@ -60,6 +62,12 @@ const INSTANCE_RUNNING_TIMEOUT_MS = 180_000;
 
 /** Maximum lifecycle_locked_at age before considered stuck. */
 const LIFECYCLE_LOCK_STALE_MINUTES = 15;
+
+/** Total time to wait for SSH to come up on a thawed instance. */
+const SSH_VERIFY_TOTAL_MS = 90_000;
+
+/** Per-attempt SSH check interval during pollSshAlive(). */
+const SSH_VERIFY_INTERVAL_MS = 10_000;
 
 /** SSH-deploy key label — must exist in the Linode profile. */
 const LINODE_SSH_KEY_LABEL = "instaclaw-deploy";
@@ -254,10 +262,11 @@ async function createInstanceFromImage(opts: {
  * cleared before retry.
  */
 async function tryAcquireLock(supabase: SupabaseClient, vmId: string): Promise<boolean> {
-  // Try the conditional update first.
+  // Try the conditional update first — only sets the lock if no one holds it.
+  const nowIso = new Date().toISOString();
   const { data: rows, error } = await supabase
     .from("instaclaw_vms")
-    .update({ lifecycle_locked_at: new Date().toISOString() })
+    .update({ lifecycle_locked_at: nowIso })
     .eq("id", vmId)
     .is("lifecycle_locked_at", null)
     .select("id");
@@ -267,24 +276,31 @@ async function tryAcquireLock(supabase: SupabaseClient, vmId: string): Promise<b
   }
   if (rows && rows.length > 0) return true;
 
-  // Failed — someone else holds it. Check if stale.
-  const { data: cur } = await supabase
+  // Stuck-lock takeover MUST be conditional in SQL — not a TOCTOU read+update.
+  // Two concurrent callers seeing the same 16-min-old lock would both win an
+  // unconditional UPDATE; only an UPDATE ... WHERE lifecycle_locked_at < cutoff
+  // can guarantee that exactly one caller takes over the stuck lock.
+  const staleCutoffIso = new Date(
+    Date.now() - LIFECYCLE_LOCK_STALE_MINUTES * 60_000,
+  ).toISOString();
+  const { data: takeoverRows, error: takeoverErr } = await supabase
     .from("instaclaw_vms")
-    .select("lifecycle_locked_at")
+    .update({ lifecycle_locked_at: nowIso })
     .eq("id", vmId)
-    .single();
-  const lockedAt = cur?.lifecycle_locked_at as string | null | undefined;
-  if (!lockedAt) return false; // raced with a release; let the next tick retry
-  const ageMin = (Date.now() - Date.parse(lockedAt)) / 60_000;
-  if (ageMin < LIFECYCLE_LOCK_STALE_MINUTES) return false;
-
-  // Stuck — force clear and re-acquire.
-  logger.warn("freeze-thaw: clearing stuck lifecycle lock", { vmId, ageMin: Math.round(ageMin) });
-  await supabase
-    .from("instaclaw_vms")
-    .update({ lifecycle_locked_at: new Date().toISOString() })
-    .eq("id", vmId);
-  return true;
+    .lt("lifecycle_locked_at", staleCutoffIso)
+    .select("id");
+  if (takeoverErr) {
+    logger.error("freeze-thaw: stale-lock takeover UPDATE failed", { vmId, error: takeoverErr.message });
+    return false;
+  }
+  if (takeoverRows && takeoverRows.length > 0) {
+    logger.warn("freeze-thaw: cleared stuck lifecycle lock and took over", {
+      vmId, staleCutoff: staleCutoffIso,
+    });
+    return true;
+  }
+  // Either lock is fresh or row vanished — give up; next tick retries.
+  return false;
 }
 
 async function releaseLock(supabase: SupabaseClient, vmId: string): Promise<void> {
@@ -365,12 +381,37 @@ export async function freezeVM(
   }
 
   // ── Safety check 4: SSH activity in last 7 days (PRD rule 2) ──
+  // sshHasRecentActivity returns active=false on connect failure (designed
+  // for orphan reconciliation where SSH-down implies dead VM). For freeze,
+  // we don't have that luxury: an unreachable VM is one we CANNOT prove is
+  // silent. PRD rule 11 ("when in doubt, SKIP") says fail closed. We only
+  // proceed if we successfully connected and saw NO recent files.
   const activity = await sshHasRecentActivity(vm.ip_address);
   if (activity.active) {
     return { success: false, reason: `SSH activity detected: ${activity.reason}` };
   }
+  if (
+    activity.reason === "no-ipv4" ||
+    activity.reason.startsWith("ssh-fail")
+  ) {
+    return { success: false, reason: `cannot verify silence (${activity.reason}) — failing closed per PRD rule 11` };
+  }
+  // Only the "silent" reason proves we successfully connected and saw no
+  // recent files — that's the only safe path forward.
+  if (activity.reason !== "silent") {
+    return { success: false, reason: `unexpected activity-check result: ${activity.reason} — failing closed` };
+  }
 
-  // ── Safety check 5: lifecycle lock ──
+  // ── Dry-run early-return (must be BEFORE lock acquire) ──
+  // Acquiring the lock has DB side effects (sets lifecycle_locked_at) and a
+  // crash before the finally would leak a lock for 15 min. Dry-runs should
+  // be pure-read; bail here once all read-only safety checks have passed.
+  if (dryRun) {
+    log("info", "dry-run: would freeze");
+    return { success: true, reason: "dry-run: would freeze" };
+  }
+
+  // ── Safety check 5: lifecycle lock (live runs only) ──
   const locked = await tryAcquireLock(supabase, vm.id);
   if (!locked) {
     return { success: false, reason: "could not acquire lifecycle lock (another op in flight)" };
@@ -378,10 +419,6 @@ export async function freezeVM(
 
   // We hold the lock now — release in finally.
   try {
-    if (dryRun) {
-      log("info", "dry-run: would freeze");
-      return { success: true, reason: "dry-run: would freeze" };
-    }
 
     // ── Get the ext4 disk to snapshot ──
     const disks = await getInstanceDisks(vm.provider_server_id);
@@ -573,32 +610,37 @@ export async function thawVM(
       return { success: false, reason: `instance ${newInstance.id} did not reach running` };
     }
 
-    // ── Verify SSH-reachable (key check before declaring success) ──
+    // ── Verify SSH-reachable BEFORE deleting the snapshot (PRD rule 4 spirit) ──
+    // The image is the user's only data backup. We must NOT delete it until
+    // we've proven the new instance is actually usable. Cloud-init can lag
+    // for tens of seconds regenerating host keys, so poll with retries.
     const ip = newInstance.ipv4?.[0];
     if (!ip) {
       return { success: false, reason: "no ipv4 on new instance" };
     }
-    const sshOk = await sshAlive(ip);
-    if (!sshOk) {
-      log("warn", "instance running but SSH not reachable — proceeding (cloud-init may need a moment)");
-      // Don't bail — cloud-init regenerates SSH host keys on first boot which
-      // can lag. We'll let configureOpenClaw retry later. Image stays for
-      // now; we update DB and trust the instance.
-    }
+    const sshOk = await pollSshAlive(ip, SSH_VERIFY_TOTAL_MS, SSH_VERIFY_INTERVAL_MS);
+    log(sshOk ? "info" : "warn", sshOk ? "SSH verified alive" : "SSH did not verify in 90s — preserving image as recovery backup", { ip });
 
-    // ── Update DB: clear frozen state, point at new instance ──
-    log("info", "updating DB to point at new instance");
+    // ── Update DB: point at new instance regardless of SSH outcome ──
+    // The user benefits from getting a VM either way (slow cloud-init resolves
+    // itself in ~minutes). But: only clear frozen_image_id when SSH verified.
+    // While frozen_image_id remains set after status='assigned', the row is
+    // a "thaw-pending-verification" record — image preserved as backup until
+    // ops confirms the new instance is fully working.
+    log("info", "updating DB to point at new instance", { sshVerified: sshOk });
+    const dbUpdate: Record<string, unknown> = {
+      status: "assigned",
+      health_status: "healthy",
+      provider_server_id: String(newInstance.id),
+      ip_address: ip,
+      frozen_at: null,
+      frozen_image_size_mb: null,
+      // Only clear frozen_image_id when SSH verified — see comment above.
+      ...(sshOk ? { frozen_image_id: null } : {}),
+    };
     const { error: updateErr } = await supabase
       .from("instaclaw_vms")
-      .update({
-        status: "assigned",
-        health_status: "healthy",
-        provider_server_id: String(newInstance.id),
-        ip_address: ip,
-        frozen_image_id: null,
-        frozen_at: null,
-        frozen_image_size_mb: null,
-      })
+      .update(dbUpdate)
       .eq("id", frozen.id);
     if (updateErr) {
       // DB failed but new instance is up. Don't delete the image yet — that
@@ -609,21 +651,32 @@ export async function thawVM(
       return { success: false, reason: `DB update failed: ${updateErr.message} — manual recovery needed` };
     }
 
-    // ── ONLY NOW delete the personal image (VM is verified back online) ──
-    try {
-      await deleteImage(frozen.frozen_image_id);
-      log("info", "personal image deleted");
-    } catch (delErr) {
-      // Image delete failed but VM is back. Image storage cost is small —
-      // log and move on. A retention sweep can clean up later.
-      log("warn", "image delete failed — will leak a few MB until cleanup", {
-        imageId: frozen.frozen_image_id, error: String(delErr),
-      });
+    // ── Delete personal image ONLY when SSH verified (PRD rule 4 + safety) ──
+    if (sshOk) {
+      try {
+        await deleteImage(frozen.frozen_image_id);
+        log("info", "personal image deleted");
+      } catch (delErr) {
+        // Image delete failed but VM is back and SSH-verified. Storage cost
+        // is small — log and move on. A retention sweep cleans up later.
+        log("warn", "image delete failed — will leak a few MB until cleanup", {
+          imageId: frozen.frozen_image_id, error: String(delErr),
+        });
+      }
+      return {
+        success: true,
+        reason: "thawed and SSH-verified",
+        vmId: frozen.id,
+        newProviderServerId: String(newInstance.id),
+        newIp: ip,
+      };
     }
 
+    // SSH not verified within 90s — image is preserved on the row. Return
+    // success (user has a VM) but flag that verification is pending.
     return {
       success: true,
-      reason: "thawed successfully",
+      reason: "thawed but SSH unverified — image preserved for recovery",
       vmId: frozen.id,
       newProviderServerId: String(newInstance.id),
       newIp: ip,
@@ -645,5 +698,20 @@ async function sshAlive(ip: string): Promise<boolean> {
     }
   } catch {
     return false;
+  }
+}
+
+/**
+ * Poll sshAlive() repeatedly until SSH responds OK or the budget is exhausted.
+ * Cloud-init regenerates host keys on first boot from snapshot, which can
+ * delay SSH responsiveness by 30-60s. A single sshAlive() call would race
+ * cloud-init and falsely report "not alive".
+ */
+async function pollSshAlive(ip: string, maxMs: number, intervalMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (true) {
+    if (await sshAlive(ip)) return true;
+    if (Date.now() - start + intervalMs >= maxMs) return false;
+    await new Promise((r) => setTimeout(r, intervalMs));
   }
 }
