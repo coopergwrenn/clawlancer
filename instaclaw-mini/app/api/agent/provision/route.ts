@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { proxyToInstaclaw } from "@/lib/api";
+import { logOnboardingEvent } from "@/lib/onboarding-events";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -122,6 +123,18 @@ export async function POST(req: Request) {
         .eq("user_id", session.userId)
         .not("transaction_id", "is", null)
         .in("status", ["pending", "pending_confirmation"]);
+
+      // Onboarding journey event: payment confirmed and bound to a VM.
+      await logOnboardingEvent({
+        userId: session.userId,
+        eventType: "payment_completed",
+        vmId,
+        metadata: {
+          path: isOnboardingPath ? "onboarding" : "retry",
+          transaction_id: body?.transactionId ?? null,
+          reference: body?.reference ?? null,
+        },
+      });
     }
 
     // ── Step 7: Fire configure (background — don't wait) ──

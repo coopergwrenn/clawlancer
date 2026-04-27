@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
+import { logOnboardingEvent } from "@/lib/onboarding-events";
 
 export async function POST(req: NextRequest) {
   try {
@@ -155,6 +156,19 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch { /* body parse failed — fine, no credits */ }
+
+    // Onboarding journey event: a fresh VM has been bound to this user.
+    // Only fires on NEW assignment (the existing-VM short-circuit above
+    // returns early without reaching here).
+    await logOnboardingEvent({
+      userId: targetUserId,
+      eventType: "vm_assigned",
+      vmId: vm.id,
+      metadata: {
+        vm_name: (vm as { name?: string }).name ?? null,
+        is_mini_app: isMiniApp,
+      },
+    });
 
     return NextResponse.json({ assigned: true, vm });
   } catch (err) {
