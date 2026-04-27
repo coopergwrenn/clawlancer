@@ -140,36 +140,55 @@ def get_bot_token():
     except Exception:
         return ""
 
-def get_chat_id():
-    """Extract chat_id from the most recent session file."""
+def get_telegram_session_info():
+    """Find the most-recently-updated telegram-origin session.
+
+    Returns (chat_id, session_file_path) or (None, None). Filters strictly to
+    sessions where origin.provider == "telegram" so heartbeat / openai / other
+    provider sessions can never be inspected by the silence watchdog.
+    """
     sessions_json = os.path.expanduser("~/.openclaw/agents/main/sessions/sessions.json")
     try:
         with open(sessions_json) as f:
             data = json.load(f)
+        candidates = []
         for k, v in data.items():
             origin = v.get("origin", {})
+            if origin.get("provider") != "telegram":
+                continue
             fr = origin.get("from", "") or v.get("lastTo", "")
             m = re.search(r"telegram:(\\d+)", fr)
-            if m:
-                return m.group(1)
+            if not m:
+                continue
+            chat_id = m.group(1)
+            session_file = v.get("sessionFile")
+            session_id = v.get("sessionId")
+            if not session_file and session_id:
+                session_file = os.path.join(SESSIONS_DIR, f"{session_id}.jsonl")
+            if session_file and os.path.exists(session_file):
+                updated_at = v.get("updatedAt", 0)
+                candidates.append((updated_at, chat_id, session_file))
+        if candidates:
+            candidates.sort(reverse=True)
+            _, chat_id, session_file = candidates[0]
+            return chat_id, session_file
     except Exception:
         pass
-    return ""
+    return None, None
 
-def get_latest_session_timing():
-    """Read the latest session file and find the last user message and last assistant message timestamps."""
-    latest_mtime = 0
-    latest_file = None
-    for f in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
-        try:
-            mt = os.path.getmtime(f)
-            if mt > latest_mtime:
-                latest_mtime = mt
-                latest_file = f
-        except Exception:
-            pass
+def get_chat_id():
+    """Return chat_id for the active telegram session, if any."""
+    chat_id, _ = get_telegram_session_info()
+    return chat_id or ""
 
-    if not latest_file:
+def get_latest_session_timing(session_file=None):
+    """Read the given session file and find the last user message and last assistant message timestamps.
+
+    The caller MUST pass a session_file (resolved from get_telegram_session_info()).
+    Passing None returns (None, None) — we no longer fall back to the latest-by-mtime
+    file because that picks up heartbeat/openai sessions and falsely fires the watchdog.
+    """
+    if not session_file:
         return None, None
 
     last_user_ts = None
@@ -178,7 +197,7 @@ def get_latest_session_timing():
     try:
         # Read last 30 lines (enough to find recent messages)
         lines = subprocess.run(
-            ["tail", "-30", latest_file],
+            ["tail", "-30", session_file],
             capture_output=True, text=True, timeout=5
         ).stdout.strip().split("\\n")
 
@@ -293,14 +312,20 @@ def main():
     if now - last_fallback < COOLDOWN_SEC:
         return
 
-    # Get bot token and chat_id
     bot_token = get_bot_token()
-    chat_id = get_chat_id()
-    if not bot_token or not chat_id:
+    if not bot_token:
         return  # No Telegram configured — nothing to watch
 
-    # Check session timing
-    last_user_ts, last_assistant_ts = get_latest_session_timing()
+    # Resolve the SAME telegram session for both chat_id and session timing.
+    # Critical: never read a non-telegram session (heartbeat/openai/etc.) — those
+    # contain role:"user" entries (heartbeat pings) that have no visible text reply
+    # and would falsely trigger a fallback message into the user's chat.
+    chat_id, session_file = get_telegram_session_info()
+    if not chat_id or not session_file:
+        return  # No active telegram session — nothing to watch
+
+    # Check session timing on the telegram session specifically
+    last_user_ts, last_assistant_ts = get_latest_session_timing(session_file)
 
     if last_user_ts is None:
         return  # No user messages — nothing to check
@@ -351,7 +376,7 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 
 export const VM_MANIFEST = {
   /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 62,
+  version: 63,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
