@@ -1083,6 +1083,55 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        // --- Intercept rate-limit / quota errors ---
+        // Surfaces as OpenAI's "insufficient_quota" (verbatim from platform.openai.com),
+        // OpenAI's exact text "You exceeded your current quota...", or any 429 from
+        // upstream. Without this, OpenClaw's surface_error path forwards the raw
+        // upstream body verbatim into assistant.content — the user sees a scary
+        // technical error referencing the upstream provider's docs URL.
+        if (
+          providerRes.status === 429 ||
+          errBody.includes("insufficient_quota") ||
+          errBody.includes("exceeded your current quota") ||
+          errBody.includes("rate_limit_exceeded")
+        ) {
+          logger.warn("Provider rate-limit/quota error intercepted — returning friendly response", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            status: providerRes.status,
+            error: errBody.slice(0, 200),
+          });
+          return friendlyAssistantResponse(
+            "I've hit my daily limit — try again in a bit, or upgrade your plan for more headroom.",
+            requestedModel,
+            isStreaming
+          );
+        }
+
+        // --- Intercept upstream auth failures ---
+        // Surfaces as Anthropic's "HTTP 401 authentication_error: invalid x-api-key"
+        // (e.g., when a VM's auth-profiles.json has a stale gateway_token after a
+        // misconfig or partial provisioning). OpenClaw would otherwise forward the
+        // raw body into assistant.content. Treat as transient on our side.
+        if (
+          providerRes.status === 401 ||
+          errBody.includes("invalid x-api-key") ||
+          errBody.includes("invalid_api_key") ||
+          errBody.includes("authentication_error")
+        ) {
+          logger.warn("Provider auth failure intercepted — returning friendly response", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            status: providerRes.status,
+            error: errBody.slice(0, 200),
+          });
+          return friendlyAssistantResponse(
+            "I'm temporarily unavailable — please try again in a few minutes.",
+            requestedModel,
+            isStreaming
+          );
+        }
+
         // --- Intercept billing/payment errors before OpenClaw caches them ---
         // Anthropic billing errors (402 or "credit balance too low") get cached in
         // auth-profiles.json usageStats/failureState, disabling the provider until
@@ -1145,6 +1194,46 @@ export async function POST(req: NextRequest) {
         }).catch(() => {});
         return friendlyAssistantResponse(
           "I ran into a conversation error and had to reset. Let's start fresh — what can I help you with?",
+          requestedModel,
+          isStreaming
+        );
+      }
+
+      // --- Intercept rate-limit / quota errors (see first block above for rationale) ---
+      if (
+        finalProviderRes.status === 429 ||
+        errBody.includes("insufficient_quota") ||
+        errBody.includes("exceeded your current quota") ||
+        errBody.includes("rate_limit_exceeded")
+      ) {
+        logger.warn("Provider rate-limit/quota error intercepted — returning friendly response", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          status: finalProviderRes.status,
+          error: errBody.slice(0, 200),
+        });
+        return friendlyAssistantResponse(
+          "I've hit my daily limit — try again in a bit, or upgrade your plan for more headroom.",
+          requestedModel,
+          isStreaming
+        );
+      }
+
+      // --- Intercept upstream auth failures (see first block above for rationale) ---
+      if (
+        finalProviderRes.status === 401 ||
+        errBody.includes("invalid x-api-key") ||
+        errBody.includes("invalid_api_key") ||
+        errBody.includes("authentication_error")
+      ) {
+        logger.warn("Provider auth failure intercepted — returning friendly response", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          status: finalProviderRes.status,
+          error: errBody.slice(0, 200),
+        });
+        return friendlyAssistantResponse(
+          "I'm temporarily unavailable — please try again in a few minutes.",
           requestedModel,
           isStreaming
         );
