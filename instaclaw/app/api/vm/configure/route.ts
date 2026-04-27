@@ -438,6 +438,10 @@ export async function POST(req: NextRequest) {
     // Sets up XMTP agent so users can chat via World Chat.
     // Runs in background — doesn't block the configure response.
     // Idempotent — skips if xmtp_address is already set.
+    // Passes the user's World ID wallet address so the agent can send a
+    // proactive first-message (greeting) on startup, establishing the DM
+    // without requiring the user to message first. Falls back to reactive-
+    // only mode if the user has not yet completed World ID verification.
     {
       const capturedVm = {
         id: vm.id,
@@ -446,9 +450,29 @@ export async function POST(req: NextRequest) {
         ssh_user: vm.ssh_user,
         gateway_token: result.gatewayToken ?? vm.gateway_token ?? "",
       };
+      const capturedUserIdForXmtp = userId!;
       after(async () => {
         try {
-          const xmtpResult = await setupXMTP(capturedVm);
+          // Fetch the user's World ID wallet so the agent can proactively
+          // greet them. Optional — undefined means agent stays reactive-only.
+          let userWalletAddress: string | undefined;
+          try {
+            const sb = getSupabase();
+            const { data: userRow } = await sb
+              .from("instaclaw_users")
+              .select("world_wallet_address")
+              .eq("id", capturedUserIdForXmtp)
+              .single();
+            userWalletAddress = userRow?.world_wallet_address ?? undefined;
+          } catch (lookupErr) {
+            logger.warn("XMTP user wallet lookup failed (proceeding without proactive greeting)", {
+              route: "vm/configure",
+              vmId: vm.id,
+              error: String(lookupErr),
+            });
+          }
+
+          const xmtpResult = await setupXMTP(capturedVm, userWalletAddress);
           if (!xmtpResult.success) {
             logger.warn("Background XMTP setup failed (non-fatal)", {
               route: "vm/configure",
