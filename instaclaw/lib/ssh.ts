@@ -86,7 +86,7 @@ export const OPENCLAW_PINNED_VERSION = "2026.4.5";
 // IMPORTANT: When bumping this, ALSO bump VM_MANIFEST.version so the reconciler
 // re-runs configureOpenClaw across the fleet and upgrades existing VMs.
 // Mirror of the OPENCLAW_PINNED_VERSION discipline above.
-export const BANKR_CLI_PINNED_VERSION = "0.2.15";
+export const BANKR_CLI_PINNED_VERSION = "0.3.1";
 
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
