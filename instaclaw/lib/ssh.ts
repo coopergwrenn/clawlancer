@@ -3519,7 +3519,13 @@ export async function configureOpenClaw(
       'cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.last-known-good 2>/dev/null || true',
       '',
       '# Write complete openclaw.json in one shot (replaces onboard + all config set calls)',
-      'mkdir -p ~/.openclaw',
+      // Pre-create every ~/.openclaw subdirectory referenced later in this script.
+      // Post-2026-04-26 outage: freshly-provisioned VMs were missing ~/.openclaw/cron/
+      // and the redirect `> ~/.openclaw/cron/jobs.json` (later in this script) was
+      // failing with "No such file or directory" — even though guarded by 2>/dev/null
+      // || true, the bash error itself bubbles up through the script's exit code.
+      // Defensive mkdir of every subdirectory we touch.
+      'mkdir -p ~/.openclaw ~/.openclaw/cron ~/.openclaw/scripts ~/.openclaw/workspace ~/.openclaw/workspace/memory ~/.openclaw/agents/main/sessions ~/.openclaw/agents/main/sessions-backup ~/.openclaw/agents/main/agent ~/.openclaw/skills ~/.openclaw/canvas ~/.openclaw/devices ~/.openclaw/media ~/.openclaw/notifications',
       `echo '${ocConfigB64}' | base64 -d > ~/.openclaw/openclaw.json`,
       '',
       '# Purge old config backups that may contain stale telegram bot tokens',
