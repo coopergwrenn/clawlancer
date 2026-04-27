@@ -186,6 +186,15 @@ async function sendProactiveGreeting(agent) {
     return;
   }
 
+  // Cross-VM: server-side check populated this if the user was already
+  // greeted on a prior VM. Suppresses double-greeting on re-provision.
+  if (process.env.USER_GREETING_ALREADY_SENT === "true") {
+    log("INFO", "USER_GREETING_ALREADY_SENT=true — user already greeted on prior VM, skipping");
+    return;
+  }
+
+  // Per-VM: covers the agent-restart case (Restart=on-failure). Independent
+  // of the cross-VM env flag — the marker file lives on this VM only.
   const markerFile = join(XMTP_DIR, ".greeting-sent");
   if (existsSync(markerFile)) {
     log("INFO", "Proactive greeting already sent (marker present) — skipping");
@@ -203,9 +212,49 @@ async function sendProactiveGreeting(agent) {
     } catch (e) {
       log("WARN", `Failed to write greeting marker: ${e}`);
     }
+    // Record at the backend so re-provisions don't double-greet. Best-effort:
+    // a failure here means the per-VM marker still protects against agent
+    // restart re-greets, but a future re-provisioning of this user could
+    // greet them again. We log + continue.
+    await recordGreetingDelivered();
   } catch (err) {
     log("ERROR", "Failed to send proactive greeting", { error: err?.message || String(err) });
     // Do NOT write marker — next agent restart will retry
+  }
+}
+
+/**
+ * Tell the instaclaw backend the proactive greeting just landed so the
+ * server can flip instaclaw_users.xmtp_greeting_sent_at. Auth uses the
+ * agent's own gateway token (per-VM, already in env).
+ */
+async function recordGreetingDelivered() {
+  const apiUrl = process.env.INSTACLAW_API_URL;
+  const token = process.env.GATEWAY_TOKEN;
+  if (!apiUrl || !token) {
+    log("WARN", "INSTACLAW_API_URL or GATEWAY_TOKEN missing — skipping backend greeting record");
+    return;
+  }
+  try {
+    const res = await fetch(`${apiUrl}/api/admin/xmtp-greeting-recorded`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      // Empty body is fine — endpoint identifies VM by the token.
+      body: JSON.stringify({}),
+      // Keep the call snappy; backend write is single-row UPDATE.
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      log("WARN", `Backend greeting record returned ${res.status}`, { body: txt.slice(0, 200) });
+      return;
+    }
+    log("INFO", "Backend greeting record acknowledged");
+  } catch (err) {
+    log("WARN", "Backend greeting record failed (non-fatal)", { error: err?.message || String(err) });
   }
 }
 

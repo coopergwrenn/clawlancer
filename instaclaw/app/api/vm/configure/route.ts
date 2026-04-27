@@ -445,6 +445,7 @@ export async function POST(req: NextRequest) {
     {
       const capturedVm = {
         id: vm.id,
+        name: vm.name,
         ip_address: vm.ip_address,
         ssh_port: vm.ssh_port,
         ssh_user: vm.ssh_user,
@@ -453,17 +454,22 @@ export async function POST(req: NextRequest) {
       const capturedUserIdForXmtp = userId!;
       after(async () => {
         try {
-          // Fetch the user's World ID wallet so the agent can proactively
-          // greet them. Optional — undefined means agent stays reactive-only.
+          // Fetch the user's World ID wallet AND prior greeting status so
+          // the agent can (a) proactively greet them, and (b) skip greeting
+          // if they were already greeted on a prior VM (re-provision case).
+          // Both fields are optional — undefined values mean the agent stays
+          // in reactive-only mode for that aspect.
           let userWalletAddress: string | undefined;
+          let userGreetingAlreadySent = false;
           try {
             const sb = getSupabase();
             const { data: userRow } = await sb
               .from("instaclaw_users")
-              .select("world_wallet_address")
+              .select("world_wallet_address, xmtp_greeting_sent_at")
               .eq("id", capturedUserIdForXmtp)
               .single();
             userWalletAddress = userRow?.world_wallet_address ?? undefined;
+            userGreetingAlreadySent = !!userRow?.xmtp_greeting_sent_at;
           } catch (lookupErr) {
             logger.warn("XMTP user wallet lookup failed (proceeding without proactive greeting)", {
               route: "vm/configure",
@@ -472,7 +478,7 @@ export async function POST(req: NextRequest) {
             });
           }
 
-          const xmtpResult = await setupXMTP(capturedVm, userWalletAddress);
+          const xmtpResult = await setupXMTP(capturedVm, userWalletAddress, userGreetingAlreadySent);
           if (!xmtpResult.success) {
             logger.warn("Background XMTP setup failed (non-fatal)", {
               route: "vm/configure",
