@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Globe, Copy, CheckCircle2, ExternalLink } from "lucide-react";
+import { Globe, Copy, CheckCircle2, ExternalLink, Info, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 interface Props {
   gatewayUrl: string;
@@ -36,9 +37,6 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
     setTimeout(() => setCopiedField(null), 2000);
   }
 
-  // Derive gateway token display (masked)
-  const gatewayTokenDisplay = "••••••••••••";
-
   return (
     <div>
       <h2
@@ -46,8 +44,50 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
         style={{ fontFamily: "var(--font-serif)" }}
       >
         <Globe className="w-5 h-5" /> Connect Your Browser
+        <span
+          className="text-[10px] uppercase tracking-[0.12em] font-medium px-1.5 py-0.5 rounded-md ml-1"
+          style={{
+            background: "rgba(245,158,11,0.12)",
+            color: "#f59e0b",
+            border: "1px solid rgba(245,158,11,0.25)",
+            letterSpacing: "0.12em",
+          }}
+        >
+          Beta
+        </span>
       </h2>
       <div className="glass rounded-xl p-6 space-y-5" style={{ border: "1px solid var(--border)" }}>
+        {/* Beta risk disclosure */}
+        <div
+          className="flex gap-3 p-3.5 rounded-lg"
+          style={{
+            background: "rgba(245,158,11,0.06)",
+            border: "1px solid rgba(245,158,11,0.2)",
+          }}
+        >
+          <Info
+            className="w-4 h-4 shrink-0 mt-0.5"
+            style={{ color: "#f59e0b" }}
+            aria-hidden="true"
+          />
+          <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
+            <span className="font-medium">Browser Relay is in beta.</span>{" "}
+            <span style={{ color: "var(--muted)" }}>
+              When you attach a tab, your agent has full access to whatever you&apos;re
+              logged into — it can read what you can read and click what you can click. Be
+              mindful which tabs you attach.{" "}
+            </span>
+            <Link
+              href="/browser-relay"
+              className="underline underline-offset-2"
+              style={{ color: "#f59e0b" }}
+            >
+              Read the safety guide
+            </Link>
+            <span style={{ color: "var(--muted)" }}> before connecting sensitive accounts.</span>
+          </p>
+        </div>
+
         {/* Status */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -163,6 +203,69 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
             </p>
           </div>
         )}
+
+        {/* Safety tips */}
+        <div className="space-y-3 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" style={{ color: "var(--muted)" }} aria-hidden="true" />
+            <p
+              className="text-xs font-medium uppercase tracking-wider"
+              style={{ color: "var(--muted)" }}
+            >
+              Tips for safe use
+            </p>
+          </div>
+          <ul
+            className="space-y-2 text-xs leading-relaxed pl-1"
+            style={{ color: "var(--muted)" }}
+          >
+            <li className="flex gap-2">
+              <span style={{ color: "var(--accent)" }} aria-hidden="true">·</span>
+              <span>
+                Start with low-stakes tabs (search, news, docs) before attaching email,
+                banking, or exchange accounts.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span style={{ color: "var(--accent)" }} aria-hidden="true">·</span>
+              <span>
+                Review every action before approving in supervised mode. Detach
+                sensitive tabs before large purchases or transfers — re-attach when
+                you want the agent involved again.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span style={{ color: "var(--accent)" }} aria-hidden="true">·</span>
+              <span>
+                Websites can hide instructions in their content trying to redirect your
+                agent. Watch for unexpected actions and disconnect if something feels
+                off.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span style={{ color: "var(--accent)" }} aria-hidden="true">·</span>
+              <span>
+                Something looks wrong?{" "}
+                <a
+                  href="mailto:help@instaclaw.io?subject=Browser%20Relay%20issue"
+                  className="underline underline-offset-2"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  Email help@instaclaw.io
+                </a>{" "}
+                or read the{" "}
+                <Link
+                  href="/browser-relay"
+                  className="underline underline-offset-2"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  full guide
+                </Link>
+                .
+              </span>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   );
