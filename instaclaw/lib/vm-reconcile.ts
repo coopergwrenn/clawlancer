@@ -76,6 +76,14 @@ export interface ReconcileOptions {
    * emergency). Config-set strict validation still runs.
    */
   canary?: boolean;
+  /**
+   * Skip the gateway-restart step. Used when reconciling suspended/hibernating
+   * VMs: their gateway is intentionally stopped (or not user-facing), and a
+   * restart would un-suspend them. Config and file pushes still happen — the
+   * gateway will pick up the new config when it's next started (via
+   * reactivation flow or admin restart). Default false.
+   */
+  skipGatewayRestart?: boolean;
 }
 
 // ── Reconciliation engine ──
@@ -88,6 +96,7 @@ export async function reconcileVM(
   const dryRun = options?.dryRun ?? false;
   const strict = options?.strict ?? false;
   const canaryEnabled = options?.canary ?? true;
+  const skipGatewayRestart = options?.skipGatewayRestart ?? false;
   const result: ReconcileResult = {
     fixed: [],
     alreadyCorrect: [],
@@ -229,10 +238,23 @@ export async function reconcileVM(
     await stepCaddyUIBlock(ssh, result, dryRun);
 
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
-    if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun) {
+    // Skipped when caller passes skipGatewayRestart (suspended/hibernating
+    // VMs — their gateway is intentionally stopped/not-user-facing, and a
+    // restart would un-suspend them. The config + file pushes above still
+    // landed; the gateway will pick them up on next start, e.g. via
+    // reactivation flow.) result.gatewayRestartNeeded is preserved so the
+    // caller can see that a restart WAS deferred.
+    if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun && !skipGatewayRestart) {
       currentStep = "gateway-restart";
       result.gatewayRestartNeeded = true;
       await stepGatewayRestart(ssh, vm, result);
+    } else if ((authProfileFixed || result.gatewayRestartNeeded) && !dryRun && skipGatewayRestart) {
+      result.gatewayRestartNeeded = true;
+      logger.info("reconcileVM: gateway restart deferred (skipGatewayRestart=true)", {
+        route: "reconcileVM",
+        vmId: vm.id,
+        authProfileFixed,
+      });
     }
 
     // ── Step 10: Canary probe (strict mode only) ──
