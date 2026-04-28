@@ -305,6 +305,65 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Critical-failure gate ──
+    // configureOpenClaw collects every silent-catch failure into result.partialFailures
+    // (each tagged critical: true | false). Before today (2026-04-28) those just got
+    // logged and the function happily returned `{ configured: true, healthy: true }`,
+    // shipping a half-broken VM to the user — that's how the @ObareJunior_ outage
+    // happened (dispatch_deploy: critical=true, swallowed silently).
+    //
+    // Now: if any partialFailure has critical=true, we DO NOT mark this configure
+    // complete. The supplemental DB updates, onboarding_complete=true, pending
+    // consume, and email send are all gated behind this. We DO still:
+    //   - Release the configure_lock so the user's retry isn't blocked
+    //   - Log + email an admin alert with the failure list
+    //   - Return 500 so the caller (billing webhook, onboarding wizard, mini-app
+    //     proxy) treats the configure as failed and can retry. MAX_CONFIGURE_ATTEMPTS
+    //     prevents infinite retry loops on persistently-broken VMs.
+    //
+    // Non-critical partial failures (skill_voice, skill_marketplace, etc.) are
+    // still surfaced in the response body but don't block the gate — those skills
+    // are optional and the user can use the VM without them.
+    const criticalFailures = result.partialFailures.filter((f) => f.critical);
+    if (criticalFailures.length > 0) {
+      // Release configure_lock so retry is unblocked. This is the ONE supplemental
+      // write we still do — it's required for any retry to even start.
+      if (!lockError) {
+        await supabase
+          .from("instaclaw_vms")
+          .update({ configure_lock_at: null })
+          .eq("id", vm.id)
+          .eq("assigned_to", userId);
+      }
+
+      logger.error("Configure blocked by critical deploy failures", {
+        route: "vm/configure",
+        userId,
+        vmId: vm.id,
+        criticalCount: criticalFailures.length,
+        criticalSteps: criticalFailures.map((f) => f.step),
+        allFailures: result.partialFailures,
+      });
+
+      sendAdminAlertEmail(
+        "Configure blocked: critical deploy failures",
+        `VM ${vm.id} (user ${userId}) had ${criticalFailures.length} critical deploy failure(s) during configure.\n\n` +
+          `Critical steps:\n${criticalFailures.map((f) => `  - ${f.step}: ${f.error}`).join("\n")}\n\n` +
+          `All partial failures:\n${result.partialFailures.map((f) => `  - [${f.critical ? "CRITICAL" : "non-critical"}] ${f.step}: ${f.error}`).join("\n")}\n\n` +
+          `The user is NOT yet marked onboarding_complete; the next retry will re-run configure. ` +
+          `If retries keep hitting the same failure, investigate the underlying cause before bumping configure_attempts past MAX.`
+      ).catch(() => {});
+
+      return NextResponse.json(
+        {
+          error: "Configuration completed with critical failures",
+          partial_failures: result.partialFailures,
+          critical_failures: criticalFailures,
+        },
+        { status: 500 }
+      );
+    }
+
     // ── Supplemental DB updates (configureOpenClaw already wrote the critical fields) ──
     // configureOpenClaw's atomic update already wrote: gateway_url, gateway_token,
     // health_status "healthy", telegram_bot_token, discord_bot_token, channels_enabled,
