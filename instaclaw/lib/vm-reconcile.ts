@@ -97,6 +97,15 @@ export async function reconcileVM(
   const strict = options?.strict ?? false;
   const canaryEnabled = options?.canary ?? true;
   const skipGatewayRestart = options?.skipGatewayRestart ?? false;
+
+  // Suspended/hibernating VMs have user-facing services intentionally stopped.
+  // Heal steps that ENABLE/CONFIGURE services are still safe (and desirable —
+  // we want correct config when the VM unsuspends) but heal steps that
+  // START/RESTART services partially un-suspend the VM, sending traffic
+  // through bots that the user paid to pause. Track this state and gate
+  // every service-start command on it.
+  const vmHealthStatus = (vm as { health_status?: string }).health_status;
+  const isPausedState = vmHealthStatus === "suspended" || vmHealthStatus === "hibernating";
   const result: ReconcileResult = {
     fixed: [],
     alreadyCorrect: [],
@@ -261,16 +270,16 @@ export async function reconcileVM(
     await stepSkillDirectories(ssh, result, dryRun, strict);
 
     currentStep = "heal-gateway-watchdog";
-    await stepGatewayWatchdogTimer(ssh, result, dryRun, strict);
+    await stepGatewayWatchdogTimer(ssh, result, dryRun, strict, isPausedState);
 
     currentStep = "heal-dispatch-server";
-    await stepDispatchServer(ssh, vm, result, dryRun, strict);
+    await stepDispatchServer(ssh, vm, result, dryRun, strict, isPausedState);
 
     currentStep = "heal-instaclaw-xmtp";
-    await stepInstaclawXmtp(ssh, vm, result, dryRun, strict);
+    await stepInstaclawXmtp(ssh, vm, result, dryRun, strict, isPausedState);
 
     currentStep = "heal-node-exporter";
-    await stepNodeExporter(ssh, result, dryRun, strict);
+    await stepNodeExporter(ssh, result, dryRun, strict, isPausedState);
 
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
     // Skipped when caller passes skipGatewayRestart (suspended/hibernating
@@ -2304,6 +2313,7 @@ async function stepGatewayWatchdogTimer(
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
+  isPausedState: boolean,
 ): Promise<void> {
   try {
     const probe = await ssh.execCommand(
@@ -2325,17 +2335,30 @@ async function stepGatewayWatchdogTimer(
       return;
     }
 
+    // On suspended/hibernating, the timer SHOULD be inactive (the gateway it
+    // watches is also intentionally stopped). Don't push it as a fix unless
+    // the unit file is also missing — that's drift we can correct safely.
+    if (isPausedState && hasUnit) {
+      result.alreadyCorrect.push("gw-watchdog: timer inactive (VM paused — expected)");
+      return;
+    }
+
     if (!hasScript) {
       recordHealError(result, strict, "gw-watchdog: ~/scripts/gateway-watchdog.sh missing (stepSkills should have deployed it)");
       return;
     }
 
     if (dryRun) {
-      result.fixed.push(`[dry-run] gw-watchdog: would ${hasUnit ? "enable+start timer" : "write unit + start"}`);
+      const action = isPausedState ? "write unit (skip start — VM paused)" : (hasUnit ? "enable+start timer" : "write unit + start");
+      result.fixed.push(`[dry-run] gw-watchdog: would ${action}`);
       return;
     }
 
-    // Write unit + timer (idempotent — overwrites if exists)
+    // Always write unit + daemon-reload + enable (config). Skip start when paused.
+    const startBlock = isPausedState
+      ? "echo SKIP_START_PAUSED"
+      : "systemctl --user start gateway-watchdog.timer 2>/dev/null && sleep 1 && systemctl --user is-active gateway-watchdog.timer";
+
     const setup = await ssh.execCommand(`bash -c '
 ${HEAL_DBUS_PREFIX}
 mkdir -p $HOME/.config/systemd/user
@@ -2362,10 +2385,12 @@ WantedBy=timers.target
 WTEOF
 systemctl --user daemon-reload
 systemctl --user enable gateway-watchdog.timer 2>/dev/null
-systemctl --user start gateway-watchdog.timer 2>/dev/null
-sleep 1
-systemctl --user is-active gateway-watchdog.timer
+${startBlock}
 '`);
+    if (isPausedState) {
+      result.fixed.push("gw-watchdog: unit + enable applied (start skipped — VM paused)");
+      return;
+    }
     if (!setup.stdout.includes("active")) {
       recordHealError(result, strict, `gw-watchdog: timer didn't become active: ${setup.stdout.slice(-150)}`);
       return;
@@ -2398,6 +2423,7 @@ async function stepDispatchServer(
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
+  isPausedState: boolean,
 ): Promise<void> {
   try {
     const probe = await ssh.execCommand(
@@ -2419,8 +2445,17 @@ async function stepDispatchServer(
       return;
     }
 
+    // On paused VMs, dispatch-server SHOULD be inactive. Only redeploy if the
+    // unit file or the binary is missing entirely (config drift). Don't try
+    // to start the service — that would partially un-suspend the VM.
+    if (isPausedState && hasUnit) {
+      result.alreadyCorrect.push("dispatch-server: unit present, inactive (VM paused — expected)");
+      return;
+    }
+
     if (dryRun) {
-      result.fixed.push(`[dry-run] dispatch-server: would redeploy (unit=${hasUnit} active=${isActive} port=${isListening})`);
+      const action = isPausedState ? "redeploy files + unit (skip restart — VM paused)" : "redeploy";
+      result.fixed.push(`[dry-run] dispatch-server: would ${action} (unit=${hasUnit} active=${isActive} port=${isListening})`);
       return;
     }
 
@@ -2477,11 +2512,20 @@ async function stepDispatchServer(
       HEAL_DBUS_PREFIX,
       'systemctl --user daemon-reload',
       'systemctl --user enable dispatch-server 2>/dev/null',
-      'systemctl --user restart dispatch-server',
-      // Wait up to 12s for port to come up
-      'for i in 1 2 3 4 5 6 7 8; do ss -tln 2>/dev/null | grep -q ":8765 " && { echo PORT_OK; exit 0; }; sleep 1.5; done',
-      'echo PORT_FAIL',
     );
+
+    if (isPausedState) {
+      // Config pushed; service deliberately not started. The unit will
+      // auto-start when the VM is reactivated.
+      lines.push('echo SKIP_START_PAUSED');
+    } else {
+      lines.push(
+        'systemctl --user restart dispatch-server',
+        // Wait up to 12s for port to come up
+        'for i in 1 2 3 4 5 6 7 8; do ss -tln 2>/dev/null | grep -q ":8765 " && { echo PORT_OK; exit 0; }; sleep 1.5; done',
+        'echo PORT_FAIL',
+      );
+    }
 
     const tmpLocal = `/tmp/ic-dispatch-heal-${vm.id}.sh`;
     fs.writeFileSync(tmpLocal, lines.join("\n"), "utf-8");
@@ -2491,7 +2535,9 @@ async function stepDispatchServer(
       try { fs.unlinkSync(tmpLocal); } catch {}
     }
     const r = await ssh.execCommand("bash /tmp/ic-dispatch-heal.sh; rm -f /tmp/ic-dispatch-heal.sh");
-    if (r.stdout.includes("PORT_OK")) {
+    if (r.stdout.includes("SKIP_START_PAUSED")) {
+      result.fixed.push("dispatch-server: files + unit deployed (start skipped — VM paused)");
+    } else if (r.stdout.includes("PORT_OK")) {
       result.fixed.push("dispatch-server: redeployed + active + listening on :8765");
     } else if (r.stdout.includes("NO_NODE")) {
       recordHealError(result, strict, "dispatch-server: NVM node binary not found");
@@ -2529,6 +2575,7 @@ async function stepInstaclawXmtp(
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
+  isPausedState: boolean,
 ): Promise<void> {
   try {
     const probe = await ssh.execCommand(
@@ -2548,6 +2595,22 @@ async function stepInstaclawXmtp(
 
     if (hasUnit && isActive) {
       result.alreadyCorrect.push("instaclaw-xmtp: unit+active");
+      return;
+    }
+
+    // On paused VMs, instaclaw-xmtp SHOULD be inactive. If unit is present
+    // and only the active state is missing, that's the expected paused state
+    // — leave alone. We also can't run the full setupXMTP path on paused VMs:
+    // setupXMTP unconditionally starts the service AND wipes ~/.openclaw/xmtp,
+    // both of which would partially un-suspend the user.
+    if (isPausedState && hasUnit) {
+      result.alreadyCorrect.push("instaclaw-xmtp: unit present, inactive (VM paused — expected)");
+      return;
+    }
+    if (isPausedState && !hasUnit) {
+      // No surgical option exists; full setupXMTP is unsafe while paused.
+      // Surface as drift the next reconcile-after-reactivate will heal.
+      result.fixed.push("instaclaw-xmtp: skipped (VM paused, no unit file — will heal on reactivate)");
       return;
     }
 
@@ -2637,28 +2700,40 @@ async function stepNodeExporter(
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
+  isPausedState: boolean,
 ): Promise<void> {
   const NE_VERSION = "1.8.2";
   try {
     const probe = await ssh.execCommand(
       `bin=$([ -x /usr/local/bin/node_exporter ] && echo 1 || echo 0); ` +
       `port=$(ss -tln 2>/dev/null | grep -q ":9100 " && echo 1 || echo 0); ` +
-      `echo "bin=$bin port=$port"`
+      `unit=$([ -f /etc/systemd/system/node_exporter.service ] && echo 1 || echo 0); ` +
+      `echo "bin=$bin port=$port unit=$unit"`
     );
-    const m = probe.stdout.match(/bin=(\d) port=(\d)/);
+    const m = probe.stdout.match(/bin=(\d) port=(\d) unit=(\d)/);
     if (!m) {
       recordHealError(result, strict, `node_exporter: probe parse failed: ${probe.stdout.slice(0, 120)}`);
       return;
     }
-    const [hasBin, isListening] = [m[1] === "1", m[2] === "1"];
+    const [hasBin, isListening, hasUnit] = [m[1] === "1", m[2] === "1", m[3] === "1"];
 
     if (hasBin && isListening) {
       result.alreadyCorrect.push("node_exporter: bin+listening");
       return;
     }
 
+    // On paused VMs: if binary + unit are already in place, the inactive
+    // state is expected. If binary is missing, we can install it (config push)
+    // but skip the systemctl restart so we don't add a new running service
+    // to a VM that's intentionally suspended.
+    if (isPausedState && hasBin && hasUnit) {
+      result.alreadyCorrect.push("node_exporter: bin+unit present, inactive (VM paused — expected)");
+      return;
+    }
+
     if (dryRun) {
-      result.fixed.push(`[dry-run] node_exporter: would install (bin=${hasBin} port=${isListening})`);
+      const action = isPausedState ? "install + write unit (skip restart — VM paused)" : "install + start";
+      result.fixed.push(`[dry-run] node_exporter: would ${action} (bin=${hasBin} port=${isListening} unit=${hasUnit})`);
       return;
     }
 
@@ -2668,6 +2743,14 @@ async function stepNodeExporter(
       recordHealError(result, strict, "node_exporter: passwordless sudo not available");
       return;
     }
+
+    // Build install script — restart gated on isPausedState. Config push
+    // (binary download + unit file write + enable) always runs; the start
+    // is skipped when paused so the service auto-starts on next boot via
+    // WantedBy=multi-user.target instead of right now.
+    const startBlock = isPausedState
+      ? "echo SKIP_START_PAUSED"
+      : "sudo systemctl restart node_exporter && sleep 2 && (ss -tln 2>/dev/null | grep -q ':9100 ' && echo PORT_OK || echo PORT_FAIL)";
 
     const install = await ssh.execCommand(`bash -c '
 set +e
@@ -2703,11 +2786,11 @@ WantedBy=multi-user.target
 UEOF
 sudo systemctl daemon-reload
 sudo systemctl enable node_exporter 2>/dev/null
-sudo systemctl restart node_exporter
-sleep 2
-ss -tln 2>/dev/null | grep -q ":9100 " && echo PORT_OK || echo PORT_FAIL
+${startBlock}
 '`);
-    if (install.stdout.includes("PORT_OK")) {
+    if (install.stdout.includes("SKIP_START_PAUSED")) {
+      result.fixed.push(`node_exporter: installed v${NE_VERSION} (start skipped — VM paused)`);
+    } else if (install.stdout.includes("PORT_OK")) {
       result.fixed.push(`node_exporter: installed v${NE_VERSION} + listening on :9100`);
     } else {
       const reason = install.stdout.includes("DOWNLOAD_FAIL") ? "download failed"
