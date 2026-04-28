@@ -1181,9 +1181,13 @@ async function stepNpmPinDrift(
       // restart so the new version actually loads.
       result.gatewayRestartNeeded = true;
     } else {
-      result.errors.push(
-        `openclaw install failed: was=${openclawCurr || "missing"} got=${verify || "(empty)"} npm-tail=${(install.stdout + install.stderr).slice(-200)}`,
-      );
+      const msg = `openclaw install failed: was=${openclawCurr || "missing"} got=${verify || "(empty)"} npm-tail=${(install.stdout + install.stderr).slice(-200)}`;
+      result.errors.push(msg);
+      // ALSO push to strictErrors so the bump-without-push gate fires. Without
+      // this the cron would advance config_version on a VM whose openclaw npm
+      // pkg never moved to OPENCLAW_PINNED_VERSION (the 4 v64-suspended VMs on
+      // 2026-04-28 hit exactly this hole).
+      result.strictErrors.push(`openclaw-pin: ${msg}`);
     }
   }
 }
@@ -1247,9 +1251,13 @@ async function stepNodeUpgrade(
     `${NVM_PREAMBLE} && nvm current 2>/dev/null | sed 's/^v//'`,
   )).stdout.trim();
   if (verify !== NODE_PINNED_VERSION) {
-    result.errors.push(
-      `node install failed: was=v${nvmCurrent || "missing"} got=v${verify || "(empty)"} nvm-tail=${(install.stdout + install.stderr).slice(-200)}`,
-    );
+    const msg = `node install failed: was=v${nvmCurrent || "missing"} got=v${verify || "(empty)"} nvm-tail=${(install.stdout + install.stderr).slice(-200)}`;
+    result.errors.push(msg);
+    // ALSO push to strictErrors so the bump-without-push gate fires. Without
+    // this the cron would advance config_version on a VM whose nvm current
+    // never moved to NODE_PINNED_VERSION (vm-773 on 2026-04-28 was at v64
+    // with node 22.22.0 because this verify-fail only wrote to errors).
+    result.strictErrors.push(`node-pin: ${msg}`);
     return;
   }
   result.fixed.push(`node v${nvmCurrent || "missing"} → v${NODE_PINNED_VERSION}`);
