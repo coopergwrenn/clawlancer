@@ -41,11 +41,154 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  // Respond to Stripe immediately — process the event after the response is
-  // sent. This prevents 499 timeouts (Stripe closes connections after ~20s).
+  // Credit-pack purchases run SYNCHRONOUSLY so an RPC failure can surface as
+  // a non-2xx response and trigger Stripe's webhook retry. Subscription events
+  // stay on the after()-deferred path because they perform SSH/configure work
+  // that can exceed Stripe's 20s response window. Credit-pack handling is just
+  // two DB calls + one RPC — well under the budget.
+  //
+  // Historical bug: 24 of 33 (72.7%) credit_pack purchases over 90 days were
+  // orphaned — credit_purchases idempotency row written, ledger row missing.
+  // Root cause: the prior `await supabase.rpc(...)` did not check `error`, so
+  // any transient RPC failure was silently swallowed and the user received no
+  // credits. Recovered manually 2026-04-28.
+  if (event.type === "checkout.session.completed"
+      && (event.data?.object as any)?.metadata?.type === "credit_pack") {
+    try {
+      await handleCreditPackPurchase(event.data.object);
+    } catch (err) {
+      logger.error("Credit pack webhook handler threw — returning 500 for Stripe retry", {
+        route: "billing/webhook",
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json({ error: "credit_pack_processing_failed" }, { status: 500 });
+    }
+    return NextResponse.json({ received: true });
+  }
+
+  // Everything else: respond to Stripe immediately and process in background
+  // (prevents 499 timeouts since Stripe closes connections after ~20s).
   after(() => processEvent(event));
 
   return NextResponse.json({ received: true });
+}
+
+/**
+ * Handle a credit_pack checkout.session.completed event.
+ *
+ * Idempotency strategy (two layers):
+ *   1. UNIQUE(stripe_payment_intent) on instaclaw_credit_purchases prevents
+ *      duplicate rows across webhook retries.
+ *   2. The orphan-recovery branch below detects the case where the purchase
+ *      row was claimed by a prior delivery but the subsequent RPC silently
+ *      failed (the historical bug). On retry, this branch re-runs the credit
+ *      add against the existing purchase row.
+ *
+ * Throws on any DB / RPC failure so the POST handler can return non-2xx and
+ * Stripe will retry the webhook.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleCreditPackPurchase(session: any): Promise<void> {
+  const supabase = getSupabase();
+  const vmId = session.metadata?.vm_id as string | undefined;
+  const credits = parseInt(session.metadata?.credits || "0", 10);
+  const paymentIntent = session.payment_intent as string | undefined;
+
+  if (!vmId || !(credits > 0) || !paymentIntent) {
+    logger.error("Credit pack webhook: missing required metadata — cannot process", {
+      route: "billing/webhook", vmId, credits, paymentIntent, sessionId: session.id,
+    });
+    // Return cleanly — retrying won't help, the metadata is permanently absent.
+    // Admin alert so this doesn't disappear silently.
+    sendAdminAlertEmail(
+      "Credit Pack Webhook: Missing Metadata",
+      `Stripe checkout session ${session.id} arrived with type=credit_pack but is missing required metadata.\nvm_id=${vmId}\ncredits=${credits}\npayment_intent=${paymentIntent}\n\nUser will not receive credits without manual intervention.`,
+    ).catch(() => {});
+    return;
+  }
+
+  // Try to claim this purchase by inserting the idempotency row.
+  const { data: inserted, error: insertErr } = await supabase
+    .from("instaclaw_credit_purchases")
+    .insert({
+      vm_id: vmId,
+      stripe_payment_intent: paymentIntent,
+      credits_purchased: credits,
+      amount_cents: session.amount_total ?? 0,
+    })
+    .select("id")
+    .single();
+
+  let mustAddCredits: boolean;
+  if (insertErr) {
+    // Insert failed. Distinguish duplicate-PI (expected retry) from a real DB error.
+    // PostgREST returns code 23505 on UNIQUE violation.
+    const isDuplicate = (insertErr as any).code === "23505"
+      || /duplicate key/i.test(insertErr.message ?? "");
+    if (!isDuplicate) {
+      logger.error("Credit pack webhook: idempotency insert failed (non-duplicate)", {
+        route: "billing/webhook", vmId, paymentIntent,
+        error: insertErr.message, code: (insertErr as any).code,
+      });
+      throw new Error(`credit_pack_insert_failed: ${insertErr.message}`);
+    }
+
+    // Duplicate. Was the prior delivery's credit-add successful? Check the
+    // ledger — if no row references this PI on this VM, the prior delivery
+    // hit the historical silent-failure bug. We must add credits ourselves.
+    const { data: ledgerRows, error: ledgerErr } = await supabase
+      .from("instaclaw_credit_ledger")
+      .select("id")
+      .eq("vm_id", vmId)
+      .eq("reference_id", paymentIntent)
+      .limit(1);
+    if (ledgerErr) {
+      logger.error("Credit pack webhook: ledger probe failed during dedup check", {
+        route: "billing/webhook", vmId, paymentIntent, error: ledgerErr.message,
+      });
+      throw new Error(`credit_pack_ledger_probe_failed: ${ledgerErr.message}`);
+    }
+
+    if (!ledgerRows || ledgerRows.length === 0) {
+      logger.warn("Credit pack webhook: orphan recovery — purchase row exists, ledger empty, re-running credit-add", {
+        route: "billing/webhook", vmId, paymentIntent, credits,
+      });
+      mustAddCredits = true;
+    } else {
+      logger.info("Credit pack webhook: duplicate — credits already in ledger, skipping", {
+        route: "billing/webhook", vmId, paymentIntent, ledgerRowId: ledgerRows[0].id,
+      });
+      mustAddCredits = false;
+    }
+  } else if (!inserted) {
+    // Indeterminate: no error and no row. Should not happen with .single() but
+    // guard against it — surface so Stripe retries.
+    logger.error("Credit pack webhook: insert returned no row and no error — indeterminate state", {
+      route: "billing/webhook", vmId, paymentIntent,
+    });
+    throw new Error("credit_pack_insert_indeterminate");
+  } else {
+    // First delivery — we own the credit-add.
+    mustAddCredits = true;
+  }
+
+  if (!mustAddCredits) return;
+
+  const { data: newBalance, error: rpcErr } = await supabase.rpc("instaclaw_add_credits", {
+    p_vm_id: vmId,
+    p_credits: credits,
+    p_reference_id: paymentIntent,
+  });
+  if (rpcErr) {
+    logger.error("Credit pack webhook: instaclaw_add_credits RPC failed — throwing for Stripe retry", {
+      route: "billing/webhook", vmId, paymentIntent, credits,
+      error: rpcErr.message, code: (rpcErr as any).code,
+    });
+    throw new Error(`instaclaw_add_credits failed for vm=${vmId} pi=${paymentIntent}: ${rpcErr.message}`);
+  }
+  logger.info("Credit pack purchased — credits posted", {
+    route: "billing/webhook", vmId, paymentIntent, credits, newBalance,
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,54 +199,9 @@ async function processEvent(event: any) {
     case "checkout.session.completed": {
       const session = event.data.object;
 
-      // --- Handle credit pack purchases ---
-      if (session.metadata?.type === "credit_pack") {
-        const vmId = session.metadata.vm_id;
-        const credits = parseInt(session.metadata.credits || "0", 10);
-        const paymentIntent = session.payment_intent as string;
-
-        if (vmId && credits > 0 && paymentIntent) {
-          // Idempotency: insert purchase log first with UNIQUE constraint on
-          // stripe_payment_intent. If this is a webhook retry, the insert will
-          // return zero rows and we skip adding credits.
-          const { data: inserted, error: insertErr } = await supabase
-            .from("instaclaw_credit_purchases")
-            .insert({
-              vm_id: vmId,
-              stripe_payment_intent: paymentIntent,
-              credits_purchased: credits,
-              amount_cents: session.amount_total ?? 0,
-            })
-            .select("id")
-            .single();
-
-          if (insertErr || !inserted) {
-            // Duplicate payment_intent = webhook retry — skip credit addition
-            logger.info("Credit pack webhook duplicate — skipping", {
-              route: "billing/webhook",
-              vmId,
-              paymentIntent,
-              error: insertErr ? String(insertErr) : "no row returned",
-            });
-            break;
-          }
-
-          // Only add credits if the insert succeeded (first delivery)
-          await supabase.rpc("instaclaw_add_credits", {
-            p_vm_id: vmId,
-            p_credits: credits,
-            p_reference_id: paymentIntent,
-          });
-
-          logger.info("Credit pack purchased", {
-            route: "billing/webhook",
-            vmId,
-            credits,
-            paymentIntent,
-          });
-        }
-        break;
-      }
+      // Credit-pack purchases are handled synchronously in POST() above
+      // (so RPC failures can return non-2xx and trigger Stripe retry).
+      // They never reach this deferred path.
 
       // --- Handle subscription checkout ---
       const userId = session.metadata?.instaclaw_user_id;
