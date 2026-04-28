@@ -555,9 +555,27 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Surface partial deploy failures so they're visible to ops + the client.
+    // Each entry has { step, error, critical }. The function still succeeds
+    // (gateway came up healthy), but individual subsystems may have failed
+    // silently — e.g. dispatch-server, XMTP, individual skill installs.
+    // Logging here mirrors the configureOpenClaw-side log so failures are
+    // queryable from API logs, not just Supabase logger.
+    if (result.partialFailures.length > 0) {
+      logger.warn("vm/configure: partial deploy failures", {
+        route: "vm/configure",
+        vmId: vm.id,
+        userId,
+        count: result.partialFailures.length,
+        criticalCount: result.partialFailures.filter(f => f.critical).length,
+        failures: result.partialFailures,
+      });
+    }
+
     return NextResponse.json({
       configured: true,
       healthy: result.gatewayVerified, // based on localhost health ping inside VM
+      partial_failures: result.partialFailures,
     });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);

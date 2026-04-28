@@ -36,6 +36,28 @@ export interface VMRecord {
   region?: string;
 }
 
+/**
+ * A non-fatal failure encountered during a deploy step inside configureOpenClaw.
+ *
+ * Each catch block in configureOpenClaw that previously swallowed an error
+ * silently (the dispatch-server outage on 2026-04-28 is the canonical example)
+ * now pushes a PartialFailure entry instead. The function still returns
+ * successfully so the user gets a working VM, but the response surfaces a
+ * machine-readable list of what went wrong so callers can alert/retry/heal.
+ */
+export interface PartialFailure {
+  /** Stable, machine-readable identifier for the deploy step. */
+  step: string;
+  /** Truncated error message (first 300 chars). */
+  error: string;
+  /**
+   * Whether this failure prevents a critical user-facing capability.
+   * Critical=true for things like dispatch-server (no remote computer control)
+   * or wallet provisioning. Critical=false for optional skills.
+   */
+  critical: boolean;
+}
+
 interface UserConfig {
   telegramBotToken?: string;
   apiMode: "all_inclusive" | "byok";
@@ -3306,7 +3328,7 @@ export async function configureOpenClaw(
   vm: VMRecord,
   config: UserConfig,
   expectedUserId?: string
-): Promise<{ gatewayUrl: string; gatewayToken: string; controlUiUrl: string; gatewayVerified: boolean }> {
+): Promise<{ gatewayUrl: string; gatewayToken: string; controlUiUrl: string; gatewayVerified: boolean; partialFailures: PartialFailure[] }> {
   if (config.apiMode === "byok" && !config.apiKey) {
     throw new Error("API key required for BYOK mode");
   }
@@ -3315,6 +3337,25 @@ export async function configureOpenClaw(
   const timeline: Record<string, number> = {};
   const mark = (phase: string) => { timeline[phase] = Date.now(); };
   mark("start");
+
+  // ── Partial-failure collector ──
+  // Every try/catch in this function that used to silently swallow errors now
+  // pushes here instead. The function still returns success (so the user gets
+  // a working VM), but callers can read partialFailures to know what's broken
+  // and alert/retry. This was added 2026-04-28 after a fleet-wide outage where
+  // 81 VMs had a broken dispatch-server because the dispatch deploy block's
+  // try/catch was logger.warn-only and never surfaced to the API response.
+  const partialFailures: PartialFailure[] = [];
+  const recordFailure = (step: string, err: unknown, critical = false) => {
+    const errStr = err instanceof Error ? err.message : String(err);
+    partialFailures.push({ step, error: errStr.slice(0, 300), critical });
+    logger.warn(`configureOpenClaw partial failure [${step}]`, {
+      route: "lib/ssh",
+      vmId: vm.id,
+      error: errStr.slice(0, 500),
+      critical,
+    });
+  };
 
   const ssh = await connectSSH(vm);
   mark("ssh_connected");
@@ -3358,7 +3399,10 @@ export async function configureOpenClaw(
         ].join(' && '));
       }
     }
-  } catch { /* non-fatal — the full pre-wipe later in the script will also run */ }
+  } catch (privacyGuardErr) {
+    recordFailure("privacy_guard_check", privacyGuardErr, false);
+    /* non-fatal — the full pre-wipe later in the script will also run */
+  }
   mark("privacy_guard");
 
   // Ownership guard: verify VM is still assigned to the expected user before proceeding.
@@ -4092,6 +4136,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
       dispatchParts.push('');
       scriptParts.push(...dispatchParts);
     } catch (dispatchErr) {
+      recordFailure("dispatch_deploy", dispatchErr, true);
       logger.warn("Failed to load dispatch scripts for deployment (non-fatal)", {
         error: String(dispatchErr),
       });
@@ -4292,6 +4337,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Voice skill deployment prepared", { route: "lib/ssh", tier: tierKey, hasElevenlabsKey: !!elevenlabsKey });
     } catch (skillErr) {
+      recordFailure("skill_voice", skillErr, false);
       // Voice skill deployment is non-critical — don't block VM provisioning
       logger.warn("Voice skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4359,6 +4405,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Email skill deployment prepared", { route: "lib/ssh" });
     } catch (emailSkillErr) {
+      recordFailure("skill_email", emailSkillErr, false);
       // Email skill deployment is non-critical — don't block VM provisioning
       logger.warn("Email skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4409,6 +4456,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Finance skill deployment prepared", { route: "lib/ssh" });
     } catch (financeSkillErr) {
+      recordFailure("skill_finance", financeSkillErr, false);
       // Finance skill deployment is non-critical — don't block VM provisioning
       logger.warn("Finance skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4462,6 +4510,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Intel skill deployment prepared", { route: "lib/ssh" });
     } catch (intelSkillErr) {
+      recordFailure("skill_intel", intelSkillErr, false);
       // Intel skill deployment is non-critical — don't block VM provisioning
       logger.warn("Intel skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4509,6 +4558,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Social content skill deployment prepared", { route: "lib/ssh" });
     } catch (socialSkillErr) {
+      recordFailure("skill_social", socialSkillErr, false);
       // Social skill deployment is non-critical — don't block VM provisioning
       logger.warn("Social content skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4548,6 +4598,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("E-commerce skill deployment prepared", { route: "lib/ssh" });
     } catch (ecomSkillErr) {
+      recordFailure("skill_ecom", ecomSkillErr, false);
       // E-commerce skill deployment is non-critical — don't block VM provisioning
       logger.warn("E-commerce skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4600,6 +4651,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Motion graphics skill deployment prepared", { route: "lib/ssh" });
     } catch (videoSkillErr) {
+      recordFailure("skill_video", videoSkillErr, false);
       // Motion graphics skill deployment is non-critical — don't block VM provisioning
       logger.warn("Motion graphics skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4629,6 +4681,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Brand extraction skill deployment prepared", { route: "lib/ssh" });
     } catch (brandSkillErr) {
+      recordFailure("skill_brand", brandSkillErr, false);
       // Brand skill deployment is non-critical — don't block VM provisioning
       logger.warn("Brand extraction skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4665,6 +4718,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Web search skill deployment prepared (with Crawlee stealth)", { route: "lib/ssh" });
     } catch (webSkillErr) {
+      recordFailure("skill_web", webSkillErr, false);
       // Web skill deployment is non-critical — don't block VM provisioning
       logger.warn("Web search skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4694,6 +4748,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Skill auto-update checker deployment prepared", { route: "lib/ssh" });
     } catch (updateErr) {
+      recordFailure("skill_auto_updater", updateErr, false);
       logger.warn("Skill auto-update script not found, skipping", {
         route: "lib/ssh",
         error: String(updateErr),
@@ -4746,7 +4801,8 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
               `echo '${b64}' | base64 -d > "${remoteName}"`,
               `chmod +x "${remoteName}"`,
             );
-          } catch {
+          } catch (templateErr) {
+            recordFailure(`manifest_template_${file.templateKey}`, templateErr, false);
             // Template not registered yet at import time — skip
             // (STRIP_THINKING_SCRIPT registers after ssh.ts loads)
           }
@@ -4776,6 +4832,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Code execution skill deployment prepared", { route: "lib/ssh" });
     } catch (codeSkillErr) {
+      recordFailure("skill_code", codeSkillErr, false);
       // Code skill deployment is non-critical — don't block VM provisioning
       logger.warn("Code execution skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4820,6 +4877,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
       scriptParts.push('');
       logger.info("Sjinn video skill deployment prepared", { route: "lib/ssh" });
     } catch (sjinnSkillErr) {
+      recordFailure("skill_sjinn", sjinnSkillErr, false);
       logger.warn("Sjinn video skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(sjinnSkillErr),
@@ -4844,6 +4902,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Marketplace earning skill deployment prepared", { route: "lib/ssh" });
     } catch (marketSkillErr) {
+      recordFailure("skill_marketplace", marketSkillErr, false);
       // Marketplace skill deployment is non-critical — don't block VM provisioning
       logger.warn("Marketplace earning skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4932,6 +4991,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Prediction markets skill deployment prepared (Polymarket + Kalshi)", { route: "lib/ssh" });
     } catch (polySkillErr) {
+      recordFailure("skill_prediction_markets", polySkillErr, false);
       // Prediction markets skill deployment is non-critical — don't block VM provisioning
       logger.warn("Prediction markets skill files not found, skipping deployment", {
         route: "lib/ssh",
@@ -4981,6 +5041,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Language Teacher skill deployment prepared (Skill 14)", { route: "lib/ssh" });
     } catch (langSkillErr) {
+      recordFailure("skill_language_teacher", langSkillErr, false);
       logger.warn("Language Teacher skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(langSkillErr),
@@ -5038,6 +5099,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Solana DeFi Trading skill deployment prepared (Skill 15)", { route: "lib/ssh" });
     } catch (solSkillErr) {
+      recordFailure("skill_solana_defi", solSkillErr, false);
       logger.warn("Solana DeFi Trading skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(solSkillErr),
@@ -5094,6 +5156,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("Higgsfield AI Video skill deployment prepared (Skill 16)", { route: "lib/ssh" });
     } catch (hfSkillErr) {
+      recordFailure("skill_higgsfield", hfSkillErr, false);
       logger.warn("Higgsfield AI Video skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(hfSkillErr),
@@ -5118,6 +5181,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("X/Twitter Search skill deployment prepared", { route: "lib/ssh" });
     } catch (xSearchSkillErr) {
+      recordFailure("skill_xtwitter_search", xSearchSkillErr, false);
       logger.warn("X/Twitter Search skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(xSearchSkillErr),
@@ -5153,6 +5217,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
       logger.info("AgentBook Registration skill deployment prepared", { route: "lib/ssh" });
     } catch (abSkillErr) {
+      recordFailure("skill_agentbook", abSkillErr, false);
       logger.warn("AgentBook skill files not found, skipping deployment", {
         route: "lib/ssh",
         error: String(abSkillErr),
@@ -5688,6 +5753,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
             wallet: agentbookWallet,
           });
         } catch (walletErr) {
+          recordFailure("agentbook_wallet_generation", walletErr, true);
           logger.warn("Wallet generation failed (non-fatal)", {
             route: "lib/ssh",
             vmId: vm.id,
@@ -5695,7 +5761,11 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
           });
         }
       }
-    } catch { /* non-fatal */ }
+    } catch (agentbookOuterErr) {
+      recordFailure("agentbook_wallet_outer", agentbookOuterErr, false);
+      /* non-fatal — inner walletErr already records the actual generation failure;
+         this catches DB lookup or import failures around the outer block */
+    }
     mark("wallet_provisioned");
 
     // Only write gateway_url if the gateway is confirmed running.
@@ -5868,11 +5938,22 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
       timeline,
     });
 
+    if (partialFailures.length > 0) {
+      logger.info("configureOpenClaw completed with partial failures", {
+        route: "lib/ssh",
+        vmId: vm.id,
+        count: partialFailures.length,
+        criticalCount: partialFailures.filter(f => f.critical).length,
+        steps: partialFailures.map(f => f.step),
+      });
+    }
+
     return {
       gatewayUrl: gatewayUrl ?? `http://${vm.ip_address}:${GATEWAY_PORT}`,
       gatewayToken,
       controlUiUrl: gatewayUrl ?? `http://${vm.ip_address}:${GATEWAY_PORT}`,
       gatewayVerified: healthStatus === "healthy",
+      partialFailures,
     };
   } finally {
     ssh.dispose();
