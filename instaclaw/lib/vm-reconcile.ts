@@ -13,7 +13,7 @@
  */
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
-import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
+import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
@@ -178,6 +178,15 @@ export async function reconcileVM(
     // ── Step 3b: Remotion dependencies (npm install in motion-graphics template) ──
     currentStep = "remotion-deps";
     await stepRemotionDeps(ssh, result, dryRun);
+
+    // ── Step 3b2: Node version pin ──
+    // MUST run BEFORE stepNpmPinDrift — OpenClaw 2026.4.26+ has a packaging
+    // bug on Node v22.22.0 (snapshot baseline) where dist/ self-references
+    // don't match installed chunks. Upgrading Node first to NODE_PINNED_VERSION
+    // is a precondition for the openclaw install to land cleanly.
+    // See lib/ssh.ts:OPENCLAW_PINNED_VERSION HISTORY note.
+    currentStep = "node-pin-drift";
+    await stepNodeUpgrade(ssh, result, dryRun);
 
     // ── Step 3c: Pinned npm globals (@bankr/cli + openclaw) ──
     // Closes the rollout gap: bumping BANKR_CLI_PINNED_VERSION or
@@ -1144,8 +1153,14 @@ async function stepNpmPinDrift(
     await ssh.execCommand(
       `echo '${OPENCLAW_PINNED_VERSION}' > "$HOME/.openclaw/.openclaw-pinned-version"`,
     );
+    // Clean install: rm node_modules/openclaw before install. This was the
+    // failure mode on vm-050 (2026-04-28 canary): npm install -g over an
+    // existing tree on a different OpenClaw version left dist/ with stale
+    // hashed-chunk files referenced by the new server.impl, producing
+    // ERR_MODULE_NOT_FOUND on gateway startup. Removing first guarantees a
+    // fresh tree. Throwaway test confirmed this fixes the install.
     const install = await ssh.execCommand(
-      `${NVM_PREAMBLE} && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
+      `${NVM_PREAMBLE} && rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
       { execOptions: { timeout: 180_000 } },
     );
     const verify = (await ssh.execCommand(
@@ -1162,6 +1177,116 @@ async function stepNpmPinDrift(
       );
     }
   }
+}
+
+/**
+ * Step 3b2: Node version drift (NEW 2026-04-28).
+ *
+ * Reads `nvm current`, compares to NODE_PINNED_VERSION. If mismatched,
+ * runs `nvm install <pinned>` + `nvm alias default <pinned>` + patches
+ * the openclaw-gateway.service unit to point at the new node binary
+ * + triggers daemon-reload + sets gatewayRestartNeeded so Step 9 picks
+ * up the new unit on the existing restart path.
+ *
+ * Why this exists:
+ *   OpenClaw 2026.4.26 has a packaging incompatibility with Node v22.22.0
+ *   (the v62/v63 snapshot baseline). On 22.22.0 the install leaves dist/
+ *   with self-references to internal hashed chunks that don't exist on
+ *   disk; gateway crashes with ERR_MODULE_NOT_FOUND on startup. Validated
+ *   on a throwaway VM that v22.22.2 + 2026.4.26 = clean install + healthy
+ *   gateway. This step is the precondition for the openclaw bump above.
+ *
+ * Idempotent: if nvm current already matches pinned, this is a no-op.
+ *
+ * Order matters:
+ *   - This step MUST run BEFORE stepNpmPinDrift's openclaw install, so
+ *     the rm -rf $(npm root -g)/openclaw + npm install lands on the new
+ *     Node's node_modules path, not the old one.
+ *
+ * Fail-soft: a transient nvm/network hiccup logs to result.errors and
+ * lets reconcile continue. Next cycle re-evaluates.
+ */
+async function stepNodeUpgrade(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // `nvm current` outputs e.g. "v22.22.0". Strip the leading "v" to compare.
+  const nvmCurrent = (await ssh.execCommand(
+    `${NVM_PREAMBLE} && nvm current 2>/dev/null | sed 's/^v//' | head -1`,
+  )).stdout.trim();
+
+  if (nvmCurrent === NODE_PINNED_VERSION) {
+    result.alreadyCorrect.push(`node (v${NODE_PINNED_VERSION})`);
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] node v${nvmCurrent || "missing"} → v${NODE_PINNED_VERSION}`);
+    return;
+  }
+
+  // ── Install pinned Node and set as default ──
+  // `nvm install` downloads a tarball (~50MB), takes ~30s on a fresh VM.
+  // The 120s timeout gives margin for slow Linode regions.
+  const install = await ssh.execCommand(
+    `${NVM_PREAMBLE} && nvm install ${NODE_PINNED_VERSION} 2>&1 | tail -5 && nvm alias default ${NODE_PINNED_VERSION} 2>&1 | tail -2`,
+    { execOptions: { timeout: 120_000 } },
+  );
+  // Verify
+  const verify = (await ssh.execCommand(
+    `${NVM_PREAMBLE} && nvm current 2>/dev/null | sed 's/^v//'`,
+  )).stdout.trim();
+  if (verify !== NODE_PINNED_VERSION) {
+    result.errors.push(
+      `node install failed: was=v${nvmCurrent || "missing"} got=v${verify || "(empty)"} nvm-tail=${(install.stdout + install.stderr).slice(-200)}`,
+    );
+    return;
+  }
+  result.fixed.push(`node v${nvmCurrent || "missing"} → v${NODE_PINNED_VERSION}`);
+
+  // ── Patch systemd unit + drop-ins to point at new node binary ──
+  // Existing units hardcode /home/openclaw/.nvm/versions/node/v22.22.0/...
+  // paths from the snapshot bake. After Node upgrade those paths point at
+  // the OLD binary's node_modules, where openclaw isn't installed for the
+  // new version. Replace any /vXX.YY.ZZ/ inside the systemd unit with the
+  // new pinned version. The regex is tight enough to only match nvm path
+  // segments — comments and Description= lines that say "v22.22.0" remain
+  // untouched (Description gets refreshed by upgradeOpenClaw separately).
+  const patchUnit = await ssh.execCommand(
+    `set -e; ` +
+    `for f in $HOME/.config/systemd/user/openclaw-gateway.service $HOME/.config/systemd/user/openclaw-gateway.service.d/*.conf $HOME/.config/systemd/user/instaclaw-xmtp.service; do ` +
+    `  [ -f "$f" ] && sed -i -E 's|/v22\\.[0-9]+\\.[0-9]+/|/v${NODE_PINNED_VERSION}/|g' "$f"; ` +
+    `done; ` +
+    `grep -h "ExecStart" $HOME/.config/systemd/user/openclaw-gateway.service | head -1`,
+  );
+  if (!patchUnit.stdout.includes(`/v${NODE_PINNED_VERSION}/`)) {
+    result.errors.push(
+      `systemd unit path patch did not stick: '${patchUnit.stdout.trim().slice(0, 200)}'`,
+    );
+    return;
+  }
+  result.fixed.push("systemd unit ExecStart paths repointed to new Node");
+
+  // ── daemon-reload so systemd picks up the new ExecStart on next start ──
+  const reload = await ssh.execCommand(
+    'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user daemon-reload 2>&1',
+  );
+  if (reload.code !== 0) {
+    // Non-fatal: gateway restart will fall back to old unit until DBUS is
+    // available again. Loud log so we can spot the pattern in aggregate.
+    logger.warn("stepNodeUpgrade: daemon-reload failed (DBUS issue)", {
+      route: "reconcileVM",
+      stderr: reload.stderr?.slice(0, 200),
+    });
+  }
+
+  // ── Trigger gateway restart so the running process moves to new node ──
+  // The existing Step 9 (stepGatewayRestart) honors gatewayRestartNeeded.
+  // For non-healthy VMs (suspended/hibernating) the cron's skipGatewayRestart
+  // option overrides this — config lands on disk; gateway picks up new node
+  // when the user reactivates.
+  result.gatewayRestartNeeded = true;
 }
 
 /**

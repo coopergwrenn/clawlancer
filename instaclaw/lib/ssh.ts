@@ -99,7 +99,27 @@ interface UserConfig {
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
 // Bump this after fleet upgrades (separate from the SSH upgrade flow).
-export const OPENCLAW_PINNED_VERSION = "2026.4.5";
+//
+// HISTORY:
+// 2026.4.5 → 2026.4.26: Bumped 2026-04-28. v2026.4.26 has a packaging
+// incompatibility with Node v22.22.0 (the v62/v63 snapshot baseline) —
+// the install leaves dist/ with self-references to internal hashed chunks
+// that don't exist on disk; gateway crashes with ERR_MODULE_NOT_FOUND at
+// startup. Validated 22.22.2 + 2026.4.26 = clean install, no module
+// errors, /health=200 in 6s. NODE_PINNED_VERSION below MUST be at least
+// 22.22.2 for this OpenClaw version to install correctly.
+export const OPENCLAW_PINNED_VERSION = "2026.4.26";
+
+// Pinned Node.js version. nvm install 22 picks "latest v22" non-
+// deterministically across time, so pinning the exact patch makes fleet
+// behavior reproducible across provisioning runs.
+//
+// REQUIRED INVARIANT: NODE_PINNED_VERSION must be >= 22.22.2 — OpenClaw
+// 2026.4.26 fails to install on 22.22.0 (validated 2026-04-28).
+//
+// IMPORTANT: When bumping this, ALSO bump VM_MANIFEST.version so the
+// reconciler runs stepNodeUpgrade across the fleet to upgrade existing VMs.
+export const NODE_PINNED_VERSION = "22.22.2";
 
 // Pinned @bankr/cli version installed on every VM during configureOpenClaw().
 // Floating (latest) is a time-bomb — Bankr ships a breaking CLI change and every

@@ -375,8 +375,12 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 // ── The Manifest ──
 
 export const VM_MANIFEST = {
-  /** Bump on any manifest change. Continues from CONFIG_SPEC v14. */
-  version: 63,
+  /** Bump on any manifest change. Continues from CONFIG_SPEC v14.
+   *  v64 (2026-04-28): NODE_PINNED_VERSION=22.22.2 + OPENCLAW_PINNED_VERSION
+   *  =2026.4.26. Triggers stepNodeUpgrade on every assigned VM (Node 22.22.0
+   *  → 22.22.2) followed by openclaw clean-reinstall. See lib/ssh.ts for
+   *  HISTORY notes on why both pins moved together. */
+  version: 64,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
