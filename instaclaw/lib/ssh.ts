@@ -9789,14 +9789,28 @@ export async function setupXMTP(
       );
     }
 
-    // 7. Create/update systemd service unit
+    // 7. Create/update systemd service unit.
+    // Detect the actual NVM node path on the VM rather than hardcoding a
+    // version. NVM picks the latest patch of the major version it's told to
+    // install (`nvm install 22` can land on v22.22.0, v22.22.1, etc.), so a
+    // hardcoded `v22.22.0` path silently produces status=203/EXEC on any
+    // VM where NVM resolved to a different patch — same failure mode as the
+    // dispatch-server NVM-detection bug.
+    const nodePathResult = await ssh.execCommand(
+      'ls -d $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | head -1'
+    );
+    const nodePath = nodePathResult.stdout.trim();
+    if (!nodePath) {
+      return { success: false, error: "No NVM node binary found at ~/.nvm/versions/node/*/bin/node" };
+    }
+
     const serviceContent = `[Unit]
 Description=InstaClaw XMTP Agent
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/openclaw/.nvm/versions/node/v22.22.0/bin/node /home/openclaw/scripts/xmtp-agent.mjs
+ExecStart=${nodePath} /home/openclaw/scripts/xmtp-agent.mjs
 WorkingDirectory=/home/openclaw/scripts
 EnvironmentFile=/home/openclaw/.openclaw/xmtp/.env
 Restart=on-failure
