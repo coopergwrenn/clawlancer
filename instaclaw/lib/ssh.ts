@@ -2670,7 +2670,7 @@ _Fill this in during your first conversation. Make it yours._
 This isn't just metadata. It's the start of figuring out who you are.`;
 
 // Short BOOTSTRAP.md for users who skipped Gmail — no profile data, personality-first awakening
-const WORKSPACE_BOOTSTRAP_SHORT = `# BOOTSTRAP.md — First Run Instructions
+export const WORKSPACE_BOOTSTRAP_SHORT = `# BOOTSTRAP.md — First Run Instructions
 
 _This file executes once. After your first conversation, create \\\`.bootstrap_consumed\\\` in this workspace directory._
 

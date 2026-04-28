@@ -13,7 +13,7 @@
  */
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
-import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, toOpenClawModel, type VMRecord } from "./ssh";
+import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
@@ -236,6 +236,32 @@ export async function reconcileVM(
     // ── Step 8f: Caddy UI block (redirect / to instaclaw.io/dashboard) ──
     currentStep = "caddy-ui-block";
     await stepCaddyUIBlock(ssh, result, dryRun);
+
+    // ── Step 8g–8m: Deploy heals ──
+    // configureOpenClaw silently dropped these on a non-trivial fraction of
+    // the fleet (per the 2026-04-28 audit). The reconciler now verifies each
+    // and re-deploys if missing. Failures push to strictErrors so the bump-
+    // without-push gate prevents config_version from advancing on a broken VM.
+    currentStep = "heal-bootstrap-state";
+    await stepBootstrapState(ssh, result, dryRun, strict);
+
+    currentStep = "heal-shm-cleanup";
+    await stepShmCleanupCron(ssh, result, dryRun, strict);
+
+    currentStep = "heal-skill-dirs";
+    await stepSkillDirectories(ssh, result, dryRun, strict);
+
+    currentStep = "heal-gateway-watchdog";
+    await stepGatewayWatchdogTimer(ssh, result, dryRun, strict);
+
+    currentStep = "heal-dispatch-server";
+    await stepDispatchServer(ssh, vm, result, dryRun, strict);
+
+    currentStep = "heal-instaclaw-xmtp";
+    await stepInstaclawXmtp(ssh, vm, result, dryRun, strict);
+
+    currentStep = "heal-node-exporter";
+    await stepNodeExporter(ssh, result, dryRun, strict);
 
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
     // Skipped when caller passes skipGatewayRestart (suspended/hibernating
@@ -1920,4 +1946,652 @@ async function stepCaddyUIBlock(
   }
 
   result.fixed.push(`caddy: added UI block redirect for ${hostname}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Step 8g–8m: Deploy heals
+//
+// configureOpenClaw was historically responsible for deploying these
+// artifacts but did so through silent try/catch blocks. The fleet audit on
+// 2026-04-28 found that 30%+ of assigned VMs were missing dispatch-server,
+// XMTP service, bankr skill, BOOTSTRAP.md, SHM_CLEANUP cron, gateway
+// watchdog timer, or node_exporter.
+//
+// Each step probes the deploy state, re-deploys if missing, and pushes any
+// failure to BOTH result.errors AND (when strict) result.strictErrors so
+// the bump-without-push gate prevents config_version from advancing on a
+// VM where reconcile didn't actually converge.
+// ─────────────────────────────────────────────────────────────────────────
+
+const HEAL_DBUS_PREFIX = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
+
+/**
+ * Push a heal failure to result.errors AND (when strict) result.strictErrors.
+ * Strict mode is the bump-without-push gate: callers MUST NOT advance
+ * config_version when result.strictErrors is non-empty.
+ */
+function recordHealError(result: ReconcileResult, strict: boolean, msg: string): void {
+  result.errors.push(msg);
+  if (strict) {
+    result.strictErrors.push(msg);
+  }
+}
+
+/**
+ * Step 8g: Bootstrap state.
+ *
+ * Pairs with stepBootstrapConsumed (Step 2b): that step deletes BOOTSTRAP.md
+ * for established VMs and creates `.bootstrap_consumed`. This step covers the
+ * inverse — VMs missing BOTH files (broken state). Decides what to write
+ * based on whether the agent has session history:
+ *
+ *   - Has sessions  → write `.bootstrap_consumed` only (established VM, agent
+ *     identity is already in SOUL.md; no need to re-run awakening flow).
+ *   - No sessions   → write BOTH BOOTSTRAP.md and `.bootstrap_consumed`. The
+ *     marker pre-prevents accidental awakening replay; the file matches the
+ *     audit invariant the 2026-04-28 fleet backfill established.
+ *
+ * No-op when at least one of the two files exists (covers both new VMs with
+ * BOOTSTRAP.md only and established VMs with the marker only).
+ */
+async function stepBootstrapState(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  try {
+    const ws = "$HOME/.openclaw/workspace";
+    const probe = await ssh.execCommand(
+      `b=$([ -f ${ws}/BOOTSTRAP.md ] && echo 1 || echo 0); ` +
+      `m=$([ -f ${ws}/.bootstrap_consumed ] && echo 1 || echo 0); ` +
+      `s=$(ls $HOME/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1 | grep -q . && echo 1 || echo 0); ` +
+      `echo "b=$b m=$m s=$s"`
+    );
+    const m = probe.stdout.match(/b=(\d) m=(\d) s=(\d)/);
+    if (!m) {
+      recordHealError(result, strict, `bootstrap-state: probe parse failed: ${probe.stdout.slice(0, 100)}`);
+      return;
+    }
+    const hasBootstrap = m[1] === "1";
+    const hasMarker = m[2] === "1";
+    const hasSessions = m[3] === "1";
+
+    if (hasBootstrap || hasMarker) {
+      result.alreadyCorrect.push(`bootstrap-state: ${hasBootstrap ? "BOOTSTRAP.md" : ".bootstrap_consumed"} present`);
+      return;
+    }
+
+    // Neither present — heal.
+    if (dryRun) {
+      result.fixed.push(
+        hasSessions
+          ? "[dry-run] bootstrap-state: would touch .bootstrap_consumed (established VM)"
+          : "[dry-run] bootstrap-state: would write BOOTSTRAP.md + .bootstrap_consumed (new VM)"
+      );
+      return;
+    }
+
+    if (hasSessions) {
+      const r = await ssh.execCommand(`mkdir -p ${ws} && touch ${ws}/.bootstrap_consumed && echo OK`);
+      if (!r.stdout.includes("OK")) {
+        recordHealError(result, strict, `bootstrap-state: touch .bootstrap_consumed failed: ${r.stderr}`);
+        return;
+      }
+      result.fixed.push("bootstrap-state: created .bootstrap_consumed (established VM)");
+    } else {
+      const b64 = Buffer.from(WORKSPACE_BOOTSTRAP_SHORT, "utf-8").toString("base64");
+      const r = await ssh.execCommand(
+        `mkdir -p ${ws} && echo '${b64}' | base64 -d > ${ws}/BOOTSTRAP.md && touch ${ws}/.bootstrap_consumed && echo OK`
+      );
+      if (!r.stdout.includes("OK")) {
+        recordHealError(result, strict, `bootstrap-state: write BOOTSTRAP.md failed: ${r.stderr}`);
+        return;
+      }
+      result.fixed.push("bootstrap-state: wrote BOOTSTRAP.md + .bootstrap_consumed (new VM)");
+    }
+  } catch (err) {
+    recordHealError(result, strict, `bootstrap-state: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8h: SHM_CLEANUP cron.
+ *
+ * Hourly cron that purges orphaned SysV shared-memory segments and restarts
+ * x11vnc when Xvfb is up but x11vnc has crashed. Lives in the snapshot's
+ * baked-in crontab, NOT in VM_MANIFEST.cronJobs (so stepCronJobs doesn't
+ * heal it). Without this, x11vnc dies, the desktop stops streaming, and
+ * users see a frozen browser.
+ */
+async function stepShmCleanupCron(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  try {
+    const probe = await ssh.execCommand("crontab -l 2>/dev/null | grep -q SHM_CLEANUP && echo OK || echo MISSING");
+    if (probe.stdout.includes("OK")) {
+      result.alreadyCorrect.push("cron: SHM_CLEANUP");
+      return;
+    }
+    if (dryRun) {
+      result.fixed.push("[dry-run] cron: SHM_CLEANUP");
+      return;
+    }
+    const SHM_LINE = `0 * * * * ipcs -m | awk 'NR>3 && $6==0 {print $2}' | xargs -r ipcrm -m 2>/dev/null; pgrep -x Xvfb >/dev/null && ! pgrep -x x11vnc >/dev/null && x11vnc -display :99 -forever -shared -rfbport 5901 -localhost -noxdamage -nopw -bg 2>/dev/null # SHM_CLEANUP`;
+    const b64 = Buffer.from(SHM_LINE, "utf-8").toString("base64");
+    // Trailing printf '\n' is critical — `crontab -` rejects files whose last
+    // byte isn't a newline, and `crontab -l` output may not end in one.
+    const install = await ssh.execCommand(
+      `{ crontab -l 2>/dev/null; printf '\\n'; echo '${b64}' | base64 -d; printf '\\n'; } | crontab - 2>&1 && echo OK`
+    );
+    if (!install.stdout.includes("OK")) {
+      recordHealError(result, strict, `cron SHM_CLEANUP: install failed: ${install.stdout || install.stderr}`);
+      return;
+    }
+    result.fixed.push("cron: SHM_CLEANUP");
+  } catch (err) {
+    recordHealError(result, strict, `cron SHM_CLEANUP: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8i: Skill directories.
+ *
+ * Verifies `~/.openclaw/skills/{bankr,dgclaw,computer-dispatch}` exist:
+ *
+ *   - bankr: cloned from https://github.com/BankrBot/skills (NOT in our
+ *     local repo — stepSkills doesn't deploy it). Re-cloned here if missing.
+ *   - dgclaw: SKILL.md from local repo via stepSkills. If still missing
+ *     after stepSkills ran, it's a stepSkills failure → strictError.
+ *   - computer-dispatch: SKILL.md from local repo via stepSkills. Same
+ *     handling as dgclaw.
+ *
+ * dispatch-server.js itself is verified by stepDispatchServer (Step 8k);
+ * dgclaw scripts at $HOME/dgclaw-skill are out of scope (separate skill
+ * that's only installed when the user enables the trading competition).
+ */
+async function stepSkillDirectories(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  try {
+    const probe = await ssh.execCommand(
+      `b=$([ -d $HOME/.openclaw/skills/bankr ] && echo 1 || echo 0); ` +
+      `d=$([ -d $HOME/.openclaw/skills/dgclaw ] && echo 1 || echo 0); ` +
+      `c=$([ -d $HOME/.openclaw/skills/computer-dispatch ] && echo 1 || echo 0); ` +
+      `echo "b=$b d=$d c=$c"`
+    );
+    const m = probe.stdout.match(/b=(\d) d=(\d) c=(\d)/);
+    if (!m) {
+      recordHealError(result, strict, `skill-dirs: probe parse failed: ${probe.stdout.slice(0, 100)}`);
+      return;
+    }
+
+    // bankr: clone from external repo if missing
+    if (m[1] === "1") {
+      result.alreadyCorrect.push("skill-dir: bankr");
+    } else if (dryRun) {
+      result.fixed.push("[dry-run] skill-dir: would clone bankr");
+    } else {
+      const clone = await ssh.execCommand(
+        `mkdir -p $HOME/.openclaw/skills && git clone --depth 1 https://github.com/BankrBot/skills $HOME/.openclaw/skills/bankr 2>&1 && echo OK || echo FAIL`
+      );
+      if (clone.stdout.includes("OK")) {
+        result.fixed.push("skill-dir: bankr (cloned)");
+      } else {
+        recordHealError(result, strict, `skill-dir bankr: clone failed: ${clone.stdout.slice(-200)}`);
+      }
+    }
+
+    // dgclaw + computer-dispatch: should have been deployed by stepSkills.
+    // If still missing, surface as a strictError so the bump gate fires —
+    // a missing skill SKILL.md indicates stepSkills failed silently.
+    for (const [idx, name] of [[2, "dgclaw"], [3, "computer-dispatch"]] as const) {
+      if (m[idx] === "1") {
+        result.alreadyCorrect.push(`skill-dir: ${name}`);
+      } else {
+        recordHealError(result, strict, `skill-dir ${name}: missing after stepSkills (stepSkills failed silently)`);
+      }
+    }
+  } catch (err) {
+    recordHealError(result, strict, `skill-dirs: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8j: Gateway watchdog timer.
+ *
+ * Systemd user timer that runs `~/scripts/gateway-watchdog.sh` every 2 minutes
+ * to detect frozen gateway processes and force-restart them. Inactive timer =
+ * no auto-restart on freeze, which manifests as users hitting unresponsive
+ * agents until manual intervention.
+ *
+ * Heal: if the script is present (deployed by stepSkills as part of
+ * computer-dispatch/scripts/), write the unit + timer files and start.
+ */
+async function stepGatewayWatchdogTimer(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  try {
+    const probe = await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && ` +
+      `script=$([ -x $HOME/scripts/gateway-watchdog.sh ] && echo 1 || echo 0); ` +
+      `unit=$([ -f $HOME/.config/systemd/user/gateway-watchdog.timer ] && echo 1 || echo 0); ` +
+      `active=$(systemctl --user is-active gateway-watchdog.timer 2>&1 | grep -q "^active$" && echo 1 || echo 0); ` +
+      `echo "script=$script unit=$unit active=$active"`
+    );
+    const m = probe.stdout.match(/script=(\d) unit=(\d) active=(\d)/);
+    if (!m) {
+      recordHealError(result, strict, `gw-watchdog: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      return;
+    }
+    const [hasScript, hasUnit, isActive] = [m[1] === "1", m[2] === "1", m[3] === "1"];
+
+    if (isActive) {
+      result.alreadyCorrect.push("gw-watchdog: timer active");
+      return;
+    }
+
+    if (!hasScript) {
+      recordHealError(result, strict, "gw-watchdog: ~/scripts/gateway-watchdog.sh missing (stepSkills should have deployed it)");
+      return;
+    }
+
+    if (dryRun) {
+      result.fixed.push(`[dry-run] gw-watchdog: would ${hasUnit ? "enable+start timer" : "write unit + start"}`);
+      return;
+    }
+
+    // Write unit + timer (idempotent — overwrites if exists)
+    const setup = await ssh.execCommand(`bash -c '
+${HEAL_DBUS_PREFIX}
+mkdir -p $HOME/.config/systemd/user
+cat > $HOME/.config/systemd/user/gateway-watchdog.service << WDEOF
+[Unit]
+Description=Gateway Watchdog Check
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/openclaw/scripts/gateway-watchdog.sh
+Environment=HOME=/home/openclaw
+WDEOF
+cat > $HOME/.config/systemd/user/gateway-watchdog.timer << WTEOF
+[Unit]
+Description=Gateway Watchdog Timer
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=120
+AccuracySec=30
+
+[Install]
+WantedBy=timers.target
+WTEOF
+systemctl --user daemon-reload
+systemctl --user enable gateway-watchdog.timer 2>/dev/null
+systemctl --user start gateway-watchdog.timer 2>/dev/null
+sleep 1
+systemctl --user is-active gateway-watchdog.timer
+'`);
+    if (!setup.stdout.includes("active")) {
+      recordHealError(result, strict, `gw-watchdog: timer didn't become active: ${setup.stdout.slice(-150)}`);
+      return;
+    }
+    result.fixed.push("gw-watchdog: timer enabled + started");
+  } catch (err) {
+    recordHealError(result, strict, `gw-watchdog: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8k: dispatch-server (Dispatch Mode WebSocket relay endpoint).
+ *
+ * Verifies systemd unit + active service + port 8765 listening. If any
+ * check fails, redeploys the entire dispatch-server stack:
+ *   - SFTP dispatch-server.js, SKILL.md, and 22 dispatch-*.sh scripts
+ *     from skills/computer-dispatch/ in the local repo
+ *   - chmod +x, install socat/netcat-openbsd, ufw allow 8765
+ *   - npm install ws (uses NVM node, not system /usr/bin/node)
+ *   - Write systemd user unit with dynamic node path detection
+ *     (avoids the hardcoded v22.22.0 bug we hit on instaclaw-xmtp.service)
+ *   - daemon-reload + enable + restart, verify port within 12s
+ *
+ * Same recipe as the 2026-04-28 fleet patch that resolved the public
+ * @ObareJunior_ outage (81 VMs missing dispatch-server fleet-wide).
+ */
+async function stepDispatchServer(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  try {
+    const probe = await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && ` +
+      `unit=$([ -f $HOME/.config/systemd/user/dispatch-server.service ] && echo 1 || echo 0); ` +
+      `active=$(systemctl --user is-active dispatch-server 2>&1 | grep -q "^active$" && echo 1 || echo 0); ` +
+      `port=$(ss -tln 2>/dev/null | grep -q ":8765 " && echo 1 || echo 0); ` +
+      `echo "unit=$unit active=$active port=$port"`
+    );
+    const m = probe.stdout.match(/unit=(\d) active=(\d) port=(\d)/);
+    if (!m) {
+      recordHealError(result, strict, `dispatch-server: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      return;
+    }
+    const [hasUnit, isActive, isListening] = [m[1] === "1", m[2] === "1", m[3] === "1"];
+
+    if (hasUnit && isActive && isListening) {
+      result.alreadyCorrect.push("dispatch-server: unit+active+listening");
+      return;
+    }
+
+    if (dryRun) {
+      result.fixed.push(`[dry-run] dispatch-server: would redeploy (unit=${hasUnit} active=${isActive} port=${isListening})`);
+      return;
+    }
+
+    // Build deploy script with all files base64'd inline (same shape as stepSkills).
+    const dispatchDir = path.resolve(process.cwd(), "skills/computer-dispatch");
+    const serverPath = path.join(dispatchDir, "dispatch-server.js");
+    const skillPath = path.join(dispatchDir, "SKILL.md");
+    const scriptsDir = path.join(dispatchDir, "scripts");
+    if (!fs.existsSync(serverPath) || !fs.existsSync(scriptsDir)) {
+      recordHealError(result, strict, `dispatch-server: local source missing (${serverPath})`);
+      return;
+    }
+
+    const lines: string[] = [
+      "#!/bin/bash",
+      "set +e",
+      "mkdir -p $HOME/scripts $HOME/.openclaw/skills/computer-dispatch $HOME/.config/systemd/user",
+      `echo '${Buffer.from(fs.readFileSync(serverPath)).toString("base64")}' | base64 -d > $HOME/scripts/dispatch-server.js`,
+    ];
+    if (fs.existsSync(skillPath)) {
+      lines.push(`echo '${Buffer.from(fs.readFileSync(skillPath)).toString("base64")}' | base64 -d > $HOME/.openclaw/skills/computer-dispatch/SKILL.md`);
+    }
+    for (const f of fs.readdirSync(scriptsDir).filter((n) => n.endsWith(".sh"))) {
+      const b64 = Buffer.from(fs.readFileSync(path.join(scriptsDir, f))).toString("base64");
+      lines.push(`echo '${b64}' | base64 -d > $HOME/scripts/${f}`);
+    }
+    lines.push(
+      'chmod +x $HOME/scripts/dispatch-*.sh $HOME/scripts/dispatch-server.js 2>/dev/null',
+      'sudo apt-get install -y -qq socat netcat-openbsd >/dev/null 2>&1 || true',
+      'sudo ufw allow 8765/tcp >/dev/null 2>&1 || true',
+      // Dynamic NVM node detection (avoids hardcoded v22.22.0 bug)
+      'NPATH=$(ls -d $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)',
+      'NDIR=$(dirname "$NPATH" 2>/dev/null)',
+      '[ -z "$NPATH" ] && { echo NO_NODE; exit 1; }',
+      'cd $HOME/scripts && [ -f package.json ] || echo "{}" > package.json',
+      'PATH="$NDIR:$PATH" npm install ws >/dev/null 2>&1 || true',
+      'cat > $HOME/.config/systemd/user/dispatch-server.service << DSEOF',
+      '[Unit]',
+      'Description=Dispatch WebSocket Server',
+      'After=network.target xvfb.service',
+      '',
+      '[Service]',
+      'Type=simple',
+      'ExecStartPre=/bin/rm -f /tmp/dispatch.sock',
+      'ExecStart=$NPATH /home/openclaw/scripts/dispatch-server.js',
+      'Environment=HOME=/home/openclaw',
+      'Environment=PATH=$NDIR:/usr/local/bin:/usr/bin:/bin',
+      'Restart=always',
+      'RestartSec=5',
+      '',
+      '[Install]',
+      'WantedBy=default.target',
+      'DSEOF',
+      HEAL_DBUS_PREFIX,
+      'systemctl --user daemon-reload',
+      'systemctl --user enable dispatch-server 2>/dev/null',
+      'systemctl --user restart dispatch-server',
+      // Wait up to 12s for port to come up
+      'for i in 1 2 3 4 5 6 7 8; do ss -tln 2>/dev/null | grep -q ":8765 " && { echo PORT_OK; exit 0; }; sleep 1.5; done',
+      'echo PORT_FAIL',
+    );
+
+    const tmpLocal = `/tmp/ic-dispatch-heal-${vm.id}.sh`;
+    fs.writeFileSync(tmpLocal, lines.join("\n"), "utf-8");
+    try {
+      await ssh.putFile(tmpLocal, "/tmp/ic-dispatch-heal.sh");
+    } finally {
+      try { fs.unlinkSync(tmpLocal); } catch {}
+    }
+    const r = await ssh.execCommand("bash /tmp/ic-dispatch-heal.sh; rm -f /tmp/ic-dispatch-heal.sh");
+    if (r.stdout.includes("PORT_OK")) {
+      result.fixed.push("dispatch-server: redeployed + active + listening on :8765");
+    } else if (r.stdout.includes("NO_NODE")) {
+      recordHealError(result, strict, "dispatch-server: NVM node binary not found");
+    } else {
+      recordHealError(result, strict, `dispatch-server: redeploy failed: ${r.stdout.slice(-200)}`);
+    }
+  } catch (err) {
+    recordHealError(result, strict, `dispatch-server: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8l: instaclaw-xmtp (XMTP Agent Kit messaging service).
+ *
+ * Verifies systemd unit + active service. If broken, picks the right heal:
+ *
+ *   - .env exists with XMTP_WALLET_KEY and the agent .mjs is present:
+ *       Surgical in-place fix — rewrite the unit with dynamic node path
+ *       detection, daemon-reload, restart. Preserves the existing wallet
+ *       identity (and therefore the user's XMTP address).
+ *
+ *   - Wallet key or agent .mjs missing:
+ *       Full re-provision via setupXMTP(). setupXMTP() short-circuits if
+ *       the DB has xmtp_address, so we clear the DB first to force fresh
+ *       setup. This generates a new wallet (the previous address was dead
+ *       anyway since the service wasn't running).
+ *
+ * The hardcoded `v22.22.0/bin/node` bug in the original setupXMTP unit
+ * generation was fixed in commit 16d8980 — this heal applies the fix to
+ * existing VMs that were configured before that commit.
+ */
+async function stepInstaclawXmtp(
+  ssh: SSHConnection,
+  vm: VMRecord & { gateway_token?: string; xmtp_address?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  try {
+    const probe = await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && ` +
+      `unit=$([ -f $HOME/.config/systemd/user/instaclaw-xmtp.service ] && echo 1 || echo 0); ` +
+      `active=$(systemctl --user is-active instaclaw-xmtp 2>&1 | grep -q "^active$" && echo 1 || echo 0); ` +
+      `mjs=$([ -f $HOME/scripts/xmtp-agent.mjs ] && echo 1 || echo 0); ` +
+      `key=$(grep -q "^XMTP_WALLET_KEY=" $HOME/.openclaw/xmtp/.env 2>/dev/null && echo 1 || echo 0); ` +
+      `echo "unit=$unit active=$active mjs=$mjs key=$key"`
+    );
+    const m = probe.stdout.match(/unit=(\d) active=(\d) mjs=(\d) key=(\d)/);
+    if (!m) {
+      recordHealError(result, strict, `instaclaw-xmtp: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      return;
+    }
+    const [hasUnit, isActive, hasMjs, hasKey] = [m[1] === "1", m[2] === "1", m[3] === "1", m[4] === "1"];
+
+    if (hasUnit && isActive) {
+      result.alreadyCorrect.push("instaclaw-xmtp: unit+active");
+      return;
+    }
+
+    if (dryRun) {
+      const path = hasKey && hasMjs ? "surgical" : "full setupXMTP";
+      result.fixed.push(`[dry-run] instaclaw-xmtp: would ${path} (unit=${hasUnit} active=${isActive} mjs=${hasMjs} key=${hasKey})`);
+      return;
+    }
+
+    if (hasKey && hasMjs) {
+      // Surgical in-place fix — preserves wallet identity.
+      const r = await ssh.execCommand(`bash -c '
+${HEAL_DBUS_PREFIX}
+NPATH=$(ls -d $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)
+[ -z "$NPATH" ] && { echo NO_NODE; exit 1; }
+mkdir -p $HOME/.config/systemd/user
+cat > $HOME/.config/systemd/user/instaclaw-xmtp.service << SVCEOF
+[Unit]
+Description=InstaClaw XMTP Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=$NPATH /home/openclaw/scripts/xmtp-agent.mjs
+WorkingDirectory=/home/openclaw/scripts
+EnvironmentFile=/home/openclaw/.openclaw/xmtp/.env
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+SVCEOF
+systemctl --user daemon-reload
+systemctl --user enable instaclaw-xmtp 2>/dev/null
+systemctl --user restart instaclaw-xmtp
+sleep 4
+systemctl --user is-active instaclaw-xmtp
+'`);
+      if (r.stdout.includes("active")) {
+        result.fixed.push("instaclaw-xmtp: surgical fix (wallet preserved)");
+      } else if (r.stdout.includes("NO_NODE")) {
+        recordHealError(result, strict, "instaclaw-xmtp: NVM node binary not found");
+      } else {
+        recordHealError(result, strict, `instaclaw-xmtp: surgical fix failed: ${r.stdout.slice(-200)}`);
+      }
+      return;
+    }
+
+    // Full re-provision path. setupXMTP short-circuits if DB has xmtp_address,
+    // so clear it first. Generates a fresh wallet — acceptable because the VM
+    // had no working XMTP anyway (key/mjs missing). Requires gateway_token.
+    if (!vm.gateway_token) {
+      recordHealError(result, strict, "instaclaw-xmtp: full re-provision needed but vm.gateway_token is missing");
+      return;
+    }
+    if (vm.xmtp_address) {
+      await getSupabase()
+        .from("instaclaw_vms")
+        .update({ xmtp_address: null })
+        .eq("id", vm.id);
+    }
+    const setup = await setupXMTP(vm as VMRecord & { gateway_token: string });
+    if (setup.success && setup.xmtpAddress) {
+      result.fixed.push(`instaclaw-xmtp: full re-provision (new addr=${setup.xmtpAddress.slice(0, 10)}...)`);
+    } else {
+      recordHealError(result, strict, `instaclaw-xmtp: setupXMTP failed: ${(setup.error || "no error").slice(0, 200)}`);
+    }
+  } catch (err) {
+    recordHealError(result, strict, `instaclaw-xmtp: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8m: node_exporter (Prometheus metrics).
+ *
+ * Verifies /usr/local/bin/node_exporter exists and port 9100 is listening.
+ * Without this, the monitoring VM's Prometheus scrape can't pull host metrics
+ * (CPU, RAM, disk, load) for the VM — observability gap that masks slow
+ * resource exhaustion before it becomes a user-visible failure.
+ *
+ * Heal: download the pinned tarball, extract to /usr/local/bin, create a
+ * dedicated `node_exporter` system user (non-root for least privilege),
+ * write the systemd unit (system-level, not user), enable + restart.
+ */
+async function stepNodeExporter(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  const NE_VERSION = "1.8.2";
+  try {
+    const probe = await ssh.execCommand(
+      `bin=$([ -x /usr/local/bin/node_exporter ] && echo 1 || echo 0); ` +
+      `port=$(ss -tln 2>/dev/null | grep -q ":9100 " && echo 1 || echo 0); ` +
+      `echo "bin=$bin port=$port"`
+    );
+    const m = probe.stdout.match(/bin=(\d) port=(\d)/);
+    if (!m) {
+      recordHealError(result, strict, `node_exporter: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      return;
+    }
+    const [hasBin, isListening] = [m[1] === "1", m[2] === "1"];
+
+    if (hasBin && isListening) {
+      result.alreadyCorrect.push("node_exporter: bin+listening");
+      return;
+    }
+
+    if (dryRun) {
+      result.fixed.push(`[dry-run] node_exporter: would install (bin=${hasBin} port=${isListening})`);
+      return;
+    }
+
+    // Probe sudo access — heal requires root. Skip cleanly if unavailable.
+    const sudoCheck = await ssh.execCommand("sudo -n true 2>/dev/null && echo SUDO_OK || echo NO_SUDO");
+    if (!sudoCheck.stdout.includes("SUDO_OK")) {
+      recordHealError(result, strict, "node_exporter: passwordless sudo not available");
+      return;
+    }
+
+    const install = await ssh.execCommand(`bash -c '
+set +e
+ARCH=$(dpkg --print-architecture 2>/dev/null)
+case "$ARCH" in
+  amd64) NE_ARCH=linux-amd64 ;;
+  arm64) NE_ARCH=linux-arm64 ;;
+  *) echo UNSUPPORTED_ARCH=$ARCH; exit 1 ;;
+esac
+if [ ! -x /usr/local/bin/node_exporter ]; then
+  cd /tmp
+  curl -sSL --max-time 60 -o /tmp/ne.tgz "https://github.com/prometheus/node_exporter/releases/download/v${NE_VERSION}/node_exporter-${NE_VERSION}.\$NE_ARCH.tar.gz" || { echo DOWNLOAD_FAIL; exit 1; }
+  tar xf /tmp/ne.tgz -C /tmp || { echo EXTRACT_FAIL; exit 1; }
+  sudo mv /tmp/node_exporter-${NE_VERSION}.\$NE_ARCH/node_exporter /usr/local/bin/
+  sudo chown root:root /usr/local/bin/node_exporter
+  sudo chmod +x /usr/local/bin/node_exporter
+  rm -rf /tmp/ne.tgz /tmp/node_exporter-${NE_VERSION}.\$NE_ARCH
+fi
+id node_exporter >/dev/null 2>&1 || sudo useradd --no-create-home --shell /bin/false node_exporter
+sudo tee /etc/systemd/system/node_exporter.service >/dev/null << UEOF
+[Unit]
+Description=Node Exporter
+After=network.target
+
+[Service]
+User=node_exporter
+ExecStart=/usr/local/bin/node_exporter --collector.systemd
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UEOF
+sudo systemctl daemon-reload
+sudo systemctl enable node_exporter 2>/dev/null
+sudo systemctl restart node_exporter
+sleep 2
+ss -tln 2>/dev/null | grep -q ":9100 " && echo PORT_OK || echo PORT_FAIL
+'`);
+    if (install.stdout.includes("PORT_OK")) {
+      result.fixed.push(`node_exporter: installed v${NE_VERSION} + listening on :9100`);
+    } else {
+      const reason = install.stdout.includes("DOWNLOAD_FAIL") ? "download failed"
+        : install.stdout.includes("EXTRACT_FAIL") ? "tar extract failed"
+        : install.stdout.includes("UNSUPPORTED_ARCH") ? "unsupported arch"
+        : "port did not open";
+      recordHealError(result, strict, `node_exporter: ${reason} (${install.stdout.slice(-200)})`);
+    }
+  } catch (err) {
+    recordHealError(result, strict, `node_exporter: ${String(err).slice(0, 200)}`);
+  }
 }
