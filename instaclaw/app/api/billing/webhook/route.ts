@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser, stopGateway, restartGateway } from "@/lib/ssh";
+import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser, stopGateway, restartGateway, auditVMConfig } from "@/lib/ssh";
+import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
@@ -225,12 +226,63 @@ async function processEvent(event: any) {
 
         if (vmDetail?.health_status === "suspended") {
           try {
-            await restartGateway(vmDetail);
-            await supabase.from("instaclaw_vms").update({
+            // Reactivation runs the same drift-repair primitive the reconciler
+            // cron uses (auditVMConfig → reconcileVM). This is INSTEAD of the
+            // previous `restartGateway + status="unknown"` minimal flip, which
+            // left users on stale code (e.g. v58 silence-watchdog without the
+            // telegram-origin fix) until the reconciler eventually picked them
+            // up — typically minutes, sometimes longer if the reconciler had
+            // skipped them via its old health_status="healthy" filter.
+            //
+            // NOT configureOpenClaw — that primitive's privacy-guard wipe at
+            // lib/ssh.ts:3322-3361 deletes the user's own session/memory data
+            // when it finds files. Same user resubscribing means files are
+            // expected; running configureOpenClaw here would destroy their
+            // history. auditVMConfig pushes manifest drift without wiping.
+            //
+            // skipGatewayRestart=false (the default) so the gateway IS started
+            // here — that's the whole point of reactivation.
+            const auditResult = await auditVMConfig(vmDetail, { strict: false });
+            if (auditResult.errors.length > 0) {
+              logger.warn("Reactivation audit had push errors — VM live but config drift remains", {
+                route: "billing/webhook",
+                userId,
+                vmId: vmDetail.id,
+                errors: auditResult.errors,
+                fixed: auditResult.fixed,
+              });
+            } else {
+              logger.info("Reactivation audit clean", {
+                route: "billing/webhook",
+                userId,
+                vmId: vmDetail.id,
+                fixed: auditResult.fixed.length,
+                gatewayRestarted: auditResult.gatewayRestarted,
+              });
+            }
+            // Belt-and-suspenders: ensure the gateway is running. If
+            // auditVMConfig didn't restart it (no config drift detected),
+            // a suspended VM may still have its gateway stopped from the
+            // suspend cron. Always call restartGateway so the user can use
+            // their VM immediately. Idempotent: if already running, just
+            // bumps it.
+            if (!auditResult.gatewayRestarted) {
+              await restartGateway(vmDetail);
+            }
+            const updates: Record<string, unknown> = {
+              // health-check cron will flip to 'healthy' once it confirms
+              // the gateway is responsive.
               health_status: "unknown",
               suspended_at: null,
               last_health_check: new Date().toISOString(),
-            }).eq("id", vmDetail.id);
+            };
+            // Bump config_version only when audit was clean (same gate as
+            // the reconciler). If errors remain, leave it for the reconciler
+            // to retry.
+            if (auditResult.errors.length === 0) {
+              updates.config_version = VM_MANIFEST.version;
+            }
+            await supabase.from("instaclaw_vms").update(updates).eq("id", vmDetail.id);
 
             // Send welcome-back email
             const { data: resubUser } = await supabase
@@ -241,11 +293,32 @@ async function processEvent(event: any) {
 
             logger.info("Reactivated suspended VM on resubscription", {
               route: "billing/webhook", userId, vmId: vmDetail.id,
+              auditFixed: auditResult.fixed.length,
+              auditErrors: auditResult.errors.length,
+              configVersionBumped: auditResult.errors.length === 0,
             });
           } catch (err) {
             logger.error("Failed to reactivate suspended VM on resubscription", {
               error: String(err), route: "billing/webhook", userId, vmId: vmDetail.id,
             });
+            // Fall back to the old minimal path — at least restart the
+            // gateway so the user can use their VM. Reconciler will pick up
+            // the drift later.
+            try {
+              await restartGateway(vmDetail);
+              await supabase.from("instaclaw_vms").update({
+                health_status: "unknown",
+                suspended_at: null,
+                last_health_check: new Date().toISOString(),
+              }).eq("id", vmDetail.id);
+              logger.warn("Reactivation fell back to minimal restart-only path", {
+                route: "billing/webhook", userId, vmId: vmDetail.id,
+              });
+            } catch (fallbackErr) {
+              logger.error("Reactivation fallback also failed", {
+                error: String(fallbackErr), route: "billing/webhook", userId, vmId: vmDetail.id,
+              });
+            }
           }
         } else {
           logger.info("VM already assigned, skipping webhook assignment", {

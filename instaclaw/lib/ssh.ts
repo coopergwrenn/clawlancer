@@ -6577,8 +6577,8 @@ export interface AuditResult {
 
 export async function auditVMConfig(
   vm: VMRecord & { gateway_token?: string; api_mode?: string; tier?: string | null; user_timezone?: string | null },
-  options?: { strict?: boolean; dryRun?: boolean; canary?: boolean },
-): Promise<AuditResult & { strictErrors: string[]; canaryHealthy: boolean | null; canarySkippedBudget: boolean }> {
+  options?: { strict?: boolean; dryRun?: boolean; canary?: boolean; skipGatewayRestart?: boolean },
+): Promise<AuditResult & { strictErrors: string[]; canaryHealthy: boolean | null; canarySkippedBudget: boolean; errors: string[]; gatewayRestartNeeded: boolean; gatewayRestarted: boolean }> {
   const reconcileResult = await reconcileVM(vm, VM_MANIFEST, options);
   return {
     fixed: reconcileResult.fixed,
@@ -6590,6 +6590,15 @@ export async function auditVMConfig(
     strictErrors: reconcileResult.strictErrors,
     canaryHealthy: reconcileResult.canaryHealthy,
     canarySkippedBudget: reconcileResult.canarySkippedBudget,
+    // Push errors from individual reconcile steps (file SCP failures, config
+    // set failures, npm install failures, etc.). Distinct from strictErrors:
+    // these are errors that the LEGACY non-strict path silently accumulated
+    // and never surfaced. Callers should refuse to advance config_version
+    // when this is non-empty — bumping a VM marked v63 while pushes failed
+    // is the bug fixed in the 2026-04-28 reconciler-fixes PR.
+    errors: reconcileResult.errors,
+    gatewayRestartNeeded: reconcileResult.gatewayRestartNeeded,
+    gatewayRestarted: reconcileResult.gatewayRestarted,
   };
 }
 

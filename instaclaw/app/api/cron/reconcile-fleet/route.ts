@@ -102,10 +102,13 @@ export async function GET(req: NextRequest) {
     //   - status="assigned" (the only VMs that benefit from reconciliation;
     //     ready pool VMs are handled by the snapshot itself)
     //   - config_version < VM_MANIFEST.version (the staleness signal)
-    //   - health_status="healthy" (proxy for SSH-reachable; the main
-    //     health-check cron maintains this. Skipping unhealthy/unknown
-    //     avoids hammering broken VMs that would just throw inside
-    //     auditVMConfig and waste the budget)
+    //   - health_status IN ('healthy','suspended','hibernating') — was just
+    //     'healthy' until 2026-04-28. The narrow filter silently excluded 86
+    //     VMs from EVER being reconciled (suspended/hibernating users on
+    //     stale code with no path to current). Now we audit them too;
+    //     non-healthy VMs get skipGatewayRestart so we don't accidentally
+    //     un-suspend them. Config + files still land; they pick up on the
+    //     next gateway start (reactivation flow).
     //   - gateway_url IS NOT NULL (skip VMs that never finished provisioning)
     //
     // Order: oldest config_version first so v55 VMs (most drifted) get
@@ -115,7 +118,7 @@ export async function GET(req: NextRequest) {
       .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, tier, api_mode, user_timezone, strict_hold_streak")
       .eq("status", "assigned")
       .eq("provider", "linode")
-      .eq("health_status", "healthy")
+      .in("health_status", ["healthy", "suspended", "hibernating"])
       .lt("config_version", VM_MANIFEST.version)
       .not("gateway_url", "is", null)
       .order("config_version", { ascending: true, nullsFirst: true })
@@ -192,9 +195,16 @@ export async function GET(req: NextRequest) {
     for (const vm of staleVms!) {
       try {
         const strict = strictEnabledForBatch && strictVmIds.has(vm.id);
+        // Suspended/hibernating VMs: do everything EXCEPT restart the gateway.
+        // Their gateway is intentionally stopped/idle — restarting would
+        // un-suspend them. Config + files land; gateway picks them up on next
+        // start (reactivation flow runs auditVMConfig again, this time with
+        // skipGatewayRestart=false, so the gateway gets the latest).
+        const skipGatewayRestart = vm.health_status !== "healthy";
         const auditResult = await auditVMConfig(vm, {
           strict,
           canary: canaryEnabled,
+          skipGatewayRestart,
         });
         audited++;
         if (strict) {
@@ -221,9 +231,18 @@ export async function GET(req: NextRequest) {
         // into strictErrors (see stepCanaryProbe), so no separate canary
         // branch is needed here. Unit-tested for equivalence across all
         // cases — see lib/__tests__/vm-reconcile-strict.test.ts.
-        // Default (non-strict) path behaves EXACTLY as before: strictErrors=[]
-        // from reconcileVM, so this block is a no-op.
         const strictFailed = strict && auditResult.strictErrors.length > 0;
+
+        // Bump-without-push gate — added 2026-04-28. Until now, any
+        // result.errors from reconcileVM (file SCP failures, config-set
+        // failures, npm install errors, etc.) were silently swallowed in
+        // non-strict mode and the cron bumped config_version regardless.
+        // That meant a VM could be marked v63 while pushes had failed.
+        // Now: if auditResult.errors is non-empty, hold config_version
+        // back. Logged + counted as 'errored' so it shows in the response.
+        // Distinct from strictFailed: no streak/alert bookkeeping, just a
+        // soft hold so next cron cycle retries naturally.
+        const pushFailed = auditResult.errors.length > 0;
 
         if (strictFailed) {
           strictHeld++;
@@ -278,6 +297,25 @@ export async function GET(req: NextRequest) {
               route: "cron/reconcile-fleet", vmId: vm.id, error: String(e),
             }),
           );
+        } else if (pushFailed) {
+          // Push errors → hold config_version back, no streak bookkeeping.
+          // Surfaces as 'errored' in the response so the cron summary catches
+          // it. Next cycle re-evaluates; if errors clear, we'll bump.
+          errored++;
+          errorDetails.push({
+            vmId: vm.id,
+            vmName: vm.name,
+            error: `push: ${auditResult.errors.slice(0, 3).join("; ")}`,
+          });
+          logger.warn("reconcile-fleet: push errors — holding config_version", {
+            route: "cron/reconcile-fleet",
+            vmId: vm.id,
+            vmName: vm.name,
+            atVersion: vm.config_version ?? 0,
+            manifestVersion: VM_MANIFEST.version,
+            errors: auditResult.errors,
+            healthStatus: vm.health_status,
+          });
         } else {
           if (strict) strictClean++;
 
@@ -295,8 +333,8 @@ export async function GET(req: NextRequest) {
             });
           }
 
-          // Bump config_version when the check passed (nothing failed strictly,
-          // or we're in non-strict mode where strictErrors is always empty).
+          // Bump config_version when the check passed (nothing failed strictly
+          // AND no push errors). Default (non-strict, no errors) = bump.
           const { error: updateErr } = await supabase
             .from("instaclaw_vms")
             .update({ config_version: VM_MANIFEST.version })
