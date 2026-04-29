@@ -22,9 +22,16 @@ export interface TweetArgs {
   tokenSymbol: string; // ticker, will be uppercased
   agentName?: string | null; // raw VM-side name (may be null/empty/bot-suffixed)
   address?: string | null; // contract address; if absent, URL is omitted
+  /**
+   * If true, append a "verified human" suffix to the credits line so
+   * external readers see the trust signal. Set when the user who
+   * launched is World ID verified at moment-of-launch.
+   */
+  verifiedHuman?: boolean;
 }
 
 const HASHTAGS = "@instaclaws + @bankrbot";
+const HASHTAGS_VERIFIED = "@instaclaws + @bankrbot · verified human";
 const URL_BASE = "https://bankr.bot/launches/";
 // Twitter caps tweets at 280 chars. We cap at 275 with "…" if a
 // templated string ever exceeds — protects against an unlucky combo of
@@ -45,7 +52,7 @@ function cleanAgentName(raw?: string | null): string | null {
   return name;
 }
 
-type Builder = (args: { sym: string; name: string | null; url: string }) => string;
+type Builder = (args: { sym: string; name: string | null; url: string; credits: string }) => string;
 
 // Each template has both a with-name and without-name variant. The
 // no-name variant is used if cleanAgentName returns null. They are
@@ -53,34 +60,34 @@ type Builder = (args: { sym: string; name: string | null; url: string }) => stri
 // regardless of which variant runs.
 const BUILDERS: Builder[] = [
   // 1. lifecycle / self-funding
-  ({ sym, name, url }) =>
+  ({ sym, name, url, credits }) =>
     name
-      ? `my agent ${name} just deployed $${sym} on Base. it runs the wallet, earns trading fees, funds its own compute. self-funding from day one. ${HASHTAGS}.\n\n${url}`
-      : `my AI agent just deployed $${sym} on Base. it runs the wallet, owns the token, earns the trading fees. self-funding from day one. ${HASHTAGS}.\n\n${url}`,
+      ? `my agent ${name} just deployed $${sym} on Base. it runs the wallet, earns trading fees, funds its own compute. self-funding from day one. ${credits}.\n\n${url}`
+      : `my AI agent just deployed $${sym} on Base. it runs the wallet, owns the token, earns the trading fees. self-funding from day one. ${credits}.\n\n${url}`,
 
   // 2. agents that pay rent
-  ({ sym, name, url }) =>
+  ({ sym, name, url, credits }) =>
     name
-      ? `$${sym} is live on Base. my AI agent ${name} owns the wallet, owns the token, earns the fees. agents that pay rent. ${HASHTAGS}.\n\n${url}`
-      : `$${sym} is live on Base. my AI agent owns the wallet, owns the token, earns the fees. agents that pay rent. ${HASHTAGS}.\n\n${url}`,
+      ? `$${sym} is live on Base. my AI agent ${name} owns the wallet, owns the token, earns the fees. agents that pay rent. ${credits}.\n\n${url}`
+      : `$${sym} is live on Base. my AI agent owns the wallet, owns the token, earns the fees. agents that pay rent. ${credits}.\n\n${url}`,
 
   // 3. observation / chat-launch wonder
-  ({ sym, name, url }) =>
+  ({ sym, name, url, credits }) =>
     name
-      ? `watching ${name} launch its own token in chat was strange and beautiful. $${sym} on Base. trading fees → its compute → it gets smarter. ${HASHTAGS}.\n\n${url}`
-      : `watching my AI agent launch its own token in chat was strange and beautiful. $${sym} on Base. trading fees → its compute → it gets smarter. ${HASHTAGS}.\n\n${url}`,
+      ? `watching ${name} launch its own token in chat was strange and beautiful. $${sym} on Base. trading fees → its compute → it gets smarter. ${credits}.\n\n${url}`
+      : `watching my AI agent launch its own token in chat was strange and beautiful. $${sym} on Base. trading fees → its compute → it gets smarter. ${credits}.\n\n${url}`,
 
   // 4. identity / autonomy
-  ({ sym, name, url }) =>
+  ({ sym, name, url, credits }) =>
     name
-      ? `${name} just shipped $${sym} on Base — first autonomous deploy. fees flow back to its wallet, fund its compute. running its own economy now. ${HASHTAGS}.\n\n${url}`
-      : `my AI agent just shipped $${sym} on Base — first autonomous deploy. fees flow back to its wallet, fund its compute. running its own economy now. ${HASHTAGS}.\n\n${url}`,
+      ? `${name} just shipped $${sym} on Base — first autonomous deploy. fees flow back to its wallet, fund its compute. running its own economy now. ${credits}.\n\n${url}`
+      : `my AI agent just shipped $${sym} on Base — first autonomous deploy. fees flow back to its wallet, fund its compute. running its own economy now. ${credits}.\n\n${url}`,
 
   // 5. philosophy / paying its own rent
-  ({ sym, name, url }) =>
+  ({ sym, name, url, credits }) =>
     name
-      ? `deployed by an AI: $${sym} on Base. fees flow back to its wallet, fund its compute. ${name} pays its own rent now. ${HASHTAGS}.\n\n${url}`
-      : `deployed by an AI: $${sym} on Base. fees flow back to its wallet, fund its compute. it pays its own rent now. ${HASHTAGS}.\n\n${url}`,
+      ? `deployed by an AI: $${sym} on Base. fees flow back to its wallet, fund its compute. ${name} pays its own rent now. ${credits}.\n\n${url}`
+      : `deployed by an AI: $${sym} on Base. fees flow back to its wallet, fund its compute. it pays its own rent now. ${credits}.\n\n${url}`,
 ];
 
 function clamp(text: string): string {
@@ -112,8 +119,9 @@ export function pickTweetTemplate(args: TweetArgs): string {
   const sym = (args.tokenSymbol ?? "").toUpperCase();
   const name = cleanAgentName(args.agentName);
   const url = args.address ? `${URL_BASE}${args.address}` : "";
+  const credits = args.verifiedHuman ? HASHTAGS_VERIFIED : HASHTAGS;
   const builder = BUILDERS[Math.floor(Math.random() * BUILDERS.length)];
-  const text = builder({ sym, name, url });
+  const text = builder({ sym, name, url, credits });
   return clamp(text);
 }
 
@@ -121,9 +129,10 @@ export function pickTweetTemplate(args: TweetArgs): string {
 export function pickTweetTemplateNoUrl(args: Omit<TweetArgs, "address">): string {
   const sym = (args.tokenSymbol ?? "").toUpperCase();
   const name = cleanAgentName(args.agentName);
+  const credits = args.verifiedHuman ? HASHTAGS_VERIFIED : HASHTAGS;
   // Re-use the same builders but pass an empty url; trim the dangling
   // newline+blank so we don't ship a tweet that ends with "\n\n".
   const builder = BUILDERS[Math.floor(Math.random() * BUILDERS.length)];
-  const text = builder({ sym, name, url: "" }).replace(/\n\n$/, "");
+  const text = builder({ sym, name, url: "", credits }).replace(/\n\n$/, "");
   return clamp(text);
 }

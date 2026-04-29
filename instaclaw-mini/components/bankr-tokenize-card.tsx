@@ -16,6 +16,12 @@ interface BankrTokenizeCardProps {
   // dashboard-button path produces. Mirrors webapp BankrWalletCard prop.
   // launchNumber populates the "You're #N" line on the celebration card.
   freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
+  /**
+   * World ID verified status — drives the "verified human creator"
+   * badge on the celebration card and the "verified human" suffix on
+   * the share-to-X tweet credits line.
+   */
+  worldIdVerified?: boolean;
 }
 
 interface TokenPrice {
@@ -73,6 +79,7 @@ export default function BankrTokenizeCard({
   tokenizationPlatform,
   agentName,
   freshLaunch,
+  worldIdVerified,
 }: BankrTokenizeCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -318,8 +325,9 @@ export default function BankrTokenizeCard({
       tokenSymbol: launchSuccess.symbol,
       agentName,
       address: launchSuccess.address || null,
+      verifiedHuman: !!worldIdVerified,
     });
-  }, [launchSuccess, agentName]);
+  }, [launchSuccess, agentName, worldIdVerified]);
 
   // ── Celebration + Share Card ──
   if (launchSuccess) {
@@ -378,6 +386,20 @@ export default function BankrTokenizeCard({
           <p className="text-[11px] text-muted mb-1">
             You&apos;re #{launchSuccess.launchNumber} to deploy a token autonomously.
           </p>
+        )}
+        {worldIdVerified && (
+          <div
+            className="text-[10px] mb-2 inline-flex items-center gap-1 px-2 py-1 rounded-full"
+            style={{
+              background: "rgba(34,197,94,0.12)",
+              border: "1px solid rgba(34,197,94,0.30)",
+              color: "#86efac",
+              fontWeight: 500,
+            }}
+          >
+            <Check size={10} />
+            Verified human creator
+          </div>
         )}
         <p className="text-xs text-muted mb-6">Your token is now trading on Base</p>
 

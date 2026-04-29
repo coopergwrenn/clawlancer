@@ -146,6 +146,19 @@ export default async function HomePage() {
     }
   }
 
+  // World ID verified state for the celebration "verified human creator"
+  // badge (#17). Fail-silent: missing user row → false (no badge shown).
+  let worldIdVerified = false;
+  try {
+    const { supabase: db } = await import("@/lib/supabase");
+    const { data: userRow } = await db()
+      .from("instaclaw_users")
+      .select("world_id_verified")
+      .eq("id", session.userId)
+      .single();
+    worldIdVerified = !!userRow?.world_id_verified;
+  } catch { /* non-critical */ }
+
   return (
     <AgentDashboard
       agent={agent}
@@ -154,6 +167,7 @@ export default async function HomePage() {
       gmailConnected={gmailConnected}
       subscription={subscription}
       freshLaunch={freshLaunch}
+      worldIdVerified={worldIdVerified}
     />
   );
 }

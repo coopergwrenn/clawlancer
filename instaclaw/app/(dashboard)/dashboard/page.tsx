@@ -62,6 +62,9 @@ interface VMStatus {
     bankrTokenAddress: string | null;
     bankrTokenSymbol: string | null;
     tokenizationPlatform: string | null;
+    // Already returned by /api/vm/status (see route.ts), now consumed
+    // by BankrWalletCard for the verified-human creator badge.
+    worldIdVerified?: boolean;
   };
   billing?: {
     tier: string;
@@ -537,6 +540,7 @@ export default function DashboardPage() {
           tokenizationPlatform={vm.tokenizationPlatform}
           agentName={vm.telegramBotUsername}
           freshLaunch={vmStatus?.freshLaunch ?? null}
+          worldIdVerified={vm.worldIdVerified ?? false}
         />
       )}
 

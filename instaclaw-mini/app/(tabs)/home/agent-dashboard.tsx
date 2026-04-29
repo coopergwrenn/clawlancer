@@ -46,6 +46,7 @@ export default function AgentDashboard({
   gmailConnected: initialGmailConnected,
   subscription,
   freshLaunch,
+  worldIdVerified,
 }: {
   agent: Agent;
   usage: Usage | null;
@@ -57,6 +58,8 @@ export default function AgentDashboard({
   // view + confetti + share-to-X card on first paint of BankrTokenizeCard.
   // launchNumber populates the "You're #N" line on the celebration card.
   freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
+  /** World ID verified status — drives the "verified human creator" badge. */
+  worldIdVerified?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -558,6 +561,7 @@ export default function AgentDashboard({
         tokenizationPlatform={(agent.tokenization_platform as string) ?? null}
         agentName={(agent.agent_name as string) ?? (agent.telegram_bot_username as string) ?? null}
         freshLaunch={freshLaunch ?? null}
+        worldIdVerified={worldIdVerified ?? false}
       />
 
       {/* ── Quick Actions ── */}

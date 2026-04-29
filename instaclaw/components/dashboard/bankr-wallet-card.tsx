@@ -17,6 +17,13 @@ interface BankrWalletCardProps {
   // button shows after a successful launch. launchNumber populates the
   // "You're #N to deploy autonomously" line on the celebration card.
   freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
+  /**
+   * World ID verified status of the user. When true, the celebration
+   * card shows a "verified human creator" badge and the share-to-X
+   * tweet appends a "verified human" suffix to the credits line so
+   * external readers see the trust signal.
+   */
+  worldIdVerified?: boolean;
 }
 
 interface TokenPrice {
@@ -78,6 +85,7 @@ export function BankrWalletCard({
   tokenizationPlatform,
   agentName,
   freshLaunch,
+  worldIdVerified,
 }: BankrWalletCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -360,8 +368,9 @@ export function BankrWalletCard({
       tokenSymbol: launchSuccess.symbol,
       agentName,
       address: launchSuccess.address || null,
+      verifiedHuman: !!worldIdVerified,
     });
-  }, [launchSuccess, agentName]);
+  }, [launchSuccess, agentName, worldIdVerified]);
 
   // ── Celebration + Share Card ──
   if (launchSuccess) {
@@ -416,6 +425,20 @@ export function BankrWalletCard({
           <p className="text-xs mb-1" style={{ color: "var(--muted)" }}>
             You&apos;re #{launchSuccess.launchNumber} to deploy a token autonomously.
           </p>
+        )}
+        {worldIdVerified && (
+          <div
+            className="text-[11px] mb-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full"
+            style={{
+              background: "rgba(34,197,94,0.10)",
+              border: "1px solid rgba(34,197,94,0.30)",
+              color: "#15803d",
+              fontWeight: 500,
+            }}
+          >
+            <Check className="w-3 h-3" />
+            Verified human creator
+          </div>
         )}
         <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
           Your token is now trading on Base
