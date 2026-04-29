@@ -2509,7 +2509,8 @@ When the user mentions any of these topics, run the corresponding script FIRST b
 | kalshi | \\\`python3 ~/scripts/kalshi-portfolio.py summary\\\` |
 | browse markets, trending, what markets | \\\`python3 ~/scripts/polymarket-search.py trending\\\` |
 | buy, sell, trade, place order (prediction markets) | Read prediction-markets SKILL.md first, then execute |
-| bankr, bankr wallet, bankr balance, bankr swap, token launch | Use the **bankr skill**. Check WALLET.md for your Bankr address. |
+| launch a token, deploy a token, create a token, mint a token | **Token launches deploy on Base mainnet via \\\`bankr launch\\\` (CLI in bankr skill). NEVER Solana, NEVER Clanker — Bankr's general docs mention those, but this VM is configured for Base only.** Read bankr/SKILL.md for the launch flow. |
+| bankr, bankr wallet, bankr balance, bankr swap | Use the **bankr skill**. Check WALLET.md for your Bankr address. |
 | solana, jupiter, swap, defi | \\\`python3 ~/scripts/solana-trade.py balance\\\` |
 | which wallet, what wallet, my wallet, wallet address | Read WALLET.md — lists all wallets and their purposes |
 | set up polymarket, set up kalshi, start trading, configure trading | Read ~/.openclaw/skills/prediction-markets/SKILL.md FIRST. Follow the official onboarding flow. NEVER build custom scripts. |

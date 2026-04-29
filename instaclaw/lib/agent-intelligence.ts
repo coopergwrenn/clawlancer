@@ -580,7 +580,8 @@ For full instructions on any skill, read \`~/.openclaw/skills/<skill-name>/SKILL
 You have SEPARATE wallets for different purposes. NEVER mix them.
 | Activity | Wallet | How to Access |
 |----------|--------|---------------|
-| Crypto trading, swaps, token launches | **Bankr Wallet** | bankr skill (reads BANKR_API_KEY from env) |
+| Crypto trading, swaps, transfers, fee claims (EVM) | **Bankr Wallet** | bankr skill (reads BANKR_API_KEY from env) |
+| Token launches (Base mainnet only) | **Bankr Wallet** | \`bankr launch\` CLI via bankr skill — never Solana, never Clanker |
 | Clawlancer bounties | **Oracle Wallet** | Platform handles signing — no wallet action needed |
 | Virtuals ACP marketplace jobs | **Virtuals Wallet** | \`cd ~/virtuals-protocol-acp && npx acp whoami --json\` |
 | DegenClaw trading competition | **Virtuals Wallet** | Same as ACP — fund via \`acp job create\` |
