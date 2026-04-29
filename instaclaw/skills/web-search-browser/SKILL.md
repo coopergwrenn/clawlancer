@@ -26,7 +26,10 @@ Fast, structured search results. Best for factual queries, news, real-time data,
 Retrieve and read the content of a specific URL. Returns cleaned markdown text. Best for reading articles, documentation, product pages, or any known URL.
 
 **Tier 3 — Browser Automation** (`browser` tool)
-Full headless Chromium control. Navigate pages, take screenshots, click buttons, fill forms, extract structured data from dynamic pages. Use only when Tier 1 and Tier 2 cannot accomplish the task.
+Full headless Chromium control via CDP. Best for one-off operations: open a page, take a screenshot, run an `evaluate` snippet, snapshot the accessibility tree. For multi-step interactions (click + fill + navigate + confirm), prefer Tier 3.25 instead — coordinate-driven control gets brittle past ~3 steps.
+
+**Tier 3.25 — Sophisticated Browser Agent** (`~/scripts/browser-use-task.py`, browser-use skill)
+Multi-step browser agent with accessibility-tree element targeting. **The default for any task that *does* something on a page** — clicks, form fills, multi-page flows, data extraction across pages. Routes LLM calls through the OpenClaw gateway so credits meter normally. Single-session per VM (cgroup MemoryMax=3500M). See `~/.openclaw/skills/browser-use/SKILL.md` for full docs and `references/examples/` for worked invocations.
 
 **Tier 3.5 — Crawlee Stealth Scraping** (`~/scripts/crawlee-scrape.py`)
 When Tier 2 or Tier 3 gets blocked by anti-bot systems (403, CAPTCHA, Cloudflare challenge, DataDome, PerimeterX), escalate to Crawlee. It uses TLS fingerprint impersonation and browser fingerprint randomization to bypass protections. Two modes: `--mode light` (fast HTTP with TLS stealth) and `--mode browser` (full Chromium with fingerprint randomization). See `references/crawlee-stealth-scraping.md` for full docs and examples.
@@ -190,11 +193,13 @@ When the Chrome Extension Relay is connected, you can choose which browser profi
 | Read a specific URL | `web_fetch` | Direct content retrieval, no browser needed |
 | Read documentation page | `web_fetch` | Clean markdown extraction |
 | Page requires JS to render | `browser` | Only browser executes JavaScript |
-| Fill out a form | `browser` | Requires element interaction |
+| Fill out a public form (single submission) | `browser-use-task.py` (Tier 3.25) | Accessibility-tree input is stable across SPAs |
+| Multi-step interaction (click + fill + navigate + confirm) | `browser-use-task.py` (Tier 3.25) | Stable element targeting; multi-step planner |
+| Multi-page extract / pagination | `browser-use-task.py` (Tier 3.25) | One semantic prompt; pagination handled by browser-use |
 | Take a visual screenshot | `browser` | Only browser captures rendered pages |
-| Scrape a data table | `browser` | JS evaluation extracts structured data |
-| Multi-page workflow | `browser` | Maintains session across navigations |
-| Price comparison across sites | `web_search` + `browser` | Search finds URLs, browser extracts prices |
+| Scrape a data table | `browser-use-task.py` (Tier 3.25) | Multi-step extract with synthesis; falls back to `browser` for one-off snapshots |
+| Multi-page workflow | `browser-use-task.py` (Tier 3.25) | Maintains session, handles pagination, retries on transient errors |
+| Price comparison across sites | `web_search` + `browser-use-task.py` | Search finds URLs, browser-use extracts prices in one call |
 | Site blocked by Cloudflare/WAF (403, CAPTCHA) | `crawlee-scrape.py --mode light` | TLS fingerprint impersonation bypasses bot detection |
 | Blocked even after light Crawlee | `crawlee-scrape.py --mode browser` | Full Chromium with fingerprint randomization |
 | Research workflow (multi-step) | All 3 tiers + Crawlee fallback | Search → Fetch → Browser → Crawlee as needed |
@@ -225,18 +230,18 @@ When the Chrome Extension Relay is connected, you can choose which browser profi
 - Time-based OTP codes are time-sensitive — act quickly once provided
 
 ### 5. Anti-Bot Protections
-- Headless Chromium (browser tool) may be fingerprinted by advanced bot detection
+- Headless Chromium (built-in `browser` tool) may be fingerprinted by advanced bot detection
 - Sites using DataDome, PerimeterX, or Akamai Bot Manager may block the browser tool
-- **Before giving up, escalate to Crawlee:** `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode light` (try light first, then `--mode browser`)
-- Crawlee uses TLS fingerprint impersonation and browser fingerprint randomization to bypass these protections
-- If Crawlee also fails, then inform the user the site has strong anti-bot protection
-- Do NOT modify the browser tool's fingerprints directly — use crawlee-scrape.py instead
+- **Escalation order:** Tier 3.25 (`browser-use-task.py`, modern stealth + retry) → Tier 3.5 (`crawlee-scrape.py --mode light`, TLS fingerprint impersonation) → `crawlee-scrape.py --mode browser` (full Chromium with fingerprint randomization)
+- If all of those fail, inform the user the site has strong anti-bot protection
+- Do NOT modify browser tool fingerprints directly — use the higher tiers instead
 
 ### 6. Browser Tool Crashes or Failures
 - If `browser → navigate(url)` returns "Browser failed" or any error, do NOT go silent.
 - First try: `web_fetch(url)` — may get partial content without JS.
-- Second try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode light`
-- Third try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode browser`
+- Second try: `python3 ~/scripts/browser-use-task.py --task "..." --start-url "URL"` (different Chromium profile, multi-step retry).
+- Third try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode light`
+- Fourth try: `python3 ~/scripts/crawlee-scrape.py --url "URL" --mode browser`
 - If all fail: Tell the user the site blocked automated access and suggest alternatives (e.g., "Can you share a screenshot of the page?" or "I can search for public information about this account instead").
 - NEVER go silent after a browser failure. The user is waiting for your response.
 
@@ -259,7 +264,7 @@ When the Chrome Extension Relay is connected, you can choose which browser profi
 
 ## Research Workflow
 
-**Escalation ladder:** `web_search` (discover URLs) → `web_fetch` (read content) → `browser` (JS rendering/interaction) → `crawlee-scrape.py --mode light` (anti-bot) → `crawlee-scrape.py --mode browser` (last resort).
+**Escalation ladder:** `web_search` (discover URLs) → `web_fetch` (read content) → `browser-use-task.py` (multi-step interaction — default for *doing* something) → `crawlee-scrape.py --mode light` (anti-bot fallback) → `crawlee-scrape.py --mode browser` (last resort) → `browser --profile chrome-relay` (Tier 4: user's real Chrome). The built-in `browser` tool stays available for one-off screenshots and `evaluate` snippets.
 
 Always: search first, fetch before browser, cite sources with URLs + dates, cross-reference 2+ sources.
 
