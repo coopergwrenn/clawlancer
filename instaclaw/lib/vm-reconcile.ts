@@ -1162,17 +1162,35 @@ async function stepNpmPinDrift(
     await ssh.execCommand(
       `echo '${OPENCLAW_PINNED_VERSION}' > "$HOME/.openclaw/.openclaw-pinned-version"`,
     );
-    // Clean install: clear npm cache + rm node_modules/openclaw before install.
+    // Clean install: STOP gateway → clear npm cache → rm openclaw → install.
     //
-    // This was the failure mode on vm-050 (2026-04-28 canary) AND on the v64
-    // canary 2026-04-29 vm-843: a prior interrupted install (Vercel cron
-    // timeout mid-`npm install`) left the tarball cache referencing dirs
-    // that npm later removed during cleanup. The next install would extract
-    // packages, then ENOENT on a sub-package's postinstall (e.g.
-    // protobufjs's `node scripts/postinstall` failing with `spawn sh ENOENT`
-    // because the cwd directory was missing). `npm cache clean --force` first
-    // wipes those stale references so the fresh extract is consistent.
-    // Then `rm -rf openclaw` removes any leftover module dir before reinstall.
+    // Bug A (2026-04-28 vm-050): `npm install -g` over an existing tree on a
+    // different OpenClaw version left dist/ with stale hashed-chunk files.
+    // Fix: `rm -rf $(npm root -g)/openclaw` before install.
+    //
+    // Bug B (2026-04-29 vm-855 + vm-856): even with Bug A's rm + `npm cache
+    // clean --force`, install still ENOENT'd on protobufjs's postinstall
+    // (`spawn sh ENOENT` because the cwd it expected just got deleted). Root
+    // cause: the gateway is STILL RUNNING during the install with file
+    // handles open in the OLD node_modules. npm's mid-install moves/renames
+    // race against those open handles. Manual replay on vm-855 with the
+    // gateway pre-stopped landed cleanly first try.
+    //
+    // Fix: stop openclaw-gateway BEFORE the npm install. The existing
+    // gateway-restart step at the end of reconcileVM brings it back up with
+    // the new node + new openclaw. The `|| true` on stop is intentional —
+    // suspended/hibernating VMs already have the gateway stopped, and we
+    // don't want that to fail this step.
+    await ssh.execCommand(
+      `export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop openclaw-gateway 2>/dev/null || true`,
+    );
+    // Brief pause so file handles actually close before the rm.
+    await new Promise((r) => setTimeout(r, 2000));
+    // Force the gateway-restart step to fire later so the freshly-installed
+    // openclaw + (potentially) freshly-installed node binary actually load
+    // into a running process. Without this, a VM whose only drift was the
+    // openclaw pin would skip the restart and remain stopped after install.
+    result.gatewayRestartNeeded = true;
     const install = await ssh.execCommand(
       `${NVM_PREAMBLE} && npm cache clean --force >/dev/null 2>&1; rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
       { execOptions: { timeout: 180_000 } },
