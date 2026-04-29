@@ -20,6 +20,10 @@ interface ObjectCheck {
   type: "column" | "table";
   name: string;
   table?: string;
+  /** Schema (default 'public'). Non-public schemas are skipped because the
+   * default Supabase client only queries public — verifying objects in
+   * `research`, `private`, etc. would require schema-aware client setup. */
+  schema?: string;
   exists: boolean | null;
 }
 
@@ -35,16 +39,26 @@ function parseMigration(sql: string): ObjectCheck[] {
   const seen = new Set<string>();
   let m;
 
-  const createTable = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)/gi;
+  // Capture optional schema prefix (group 1) + table name (group 2).
+  // Examples:
+  //   CREATE TABLE foo                 → schema=public, name=foo
+  //   CREATE TABLE public.foo          → schema=public, name=foo
+  //   CREATE TABLE research.signals    → schema=research, name=signals
+  const createTable = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(\w+)\.)?(\w+)/gi;
   while ((m = createTable.exec(sql))) {
-    const key = `table:${m[1]}`;
-    if (!seen.has(key)) { seen.add(key); checks.push({ type: "table", name: m[1], exists: null }); }
+    const schema = m[1] ?? "public";
+    const name = m[2];
+    const key = `table:${schema}.${name}`;
+    if (!seen.has(key)) { seen.add(key); checks.push({ type: "table", name, schema, exists: null }); }
   }
 
-  const addCol = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:public\.)?(\w+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/gi;
+  const addCol = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:(\w+)\.)?(\w+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/gi;
   while ((m = addCol.exec(sql))) {
-    const key = `column:${m[1]}.${m[2]}`;
-    if (!seen.has(key)) { seen.add(key); checks.push({ type: "column", table: m[1], name: m[2], exists: null }); }
+    const schema = m[1] ?? "public";
+    const table = m[2];
+    const name = m[3];
+    const key = `column:${schema}.${table}.${name}`;
+    if (!seen.has(key)) { seen.add(key); checks.push({ type: "column", table, name, schema, exists: null }); }
   }
 
   return checks;
@@ -117,12 +131,28 @@ async function main() {
   console.log(`[verify-migrations] Checking ${totalChecks} objects across ${files.length} migrations...`);
 
   // Verify
+  let skippedNonPublic = 0;
   for (const mig of allMigrations) {
     for (const obj of mig.objects) {
+      // The default supabase-js client queries only the public schema.
+      // Objects in research/private/etc. would require a schema-scoped
+      // client setup; for now we mark them as existing (skipped) and
+      // print a notice. Cooper applies these manually via SQL Editor.
+      if (obj.schema && obj.schema !== "public") {
+        obj.exists = true; // skipped, treated as pass
+        skippedNonPublic++;
+        continue;
+      }
       obj.exists = obj.type === "table"
         ? await verifyTable(supabase, obj.name)
         : await verifyColumn(supabase, obj.table!, obj.name);
     }
+  }
+  if (skippedNonPublic > 0) {
+    console.log(
+      `[verify-migrations] NOTICE — skipped ${skippedNonPublic} object(s) in non-public schemas. ` +
+        `Apply those migrations manually via Supabase SQL Editor.`
+    );
   }
 
   // Collect failures

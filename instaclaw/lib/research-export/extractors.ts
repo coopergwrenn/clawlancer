@@ -153,17 +153,27 @@ export async function extractCohortAssignments(
 }
 
 // ─── Longitudinal-consent join (for per-human studies only) ──────────
+//
+// PENDING: This helper is defined but NOT yet wired into the pipeline.
+// It depends on the `instaclaw_users.research_longitudinal_consent`
+// column, which is added in a follow-up migration (separate PR) so the
+// verify-migrations build check can validate against an applied column.
+//
+// When the column lands:
+//   1. Apply the migration to prod via Supabase SQL Editor
+//   2. Wire fetchLongitudinalConsentWallets() into pipeline.ts to gate
+//      which rows get stable agent_ids vs per-night-rotated agent_ids
+//
+// For v0.1.0 the pipeline treats ALL agents as eligible for stable
+// agent_ids within a single export run (the salt rotation post-village
+// remains the longitudinal-prevention mechanism across exports).
 
 /**
  * Returns the set of bankr_wallet addresses for users who have
  * EXPLICITLY consented to per-human longitudinal research tracking
  * (instaclaw_users.research_longitudinal_consent = TRUE).
  *
- * The pipeline uses this set to gate which rows are eligible for
- * per-human longitudinal study. Rows for non-consenting users are
- * STILL exported (they contribute to aggregate metrics) but their
- * agent_id is rotated PER NIGHT — so longitudinal tracking across
- * nights is structurally prevented.
+ * Currently unused; see "PENDING" comment above.
  *
  * See PRD section 4.10.3 — re-identification guarantees.
  */

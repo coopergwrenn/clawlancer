@@ -132,13 +132,8 @@ CREATE INDEX IF NOT EXISTS idx_cohort_assignments_wallet ON research.cohort_assi
 COMMENT ON TABLE research.cohort_assignments IS
   'EE26: Per-experiment cohort assignments. PII-relevant: bankr_wallet (hashed at export).';
 
--- ─────────────────────────────────────────────────────────────────────
--- User-level consent flag for per-human longitudinal research.
--- Default FALSE: no per-human tracking unless user explicitly opts in
--- during onboarding.
--- ─────────────────────────────────────────────────────────────────────
-ALTER TABLE instaclaw_users
-  ADD COLUMN IF NOT EXISTS research_longitudinal_consent BOOLEAN NOT NULL DEFAULT FALSE;
-
-COMMENT ON COLUMN instaclaw_users.research_longitudinal_consent IS
-  'EE26: User explicitly opted in to per-human longitudinal research tracking. Default FALSE per privacy model. Required for any analysis that follows one specific human across the 28 days.';
+-- The longitudinal-consent column on instaclaw_users (referenced by
+-- lib/research-export/extractors.ts:fetchLongitudinalConsentWallets)
+-- is added in a separate migration (20260429b_research_consent_column.sql)
+-- so it can be applied via the standard public-schema verification flow.
+-- Apply this file's migration first, then the consent-column migration.
