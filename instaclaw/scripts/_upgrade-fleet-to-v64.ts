@@ -364,20 +364,36 @@ async function main() {
     const ssh = new NodeSSH();
     try {
       await ssh.connect({ host: vm.ip_address, port: 22, username: "openclaw", privateKey: SSH_KEY, readyTimeout: 12_000 });
-      // Health check has 3 retries × 10s timeout (was 1× 5s). The 5s probe
-      // race-failed on VMs that had just come back from a gateway restart
-      // — confirmed during wave 1 (vm-696/634/780 all failed audit but
-      // returned health-OK 2 min later). 30s of retry headroom is plenty.
+      // Health + active checks each retry up to 6 × 10s = 60s. 3×10s = 30s
+      // wasn't enough for vm-834's wave 1 audit — its in-VM watchdog cron
+      // killed the gateway right after `ready` (see journal "received
+      // SIGTERM" 36ms after "ready"), then the next systemd-managed restart
+      // takes ~20s to come up. Audit's 30s window straddled the watchdog
+      // restart cycle and reported "active=failed". 60s clears one full
+      // watchdog-cycle settle.
+      // Also re-checks systemctl is-active inside the same retry loop so a
+      // VM that's "deactivating" or "activating" at first probe gets a
+      // chance to land in "active".
       const r = await ssh.execCommand(
         // emit one line per check, in order: ACTIVE / HEALTH / VERSION / MARKER
         `export XDG_RUNTIME_DIR="/run/user/$(id -u)"; ` +
         `export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" 2>/dev/null; ` +
-        `echo "ACTIVE:$(systemctl --user is-active openclaw-gateway 2>&1 | head -1)"; ` +
-        `for i in 1 2 3; do ` +
-          `curl -sf -o /dev/null --max-time 10 http://localhost:18789/health && { echo "HEALTH:OK"; break; }; ` +
-          `if [ $i -lt 3 ]; then sleep 10; fi; ` +
-          `if [ $i -eq 3 ]; then echo "HEALTH:FAIL"; fi; ` +
+        // Combined active+health probe, retried 6×10s. We only declare ACTIVE
+        // and HEALTH OK once both are simultaneously true in the same iter —
+        // that prevents a flaky watchdog cycle from making us pass on
+        // "active" in iter 1 and "health=OK" in iter 4 even though they
+        // weren't both true at any single instant.
+        `ACTIVE_FINAL=FAIL; HEALTH_FINAL=FAIL; ` +
+        `for i in 1 2 3 4 5 6; do ` +
+          `STATE=$(systemctl --user is-active openclaw-gateway 2>&1 | head -1); ` +
+          `if [ "$STATE" = "active" ] && curl -sf -o /dev/null --max-time 10 http://localhost:18789/health; then ` +
+            `ACTIVE_FINAL=active; HEALTH_FINAL=OK; break; ` +
+          `fi; ` +
+          `if [ $i -lt 6 ]; then sleep 10; fi; ` +
+          `if [ $i -eq 6 ]; then ACTIVE_FINAL="$STATE"; fi; ` +
         `done; ` +
+        `echo "ACTIVE:$ACTIVE_FINAL"; ` +
+        `echo "HEALTH:$HEALTH_FINAL"; ` +
         `echo "VERSION:$(openclaw --version 2>&1 | head -1)"; ` +
         // v67 SOUL.md marker — the unique routing-table row introduced in commit 9dfe894
         `grep -q "Token launches deploy on Base mainnet" "$HOME/.openclaw/workspace/SOUL.md" 2>/dev/null && echo "MARKER:OK" || echo "MARKER:FAIL"`,
