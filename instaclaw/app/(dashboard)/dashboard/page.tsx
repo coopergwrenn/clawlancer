@@ -73,6 +73,10 @@ interface VMStatus {
     renewalDate: string | null;
     trialEndsAt: string | null;
   };
+  // Set on the single status poll that discovers a chat-driven Bankr launch
+  // (Path B). The dashboard hands it to BankrWalletCard, which fires the
+  // celebration view + confetti + share card. Cleared on subsequent polls.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
 }
 
 interface UsageData {
@@ -532,6 +536,7 @@ export default function DashboardPage() {
           tokenSymbol={vm.bankrTokenSymbol}
           tokenizationPlatform={vm.tokenizationPlatform}
           agentName={vm.telegramBotUsername}
+          freshLaunch={vmStatus?.freshLaunch ?? null}
         />
       )}
 

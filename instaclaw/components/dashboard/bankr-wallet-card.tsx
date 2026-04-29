@@ -11,6 +11,10 @@ interface BankrWalletCardProps {
   tokenSymbol: string | null;
   tokenizationPlatform: string | null;
   agentName?: string | null;
+  // Set by /api/vm/status on the one poll that discovered a chat-driven
+  // launch (Path B). Triggers the same celebration view the dashboard
+  // button shows after a successful launch.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
 }
 
 interface TokenPrice {
@@ -71,6 +75,7 @@ export function BankrWalletCard({
   tokenSymbol,
   tokenizationPlatform,
   agentName,
+  freshLaunch,
 }: BankrWalletCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -78,7 +83,17 @@ export function BankrWalletCard({
   const [tokenSym, setTokenSym] = useState("");
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(null);
+  // Lazy-init from freshLaunch so a chat-driven launch lands directly on
+  // the celebration view on first paint. Without this, the first render
+  // would show the post-launch dashboard view (token info + trade buttons)
+  // for one frame before the useEffect side effects swap to celebration.
+  // The effect below covers the freshLaunch-arrives-later case.
+  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(
+    () =>
+      freshLaunch
+        ? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress }
+        : null,
+  );
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
@@ -90,6 +105,36 @@ export function BankrWalletCard({
   const [personalityHash, setPersonalityHash] = useState<string | null>(null);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Once the chat-launch celebration has been triggered for a given
+  // freshLaunch payload, don't re-fire on prop re-renders within the
+  // same lifecycle (the next poll will return freshLaunch=null because
+  // the row's bankr_token_address is now set, but this guard protects
+  // against any edge where the same payload arrives twice).
+  const freshLaunchHandled = useRef(false);
+
+  // ── Path B: chat-driven launch celebration trigger ──
+  // /api/vm/status sets `freshLaunch` exactly once — on the poll that
+  // discovers the launch via Bankr's public API. We mirror the dashboard-
+  // button celebration flow (confetti + share card + auto-reload) so the
+  // viral share flywheel works for chat-launched users too.
+  //
+  // launchSuccess may already be set via the useState lazy init above
+  // (first-paint case). The functional updater preserves that value or
+  // initializes it from freshLaunch (poll-arrives-later case). The ref
+  // guard ensures the side effects fire exactly once per lifecycle.
+  // Hook must run before any early return — React hooks rules.
+  useEffect(() => {
+    if (!freshLaunch) return;
+    if (freshLaunchHandled.current) return;
+    freshLaunchHandled.current = true;
+    setLaunchSuccess(
+      (prev) =>
+        prev ?? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress },
+    );
+    fireConfetti();
+    setTimeout(() => setShowShareCard(true), 800);
+    autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
+  }, [freshLaunch]);
 
   // Fetch live token price from DexScreener (client-side, no auth needed)
   // Must be before any early returns — React hooks must be called unconditionally
@@ -235,6 +280,10 @@ export function BankrWalletCard({
       // Celebration: confetti + share card
       const symbol = tokenSym.trim().toUpperCase();
       const addr = data.tokenAddress ?? "";
+      // Mark Path B handled here too — if the on-demand sync in /api/vm/status
+      // races us and fires freshLaunch on the next poll, the useEffect must
+      // not re-trigger confetti / replace the auto-reload timer.
+      freshLaunchHandled.current = true;
       setLaunchSuccess({ symbol, address: addr });
       fireConfetti();
       // Show share card after brief celebration moment
