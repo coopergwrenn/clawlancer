@@ -3,10 +3,16 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { TIER_DISPLAY, Tier, ApiMode } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
+import { syncBankrLaunchForVm } from "@/lib/bankr-launch-sync";
 
 // This endpoint is polled every 2s by the deploying page. Keep it fast —
 // Supabase queries only, NO external API calls (Stripe, Telegram, etc.).
-// Prevent Vercel CDN from caching per-user responses
+//
+// One narrow exception: when a VM has a Bankr wallet but no recorded
+// token, we ping Bankr's public creator-fees endpoint to detect chat-driven
+// launches. The check is bounded to that one population (excludes deploy-
+// page pollers, who have no wallet yet) and the result is cached implicitly
+// — once the token is set, this branch never fires again for that VM.
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
@@ -29,6 +35,45 @@ export async function GET() {
       .single();
 
     if (vm) {
+      // ── Path B detection: chat-driven Bankr token launches ────────────
+      // If this VM has a wallet but no recorded token, ask Bankr whether
+      // the agent ran `bankr launch` outside our /api/bankr/tokenize flow.
+      // syncBankrLaunchForVm is idempotent and race-safe; it returns
+      // updated:true exactly when this call performed the DB write that
+      // discovered the launch — that's the celebration trigger.
+      //
+      // Wrapped defensively: any failure (Bankr API down, DB hiccup) must
+      // not block the status response. We log and move on.
+      let freshLaunch: { tokenAddress: string; tokenSymbol: string } | null = null;
+      let liveTokenAddress = vm.bankr_token_address;
+      let liveTokenSymbol = vm.bankr_token_symbol;
+      let liveTokenizationPlatform = vm.tokenization_platform;
+      if (vm.bankr_wallet_id && !vm.bankr_token_address && !vm.tokenization_platform) {
+        try {
+          const sync = await syncBankrLaunchForVm(vm.id);
+          if (sync.updated && sync.tokenAddress && sync.tokenSymbol) {
+            freshLaunch = {
+              tokenAddress: sync.tokenAddress,
+              tokenSymbol: sync.tokenSymbol,
+            };
+            liveTokenAddress = sync.tokenAddress;
+            liveTokenSymbol = sync.tokenSymbol;
+            liveTokenizationPlatform = "bankr";
+            logger.info("vm/status: discovered chat-driven launch on demand", {
+              userId: session.user.id,
+              vmId: vm.id,
+              tokenAddress: sync.tokenAddress,
+            });
+          }
+        } catch (syncErr) {
+          logger.error("vm/status: bankr launch sync threw", {
+            route: "vm/status",
+            vmId: vm.id,
+            error: syncErr instanceof Error ? syncErr.message : String(syncErr),
+          });
+        }
+      }
+
       // Fetch subscription info for billing display
       const { data: sub } = await supabase
         .from("instaclaw_subscriptions")
@@ -97,11 +142,12 @@ export async function GET() {
           gmailPopupDismissed: userProfile?.gmail_popup_dismissed ?? true,
           bankrWalletId: vm.bankr_wallet_id ?? null,
           bankrEvmAddress: vm.bankr_evm_address ?? null,
-          bankrTokenAddress: vm.bankr_token_address ?? null,
-          bankrTokenSymbol: vm.bankr_token_symbol ?? null,
-          tokenizationPlatform: vm.tokenization_platform ?? null,
+          bankrTokenAddress: liveTokenAddress ?? null,
+          bankrTokenSymbol: liveTokenSymbol ?? null,
+          tokenizationPlatform: liveTokenizationPlatform ?? null,
         },
         billing,
+        freshLaunch,
       });
     }
 

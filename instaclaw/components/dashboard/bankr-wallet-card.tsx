@@ -11,6 +11,10 @@ interface BankrWalletCardProps {
   tokenSymbol: string | null;
   tokenizationPlatform: string | null;
   agentName?: string | null;
+  // Set by /api/vm/status on the one poll that discovered a chat-driven
+  // launch (Path B). Triggers the same celebration view the dashboard
+  // button shows after a successful launch.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
 }
 
 interface TokenPrice {
@@ -71,6 +75,7 @@ export function BankrWalletCard({
   tokenSymbol,
   tokenizationPlatform,
   agentName,
+  freshLaunch,
 }: BankrWalletCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -90,6 +95,32 @@ export function BankrWalletCard({
   const [personalityHash, setPersonalityHash] = useState<string | null>(null);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Once the chat-launch celebration has been triggered for a given
+  // freshLaunch payload, don't re-fire on prop re-renders within the
+  // same lifecycle (the next poll will return freshLaunch=null because
+  // the row's bankr_token_address is now set, but this guard protects
+  // against any edge where the same payload arrives twice).
+  const freshLaunchHandled = useRef(false);
+
+  // ── Path B: chat-driven launch celebration trigger ──
+  // /api/vm/status sets `freshLaunch` exactly once — on the poll that
+  // discovers the launch via Bankr's public API. We mirror the dashboard-
+  // button celebration flow (confetti + share card + auto-reload) so the
+  // viral share flywheel works for chat-launched users too.
+  // Hook must run before any early return — React hooks rules.
+  useEffect(() => {
+    if (!freshLaunch) return;
+    if (freshLaunchHandled.current) return;
+    if (launchSuccess) return; // Button flow already won the race
+    freshLaunchHandled.current = true;
+    setLaunchSuccess({
+      symbol: freshLaunch.tokenSymbol,
+      address: freshLaunch.tokenAddress,
+    });
+    fireConfetti();
+    setTimeout(() => setShowShareCard(true), 800);
+    autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
+  }, [freshLaunch, launchSuccess]);
 
   // Fetch live token price from DexScreener (client-side, no auth needed)
   // Must be before any early returns — React hooks must be called unconditionally
