@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Globe, Copy, CheckCircle2, ExternalLink, Info, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Globe, Copy, CheckCircle2, ExternalLink, Info, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 interface Props {
@@ -136,53 +136,14 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
           )}
         </div>
 
-        {/* Maintenance banner — shown only when the relay backend isn't reachable */}
-        {isUnavailable && (
-          <div
-            className="flex gap-3 p-3.5 rounded-lg"
-            style={{
-              background: "rgba(245,158,11,0.06)",
-              border: "1px solid rgba(245,158,11,0.25)",
-            }}
-          >
-            <AlertTriangle
-              className="w-4 h-4 shrink-0 mt-0.5"
-              style={{ color: "#b8770b" }}
-              aria-hidden="true"
-            />
-            <div className="text-xs leading-relaxed">
-              <p className="font-medium mb-1" style={{ color: "var(--foreground)" }}>
-                We&apos;re upgrading the relay backend.
-              </p>
-              <p style={{ color: "var(--muted)" }}>
-                If you&apos;ve already installed the extension and it shows
-                &ldquo;Cannot reach relay&rdquo; — that&apos;s on us, not your URL or
-                token. We&apos;ll surface here when it&apos;s back. Hold off
-                installing for now.{" "}
-                <a
-                  href="mailto:help@instaclaw.io?subject=Browser%20Relay%20status"
-                  className="underline underline-offset-2"
-                  style={{ color: "var(--foreground)" }}
-                >
-                  Email us
-                </a>{" "}
-                if you have questions or want a heads-up when it&apos;s live.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* Description */}
+        <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+          Connect your Chrome browser so your agent can browse sites you&apos;re logged into —
+          Instagram, Facebook, banking, and more. Install the extension, enter your Gateway URL below,
+          and your agent will use your real browser sessions.
+        </p>
 
-        {/* Description — only shown when service is available */}
-        {!isUnavailable && (
-          <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
-            Connect your Chrome browser so your agent can browse sites you&apos;re logged into —
-            Instagram, Facebook, banking, and more. Install the extension, enter your Gateway URL below,
-            and your agent will use your real browser sessions.
-          </p>
-        )}
-
-        {/* Install Options — hidden during maintenance to avoid wasted installs */}
-        {!isUnavailable && (
+        {/* Install Options */}
         <div className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--muted)" }}>
             Install Extension
@@ -232,10 +193,9 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
             </a>
           </div>
         </div>
-        )}
 
         {/* Gateway URL for extension config */}
-        {!isUnavailable && gatewayUrl && (
+        {gatewayUrl && (
           <div className="space-y-3 pt-2">
             <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--muted)" }}>
               Extension Settings

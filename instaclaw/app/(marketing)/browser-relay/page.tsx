@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ExternalLink, ShieldAlert, Globe, MousePointerClick, Camera, Keyboard, Eye, Lock, AlertTriangle } from "lucide-react";
+import { ExternalLink, ShieldAlert, Globe, MousePointerClick, Camera, Keyboard, Eye, Lock } from "lucide-react";
 import { createMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/marketing/json-ld";
 import { FaqAccordion } from "@/components/marketing/faq-accordion";
@@ -136,49 +136,6 @@ export default function BrowserRelayPage() {
               logged into. Email, banking, exchanges, internal tools — anywhere
               you&apos;re signed in, your agent can act on your behalf.
             </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Temporary maintenance banner — remove once the relay backend is restored */}
-      <section className="px-4 mb-10">
-        <div className="max-w-3xl mx-auto">
-          <div
-            className="rounded-xl p-5 flex gap-4"
-            style={{
-              background: "rgba(220,38,38,0.05)",
-              border: "1px solid rgba(220,38,38,0.25)",
-            }}
-          >
-            <AlertTriangle
-              className="w-5 h-5 shrink-0 mt-0.5"
-              style={{ color: "#b91c1c" }}
-              aria-hidden="true"
-            />
-            <div className="text-sm leading-relaxed">
-              <p className="font-medium mb-1" style={{ color: "#333334" }}>
-                Browser Relay is temporarily offline while we upgrade the
-                backend.
-              </p>
-              <p style={{ color: "#6b6b6b" }}>
-                If you installed the extension and it shows{" "}
-                <span className="font-mono text-xs">
-                  Cannot reach relay
-                </span>{" "}
-                — that&apos;s on us, not your URL or token. The underlying
-                relay service was retired in a recent OpenClaw release and
-                we&apos;re rebuilding the bridge. Hold off on installing
-                until we send the all-clear. Email{" "}
-                <a
-                  href="mailto:help@instaclaw.io?subject=Browser%20Relay%20status"
-                  className="underline underline-offset-2"
-                  style={{ color: "#b91c1c" }}
-                >
-                  help@instaclaw.io
-                </a>{" "}
-                if you want a heads-up when it&apos;s back.
-              </p>
-            </div>
           </div>
         </div>
       </section>
