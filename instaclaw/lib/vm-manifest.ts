@@ -459,6 +459,20 @@ export const VM_MANIFEST = {
     // get "Sandbox mode requires Docker" on every command. Zilsun's agent was
     // down for a week because of this (reported 2026-04-09).
     "agents.defaults.sandbox.mode": "off",
+    // v67: OpenClaw 2026.4.26 has tighter default request timeouts than 2026.4.5.
+    // Combined with the v67 SOUL.md (~32KB → ~29K prompt tokens after truncation),
+    // chat completions on Haiku 4.5 routinely take 20-45s. The default timeout
+    // was firing mid-inference, surfacing "Request timed out before a response
+    // was generated" errors and making Telegram bots appear unresponsive.
+    // Real incident 2026-04-29: Lee/HotTubLee (vm-773), Samuel/Obare (vm-876),
+    // Textmaxmax (vm-729) all reported "agent unresponsive" after the v66→v67
+    // upgrade. Samuel was on 2026.4.5 and didn't have the issue; Lee + Textmaxmax
+    // got upgraded to 2026.4.26 and started timing out. The gateway's own error
+    // message literally suggests "increase agents.defaults.timeoutSeconds".
+    // 90s gives Haiku room to finish even on cold-start VMs while still well
+    // under any user-perceptible "the bot is dead" threshold (Telegram itself
+    // doesn't time out the long-poll; users do).
+    "agents.defaults.timeoutSeconds": "90",
     // v61: Enable OpenClaw's OpenAI-compatible POST /v1/chat/completions endpoint.
     // Disabled by default per the runtime schema. Without this, Vercel's three
     // gateway-calling paths all fall back to direct Anthropic (no workspace
