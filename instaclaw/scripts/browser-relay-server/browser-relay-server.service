@@ -2,6 +2,9 @@
 Description=InstaClaw Browser Relay Server
 After=network.target openclaw-gateway.service
 Wants=openclaw-gateway.service
+# Crash-loop protection — StartLimit directives belong in [Unit] (systemd >=240)
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -12,9 +15,6 @@ Environment=RELAY_PORT=18792
 Environment=RELAY_BIND=127.0.0.1
 Restart=always
 RestartSec=5
-# Crash-loop protection — match dispatch-server.service shape
-StartLimitIntervalSec=300
-StartLimitBurst=10
 
 [Install]
 WantedBy=default.target

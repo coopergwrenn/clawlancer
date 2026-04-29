@@ -379,8 +379,15 @@ export const VM_MANIFEST = {
    *  v64 (2026-04-28): NODE_PINNED_VERSION=22.22.2 + OPENCLAW_PINNED_VERSION
    *  =2026.4.26. Triggers stepNodeUpgrade on every assigned VM (Node 22.22.0
    *  → 22.22.2) followed by openclaw clean-reinstall. See lib/ssh.ts for
-   *  HISTORY notes on why both pins moved together. */
-  version: 64,
+   *  HISTORY notes on why both pins moved together.
+   * v65 (2026-04-29): Add browser-relay-server.js + systemd user unit.
+   *  Bridges the InstaClaw Browser Relay Chrome extension (which still
+   *  speaks the OpenClaw 2026.2.24 protocol) to the agent's browser plugin
+   *  via emulated CDP on 127.0.0.1:18792. Caddy already proxies /relay/*
+   *  here; before this version, port 18792 was unbound and every install
+   *  of the published extension hit "Cannot reach relay". v64-then-v65 will
+   *  reconcile in one pass for VMs still on v63. */
+  version: 65,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

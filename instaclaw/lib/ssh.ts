@@ -4162,6 +4162,38 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
       });
     }
 
+    // ── Browser Relay Server ──
+    // Replaces the OpenClaw extension-relay subsystem that upstream removed
+    // (CHANGELOG: "remove the legacy Chrome extension relay path"). Without
+    // this server running on 18792, Caddy's /relay/* proxy returns 502 and
+    // the published Chrome extension shows "Cannot reach relay". Critical
+    // for the public Browser Relay feature; the systemd unit block below
+    // wires it up.
+    try {
+      const browserRelayServerPath = path.resolve(
+        __dirname,
+        '../scripts/browser-relay-server/browser-relay-server.js'
+      );
+      if (fs.existsSync(browserRelayServerPath)) {
+        const serverContent = fs.readFileSync(browserRelayServerPath, 'utf-8');
+        const serverB64 = Buffer.from(serverContent, 'utf-8').toString('base64');
+        const browserRelayParts: string[] = [];
+        browserRelayParts.push(`echo '${serverB64}' | base64 -d > "$HOME/scripts/browser-relay-server.js"`);
+        browserRelayParts.push('chmod +x "$HOME/scripts/browser-relay-server.js"');
+        browserRelayParts.push('');
+        scriptParts.push(...browserRelayParts);
+      } else {
+        logger.warn("browser-relay-server.js not found at expected path; skipping deploy", {
+          expected: browserRelayServerPath,
+        });
+      }
+    } catch (browserRelayErr) {
+      recordFailure("browser_relay_deploy", browserRelayErr, true);
+      logger.warn("Failed to load browser-relay-server.js for deployment (non-fatal)", {
+        error: String(browserRelayErr),
+      });
+    }
+
     if (config.gmailProfileSummary) {
       // Gmail connected → personalized BOOTSTRAP.md + profile data
       const bootstrap = buildPersonalizedBootstrap(config.gmailProfileSummary);
@@ -5464,6 +5496,40 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
       '  systemctl --user daemon-reload 2>/dev/null || true',
       '  systemctl --user enable dispatch-server 2>/dev/null || true',
       '  systemctl --user start dispatch-server 2>/dev/null || true',
+      'fi',
+      '',
+      '# ── Browser Relay Server ──',
+      '# Bridges the InstaClaw Browser Relay Chrome extension (which still',
+      '# speaks the OpenClaw 2026.2.24 protocol) to the agent\'s browser plugin',
+      '# via emulated CDP. Replaces the upstream-removed extension relay.',
+      '# Listens on 127.0.0.1:18792; Caddy already proxies /relay/* here.',
+      'sudo ufw allow 18792/tcp > /dev/null 2>&1 || true',
+      'if [ -f "$HOME/scripts/browser-relay-server.js" ]; then',
+      '  mkdir -p "$HOME/.config/systemd/user"',
+      '  NODE_BIN_PATH=$(which node)',
+      '  cat > "$HOME/.config/systemd/user/browser-relay-server.service" << BREOF',
+      '[Unit]',
+      'Description=InstaClaw Browser Relay Server',
+      'After=network.target openclaw-gateway.service',
+      'Wants=openclaw-gateway.service',
+      'StartLimitIntervalSec=300',
+      'StartLimitBurst=10',
+      '[Service]',
+      'Type=simple',
+      'ExecStart=\'$NODE_BIN_PATH\' /home/openclaw/scripts/browser-relay-server.js',
+      'Environment=HOME=/home/openclaw',
+      'Environment=PATH=/home/openclaw/.nvm/versions/node/\'$NODE_VER\'/bin:/usr/local/bin:/usr/bin:/bin',
+      'Environment=RELAY_PORT=18792',
+      'Environment=RELAY_BIND=127.0.0.1',
+      'Restart=always',
+      'RestartSec=5',
+      '[Install]',
+      'WantedBy=default.target',
+      'BREOF',
+      '  systemctl --user daemon-reload 2>/dev/null || true',
+      '  systemctl --user enable browser-relay-server 2>/dev/null || true',
+      '  # Use restart (not start) so reconciler picks up new server code',
+      '  systemctl --user restart browser-relay-server 2>/dev/null || true',
       'fi',
       '',
       '# Gateway watchdog — auto-restarts gateway if it hangs (every 2 min)',
