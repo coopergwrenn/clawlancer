@@ -1193,15 +1193,13 @@ async function stepNpmPinDrift(
     // into a running process. Without this, a VM whose only drift was the
     // openclaw pin would skip the restart and remain stopped after install.
     result.gatewayRestartNeeded = true;
-    // Bump install timeout 180s → 360s. Investigation on 2026-04-29 traced the
-    // residual PUSH-FAILED rate to a node-ssh local timeout firing before the
-    // remote npm install (~3 min on slow VMs) finalized — bin symlink mtime
-    // landed seconds AFTER the local-side `await` returned, so the verify step
-    // raced and saw an empty PATH lookup. Verbose install on vm-866 ran 42s
-    // clean; 360s is generous headroom.
+    // Install timeout: 600s. Bumped from 360s after v66→v67 power+pro pass —
+    // vm-337 and vm-320 (both v63→v66 deep jumps) hit the 360s wall mid
+    // tarball-extract on slow disk/network. 600s gives 14× the 42s baseline
+    // observed on healthy VMs.
     const install = await ssh.execCommand(
       `${NVM_PREAMBLE} && npm cache clean --force >/dev/null 2>&1; rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
-      { execOptions: { timeout: 360_000 } },
+      { execOptions: { timeout: 600_000 } },
     );
     // Verify by reading on-disk artifacts (bin symlink + package.json version)
     // instead of running `openclaw --version`. The CLI verify was racy: when
@@ -2075,7 +2073,11 @@ async function stepCaddyUIBlock(
   // Read current Caddyfile to extract hostname
   const catResult = await ssh.execCommand("sudo cat /etc/caddy/Caddyfile 2>/dev/null");
   if (catResult.code !== 0 || !catResult.stdout.trim()) {
-    result.errors.push("caddy: no Caddyfile found — skipping UI block");
+    // Some VMs don't have Caddy installed at all (e.g. starter tier without
+    // public hostname). That's a no-op, not an error — flagging it as an
+    // error tripped the bump-without-push gate and produced false-fail
+    // PUSH-FAILED reports during the v66→v67 fleet upgrade.
+    result.alreadyCorrect.push("caddy: no Caddyfile (not installed)");
     return;
   }
 
