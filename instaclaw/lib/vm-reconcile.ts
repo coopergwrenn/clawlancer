@@ -1212,15 +1212,20 @@ async function stepNpmPinDrift(
       `${NVM_PREAMBLE} && npm cache clean --force >/dev/null 2>&1; rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
       { execOptions: { timeout: 600_000 } },
     );
-    // Verify by reading on-disk artifacts (bin symlink + package.json version)
-    // instead of running `openclaw --version`. The CLI verify was racy: when
-    // the install finalized after the local-side timeout, the symlink existed
-    // on the remote but PATH lookup in the next SSH command sometimes returned
-    // empty. On-disk file checks are stable. The 30s polling loop tolerates
-    // a stragglerly install whose final filesystem operations land just after
+    // Verify by reading on-disk artifacts. Bin symlink + package.json version
+    // PLUS dist/index.js (the systemd unit's ExecStart entry point — vm-831
+    // had the symlink but missing dist/, putting the gateway in a CrashLoop
+    // with `Cannot find module .../openclaw/dist/index.js`). 30s poll
+    // tolerates a stragglerly install whose final FS ops land just after
     // node-ssh hands control back.
     const verify = await ssh.execCommand(
-      `${NVM_PREAMBLE} && for i in $(seq 1 30); do test -L "$HOME/.nvm/versions/node/$(node -v)/bin/openclaw" && grep -q '"version": "${OPENCLAW_PINNED_VERSION}"' "$(npm root -g)/openclaw/package.json" && echo ok && exit 0; sleep 1; done; exit 1`,
+      `${NVM_PREAMBLE} && for i in $(seq 1 30); do ` +
+        `test -L "$HOME/.nvm/versions/node/$(node -v)/bin/openclaw" && ` +
+        `grep -q '"version": "${OPENCLAW_PINNED_VERSION}"' "$(npm root -g)/openclaw/package.json" && ` +
+        `test -f "$(npm root -g)/openclaw/dist/index.js" && ` +
+        `echo ok && exit 0; ` +
+        `sleep 1; ` +
+      `done; exit 1`,
     );
     if (verify.code === 0) {
       result.fixed.push(`openclaw ${openclawCurr || "missing"} → ${OPENCLAW_PINNED_VERSION}`);
@@ -1228,7 +1233,7 @@ async function stepNpmPinDrift(
       // restart so the new version actually loads.
       result.gatewayRestartNeeded = true;
     } else {
-      const msg = `openclaw install failed: was=${openclawCurr || "missing"} bin+version not on disk after 30s poll, npm-tail=${(install.stdout + install.stderr).slice(-200)}`;
+      const msg = `openclaw install failed: was=${openclawCurr || "missing"} bin+version+dist/index.js not on disk after 30s poll, npm-tail=${(install.stdout + install.stderr).slice(-200)}`;
       result.errors.push(msg);
       // ALSO push to strictErrors so the bump-without-push gate fires. Without
       // this the cron would advance config_version on a VM whose openclaw npm
@@ -1857,11 +1862,13 @@ async function stepGatewayRestart(
     await ssh.execCommand(`${DBUS_PREFIX} && systemctl --user start openclaw-gateway`);
   }
 
-  // Verify gateway comes back healthy (up to 60s — full reinstalls on slower
-  // VMs can take >30s to warm up; 30s caused false-fail PUSH-FAILEDs during
-  // the v65 rollout when the underlying upgrade had actually succeeded).
+  // Verify gateway comes back healthy (up to 120s — wave 1 of the v66→v67
+  // power+pro+starter pass on 2026-04-29 had vm-568 reach "active" + /health
+  // 200 within ~80s and vm-858 even later. 60s caused false-fail PUSH-FAILEDs
+  // on the slower starter-tier VMs even when the underlying upgrade was
+  // healthy. 24 attempts × 5s = 120s.
   let healthy = false;
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 24; attempt++) {
     await new Promise((r) => setTimeout(r, 5000));
     const healthCheck = await ssh.execCommand('curl -sf http://localhost:18789/health 2>/dev/null');
     if (healthCheck.code === 0) {
@@ -1879,7 +1886,7 @@ async function stepGatewayRestart(
       route: "reconcileVM",
       vmId: vm.id,
     });
-    result.errors.push('gateway restart failed: not healthy after 60s');
+    result.errors.push('gateway restart failed: not healthy after 120s');
   }
 }
 
