@@ -212,20 +212,20 @@ async function patchOne(vm: VMRow): Promise<PatchResult> {
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
-  // Bump config_version to manifest.version on successful VMs whose current
-  // value is below manifest.version. (skip already-at or above to avoid no-op
-  // updates / accidental downgrades.)
-  const successIds = results.filter(r => r.ok && (r.vm.config_version ?? 0) < VM_MANIFEST.version).map(r => r.vm.id);
-  let bumped = 0;
-  if (successIds.length > 0) {
-    const { error: updateErr, count } = await supabase
-      .from("instaclaw_vms")
-      .update({ config_version: VM_MANIFEST.version }, { count: "exact" })
-      .in("id", successIds)
-      .lt("config_version", VM_MANIFEST.version);
-    if (updateErr) console.error(`config_version bump failed: ${updateErr.message}`);
-    else bumped = count ?? 0;
-  }
+  // DELIBERATELY DO NOT bump config_version here.
+  //
+  // The earlier version of this script bumped config_version=VM_MANIFEST.version
+  // on successful patches — but the patch only edits SOUL.md/CAPABILITIES.md
+  // content, not the rest of the v67 surface (Node v22.22.2, OpenClaw
+  // 2026.4.26, browser-relay-server, ...). VMs at Node v22.22.0 ended up
+  // marked v67 in DB, which made the upgrade script skip them (filter
+  // `config_version < manifest.version`). Recovering required a from-disk
+  // audit to reset config_version honestly.
+  //
+  // The reconciler now has stepV67RoutingTablePatch (lib/vm-reconcile.ts) so
+  // SOUL.md / CAPABILITIES.md are kept in sync on every reconcile pass —
+  // bumping config_version is the reconciler's job, not the fleet patch's.
+  const bumped = 0;
 
   // Summary
   const totalSec = Math.round((Date.now() - totalStart) / 1000);
