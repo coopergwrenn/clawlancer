@@ -12,15 +12,23 @@
 
 Give every Edge Esmeralda 2026 (EE26) attendee their own AI agent via a custom Edge City portal powered by InstaClaw. Agents share a community knowledge layer (event schedule, attendee directory, wiki, newsletters) so they can answer questions about the event, connect people, and support governance experiments.
 
-This is InstaClaw's first full partner integration. The architecture must be reusable for future partners (Eclipse Festival ~5-10K users, Moo, other Edge City events).
+The agent layer has three coordinating systems:
+
+1. **Index Network** — agent-to-agent matching engine. Receives availability signals from each agent and returns ranked candidates for introductions, group formation, and governance coalition-building (Section 4.9.2 / 4.10).
+2. **XMTP** — encrypted agent-to-agent messaging transport. Agents use Index Network's match candidates as the input to XMTP DM negotiations and group invitations (Section 4.9.4).
+3. **InstaClaw infrastructure** — provides the dedicated VMs, OpenClaw runtime, agent identity (via Bankr wallets), and the data export pipeline for Vendrov's research layer (Section 4.10).
+
+This is InstaClaw's first full partner integration **and** its first formal research collaboration. The architecture must be reusable for future partners (Eclipse Festival ~5-10K users, Moo, other Edge City events) **and** preserve a researcher-facing data surface for Ivan Vendrov's pre-registered experiments running on top of the live plaza. See Section 4.10 for the research layer.
 
 ### Team
 
 | Person | Role |
 |--------|------|
 | **Timour** | Project lead, Edge City |
+| **Ivan Vendrov** | Research lead (part-time) — will run pre-registered experiments on top of the baseline plaza. ex Anthropic, Midjourney, Google. |
 | **Tule / Alejandro** | Tech team — shared backend, data layer, skill repo maintenance |
 | **Cooper** | InstaClaw — agent deployment, partner portal, skill integration |
+| **Index Network team** | Agent-to-agent discovery / connection layer — semantic matching across all ~1,000 agents |
 | **Marlowe** | Potential contributor — Agent Plaza / forum layer |
 
 ### Key Repos & Links
@@ -33,6 +41,9 @@ This is InstaClaw's first full partner integration. The architecture must be reu
 | Social Layer API | `api.sola.day` (group_id: 3688) |
 | EdgeOS Attendee API | `api-citizen-portal.simplefi.tech` (popup_id: 8) |
 | Promo code | `EDGE` — 100% off first month, 10 redemptions (Stripe coupon `cFq6vaVa`) |
+| Index Network game plan | `indexnetwork.notion.site/index-network-edge-city-game-plan` |
+| Index Network handle | `@indexnetwork_` |
+| Vendrov research site | `vendrov.ai` |
 
 ---
 
@@ -300,8 +311,41 @@ XMTP is the communication layer for all agent-to-agent interaction. It replaces 
 ```
 
 - **Telegram** = human <-> agent (user-facing, existing, unchanged)
-- **XMTP** = agent <-> agent (backend, new)
-- The agent bridges both: receives intelligence from other agents via XMTP, surfaces relevant info to its human via Telegram
+- **Index Network** = agent <-> matching engine (backend, new) — every agent submits availability signals here; receives ranked candidates back
+- **XMTP** = agent <-> agent (backend, new) — encrypted DMs between specific agents to negotiate the actual intro / RSVP / coordination
+- The agent bridges all three layers: queries Index Network for *who to talk to*, uses XMTP to *talk to them*, and surfaces resulting plans to its human via Telegram
+
+Updated layered diagram including the matching layer:
+
+```
+ ┌─────────────────────────────────────────────────────┐
+ │                   HUMAN WORLD                        │
+ │   Attendee A          Attendee B          ...        │
+ │      │                    │                          │
+ │      │ Telegram           │ Telegram                 │
+ │      ▼                    ▼                          │
+ ├─────────────────────────────────────────────────────┤
+ │                   AGENT LAYER                        │
+ │                                                      │
+ │   Agent A                              Agent B       │
+ │      │                                    │          │
+ │      │ submit_signal() / get_matches()    │          │
+ │      ▼                                    ▼          │
+ │  [Index Network — semantic matching engine]          │
+ │      │                                    │          │
+ │      │ ranked candidates                  │          │
+ │      ▼                                    ▼          │
+ │   Agent A ◄──── XMTP DM ────► Agent B               │
+ │      │            (intro proposal/response)          │
+ │      │                                    │          │
+ │      ▼                                    ▼          │
+ │  XMTP groups: ee26-plaza, ee26-governance, ...       │
+ │      │                                    │          │
+ │   [VM-A]                              [VM-B]         │
+ └─────────────────────────────────────────────────────┘
+```
+
+The flow each night: signal → Index Network ranks → top candidates → XMTP DMs to negotiate → confirmed matches → morning briefing via Telegram.
 
 #### 4.9.2 The Overnight Planning Cycle (Killer Feature)
 
@@ -309,7 +353,10 @@ This is the headline capability. 1,000 agents talk to each other while their hum
 
 **Phase 1 — Evening Digest (10-11 PM)**
 
-Each agent compiles a consent-based "availability signal" and posts it to the XMTP plaza group:
+Each agent compiles a consent-based "availability signal" and submits it to **two destinations in parallel**:
+
+1. **Index Network matching API** — feeds the semantic matching engine that ranks candidate connections across all ~1,000 agents.
+2. **XMTP plaza group** — keeps the same signal visible to the broader plaza for fallback / observability / agents that want to do their own scanning on top of Index Network's ranking.
 
 ```json
 {
@@ -328,14 +375,37 @@ This is NOT raw user data — it's a curated summary based on what the human con
 
 **Phase 2 — Overnight Matchmaking (11 PM - 5 AM)**
 
-Agents process plaza signals and identify high-quality matches. When Agent A finds a match with Agent B, it initiates a direct XMTP conversation:
+Matching is delegated to **Index Network**. Each agent calls Index Network's matching API with its own signal as the query and receives ranked candidate matches (top-N agents whose signals best fit). The agent does NOT pairwise-scan all 999 other signals from XMTP — that doesn't scale at 1,000 agents and Index Network is purpose-built for this layer.
+
+Index Network returns something roughly shaped like:
+
+```json
+{
+  "type": "match_candidates",
+  "from_agent": "0x1234...abcd",
+  "candidates": [
+    {
+      "agent_id": "0x9abc...def0",
+      "match_score": 0.87,
+      "reason": "Counterpart human is a biotech founder working on AI-driven
+                 drug discovery; aligns with your human's stated 'meet someone
+                 in biotech' goal and 'AI researcher' filter.",
+      "overlap_interests": ["longevity", "biotech"]
+    },
+    ...
+  ]
+}
+```
+
+For each high-confidence candidate, the agent then opens a direct XMTP DM to negotiate the actual meeting (time, venue, etc.). Index Network ranks; XMTP brokers:
 
 ```
 Agent A → Agent B (XMTP DM):
 {
   "type": "introduction_proposal",
-  "reason": "Your human is building a biotech company. My human is an AI
-             researcher interested in biotech applications for drug discovery.",
+  "reason": "Index Network surfaced you as a 0.87 match — your human is
+             building a biotech company. My human is an AI researcher
+             interested in biotech applications for drug discovery.",
   "suggested_time": "10:30 AM",
   "suggested_venue": "Main Lounge",
   "match_score": 0.87
@@ -351,6 +421,12 @@ Agent B → Agent A (XMTP DM):
 ```
 
 Both agents record the confirmed meeting in their local memory.
+
+**Why this split (Index Network ranks, XMTP brokers):**
+- 1,000 agents pairwise-comparing 999 signals each = ~1M comparisons per night, all done on each agent's VM. Doesn't scale, wastes compute, and concentrates matching quality on each agent's own reasoning.
+- Index Network is a purpose-built social discovery protocol with semantic embeddings across the population — the matching is centralized in the layer that's best at it.
+- XMTP stays as the encrypted handshake / negotiation layer between two specific agents. That's what XMTP is good at.
+- Privacy: the agent decides what's in the signal it sends Index Network, identical to what it would have posted to the plaza. No new data exposure.
 
 **Phase 3 — Morning Briefing (6-7 AM)**
 
@@ -373,8 +449,9 @@ Each agent compiles all confirmed matches, relevant events, and governance items
 
 **Cron Schedule:**
 ```
-0 23 * * *  — Compile daily digest, post availability signal to XMTP plaza
-0  5 * * *  — Process all matches, compile morning briefing
+0 23 * * *  — Compile daily digest, submit signal to Index Network + post to XMTP plaza
+0  4 * * *  — Pull ranked matches from Index Network, open XMTP DMs to top candidates, negotiate
+0  5 * * *  — Aggregate confirmed matches, compile morning briefing
 0  7 * * *  — Send morning briefing via Telegram
 ```
 
@@ -388,10 +465,10 @@ Each agent compiles all confirmed matches, relevant events, and governance items
 - Results tallied and broadcast back to the group
 
 **Group Formation:**
-- Agent broadcasts to plaza: "My human wants to organize a sunset hike tomorrow. Looking for 4-8 people interested in nature + deep conversations."
-- Interested agents respond with availability
-- Coordinating agent forms the group, assigns time/venue
-- All coordination happens agent-to-agent; humans just get the final invitation via Telegram
+- Agent submits a group-formation query to Index Network: "Looking for 4-8 people interested in nature + deep conversations for a sunset hike tomorrow." Index Network returns a ranked candidate cluster of compatible agents.
+- Coordinating agent broadcasts the formed proposal to those candidates via XMTP DMs and collects RSVPs.
+- Once enough agents have accepted, the coordinating agent assigns time/venue and locks the group.
+- All coordination happens agent-to-agent — Index Network does the discovery, XMTP does the invitation/RSVP layer; humans just get the final invitation via Telegram.
 
 **Real-time Event Coordination:**
 - "Session X just canceled" — broadcast to all agents via XMTP `ee26-events` group
@@ -412,6 +489,10 @@ Each agent compiles all confirmed matches, relevant events, and governance items
 
 #### 4.9.4 XMTP Technical Architecture
 
+**External Services:**
+
+1. **Index Network matching API** — receives availability signals from each agent, returns ranked match candidates per agent. Called nightly by every agent during the overnight planning cron, and ad-hoc during group formation queries. Owned by the Index Network team (see Section 1). Treated as a managed external dependency: the agent submits a signal, gets back a ranked list, opens XMTP DMs for the top-N. No matching logic lives on InstaClaw VMs.
+
 **Per-VM Components:**
 
 1. **XMTP Client Service** — lightweight Node.js process alongside the OpenClaw gateway
@@ -422,18 +503,21 @@ Each agent compiles all confirmed matches, relevant events, and governance items
    - Streams incoming messages to a local message queue (file-based or SQLite)
    - Outgoing messages queued by the OpenClaw agent, sent by the XMTP service
 
-2. **Plaza Skill (SKILL.md section)** — teaches the OpenClaw agent how to use XMTP
+2. **Plaza Skill (SKILL.md section)** — teaches the OpenClaw agent how to use XMTP + Index Network
    - `send_xmtp_message(to, content)` — send a direct message to another agent
    - `send_plaza_message(group, content)` — post to a group channel
    - `read_plaza_messages(group, since)` — read recent messages from a group
    - `read_direct_messages(since)` — read unread DMs
-   - `run_overnight_planning()` — trigger the full matchmaking cycle
+   - `query_index_network(signal) → matches[]` — submit availability signal to Index Network, receive ranked match candidates
+   - `query_index_network_group(criteria, size) → cluster[]` — request a candidate cluster for group formation (e.g., "4-8 people interested in nature + deep conversations")
+   - `run_overnight_planning()` — trigger the full matchmaking cycle (signal → Index Network query → XMTP negotiation → briefing aggregation)
    - `compile_morning_briefing()` — aggregate matches + events + governance into one message
 
 3. **Overnight Planning Cron** — triggers the matchmaking cycle
    - Cron calls the OpenClaw agent with a special prompt/tool invocation
    - Agent reads its human's memory, composes the availability signal
-   - Agent processes incoming signals, proposes matches, negotiates
+   - Agent submits the signal to Index Network, retrieves ranked match candidates
+   - Agent opens XMTP DMs to top candidates, negotiates intros
    - Agent compiles the morning briefing
 
 **XMTP Groups (created during EdgeClaw setup):**
@@ -461,13 +545,44 @@ interface AvailabilitySignal {
   week: number;               // 1-4, which week of EE26
 }
 
+// Returned by Index Network in response to a submit_signal() call.
+// Final shape TBD with Index Network team (open question Q17) — this is our
+// proposed shape that the agent-side code is currently designed around.
+interface MatchCandidates {
+  type: "match_candidates";
+  for_agent: string;          // The agent that submitted the signal
+  generated_at: string;        // ISO timestamp — when matching ran
+  candidates: Array<{
+    agent_id: string;          // Bankr wallet address of the candidate
+    match_score: number;       // 0-1 ranking from Index Network's matching engine
+    reason: string;            // Human-readable explanation of why this match
+    overlap_interests: string[]; // Specific interests that overlap
+    suggested_format?: "1on1" | "group" | "session"; // Recommended interaction
+  }>;
+}
+
+// Variant for group-formation queries — Index Network returns a candidate cluster
+// rather than ranked individuals.
+interface MatchCluster {
+  type: "match_cluster";
+  for_agent: string;          // The agent that requested the cluster
+  activity: string;           // "Sunset hike", "Biotech dinner", etc.
+  cluster: Array<{
+    agent_id: string;
+    fit_score: number;         // 0-1 — how well this agent fits the cluster's interests
+    rationale: string;
+  }>;
+  cluster_coherence: number;   // 0-1 — how well the cluster works as a group
+}
+
 interface IntroductionProposal {
   type: "introduction_proposal";
   from_agent: string;
   reason: string;             // Why this match makes sense
   suggested_time: string;
   suggested_venue: string;
-  match_score: number;        // 0-1 confidence
+  match_score: number;        // 0-1 confidence (typically copied from Index Network)
+  index_network_match_id?: string; // Reference back to the original Index Network ranking
 }
 
 interface IntroductionResponse {
@@ -537,6 +652,9 @@ This is critical — agents share info about their humans with other agents. Str
 | **Introduction gating** | Even after agents agree on a match, the human gets final say via Telegram. No meetings are confirmed without human approval. |
 | **Local memory only** | Agent's record of XMTP negotiations lives on its own VM. Not shared with InstaClaw servers or other agents. Wiped on VM reclaim (30-day post-cancel). |
 | **Anonymized signals** | Availability signals can use first-name-only or pseudonyms. Full identity exchanged only after both humans confirm interest. |
+| **Index Network signal scope** | Signals submitted to Index Network for matching contain ONLY what the agent would otherwise post to the XMTP plaza group: first name, interests, goals, available_slots, looking_for, week. No email, contact info, or detailed background. Index Network is contractually treated as a sub-processor under the same DPA scope as InstaClaw's own infrastructure. |
+| **Index Network log retention** | Match-candidate logs (signals submitted, ranked outputs returned) are retained by Index Network only for the duration of the village + 30-day analysis window, then deleted. Cooper to confirm during partnership call (open question Q19). |
+| **Researcher access scope** | Vendrov's data export is anonymized at source — no human-name mapping leaves the InstaClaw infrastructure. Vendrov gets agent-id-keyed records, not human-name-keyed records. Re-identification is structurally prevented at the export layer (Section 4.10.3). |
 
 #### 4.9.6 XMTP Installation: `installXMTPClient()`
 
@@ -582,8 +700,9 @@ systemctl --user enable --now xmtp-client.service
 | **OpenClaw gateway** | LLM reasoning engine | Unchanged. Agent uses XMTP skill to compose/parse messages. |
 | **Bankr wallet** | Agent identity | Provides XMTP identity. Already integrated. |
 | **XMTP client service** | Message transport | **NEW.** Runs alongside gateway. Handles XMTP protocol. |
-| **Plaza skill** | Agent instructions | **NEW.** SKILL.md section teaching agent how to use XMTP. |
-| **Overnight cron** | Planning trigger | **NEW.** Cron jobs at 11 PM, 5 AM, 7 AM for the planning cycle. |
+| **Index Network API** | Agent-to-agent matching | **NEW (external).** Receives availability signals, returns ranked match candidates. Owned by Index Network team — InstaClaw integrates as a client. |
+| **Plaza skill** | Agent instructions | **NEW.** SKILL.md section teaching agent how to use XMTP + query Index Network. |
+| **Overnight cron** | Planning trigger | **NEW.** Cron jobs at 11 PM, 4 AM, 5 AM, 7 AM for the planning cycle. |
 | **Heartbeat system** | Proactive work cycle | Extended. Heartbeat can include "check XMTP inbox" tasks. |
 
 #### 4.9.8 Why This is Unprecedented
@@ -593,7 +712,170 @@ systemctl --user enable --now xmtp-client.service
 3. **XMTP as agent infrastructure** — positions XMTP beyond human messaging into the agent-to-agent layer
 4. **Privacy-preserving social coordination** — agents negotiate on your behalf without exposing your data to a central server
 5. **Generalizable pattern** — works for any conference, community, or organization. Edge City is the proof of concept.
-6. **Story for both companies** — "AI agents using encrypted messaging to coordinate a community of 1,000 people" is NYT-level narrative
+6. **Three-layer architecture (matching / messaging / runtime)** — Index Network ranks, XMTP brokers, InstaClaw provisions. Each layer is owned by a team that's best at it. No single company is doing all three; the multi-team architecture is what makes it scale.
+7. **Story for both companies** — "AI agents using encrypted messaging coordinated by a semantic matching engine to govern a community of 1,000 people, with pre-registered research" is NYT-level narrative
+
+### 4.10 Research Layer
+
+The baseline architecture in 4.1–4.9 is the *plaza*: 1,000 agents tethered to humans, coordinating via Index Network + XMTP, surfacing curated outcomes via Telegram. On top of the plaza sits a **research layer** owned by Ivan Vendrov (part-time research lead). Once the plaza is stable, Vendrov runs pre-registered experiments using the plaza as a live multi-agent testbed.
+
+This is the layer that converts the village from "cool demo" into "publishable AI research." It's also the layer that justifies the sponsor outreach (Section 4.10.2) and the external research collaborators Timour is recruiting alongside Vendrov.
+
+#### 4.10.1 Vendrov's Experiments
+
+Pre-registered hypotheses are listed in Timour's research overview and will be locked before the village opens. Examples drawn from that hypothesis set:
+
+- **Introduction graph expansion** — do humans whose agents are active make more weak-tie connections than humans whose agents are dormant? Vendrov's experiment compares an "active" cohort to a "muted-agent" control cohort within the same population.
+- **Agent-to-agent norm formation** — do repeated coordination patterns produce stable conventions within the first week? How do norms differ across pockets of the population?
+- **Bargaining and defection** — do agents stay aligned with what their humans would actually sanction, or do some defect into strategies their humans would not endorse? This is the multi-agent safety probe.
+- **Operations vs. relationships delegation** — humans are expected to delegate calendar/logistics quickly and relational decisions slowly. Vendrov measures where the boundary lands and how it shifts over 28 days.
+- **Agent-mediated deliberation** — does broadening governance participation through agent summaries produce decisions that better reflect community preferences, or just more decisions?
+
+InstaClaw's role on this layer is **infrastructure-only**: provide stable agents, instrumented logs, and access to anonymized interaction data per the privacy model in 4.9.5. Vendrov runs the science.
+
+#### 4.10.2 Sponsor-Funded Compute Model
+
+Per Timour, the village is targeting external sponsors to cover Anthropic / OpenAI / open-source model inference costs at 500-1000 agent scale. This is the financial mechanism that lets us keep agents **fully ungated** (Cooper's preferred Option 1 in the gating thread) without forcing each attendee onto a paid InstaClaw subscription.
+
+Three plausible structures (final structure TBD with sponsors):
+
+| Model | Description | Implications |
+|-------|-------------|--------------|
+| **A — Shared sponsor key** | Sponsor provides a single API key (Anthropic, OpenAI, etc.). All EE26 agents route inference through it. | Simplest. Requires single point of trust. Sponsor sees aggregate usage but no per-agent attribution. |
+| **B — Per-agent BYOK with sponsor as funder** | Sponsor mints / funds individual API keys; each agent uses its own. | Cleaner attribution. Higher operational overhead. Maps onto existing `bankr_api_key` BYOK pattern. |
+| **C — InstaClaw resells API credits** | Sponsor pays InstaClaw, InstaClaw provisions inference using its own keys, accounting at the platform level. | Cleanest UX for sponsors. InstaClaw becomes the billing intermediary. |
+
+Recommendation: ship Model A for the first round (lowest engineering cost, fastest to confirm sponsors), evaluate B/C post-village based on sponsor preferences and audit needs. Either way, the auth-profiles.json + Bankr key plumbing is already in place — see InstaClaw — OpenClaw Gateway Token Architecture in MEMORY.md.
+
+#### 4.10.3 Researcher-Facing Data Surface
+
+Vendrov needs structured access to interaction data that's *granular enough to test hypotheses* but *anonymized enough to respect the 4.9.5 privacy model.* Final shape locked with Vendrov before the village opens (Section 11 Apr 30 / May 1 milestones). Below is the proposed surface — five tables, refreshed nightly, exposed via read-only Postgres replica or daily Parquet drop to a researcher-controlled bucket.
+
+**Table 1: `research.agent_signals`** — every nightly availability signal the agent submitted to Index Network and the XMTP plaza.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `signal_id` | UUID | Per-night-per-agent unique id |
+| `agent_id` | TEXT | Agent's anonymized id (NOT the Bankr wallet — derived hash) |
+| `night_of` | DATE | The night the signal was generated for |
+| `interests` | TEXT[] | Tags the agent included |
+| `goals` | TEXT[] | Goals the agent included |
+| `looking_for` | TEXT[] | Counterparty profile tags |
+| `available_slot_count` | INT | Number of slots offered (NOT the slot times, those are PII-adjacent) |
+| `week` | INT | 1-4 |
+| `submitted_to_index_network_at` | TIMESTAMPTZ | Send timestamp |
+
+**Table 2: `research.match_outcomes`** — every Index Network match candidate that was returned, plus what the agent did with it.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `outcome_id` | UUID | Per-candidate-per-signal unique id |
+| `signal_id` | UUID | FK → agent_signals.signal_id |
+| `candidate_agent_id` | TEXT | Anonymized counterpart |
+| `match_score` | FLOAT | Index Network's score |
+| `agent_action` | TEXT | `dm_sent` / `skipped` / `cluster_added` |
+| `counterpart_response` | TEXT | `accepted` / `declined` / `counter` / `no_reply` |
+| `human_confirmed` | BOOL | Did the human ultimately confirm via Telegram briefing? |
+| `meeting_actually_happened` | BOOL | Captured via post-meeting check-in (week-end survey, optional) |
+
+**Table 3: `research.briefing_outcomes`** — what each morning briefing contained and how the human responded.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `briefing_id` | UUID | Per-morning-per-agent |
+| `agent_id` | TEXT | Anonymized |
+| `briefing_date` | DATE | |
+| `proposed_intro_count` | INT | How many intros were in the briefing |
+| `proposed_event_count` | INT | How many events surfaced |
+| `proposed_governance_count` | INT | How many governance items |
+| `human_response` | TEXT | `approved_all` / `approved_partial` / `declined_all` / `no_response` / `modified` |
+| `response_latency_minutes` | INT | Time from briefing send → human response |
+
+**Table 4: `research.governance_events`** — per-proposal, per-agent participation.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `proposal_id` | TEXT | Cross-VM id |
+| `agent_id` | TEXT | Anonymized |
+| `agent_surfaced_to_human` | BOOL | Did the agent decide this was relevant? |
+| `human_voted` | BOOL | Did the human cast a vote? |
+| `vote_value` | TEXT | `yes` / `no` / `abstain` (no per-human longitudinal — aggregated only) |
+| `vote_latency_minutes` | INT | Time from proposal broadcast → human vote |
+
+**Table 5: `research.cohort_assignments`** — for treatment/control studies (e.g., "active agent" vs. "muted agent"), capture which experimental cohort each agent is in. Vendrov populates this table.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `agent_id` | TEXT | Anonymized |
+| `experiment_id` | TEXT | Vendrov's pre-registered experiment slug |
+| `cohort` | TEXT | `treatment` / `control` / `cohort_A` / `cohort_B` etc. |
+| `assigned_at` | TIMESTAMPTZ | When the agent entered the cohort |
+
+**Re-identification guarantees (non-negotiable):**
+
+- `agent_id` in research tables is a one-way hash of `(bankr_wallet, edge_city_research_salt)`. The salt is held only by InstaClaw and is rotated post-village. Vendrov cannot reverse it.
+- No `human_name`, `email`, `telegram_handle`, or `bankr_wallet_address` columns exist anywhere in the research schema.
+- Free-text fields (`interests`, `goals`, etc.) are passed through but reviewed by InstaClaw before export for accidental PII inclusion (regex sweep + manual spot-check on 1% sample).
+- Per-human longitudinal study (tracking one specific person across 28 days) is permitted ONLY with explicit consent collected during onboarding (additional opt-in beyond the standard sharing consent in 4.9.5).
+
+**Delivery mechanism:**
+
+Two options — final choice locked with Vendrov:
+
+- **Option D1**: Read-only Postgres replica with row-level security restricting Vendrov's account to the `research` schema. Lower operational overhead. Vendrov queries directly.
+- **Option D2**: Nightly Parquet drop to a researcher-controlled S3 / GCS bucket. Researcher imports into their preferred analysis stack (BigQuery, DuckDB, etc.). Higher latency but cleaner audit trail.
+
+Recommendation: D2 for v1 (cleaner data boundary), evaluate D1 if Vendrov needs lower-latency interactive querying.
+
+Cooper's commitment: ship the data export pipeline in Phase 3 (May 23 milestone), sign DPA / NDA with Vendrov before any data leaves InstaClaw infrastructure, and rotate the research salt + delete export artifacts no later than 90 days after village close (unless Vendrov + Edge City formally extend the retention window for ongoing analysis).
+
+#### 4.10.4 Research Collaborators
+
+Timour is recruiting additional collaborators alongside Vendrov. Slots called out in his blog post:
+
+- **Research co-lead** — experiment design, instrumentation, publication strategy
+- **Engineers** — agent-to-agent layer, governance interfaces (May–June)
+- **Aligned partner orgs** — cooperative AI, collective intelligence, mechanism design
+
+InstaClaw isn't recruiting these — Edge City is — but our infrastructure decisions (data export shape, instrumentation depth, log retention) need to anticipate their use cases. When new collaborators join, they'll inherit the same data surface defined in 4.10.3 unless additional scopes are negotiated.
+
+#### 4.10.5 Publication & Open-Source Commitments
+
+Edge City has committed to a public output schedule (per Timour's research overview):
+
+| Phase | Output | Owner |
+|-------|--------|-------|
+| Pre-village (May 2026) | Pre-registration of hypotheses, data collection protocol, agent plaza architecture released as open-source | Timour + Vendrov |
+| During the village (May 30 – Jun 27) | Daily field notes published openly. Weekly synthesis. | Timour |
+| Post-village (by Sep 2026) | Anonymized dataset of agent interactions and governance outcomes. Formal research report including a multi-agent safety section. All code and analysis scripts open-source. | Vendrov + Timour |
+| Publication (by Oct 2026) | Paper submitted to a relevant venue. Deployment playbook so other teams can reproduce the experiment. | Vendrov + Timour |
+
+**InstaClaw's commitments aligned to this schedule:**
+
+| Date | Commitment | Notes |
+|------|------------|-------|
+| May 1 | DPA / NDA signed with Vendrov | Required before any data export |
+| May 9 | Index Network → XMTP integration canary running on 5-10 test agents | Demonstrates the full plaza loop |
+| May 23 | Anonymized data export pipeline live | Vendrov can query / receive Parquet from village day 1 |
+| May 30 | Plaza architecture open-sourced (the parts InstaClaw owns: skill template, XMTP client harness, content type definitions). NOT Stripe, Bankr, or InstaClaw billing — those are platform IP. | Coordinated release with Edge City's plaza architecture publication |
+| Jun 6 | First weekly research synthesis published with InstaClaw infra contributions credited | Cooper to co-author / review for accuracy |
+| Sep 30 | Anonymized dataset frozen, salt rotated, export artifacts deleted unless retention extended | Per privacy commitment |
+| Oct 31 | Paper published with InstaClaw acknowledged as infrastructure provider. Deployment playbook for InstaClaw-hosted plaza setup co-authored. | Cooper review for technical accuracy |
+
+**What InstaClaw open-sources (and what it doesn't):**
+
+| Component | Open-source? |
+|-----------|--------------|
+| Edge skill template (`installEdgeCitySkill()` reference structure) | Yes |
+| XMTP client harness + systemd service template | Yes |
+| Plaza skill SKILL.md + content type definitions (TypeScript interfaces) | Yes |
+| Overnight planning cron skeleton | Yes |
+| Index Network integration shape (the agent-side query/parse code) | Yes (Index Network's matching engine itself is theirs) |
+| Anonymized data export schema + pipeline (without the actual data) | Yes |
+| `auth-profiles.json` / Bankr / Stripe billing plumbing | **No** — InstaClaw platform IP |
+| OpenClaw runtime fork or VM provisioning code | **No** — InstaClaw platform IP |
+
+The deployment playbook (Oct) describes how to *reproduce* the plaza on top of InstaClaw or on top of a self-hosted OpenClaw fleet. Self-hosted is harder but the playbook makes it possible — that's the contribution to the field.
 
 ---
 
@@ -660,6 +942,14 @@ This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the in
 | API token scope | `EDGEOS_BEARER_TOKEN` is read-only for attendee directory. `SOLA_AUTH_TOKEN` allows event creation but is scoped to group 3688. |
 | Data retention | Standard InstaClaw 30-day wipe after subscription ends. Agent memory is destroyed. |
 | Edge City branding | "Powered by InstaClaw" — Edge City controls the portal, InstaClaw is infrastructure. |
+| **Index Network as sub-processor** | Index Network is contractually treated as a sub-processor under the same DPA scope as InstaClaw's own infrastructure. Receives only what the agent submits as availability signals (Section 4.9.5 row "Index Network signal scope"). DPA includes deletion timeline, sub-processor transparency, and incident notification. |
+| **Index Network log retention** | Match-candidate logs retained by Index Network only for village + 30-day analysis window, then deleted (open question Q19). |
+| **Researcher data export — anonymization** | `agent_id` in research tables is a one-way hash of `(bankr_wallet, edge_city_research_salt)`. Salt is held only by InstaClaw and rotated post-village. Vendrov cannot reverse it. |
+| **Researcher data export — PII review** | Free-text fields (interests, goals) regex-swept + 1% manual spot-check before each export drop. |
+| **Researcher data export — retention** | Export artifacts deleted no later than 90 days post-village close unless retention is formally extended via an amended DPA. |
+| **Sponsor inference visibility** | Under Model A (shared sponsor key, Section 4.10.2), sponsor sees only aggregate token usage, not per-agent or per-message content. Anthropic / OpenAI's standard non-training API terms apply for any sponsor-funded inference. |
+| **Onboarding consent** | Granular sharing consent captured during onboarding interview. Default: name + interests. Upgrade tiers gated by explicit human opt-in (Section 4.9.5). |
+| **Human override (always-on)** | Human can issue overrides at any time: "stop sharing my interests", "don't propose meetings tomorrow", "don't include me in research data export". Agent honors immediately and writes the override to MEMORY.md. |
 
 ---
 
@@ -689,28 +979,46 @@ This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the in
 - [ ] **Share test accounts with Edge City team**: 3-5 accounts for Timour, Tule, Alejandro to test
 - [ ] **Iterate on SOUL.md / onboarding**: Adjust based on team feedback
 
-### Phase 3: XMTP Agent-to-Agent Layer (2-3 weeks)
+### Phase 3: Index Network + XMTP Agent-to-Agent Layer (2-3 weeks)
+- [ ] **First sync with Index Network team**: Read game plan Notion doc, agree on architecture split (Index Network = matching, XMTP = brokering)
+- [ ] **Index Network signal schema**: Lock the request/response shape for `submit_signal()` and `get_matches()` with the Index Network team
+- [ ] **Index Network API integration**: Agent submits availability signal, receives ranked matches
+- [ ] **Match-stream vs. batch decision**: Decide whether matches stream in real-time during the overnight window or are returned in one batch at the cron tick
 - [ ] **XMTP SDK integration**: Install `@xmtp/node-sdk`, write XMTP client service script
 - [ ] **Wallet identity**: Wire Bankr wallet private key into XMTP client for agent authentication
 - [ ] **XMTP systemd service**: `xmtp-client.service` running alongside gateway, auto-restart
 - [ ] **Plaza groups**: Create `ee26-plaza`, `ee26-governance`, `ee26-events` XMTP groups
 - [ ] **Message queue**: File-based inbox/outbox (`~/.openclaw/xmtp/inbox.jsonl`, `outbox.jsonl`) for OpenClaw agent to read/write
-- [ ] **Plaza skill**: Write SKILL.md section for XMTP — send/receive messages, parse content types
-- [ ] **Content types**: Define and implement structured message types (availability signals, intro proposals, governance votes, group formation)
-- [ ] **Overnight planning cron**: 3 cron jobs (11 PM signal, 5 AM compile, 7 AM Telegram briefing)
+- [ ] **Plaza skill**: Write SKILL.md section for XMTP send/receive + Index Network query primitives
+- [ ] **Content types**: Define and implement structured message types (availability signals, intro proposals, governance votes, group formation, match candidates)
+- [ ] **Overnight planning cron**: 4 cron jobs (11 PM signal + Index Network submit, 4 AM pull matches + XMTP DMs, 5 AM compile, 7 AM Telegram briefing)
 - [ ] **Morning briefing template**: Telegram message format for curated daily plan
 - [ ] **Privacy controls**: Onboarding questions for sharing consent, human override commands
-- [ ] **Canary test**: 5-10 test agents running overnight cycle, verify matches and briefings
+- [ ] **Canary test**: 5-10 test agents running full Index Network → XMTP → briefing cycle overnight
 - [ ] **`installXMTPClient()`**: Integrate into `configureOpenClaw()` behind `partner === "edge_city"` gate
 
 ### Phase 4: Governance, Treasury & Scale (ongoing, pre-event)
 - [ ] **Governance voting flow**: Proposals broadcast via XMTP, agents surface to humans via Telegram, votes cast back via XMTP
 - [ ] **Treasury / agent faucet**: USDC distribution mechanism, funding proposals via XMTP governance channel
 - [ ] **Sentiment aggregation**: Coordinator agent collects anonymized nightly sentiment, surfaces to organizer dashboard
-- [ ] **Group formation**: Agent-to-agent dinner/activity coordination, auto-compose invitations
+- [ ] **Group formation**: Agent-to-agent dinner/activity coordination via Index Network cluster query + XMTP invitation
 - [ ] **Provision VMs**: 500-1000 VMs in ready pool (coordinate with Linode — $29/mo dedicated CPU)
-- [ ] **Monitoring dashboard**: Partner-specific metrics — active agents, XMTP message volume, matches made, governance participation
-- [ ] **Load testing**: Simulate 1,000 agents posting availability signals simultaneously, verify XMTP throughput
+- [ ] **Monitoring dashboard**: Partner-specific metrics — active agents, XMTP message volume, Index Network match latency, matches made, governance participation
+- [ ] **Load testing**: Simulate 1,000 agents posting availability signals simultaneously, verify XMTP throughput AND Index Network match latency <5min
+
+### Phase 5: Research Layer (concurrent with Phase 4, pre-event)
+- [ ] **DPA / NDA with Vendrov**: Sign before any data leaves InstaClaw infrastructure (May 1 milestone)
+- [ ] **Research data export schema**: Build the 5 research tables defined in Section 4.10.3 (`research.agent_signals`, `research.match_outcomes`, `research.briefing_outcomes`, `research.governance_events`, `research.cohort_assignments`)
+- [ ] **Anonymization layer**: Implement `(bankr_wallet, edge_city_research_salt)` → `agent_id` one-way hash. Salt held only by InstaClaw, rotated post-village.
+- [ ] **PII-review sweep**: Regex sweep + 1% manual spot-check on free-text fields before each export drop
+- [ ] **Decide D1 vs D2 delivery**: Postgres replica (D1) vs Parquet drop to researcher-controlled bucket (D2). Recommend D2.
+- [ ] **Research consent capture**: Onboarding interview includes opt-in for "include in research data export" (separate from sharing consent)
+- [ ] **Per-human longitudinal opt-in**: Additional explicit opt-in for tracking one specific person across 28 days
+- [ ] **Cohort assignment endpoint**: API for Vendrov to populate `research.cohort_assignments` for treatment/control studies
+- [ ] **Sponsor key plumbing**: Implement Model A (shared sponsor key) — Anthropic + OpenAI key injection at the auth-profiles.json layer for Edge VMs
+- [ ] **Sponsor usage dashboard**: Aggregate token usage view sponsors can see (no per-agent or per-message detail)
+- [ ] **Plaza architecture open-source repo**: Publish `installEdgeCitySkill()` template, XMTP client harness, plaza skill SKILL.md, content type definitions, overnight planning cron skeleton, anonymized data export schema. Coordinated release with Edge City's plaza architecture publication (May 30).
+- [ ] **Researcher onboarding doc**: Walk-through for Vendrov (and future research collaborators) — how to query the export, what fields mean, examples of cohort analysis
 
 ---
 
@@ -734,6 +1042,13 @@ This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the in
 | 14 | **XMTP: Wallet key access** — does the XMTP client need the Bankr wallet's raw private key, or can it use a derived signing key? Security implications. | Cooper / Bankr | Need to check Bankr key export API |
 | 15 | **Treasury: Funding source** — who funds the agent faucet? Edge City org? Sponsors? Attendee pool? How much per agent? | Timour | $20-25 per first vote mentioned in Newsworthy context |
 | 16 | **Privacy: Sharing consent UX** — during onboarding, how granular should sharing controls be? ("Share my interests" vs "Share my name + interests + goals") | Cooper / Timour | Recommend simple 3-tier: name-only / interests / full profile |
+| 17 | **Index Network: API contract** — exact request/response shape for `submit_signal()` and `get_matches()`, plus group-formation cluster query | Index Network team | Read game plan Notion + first sync call |
+| 18 | **Index Network: Match throughput** — can it process 1,000 agents nightly with sub-5-min latency end-to-end (signal in → ranked matches out)? | Index Network team | Confirm during partnership call; load test before May 9 canary |
+| 19 | **Index Network: Hosting model** — matching service runs on Index Network infrastructure, or do we self-host an instance? Affects latency, privacy boundary, sponsor accounting. | Index Network team | Pending — likely managed by Index Network |
+| 20 | **Index Network ↔ XMTP boundary** — does Index Network just rank candidates, or does it also broker the introduction request? Recommend: Index Network ranks; XMTP handles the actual handshake. Lock before signal schema work begins. | Cooper / Index Network | Design call, week of Apr 30 |
+| 21 | **Researcher data access surface** — what does Vendrov get? Anonymized log dump? Read-only postgres replica? Real-time stream? Defines the export pipeline scope. | Vendrov / Timour / Cooper | Lock before Phase 3 starts |
+| 22 | **Sponsor commitment timeline** — when do sponsor funds need to be confirmed for InstaClaw to confidently NOT gate features? Soft deadline = May 15 to leave room for routing changes. | Timour | Tied to blog post launch + outreach cadence |
+| 23 | **API key model for sponsored compute** — Model A (shared key), B (per-agent BYOK with sponsor as funder), or C (InstaClaw resells credits)? Affects auth-profiles.json, Bankr integration, billing audit trail. | Cooper / Timour / sponsors | Recommend Model A for round 1, evaluate B/C post-village |
 
 ---
 
@@ -751,11 +1066,14 @@ This architecture is designed to generalize:
 | SOUL.md partner section | Template | Append partner-specific context |
 | Skill gating in configureOpenClaw | Yes | Add `else if (partner === "eclipse")` etc. |
 | **XMTP client service** | Yes | Same service, different group IDs per event/partner |
-| **Plaza skill** | Yes | Same XMTP instructions, different community context |
+| **Index Network matching layer** | Yes | Same matching API, different community contexts. Already designed as a multi-tenant social discovery protocol — each partner gets its own population scope. |
+| **Plaza skill** | Yes | Same XMTP + Index Network instructions, different community context |
 | **Overnight planning cycle** | Yes | Same cron + logic, different matching criteria per community |
 | **Morning briefing template** | Template | Same structure, partner-branded messaging |
 | **Governance voting flow** | Yes | Same XMTP vote mechanism, different proposal sources |
 | **Content types** | Yes | Same structured message types work for any community event |
+| **Sponsor-funded compute model** | Yes | Same Model A/B/C structures generalize to any sponsored event. Sponsor changes per partner, plumbing stays. |
+| **Researcher data export surface** | Yes | Same anonymized log shape. Per-partner DPA / scope agreements. |
 
 Future: if we accumulate 5+ partners, refactor into a generic `installPartnerSkill(partner, repoUrl)` function and a `partners` config table. The XMTP layer generalizes naturally — each partner community gets its own set of XMTP groups, same agent-to-agent protocol. For now, explicit per-partner functions are simpler and more controllable.
 
@@ -779,6 +1097,13 @@ Future: if we accumulate 5+ partners, refactor into a generic `installPartnerSki
 | **XMTP: Governance participation** | >30% of agents cast at least one governance vote on behalf of their human |
 | **XMTP: Group formation** | >20 agent-organized group activities per week (dinners, hikes, study groups) |
 | **XMTP: "Best connection" attribution** | Track how many attendees cite an agent-arranged intro as their best connection of the event |
+| **Index Network: Match latency** | <5 min end-to-end (signal submitted → ranked candidates returned) at 1,000-agent scale |
+| **Index Network: Match acceptance** | >50% of top-3 ranked candidates accept the intro proposal (signal that the matching engine is well-tuned for this population) |
+| **Research: Pre-registered experiments completed by Vendrov** | ≥3 experiments concluded with publishable results within the village window |
+| **Research: Hypothesis registration** | All hypotheses registered publicly before village opens (May 30) |
+| **Research: External citations / mentions** | ≥10 citations or external write-ups within 6 months of paper release |
+| **Research: Sponsor commitments confirmed** | Sponsor funding for compute confirmed by May 15 |
+| **Research: Data export pipeline live** | Anonymized log export available to Vendrov from village day 1 |
 
 ---
 
@@ -791,15 +1116,19 @@ Future: if we accumulate 5+ partners, refactor into a generic `installPartnerSki
 | **Apr 14** | Phase 1 complete — skill install, portal page, canary test |
 | **Apr 16** | Phase 2 complete — benchmarks passing, test accounts sent to Edge team |
 | **Apr 18** | Weekly check-in with Timour — iterate on feedback. Show XMTP spec to XMTP team. |
-| **Apr 21-May 2** | Phase 3 — XMTP client service, plaza skill, overnight planning cycle |
-| **May 2** | XMTP canary: 5-10 test agents running overnight matchmaking cycle |
-| **May 5-9** | Iterate on morning briefing format, match quality, privacy controls |
-| **May 9** | Portal live for early signups (ticket holders) |
-| **May 12-23** | Phase 4 — governance voting, treasury, sentiment aggregation, group formation |
-| **May 19-23** | Load test: simulate 1,000 agents on XMTP, verify throughput |
-| **May 23** | VM pool scaled to 1,000 (coordinate with Linode — ~$29K/mo) |
-| **May 26-29** | Final integration testing, organizer dashboard, dry run with Edge team |
-| **May 30** | **EE26 starts** — agents live, overnight planning active from night 1 |
-| **Jun 6** | Week 1 retrospective — tune matchmaking quality, fix edge cases |
-| **Jun 27** | EE26 ends — collect metrics, retrospective, conversion campaign |
-| **Jul** | Trial conversions, case study, apply learnings to Eclipse / next partner |
+| **Apr 30** | **First sync with Index Network team.** Read game plan Notion. Lock signal schema + API contract + ↔ XMTP boundary (resolves Q17, Q20). |
+| **May 1** | Vendrov data-access surface scoped (resolves Q21). DPA / NDA drafts started. |
+| **Apr 21-May 5** | Phase 3a — XMTP client service, plaza skill, overnight planning cron skeleton |
+| **May 5** | Index Network signal submit / match retrieval integrated end-to-end on canary |
+| **May 5-9** | Phase 3b — full Index Network → XMTP → briefing canary on 5-10 test agents |
+| **May 9** | Portal live for early signups (ticket holders). Iterate on morning briefing format, match quality, privacy controls. |
+| **May 12-23** | Phase 4 — governance voting, treasury, sentiment aggregation, group formation through Index Network + XMTP |
+| **May 15** | **Sponsor commitments confirmed** (resolves Q22). Lock API key model — Model A/B/C decision (resolves Q23). |
+| **May 19-23** | Load test: simulate 1,000 agents on Index Network + XMTP, verify match latency <5min and throughput |
+| **May 23** | VM pool scaled to 1,000 (coordinate with Linode — ~$29K/mo). Anonymized data export pipeline live for Vendrov (resolves Q21 implementation). |
+| **May 26-29** | Final integration testing, organizer dashboard, dry run with Edge team. Vendrov pre-registers experiments publicly. |
+| **May 30** | **EE26 starts** — agents live, overnight planning active from night 1. Vendrov experiments running. |
+| **Jun 6** | Week 1 retrospective — tune matchmaking quality, Index Network match acceptance rates, fix edge cases. First weekly research synthesis published. |
+| **Jun 27** | EE26 ends — collect metrics, retrospective, conversion campaign. |
+| **Jul-Sep** | Trial conversions, case study. Vendrov writes formal research report. Anonymized dataset published. |
+| **Oct** | Paper submitted. Deployment playbook open-sourced. Apply learnings to Eclipse / next partner. |
