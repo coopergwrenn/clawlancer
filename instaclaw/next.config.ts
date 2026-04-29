@@ -4,7 +4,15 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["node-ssh", "ssh2"],
   outputFileTracingIncludes: {
-    "/api/**": ["./skills/**/*"],
+    "/api/**": [
+      "./skills/**/*",
+      // browser-relay-server.js + systemd unit file are read at runtime by
+      // configureOpenClaw (lib/ssh.ts) so the reconciler can deploy them
+      // to each VM. Without this include, Next's tracing skips the subtree
+      // and fs.existsSync returns false in production → silent skip → relay
+      // never deploys fleet-wide.
+      "./scripts/browser-relay-server/**/*",
+    ],
   },
   async rewrites() {
     return [
