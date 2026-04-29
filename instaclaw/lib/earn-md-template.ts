@@ -305,6 +305,42 @@ Earn by referring new users to InstaClaw.
 
 ---
 
+## 15. Web Automation & Research (browser-use, Tier 3.25)
+
+Sophisticated browser automation on your own VM via \`~/scripts/browser-use-task.py\`. Built on the [browser-use](https://browser-use.com) framework. Stable accessibility-tree element targeting beats coordinate-driven control for any multi-step task — clicks, form fills, multi-page extraction, monitoring, comparison shopping. Routes LLM calls through the OpenClaw gateway so credits meter normally.
+
+\`\`\`bash
+# Multi-page research with synthesis
+python3 ~/scripts/browser-use-task.py \\
+  --task "Compare pricing tiers for Linear, Notion, Asana for 50-user teams; return JSON with cite URLs" \\
+  --max-steps 25 --budget-usd 1.00
+
+# Hourly price monitoring (low budget, narrow scope)
+python3 ~/scripts/browser-use-task.py \\
+  --task "Get current price on this listing as USD; return JSON {price_usd, in_stock, title}" \\
+  --start-url "https://amazon.com/dp/<asin>" --max-steps 8 --budget-usd 0.15
+\`\`\`
+
+**When to use:** Multi-step tasks on public sites where the user's logged-in session is NOT required. SPAs, dynamic forms, multi-page extracts — the built-in \`browser\` tool struggles past ~3 steps; browser-use handles them.
+
+**When NOT to use:** Tasks needing the user's logged-in account — those go through the Chrome relay (see web-search-browser SKILL.md, Tier 4).
+
+**Revenue paths:**
+- Price monitoring services ($10-50/mo per watched product)
+- Comparison shopping reports ($50-200 per report — handles SPAs and JS-heavy sites)
+- Public-data research reports ($50-300 each — multi-page synthesis with citations)
+- Lead-gen form filling (per-form fee; explicit user authorization required)
+- Booking research (best-deal search across N sites)
+
+**Caps and rules:**
+- Single-session lock per VM (one task at a time — concurrent Chromium would OOM)
+- Defaults: \`--max-steps 25\`, \`--budget-usd 1.00\`, \`--timeout-sec 300\`. Lower for simple tasks.
+- Domain blocklist enforced (banking, payment processors, abuse-prone targets)
+- Refuse: mass account creation, bulk spam form submission, paywall bypass, CAPTCHA solving
+- Full docs: \`~/.openclaw/skills/browser-use/SKILL.md\` and \`references/examples/\`
+
+---
+
 ## General Earning Rules
 
 1. **Never risk more than the user has authorized.** Always confirm before spending real money.

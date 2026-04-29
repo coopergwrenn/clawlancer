@@ -635,6 +635,20 @@ export const VM_MANIFEST = {
       mode: "overwrite",
       executable: true,
     },
+    // browser-use Tier 3.25 wrapper — invoked as `python3 ~/scripts/browser-use-task.py ...`
+    // Template constant defined in ssh.ts:BROWSER_USE_TASK_SCRIPT (kept in sync with
+    // instaclaw/skills/browser-use/assets/browser-use-task.py — verified byte-for-byte at edit time).
+    // Runtime depends on the `browser-use` pip package, installed by the parallel pip block in
+    // configureOpenClaw(). NOT in pythonPackages because the pip name (browser-use) and import
+    // name (browser_use) differ — see Crawlee precedent.
+    {
+      remotePath: "~/scripts/browser-use-task.py",
+      source: "template",
+      templateKey: "BROWSER_USE_TASK_SCRIPT",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+    },
   ] as ManifestFileEntry[],
 
   // ── Skill files ──
@@ -656,6 +670,13 @@ export const VM_MANIFEST = {
     // DegenClaw trading competition — reference docs
     { skillName: "dgclaw", localPath: "references/api.md", remotePath: "references/api.md" },
     { skillName: "dgclaw", localPath: "references/strategy-playbook.md", remotePath: "references/strategy-playbook.md" },
+    // browser-use Tier 3.25 — references for the sophisticated browser agent
+    { skillName: "browser-use", localPath: "references/decision-tree.md", remotePath: "references/decision-tree.md" },
+    { skillName: "browser-use", localPath: "references/budget-and-credits.md", remotePath: "references/budget-and-credits.md" },
+    { skillName: "browser-use", localPath: "references/examples/price-monitoring.md", remotePath: "references/examples/price-monitoring.md" },
+    { skillName: "browser-use", localPath: "references/examples/form-filling.md", remotePath: "references/examples/form-filling.md" },
+    { skillName: "browser-use", localPath: "references/examples/data-extraction.md", remotePath: "references/examples/data-extraction.md" },
+    { skillName: "browser-use", localPath: "references/examples/multi-step-research.md", remotePath: "references/examples/multi-step-research.md" },
   ] as ManifestExtraSkillFile[],
 
   // ── Cron jobs ──

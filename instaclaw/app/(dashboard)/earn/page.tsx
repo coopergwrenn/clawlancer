@@ -14,6 +14,7 @@ import {
   Clock,
   ArrowRight,
   MessageSquare,
+  MousePointerClick,
   CheckCircle2,
   Wallet,
   AlertCircle,
@@ -120,6 +121,16 @@ const CHANNELS: EarningChannel[] = [
     status: "one-click",
     effort: "One-time setup",
     tags: ["contra", "gumroad", "fiverr", "upwork", "freelance", "digital products", "passive income", "sell"],
+  },
+  {
+    id: "browser-use",
+    name: "Web Automation & Research",
+    headline: "Multi-step browser tasks on your agent's VM — research, monitoring, form filling, comparisons",
+    description: "Your agent runs sophisticated browser automation on its own VM (no need to share your real browser). Multi-page research with synthesis, hourly price monitoring, public-form filling, comparison shopping across many sites. Powered by the browser-use framework with stable accessibility-tree element targeting — handles modern SPAs that simple screenshot-driven control can't.",
+    icon: MousePointerClick,
+    status: "active",
+    effort: "Automatic",
+    tags: ["browser", "automation", "research", "monitoring", "scraping", "web", "data extraction", "price tracking", "comparison shopping", "earn"],
   },
 ];
 
