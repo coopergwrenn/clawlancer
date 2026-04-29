@@ -91,14 +91,16 @@ if [ "$HEALTH_OK" = true ] && [ "$PROC_OK" = true ] && [ -f "$SESSION_FILE" ]; t
       fi
     fi
     SEND_AGE=$(( $(date +%s) - LAST_SEND ))
-    # v67 (2026-04-29): bumped from 180s → 300s. The 3-min threshold was too
-    # aggressive for OpenClaw 2026.4.26's slower cold-start path — legitimate
-    # Haiku 4.5 inferences on 29K-token prompts take 20-45s, and the watchdog
-    # was killing the gateway mid-response, creating a 2-min crash loop where
-    # every chat completion was a fresh cold start. Confirmed in Lee (vm-773)
-    # and Textmaxmax (vm-729) watchdog.log showing repeated
-    # "RESTART: FROZEN(session_age=89s,last_send=1666s_ago)".
-    if [ "$SEND_AGE" -gt 300 ]; then
+    # v67 (2026-04-29): bumped from 180s → 600s (3min → 10min). The 3-min
+    # threshold was too aggressive for OpenClaw 2026.4.26's slower cold-start
+    # path — legitimate Haiku 4.5 inferences on 29K-token prompts take 20-45s,
+    # and the watchdog was killing the gateway mid-response, creating a 2-min
+    # crash loop where every chat completion was a fresh cold start. Confirmed
+    # in Lee (vm-773) and Textmaxmax (vm-729) watchdog.log showing repeated
+    # "RESTART: FROZEN(session_age=89s,last_send=1666s_ago)". 10 min gives
+    # comfortable headroom even on slow cold-start while still catching truly
+    # hung gateways (real hangs sit forever; we just don't need to react in 3min).
+    if [ "$SEND_AGE" -gt 600 ]; then
       do_restart "FROZEN(session_age=${SESSION_AGE}s,last_send=${SEND_AGE}s_ago)" "false"
       exit 0
     fi
