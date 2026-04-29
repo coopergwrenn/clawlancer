@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Globe, Copy, CheckCircle2, ExternalLink, Info, ShieldCheck } from "lucide-react";
+import { Globe, Copy, CheckCircle2, ExternalLink, Info, ShieldCheck, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 interface Props {
   gatewayUrl: string;
 }
 
+type ExtensionStatus = "checking" | "connected" | "disconnected" | "unavailable" | "no_vm";
+
 export function BrowserExtensionSection({ gatewayUrl }: Props) {
-  const [connected, setConnected] = useState(false);
-  const [checking, setChecking] = useState(true);
+  const [status, setStatus] = useState<ExtensionStatus>("checking");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,11 +20,18 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
       try {
         const res = await fetch("/api/vm/extension-status");
         const data = await res.json();
-        if (!cancelled) setConnected(!!data.connected);
+        if (cancelled) return;
+        if (data?.status === "unavailable" || data?.available === false && data?.status !== "no_vm") {
+          setStatus("unavailable");
+        } else if (data?.status === "no_vm") {
+          setStatus("no_vm");
+        } else if (data?.connected) {
+          setStatus("connected");
+        } else {
+          setStatus("disconnected");
+        }
       } catch {
-        if (!cancelled) setConnected(false);
-      } finally {
-        if (!cancelled) setChecking(false);
+        if (!cancelled) setStatus("unavailable");
       }
     }
     check();
@@ -36,6 +44,10 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   }
+
+  const isUnavailable = status === "unavailable";
+  const isConnected = status === "connected";
+  const isChecking = status === "checking";
 
   return (
     <div>
@@ -94,15 +106,27 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
             <div
               className="w-2.5 h-2.5 rounded-full"
               style={{
-                background: checking ? "#f59e0b" : connected ? "#22c55e" : "#6b7280",
-                boxShadow: connected ? "0 0 8px rgba(34,197,94,0.4)" : "none",
+                background: isChecking
+                  ? "#f59e0b"
+                  : isConnected
+                  ? "#22c55e"
+                  : isUnavailable
+                  ? "#f59e0b"
+                  : "#6b7280",
+                boxShadow: isConnected ? "0 0 8px rgba(34,197,94,0.4)" : "none",
               }}
             />
             <span className="text-sm font-medium">
-              {checking ? "Checking..." : connected ? "Extension Connected" : "Not Connected"}
+              {isChecking
+                ? "Checking..."
+                : isConnected
+                ? "Extension Connected"
+                : isUnavailable
+                ? "Service Temporarily Unavailable"
+                : "Not Connected"}
             </span>
           </div>
-          {connected && (
+          {isConnected && (
             <span
               className="text-xs px-2 py-0.5 rounded-full"
               style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}
@@ -112,14 +136,53 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
           )}
         </div>
 
-        {/* Description */}
-        <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
-          Connect your Chrome browser so your agent can browse sites you&apos;re logged into —
-          Instagram, Facebook, banking, and more. Install the extension, enter your Gateway URL below,
-          and your agent will use your real browser sessions.
-        </p>
+        {/* Maintenance banner — shown only when the relay backend isn't reachable */}
+        {isUnavailable && (
+          <div
+            className="flex gap-3 p-3.5 rounded-lg"
+            style={{
+              background: "rgba(245,158,11,0.06)",
+              border: "1px solid rgba(245,158,11,0.25)",
+            }}
+          >
+            <AlertTriangle
+              className="w-4 h-4 shrink-0 mt-0.5"
+              style={{ color: "#b8770b" }}
+              aria-hidden="true"
+            />
+            <div className="text-xs leading-relaxed">
+              <p className="font-medium mb-1" style={{ color: "var(--foreground)" }}>
+                We&apos;re upgrading the relay backend.
+              </p>
+              <p style={{ color: "var(--muted)" }}>
+                If you&apos;ve already installed the extension and it shows
+                &ldquo;Cannot reach relay&rdquo; — that&apos;s on us, not your URL or
+                token. We&apos;ll surface here when it&apos;s back. Hold off
+                installing for now.{" "}
+                <a
+                  href="mailto:help@instaclaw.io?subject=Browser%20Relay%20status"
+                  className="underline underline-offset-2"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  Email us
+                </a>{" "}
+                if you have questions or want a heads-up when it&apos;s live.
+              </p>
+            </div>
+          </div>
+        )}
 
-        {/* Install Options */}
+        {/* Description — only shown when service is available */}
+        {!isUnavailable && (
+          <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+            Connect your Chrome browser so your agent can browse sites you&apos;re logged into —
+            Instagram, Facebook, banking, and more. Install the extension, enter your Gateway URL below,
+            and your agent will use your real browser sessions.
+          </p>
+        )}
+
+        {/* Install Options — hidden during maintenance to avoid wasted installs */}
+        {!isUnavailable && (
         <div className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--muted)" }}>
             Install Extension
@@ -169,9 +232,10 @@ export function BrowserExtensionSection({ gatewayUrl }: Props) {
             </a>
           </div>
         </div>
+        )}
 
         {/* Gateway URL for extension config */}
-        {gatewayUrl && (
+        {!isUnavailable && gatewayUrl && (
           <div className="space-y-3 pt-2">
             <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--muted)" }}>
               Extension Settings

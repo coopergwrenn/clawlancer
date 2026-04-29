@@ -45,3 +45,55 @@ Pattern is `systemd[675]: Stopping ...` followed by `Starting ...` — **externa
 - `instaclaw/scripts/_audit_remote.sh` — remote probe script
 - `instaclaw/scripts/_heal-fleet-gaps.ts` — recently added; check its `suspended_at` gating
 - `lib/ssh.ts` — central place restarts may originate from
+
+---
+
+## 2026-04-28 — Browser Relay extension is fundamentally broken: OpenClaw upstream removed the relay subsystem
+
+**P0 customer-facing.** Multiple users (Worldcoin community thread, support tickets) report "Cannot reach relay — check Gateway URL" when configuring the just-published `InstaClaw Browser Relay` Chrome extension (id `ondclglahfaiajfomkhmpdnocadfkdpo`). Reproduces 100% on Chrome and Brave, on multiple healthy VMs. Misleading — neither URL nor token is wrong; the **server-side relay endpoint does not exist**.
+
+**Root cause.** The extension's `background.js` is a fork of the OpenClaw chrome-extension at version **2026.2.24**. The protocol it implements (`openclaw-extension-relay-v1`, port 18792, `connect.challenge`/`connect`/`forwardCDPCommand`/`forwardCDPEvent`) was **removed** from upstream OpenClaw in a breaking change. From the openclaw npm package's `CHANGELOG.md`:
+
+> **Browser/Chrome MCP: remove the legacy Chrome extension relay path, bundled extension assets, `driver: "extension"`, and `browser.relayBindHost`.** Run `openclaw doctor --fix` to migrate host-local browser config to `existing-session` / `user`. (#47893)
+
+The fleet runs OpenClaw **2026.4.5** (per `manifest v63`), which doesn't ship the relay code. Confirmed via `grep -r 'openclaw-extension-relay-v1' .../node_modules/openclaw` → zero hits. Gateway logs show no relay subsystem starting (heartbeat / health-monitor / browser-control / MCP loopback / acpx — that's the full plugin list).
+
+**Symptom chain:**
+1. Caddyfile has `handle /relay/* { reverse_proxy localhost:18792 }` baked into the snapshot (assumed the relay would run there).
+2. Nothing listens on 18792 — Caddy returns **502 Bad Gateway** for every `/relay/*` request.
+3. Caddy access log: `dial tcp [::1]:18792: connect: connection refused` repeatedly.
+4. Extension's options.js fetch to `${gatewayUrl}/relay/extension/status` gets non-2xx → `throw` → catches → renders `"Cannot reach relay — check Gateway URL"`. Misleading copy: it's not the user's URL, the backend is gone.
+5. Dashboard's `/api/vm/extension-status` route silently returned `{connected: false}` on 5xx, so the dashboard's "Not Connected" indicator has been meaningless for an unknown duration.
+
+**Triage shipped tonight (this commit):**
+- Dashboard `BrowserExtensionSection` now distinguishes `unavailable` (backend 5xx) from `disconnected` (backend OK, no extension yet) and renders a clear "Service Temporarily Unavailable" state with an explanatory amber banner. Install CTAs hidden in unavailable state to avoid wasted installs.
+- `/api/vm/extension-status` route now returns `{ available, status, upstreamStatus? }` so the client can render correctly.
+- `/browser-relay` docs page has a red maintenance banner near the top.
+- Extension itself is **not modified** — any client-side change requires a Chrome Web Store re-submission and review wait.
+
+**What still needs Cooper's call (NOT shipped):**
+
+Three real-fix paths, in order of effort:
+
+1. **Pin OpenClaw to a version that still has the relay** (e.g., last 2026.3.x). Update `vm-manifest.ts`, bake new snapshot, roll fleet. **Cost:** ~1.5 months of upstream fixes lost. Re-bake + roll is multi-hour. Likely needs a dependency-version sweep to make sure other things still work.
+2. **Build an InstaClaw-owned `browser-relay-server.js`** following the same pattern as `dispatch-server.js` (which is our owned process for the user-side computer-control feature). Listen on 18792, implement the protocol verbatim from `instaclaw-chrome-extension/background.js`, bridge to Chrome via the gateway's existing CDP control endpoint on `127.0.0.1:18791`. **Cost:** real engineering. Multiple hours minimum to write + test the protocol bridge. But: the protocol is fully visible in our extension code, no reverse-engineering needed, and it gives us upstream-independent control.
+3. **Pull the extension from the Chrome Web Store** (Cooper's dev console action) to stop new installs, switch the dashboard CTAs and docs to "coming back soon," and pick (1) or (2) at leisure. Most honest with users; least engineering tonight.
+
+**Pulling the Chrome Web Store listing should probably happen regardless.** Every minute it's live, more users install something that can't work and walk away frustrated.
+
+**Files of interest:**
+- `instaclaw-chrome-extension/background.js` — the client side of the protocol; full reference for option (2)
+- `instaclaw-chrome-extension/options.js` — where the misleading error string is
+- `instaclaw/scripts/dispatch-server.js` (referenced from `lib/ssh.ts`) — pattern to follow for option (2); already deployed fleet-wide on port 8765 for the *other* relay (user computer control)
+- `instaclaw/lib/ssh.ts` — `CHROME_CLEANUP` is the relay-port reservation note ("18792-18799 reserved for future one-off services")
+- `app/api/vm/extension-status/route.ts` — now exposes upstream availability
+- `vm-manifest.ts` — where to pin if we go (1)
+- The Caddyfile baked into the snapshot — currently misconfigured (proxies to dead 18792); needs alignment with whichever fix wins
+
+**Verification command** (any healthy VM):
+```bash
+curl -sI https://<vm-id>.vm.instaclaw.io/relay/extension/status
+# Expect: HTTP/2 502 (broken). Once fixed, expect HTTP/2 200 with JSON body.
+```
+
+**Severity:** P0 customer-facing. Triage state shipped buys time — real fix needed within days.
