@@ -141,10 +141,14 @@ export async function writeParquetOrFallback(
   filePath: string,
   schemaOverride: ParquetSchema = {}
 ): Promise<{ format: "parquet" | "csv"; rowCount: number; bytes: number }> {
-  let parquetjs: typeof import("@dsnp/parquetjs") | null = null;
+  // Optional peer dep — `@dsnp/parquetjs` may not be installed.
+  // Typed as `any` because we don't want to force the type import in a
+  // platform repo that hasn't installed the package.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let parquetjs: any = null;
   try {
-    // @ts-expect-error — optional peer dep, may not be installed
-    parquetjs = await import("@dsnp/parquetjs");
+    // Dynamic import via Function() to avoid TS resolving the module at compile time
+    parquetjs = await new Function("m", "return import(m)")("@dsnp/parquetjs");
   } catch {
     parquetjs = null;
   }
