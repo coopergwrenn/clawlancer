@@ -103,6 +103,9 @@ export function BankrWalletCard({
   const [imageError, setImageError] = useState<string | null>(null);
   const [imageVariation, setImageVariation] = useState(0);
   const [personalityHash, setPersonalityHash] = useState<string | null>(null);
+  // Elapsed seconds during a button-flow launch — drives the phased status
+  // text on the Launch Token button so the 60s wait does not feel hung.
+  const [launchElapsed, setLaunchElapsed] = useState(0);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Once the chat-launch celebration has been triggered for a given
@@ -135,6 +138,20 @@ export function BankrWalletCard({
     setTimeout(() => setShowShareCard(true), 800);
     autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
   }, [freshLaunch]);
+
+  // Phased launch status — increments elapsed counter every 500ms while
+  // the tokenize POST is in flight. The button label maps elapsed → phase
+  // text so users see progress through the typical ~10-30s deploy window.
+  // Hook order matters: must run before any early return.
+  useEffect(() => {
+    if (!tokenizing) return;
+    setLaunchElapsed(0);
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setLaunchElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [tokenizing]);
 
   // Fetch live token price from DexScreener (client-side, no auth needed)
   // Must be before any early returns — React hooks must be called unconditionally
@@ -273,13 +290,20 @@ export function BankrWalletCard({
         }),
       });
       const data = await res.json();
-      if (!res.ok) {
+      // Success-with-warning path: if the response includes a tokenAddress,
+      // the launch IS on-chain even when status is non-2xx. The 500 case
+      // we care about is "Bankr launched but our DB finalize failed" — the
+      // token is live, an admin alert went out for manual reconcile, and
+      // the user deserves their celebration + share flow either way. Only
+      // treat as a hard failure when there's no tokenAddress to celebrate.
+      const responseTokenAddress = typeof data.tokenAddress === "string" ? data.tokenAddress : null;
+      if (!res.ok && !responseTokenAddress) {
         setError(data.error ?? "Tokenization failed");
         return;
       }
       // Celebration: confetti + share card
       const symbol = tokenSym.trim().toUpperCase();
-      const addr = data.tokenAddress ?? "";
+      const addr = responseTokenAddress ?? "";
       // Mark Path B handled here too — if the on-demand sync in /api/vm/status
       // races us and fires freshLaunch on the next poll, the useEffect must
       // not re-trigger confetti / replace the auto-reload timer.
@@ -786,7 +810,15 @@ export function BankrWalletCard({
                     textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
                   }}
                 >
-                  {tokenizing ? "Launching..." : "Launch Token"}
+                  {tokenizing
+                    ? launchElapsed < 4
+                      ? "Deploying on Base..."
+                      : launchElapsed < 12
+                      ? "Creating Uniswap V4 pool..."
+                      : launchElapsed < 25
+                      ? "Wiring fees & metadata..."
+                      : "Almost there..."
+                    : "Launch Token"}
                 </button>
               </div>
             </div>

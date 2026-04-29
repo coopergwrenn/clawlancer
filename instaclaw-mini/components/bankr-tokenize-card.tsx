@@ -84,8 +84,22 @@ export default function BankrTokenizeCard({
   const [imageError, setImageError] = useState<string | null>(null);
   const [imageVariation, setImageVariation] = useState(0);
   const [personalityHash, setPersonalityHash] = useState<string | null>(null);
+  // Elapsed seconds during a launch — drives phased status text on the
+  // Launch Token button so the 60s wait does not feel hung.
+  const [launchElapsed, setLaunchElapsed] = useState(0);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Phased launch status — increments every 500ms while tokenizing is true.
+  useEffect(() => {
+    if (!tokenizing) return;
+    setLaunchElapsed(0);
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setLaunchElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [tokenizing]);
 
   // Fetch live token price from DexScreener
   // Must be before any early returns — React hooks must be called unconditionally
@@ -205,12 +219,17 @@ export default function BankrTokenizeCard({
         }),
       });
       const data = await res.json();
-      if (!res.ok) {
+      // Success-with-warning: if the response carries a tokenAddress, the
+      // launch IS on-chain even when status is non-2xx (covers the
+      // "Bankr deployed but DB finalize failed" path). User still gets
+      // celebration + share flow; admin alert handles reconciliation.
+      const responseTokenAddress = typeof data.tokenAddress === "string" ? data.tokenAddress : null;
+      if (!res.ok && !responseTokenAddress) {
         setError(data.error ?? "Tokenization failed");
         return;
       }
       const symbol = tokenSym.trim().toUpperCase();
-      const addr = data.tokenAddress ?? "";
+      const addr = responseTokenAddress ?? "";
       setLaunchSuccess({ symbol, address: addr });
       fireConfetti();
       setTimeout(() => setShowShareCard(true), 800);
@@ -225,8 +244,10 @@ export default function BankrTokenizeCard({
   // ── Celebration + Share Card ──
   if (launchSuccess) {
     const hasAddress = !!launchSuccess.address;
+    // Include https:// — without it, X may not auto-render the link card
+    // preview (PFP + Bankr chart), which is the visual hook for shares.
     const tweetText = hasAddress
-      ? `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`
+      ? `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.\n\nhttps://bankr.bot/launches/${launchSuccess.address}`
       : `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.`;
     const basescanUrl = hasAddress ? `https://basescan.org/token/${launchSuccess.address}` : "";
 
@@ -572,7 +593,15 @@ export default function BankrTokenizeCard({
                 textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
               }}
             >
-              {tokenizing ? "Launching..." : "Launch Token"}
+              {tokenizing
+                ? launchElapsed < 4
+                  ? "Deploying on Base..."
+                  : launchElapsed < 12
+                  ? "Creating Uniswap V4 pool..."
+                  : launchElapsed < 25
+                  ? "Wiring fees & metadata..."
+                  : "Almost there..."
+                : "Launch Token"}
             </button>
           </div>
         </div>
