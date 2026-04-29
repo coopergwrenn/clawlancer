@@ -386,8 +386,18 @@ export const VM_MANIFEST = {
    *  via emulated CDP on 127.0.0.1:18792. Caddy already proxies /relay/*
    *  here; before this version, port 18792 was unbound and every install
    *  of the published extension hit "Cannot reach relay". v64-then-v65 will
-   *  reconcile in one pass for VMs still on v63. */
-  version: 65,
+   *  reconcile in one pass for VMs still on v63.
+   * v66 (2026-04-29): Bankr skill prelaunch overlay. After cloning the
+   *  upstream BankrBot/skills repo, configureOpenClaw now (a) deletes
+   *  bankr/clanker (full TS deploy path that requires PRIVATE_KEY env var
+   *  the VM doesn't have — agents picking it hung or surfaced confusing
+   *  errors) and bankr/base (empty placeholder), and (b) prepends a strong
+   *  InstaClaw directive to bankr/bankr/SKILL.md scoping launches to Base
+   *  via `bankr launch` only, requiring --fee-type with --fee, and pointing
+   *  the agent at our dashboard celebration flow instead of self-promoting.
+   *  Idempotent via INSTACLAW_BANKR_PATCH_V1 marker. Triggers reconciler
+   *  across the fleet so existing VMs get the overlay. */
+  version: 66,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

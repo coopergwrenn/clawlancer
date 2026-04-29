@@ -130,6 +130,76 @@ export const NODE_PINNED_VERSION = "22.22.2";
 // Mirror of the OPENCLAW_PINNED_VERSION discipline above.
 export const BANKR_CLI_PINNED_VERSION = "0.3.1";
 
+// ── Bankr skill InstaClaw overlay (V1) ──
+// The upstream Bankr skill repo (BankrBot/skills) contains:
+//   - bankr/bankr/SKILL.md — describes both Clanker (EVM) and Raydium LaunchLab
+//     (Solana) as token-deploy paths. On THIS VM, the agent must use only
+//     `bankr launch` (which goes through Bankr's API → Doppler V4 on Base).
+//   - bankr/clanker/SKILL.md — full TS deploy via Clanker SDK requiring
+//     PRIVATE_KEY env var that does not exist on the VM. An agent picking
+//     this path will hang or surface confusing errors.
+//   - bankr/base/SKILL.md — empty placeholder, wastes prompt tokens.
+//
+// configureOpenClaw applies this overlay AFTER cloning the upstream repo:
+//   1. delete bankr/clanker and bankr/base subdirs
+//   2. prepend the directive below to bankr/bankr/SKILL.md (idempotent)
+//
+// Bump BANKR_SKILL_PATCH_MARKER → V2 to roll a new directive across the
+// fleet (manifest bump triggers reconciler re-run; new directive replaces
+// any V1 prepend via the awk filter in the install snippet).
+export const BANKR_SKILL_PATCH_MARKER = "INSTACLAW_BANKR_PATCH_V1";
+export const BANKR_SKILL_PATCH_DIRECTIVE = `<!-- ${BANKR_SKILL_PATCH_MARKER} -->
+
+# IMPORTANT: InstaClaw deployment notes (READ THIS FIRST)
+
+This skill runs on an InstaClaw-managed VM. Some of the guidance below
+describes Bankr's general capabilities; only the parts that match these
+notes apply on this VM.
+
+## Token launches
+
+For token launches, ALWAYS use the \`bankr launch\` CLI command. NEVER:
+
+- write a custom TypeScript deploy script
+- use the Clanker SDK
+- attempt to deploy on Solana (the CLI does not support it on this VM)
+- use any path requiring a \`PRIVATE_KEY\` env var (we do not configure one)
+
+All token launches deploy on **Base mainnet only** via Bankr's API. If a
+user asks to "launch on Solana" or "deploy with Clanker", explain that
+this VM only supports Base launches via \`bankr launch\` and offer to
+launch on Base instead.
+
+## Required CLI flags
+
+When using \`bankr launch --fee <recipient>\`, ALWAYS pair it with
+\`--fee-type <wallet|x|farcaster|ens>\`. Without \`--fee-type\` the CLI
+hangs waiting for an interactive prompt that this non-interactive shell
+cannot satisfy.
+
+## After a successful launch
+
+Don't post celebration messages or share-to-X content yourself. The
+user's InstaClaw dashboard at https://instaclaw.io/dashboard fires a
+celebration view + share flow automatically.
+
+## Translating API errors
+
+If the CLI surfaces \`API error (4xx|5xx): <message>\`, translate it for
+the user. Common cases:
+
+- \`API error (402): wallet underfunded\` — explain the agent's Bankr
+  wallet needs a small amount of ETH on Base for gas; point them at
+  the Gas Funding card on the InstaClaw dashboard.
+- \`API error (403)\` — the API key may not have token-launch permission.
+- \`API error (5xx)\` — Bankr is having a temporary issue; try again
+  in a minute.
+
+---
+
+`;
+
+
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
 // Also loads LD_LIBRARY_PATH for userspace browser libs (libxkbcommon, libcairo, etc.)
@@ -3722,6 +3792,29 @@ export async function configureOpenClaw(
       '# Install Bankr skill for wallet + trading capabilities',
       'if [ ! -d "$HOME/.openclaw/skills/bankr" ]; then',
       '  git clone --depth 1 https://github.com/BankrBot/skills "$HOME/.openclaw/skills/bankr" 2>/dev/null || true',
+      'fi',
+      ''
+    );
+
+    // ── Apply InstaClaw overlay to Bankr skill (idempotent) ──
+    // 1. Delete subdirs that misroute the agent on this VM:
+    //      clanker — full TS deploy path requiring PRIVATE_KEY (not configured here)
+    //      base    — empty placeholder, wasted prompt tokens
+    // 2. Prepend BANKR_SKILL_PATCH_DIRECTIVE to bankr/SKILL.md if not already present.
+    //    The marker check makes this safe to re-run on every reconcile.
+    const directiveB64 = Buffer.from(BANKR_SKILL_PATCH_DIRECTIVE, "utf-8").toString("base64");
+    scriptParts.push(
+      '# Apply InstaClaw overlay to Bankr skill (idempotent)',
+      'BANKR_SKILL_BASE="$HOME/.openclaw/skills/bankr"',
+      'BANKR_SKILL_MD="$BANKR_SKILL_BASE/bankr/SKILL.md"',
+      'if [ -d "$BANKR_SKILL_BASE" ] && [ -f "$BANKR_SKILL_MD" ]; then',
+      '  rm -rf "$BANKR_SKILL_BASE/clanker" "$BANKR_SKILL_BASE/base"',
+      `  if ! grep -q "${BANKR_SKILL_PATCH_MARKER}" "$BANKR_SKILL_MD"; then`,
+      '    BANKR_DIRECTIVE_TMP=$(mktemp)',
+      `    echo '${directiveB64}' | base64 -d > "$BANKR_DIRECTIVE_TMP"`,
+      '    cat "$BANKR_SKILL_MD" >> "$BANKR_DIRECTIVE_TMP"',
+      '    mv "$BANKR_DIRECTIVE_TMP" "$BANKR_SKILL_MD"',
+      '  fi',
       'fi',
       ''
     );
