@@ -255,6 +255,17 @@ export async function reconcileVM(
     currentStep = "caddy-ui-block";
     await stepCaddyUIBlock(ssh, result, dryRun);
 
+    // ── Step 8f2: v67 SOUL.md + CAPABILITIES.md routing table patch ──
+    // The v67 template change replaced an existing routing-table row in
+    // place — but the reconciler's manifest entries for SOUL.md are all
+    // append/insert, none overwrite. Without this step, v67 content can't
+    // reach existing VMs through reconcile (only configureOpenClaw at first
+    // setup uses overwrite). Surgical str.replace keyed off the exact v66
+    // row, idempotent via the v67 marker. Defense-in-depth for new
+    // provisions and any VM the fleet patch script missed.
+    currentStep = "v67-routing-patch";
+    await stepV67RoutingTablePatch(ssh, result, dryRun);
+
     // ── Step 8g–8m: Deploy heals ──
     // configureOpenClaw silently dropped these on a non-trivial fraction of
     // the fleet (per the 2026-04-28 audit). The reconciler now verifies each
@@ -2136,6 +2147,107 @@ async function stepCaddyUIBlock(
   }
 
   result.fixed.push(`caddy: added UI block redirect for ${hostname}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Step 8f2: v67 SOUL.md + CAPABILITIES.md routing table patch
+//
+// Surgical in-place row replacement for the v67 token-launch routing change
+// (commit 9dfe894). Idempotent: keyed off the v67 marker. If the marker is
+// already present, no-op. If the v66 row is absent, no-op (likely a customized
+// or older template — the fleet patch script handles those by hand).
+//
+// This step exists because the reconciler's manifest entries for SOUL.md and
+// CAPABILITIES.md are all append/insert — never overwrite. So in-place row
+// edits in the templates can't reach existing VMs through reconcile alone.
+// configureOpenClaw uses `>` overwrite, so first-setup VMs get the new
+// content for free. This step is the matching reconciler-side path.
+// ─────────────────────────────────────────────────────────────────────────
+
+async function stepV67RoutingTablePatch(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Mirror of scripts/_fleet-patch-v67-soul.ts — same Python, same strings.
+  // Kept in sync by hand; the canonical source is the templates in
+  // lib/ssh.ts (WORKSPACE_SOUL_MD) and lib/agent-intelligence.ts.
+  const SOUL_OLD = "| bankr, bankr wallet, bankr balance, bankr swap, token launch | Use the **bankr skill**. Check WALLET.md for your Bankr address. |";
+  const SOUL_NEW_LINE_1 = "| launch a token, deploy a token, create a token, mint a token | **Token launches deploy on Base mainnet via `bankr launch` (CLI in bankr skill). NEVER Solana, NEVER Clanker — Bankr's general docs mention those, but this VM is configured for Base only.** Read bankr/SKILL.md for the launch flow. |";
+  const SOUL_NEW_LINE_2 = "| bankr, bankr wallet, bankr balance, bankr swap | Use the **bankr skill**. Check WALLET.md for your Bankr address. |";
+  const SOUL_NEW = `${SOUL_NEW_LINE_1}\n${SOUL_NEW_LINE_2}`;
+  const CAPS_OLD = "| Crypto trading, swaps, token launches | **Bankr Wallet** | bankr skill (reads BANKR_API_KEY from env) |";
+  const CAPS_NEW_LINE_1 = "| Crypto trading, swaps, transfers, fee claims (EVM) | **Bankr Wallet** | bankr skill (reads BANKR_API_KEY from env) |";
+  const CAPS_NEW_LINE_2 = "| Token launches (Base mainnet only) | **Bankr Wallet** | `bankr launch` CLI via bankr skill — never Solana, never Clanker |";
+  const CAPS_NEW = `${CAPS_NEW_LINE_1}\n${CAPS_NEW_LINE_2}`;
+  const SOUL_MARKER = "Token launches deploy on Base mainnet";
+  const CAPS_MARKER = "Token launches (Base mainnet only)";
+
+  if (dryRun) {
+    result.fixed.push("[dry-run] v67 routing table patch (would apply if old row present)");
+    return;
+  }
+
+  const PATCH_PY = `import json, os, sys
+cfg = json.loads(sys.stdin.read())
+def patch(path, old, new, marker):
+    path = os.path.expanduser(path)
+    if not os.path.exists(path): return "missing"
+    with open(path, "r") as f: content = f.read()
+    if marker in content: return "already-patched"
+    if old not in content: return "old-not-found"
+    new_content = content.replace(old, new, 1)
+    tmp = path + ".v67patch.tmp"
+    with open(tmp, "w") as f: f.write(new_content)
+    os.rename(tmp, path)
+    with open(path, "r") as f: check = f.read()
+    if marker not in check: return "verify-failed"
+    return "patched"
+print(f"SOUL:" + patch(cfg["soul_path"], cfg["soul_old"], cfg["soul_new"], cfg["soul_marker"]))
+print(f"CAPS:" + patch(cfg["caps_path"], cfg["caps_old"], cfg["caps_new"], cfg["caps_marker"]))
+`;
+
+  const cfg = JSON.stringify({
+    soul_path: "~/.openclaw/workspace/SOUL.md",
+    caps_path: "~/.openclaw/workspace/CAPABILITIES.md",
+    soul_old: SOUL_OLD,
+    soul_new: SOUL_NEW,
+    caps_old: CAPS_OLD,
+    caps_new: CAPS_NEW,
+    soul_marker: SOUL_MARKER,
+    caps_marker: CAPS_MARKER,
+  });
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    result.errors.push(`v67-routing-patch python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`);
+    return;
+  }
+  const lines: Record<string, string> = {};
+  for (const ln of r.stdout.split("\n")) {
+    const idx = ln.indexOf(":");
+    if (idx > 0) lines[ln.slice(0, idx)] = ln.slice(idx + 1).trim();
+  }
+  const soul = lines.SOUL ?? "?";
+  const caps = lines.CAPS ?? "?";
+
+  // already-patched and patched are both green. old-not-found is a no-op (a
+  // customized template that doesn't have the v66 row to replace) — record as
+  // alreadyCorrect so it doesn't trip the bump-without-push gate. Real
+  // failures (verify-failed, missing) push to errors.
+  const okStates = new Set(["patched", "already-patched", "old-not-found"]);
+  if (okStates.has(soul) && okStates.has(caps)) {
+    if (soul === "patched" || caps === "patched") {
+      result.fixed.push(`v67 routing table (SOUL=${soul} CAPS=${caps})`);
+    } else {
+      result.alreadyCorrect.push(`v67 routing table (SOUL=${soul} CAPS=${caps})`);
+    }
+    return;
+  }
+  result.errors.push(`v67-routing-patch: SOUL=${soul} CAPS=${caps}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

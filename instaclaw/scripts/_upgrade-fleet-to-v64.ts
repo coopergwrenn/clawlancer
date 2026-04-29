@@ -364,12 +364,20 @@ async function main() {
     const ssh = new NodeSSH();
     try {
       await ssh.connect({ host: vm.ip_address, port: 22, username: "openclaw", privateKey: SSH_KEY, readyTimeout: 12_000 });
+      // Health check has 3 retries × 10s timeout (was 1× 5s). The 5s probe
+      // race-failed on VMs that had just come back from a gateway restart
+      // — confirmed during wave 1 (vm-696/634/780 all failed audit but
+      // returned health-OK 2 min later). 30s of retry headroom is plenty.
       const r = await ssh.execCommand(
         // emit one line per check, in order: ACTIVE / HEALTH / VERSION / MARKER
         `export XDG_RUNTIME_DIR="/run/user/$(id -u)"; ` +
         `export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" 2>/dev/null; ` +
         `echo "ACTIVE:$(systemctl --user is-active openclaw-gateway 2>&1 | head -1)"; ` +
-        `curl -sf -o /dev/null --max-time 5 http://localhost:18789/health && echo "HEALTH:OK" || echo "HEALTH:FAIL"; ` +
+        `for i in 1 2 3; do ` +
+          `curl -sf -o /dev/null --max-time 10 http://localhost:18789/health && { echo "HEALTH:OK"; break; }; ` +
+          `if [ $i -lt 3 ]; then sleep 10; fi; ` +
+          `if [ $i -eq 3 ]; then echo "HEALTH:FAIL"; fi; ` +
+        `done; ` +
         `echo "VERSION:$(openclaw --version 2>&1 | head -1)"; ` +
         // v67 SOUL.md marker — the unique routing-table row introduced in commit 9dfe894
         `grep -q "Token launches deploy on Base mainnet" "$HOME/.openclaw/workspace/SOUL.md" 2>/dev/null && echo "MARKER:OK" || echo "MARKER:FAIL"`,
