@@ -37,6 +37,8 @@ export interface SyncResult {
   updated: boolean;
   tokenAddress?: string;
   tokenSymbol?: string;
+  /** Total autonomous launches across the platform after this write. */
+  launchNumber?: number;
   reason?:
     | "vm_not_found"
     | "already_synced"
@@ -147,16 +149,31 @@ export async function syncBankrLaunchForVm(vmId: string): Promise<SyncResult> {
     return { updated: false, reason: "race_lost" };
   }
 
+  // Count for celebration "You're #N" line. Non-fatal — omit on failure.
+  let launchNumber: number | undefined;
+  try {
+    const { count } = await supabase
+      .from("instaclaw_vms")
+      .select("id", { count: "exact", head: true })
+      .not("bankr_token_address", "is", null)
+      .eq("tokenization_platform", "bankr");
+    if (typeof count === "number" && count > 0) launchNumber = count;
+  } catch {
+    // Non-fatal — skip silently.
+  }
+
   logger.info("bankr-launch-sync: discovered chat-driven launch", {
     vmId,
     tokenAddress: token.tokenAddress,
     tokenSymbol: symbol,
     walletAddress: vm.bankr_evm_address,
+    launchNumber,
   });
 
   return {
     updated: true,
     tokenAddress: token.tokenAddress,
     tokenSymbol: symbol,
+    launchNumber,
   };
 }

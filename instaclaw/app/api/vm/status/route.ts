@@ -44,7 +44,7 @@ export async function GET() {
       //
       // Wrapped defensively: any failure (Bankr API down, DB hiccup) must
       // not block the status response. We log and move on.
-      let freshLaunch: { tokenAddress: string; tokenSymbol: string } | null = null;
+      let freshLaunch: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null = null;
       let liveTokenAddress = vm.bankr_token_address;
       let liveTokenSymbol = vm.bankr_token_symbol;
       let liveTokenizationPlatform = vm.tokenization_platform;
@@ -55,6 +55,7 @@ export async function GET() {
             freshLaunch = {
               tokenAddress: sync.tokenAddress,
               tokenSymbol: sync.tokenSymbol,
+              launchNumber: sync.launchNumber,
             };
             liveTokenAddress = sync.tokenAddress;
             liveTokenSymbol = sync.tokenSymbol;
@@ -63,6 +64,7 @@ export async function GET() {
               userId: session.user.id,
               vmId: vm.id,
               tokenAddress: sync.tokenAddress,
+              launchNumber: sync.launchNumber,
             });
           }
         } catch (syncErr) {

@@ -13,7 +13,8 @@ interface BankrTokenizeCardProps {
   // Set by the server when this dashboard render discovered a chat-driven
   // launch (Path B). Fires the same celebration view + share flow that the
   // dashboard-button path produces. Mirrors webapp BankrWalletCard prop.
-  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
+  // launchNumber populates the "You're #N" line on the celebration card.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
 }
 
 interface TokenPrice {
@@ -85,10 +86,14 @@ export default function BankrTokenizeCard({
   // Lazy-init from freshLaunch so a chat-driven launch lands directly on
   // the celebration view on first paint (no flash of post-launch dashboard
   // for one frame). The effect below handles any later re-render edge.
-  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(
+  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string; launchNumber?: number } | null>(
     () =>
       freshLaunch
-        ? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress }
+        ? {
+            symbol: freshLaunch.tokenSymbol,
+            address: freshLaunch.tokenAddress,
+            launchNumber: freshLaunch.launchNumber,
+          }
         : null,
   );
   const [showShareCard, setShowShareCard] = useState(false);
@@ -124,7 +129,11 @@ export default function BankrTokenizeCard({
     freshLaunchHandled.current = true;
     setLaunchSuccess(
       (prev) =>
-        prev ?? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress },
+        prev ?? {
+          symbol: freshLaunch.tokenSymbol,
+          address: freshLaunch.tokenAddress,
+          launchNumber: freshLaunch.launchNumber,
+        },
     );
     fireConfetti();
     setTimeout(() => setShowShareCard(true), 800);
@@ -282,11 +291,12 @@ export default function BankrTokenizeCard({
       }
       const symbol = tokenSym.trim().toUpperCase();
       const addr = responseTokenAddress ?? "";
+      const launchNumber = typeof data.launchNumber === "number" && data.launchNumber > 0 ? data.launchNumber : undefined;
       // Mark Path B handled so a server-detected freshLaunch arriving on
       // the next dashboard navigation can't re-fire confetti or replace
       // the auto-reload timer.
       freshLaunchHandled.current = true;
-      setLaunchSuccess({ symbol, address: addr });
+      setLaunchSuccess({ symbol, address: addr, launchNumber });
       fireConfetti();
       setTimeout(() => setShowShareCard(true), 800);
       autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
@@ -351,6 +361,11 @@ export default function BankrTokenizeCard({
         >
           ${launchSuccess.symbol} is live!
         </div>
+        {typeof launchSuccess.launchNumber === "number" && launchSuccess.launchNumber > 0 && (
+          <p className="text-[11px] text-muted mb-1">
+            You&apos;re #{launchSuccess.launchNumber} to deploy a token autonomously.
+          </p>
+        )}
         <p className="text-xs text-muted mb-6">Your token is now trading on Base</p>
 
         {showShareCard && hasAddress && (

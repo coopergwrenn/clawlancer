@@ -120,7 +120,7 @@ export default async function HomePage() {
   // the DB write that discovered the launch — that's what triggers the
   // celebration card on the mini-app dashboard. Fail-silent: any error
   // here must not block the dashboard render.
-  let freshLaunch: { tokenAddress: string; tokenSymbol: string } | null = null;
+  let freshLaunch: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null = null;
   if (
     (agent as Record<string, unknown>).bankr_wallet_id &&
     !(agent as Record<string, unknown>).bankr_token_address &&
@@ -129,7 +129,11 @@ export default async function HomePage() {
     try {
       const sync = await syncBankrLaunchForVm(agent.id);
       if (sync.updated && sync.tokenAddress && sync.tokenSymbol) {
-        freshLaunch = { tokenAddress: sync.tokenAddress, tokenSymbol: sync.tokenSymbol };
+        freshLaunch = {
+          tokenAddress: sync.tokenAddress,
+          tokenSymbol: sync.tokenSymbol,
+          launchNumber: sync.launchNumber,
+        };
         // Reflect the just-discovered token in this render so the card
         // shows the post-launch state immediately on first paint instead
         // of waiting for the next page navigation.

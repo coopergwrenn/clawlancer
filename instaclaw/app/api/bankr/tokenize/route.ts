@@ -333,6 +333,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Count of autonomous token launches for the celebration "You're #N" line.
+  // Done after the finalize UPDATE so the user's own launch is included.
+  // Failure here is non-fatal; we just omit the field from the response.
+  let launchNumber: number | undefined;
+  try {
+    const { count } = await supabase
+      .from("instaclaw_vms")
+      .select("id", { count: "exact", head: true })
+      .not("bankr_token_address", "is", null)
+      .eq("tokenization_platform", "bankr");
+    if (typeof count === "number" && count > 0) launchNumber = count;
+  } catch (countErr) {
+    logger.warn("tokenize: launchNumber count failed (non-fatal)", {
+      vmId: vm.id,
+      error: String(countErr),
+    });
+  }
+
   logger.info("Bankr token launched successfully", {
     userId: userId,
     vmId: vm.id,
@@ -340,6 +358,7 @@ export async function POST(req: NextRequest) {
     poolId: launchData.poolId,
     txHash: launchData.txHash,
     feeRecipient: vm.bankr_evm_address,
+    launchNumber,
   });
 
   const launchAlert = `User: ${userId}\nVM: ${vm.id}\nToken: $${tokenSymbol} (${tokenName})\nAddress: ${launchData.tokenAddress}\nTx: ${launchData.txHash}\n\nhttps://basescan.org/token/${launchData.tokenAddress}`;
@@ -437,6 +456,7 @@ export async function POST(req: NextRequest) {
     txHash: launchData.txHash,
     chain: launchData.chain,
     feeDistribution: launchData.feeDistribution,
+    launchNumber,
   });
   } catch (outerErr) {
     logger.error("tokenize:OUTER_UNHANDLED", {

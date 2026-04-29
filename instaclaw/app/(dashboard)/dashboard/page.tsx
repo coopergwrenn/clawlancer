@@ -76,7 +76,7 @@ interface VMStatus {
   // Set on the single status poll that discovers a chat-driven Bankr launch
   // (Path B). The dashboard hands it to BankrWalletCard, which fires the
   // celebration view + confetti + share card. Cleared on subsequent polls.
-  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
 }
 
 interface UsageData {

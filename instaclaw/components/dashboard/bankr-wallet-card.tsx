@@ -13,8 +13,9 @@ interface BankrWalletCardProps {
   agentName?: string | null;
   // Set by /api/vm/status on the one poll that discovered a chat-driven
   // launch (Path B). Triggers the same celebration view the dashboard
-  // button shows after a successful launch.
-  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
+  // button shows after a successful launch. launchNumber populates the
+  // "You're #N to deploy autonomously" line on the celebration card.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
 }
 
 interface TokenPrice {
@@ -93,10 +94,14 @@ export function BankrWalletCard({
   // would show the post-launch dashboard view (token info + trade buttons)
   // for one frame before the useEffect side effects swap to celebration.
   // The effect below covers the freshLaunch-arrives-later case.
-  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(
+  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string; launchNumber?: number } | null>(
     () =>
       freshLaunch
-        ? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress }
+        ? {
+            symbol: freshLaunch.tokenSymbol,
+            address: freshLaunch.tokenAddress,
+            launchNumber: freshLaunch.launchNumber,
+          }
         : null,
   );
   const [showShareCard, setShowShareCard] = useState(false);
@@ -137,7 +142,11 @@ export function BankrWalletCard({
     freshLaunchHandled.current = true;
     setLaunchSuccess(
       (prev) =>
-        prev ?? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress },
+        prev ?? {
+          symbol: freshLaunch.tokenSymbol,
+          address: freshLaunch.tokenAddress,
+          launchNumber: freshLaunch.launchNumber,
+        },
     );
     fireConfetti();
     setTimeout(() => setShowShareCard(true), 800);
@@ -322,11 +331,12 @@ export function BankrWalletCard({
       // Celebration: confetti + share card
       const symbol = tokenSym.trim().toUpperCase();
       const addr = responseTokenAddress ?? "";
+      const launchNumber = typeof data.launchNumber === "number" && data.launchNumber > 0 ? data.launchNumber : undefined;
       // Mark Path B handled here too — if the on-demand sync in /api/vm/status
       // races us and fires freshLaunch on the next poll, the useEffect must
       // not re-trigger confetti / replace the auto-reload timer.
       freshLaunchHandled.current = true;
-      setLaunchSuccess({ symbol, address: addr });
+      setLaunchSuccess({ symbol, address: addr, launchNumber });
       fireConfetti();
       // Show share card after brief celebration moment
       setTimeout(() => setShowShareCard(true), 800);
@@ -391,6 +401,11 @@ export function BankrWalletCard({
         >
           ${launchSuccess.symbol} is live!
         </div>
+        {typeof launchSuccess.launchNumber === "number" && launchSuccess.launchNumber > 0 && (
+          <p className="text-xs mb-1" style={{ color: "var(--muted)" }}>
+            You&apos;re #{launchSuccess.launchNumber} to deploy a token autonomously.
+          </p>
+        )}
         <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
           Your token is now trading on Base
         </p>

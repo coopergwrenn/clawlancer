@@ -55,7 +55,8 @@ export default function AgentDashboard({
   // Set by the server when this dashboard render is the one that
   // discovered a chat-driven Bankr token launch. Triggers the celebration
   // view + confetti + share-to-X card on first paint of BankrTokenizeCard.
-  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
+  // launchNumber populates the "You're #N" line on the celebration card.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
