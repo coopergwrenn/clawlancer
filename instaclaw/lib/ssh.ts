@@ -2405,7 +2405,7 @@ export function toOpenClawModel(model: string): string {
 // OpenClaw reads SOUL.md, USER.md, MEMORY.md, BOOTSTRAP.md from here.
 // AGENTS.md and IDENTITY.md have been merged into SOUL.md (PRD Phase 1).
 
-const WORKSPACE_SOUL_MD = `# SOUL.md — Who You Are
+export const WORKSPACE_SOUL_MD = `# SOUL.md — Who You Are
 
 _You're not a chatbot. You're becoming someone._
 
