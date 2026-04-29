@@ -83,7 +83,17 @@ export function BankrWalletCard({
   const [tokenSym, setTokenSym] = useState("");
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(null);
+  // Lazy-init from freshLaunch so a chat-driven launch lands directly on
+  // the celebration view on first paint. Without this, the first render
+  // would show the post-launch dashboard view (token info + trade buttons)
+  // for one frame before the useEffect side effects swap to celebration.
+  // The effect below covers the freshLaunch-arrives-later case.
+  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(
+    () =>
+      freshLaunch
+        ? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress }
+        : null,
+  );
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | null>(null);
@@ -107,20 +117,24 @@ export function BankrWalletCard({
   // discovers the launch via Bankr's public API. We mirror the dashboard-
   // button celebration flow (confetti + share card + auto-reload) so the
   // viral share flywheel works for chat-launched users too.
+  //
+  // launchSuccess may already be set via the useState lazy init above
+  // (first-paint case). The functional updater preserves that value or
+  // initializes it from freshLaunch (poll-arrives-later case). The ref
+  // guard ensures the side effects fire exactly once per lifecycle.
   // Hook must run before any early return — React hooks rules.
   useEffect(() => {
     if (!freshLaunch) return;
     if (freshLaunchHandled.current) return;
-    if (launchSuccess) return; // Button flow already won the race
     freshLaunchHandled.current = true;
-    setLaunchSuccess({
-      symbol: freshLaunch.tokenSymbol,
-      address: freshLaunch.tokenAddress,
-    });
+    setLaunchSuccess(
+      (prev) =>
+        prev ?? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress },
+    );
     fireConfetti();
     setTimeout(() => setShowShareCard(true), 800);
     autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
-  }, [freshLaunch, launchSuccess]);
+  }, [freshLaunch]);
 
   // Fetch live token price from DexScreener (client-side, no auth needed)
   // Must be before any early returns — React hooks must be called unconditionally
@@ -266,6 +280,10 @@ export function BankrWalletCard({
       // Celebration: confetti + share card
       const symbol = tokenSym.trim().toUpperCase();
       const addr = data.tokenAddress ?? "";
+      // Mark Path B handled here too — if the on-demand sync in /api/vm/status
+      // races us and fires freshLaunch on the next poll, the useEffect must
+      // not re-trigger confetti / replace the auto-reload timer.
+      freshLaunchHandled.current = true;
       setLaunchSuccess({ symbol, address: addr });
       fireConfetti();
       // Show share card after brief celebration moment
