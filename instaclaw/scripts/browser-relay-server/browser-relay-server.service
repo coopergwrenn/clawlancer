@@ -1,0 +1,20 @@
+[Unit]
+Description=InstaClaw Browser Relay Server
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /home/openclaw/scripts/browser-relay-server.js
+Environment=HOME=/home/openclaw
+Environment=PATH=/home/openclaw/.nvm/versions/node/v22.22.0/bin:/usr/local/bin:/usr/bin:/bin
+Environment=RELAY_PORT=18792
+Environment=RELAY_BIND=127.0.0.1
+Restart=always
+RestartSec=5
+# Crash-loop protection — match dispatch-server.service shape
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Install]
+WantedBy=default.target
