@@ -95,13 +95,18 @@ Three markdown files refreshed every 15 min by GitHub Actions indexer:
 - `references/website-content.md` — mission, leadership, roadmap, ecosystem, media
 - `references/newsletter-digest.md` — residencies, fellowships, housing, programming
 
-### 2.4 Known Gaps (Not Yet Built)
-- Session transcripts/summaries (no Granola integration yet)
-- Governance/deliberation layer
-- Real-time venue availability
+### 2.4 Known Gaps & Planned Work
+- **Session transcripts / summaries (Granola)** — *planned, not yet built.* Timour is driving an integration where Granola transcripts of EE26 sessions become first-class context for agents (search, summarization, recall by topic). Two work streams here:
+  1. Ingest pipeline — pull Granola transcripts + per-session metadata into a queryable layer (likely the Geo knowledge graph or a dedicated index)
+  2. Skill-side surface — extend `edge-agent-skill` so agents can answer "what was said in the AI Governance session this morning?" or "summarize the talk I missed at 11am yesterday"
+- **Governance / deliberation layer** — landing via the XMTP plaza + Polis-style methodology (see Sections 4.9.3 + 4.10.1)
+- **Real-time venue availability** — still open
+- **Richer attendee directory functionality** — Timour wants agents to use the directory more deeply (interest-based filtering, project-tag search, "who's around to chat about X"). Most of this is unblocked by Index Network's matching layer (Section 4.9.4) plus the `edge-agent-skill` directory primitives already in place.
 
-### 2.5 Benchmark Results
-9/11 passed (as of 2026-04-07). Two graceful gaps: session transcripts and governance layer.
+### 2.5 Benchmark Results & Test Suite
+9/11 passed (as of 2026-04-07) on the original benchmark set. Two graceful gaps: session transcripts and governance layer — both now planned work (see 2.4).
+
+**Granola-backed retrieval benchmarks (planned).** Timour wants to expand the benchmark set by drafting ~20-30 questions sourced from real Granola transcripts of past Edge events. These test retrieval quality (can the agent find the right session?), summarization fidelity (does the summary preserve the key claims?), and cross-session reasoning (can the agent connect a thread across two sessions?). Target: lock the question set + grading rubric pre-village (May 23 milestone) so it can run as a continuous quality probe during the village.
 
 ---
 
@@ -205,6 +210,17 @@ Agent is live with Edge City skill baked in
 ```
 
 ### 4.4 Skill Installation: `installEdgeCitySkill()`
+
+#### Why the skill is the primary update/extensibility surface
+
+The Edge skill is *the* extensibility layer. Everything Edge-specific that we want to ship — new capabilities, new directory primitives, new Granola-transcript queries, new governance helpers — lives in the skill (or in the reference files alongside it). Concretely:
+
+- **Updates can ship daily.** Tule updates `github.com/aromeoes/edge-agent-skill` upstream, the GitHub Actions indexer regenerates references every 15 min, and the cron on each VM pulls the latest within 30 min. End-to-end propagation: well under an hour.
+- **No fleet redeploy required for skill changes.** Skill updates are *content* updates, not infrastructure updates. They don't go through the canary/health-check rollout in Section 4.11; they ride the existing skill-pull cron.
+- **Skill changes can be announced as features.** When a meaningful skill update lands ("agents can now search Granola transcripts" / "agents can now propose dinners through Index Network"), the announcement goes out as part of the daily/weekly community comms — same channel the rest of the EE26 product roadmap uses.
+- **The platform layer (OpenClaw + InstaClaw runtime) is intentionally stable.** OpenClaw versions cycle every ~1 week behind upstream (Section 4.11). Skill cycles cycle as fast as Tule + the Edge team can ship. This separation is deliberate: rapid iteration on the agent's *behavior* without churning the *runtime* underneath it.
+
+#### Installation pattern
 
 Follows the **Bankr pattern** (simplest production pattern): clone the repo directly into `~/.openclaw/skills/edge-esmeralda/`. Since `~/.openclaw/skills/` is already in the default `extraDirs` (`/home/openclaw/.openclaw/skills`), **no Python extraDirs registration is needed**. No npm install either — it's just SKILL.md + reference markdown files.
 
@@ -956,30 +972,102 @@ Edge City has committed to a public output schedule (per Timour's research overv
 
 The deployment playbook (Oct) describes how to *reproduce* the plaza on top of InstaClaw or on top of a self-hosted OpenClaw fleet. Self-hosted is harder but the playbook makes it possible — that's the contribution to the field.
 
+### 4.11 Managed Update Policy (OpenClaw Runtime)
+
+The runtime layer (OpenClaw itself, system packages, fleet-wide config) is **fully managed by InstaClaw**. End users do not self-update. This is a deliberate stability and security policy — explained below — and it's distinct from the skill-update flow in 4.4, which intentionally moves much faster.
+
+#### 4.11.1 Why a deliberate release lag
+
+OpenClaw releases land upstream weekly-ish. InstaClaw policy is to run **~1 week behind the latest upstream release** for every fleet VM, with selective fast-tracking only when an upstream release ships a fix we specifically need.
+
+Reasons:
+
+1. **Supply-chain caution.** OpenClaw and its transitive npm dependencies are pulled from public registries. A compromised upstream package could ship malware to every agent in the fleet. A 1-week lag gives the security community time to surface compromise reports before we deploy.
+2. **Behavioral regression catch.** OpenClaw releases occasionally change defaults (model routing, prompt-caching behavior, session-reset semantics). The lag lets us observe upstream community feedback before our 1,000+ agents are running it.
+3. **Schema/file drift catch.** Past upstream changes have moved or renamed config files. Catching that on a canary VM (4.11.2) before deploying fleet-wide prevents silent breakage of our scripts that read those files.
+
+The lag is not "we couldn't keep up" — it's "we choose not to deploy upstream code we haven't validated."
+
+#### 4.11.2 Canary → health-check → fleet rollout
+
+Standard rollout sequence for a new OpenClaw version (or any other runtime update):
+
+1. **Canary VM.** Deploy the new version to a single dedicated test VM. This VM has the same configuration as production but no real users assigned.
+2. **Automated health checks.** Script verifies: gateway is `active`, `/health` returns 200, no critical files are missing or relocated, all 7 manifest crons present, sessions persist correctly, model routing intact (Sonnet primary + Haiku fallback both resolvable). Plus a manual smoke test against the Edge skill specifically.
+3. **Soak.** Canary stays on the new version for 24-48 hours. Monitor for regressions.
+4. **Fleet rollout.** Once the canary passes, the reconciler picks up the new version on its next health cycle and rolls it out in batches (current cadence: ~10 VMs per 3-min cron tick — see Phase 7 of the implementation plan in vercel.json).
+5. **Per-batch health verification.** Each VM runs its own post-update health check before being marked ready. Any failure triggers an immediate rollback to the previous version.
+
+This is the same pattern used for skill updates in v58/v62 base snapshot bumps — see CLAUDE.md Rule 3 ("Test on ONE VM Before Fleet-Wide Deploy") and Rule 5 ("Verify Gateway Health After Config Changes").
+
+#### 4.11.3 No self-serve runtime updates
+
+Users **cannot** trigger their own OpenClaw upgrade. The `vm-watchdog.py` cron actively reverts unauthorized OpenClaw upgrades back to the pinned version (`OPENCLAW_PINNED_VERSION` from the manifest). This is enforced at three layers:
+
+1. The watchdog cron (every minute) reverts version drift.
+2. `configureOpenClaw()` re-pins the version on every reconciler health cycle.
+3. The OpenClaw `auth.token` is not exposed to the user-facing agent context, so the agent itself cannot trigger an upgrade via the gateway API.
+
+#### 4.11.4 User-facing communication when newer features aren't yet supported
+
+A user (especially an Edge attendee following OpenClaw's upstream releases on X) may notice a newer version's announcement and try a feature that isn't yet on their VM. Expected UX:
+
+- The agent's first instinct on an unsupported feature is to either degrade gracefully (skill says "not yet available in this build") or fall back to a manual workaround.
+- Onboarding (Section 5.3) and the Edge portal FAQ (Section 5.1) call this out: *"Your agent runs on a managed, validated OpenClaw build. New upstream features land here ~1 week after release once they pass our security and stability checks."*
+- The community comms (Edge Telegram + portal banner) announce when a new build rolls out, so users can correlate "feature works now" with the upgrade event.
+
+### 4.12 Update Mechanisms (Existing Users vs. New Users)
+
+Two distinct update paths, used in tandem.
+
+| Path | Who it serves | Mechanism | Trigger |
+|------|--------------|-----------|---------|
+| **A — SSH-based push update** | Existing assigned VMs | The reconciler SSHes into each VM, runs the manifest's file/cron/config delta, restarts services as needed. Same flow used today for v58 → v62 manifest bumps. | Manifest version bump in `lib/vm-manifest.ts`; reconciler picks up automatically over its next ~60 min of cron cycles |
+| **B — Snapshot-based provisioning** | New VMs going into the ready pool | Linode image (`LINODE_SNAPSHOT_ID`) is the base; new VMs boot from it and get the latest config baked in. | Manual snapshot bake when manifest is 3+ versions ahead of snapshot, or before a large `spots N` provisioning run. Per CLAUDE.md Rule 7. |
+
+For EE26 specifically, both paths are exercised:
+
+- **Path A** carries skill updates (Section 4.4 — daily-cadence safe), reference content refreshes (Section 4.8), and OpenClaw runtime upgrades (Section 4.11) to the in-flight Edge VMs.
+- **Path B** keeps the ready pool fresh so the next Edge attendee who claims an agent gets a VM that's already on the current manifest, not a stale one that has to wait for the reconciler.
+
+Per CLAUDE.md Rule 7, every manifest version bump triggers a check: snapshot vs. manifest delta — if the snapshot is more than 3 versions stale, bake a new snapshot before a large provisioning run.
+
 ---
 
 ## 5. Partner Portal: `/edge-city`
 
 ### 5.1 Page Design
 
-A dedicated landing page at `instaclaw.io/edge-city` with Edge City branding. "Powered by InstaClaw" in footer.
+The current `/edge-city` route only redirects to the standard signup flow — that's the gap. **The portal needs to become a real, branded one-page Edge experience** before the village goes live, with educational content and a clear CTA. Per the working session with Timour: focus first on the full onboarding flow + landing page + core product clarity. (Future modules — richer event integrations, optional UI surfaces from other partners — layer in after the core lands.)
 
-**Content:**
-- Edge City hero/banner
-- "Your personal AI agent for Edge Esmeralda 2026"
-- What the agent can do (schedule, people matching, Q&A, community)
-- "Claim Your Agent" CTA button
-- FAQ section (How does it work? What data does my agent access? Is my data private?)
+A dedicated landing page at `instaclaw.io/edge-city` with Edge City branding. "Powered by InstaClaw" in footer. Timour is offering design help; Cooper sets up the structure and shares the repo for collaboration.
+
+**Required content (v1, pre-village):**
+
+- **Edge City hero / banner** with EE26 branding (Timour to provide assets)
+- **Tagline:** "Your personal AI agent for Edge Esmeralda 2026"
+- **Product explainer (3-5 bullets):** what the agent does — schedule navigation, people matching via Index Network, Q&A about events/wiki/attendees, governance participation, agent-to-agent coordination overnight
+- **Privacy / security explainer** — concrete one-paragraph statement of the privacy model + a link to the privacy mode toggle (Section 6). Pre-empts the conversation rather than waiting for it to surface in Telegram.
+- **Edge-specific framing:** what's different about the Edge build vs. standard InstaClaw — the Edge skill, attendee directory access, plaza integration, Granola transcript queries (when they ship)
+- **"Claim Your Agent" CTA** — gated by ticket validation (Section 5.4)
+- **FAQ section:** at minimum — "How does it work?" / "What data does my agent access?" / "Is my data private?" / "How are updates handled?" / "What if I'm not yet a ticket holder?"
+
+**Optional / future content modules:**
+
+- Map / spatial UI module — owned by Marlowe (Agent Plaza / forum layer partner) — scope and timing tracked separately from the core portal v1
+- Live "agents online" counter once the village starts
+- Per-week roadmap of features shipping during the village
 
 **Technical:**
+
 - Route: `app/(marketing)/edge-city/page.tsx`
 - On page load or CTA click, set cookie `instaclaw_partner=edge_city` (HttpOnly, same pattern as `instaclaw_referral_code`)
-- CTA redirects to `/signup` (or directly to Google OAuth if already signed up)
+- CTA redirects to ticket validation (Section 5.4); on validation success → Google OAuth → checkout
 - The signup page reads the partner cookie and shows Edge City branding: "Edge Esmeralda 2026 — Claim Your Agent"
 
 ### 5.2 Checkout Flow
 
-After Google OAuth:
+After ticket validation (Section 5.4) and Google OAuth:
 1. User lands on plan selection
 2. Promo code `EDGE` is either auto-applied (via URL param to checkout) or manually entered
 3. Stripe charges $0 for first month
@@ -1009,6 +1097,50 @@ Responses stored in agent memory (MEMORY.md) — used for people matching, proac
 
 This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the interview script. No special code needed — the agent handles it conversationally.
 
+### 5.4 Ticket Validation Flow
+
+Ticket gating is **the primary access control** for the Edge build of the agent. The Edge skill, attendee directory access, and plaza membership are all meaningful capabilities; access to them is restricted to verified Edge Esmeralda ticket holders.
+
+#### 5.4.1 Validation flow
+
+```
+User lands on /edge-city
+  │
+  ▼
+Clicks "Claim Your Agent"
+  │
+  ▼
+Enters Edge ticket identifier (email associated with ticket purchase, or ticket reference)
+  │
+  ▼
+Backend hits Edge ticketing API → returns: { valid: true|false, ticket_metadata: { weeks: [1,2], … } }
+  │
+  ├── invalid → soft-fail page with "Get a ticket at edgeesmeralda.com" CTA + email capture for waitlist
+  │
+  ▼ valid
+Google OAuth
+  │
+  ▼
+Checkout with EDGE promo (Section 5.2)
+  │
+  ▼
+VM provisioned with edge_city partner tag → Edge skill installed
+```
+
+The validation result (ticket reference + valid weeks) is recorded on the user row alongside `partner = "edge_city"`. The agent's onboarding interview (Section 5.3) reads `weeks` to populate the agent's awareness of when its human is on-site.
+
+#### 5.4.2 Test ticket requirement (BLOCKER)
+
+**Outstanding blocker for E2E validation:** Cooper needs a sandbox / dummy test ticket from Edge City's ticketing system to validate the full flow before broader rollout. Without this, the integration is built but not end-to-end-verified.
+
+Action: Timour to provision (or pull from sandbox tier of) a test ticket Cooper can use for the validation pass. This unblocks the May 9 portal-live milestone.
+
+#### 5.4.3 Access duration & revocation
+
+Ticket gating is enforced at **claim time** (the moment the user converts on the portal). After that, the agent persists for the user's standard subscription lifecycle. If a ticket is revoked or transferred *after* claim, the existing agent isn't auto-disabled — that's a deliberate choice (cancellation events flow through the standard subscription system, not the ticketing layer).
+
+The Edge skill is gated separately at the *infrastructure* layer (`partner === "edge_city"` in `instaclaw_users`), so even if a non-Edge user somehow ends up with the Edge skill installed, the skill itself behaves identically — but their access to live Edge APIs (Social Layer, EdgeOS Attendee Directory) goes through tokens that are scoped to Edge participants only and revoked on any ticketing-system signal that surfaces.
+
 ---
 
 ## 6. Privacy & Security
@@ -1030,6 +1162,30 @@ This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the in
 | **Onboarding consent** | Granular sharing consent captured during onboarding interview. Default: name + interests. Upgrade tiers gated by explicit human opt-in (Section 4.9.5). |
 | **Human override (always-on)** | Human can issue overrides at any time: "stop sharing my interests", "don't propose meetings tomorrow", "don't include me in research data export". Agent honors immediately and writes the override to MEMORY.md. |
 
+### 6.1 Privacy Modes (User-Facing Toggle)
+
+InstaClaw is built privacy-first. The default posture across the entire fleet is that no one — including InstaClaw operators — reads agent ↔ human conversations, agent memory, or agent-to-agent traffic. Inspection of an individual agent's runtime is gated behind a deliberate user action.
+
+| Mode | Default | Behavior |
+|------|---------|----------|
+| **Maximum Privacy** | ON for every new agent | Operator-side inspection of conversation content, memory files, and per-agent logs is **disabled**. Aggregate health telemetry (CPU, RAM, gateway up/down, error rates) still flows for fleet operations. Researcher data export pipeline (Section 4.10.3) still runs because it operates on already-anonymized aggregate research tables, not the raw agent context. |
+| **Support Mode (temporary)** | OFF | User can temporarily disable Maximum Privacy via a clearly-labeled toggle in the agent's settings — typically when they want help debugging an issue. While disabled, InstaClaw operators can read the live session, run `mcporter` commands, and inspect memory in order to diagnose. The toggle is **session-scoped**: re-enables itself automatically after 24 hours, on subscription billing cycle rollover, or on user-initiated re-toggle. |
+
+**Why this matters for Edge:**
+- Researchers (Vendrov + collaborators) **never** receive raw conversational content under either mode. They only receive the anonymized research tables (Section 4.10.3) — the privacy modes do not gate that pipeline.
+- The privacy toggle lets attendees say "yes, I want help" without giving up the default privacy posture for everything else.
+- The Edge skill, like all skills, runs entirely within the user's agent VM. Maximum Privacy Mode does not impede agent functionality (Index Network signals, briefings, governance, etc.) — it only restricts operator-side visibility into the agent's runtime.
+
+**Communicated on the portal FAQ (Section 5.1):** "Your agent is yours. By default, even we can't read your conversations or memory. If something breaks and you want help, you can flip a toggle that lets us look — and it auto-flips back."
+
+### 6.2 Researcher Visibility Boundary
+
+To avoid any ambiguity about what the research collaboration does and does not include:
+
+- ✅ Researchers receive: anonymized aggregate tables defined in Section 4.10.3, hashed `agent_id`, PII-swept free-text fields, sponsor-funded inference cost summaries.
+- ❌ Researchers do NOT receive: raw Bankr wallets, raw Telegram conversation transcripts, agent MEMORY.md contents, raw Index Network candidate-pool data with wallets attached, sponsor-key-level inference logs, anything that would survive a salt rotation.
+- ❌ Cross-export longitudinal analysis on the same human is structurally prevented by salt rotation + per-human consent gating (Section 4.10.3).
+
 ---
 
 ## 7. Implementation Plan
@@ -1047,14 +1203,32 @@ This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the in
 - [ ] **SOUL.md Edge section**: Add Edge Esmeralda context paragraph to SOUL.md for Edge users
 - [ ] **BOOTSTRAP.md onboarding interview**: Write interview script for Edge users' first conversation
 - [ ] **Reference content cron**: Add git-pull cron during skill install for fresh reference data
-- [ ] **Partner portal page**: Build `app/(marketing)/edge-city/page.tsx` with Edge City branding
+- [ ] **Partner portal page**: Build `app/(marketing)/edge-city/page.tsx` with Edge City branding (educational landing page — see Section 5.1 for required content blocks: hero, product explainer, privacy/security explainer, Edge framing, ticket-gated CTA, FAQ)
+- [ ] **Privacy explainer copy**: Draft the portal-facing explanation of Maximum Privacy Mode + Support Mode toggle (Section 6.1), reviewed before portal goes live
 - [ ] **Register skill dir**: Ensure `~/.openclaw/skills/edge-esmeralda` is added to `extraDirs`
+
+### Phase 1b: Ticket Validation Flow (BLOCKER for portal launch)
+- [ ] **Procure test ticket**: Get a sandbox / dummy Edge ticket from Timour for E2E validation. **This is the gating blocker before May 9 portal-live milestone** (Section 5.4.2).
+- [ ] **Edge ticketing API integration**: Wire `/edge-city` claim endpoint to Edge ticketing system; validate ticket reference, return `{valid, weeks}` payload
+- [ ] **Validation UI**: Soft-fail page for invalid tickets (CTA → edgeesmeralda.com + waitlist email capture)
+- [ ] **Persist ticket data**: Store ticket reference + valid-weeks on `instaclaw_users.partner_metadata` so onboarding interview can read attendance windows
+- [ ] **Edge skill infra-layer gate**: Skill access tokens (Social Layer, EdgeOS) scoped per-participant; revocation signals from Edge ticketing flow trigger token-scope revoke (Section 5.4.3)
+
+### Phase 1c: Granola Retrieval Benchmark Suite (locked by May 23)
+- [ ] **Source transcripts**: Pull recent Granola meeting notes covering Edge planning calls, partner syncs, infra/research discussions (with appropriate consent from participants); strip / replace PII before any agent reads them
+- [ ] **Benchmark question set**: Generate ~20-30 retrieval questions spanning factual recall ("who is the Index Network point of contact?"), multi-doc synthesis ("what's the agreed split between Index Network and XMTP?"), and recency ("what changed in the most recent partner sync?")
+- [ ] **Ground truth**: Annotate expected answers / source-doc citations for each question
+- [ ] **Eval harness**: Wire benchmark into the existing Section 2.5 benchmark runner; report pass/fail + retrieval precision per question
+- [ ] **Lock the suite by May 23**: After lock, the benchmark is the version-pinned regression check; new transcripts can be added in v2 post-village
+- [ ] **Wire transcripts into the Edge skill**: Decide whether transcripts ship as embedded reference data, are pulled on-demand from a hosted source, or are fetched via Index Network — affects retrieval architecture (open question Q22)
 
 ### Phase 2: Test + Launch (1-2 days)
 - [ ] **Canary deploy**: Provision 1 test VM, run full configureOpenClaw() with partner=edge_city
-- [ ] **Run benchmark questions**: Test all 10 EE26 benchmark questions against the canary agent
+- [ ] **Run benchmark questions**: Test the full Granola benchmark suite (~20-30 questions, Section 2.5) against the canary agent
 - [ ] **Verify skill isolation**: Confirm non-Edge VMs do NOT have the skill installed
-- [ ] **Verify promo code flow**: End-to-end test — portal -> signup -> checkout with EDGE code -> deploy -> agent has skill
+- [ ] **Verify ticket validation E2E**: portal → enter test ticket → validate → checkout → deploy → agent receives onboarding interview with correct weeks (requires test ticket from Phase 1b)
+- [ ] **Verify Maximum Privacy Mode default**: Inspect canary VM as operator, confirm conversation/memory inaccessible until user toggles Support Mode; verify Support Mode auto-reverts after 24h
+- [ ] **Verify managed update policy enforcement**: Attempt agent-initiated `npm install -g openclaw@latest`; confirm vm-watchdog.py reverts and re-pins to manifest version (Section 4.11.3)
 - [ ] **Share test accounts with Edge City team**: 3-5 accounts for Timour, Tule, Alejandro to test
 - [ ] **Iterate on SOUL.md / onboarding**: Adjust based on team feedback
 
@@ -1133,6 +1307,12 @@ This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the in
 | 26 | **Coordinator agent funding & ownership** — Who funds compute for the 5 coordinator agents (Section 4.9.9)? Counts toward the $60K sponsor ask but is a small fraction (<5%) of total inference. Who owns the operational accounts (Bankr wallets)? | Cooper / Timour | Recommend InstaClaw owns wallets; sponsor-funded inference; admin accountable to Edge City. |
 | 27 | **Polis integration** — do we use the actual Polis API ([pol.is](https://pol.is)) for opinion clustering, or implement Polis-style clustering ourselves in the governance coordinator agent? Trade-off: external service dependency vs. agent-owned implementation. | Cooper / governance-design lead | Lean toward agent-owned implementation; eval Polis SaaS as Phase 4 enhancement. |
 | 28 | **Geo (geobrowser.io) integration shape** — does Yaniv's team publish a public read API for the community knowledge graph that Index Network and personal agents both query? Or does each consumer get its own integration? | Yaniv / Tule / Index Network | First sync to lock the contract |
+| 29 | **Test ticket for portal validation** — who provides the sandbox / dummy Edge ticket, and in what format (real ticket reference in a sandbox tier vs. a dedicated test mode in the ticketing system)? Without this, the May 9 portal-live milestone is blocked (Section 5.4.2). | Timour | Ask in next sync; drives Phase 1b |
+| 30 | **Skill update cadence — push or pull?** Section 4.4 commits to "skill is the primary update surface" and notes daily updates are possible. Mechanism: per-VM cron pulling from a canonical git source (resilient, no secrets in Edge skill repo) vs. push-based reconciler triggered on commit. Also: rate-limit per day to bound blast radius? | Cooper | Lean toward git-pull cron + per-day rate limit; revisit if iteration speed demands push |
+| 31 | **Maximum Privacy Mode implementation** — at what runtime layer is operator inspection actually disabled (filesystem ACL on memory files, gateway-side audit-log gating, mcporter token scoping, all three)? Default ON ships with the rest of the privacy commitments; Support Mode auto-revert lifecycle owned by `lib/auth.ts` or a dedicated privacy-state service? | Cooper | Spec out before May 9 portal-live so the toggle copy isn't a promise we can't keep |
+| 32 | **Granola transcript ingestion pipeline** — where do transcripts live (private S3 bucket? committed to a private skill repo? hosted with chunked retrieval)? Are they pulled into every Edge VM at install time (latency: low; storage: bounded) or fetched on-demand (latency: higher; storage: nil; central audit log: yes)? Affects retrieval performance + the meaning of the benchmark numbers. | Cooper | Recommend pulled-at-install for v1 (~MB-scale corpus), fetched-on-demand if corpus grows past hundreds of MB. Lock before May 23 benchmark freeze. |
+| 33 | **User-facing comms when newer OpenClaw features unsupported** — surface area for explaining the "your version is stable, not stale" framing (Section 4.11.4): in-portal FAQ, in-agent system message when a user asks about a feature beyond the pinned version, both? Need a draft FAQ entry plus an agent-side response template before launch. | Cooper / support | Draft as part of Phase 1 portal copy review |
+| 34 | **Per-VM update batch sizing** — the canary-then-fleet rollout (Section 4.11.2) needs concrete batch sizes (e.g., canary: 1 → 5% → 25% → 100%) and pause durations (e.g., 24h soak between canary and 5%). Encode in the reconciler so the policy isn't operator-discretionary. | Cooper | Pick numbers based on existing fleet update incidents; codify in `vm-manifest.ts` |
 
 ---
 
@@ -1199,17 +1379,18 @@ Future: if we accumulate 5+ partners, refactor into a generic `installPartnerSki
 | **Apr 11** | Phase 0 complete — migration, auth flow, env vars |
 | **Apr 14** | Phase 1 complete — skill install, portal page, canary test |
 | **Apr 16** | Phase 2 complete — benchmarks passing, test accounts sent to Edge team |
-| **Apr 18** | Weekly check-in with Timour — iterate on feedback. Show XMTP spec to XMTP team. |
+| **Apr 18** | Weekly check-in with Timour — iterate on feedback. Show XMTP spec to XMTP team. **Test ticket request to Timour** (Q29 / Section 5.4.2 — gates portal-live milestone). |
+| **Apr 25** | **Test ticket received** — Phase 1b ticket validation E2E pass on staging. If slipped, May 9 portal milestone slips. |
 | **Apr 30** | **First sync with Index Network team.** Read game plan Notion. Lock signal schema + API contract + ↔ XMTP boundary (resolves Q17, Q20). |
-| **May 1** | Vendrov data-access surface scoped (resolves Q21). DPA / NDA drafts started. |
+| **May 1** | Vendrov data-access surface scoped (resolves Q21). DPA / NDA drafts started. Maximum Privacy Mode implementation spec drafted (Section 6.1, resolves Q31). |
 | **Apr 21-May 5** | Phase 3a — XMTP client service, plaza skill, overnight planning cron skeleton |
 | **May 5** | Index Network signal submit / match retrieval integrated end-to-end on canary |
-| **May 5-9** | Phase 3b — full Index Network → XMTP → briefing canary on 5-10 test agents |
-| **May 9** | Portal live for early signups (ticket holders). Iterate on morning briefing format, match quality, privacy controls. |
+| **May 5-9** | Phase 3b — full Index Network → XMTP → briefing canary on 5-10 test agents. Phase 1c Granola transcript ingest pipeline online. |
+| **May 9** | **Portal live for early signups** (ticket-gated). Maximum Privacy Mode default ON. Iterate on morning briefing format, match quality, privacy controls, FAQ copy on managed updates (resolves Q33). |
 | **May 12-23** | Phase 4 — governance voting, treasury, sentiment aggregation, group formation through Index Network + XMTP |
 | **May 15** | **Sponsor commitments confirmed** (resolves Q22). Lock API key model — Model A/B/C decision (resolves Q23). |
 | **May 19-23** | Load test: simulate 1,000 agents on Index Network + XMTP, verify match latency <5min and throughput |
-| **May 23** | VM pool scaled to 1,000 (coordinate with Linode — ~$29K/mo). Anonymized data export pipeline live for Vendrov (resolves Q21 implementation). |
+| **May 23** | **Granola benchmark suite locked** (Section 2.5 / Phase 1c — ~20-30 questions, ground truth annotated, frozen as the regression check). VM pool scaled to 1,000 (coordinate with Linode — ~$29K/mo). Anonymized data export pipeline live for Vendrov (resolves Q21 implementation). Skill update cadence + batch sizing codified in reconciler (resolves Q30, Q34). |
 | **May 26-29** | Final integration testing, organizer dashboard, dry run with Edge team. Vendrov pre-registers experiments publicly. |
 | **May 30** | **EE26 starts** — agents live, overnight planning active from night 1. Vendrov experiments running. |
 | **Jun 6** | Week 1 retrospective — tune matchmaking quality, Index Network match acceptance rates, fix edge cases. First weekly research synthesis published. |
