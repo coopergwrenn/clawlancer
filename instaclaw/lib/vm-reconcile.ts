@@ -1181,11 +1181,13 @@ async function stepNpmPinDrift(
     // the new node + new openclaw. The `|| true` on stop is intentional —
     // suspended/hibernating VMs already have the gateway stopped, and we
     // don't want that to fail this step.
+    // Bug D: a fixed 2s sleep was not always enough — some VMs left the
+    // gateway process resident long enough for the subsequent rm/install to
+    // race file handles. Actively wait (up to 15s) for the process to exit
+    // before we touch the install dir.
     await ssh.execCommand(
-      `export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop openclaw-gateway 2>/dev/null || true`,
+      `export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop openclaw-gateway 2>/dev/null && timeout 15 bash -c 'while pgrep -f "openclaw.*gateway" >/dev/null 2>&1; do sleep 0.5; done' || true`,
     );
-    // Brief pause so file handles actually close before the rm.
-    await new Promise((r) => setTimeout(r, 2000));
     // Force the gateway-restart step to fire later so the freshly-installed
     // openclaw + (potentially) freshly-installed node binary actually load
     // into a running process. Without this, a VM whose only drift was the
@@ -1833,9 +1835,11 @@ async function stepGatewayRestart(
     await ssh.execCommand(`${DBUS_PREFIX} && systemctl --user start openclaw-gateway`);
   }
 
-  // Verify gateway comes back healthy (up to 30s, per CLAUDE.md rule #5)
+  // Verify gateway comes back healthy (up to 60s — full reinstalls on slower
+  // VMs can take >30s to warm up; 30s caused false-fail PUSH-FAILEDs during
+  // the v65 rollout when the underlying upgrade had actually succeeded).
   let healthy = false;
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     await new Promise((r) => setTimeout(r, 5000));
     const healthCheck = await ssh.execCommand('curl -sf http://localhost:18789/health 2>/dev/null');
     if (healthCheck.code === 0) {
@@ -1853,7 +1857,7 @@ async function stepGatewayRestart(
       route: "reconcileVM",
       vmId: vm.id,
     });
-    result.errors.push('gateway restart failed: not healthy after 30s');
+    result.errors.push('gateway restart failed: not healthy after 60s');
   }
 }
 
