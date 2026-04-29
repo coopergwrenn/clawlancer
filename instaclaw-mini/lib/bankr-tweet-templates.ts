@@ -35,7 +35,14 @@ function cleanAgentName(raw?: string | null): string | null {
   let name = raw.trim();
   if (name.startsWith("@")) name = name.slice(1);
   name = name.replace(/[_-]?bot$/i, "");
-  name = name.replace(/[_-]+/g, " ").trim();
+  // Strip control chars before separator-to-space — otherwise newlines
+  // bleed into the tweet body. Then strip any non-alphanumeric/space
+  // chars so emoji + punctuation + "@#$%" can't reach X (anti-spam +
+  // accidental @-mention bait).
+  name = name.replace(/[\r\n\t]+/g, " ");
+  name = name.replace(/[_-]+/g, " ");
+  name = name.replace(/[^a-zA-Z0-9 ]/g, "");
+  name = name.replace(/\s+/g, " ").trim();
   if (name.length < 2) return null;
   return name;
 }
@@ -84,16 +91,22 @@ function clamp(text: string): string {
 }
 
 export function pickTweetTemplate(args: TweetArgs): string {
-  const sym = (args.tokenSymbol ?? "").toUpperCase();
+  // Empty/whitespace ticker → "TOKEN" placeholder so we never render
+  // a literal "$ on Base" if Bankr's API ever returns an empty symbol.
+  const sym = ((args.tokenSymbol ?? "").toUpperCase().trim()) || "TOKEN";
   const name = cleanAgentName(args.agentName);
   const url = args.address ? `${URL_BASE}${args.address}` : "";
   const credits = args.verifiedHuman ? HASHTAGS_VERIFIED : HASHTAGS;
   const builder = BUILDERS[Math.floor(Math.random() * BUILDERS.length)];
-  return clamp(builder({ sym, name, url, credits }));
+  let text = builder({ sym, name, url, credits });
+  // If url was empty, the template still appended `\n\n${url}` →
+  // strip the dangling blank tail so the tweet ends at the credits.
+  if (!url) text = text.replace(/\n\n$/, "");
+  return clamp(text);
 }
 
 export function pickTweetTemplateNoUrl(args: Omit<TweetArgs, "address">): string {
-  const sym = (args.tokenSymbol ?? "").toUpperCase();
+  const sym = ((args.tokenSymbol ?? "").toUpperCase().trim()) || "TOKEN";
   const name = cleanAgentName(args.agentName);
   const credits = args.verifiedHuman ? HASHTAGS_VERIFIED : HASHTAGS;
   const builder = BUILDERS[Math.floor(Math.random() * BUILDERS.length)];

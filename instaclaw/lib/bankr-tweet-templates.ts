@@ -46,8 +46,19 @@ function cleanAgentName(raw?: string | null): string | null {
   // commonly end in "_bot"; the human-meaningful name is the rest.
   if (name.startsWith("@")) name = name.slice(1);
   name = name.replace(/[_-]?bot$/i, "");
+  // Strip control chars (newlines, tabs, carriage returns) BEFORE the
+  // separator-to-space pass — otherwise they'd be preserved into the
+  // tweet body and break it across lines on X.
+  name = name.replace(/[\r\n\t]+/g, " ");
   // Replace remaining separator chars with spaces for readability.
-  name = name.replace(/[_-]+/g, " ").trim();
+  name = name.replace(/[_-]+/g, " ");
+  // Strip everything that isn't alphanumeric or space — handles emoji,
+  // punctuation, accidental @-mention bait like "@#$%". Done AFTER the
+  // separator-to-space pass so "moon_dust" still becomes "moon dust"
+  // rather than collapsing to "moondust".
+  name = name.replace(/[^a-zA-Z0-9 ]/g, "");
+  // Final whitespace normalization in case prior steps produced runs.
+  name = name.replace(/\s+/g, " ").trim();
   if (name.length < 2) return null;
   return name;
 }
@@ -116,18 +127,25 @@ function clamp(text: string): string {
  * once on success, not inside the render body).
  */
 export function pickTweetTemplate(args: TweetArgs): string {
-  const sym = (args.tokenSymbol ?? "").toUpperCase();
+  // Empty/whitespace ticker → "TOKEN" placeholder so we never render
+  // a literal "$ on Base" if Bankr's API ever returns an empty symbol
+  // via Path B sync. Server-side validation requires 1-10 chars, so
+  // this is theoretical, but graceful defense costs nothing.
+  const sym = ((args.tokenSymbol ?? "").toUpperCase().trim()) || "TOKEN";
   const name = cleanAgentName(args.agentName);
   const url = args.address ? `${URL_BASE}${args.address}` : "";
   const credits = args.verifiedHuman ? HASHTAGS_VERIFIED : HASHTAGS;
   const builder = BUILDERS[Math.floor(Math.random() * BUILDERS.length)];
-  const text = builder({ sym, name, url, credits });
+  let text = builder({ sym, name, url, credits });
+  // If url was empty, the template still appended `\n\n${url}` →
+  // strip the dangling blank tail so the tweet ends at the credits line.
+  if (!url) text = text.replace(/\n\n$/, "");
   return clamp(text);
 }
 
 /** Variant that renders without a URL — used when launch had no address. */
 export function pickTweetTemplateNoUrl(args: Omit<TweetArgs, "address">): string {
-  const sym = (args.tokenSymbol ?? "").toUpperCase();
+  const sym = ((args.tokenSymbol ?? "").toUpperCase().trim()) || "TOKEN";
   const name = cleanAgentName(args.agentName);
   const credits = args.verifiedHuman ? HASHTAGS_VERIFIED : HASHTAGS;
   // Re-use the same builders but pass an empty url; trim the dangling
