@@ -109,10 +109,12 @@ export async function POST(req: NextRequest) {
   }
   logger.info("tokenize:stale_lock_cleared", { diagId: DIAG_ID });
 
-  // Look up user's VM with Bankr wallet
+  // Look up user's VM with Bankr wallet. telegram_bot_token + telegram_chat_id
+  // pulled here too so the after() block's autopost (#1) doesn't need a
+  // second fetch. Both fields may be null; autopost gracefully no-ops.
   const { data: vm, error: vmErr } = await supabase
     .from("instaclaw_vms")
-    .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address, tokenization_platform, ip_address, ssh_port, ssh_user")
+    .select("id, bankr_wallet_id, bankr_evm_address, bankr_token_address, tokenization_platform, ip_address, ssh_port, ssh_user, telegram_bot_token, telegram_chat_id")
     .eq("assigned_to", userId)
     .single();
 
@@ -444,6 +446,37 @@ export async function POST(req: NextRequest) {
       logger.warn("Failed to write token info to VM (non-fatal)", {
         error: String(err),
         vmId: vm.id,
+      });
+    }
+
+    // ── Item #1: agent autopost ──
+    // Send a Telegram message in the agent's own voice celebrating the
+    // launch. Best-effort + isolated try/catch so any Telegram-side
+    // failure never affects the WALLET.md write above (already
+    // committed) or the user-facing response (already returned).
+    // VM-reassignment guard at line 367 above already gated this
+    // branch to "agent still belongs to launching user".
+    try {
+      const { postLaunchAnnouncement } = await import("@/lib/agent-autopost");
+      const result = await postLaunchAnnouncement({
+        vm: {
+          id: vm.id,
+          telegram_bot_token: (vm as { telegram_bot_token?: string | null }).telegram_bot_token,
+          telegram_chat_id: (vm as { telegram_chat_id?: string | null }).telegram_chat_id,
+        },
+        tokenSymbol,
+        supabase: getSupabase(),
+      });
+      logger.info("agent-autopost: path-A result", {
+        vmId: vm.id,
+        tokenSymbol,
+        posted: result.posted,
+        reason: result.reason,
+      });
+    } catch (autopostErr) {
+      logger.warn("agent-autopost: path-A threw (non-fatal)", {
+        vmId: vm.id,
+        error: String(autopostErr),
       });
     }
   });

@@ -66,7 +66,7 @@ export async function syncBankrLaunchForVm(vmId: string): Promise<SyncResult> {
 
   const { data: vm, error: readErr } = await supabase
     .from("instaclaw_vms")
-    .select("id, bankr_evm_address, bankr_token_address, tokenization_platform")
+    .select("id, bankr_evm_address, bankr_token_address, tokenization_platform, telegram_bot_token, telegram_chat_id")
     .eq("id", vmId)
     .single();
 
@@ -169,6 +169,36 @@ export async function syncBankrLaunchForVm(vmId: string): Promise<SyncResult> {
     walletAddress: vm.bankr_evm_address,
     launchNumber,
   });
+
+  // ── Item #1: agent autopost (Path B) ──
+  // Conditional UPDATE returned 1 row → we are the discoverer for this
+  // VM, fire exactly once. Path A's button-flow is gated by the
+  // `tokenization_platform IS NULL` filter so it can never reach here
+  // for the same launch. Best-effort isolated try/catch — sync's
+  // SyncResult contract stays clean.
+  try {
+    const { postLaunchAnnouncement } = await import("./agent-autopost");
+    const result = await postLaunchAnnouncement({
+      vm: {
+        id: vm.id,
+        telegram_bot_token: (vm as { telegram_bot_token?: string | null }).telegram_bot_token,
+        telegram_chat_id: (vm as { telegram_chat_id?: string | null }).telegram_chat_id,
+      },
+      tokenSymbol: symbol,
+      supabase,
+    });
+    logger.info("agent-autopost: path-B result", {
+      vmId,
+      tokenSymbol: symbol,
+      posted: result.posted,
+      reason: result.reason,
+    });
+  } catch (autopostErr) {
+    logger.warn("agent-autopost: path-B threw (non-fatal)", {
+      vmId,
+      error: String(autopostErr),
+    });
+  }
 
   return {
     updated: true,

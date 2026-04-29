@@ -68,7 +68,7 @@ export async function syncBankrLaunchForVm(vmId: string): Promise<SyncResult> {
 
   const { data: vm, error: readErr } = await s
     .from("instaclaw_vms")
-    .select("id, bankr_evm_address, bankr_token_address, tokenization_platform")
+    .select("id, bankr_evm_address, bankr_token_address, tokenization_platform, telegram_bot_token, telegram_chat_id")
     .eq("id", vmId)
     .single();
 
@@ -163,6 +163,35 @@ export async function syncBankrLaunchForVm(vmId: string): Promise<SyncResult> {
     walletAddress: vm.bankr_evm_address,
     launchNumber,
   });
+
+  // ── Item #1: agent autopost (Path B) ──
+  // Fires when the mini-app's home/page.tsx server render is the one
+  // that detected the launch (vs the webapp's cron / /api/vm/status).
+  // Best-effort isolated try/catch — sync's SyncResult contract stays
+  // clean if Telegram is down or the bot is blocked.
+  try {
+    const { postLaunchAnnouncement } = await import("./agent-autopost");
+    const result = await postLaunchAnnouncement({
+      vm: {
+        id: vm.id,
+        telegram_bot_token: (vm as { telegram_bot_token?: string | null }).telegram_bot_token,
+        telegram_chat_id: (vm as { telegram_chat_id?: string | null }).telegram_chat_id,
+      },
+      tokenSymbol: symbol,
+      supabase: s,
+    });
+    console.log("[agent-autopost] path-B result", {
+      vmId,
+      tokenSymbol: symbol,
+      posted: result.posted,
+      reason: result.reason,
+    });
+  } catch (autopostErr) {
+    console.warn("[agent-autopost] path-B threw (non-fatal)", {
+      vmId,
+      error: String(autopostErr),
+    });
+  }
 
   return {
     updated: true,
