@@ -92,7 +92,13 @@ yn bin.node_exporter     "which node_exporter"
 yn bin.socat             "which socat"
 
 # === Node ===
-NPATH=$(ls -d $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)
+# Use nvm's actual default (`nvm which default`) instead of alphabetically-first
+# glob. With multiple Node versions installed (e.g., v22.22.0 + v22.22.2 during
+# the v64 bake), `head -1` picked v22.22.0 even though v22.22.2 was the active
+# default — leading to a misleading nvm.node_version=v22.22.0 audit line on a
+# VM that was actually running v22.22.2. Falls back to alphabetically-LAST glob
+# if nvm sourcing fails (so single-version VMs still report correctly).
+NPATH=$(. $HOME/.nvm/nvm.sh 2>/dev/null && nvm which default 2>/dev/null || ls -d $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | tail -1)
 NDIR=$(dirname "$NPATH" 2>/dev/null)
 yn nvm.node_v22          "echo \$NDIR | grep -q v22"
 v  nvm.node_version      "$NPATH --version 2>/dev/null"
