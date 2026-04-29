@@ -1204,29 +1204,51 @@ async function stepNpmPinDrift(
     // into a running process. Without this, a VM whose only drift was the
     // openclaw pin would skip the restart and remain stopped after install.
     result.gatewayRestartNeeded = true;
+    // Install with one auto-retry on verify failure.
+    //
     // Install timeout: 600s. Bumped from 360s after v66→v67 power+pro pass —
     // vm-337 and vm-320 (both v63→v66 deep jumps) hit the 360s wall mid
     // tarball-extract on slow disk/network. 600s gives 14× the 42s baseline
     // observed on healthy VMs.
-    const install = await ssh.execCommand(
-      `${NVM_PREAMBLE} && npm cache clean --force >/dev/null 2>&1; rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
-      { execOptions: { timeout: 600_000 } },
-    );
-    // Verify by reading on-disk artifacts. Bin symlink + package.json version
-    // PLUS dist/index.js (the systemd unit's ExecStart entry point — vm-831
-    // had the symlink but missing dist/, putting the gateway in a CrashLoop
-    // with `Cannot find module .../openclaw/dist/index.js`). 30s poll
-    // tolerates a stragglerly install whose final FS ops land just after
-    // node-ssh hands control back.
-    const verify = await ssh.execCommand(
-      `${NVM_PREAMBLE} && for i in $(seq 1 30); do ` +
-        `test -L "$HOME/.nvm/versions/node/$(node -v)/bin/openclaw" && ` +
-        `grep -q '"version": "${OPENCLAW_PINNED_VERSION}"' "$(npm root -g)/openclaw/package.json" && ` +
-        `test -f "$(npm root -g)/openclaw/dist/index.js" && ` +
-        `echo ok && exit 0; ` +
-        `sleep 1; ` +
-      `done; exit 1`,
-    );
+    //
+    // Auto-retry: the v66→v67 starter pass on 2026-04-29 had ~20% of
+    // attempts hit a partial-extract failure mode where the install
+    // command "completed" but the on-disk verify came up missing
+    // dist/index.js — i.e. the npm install on the remote ended without
+    // unpacking everything. Manual replay (rm -rf + fresh install) on
+    // vm-831 worked first try in 37s. Bake that into the reconciler so
+    // a single transient extraction flake doesn't false-fail the whole
+    // wave. Same `rm -rf "$(npm root -g)/openclaw"` runs each attempt,
+    // so the second attempt starts from a clean slate.
+    let install: { code: number; stdout: string; stderr: string } = { code: -1, stdout: "", stderr: "" };
+    let verify: { code: number; stdout: string; stderr: string } = { code: -1, stdout: "", stderr: "" };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      install = await ssh.execCommand(
+        `${NVM_PREAMBLE} && npm cache clean --force >/dev/null 2>&1; rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
+        { execOptions: { timeout: 600_000 } },
+      );
+      // Verify on-disk artifacts: bin symlink + package.json version + the
+      // load-bearing dist/index.js (the systemd unit's ExecStart entry
+      // point — vm-831 had the symlink but missing dist/, gateway then
+      // crash-looped with `Cannot find module .../openclaw/dist/index.js`).
+      // 30s poll tolerates a stragglerly install whose final FS ops land
+      // just after node-ssh hands control back.
+      verify = await ssh.execCommand(
+        `${NVM_PREAMBLE} && for i in $(seq 1 30); do ` +
+          `test -L "$HOME/.nvm/versions/node/$(node -v)/bin/openclaw" && ` +
+          `grep -q '"version": "${OPENCLAW_PINNED_VERSION}"' "$(npm root -g)/openclaw/package.json" && ` +
+          `test -f "$(npm root -g)/openclaw/dist/index.js" && ` +
+          `echo ok && exit 0; ` +
+          `sleep 1; ` +
+        `done; exit 1`,
+      );
+      if (verify.code === 0) break;
+      // Brief settle before retry, so any flaky network connection or in-flight
+      // FS write has a chance to complete or clear.
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 5_000));
+      }
+    }
     if (verify.code === 0) {
       result.fixed.push(`openclaw ${openclawCurr || "missing"} → ${OPENCLAW_PINNED_VERSION}`);
       // The running gateway holds the OLD binary in memory; trigger Step 9
