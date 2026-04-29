@@ -45,12 +45,17 @@ export default function AgentDashboard({
   walletAddress,
   gmailConnected: initialGmailConnected,
   subscription,
+  freshLaunch,
 }: {
   agent: Agent;
   usage: Usage | null;
   walletAddress: string;
   gmailConnected: boolean;
   subscription: SubscriptionInfo;
+  // Set by the server when this dashboard render is the one that
+  // discovered a chat-driven Bankr token launch. Triggers the celebration
+  // view + confetti + share-to-X card on first paint of BankrTokenizeCard.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -551,6 +556,7 @@ export default function AgentDashboard({
         tokenSymbol={(agent.bankr_token_symbol as string) ?? null}
         tokenizationPlatform={(agent.tokenization_platform as string) ?? null}
         agentName={(agent.agent_name as string) ?? (agent.telegram_bot_username as string) ?? null}
+        freshLaunch={freshLaunch ?? null}
       />
 
       {/* ── Quick Actions ── */}

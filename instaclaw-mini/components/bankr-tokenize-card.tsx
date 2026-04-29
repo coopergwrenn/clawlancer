@@ -10,6 +10,10 @@ interface BankrTokenizeCardProps {
   tokenSymbol: string | null;
   tokenizationPlatform: string | null;
   agentName?: string | null;
+  // Set by the server when this dashboard render discovered a chat-driven
+  // launch (Path B). Fires the same celebration view + share flow that the
+  // dashboard-button path produces. Mirrors webapp BankrWalletCard prop.
+  freshLaunch?: { tokenAddress: string; tokenSymbol: string } | null;
 }
 
 interface TokenPrice {
@@ -66,6 +70,7 @@ export default function BankrTokenizeCard({
   tokenSymbol,
   tokenizationPlatform,
   agentName,
+  freshLaunch,
 }: BankrTokenizeCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -73,7 +78,15 @@ export default function BankrTokenizeCard({
   const [tokenSym, setTokenSym] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(null);
+  // Lazy-init from freshLaunch so a chat-driven launch lands directly on
+  // the celebration view on first paint (no flash of post-launch dashboard
+  // for one frame). The effect below handles any later re-render edge.
+  const [launchSuccess, setLaunchSuccess] = useState<{ symbol: string; address: string } | null>(
+    () =>
+      freshLaunch
+        ? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress }
+        : null,
+  );
   const [showShareCard, setShowShareCard] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [tweetCopied, setTweetCopied] = useState(false);
@@ -89,6 +102,30 @@ export default function BankrTokenizeCard({
   const [launchElapsed, setLaunchElapsed] = useState(0);
   const autoReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Once the chat-launch celebration has been triggered for a given
+  // freshLaunch payload, don't re-fire on prop re-renders within the
+  // same lifecycle. Mirrors webapp BankrWalletCard guard.
+  const freshLaunchHandled = useRef(false);
+
+  // ── Path B: chat-driven launch celebration trigger ──
+  // The home server component sets `freshLaunch` exactly once — on the
+  // dashboard render that discovered the launch via Bankr's public API.
+  // launchSuccess is already populated via useState lazy init above
+  // (first-paint case); this effect just fires the side effects (confetti,
+  // share card timer, auto-reload). Mirrors the webapp pattern so mini-app
+  // and webapp paths produce identical UX.
+  useEffect(() => {
+    if (!freshLaunch) return;
+    if (freshLaunchHandled.current) return;
+    freshLaunchHandled.current = true;
+    setLaunchSuccess(
+      (prev) =>
+        prev ?? { symbol: freshLaunch.tokenSymbol, address: freshLaunch.tokenAddress },
+    );
+    fireConfetti();
+    setTimeout(() => setShowShareCard(true), 800);
+    autoReloadTimer.current = setTimeout(() => window.location.reload(), 8000);
+  }, [freshLaunch]);
 
   // Phased launch status — increments every 500ms while tokenizing is true.
   useEffect(() => {
@@ -230,6 +267,10 @@ export default function BankrTokenizeCard({
       }
       const symbol = tokenSym.trim().toUpperCase();
       const addr = responseTokenAddress ?? "";
+      // Mark Path B handled so a server-detected freshLaunch arriving on
+      // the next dashboard navigation can't re-fire confetti or replace
+      // the auto-reload timer.
+      freshLaunchHandled.current = true;
       setLaunchSuccess({ symbol, address: addr });
       fireConfetti();
       setTimeout(() => setShowShareCard(true), 800);

@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { getAgentStatus, getDailyUsage, getGoogleStatus, getSubscriptionStatus, type SubscriptionInfo } from "@/lib/supabase";
+import { syncBankrLaunchForVm } from "@/lib/bankr-launch-sync";
 import { redirect } from "next/navigation";
 import AgentDashboard from "./agent-dashboard";
 import ProvisioningStatus from "./provisioning-status";
@@ -112,6 +113,35 @@ export default async function HomePage() {
     redirect("/");
   }
 
+  // Path B detection: when an agent has a Bankr wallet but no recorded
+  // token, ask Bankr's public API whether the user ran `bankr launch`
+  // outside our /api/bankr/tokenize flow. The helper is idempotent and
+  // race-safe; it returns updated:true exactly on the call that performed
+  // the DB write that discovered the launch — that's what triggers the
+  // celebration card on the mini-app dashboard. Fail-silent: any error
+  // here must not block the dashboard render.
+  let freshLaunch: { tokenAddress: string; tokenSymbol: string } | null = null;
+  if (
+    (agent as Record<string, unknown>).bankr_wallet_id &&
+    !(agent as Record<string, unknown>).bankr_token_address &&
+    !(agent as Record<string, unknown>).tokenization_platform
+  ) {
+    try {
+      const sync = await syncBankrLaunchForVm(agent.id);
+      if (sync.updated && sync.tokenAddress && sync.tokenSymbol) {
+        freshLaunch = { tokenAddress: sync.tokenAddress, tokenSymbol: sync.tokenSymbol };
+        // Reflect the just-discovered token in this render so the card
+        // shows the post-launch state immediately on first paint instead
+        // of waiting for the next page navigation.
+        (agent as Record<string, unknown>).bankr_token_address = sync.tokenAddress;
+        (agent as Record<string, unknown>).bankr_token_symbol = sync.tokenSymbol;
+        (agent as Record<string, unknown>).tokenization_platform = "bankr";
+      }
+    } catch (err) {
+      console.error("[Home] bankr launch sync threw:", err);
+    }
+  }
+
   return (
     <AgentDashboard
       agent={agent}
@@ -119,6 +149,7 @@ export default async function HomePage() {
       walletAddress={session.walletAddress}
       gmailConnected={gmailConnected}
       subscription={subscription}
+      freshLaunch={freshLaunch}
     />
   );
 }
