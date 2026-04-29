@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { configureOpenClaw, migrateUserData, testProxyRoundTrip, setupTLSBackground, setupXMTP } from "@/lib/ssh";
+import { configureOpenClaw, migrateUserData, testProxyRoundTrip, setupTLSBackground, setupXMTP, auditVMConfig } from "@/lib/ssh";
 import { validateAdminKey, decryptApiKey } from "@/lib/security";
 import { decryptBankrKey } from "@/lib/bankr-encryption";
 import { logger } from "@/lib/logger";
@@ -102,6 +102,87 @@ export async function POST(req: NextRequest) {
         lastConfigured: new Date(lastConfigured).toISOString(),
       });
       return NextResponse.json({ configured: true, healthy: true, skipped: true });
+    }
+
+    // ── Already-onboarded user guard (prevents wipe on re-configure) ──
+    // configureOpenClaw's privacy-guard at lib/ssh.ts:3480-3481 unconditionally
+    // wipes ~/.openclaw/workspace/* and ~/.openclaw/memory/* before rebuilding.
+    // Correct behavior for a fresh user transition (reclaim → reassign),
+    // catastrophic when called on an already-configured user — deletes their
+    // accumulated MEMORY.md, sessions, and conversation context.
+    //
+    // Real incident 2026-04-29: hottubleed@gmail.com (vm-773) was wiped at
+    // 2026-04-28 23:30 UTC by an unidentified caller of this endpoint. User
+    // reported "second time my agent has been completely wiped." Lost work
+    // included DegenClaw trading agent setup, V2tradingbot strategy, GitHub
+    // auth, and weeks of personalized agent context.
+    //
+    // Guard: if the user has already completed onboarding AND their VM is
+    // healthy with a working gateway, run auditVMConfig (drift-repair only —
+    // MEMORY.md is create_if_missing in the manifest, SOUL.md uses
+    // append_if_marker_absent — neither overwrites user content) instead of
+    // configureOpenClaw.
+    //
+    // Bypassed by: --force=true (admin emergency reset) and isRecentlyAssigned
+    // (first-time setup window). Only applies when health_status === "healthy"
+    // — unhealthy/suspended VMs may legitimately need full reconfigure (the
+    // billing webhook resub flow uses auditVMConfig directly for suspended
+    // VMs, separate code path).
+    if (
+      !isForced &&
+      !isRecentlyAssigned &&
+      vm.health_status === "healthy" &&
+      vm.gateway_url
+    ) {
+      const { data: userOnboardingState } = await supabase
+        .from("instaclaw_users")
+        .select("onboarding_complete")
+        .eq("id", userId)
+        .single();
+
+      if (userOnboardingState?.onboarding_complete === true) {
+        logger.warn(
+          "Configure called on already-onboarded user — running drift-repair instead of full wipe-and-rebuild (preserves memory)",
+          {
+            route: "vm/configure",
+            userId,
+            vmId: vm.id,
+            healthStatus: vm.health_status,
+            lastConfigured: lastConfigured ? new Date(lastConfigured).toISOString() : null,
+          }
+        );
+        try {
+          const auditResult = await auditVMConfig(vm, { strict: false });
+          return NextResponse.json({
+            configured: true,
+            healthy: true,
+            skipped_full_configure: true,
+            reason: "already_onboarded_drift_repair_only",
+            audit_fixed: auditResult.fixed.length,
+            audit_errors: auditResult.errors.length,
+          });
+        } catch (auditErr) {
+          // Audit failure does NOT fall through to configureOpenClaw — that
+          // would wipe the user. Better to leave them in their current
+          // (memory-preserved) state and surface the error so caller knows.
+          logger.error(
+            "Configure guard: drift-repair failed; refusing to fall through to full configure (would wipe memory)",
+            {
+              route: "vm/configure",
+              userId,
+              vmId: vm.id,
+              error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+            }
+          );
+          return NextResponse.json(
+            {
+              error: "drift_repair_failed_full_configure_skipped_to_preserve_memory",
+              detail: auditErr instanceof Error ? auditErr.message : String(auditErr),
+            },
+            { status: 500 }
+          );
+        }
+      }
     }
 
     // Get pending user config (may not exist — e.g. user paid but didn't
