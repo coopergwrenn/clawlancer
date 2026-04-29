@@ -1193,20 +1193,33 @@ async function stepNpmPinDrift(
     // into a running process. Without this, a VM whose only drift was the
     // openclaw pin would skip the restart and remain stopped after install.
     result.gatewayRestartNeeded = true;
+    // Bump install timeout 180s → 360s. Investigation on 2026-04-29 traced the
+    // residual PUSH-FAILED rate to a node-ssh local timeout firing before the
+    // remote npm install (~3 min on slow VMs) finalized — bin symlink mtime
+    // landed seconds AFTER the local-side `await` returned, so the verify step
+    // raced and saw an empty PATH lookup. Verbose install on vm-866 ran 42s
+    // clean; 360s is generous headroom.
     const install = await ssh.execCommand(
       `${NVM_PREAMBLE} && npm cache clean --force >/dev/null 2>&1; rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
-      { execOptions: { timeout: 180_000 } },
+      { execOptions: { timeout: 360_000 } },
     );
-    const verify = (await ssh.execCommand(
-      `${NVM_PREAMBLE} && openclaw --version 2>/dev/null | grep -oE "[0-9]+\\.[0-9]+\\.[0-9]+" | head -1`,
-    )).stdout.trim();
-    if (verify === OPENCLAW_PINNED_VERSION) {
+    // Verify by reading on-disk artifacts (bin symlink + package.json version)
+    // instead of running `openclaw --version`. The CLI verify was racy: when
+    // the install finalized after the local-side timeout, the symlink existed
+    // on the remote but PATH lookup in the next SSH command sometimes returned
+    // empty. On-disk file checks are stable. The 30s polling loop tolerates
+    // a stragglerly install whose final filesystem operations land just after
+    // node-ssh hands control back.
+    const verify = await ssh.execCommand(
+      `${NVM_PREAMBLE} && for i in $(seq 1 30); do test -L "$HOME/.nvm/versions/node/$(node -v)/bin/openclaw" && grep -q '"version": "${OPENCLAW_PINNED_VERSION}"' "$(npm root -g)/openclaw/package.json" && echo ok && exit 0; sleep 1; done; exit 1`,
+    );
+    if (verify.code === 0) {
       result.fixed.push(`openclaw ${openclawCurr || "missing"} → ${OPENCLAW_PINNED_VERSION}`);
       // The running gateway holds the OLD binary in memory; trigger Step 9
       // restart so the new version actually loads.
       result.gatewayRestartNeeded = true;
     } else {
-      const msg = `openclaw install failed: was=${openclawCurr || "missing"} got=${verify || "(empty)"} npm-tail=${(install.stdout + install.stderr).slice(-200)}`;
+      const msg = `openclaw install failed: was=${openclawCurr || "missing"} bin+version not on disk after 30s poll, npm-tail=${(install.stdout + install.stderr).slice(-200)}`;
       result.errors.push(msg);
       // ALSO push to strictErrors so the bump-without-push gate fires. Without
       // this the cron would advance config_version on a VM whose openclaw npm
