@@ -396,8 +396,22 @@ export const VM_MANIFEST = {
    *  via `bankr launch` only, requiring --fee-type with --fee, and pointing
    *  the agent at our dashboard celebration flow instead of self-promoting.
    *  Idempotent via INSTACLAW_BANKR_PATCH_V1 marker. Triggers reconciler
-   *  across the fleet so existing VMs get the overlay. */
-  version: 66,
+   *  across the fleet so existing VMs get the overlay.
+   * v67 (2026-04-29): Token-launch framing in upfront context. Audit on
+   *  vm-780 showed v66's skill directive was on disk but NOT being read
+   *  at turn 1 — the agent lazy-loads SKILL.md only when it explicitly
+   *  opens the skill, by which point it has already framed the task as
+   *  Solana (training-data prior). Fix lives in the always-in-context
+   *  surface (SOUL.md routing table + CAPABILITIES.md wallet table):
+   *  splits the bankr row to add a dedicated "launch a token" row with
+   *  explicit Base-only framing, while preserving every Solana wallet /
+   *  trading / swap behavior verbatim. Verified on vm-050 with a 3-prompt
+   *  probe — turn 1 of "i want to launch a token" returned Base + bankr
+   *  launch with zero Solana mention, while "check my SOL balance" and
+   *  "swap 0.1 SOL for USDC on Jupiter" both routed to the Solana scripts
+   *  normally. Reconciler rewrites SOUL.md and CAPABILITIES.md (both
+   *  `>` overwrite) on next pass — no fleet patch needed. */
+  version: 67,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
