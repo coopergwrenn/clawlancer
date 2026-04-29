@@ -1162,14 +1162,19 @@ async function stepNpmPinDrift(
     await ssh.execCommand(
       `echo '${OPENCLAW_PINNED_VERSION}' > "$HOME/.openclaw/.openclaw-pinned-version"`,
     );
-    // Clean install: rm node_modules/openclaw before install. This was the
-    // failure mode on vm-050 (2026-04-28 canary): npm install -g over an
-    // existing tree on a different OpenClaw version left dist/ with stale
-    // hashed-chunk files referenced by the new server.impl, producing
-    // ERR_MODULE_NOT_FOUND on gateway startup. Removing first guarantees a
-    // fresh tree. Throwaway test confirmed this fixes the install.
+    // Clean install: clear npm cache + rm node_modules/openclaw before install.
+    //
+    // This was the failure mode on vm-050 (2026-04-28 canary) AND on the v64
+    // canary 2026-04-29 vm-843: a prior interrupted install (Vercel cron
+    // timeout mid-`npm install`) left the tarball cache referencing dirs
+    // that npm later removed during cleanup. The next install would extract
+    // packages, then ENOENT on a sub-package's postinstall (e.g.
+    // protobufjs's `node scripts/postinstall` failing with `spawn sh ENOENT`
+    // because the cwd directory was missing). `npm cache clean --force` first
+    // wipes those stale references so the fresh extract is consistent.
+    // Then `rm -rf openclaw` removes any leftover module dir before reinstall.
     const install = await ssh.execCommand(
-      `${NVM_PREAMBLE} && rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
+      `${NVM_PREAMBLE} && npm cache clean --force >/dev/null 2>&1; rm -rf "$(npm root -g)/openclaw" && npm install -g openclaw@${OPENCLAW_PINNED_VERSION} 2>&1 | tail -5`,
       { execOptions: { timeout: 180_000 } },
     );
     const verify = (await ssh.execCommand(
@@ -1275,7 +1280,13 @@ async function stepNodeUpgrade(
     `for f in $HOME/.config/systemd/user/openclaw-gateway.service $HOME/.config/systemd/user/openclaw-gateway.service.d/*.conf $HOME/.config/systemd/user/instaclaw-xmtp.service; do ` +
     `  [ -f "$f" ] && sed -i -E 's|/v22\\.[0-9]+\\.[0-9]+/|/v${NODE_PINNED_VERSION}/|g' "$f"; ` +
     `done; ` +
-    `grep -h "ExecStart" $HOME/.config/systemd/user/openclaw-gateway.service | head -1`,
+    // grep -hE "^ExecStart=" — anchored on line-start + literal `=` so we don't
+    // match ExecStartPre= (chrome-pkill drop-in added by stepSystemdUnit)
+    // or ExecStartPost= directives. The first commit of this verification
+    // (2026-04-28) used "ExecStart" loosely and false-failed on every fleet
+    // VM whose unit had ExecStartPre= sorted before ExecStart= (vm-867
+    // canary 2026-04-29).
+    `grep -hE "^ExecStart=" $HOME/.config/systemd/user/openclaw-gateway.service | head -1`,
   );
   if (!patchUnit.stdout.includes(`/v${NODE_PINNED_VERSION}/`)) {
     result.errors.push(
