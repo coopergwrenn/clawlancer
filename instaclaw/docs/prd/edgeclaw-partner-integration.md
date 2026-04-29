@@ -24,12 +24,17 @@ This is InstaClaw's first full partner integration **and** its first formal rese
 
 | Person | Role |
 |--------|------|
-| **Timour** | Project lead, Edge City |
-| **Ivan Vendrov** | Research lead (part-time) — will run pre-registered experiments on top of the baseline plaza. ex Anthropic, Midjourney, Google. |
+| **Timour Kosters** | Project lead, Edge City. Author of the EE26 research overview (Substack 2026-04-28). |
+| **Ivan Vendrov** | Research lead (part-time) — runs pre-registered experiments on top of the baseline plaza. ex Anthropic, Midjourney, Google. ([vendrov.ai](https://vendrov.ai)) |
 | **Tule / Alejandro** | Tech team — shared backend, data layer, skill repo maintenance |
-| **Cooper** | InstaClaw — agent deployment, partner portal, skill integration |
+| **Cooper Wrenn** | InstaClaw — agent deployment, partner portal, skill integration |
+| **Yaniv Tal + Geo team** | Community knowledge graph layer ([geobrowser.io](https://geobrowser.io)) — provides structured representation of the EE26 community (attendees, projects, interests) that Index Network and agents query against. |
 | **Index Network team** | Agent-to-agent discovery / connection layer — semantic matching across all ~1,000 agents |
+| **Telamon Ardavanis** | Edge City partner / community voice — public commenter on the research overview; participates as attendee + feedback channel |
 | **Marlowe** | Potential contributor — Agent Plaza / forum layer |
+| **Seb Krier** *(potential collaborator — DeepMind, Cosmos)* | Author of *Coasean Bargaining at Scale* — the theoretical paper framing the experiment's bargaining / transaction-cost hypothesis. Worth recruiting; at minimum cite his framework prominently in publications. |
+| *(open slot — Edge City recruiting)* **Research co-lead** | Experiment design, instrumentation, publication strategy |
+| *(open slot — Edge City recruiting)* **1-2 engineers, May–June** | Agent-to-agent layer, governance interfaces |
 
 ### Key Repos & Links
 
@@ -41,9 +46,28 @@ This is InstaClaw's first full partner integration **and** its first formal rese
 | Social Layer API | `api.sola.day` (group_id: 3688) |
 | EdgeOS Attendee API | `api-citizen-portal.simplefi.tech` (popup_id: 8) |
 | Promo code | `EDGE` — 100% off first month, 10 redemptions (Stripe coupon `cFq6vaVa`) |
+| EE26 research overview (Substack) | `edgeesmeralda2026.substack.com/p/the-agent-village-experiment-at-edge` |
+| Edge Esmeralda site | `edgeesmeralda.com` |
+| Edge Esmeralda ticket portal | `edgecity.simplefi.tech/auth` |
 | Index Network game plan | `indexnetwork.notion.site/index-network-edge-city-game-plan` |
 | Index Network handle | `@indexnetwork_` |
 | Vendrov research site | `vendrov.ai` |
+| Geo browser | `geobrowser.io` |
+| Polis (opinion mapping) | `pol.is` — methodology cited for governance experiments |
+
+### Cited Foundational Research
+
+The following papers and projects inform the experiment's intellectual lineage. All cited in Timour's research overview; we should cite them in turn when we publish.
+
+| Reference | Authors / Org | Citation | Relevance |
+|-----------|--------------|----------|-----------|
+| *Generative Agents* (2023) | Park et al., Stanford | [arxiv:2304.03442](https://arxiv.org/abs/2304.03442) | 25 fictional agents in a sandbox throwing a party. The original synthetic-environment baseline EE26 contrasts itself against. |
+| *Concordia* | DeepMind | [github.com/google-deepmind/concordia](https://github.com/google-deepmind/concordia) | Multi-agent dynamics testing framework. |
+| *Melting Pot* | DeepMind | [github.com/google-deepmind/meltingpot](https://github.com/google-deepmind/meltingpot) | Sandbox simulations for multi-agent dynamics. |
+| *The Habermas Machine* | DeepMind | [Science 10.1126/science.adq2852](https://www.science.org/doi/10.1126/science.adq2852) | 5,700+ participant study showing AI-mediated group statements preferred over human-mediator ones. Methodological precedent for our agent-mediated deliberation experiments. |
+| *Collective Constitutional AI* | Anthropic | [anthropic.com/research/collective-constitutional-ai](https://www.anthropic.com/research/collective-constitutional-ai-aligning-a-language-model-with-public-input) | AI-assisted deliberation scaling. |
+| *Alignment Assemblies* | Center for Institutional Politics (CIP) | [cip.org/research](https://cip.org/research) | Public-input AI alignment at scale. |
+| *Coasean Bargaining at Scale* | Seb Krier (DeepMind, Cosmos) | [arxiv:2509.05077](https://arxiv.org/abs/2509.05077) | Theoretical framework: agents reduce transaction costs in multi-party negotiation. Directly underpins our hypothesis 3 (bargaining and defection emerge once humans delegate). |
 
 ---
 
@@ -464,6 +488,16 @@ Each agent compiles all confirmed matches, relevant events, and governance items
 - Human responds (approve/reject/abstain), agent casts vote via XMTP
 - Results tallied and broadcast back to the group
 
+**Methodology stack for the deliberation experiments** *(named so the research output can cite specific prior art rather than appearing to invent the wheel):*
+
+- **Polis-style opinion mapping** ([pol.is](https://pol.is)) — the canonical methodology for surfacing latent consensus across a population. EE26 adapts Polis's clustering approach: each agent submits its human's position on a proposal as a structured signal; a coordinator agent (Section 4.9.7 / 4.9.8) clusters them into agreement / disagreement clusters; results surfaced back to humans showing which clusters they fall into and where the bridges are.
+- **DeepMind Habermas Machine** ([Science 10.1126/science.adq2852](https://www.science.org/doi/10.1126/science.adq2852)) — validated at 5,700+ participants that AI-mediated group statements are preferred to human-mediator ones. Our agent-mediated deliberation builds directly on this: agents compose a "what your human probably thinks" digest of governance proposals, humans confirm/edit, agents cast votes.
+- **Anthropic Collective Constitutional AI** ([anthropic.com/research/collective-constitutional-ai](https://www.anthropic.com/research/collective-constitutional-ai-aligning-a-language-model-with-public-input)) — methodology for aggregating public input into a constitution. Relevant if EE26 wants to draft a community constitution mid-village; agents could surface drafts and aggregate edits.
+- **CIP Alignment Assemblies** ([cip.org/research](https://cip.org/research)) — protocol for public-input AI alignment. Reference for how to structure the deliberative assemblies on village-wide questions.
+- **Seb Krier — Coasean Bargaining at Scale** ([arxiv:2509.05077](https://arxiv.org/abs/2509.05077)) — theoretical framework for agents reducing transaction costs in multi-party negotiation. Directly underpins the bargaining hypothesis (Section 4.10.1, hypothesis 3).
+
+The point of citing these here is **not** to claim we're reinventing them — it's to make clear the EE26 governance experiments are continuous with established methodology. Vendrov's published paper should reference all five and position EE26's contribution as *the first longitudinal field deployment of these methodologies in a real residential community.*
+
 **Group Formation:**
 - Agent submits a group-formation query to Index Network: "Looking for 4-8 people interested in nature + deep conversations for a sunset hike tomorrow." Index Network returns a ranked candidate cluster of compatible agents.
 - Coordinating agent broadcasts the formed proposal to those candidates via XMTP DMs and collects RSVPs.
@@ -715,27 +749,63 @@ systemctl --user enable --now xmtp-client.service
 6. **Three-layer architecture (matching / messaging / runtime)** — Index Network ranks, XMTP brokers, InstaClaw provisions. Each layer is owned by a team that's best at it. No single company is doing all three; the multi-team architecture is what makes it scale.
 7. **Story for both companies** — "AI agents using encrypted messaging coordinated by a semantic matching engine to govern a community of 1,000 people, with pre-registered research" is NYT-level narrative
 
+#### 4.9.9 Coordinator Agent (Architectural Extension)
+
+Beyond the 1:1 personal agents, the architecture supports a small set of **coordinator agents** that operate at the population level rather than the individual level. These showed up implicitly throughout sections 4.9.2–4.9.5 (sentiment aggregation, governance broadcasts, organizer alerts) — this section makes them explicit.
+
+The "1 agent per human PLUS 1 coordinator agent" pattern was raised externally in the Substack comments by Koshu Kunii citing his Claude Code experience; it's a sensible separation of concerns. EE26 will run **multiple coordinator agents**, each scoped to a specific population-level function:
+
+| Coordinator | Scope | Role |
+|------|-------|------|
+| **Sentiment coordinator** | All ~1,000 personal agents | Collects nightly anonymized sentiment digests, compiles a single anonymized aggregate ("72% report a great day; common themes: …"), surfaces to organizer dashboard |
+| **Governance coordinator** | All agents in `ee26-governance` XMTP group | Broadcasts proposals, tallies votes, publishes results back to the group. Runs Polis-style clustering on multi-option proposals before tallying. |
+| **Treasury coordinator** | All agents with Bankr wallets | Manages the agent faucet (USDC distribution per Section 4.9.3 / Q15), executes funded proposals' on-chain transfers, publishes audit trail to the governance group. |
+| **Events coordinator** | All agents in `ee26-events` XMTP group | Broadcasts schedule changes / new events / cancellations. Optionally delegated to Tule's existing Social Layer infrastructure rather than a dedicated agent. |
+| **Research coordinator** | All agents (silent observer) | Streams anonymized interaction logs into the `research.*` schema (Section 4.10.3). Does NOT participate in plaza interactions; pure data plane. |
+
+**Architecture:**
+- Coordinator agents run on dedicated VMs (not personal-attendee VMs) — provisioned by InstaClaw, owned operationally by the Edge City + InstaClaw teams.
+- Each has its own Bankr wallet for XMTP identity but is NOT linked to a verified human via World ID — they're system actors, not personal agents.
+- Coordinators are non-private: their messages are visible to whoever has read access to the relevant XMTP group. They do not have access to personal-agent local memory or private DMs.
+- For the purposes of the privacy model (Section 4.9.5), coordinators are sub-processors equivalent to InstaClaw infrastructure, not separate principals.
+
+**Why this matters for the PRD:** the coordinator-agent pattern is the architectural answer to *"how does the population coordinate without a centralized server controlling everything?"* The XMTP plaza groups + Index Network matching + a small set of system-level coordinator agents = a fully decentralized governance fabric where the only centralized piece is the matching service (which has its own sub-processor agreement).
+
 ### 4.10 Research Layer
 
 The baseline architecture in 4.1–4.9 is the *plaza*: 1,000 agents tethered to humans, coordinating via Index Network + XMTP, surfacing curated outcomes via Telegram. On top of the plaza sits a **research layer** owned by Ivan Vendrov (part-time research lead). Once the plaza is stable, Vendrov runs pre-registered experiments using the plaza as a live multi-agent testbed.
 
 This is the layer that converts the village from "cool demo" into "publishable AI research." It's also the layer that justifies the sponsor outreach (Section 4.10.2) and the external research collaborators Timour is recruiting alongside Vendrov.
 
+The defining property of EE26 as a research environment is captured in Timour's overview:
+
+> *"Contained enough to instrument, dynamic enough to produce findings."*
+
+Most multi-agent research lives in synthetic environments — Stanford's Generative Agents (Park et al., 2023) had 25 fictional characters; DeepMind's Concordia and Melting Pot are sandbox simulations; the recent AI Village ran 11 autonomous agents on fundraising goals. **None of these had agents tethered to specific humans living together for a month with real social, economic, and governance stakes.** EE26 is the first.
+
 #### 4.10.1 Vendrov's Experiments
 
-Pre-registered hypotheses are listed in Timour's research overview and will be locked before the village opens. Examples drawn from that hypothesis set:
+Pre-registered hypotheses are listed in Timour's research overview and will be locked before the village opens. The five core hypotheses, with the experimental design under each:
 
-- **Introduction graph expansion** — do humans whose agents are active make more weak-tie connections than humans whose agents are dormant? Vendrov's experiment compares an "active" cohort to a "muted-agent" control cohort within the same population.
-- **Agent-to-agent norm formation** — do repeated coordination patterns produce stable conventions within the first week? How do norms differ across pockets of the population?
-- **Bargaining and defection** — do agents stay aligned with what their humans would actually sanction, or do some defect into strategies their humans would not endorse? This is the multi-agent safety probe.
-- **Operations vs. relationships delegation** — humans are expected to delegate calendar/logistics quickly and relational decisions slowly. Vendrov measures where the boundary lands and how it shifts over 28 days.
-- **Agent-mediated deliberation** — does broadening governance participation through agent summaries produce decisions that better reflect community preferences, or just more decisions?
+- **H1 — Introduction graph expansion.** Humans whose agents are active will make more weak-tie connections than humans whose agents are dormant — *especially for attendees not already part of dense subcommunities*. Vendrov's experiment compares an "active-agent" cohort to a "muted-agent" control cohort within the same population. The harder follow-up question, also tested: do the new connections turn into anything beyond a polite exchange? (Measured via week-end check-ins.)
+
+- **H2 — Agent-to-agent norm formation, fast and uneven.** Within the first week, repeated coordination patterns will produce stable *local* conventions: how agents introduce themselves, how they negotiate around scheduling, how they attribute credit. Conventions will be local to specific pockets of the village; *global convergence over a month is unlikely.* Measured by clustering message-content patterns across `research.match_outcomes` and `research.briefing_outcomes`.
+
+- **H3 — Bargaining emerges, some agents go AWOL.** Once agents have learned what their humans want and observed each other for a few days, bargaining will start: trades around time slots, venue access, governance support, introductions. **The safety question that matters most:** do agents stay aligned with what their humans would actually sanction, or do some defect into strategies their humans would not endorse? Specifically: collusion against out-group humans, manipulation of governance processes, value misrepresentation in negotiation. *We expect a mix and we'll be looking specifically for the failure modes.* This is the multi-agent safety probe — directly testing the framework laid out in Seb Krier's *Coasean Bargaining at Scale* (DeepMind, Cosmos; [arxiv:2509.05077](https://arxiv.org/abs/2509.05077)).
+
+- **H4 — Operations delegation > relationship delegation.** Humans are expected to delegate calendar, logistics, summarization, document drafting to agents within days. Introductions, RSVPs, expressions of social positioning — those move slowly or not at all. *The line between the two will shift over the month, and where it lands is the interesting result.* Measured via `research.briefing_outcomes.proposed_intro_count` vs. `proposed_event_count` acceptance rates over time.
+
+- **H5 — Agent-mediated deliberation broadens > deepens.** More people will engage with community decisions when their agent can summarize, vote, and represent them on their behalf. *Whether that breadth produces better decisions, or just more decisions,* is what Vendrov's experiment will measure — using Polis-clustering of opinions vs. ground-truth post-decision satisfaction surveys. This builds directly on the DeepMind Habermas Machine result (5,700+ participants showed AI-mediated group statements outperform human mediators) but extends it to a longitudinal, residential, repeated-decision setting.
+
+Each hypothesis maps to a specific column / metric in the `research.*` schema (Section 4.10.3). The hypothesis-to-metric mapping is the contract Vendrov + Timour pre-register publicly before the village opens.
 
 InstaClaw's role on this layer is **infrastructure-only**: provide stable agents, instrumented logs, and access to anonymized interaction data per the privacy model in 4.9.5. Vendrov runs the science.
 
 #### 4.10.2 Sponsor-Funded Compute Model
 
 Per Timour, the village is targeting external sponsors to cover Anthropic / OpenAI / open-source model inference costs at 500-1000 agent scale. This is the financial mechanism that lets us keep agents **fully ungated** (Cooper's preferred Option 1 in the gating thread) without forcing each attendee onto a paid InstaClaw subscription.
+
+The Substack research overview names a target funding range: **$60K–$90K in compute (cash or in-kind credits)**, plus $25K–$50K in research operations funding (separate; covered by Edge City). InstaClaw's per-agent cost model (see `instaclaw/docs/edgeclaw-sponsor-budget.md`) lands at **$60K** as the recommended ask, aligned with the low end of Timour's stated range — that's our default for outreach. The $90K stretch covers heavy adoption / Opus-on-demand / unanticipated power-user load.
 
 Three plausible structures (final structure TBD with sponsors):
 
@@ -746,6 +816,15 @@ Three plausible structures (final structure TBD with sponsors):
 | **C — InstaClaw resells API credits** | Sponsor pays InstaClaw, InstaClaw provisions inference using its own keys, accounting at the platform level. | Cleanest UX for sponsors. InstaClaw becomes the billing intermediary. |
 
 Recommendation: ship Model A for the first round (lowest engineering cost, fastest to confirm sponsors), evaluate B/C post-village based on sponsor preferences and audit needs. Either way, the auth-profiles.json + Bankr key plumbing is already in place — see InstaClaw — OpenClaw Gateway Token Architecture in MEMORY.md.
+
+**Sponsor-eligible orgs to target** (per Timour's overview, "aligned partners working on cooperative AI, collective intelligence, or mechanism design"):
+- AI labs with research interest in multi-agent safety (Anthropic, DeepMind, OpenAI safety teams)
+- Cooperative AI orgs (e.g., Cooperative AI Foundation, FAR AI)
+- Collective intelligence groups (CIP, MetaGov, Plurality Institute)
+- Mechanism design researchers (Cosmos, dWallet, RadicalxChange)
+- Ethereum Foundation / Protocol Labs / Other Web3 orgs interested in agent-mediated coordination
+
+Cooper's job on the sponsor outreach: provide the cost transparency (the sponsor budget doc above) and respond to technical questions from sponsor-side ops/DevRel teams. Timour leads the pitch; Cooper owns the implementation feasibility.
 
 #### 4.10.3 Researcher-Facing Data Surface
 
@@ -1049,6 +1128,11 @@ This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the in
 | 21 | **Researcher data access surface** — what does Vendrov get? Anonymized log dump? Read-only postgres replica? Real-time stream? Defines the export pipeline scope. | Vendrov / Timour / Cooper | Lock before Phase 3 starts |
 | 22 | **Sponsor commitment timeline** — when do sponsor funds need to be confirmed for InstaClaw to confidently NOT gate features? Soft deadline = May 15 to leave room for routing changes. | Timour | Tied to blog post launch + outreach cadence |
 | 23 | **API key model for sponsored compute** — Model A (shared key), B (per-agent BYOK with sponsor as funder), or C (InstaClaw resells credits)? Affects auth-profiles.json, Bankr integration, billing audit trail. | Cooper / Timour / sponsors | Recommend Model A for round 1, evaluate B/C post-village |
+| 24 | **Recruit Seb Krier directly?** — His *Coasean Bargaining at Scale* paper (arxiv:2509.05077) is the theoretical backbone of hypothesis H3. Worth offering co-author / collaborator status on Vendrov's paper rather than just citing him. | Timour / Vendrov | Suggest Timour reaches out via Cosmos / DeepMind channels |
+| 25 | **CIP partnership for governance experiments?** — CIP's *Alignment Assemblies* methodology is closest existing precedent for our deliberation experiments. Co-design + co-author opportunity. | Timour | Reach out to CIP research team after pre-registration is locked |
+| 26 | **Coordinator agent funding & ownership** — Who funds compute for the 5 coordinator agents (Section 4.9.9)? Counts toward the $60K sponsor ask but is a small fraction (<5%) of total inference. Who owns the operational accounts (Bankr wallets)? | Cooper / Timour | Recommend InstaClaw owns wallets; sponsor-funded inference; admin accountable to Edge City. |
+| 27 | **Polis integration** — do we use the actual Polis API ([pol.is](https://pol.is)) for opinion clustering, or implement Polis-style clustering ourselves in the governance coordinator agent? Trade-off: external service dependency vs. agent-owned implementation. | Cooper / governance-design lead | Lean toward agent-owned implementation; eval Polis SaaS as Phase 4 enhancement. |
+| 28 | **Geo (geobrowser.io) integration shape** — does Yaniv's team publish a public read API for the community knowledge graph that Index Network and personal agents both query? Or does each consumer get its own integration? | Yaniv / Tule / Index Network | First sync to lock the contract |
 
 ---
 
