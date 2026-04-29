@@ -137,6 +137,12 @@ try {
 
 ---
 
+## Fleet Upgrade Lessons
+
+- **Always test real chat completions before fleet-wide OpenClaw upgrades.** The /health endpoint returning 200 does NOT mean the agent can hold a conversation. After upgrading OpenClaw versions, send an actual /v1/chat/completions request on a test VM with a large SOUL.md (30K+ chars) and verify it completes within 30 seconds. Health checks pass even on crash-looping VMs because the gateway is technically "running" between kills. This lesson was learned on 2026-04-29 when upgrading from OpenClaw 2026.4.5 → 2026.4.26: the newer version had stricter default timeouts that caused agent requests to abort before Anthropic could finish processing 29K-token prompts, and the watchdog's 3-minute FROZEN threshold compounded the issue into a fleet-wide crash loop.
+
+---
+
 ## Snapshot Creation Process (COMPLETE REFERENCE)
 
 ### Prerequisites
