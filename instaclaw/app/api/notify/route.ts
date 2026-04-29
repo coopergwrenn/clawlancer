@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 
+const ALLOWED_SOURCES = new Set(["banner", "edge_city"]);
+
 export async function POST(req: NextRequest) {
   try {
-    const { email, discord_clicked } = await req.json();
+    const { email, source } = await req.json();
 
     if (!email || typeof email !== "string") {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
@@ -14,13 +16,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid email" }, { status: 400 });
     }
 
+    const safeSource =
+      typeof source === "string" && ALLOWED_SOURCES.has(source)
+        ? source
+        : "banner";
+
     const supabase = getSupabase();
 
     // Upsert — if email already exists, just succeed silently
     const { error } = await supabase
       .from("instaclaw_notification_signups")
       .upsert(
-        { email: email.toLowerCase().trim(), source: "banner" },
+        { email: email.toLowerCase().trim(), source: safeSource },
         { onConflict: "email" }
       );
 
