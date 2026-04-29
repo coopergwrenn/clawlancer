@@ -77,6 +77,10 @@ export default function BankrTokenizeCard({
   const [tokenName, setTokenName] = useState("");
   const [tokenSym, setTokenSym] = useState("");
   const [showForm, setShowForm] = useState(false);
+  // Two-step launch flow: showConfirm gates the actual /api/proxy/bankr/tokenize
+  // call. Form's primary button validates fields then sets this true,
+  // showing a summary card with one big LAUNCH button. Mirrors the webapp.
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Lazy-init from freshLaunch so a chat-driven launch lands directly on
   // the celebration view on first paint (no flash of post-launch dashboard
@@ -236,6 +240,17 @@ export default function BankrTokenizeCard({
     } finally {
       setImageLoading(false);
     }
+  }
+
+  // Step 1 of two-step launch: validate, then move to confirmation card.
+  // Field state preserved so user can step back without losing input.
+  function handleShowConfirm() {
+    if (!tokenName.trim() || !tokenSym.trim()) {
+      setError("Token name and symbol are required");
+      return;
+    }
+    setError(null);
+    setShowConfirm(true);
   }
 
   async function handleTokenize() {
@@ -541,7 +556,7 @@ export default function BankrTokenizeCard({
           <Sparkles size={16} />
           Tokenize Your Agent
         </button>
-      ) : (
+      ) : !showConfirm ? (
         <div className="glass-inner rounded-xl p-4 space-y-3">
           <p className="text-[11px] text-muted">
             Launch a token for your agent. Trading fees help fund your agent&apos;s compute.
@@ -618,15 +633,93 @@ export default function BankrTokenizeCard({
           {error && <p className="text-xs text-red-400">{error}</p>}
           <div className="flex gap-2">
             <button
-              onClick={() => { setShowForm(false); setError(null); setImageUrl(null); setImageError(null); }}
+              onClick={() => { setShowForm(false); setShowConfirm(false); setError(null); setImageUrl(null); setImageError(null); }}
               className="flex-1 py-2.5 rounded-lg text-sm glass-button"
             >
               Cancel
             </button>
             <button
+              onClick={handleShowConfirm}
+              className="flex-1 py-2.5 rounded-lg text-sm font-bold active:scale-[0.98] transition-transform"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+                color: "white",
+                boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+                textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+              }}
+            >
+              Review &amp; Launch
+            </button>
+          </div>
+        </div>
+      ) : (
+        // ── Step 2: Pre-launch confirmation card (mini-app) ──
+        // Replaces the form once the user clicks Review & Launch. Form
+        // state preserved on Back so user can edit. While tokenizing, the
+        // primary button shows phased status text until launchSuccess
+        // triggers the celebration view.
+        <div
+          className="glass-inner rounded-xl p-4 space-y-4"
+          style={{ border: "1px solid rgba(245,166,35,0.25)", background: "rgba(245,166,35,0.05)" }}
+        >
+          <div className="flex flex-col items-center text-center gap-2 pt-1">
+            {imageUrl ? (
+              <img src={imageUrl} alt="Token PFP" className="w-20 h-20 rounded-full object-cover" />
+            ) : (
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center text-base font-bold"
+                style={{
+                  background: "linear-gradient(135deg, #f5a623, #d4911d)",
+                  color: "white",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.18)",
+                }}
+              >
+                {tokenSym.trim().toUpperCase().slice(0, 3) || "?"}
+              </div>
+            )}
+            <div
+              className="text-2xl font-bold"
+              style={{
+                background: "linear-gradient(135deg, #f5a623, #fbbf24)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              ${tokenSym.trim().toUpperCase() || "TOKEN"}
+            </div>
+            <div className="text-sm font-medium">{tokenName.trim()}</div>
+            {agentName && (
+              <div className="text-[11px] text-muted">deployed for {agentName}</div>
+            )}
+          </div>
+
+          <p className="text-[11px] leading-relaxed text-muted">
+            You&apos;re about to deploy <strong className="text-white">${tokenSym.trim().toUpperCase()}</strong> on
+            {" "}<strong className="text-white">Base mainnet</strong>. Trading fees flow back to your agent&apos;s
+            wallet automatically and fund its compute over time.
+          </p>
+
+          <div
+            className="rounded-lg px-3 py-2 text-[11px] flex items-center gap-2"
+            style={{ background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.25)", color: "#86efac" }}
+          >
+            🎁 Free to launch — InstaClaw covers gas.
+          </div>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowConfirm(false)}
+              disabled={tokenizing}
+              className="flex-1 py-2.5 rounded-lg text-sm glass-button disabled:opacity-50"
+            >
+              Back
+            </button>
+            <button
               onClick={handleTokenize}
               disabled={tokenizing}
-              className="flex-1 py-2.5 rounded-lg text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-50"
+              className="flex-[2] py-2.5 rounded-lg text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60"
               style={{
                 background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
                 color: "white",

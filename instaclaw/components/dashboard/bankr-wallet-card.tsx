@@ -82,6 +82,11 @@ export function BankrWalletCard({
   const [tokenName, setTokenName] = useState("");
   const [tokenSym, setTokenSym] = useState("");
   const [showTokenForm, setShowTokenForm] = useState(false);
+  // Two-step launch flow: showConfirm gates the actual /api/bankr/tokenize
+  // call. Form's "Launch Token" button validates fields then sets this true,
+  // showing a summary card with one big LAUNCH button. Reduces "did I just
+  // press the button?" anxiety and primes the celebration emotionally.
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Lazy-init from freshLaunch so a chat-driven launch lands directly on
   // the celebration view on first paint. Without this, the first render
@@ -270,6 +275,19 @@ export function BankrWalletCard({
     } finally {
       setImageLoading(false);
     }
+  }
+
+  // Step 1 of two-step launch: validate, then move to confirmation card.
+  // Field state (name, symbol, image) is preserved so the user can step
+  // back without losing input. Actual API call happens only when the user
+  // clicks Launch on the confirmation card (handleTokenize, below).
+  function handleShowConfirm() {
+    if (!tokenName.trim() || !tokenSym.trim()) {
+      setError("Token name and symbol are required");
+      return;
+    }
+    setError(null);
+    setShowConfirm(true);
   }
 
   async function handleTokenize() {
@@ -653,7 +671,7 @@ export function BankrWalletCard({
               <Sparkles className="w-4 h-4" />
               Tokenize Your Agent
             </button>
-          ) : (
+          ) : !showConfirm ? (
             <div
               className="rounded-lg p-4 space-y-3"
               style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
@@ -790,6 +808,7 @@ export function BankrWalletCard({
                 <button
                   onClick={() => {
                     setShowTokenForm(false);
+                    setShowConfirm(false);
                     setError(null);
                     setImageUrl(null);
                     setImageError(null);
@@ -800,9 +819,103 @@ export function BankrWalletCard({
                   Cancel
                 </button>
                 <button
+                  onClick={handleShowConfirm}
+                  className="flex-1 py-2 rounded-md text-sm font-medium transition-all hover:scale-[1.01] active:scale-[0.99]"
+                  style={{
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+                    color: "white",
+                    boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+                    textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+                  }}
+                >
+                  Review &amp; Launch
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ── Step 2: Pre-launch confirmation card ──
+              Renders when user has filled the form and clicked Review.
+              Replaces the form (state preserved on Back) and frames the
+              moment so the user explicitly opts in before the on-chain
+              deploy. While tokenizing, this card stays mounted with phased
+              status text on the Launch button until the celebration view
+              fires via launchSuccess. */}
+          {showTokenForm && showConfirm && (
+            <div
+              className="rounded-lg p-5 space-y-4 mt-3"
+              style={{ background: "rgba(245,166,35,0.05)", border: "1px solid rgba(245,166,35,0.25)" }}
+            >
+              <div className="flex flex-col items-center text-center gap-2 pt-2">
+                {imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imageUrl}
+                    alt="Token PFP"
+                    className="w-20 h-20 rounded-full object-cover"
+                    style={{ boxShadow: "0 4px 12px rgba(180,120,0,0.20)" }}
+                  />
+                ) : (
+                  <div
+                    className="w-20 h-20 rounded-full flex items-center justify-center text-base font-bold"
+                    style={{
+                      background: "linear-gradient(135deg, #f5a623, #d4911d)",
+                      color: "white",
+                      textShadow: "0 1px 2px rgba(0,0,0,0.18)",
+                      boxShadow: "0 4px 12px rgba(180,120,0,0.20)",
+                    }}
+                  >
+                    {tokenSym.trim().toUpperCase().slice(0, 3) || "?"}
+                  </div>
+                )}
+                <div
+                  className="text-2xl font-bold"
+                  style={{
+                    background: "linear-gradient(135deg, #f5a623, #fbbf24)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                  }}
+                >
+                  ${tokenSym.trim().toUpperCase() || "TOKEN"}
+                </div>
+                <div className="text-sm font-medium">{tokenName.trim()}</div>
+                {agentName && (
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>
+                    deployed for {agentName}
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+                You&apos;re about to deploy <strong style={{ color: "var(--foreground)" }}>${tokenSym.trim().toUpperCase()}</strong> on
+                {" "}<strong style={{ color: "var(--foreground)" }}>Base mainnet</strong>. Trading fees flow back to your agent&apos;s
+                wallet automatically and fund its compute over time.
+              </p>
+
+              <div
+                className="rounded-md px-3 py-2 text-[11px] flex items-center gap-2"
+                style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", color: "#15803d" }}
+              >
+                🎁 Free to launch — InstaClaw covers gas.
+              </div>
+
+              {error && (
+                <p className="text-xs text-red-500">{error}</p>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  disabled={tokenizing}
+                  className="flex-1 py-2 rounded-md text-sm transition-all disabled:opacity-50"
+                  style={{ border: "1px solid var(--border)" }}
+                >
+                  Back
+                </button>
+                <button
                   onClick={handleTokenize}
                   disabled={tokenizing}
-                  className="flex-1 py-2 rounded-md text-sm font-medium transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+                  className="flex-[2] py-2.5 rounded-md text-sm font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60"
                   style={{
                     background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
                     color: "white",
