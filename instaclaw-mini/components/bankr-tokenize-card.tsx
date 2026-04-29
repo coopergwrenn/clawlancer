@@ -630,6 +630,22 @@ export default function BankrTokenizeCard({
             <p className="text-[9px] text-muted opacity-50">You can update this later on Bankr</p>
           </div>
 
+          {/* Subtle reassurance hint — emphatic version lives on the
+              confirmation card. Two surfaces, same message. */}
+          <div
+            className="rounded-lg px-3 py-2 text-[11px] flex items-start gap-1.5"
+            style={{
+              background: "rgba(34,197,94,0.08)",
+              border: "1px solid rgba(34,197,94,0.20)",
+              color: "#86efac",
+            }}
+          >
+            <span aria-hidden>🎁</span>
+            <span>
+              Free to launch — InstaClaw covers gas. Trading fees flow back to your agent automatically.
+            </span>
+          </div>
+
           {error && <p className="text-xs text-red-400">{error}</p>}
           <div className="flex gap-2">
             <button

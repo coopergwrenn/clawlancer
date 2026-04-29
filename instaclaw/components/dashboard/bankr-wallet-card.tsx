@@ -801,6 +801,23 @@ export function BankrWalletCard({
                 </p>
               </div>
 
+              {/* Subtle reassurance hint — full emphatic version lives on
+                  the confirmation card. Two surfaces, same message, both
+                  reinforce that there is no per-launch cost to the user. */}
+              <div
+                className="rounded-md px-3 py-2 text-[11px] flex items-start gap-1.5"
+                style={{
+                  background: "rgba(34,197,94,0.06)",
+                  border: "1px solid rgba(34,197,94,0.18)",
+                  color: "var(--muted)",
+                }}
+              >
+                <span aria-hidden>🎁</span>
+                <span>
+                  Free to launch — InstaClaw covers gas. Trading fees flow back to your agent automatically.
+                </span>
+              </div>
+
               {error && (
                 <p className="text-xs text-red-500">{error}</p>
               )}
