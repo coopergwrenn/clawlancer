@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X } from "lucide-react";
 import { HowToBuy } from "./how-to-buy";
+import { pickTweetTemplate } from "@/lib/bankr-tweet-templates";
 
 interface BankrWalletCardProps {
   walletId: string | null;
@@ -349,6 +350,19 @@ export function BankrWalletCard({
     }
   }
 
+  // Pick from 5 randomized templates with agentName + ticker interpolation.
+  // Hoisted above the celebration early-return so it doesn't violate Rules
+  // of Hooks. Memoized on (symbol, address, agentName) so the copy doesn't
+  // re-shuffle when other state flips (linkCopied, showShareCard, etc.).
+  const tweetText = useMemo(() => {
+    if (!launchSuccess) return "";
+    return pickTweetTemplate({
+      tokenSymbol: launchSuccess.symbol,
+      agentName,
+      address: launchSuccess.address || null,
+    });
+  }, [launchSuccess, agentName]);
+
   // ── Celebration + Share Card ──
   if (launchSuccess) {
     const hasAddress = !!launchSuccess.address;
@@ -356,9 +370,6 @@ export function BankrWalletCard({
     // partnership announcement. Tweet copy ends with the URL so Twitter renders
     // it as a link card with token PFP + chart preview from Bankr.
     const chartUrl = hasAddress ? `https://bankr.bot/launches/${launchSuccess.address}` : "";
-    const tweetText = hasAddress
-      ? `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.\n\n${chartUrl}`
-      : `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.`;
     const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
 
     function cancelAutoReload() {

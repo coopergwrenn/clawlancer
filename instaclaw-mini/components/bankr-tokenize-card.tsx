@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Sparkles, ExternalLink, Copy, Check, TrendingUp, TrendingDown, Upload, Wand2, X } from "lucide-react";
+import { pickTweetTemplate } from "@/lib/bankr-tweet-templates";
 
 interface BankrTokenizeCardProps {
   walletId: string | null;
@@ -307,14 +308,26 @@ export default function BankrTokenizeCard({
     }
   }
 
+  // Pick from 5 randomized templates with agentName + ticker interpolation.
+  // Hoisted above the celebration early-return so it doesn't violate Rules
+  // of Hooks. Memoized on (symbol, address, agentName) so the copy doesn't
+  // re-shuffle when other state flips (linkCopied, tweetCopied, etc.).
+  const tweetText = useMemo(() => {
+    if (!launchSuccess) return "";
+    return pickTweetTemplate({
+      tokenSymbol: launchSuccess.symbol,
+      agentName,
+      address: launchSuccess.address || null,
+    });
+  }, [launchSuccess, agentName]);
+
   // ── Celebration + Share Card ──
   if (launchSuccess) {
     const hasAddress = !!launchSuccess.address;
     // Include https:// — without it, X may not auto-render the link card
     // preview (PFP + Bankr chart), which is the visual hook for shares.
-    const tweetText = hasAddress
-      ? `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.\n\nhttps://bankr.bot/launches/${launchSuccess.address}`
-      : `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.`;
+    // tweetText is hoisted above this if-block via useMemo so re-renders
+    // (linkCopied flip etc.) don't reshuffle the random template.
     const basescanUrl = hasAddress ? `https://basescan.org/token/${launchSuccess.address}` : "";
 
     function cancelAutoReload() {
