@@ -14,8 +14,9 @@
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/cron/reconcile-fleet",
-      "schedule": "*/3 * * * *"
+      "_disabled": "TEMP DISABLED 2026-04-29 — see scripts/_upgrade-fleet-to-v64.ts. The 300s Vercel timeout cannot complete a v64+ upgrade per VM (~5-15 min real wall time), so every cron fire was acquiring the lock for 360s, dying useless at 300s, then blocking the local upgrade script that CAN complete the work. Re-enable after the fleet is fully on the current manifest version.",
+      "_path": "/api/cron/reconcile-fleet",
+      "_schedule": "*/3 * * * *"
     },
     {
       "path": "/api/cron/cloud-init-poll",
