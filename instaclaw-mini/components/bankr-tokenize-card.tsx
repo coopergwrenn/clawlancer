@@ -226,8 +226,8 @@ export default function BankrTokenizeCard({
   if (launchSuccess) {
     const hasAddress = !!launchSuccess.address;
     const tweetText = hasAddress
-      ? `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`
-      : `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.`;
+      ? `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.\n\nbankr.bot/launches/${launchSuccess.address}`
+      : `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.`;
     const basescanUrl = hasAddress ? `https://basescan.org/token/${launchSuccess.address}` : "";
 
     function cancelAutoReload() {

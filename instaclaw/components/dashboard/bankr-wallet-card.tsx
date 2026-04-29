@@ -251,14 +251,13 @@ export function BankrWalletCard({
   // ── Celebration + Share Card ──
   if (launchSuccess) {
     const hasAddress = !!launchSuccess.address;
-    // Chart/trade share URL — DexScreener is the canonical crypto-Twitter surface.
-    // Bankr launches are V4+Doppler so app.uniswap.org can't reliably route them;
-    // bankr.bot/launches/:addr is fee management only. DexScreener indexes the pool
-    // within minutes and renders chart + an embedded swap widget.
-    const chartUrl = hasAddress ? `https://dexscreener.com/base/${launchSuccess.address}` : "";
+    // Share URL — bankr.bot/launches/:addr is the branded destination for the
+    // partnership announcement. Tweet copy ends with the URL so Twitter renders
+    // it as a link card with token PFP + chart preview from Bankr.
+    const chartUrl = hasAddress ? `https://bankr.bot/launches/${launchSuccess.address}` : "";
     const tweetText = hasAddress
-      ? `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.\n\n${chartUrl}`
-      : `my AI agent launched a token and now it pays for its own thoughts. one click. $${launchSuccess.symbol} on Base. launched on @instaclaws, powered by @bankrbot.`;
+      ? `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.\n\n${chartUrl}`
+      : `My AI agent just deployed $${launchSuccess.symbol} on Base. my agent runs the wallet, earns trading fees, funds its own compute. self-funding from day one. @instaclaws + @bankrbot.`;
     const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
 
     function cancelAutoReload() {
