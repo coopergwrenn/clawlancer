@@ -680,10 +680,11 @@ export default function BankrTokenizeCard({
             <p className="text-[9px] text-muted opacity-50">You can update this later on Bankr</p>
           </div>
 
-          {/* Subtle reassurance hint — emphatic version lives on the
-              confirmation card. Two surfaces, same message. */}
+          {/* Subtle short pill — emphasis follows commitment: form is
+              the deciding moment (short), confirmation is the doing
+              moment (long with the "fees flow back" reassurance). */}
           <div
-            className="rounded-lg px-3 py-2 text-[11px] flex items-start gap-1.5"
+            className="rounded-lg px-3 py-2 text-[11px] flex items-center gap-1.5"
             style={{
               background: "rgba(34,197,94,0.08)",
               border: "1px solid rgba(34,197,94,0.20)",
@@ -691,9 +692,7 @@ export default function BankrTokenizeCard({
             }}
           >
             <span aria-hidden>🎁</span>
-            <span>
-              Free to launch — InstaClaw covers gas. Trading fees flow back to your agent automatically.
-            </span>
+            <span>Free to launch — InstaClaw covers gas.</span>
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -765,11 +764,16 @@ export default function BankrTokenizeCard({
             wallet automatically and fund its compute over time.
           </p>
 
+          {/* Emphatic long version sits on the confirmation card — the
+              user has stated intent, this is the moment to reassure. */}
           <div
-            className="rounded-lg px-3 py-2 text-[11px] flex items-center gap-2"
+            className="rounded-lg px-3 py-2 text-[11px] flex items-start gap-2"
             style={{ background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.25)", color: "#86efac" }}
           >
-            🎁 Free to launch — InstaClaw covers gas.
+            <span aria-hidden>🎁</span>
+            <span>
+              Free to launch — InstaClaw covers gas. Trading fees flow back to your agent automatically.
+            </span>
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}

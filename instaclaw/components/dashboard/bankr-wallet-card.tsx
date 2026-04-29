@@ -850,11 +850,11 @@ export function BankrWalletCard({
                 </p>
               </div>
 
-              {/* Subtle reassurance hint — full emphatic version lives on
-                  the confirmation card. Two surfaces, same message, both
-                  reinforce that there is no per-launch cost to the user. */}
+              {/* Subtle short pill — emphasis follows commitment: form is
+                  the deciding moment (short), confirmation is the doing
+                  moment (long with the "fees flow back" reassurance). */}
               <div
-                className="rounded-md px-3 py-2 text-[11px] flex items-start gap-1.5"
+                className="rounded-md px-3 py-2 text-[11px] flex items-center gap-1.5"
                 style={{
                   background: "rgba(34,197,94,0.06)",
                   border: "1px solid rgba(34,197,94,0.18)",
@@ -862,9 +862,7 @@ export function BankrWalletCard({
                 }}
               >
                 <span aria-hidden>🎁</span>
-                <span>
-                  Free to launch — InstaClaw covers gas. Trading fees flow back to your agent automatically.
-                </span>
+                <span>Free to launch — InstaClaw covers gas.</span>
               </div>
 
               {error && (
@@ -958,11 +956,16 @@ export function BankrWalletCard({
                 wallet automatically and fund its compute over time.
               </p>
 
+              {/* Emphatic long version sits on the confirmation card — the
+                  user has stated intent, this is the moment to reassure. */}
               <div
-                className="rounded-md px-3 py-2 text-[11px] flex items-center gap-2"
+                className="rounded-md px-3 py-2 text-[11px] flex items-start gap-2"
                 style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", color: "#15803d" }}
               >
-                🎁 Free to launch — InstaClaw covers gas.
+                <span aria-hidden>🎁</span>
+                <span>
+                  Free to launch — InstaClaw covers gas. Trading fees flow back to your agent automatically.
+                </span>
               </div>
 
               {error && (
