@@ -82,12 +82,12 @@ const edgeFeatures = [
 
 const privacyPrinciples = [
   {
-    title: "Maximum Privacy Mode is the default",
-    body: "By default — including from us — no one reads your conversations or your agent's memory. The agent runs on its own dedicated VM with operator-side inspection disabled.",
+    title: "Your agent runs on its own VM",
+    body: "Each agent runs on a dedicated VM in its own filesystem boundary. Conversations, memory, and intros stay on your machine — never shared between agents, never aggregated server-side.",
   },
   {
-    title: "Flip it for support, only when you want",
-    body: "If something breaks and you want help, one toggle lets us look. It auto-flips back after 24 hours. You're never debugging blind, and we're never reading by default.",
+    title: "We don't read your conversations",
+    body: "Operators don't read attendee conversations or memory as part of normal operations. We're shipping a Maximum Privacy Mode by May 9 that enforces this in code: operator-side inspection disabled by default, with a user-facing toggle to temporarily enable for support.",
   },
   {
     title: "Researchers never see your raw data",
@@ -343,9 +343,9 @@ export default function EdgeCityPage() {
               className="text-sm sm:text-base max-w-lg mx-auto leading-relaxed"
               style={{ color: "#6b6b6b" }}
             >
-              By default, even we can&apos;t read your conversations or memory.
-              If something breaks and you want help, you can flip a toggle that
-              lets us look — and it auto-flips back.
+              We don&apos;t read your conversations as a routine matter, and
+              we&apos;re shipping the code to enforce that by May 9. Researchers
+              never get raw data — only an anonymized aggregate dataset.
             </p>
           </div>
 
@@ -504,6 +504,56 @@ export default function EdgeCityPage() {
                 />
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Sponsors strip */}
+      <section className="px-4 pb-20">
+        <div className="max-w-3xl mx-auto">
+          <div
+            className="rounded-2xl p-8 sm:p-10 text-center"
+            style={{
+              background: "#ffffff",
+              border: "1px solid rgba(0,0,0,0.08)",
+            }}
+          >
+            <p
+              className="text-xs uppercase tracking-[0.15em] mb-4"
+              style={{ color: "#DC6743" }}
+            >
+              Made possible by
+            </p>
+            <p
+              className="text-base sm:text-lg leading-relaxed max-w-xl mx-auto mb-6"
+              style={{ color: "#6b6b6b" }}
+            >
+              Agent inference for the village is sponsor-funded. Sponsor
+              commitments confirmed by May 15, 2026.
+            </p>
+            <div
+              className="flex items-center justify-center gap-3 mb-6 flex-wrap"
+              aria-label="sponsor logos"
+            >
+              {/* Slot for sponsor logos — drop in once committed */}
+              <div
+                className="px-5 py-3 rounded-lg text-xs"
+                style={{
+                  border: "1px dashed rgba(220,103,67,0.3)",
+                  color: "#9a9a9a",
+                  fontFamily: "var(--font-serif)",
+                }}
+              >
+                First sponsor — your logo here
+              </div>
+            </div>
+            <Link
+              href="/edge-city/sponsors"
+              className="inline-flex items-center gap-2 text-sm font-medium hover:opacity-70 transition-opacity"
+              style={{ color: "#DC6743" }}
+            >
+              See sponsorship details →
+            </Link>
           </div>
         </div>
       </section>
