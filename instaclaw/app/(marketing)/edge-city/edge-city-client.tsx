@@ -8,12 +8,31 @@ export function EdgeCityClient() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState("");
 
-  function handleClaim() {
-    document.cookie =
-      "instaclaw_partner=edge_city; path=/; max-age=604800; SameSite=Lax";
-    router.push("/signup");
+  async function handleClaim() {
+    setClaiming(true);
+    setError("");
+    try {
+      const res = await fetch("/api/partner/tag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partner: "edge_city" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      // Endpoint always sets the partner cookie server-side. For logged-in
+      // users it also updates their existing user + VM records so the tag
+      // is reflected on the actual account they're using.
+      router.push(data.redirect_to ?? "/signup");
+    } catch {
+      // Fallback to the legacy cookie-only path if the API roundtrip fails.
+      document.cookie =
+        "instaclaw_partner=edge_city; path=/; max-age=604800; SameSite=Lax";
+      router.push("/signup");
+    } finally {
+      setClaiming(false);
+    }
   }
 
   async function handleNotify(e: React.FormEvent) {
@@ -63,7 +82,8 @@ export function EdgeCityClient() {
     <div className="max-w-md mx-auto">
       <button
         onClick={handleClaim}
-        className="w-full px-6 py-3.5 rounded-full text-sm font-medium transition-all hover:opacity-90"
+        disabled={claiming}
+        className="w-full px-6 py-3.5 rounded-full text-sm font-medium transition-all hover:opacity-90 disabled:opacity-60"
         style={{
           background: "#DC6743",
           color: "#ffffff",
@@ -71,7 +91,7 @@ export function EdgeCityClient() {
             "inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 3px rgba(220,103,67,0.3)",
         }}
       >
-        Claim your agent →
+        {claiming ? "Claiming…" : "Claim your agent →"}
       </button>
 
       <div className="flex items-center gap-3 my-4">
