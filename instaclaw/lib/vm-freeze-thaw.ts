@@ -46,7 +46,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const MAX_FREEZE_PER_RUN = 2;
 
 /** Suspended VMs eligible for freeze after this many days post-suspension. */
-export const FREEZE_GRACE_SUSPENDED_DAYS = 30;
+export const FREEZE_GRACE_SUSPENDED_DAYS = 3;
 
 /** Hibernating VMs eligible for freeze after this many days post-pause. */
 export const FREEZE_GRACE_HIBERNATING_DAYS = 90;
