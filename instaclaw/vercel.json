@@ -56,6 +56,10 @@
     {
       "path": "/api/cron/vm-lifecycle",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/expire-pending-delegations",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
