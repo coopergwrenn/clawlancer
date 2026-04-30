@@ -539,6 +539,14 @@ POST /api/pay/confirm
 
 ### Database Table
 
+> **SUPERSEDED 2026-04-30.** The `instaclaw_world_payments` table was created
+> early in this PRD's drafting but never wired into a production code path.
+> The actual WLD delegation flow uses `instaclaw_wld_delegations` (see the
+> earlier section of this PRD). The companion tables `instaclaw_world_users`
+> and `instaclaw_world_subscriptions` were planned here but never created.
+> All three were retired by migration `20260430b_drop_empty_world_tables.sql`.
+> The schema below is kept for historical reference only.
+
 ```sql
 CREATE TABLE instaclaw_world_payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
