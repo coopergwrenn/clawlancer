@@ -21,6 +21,7 @@ import {
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
   SOUL_MD_MEMORY_FILING_SYSTEM,
   WORKSPACE_INDEX_SCRIPT,
+  MEMORY_SNAPSHOT_SCRIPT,
 } from "./agent-intelligence";
 import { WORKSPACE_EARN_MD } from "./earn-md-template";
 
@@ -87,6 +88,7 @@ export const TEMPLATE_REGISTRY: Record<string, string> = {
   SOUL_MD_INTELLIGENCE_SUPPLEMENT,
   SOUL_MD_MEMORY_FILING_SYSTEM,
   WORKSPACE_INDEX_SCRIPT,
+  MEMORY_SNAPSHOT_SCRIPT,
   // STRIP_THINKING_SCRIPT and AUTO_APPROVE_PAIRING_SCRIPT are registered
   // at runtime by ssh.ts to avoid circular imports (they're defined there
   // as template literals with interpolated values like ${512 * 1024}).
@@ -472,8 +474,25 @@ export const VM_MANIFEST = {
    *  re-prefills. Fleet-wide impact: a Learned Preferences edit costs ~10
    *  cache_write tokens instead of ~14,000 input_tokens. Single highest-
    *  leverage change in the SOUL.md restructure plan. Phase 2 (full file
-   *  split) follows in a later manifest bump. */
-  version: 72,
+   *  split) follows in a later manifest bump.
+   *
+   * v73 (2026-04-30): Memory integrity Phase 1 — MEMORY.md backup + auto-
+   *  restore. See PRD instaclaw/docs/prd/memory-integrity-layer.md.
+   *  Three pieces:
+   *    1. ~/.openclaw/scripts/memory-snapshot.sh script with two modes:
+   *       `pre-stop` (copy MEMORY.md → memory/MEMORY.md.bak) and `restore`
+   *       (auto-restore from backup if current is template-empty).
+   *    2. systemd ExecStopPost wired to `pre-stop` — backup runs after
+   *       every gateway shutdown.
+   *    3. systemd ExecStartPre extended with `restore` — runs before every
+   *       gateway start; restores from backup ONLY if current MEMORY.md is
+   *       <50B (template-empty). Never overwrites populated files.
+   *  Triggered by 2026-04-30 vm-729 (Textmaxmax) investigation: canary
+   *  test proved OpenClaw doesn't wipe MEMORY.md, but a single point of
+   *  failure (one file, no backups) is unacceptable. Phase 2 (full
+   *  workspace snapshots, retention rotation, restart deferral for
+   *  in-flight tasks) follows in a separate PRD pass. */
+  version: 73,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -709,6 +728,16 @@ export const VM_MANIFEST = {
       executable: true,
     },
     {
+      // v73 (memory integrity Phase 1): MEMORY.md durability via
+      // ExecStopPost backup + ExecStartPre auto-restore. See PRD at
+      // instaclaw/docs/prd/memory-integrity-layer.md.
+      remotePath: "~/.openclaw/scripts/memory-snapshot.sh",
+      source: "template",
+      templateKey: "MEMORY_SNAPSHOT_SCRIPT",
+      mode: "overwrite",
+      executable: true,
+    },
+    {
       remotePath: "~/.openclaw/scripts/strip-thinking.py",
       source: "template",
       templateKey: "STRIP_THINKING_SCRIPT",
@@ -880,7 +909,18 @@ export const VM_MANIFEST = {
     "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
     "StartLimitIntervalSec": "300", // 5-minute window for burst counting
     "StartLimitAction": "stop",    // Stop unit after burst exceeded (was: none → infinite loop)
-    "ExecStartPre": "/bin/bash -c 'find /tmp/openclaw/ -name \"*.log\" -mmin +60 -delete 2>/dev/null; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true'",
+    // v73: appended `memory-snapshot.sh restore` to existing ExecStartPre.
+    // Runs before each gateway start: if MEMORY.md is empty/template (<50B)
+    // but workspace/memory/MEMORY.md.bak has real content, restore from
+    // backup + log to memory/restore.log. Safety guards prevent overwriting
+    // a non-empty live file. See agent-intelligence.ts MEMORY_SNAPSHOT_SCRIPT.
+    "ExecStartPre": "/bin/bash -c 'find /tmp/openclaw/ -name \"*.log\" -mmin +60 -delete 2>/dev/null; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true; bash /home/openclaw/.openclaw/scripts/memory-snapshot.sh restore 2>/dev/null || true'",
+    // v73: ExecStopPost runs after every gateway shutdown. Snapshots
+    // MEMORY.md → workspace/memory/MEMORY.md.bak so the restore path above
+    // has something to recover from. Runs once per stop event (clean OR
+    // signaled). Idempotent + safe (won't overwrite a good backup with
+    // an empty file).
+    "ExecStopPost": "/bin/bash /home/openclaw/.openclaw/scripts/memory-snapshot.sh pre-stop 2>/dev/null || true",
     "MemoryHigh": "3G",             // Soft limit: kernel throttles at 3GB (gateway slows, doesn't die)
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
     "TasksMax": "75",               // Max threads+processes (Node ~11 + Chrome ~50 + small headroom). Was 150 — reduced to prevent runaway agent forks

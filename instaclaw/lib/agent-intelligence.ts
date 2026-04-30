@@ -936,3 +936,81 @@ fi
 echo ""
 echo "=== End Index ==="
 `;
+
+/**
+ * memory-snapshot.sh — durable backup + auto-restore for MEMORY.md.
+ *
+ * Two modes:
+ *   pre-stop: copy MEMORY.md → memory/MEMORY.md.bak before gateway shutdown.
+ *             Wired via systemd ExecStopPost so it runs on every restart.
+ *   restore:  if current MEMORY.md is empty/template (<50 bytes) AND backup
+ *             has real content (≥50 bytes), restore from backup. Logs the
+ *             event to memory/restore.log for fleet-wide auditing.
+ *             Wired via systemd ExecStartPre so it runs before each gateway
+ *             starts.
+ *
+ * Safety guards:
+ *   - Restore only triggers when current is template-empty. Agent-cleared
+ *     files (>=50B with non-template content) are never overwritten.
+ *   - Atomic: backup is written via cp + sync; restore is mv-then-fsync.
+ *   - Idempotent: running pre-stop twice is fine; running restore on a
+ *     healthy file is a no-op.
+ *   - Errors never block the gateway lifecycle (`|| true` on every call).
+ *
+ * PRD: instaclaw/docs/prd/memory-integrity-layer.md
+ */
+export const MEMORY_SNAPSHOT_SCRIPT = `#!/bin/bash
+# memory-snapshot.sh — MEMORY.md backup + auto-restore (manifest v73+)
+
+set +e  # never block gateway lifecycle on errors
+
+MEMORY_FILE="$HOME/.openclaw/workspace/MEMORY.md"
+MEMORY_DIR="$HOME/.openclaw/workspace/memory"
+BACKUP_FILE="$MEMORY_DIR/MEMORY.md.bak"
+RESTORE_LOG="$MEMORY_DIR/restore.log"
+MIN_VALID_BYTES=50  # below this = template/empty, not real agent memory
+
+mkdir -p "$MEMORY_DIR" 2>/dev/null
+
+case "$1" in
+  pre-stop)
+    if [ ! -f "$MEMORY_FILE" ]; then
+      exit 0  # nothing to back up
+    fi
+    SIZE=$(wc -c < "$MEMORY_FILE" 2>/dev/null || echo 0)
+    if [ "\${SIZE:-0}" -lt "$MIN_VALID_BYTES" ]; then
+      # Don't overwrite a good backup with a template-empty live file
+      exit 0
+    fi
+    cp "$MEMORY_FILE" "$BACKUP_FILE.tmp" && sync && mv "$BACKUP_FILE.tmp" "$BACKUP_FILE"
+    ;;
+
+  restore)
+    if [ ! -f "$BACKUP_FILE" ]; then
+      exit 0  # no backup yet
+    fi
+    BACKUP_SIZE=$(wc -c < "$BACKUP_FILE" 2>/dev/null || echo 0)
+    if [ "\${BACKUP_SIZE:-0}" -lt "$MIN_VALID_BYTES" ]; then
+      exit 0  # backup is also empty, nothing useful to restore
+    fi
+    CURRENT_SIZE=0
+    if [ -f "$MEMORY_FILE" ]; then
+      CURRENT_SIZE=$(wc -c < "$MEMORY_FILE" 2>/dev/null || echo 0)
+    fi
+    if [ "\${CURRENT_SIZE:-0}" -ge "$MIN_VALID_BYTES" ]; then
+      exit 0  # current is healthy, never overwrite
+    fi
+    # Restore: backup → MEMORY.md, atomically
+    cp "$BACKUP_FILE" "$MEMORY_FILE.restoring" && sync && mv "$MEMORY_FILE.restoring" "$MEMORY_FILE"
+    TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    echo "$TS RESTORED from=$BACKUP_FILE bytes=$BACKUP_SIZE prev_size=$CURRENT_SIZE" >> "$RESTORE_LOG"
+    ;;
+
+  *)
+    echo "usage: $0 {pre-stop|restore}" >&2
+    exit 2
+    ;;
+esac
+
+exit 0
+`;
