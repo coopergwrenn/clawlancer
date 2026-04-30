@@ -224,10 +224,11 @@ export default async function LaunchCard({ params }: Props) {
             </div>
             {/* Satori (next/og) requires display:flex on any element with
                 multiple children. Without it, the whole render silently
-                fails and ImageResponse emits a 0-byte 200. flex-wrap +
-                a small column gap preserves the visual space between
-                "deployed by" and the agent name. */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0 0.4ch", fontSize: 28, color: MUTED, lineHeight: 1.3 }}>
+                fails and ImageResponse emits a 0-byte 200. Use a px-value
+                column gap — Satori doesn't reliably parse `ch` units, so
+                `0 0.4ch` rendered the two spans as one word ("deployed
+                byedgecity"). 8px = roughly one space at fontSize 28. */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0 8px", fontSize: 28, color: MUTED, lineHeight: 1.3 }}>
               <span>deployed by</span>
               <span style={{ color: FG, fontWeight: 600 }}>{deployedBy}</span>
             </div>
