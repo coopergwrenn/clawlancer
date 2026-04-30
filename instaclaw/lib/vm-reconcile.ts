@@ -535,16 +535,51 @@ async function stepConfigSettings(
   }
 
   if (!strict) {
-    // Default (non-strict) path — BIT-IDENTICAL to the previous implementation.
-    // Batched, `|| true` per key, no error capture. Preserved so Phase 2c
-    // diffs deploy dormant when STRICT_RECONCILE_VM_IDS is unset, and existing
-    // per-VM reconciles from callers that don't pass `strict: true` behave
-    // exactly as they do today.
+    // Default (non-strict) path — verify-after-set hardening (2026-04-30).
+    //
+    // Previously this was bit-identical to a `|| true`-suppressed batched
+    // config-set, with no verification. Empirically this caused 53% of the
+    // fleet to silently drift on `channels.telegram.streaming.mode` (v68
+    // manifest setting): the config-set transiently failed for ~half the
+    // fleet during the v68→v69 reconcile wave, but the reconciler still
+    // pushed every key to `result.fixed`, the cron route saw zero errors,
+    // and `config_version` bumped to v69. Reconciler then never re-touched
+    // the key (lt-config_version filter), permanently locking those VMs at
+    // streaming.mode=partial → users seeing tool-call leaks in Telegram.
+    //
+    // Hardening: after the batched set, RE-READ each key and verify it
+    // matches the manifest. Mismatches go to `result.errors` (which the
+    // cron route's `pushFailed` gate uses to refuse the config_version
+    // bump). Successfully-verified keys go to `result.fixed`. Silent
+    // failures are no longer possible.
     const fixCommands = settingsToFix
       .map((key) => `openclaw config set ${key} '${settings[key]}' || true`)
       .join(' && ');
     await ssh.execCommand(`${NVM_PREAMBLE} && ${fixCommands}`);
-    result.fixed.push(...settingsToFix);
+
+    // Verify each key landed. Reuse the same get-batch pattern from above
+    // for efficiency (one SSH round-trip vs N).
+    const verifyCommands = settingsToFix
+      .map((key) => `echo "CFG:${key}=$(openclaw config get ${key} 2>/dev/null)"`)
+      .join(' && ');
+    const verifyResult = await ssh.execCommand(`${NVM_PREAMBLE} && ${verifyCommands}`);
+    const actualValues = new Map<string, string>();
+    for (const line of verifyResult.stdout.split("\n")) {
+      const m = line.match(/^CFG:(.+?)=(.*)$/);
+      if (m) actualValues.set(m[1], m[2].trim());
+    }
+
+    for (const key of settingsToFix) {
+      const expected = settings[key];
+      const actual = actualValues.get(key);
+      if (actual === expected) {
+        result.fixed.push(key);
+      } else {
+        // Push to errors so reconcile-fleet route's `pushFailed` gate
+        // refuses to bump config_version. Next cron cycle retries.
+        result.errors.push(`config-set silent failure: ${key} expected=${JSON.stringify(expected)} actual=${JSON.stringify(actual ?? "(unread)")}`);
+      }
+    }
     return;
   }
 
