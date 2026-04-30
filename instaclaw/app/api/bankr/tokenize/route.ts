@@ -433,6 +433,25 @@ export async function POST(req: NextRequest) {
           `fi`,
         ].join("\n"));
 
+        // ── Item #8: write token env vars to ~/.openclaw/.env ──
+        // ~/scripts/token-price.py reads BANKR_TOKEN_ADDRESS from this file.
+        // Path A users get the env vars immediately here; Path B / cron-sync
+        // users get them on next reconciler pass via configureOpenClaw.
+        // Idempotent: strip any prior BANKR_TOKEN_* lines first, then append.
+        // Values are constrained (tokenAddr = 0x + 40 hex from Bankr API,
+        // tokenSymbol = validated 1-10 chars) but we still base64-encode the
+        // appended lines to avoid any shell-quoting surprises.
+        const envBlock = `BANKR_TOKEN_ADDRESS=${tokenAddr}\nBANKR_TOKEN_SYMBOL=${tokenSymbol}\n`;
+        const envBlockB64 = Buffer.from(envBlock, "utf-8").toString("base64");
+        await ssh.execCommand([
+          `mkdir -p "$HOME/.openclaw"`,
+          `touch "$HOME/.openclaw/.env"`,
+          `sed -i '/^BANKR_TOKEN_ADDRESS=/d;/^BANKR_TOKEN_SYMBOL=/d' "$HOME/.openclaw/.env"`,
+          `echo '${envBlockB64}' | base64 -d >> "$HOME/.openclaw/.env"`,
+          `chmod 600 "$HOME/.openclaw/.env"`,
+          `echo "TOKEN_ENV_WRITTEN"`,
+        ].join("\n"));
+
         logger.info("Token info written to VM workspace", {
           vmId: vm.id,
           tokenSymbol,

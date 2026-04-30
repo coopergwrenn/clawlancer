@@ -680,6 +680,18 @@ export const VM_MANIFEST = {
       mode: "overwrite",
       executable: true,
     },
+    // #8 — token-price.py — fetch DexScreener price/volume/chart for the
+    // agent's Bankr token. Reads BANKR_TOKEN_ADDRESS from ~/.openclaw/.env
+    // (populated by configureOpenClaw + tokenize/route.ts after() block).
+    // Lays dormant on existing VMs until the next manifest version bump
+    // triggers reconciler propagation.
+    {
+      remotePath: "~/scripts/token-price.py",
+      source: "template",
+      templateKey: "TOKEN_PRICE_SCRIPT",
+      mode: "overwrite",
+      executable: true,
+    },
   ] as ManifestFileEntry[],
 
   // ── Skill files ──

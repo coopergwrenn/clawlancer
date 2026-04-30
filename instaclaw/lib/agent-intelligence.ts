@@ -582,6 +582,7 @@ You have SEPARATE wallets for different purposes. NEVER mix them.
 |----------|--------|---------------|
 | Crypto trading, swaps, transfers, fee claims (EVM) | **Bankr Wallet** | bankr skill (reads BANKR_API_KEY from env) |
 | Token launches (Base mainnet only) | **Bankr Wallet** | \`bankr launch\` CLI via bankr skill — never Solana, never Clanker |
+| Price of agent's own token, chart, 24h change | **Bankr Wallet** | \`python3 ~/scripts/token-price.py\` — reads BANKR_TOKEN_ADDRESS from .env, hits DexScreener |
 | Clawlancer bounties | **Oracle Wallet** | Platform handles signing — no wallet action needed |
 | Virtuals ACP marketplace jobs | **Virtuals Wallet** | \`cd ~/virtuals-protocol-acp && npx acp whoami --json\` |
 | DegenClaw trading competition | **Virtuals Wallet** | Same as ACP — fund via \`acp job create\` |

@@ -2373,6 +2373,146 @@ echo "{\\"ts\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"chat_id\\":\\"$CHAT_ID\\
 echo "{\\"success\\": true, \\"chat_id\\": \\"$CHAT_ID\\"}"
 `;
 
+// ── token-price.py — fetch price/volume/chart for the agent's token ──
+// Item #8 per PRD. Lets the agent answer "what's my token at?" in chat
+// without leaving the conversation. Reads BANKR_TOKEN_ADDRESS from
+// ~/.openclaw/.env (populated by configureOpenClaw post-launch + by
+// /api/bankr/tokenize after() block on Path A). Falls back to an
+// explicit address arg if provided.
+//
+// Output modes:
+//   - human (default): "$LARRY · $0.0042 (+12% 24h) · $4,200 vol 24h\nchart: ..."
+//   - --json: structured for the agent to paraphrase
+//
+// Edge case: token has no DexScreener pair yet (first 10-30 min
+// post-launch). Returns warming_up status with a friendly message.
+export const TOKEN_PRICE_SCRIPT = `#!/usr/bin/env python3
+"""token-price.py — fetch price/volume/chart for the agent's Bankr token.
+
+Usage:
+  python3 ~/scripts/token-price.py            # uses BANKR_TOKEN_ADDRESS from .env
+  python3 ~/scripts/token-price.py 0xabc...   # explicit address override
+  python3 ~/scripts/token-price.py --json     # machine-readable JSON output
+"""
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+
+DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens/{addr}"
+ENV_FILE = os.path.expanduser("~/.openclaw/.env")
+
+
+def read_env_address():
+    """Read BANKR_TOKEN_ADDRESS from ~/.openclaw/.env (or None if absent)."""
+    try:
+        with open(ENV_FILE) as f:
+            for line in f:
+                if line.startswith("BANKR_TOKEN_ADDRESS="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        return None
+    return None
+
+
+def fetch_dexscreener(addr):
+    url = DEXSCREENER_API.format(addr=addr)
+    req = urllib.request.Request(url, headers={"User-Agent": "instaclaw-token-price/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.load(r)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
+        return None
+
+
+def main():
+    args = [a for a in sys.argv[1:] if a not in ("--json",)]
+    json_mode = "--json" in sys.argv
+
+    addr = args[0] if args else read_env_address()
+    if not addr:
+        out = {"status": "no_token", "message": "No token launched yet for this agent."}
+        if json_mode:
+            print(json.dumps(out))
+        else:
+            print(out["message"])
+        sys.exit(0)
+
+    data = fetch_dexscreener(addr)
+    if not data or not data.get("pairs"):
+        out = {
+            "status": "warming_up",
+            "address": addr,
+            "message": "DexScreener typically indexes new pools 10-30 min after launch — try again shortly.",
+        }
+        if json_mode:
+            print(json.dumps(out))
+        else:
+            print(out["message"])
+            print(f"BaseScan: https://basescan.org/token/{addr}")
+        sys.exit(0)
+
+    pair = data["pairs"][0]
+    sym = pair.get("baseToken", {}).get("symbol") or "?"
+    price = pair.get("priceUsd")
+    change_24h = pair.get("priceChange", {}).get("h24")
+    volume_24h = pair.get("volume", {}).get("h24")
+    chain = pair.get("chainId", "base")
+
+    chart_url = f"https://dexscreener.com/{chain}/{addr}"
+    bankr_url = f"https://bankr.bot/launches/{addr}"
+
+    out = {
+        "status": "ok",
+        "symbol": sym,
+        "address": addr,
+        "price_usd": price,
+        "price_change_24h_pct": change_24h,
+        "volume_24h_usd": volume_24h,
+        "chain": chain,
+        "chart_url": chart_url,
+        "bankr_url": bankr_url,
+    }
+
+    if json_mode:
+        print(json.dumps(out))
+        return
+
+    # Human-readable summary line for the agent to paraphrase.
+    change_str = ""
+    if change_24h is not None:
+        try:
+            change_pct = float(change_24h)
+            sign = "+" if change_pct >= 0 else ""
+            change_str = f" ({sign}{change_pct:.1f}% 24h)"
+        except (TypeError, ValueError):
+            pass
+
+    vol_str = ""
+    if volume_24h is not None:
+        try:
+            vol_str = f" · \${int(float(volume_24h)):,} vol 24h"
+        except (TypeError, ValueError):
+            pass
+
+    if price:
+        try:
+            p = float(price)
+            price_str = f"\${p:.6f}" if p < 0.01 else f"\${p:.4f}"
+        except (TypeError, ValueError):
+            price_str = f"\${price}"
+    else:
+        price_str = "(no price yet)"
+
+    print(f"\${sym} · {price_str}{change_str}{vol_str}")
+    print(f"chart: {chart_url}")
+
+
+if __name__ == "__main__":
+    main()
+`;
+
 // Register scripts with the template registry so vm-reconcile.ts can access them.
 // Must be done at module load time, after the script constants are defined.
 registerTemplate("STRIP_THINKING_SCRIPT", STRIP_THINKING_SCRIPT);
@@ -2380,6 +2520,7 @@ registerTemplate("AUTO_APPROVE_PAIRING_SCRIPT", AUTO_APPROVE_PAIRING_SCRIPT);
 registerTemplate("VM_WATCHDOG_SCRIPT", VM_WATCHDOG_SCRIPT);
 registerTemplate("DELIVER_FILE_SCRIPT", DELIVER_FILE_SCRIPT);
 registerTemplate("NOTIFY_USER_SCRIPT", NOTIFY_USER_SCRIPT);
+registerTemplate("TOKEN_PRICE_SCRIPT", TOKEN_PRICE_SCRIPT);
 
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
@@ -2510,6 +2651,7 @@ When the user mentions any of these topics, run the corresponding script FIRST b
 | browse markets, trending, what markets | \\\`python3 ~/scripts/polymarket-search.py trending\\\` |
 | buy, sell, trade, place order (prediction markets) | Read prediction-markets SKILL.md first, then execute |
 | launch a token, deploy a token, create a token, mint a token | **Token launches deploy on Base mainnet via \\\`bankr launch\\\` (CLI in bankr skill). NEVER Solana, NEVER Clanker — Bankr's general docs mention those, but this VM is configured for Base only.** Read bankr/SKILL.md for the launch flow. |
+| price of my token, my token chart, how is $X doing, what's $X at, my token price | Run \\\`python3 ~/scripts/token-price.py\\\` (reads BANKR_TOKEN_ADDRESS from ~/.openclaw/.env). Returns price, 24h change, volume, chart link. If the script reports "warming_up", the Doppler pool hasn't been indexed by DexScreener yet — try again in 10-30 min. |
 | bankr, bankr wallet, bankr balance, bankr swap | Use the **bankr skill**. Check WALLET.md for your Bankr address. |
 | solana, jupiter, swap, defi | \\\`python3 ~/scripts/solana-trade.py balance\\\` |
 | which wallet, what wallet, my wallet, wallet address | Read WALLET.md — lists all wallets and their purposes |
@@ -3784,6 +3926,24 @@ export async function configureOpenClaw(
         `grep -q "^BANKR_WALLET_ADDRESS=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
         `  sed -i "s/^BANKR_WALLET_ADDRESS=.*/BANKR_WALLET_ADDRESS=${config.bankrEvmAddress}/" "$HOME/.openclaw/.env" || \\`,
         `  echo "BANKR_WALLET_ADDRESS=${config.bankrEvmAddress}" >> "$HOME/.openclaw/.env"`,
+        ''
+      );
+    }
+
+    // #8 — Deploy launched token's address + symbol to .env so
+    // ~/scripts/token-price.py can answer "what's my token at?" in
+    // chat without having to query the DB. Only writes when the agent
+    // has actually launched a token. Sed-update if present, echo-append
+    // if missing — same pattern as BANKR_API_KEY above.
+    if (config.bankrTokenAddress && config.bankrTokenSymbol) {
+      scriptParts.push(
+        '# Deploy Bankr token address + symbol (item #8: token-price.py reads these)',
+        `grep -q "^BANKR_TOKEN_ADDRESS=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s|^BANKR_TOKEN_ADDRESS=.*|BANKR_TOKEN_ADDRESS=${config.bankrTokenAddress}|" "$HOME/.openclaw/.env" || \\`,
+        `  echo "BANKR_TOKEN_ADDRESS=${config.bankrTokenAddress}" >> "$HOME/.openclaw/.env"`,
+        `grep -q "^BANKR_TOKEN_SYMBOL=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s/^BANKR_TOKEN_SYMBOL=.*/BANKR_TOKEN_SYMBOL=${config.bankrTokenSymbol}/" "$HOME/.openclaw/.env" || \\`,
+        `  echo "BANKR_TOKEN_SYMBOL=${config.bankrTokenSymbol}" >> "$HOME/.openclaw/.env"`,
         ''
       );
     }
