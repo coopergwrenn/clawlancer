@@ -440,8 +440,27 @@ export const VM_MANIFEST = {
    *  harmful. Disabled in stepGatewayWatchdogTimer (vm-reconcile.ts) and
    *  configureOpenClaw (ssh.ts). Unit files left in place for easy
    *  re-enable when a properly-rewritten watchdog with "since gateway
-   *  start" log filtering ships. */
-  version: 69,
+   *  start" log filtering ships.
+   *
+   * v71 (2026-04-30): Two fleet-wide hardening fixes shipped together.
+   *  (a) discovery.mdns.mode=off. OpenClaw's default is "minimal" (per
+   *      runtime-schema-TpYHXgGk.js: `cfg.discovery?.mdns?.mode ??
+   *      "minimal"`). Bonjour mDNS broadcast triggers a CIAO-library
+   *      shutdown race when SIGTERM hits an in-flight probe, surfacing as
+   *      "Unhandled promise rejection: CIAO PROBING CANCELLED" → exit 1.
+   *      Confirmed crashes on vm-435 (YouthWork) + vm-729 (Textmaxmax).
+   *      Audit: 29/30 sampled VMs at the default = effectively "minimal"
+   *      everywhere. No need for mDNS in our deployment (gateway.bind is
+   *      non-loopback; OpenClaw's own audit-lno7WqNt.js recommends "off"
+   *      in this scenario). Permanent fix; reconciler enforces with the
+   *      verify-after-set hardening from commit bf053e9a.
+   *  (b) Weekly cron: prune workspace/backups/ subdirs older than 14 days.
+   *      Some power-user agents create custom daily-backup scripts; without
+   *      retention they grow linearly. vm-435 hit 1.1 GB. Safety net at
+   *      04:30 Sunday: `find ~/.openclaw/workspace/backups -mindepth 1
+   *      -maxdepth 1 -type d -mtime +14 -exec rm -rf {} +`. No-op on VMs
+   *      without backups/ dir. */
+  version: 71,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -471,6 +490,18 @@ export const VM_MANIFEST = {
     // "off" sends only the final assistant text. Trade-off: no typing-effect
     // partial-stream UX. Reversible per-user.
     "channels.telegram.streaming.mode": "off",
+    // v71: OpenClaw's default discovery.mdns.mode is "minimal" (per
+    // runtime-schema-TpYHXgGk.js: `cfg.discovery?.mdns?.mode ?? "minimal"`).
+    // Bonjour mDNS broadcast triggers a CIAO-library shutdown race when the
+    // gateway is SIGTERM'd while a probe is in flight — uncaught promise
+    // rejection "CIAO PROBING CANCELLED" → exit 1 → systemd Restart=on-failure
+    // → loop. Hits power users with 9+ plugins (acpx/discord/dispatch/etc.)
+    // hardest because they have more shutdown-coordination surface.
+    // Confirmed crashes on vm-435 (YouthWork) and vm-729 (Textmaxmax).
+    // Audit found 96.7% of VMs at the default. We're a server (gateway.bind
+    // is non-loopback), so we don't need mDNS local-network discovery anyway —
+    // OpenClaw's own audit-lno7WqNt.js even recommends "off" in our scenario.
+    "discovery.mdns.mode": "off",
     "commands.useAccessGroups": "false",
     // v41: CRITICAL — Stop the daily 4 AM session wipe. This is the #1 cause of
     // "agent forgetting" complaints. Session now only resets after 7 days (10080 min)
@@ -784,6 +815,20 @@ export const VM_MANIFEST = {
       schedule: "0 4 * * *",
       command: ". /home/openclaw/.nvm/nvm.sh && openclaw memory index >> /tmp/memory-index.log 2>&1",
       marker: "openclaw memory index",
+    },
+    {
+      // v71: Prune workspace backup dirs older than 14 days. Some power-user
+      // agents create custom daily-backup scripts (~/.openclaw/workspace/
+      // scripts/daily-backup.sh, ~/scripts/workspace-backup.sh) writing to
+      // ~/.openclaw/workspace/backups/<date>/. Without retention, these
+      // accumulate linearly: vm-435 (YouthWork) hit 1.1 GB across 32+ daily
+      // dirs. Weekly safety-net cron at 04:30 Sunday (after the 04:00 memory
+      // index) deletes any subdir of workspace/backups/ older than 14 days.
+      // -mindepth 1 ensures the parent dir itself is never deleted.
+      // 2>/dev/null swallows "no such file" on VMs without backups (most).
+      schedule: "30 4 * * 0",
+      command: "find ~/.openclaw/workspace/backups -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null",
+      marker: "workspace/backups",
     },
   ] as ManifestCronJob[],
 
