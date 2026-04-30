@@ -11,10 +11,12 @@ export const dynamic = "force-dynamic";
 // guarantees no realistically-in-flight user gets clobbered.
 const EXPIRE_AFTER_HOURS = 6;
 
-// Defensive cap so a runaway cron can't burn through unbounded rows in one
-// invocation. With ~2,700 zombies on first run and 15-min cadence, this
-// drains in ~3 cycles, then steady-state is well under 100/run.
-const BATCH_LIMIT = 1000;
+// Sample size used by dryRun preview AND post-update logging. The actual
+// UPDATE has no per-call cap — it's a single statement matched by full
+// WHERE clause, so URL length limits don't apply (an `id IN (...)` with
+// 1000 UUIDs blew past PostgREST's URL limit on the first prod run, so
+// the route was rewritten to update by predicate, not by id list).
+const SAMPLE_LIMIT = 100;
 
 /**
  * Expire stale `pending` rows in instaclaw_wld_delegations.
@@ -59,8 +61,10 @@ export async function GET(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - EXPIRE_AFTER_HOURS * 60 * 60 * 1000).toISOString();
 
-  // Fetch candidates first (count + sample for visibility, even in execute mode).
-  const { data: candidates, error: selErr } = await supabase
+  // For dryRun and for visibility logging, fetch a sample of candidates.
+  // This is informational only — the actual UPDATE matches by predicate,
+  // not by this id list, so it's not subject to the SAMPLE_LIMIT cap.
+  const { data: sample, error: selErr } = await supabase
     .from("instaclaw_wld_delegations")
     .select("id, user_id, delegated_at, transaction_id")
     .eq("status", "pending")
@@ -68,7 +72,7 @@ export async function GET(req: NextRequest) {
     .is("transaction_hash", null)
     .is("vm_id", null)
     .order("delegated_at", { ascending: true })
-    .limit(BATCH_LIMIT);
+    .limit(SAMPLE_LIMIT);
 
   if (selErr) {
     logger.error("expire-pending-delegations: select failed", {
@@ -82,20 +86,21 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const candidateCount = candidates?.length ?? 0;
-  const oldest = candidates?.[0]?.delegated_at ?? null;
-  const newest = candidates?.[candidateCount - 1]?.delegated_at ?? null;
+  const sampleCount = sample?.length ?? 0;
+  const oldest = sample?.[0]?.delegated_at ?? null;
+  const newestInSample = sample?.[sampleCount - 1]?.delegated_at ?? null;
 
   if (dryRun) {
     return NextResponse.json({
       dryRun: true,
       cutoff,
       expireAfterHours: EXPIRE_AFTER_HOURS,
-      batchLimit: BATCH_LIMIT,
-      candidateCount,
+      sampleLimit: SAMPLE_LIMIT,
+      sampleCount,
+      sampleAtCap: sampleCount === SAMPLE_LIMIT,
       oldest,
-      newest,
-      sample: (candidates ?? []).slice(0, 5).map((c) => ({
+      newestInSample,
+      sample: (sample ?? []).slice(0, 5).map((c) => ({
         id: c.id,
         userId: c.user_id,
         delegatedAt: c.delegated_at,
@@ -104,7 +109,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  if (candidateCount === 0) {
+  if (sampleCount === 0) {
     return NextResponse.json({
       cutoff,
       expireAfterHours: EXPIRE_AFTER_HOURS,
@@ -112,12 +117,19 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const ids = (candidates ?? []).map((c) => c.id);
+  // Update by predicate, not by id list. PostgREST's URL length limit
+  // makes large `id=in.(...)` filters fail with HTTP 400 once you cross
+  // ~30K characters (~800 UUIDs). The WHERE clause below is identical to
+  // the SELECT above, so the race-safety check `status='pending'` is
+  // implicit — any row that flipped between SELECT and UPDATE is harmlessly
+  // skipped.
   const { data: updated, error: updErr } = await supabase
     .from("instaclaw_wld_delegations")
     .update({ status: "expired" })
-    .in("id", ids)
-    .eq("status", "pending") // re-check to avoid clobbering racing writes
+    .eq("status", "pending")
+    .lt("delegated_at", cutoff)
+    .is("transaction_hash", null)
+    .is("vm_id", null)
     .select("id");
 
   if (updErr) {
@@ -125,7 +137,6 @@ export async function GET(req: NextRequest) {
       route: "cron/expire-pending-delegations",
       error: updErr.message,
       code: updErr.code,
-      attempted: ids.length,
     });
     return NextResponse.json(
       { error: "update failed", detail: updErr.message },
@@ -134,26 +145,22 @@ export async function GET(req: NextRequest) {
   }
 
   const expiredCount = updated?.length ?? 0;
-  const racedCount = ids.length - expiredCount;
 
   logger.info("expire-pending-delegations: completed", {
     route: "cron/expire-pending-delegations",
     cutoff,
-    candidateCount,
     expiredCount,
-    racedCount,
+    sampleCount,
+    sampleAtCap: sampleCount === SAMPLE_LIMIT,
     oldest,
-    newest,
-    batchHit: candidateCount === BATCH_LIMIT,
+    newestInSample,
   });
 
   return NextResponse.json({
     cutoff,
     expireAfterHours: EXPIRE_AFTER_HOURS,
     expired: expiredCount,
-    raced: racedCount,
     oldest,
-    newest,
-    batchHit: candidateCount === BATCH_LIMIT,
+    newestInSample,
   });
 }
