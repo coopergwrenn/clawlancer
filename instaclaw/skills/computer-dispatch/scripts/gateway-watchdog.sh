@@ -73,9 +73,24 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-tim
 PROC_OK=false
 systemctl --user is-active openclaw-gateway > /dev/null 2>&1 && PROC_OK=true
 
+# ── Compute gateway uptime (used by Check 4 + Check 5) ──
+GW_AGE=0
+GW_START=$(systemctl --user show openclaw-gateway --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2)
+if [ -n "$GW_START" ]; then
+  GW_START_TS=$(date -d "$GW_START" +%s 2>/dev/null || echo 0)
+  GW_AGE=$(( $(date +%s) - GW_START_TS ))
+fi
+
 # ── Check 4: Frozen gateway (session modified but no response sent) ──
+# v68 (2026-04-30): added GW_AGE>600 guard. The FROZEN check uses LAST_SEND
+# from the daily app log, which survives across gateway restarts. After a
+# restart, a fresh gateway with no successful sendMessage today gets judged
+# "frozen" within 2 min and killed — creating an infinite watchdog→cold-start→
+# kill loop affecting users who resume after long idle. Skip the check until
+# the gateway has been up >= 10 min, mirroring TELEGRAM_DEAD's existing guard.
+# Confirmed on vm-773 (Lee): 20 SIGTERMs in 24h, gateway never staying up >8min.
 FROZEN=false
-if [ "$HEALTH_OK" = true ] && [ "$PROC_OK" = true ] && [ -f "$SESSION_FILE" ]; then
+if [ "$HEALTH_OK" = true ] && [ "$PROC_OK" = true ] && [ -f "$SESSION_FILE" ] && [ "$GW_AGE" -gt 600 ]; then
   SESSION_AGE=$(( $(date +%s) - $(stat -c %Y "$SESSION_FILE" 2>/dev/null || echo 0) ))
   if [ "$SESSION_AGE" -lt 300 ]; then
     # Session was modified in last 5 min — check if any sendMessage happened
@@ -110,14 +125,10 @@ fi
 # ── Check 5: Dead Telegram connection ──
 # If the gateway has been running 10+ min but the app log has ZERO Telegram
 # sendMessage entries, the Telegram long-poll connection is dead.
+# (GW_AGE computed above for both checks — see v68 note in Check 4.)
 TELEGRAM_DEAD=false
 if [ "$HEALTH_OK" = true ] && [ "$PROC_OK" = true ]; then
-  # How long has the gateway been running?
-  GW_START=$(systemctl --user show openclaw-gateway --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2)
   if [ -n "$GW_START" ]; then
-    GW_START_TS=$(date -d "$GW_START" +%s 2>/dev/null || echo 0)
-    GW_AGE=$(( $(date +%s) - GW_START_TS ))
-
     if [ "$GW_AGE" -gt 600 ]; then
       # Gateway running 10+ min — check when the LAST sendMessage happened
       TODAY=$(date -u +%Y-%m-%d)

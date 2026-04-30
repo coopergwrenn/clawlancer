@@ -411,7 +411,23 @@ export const VM_MANIFEST = {
    *  "swap 0.1 SOL for USDC on Jupiter" both routed to the Solana scripts
    *  normally. Reconciler rewrites SOUL.md and CAPABILITIES.md (both
    *  `>` overwrite) on next pass — no fleet patch needed. */
-  version: 67,
+   *
+   * v68 (2026-04-30): Two fleet-wide reliability fixes.
+   *  (a) gateway-watchdog.sh: add GW_AGE>600 guard to the FROZEN check.
+   *      The check uses LAST_SEND from the daily app log, which survives
+   *      across gateway restarts. After a restart, a fresh gateway with no
+   *      successful sendMessage today was judged "frozen" within 2 min and
+   *      killed — infinite watchdog→cold-start→kill loop affecting any user
+   *      resuming after long idle. Confirmed on vm-773 (Lee): 20 SIGTERMs
+   *      in 24h. Now mirrors TELEGRAM_DEAD's existing uptime guard.
+   *  (b) channels.telegram.streaming.mode = "off". 19/20 sampled VMs had
+   *      OpenClaw default "partial" which surfaces tool-call blocks as
+   *      separate Telegram messages. Confirmed on vm-729 (Textmaxmax): user
+   *      saw "exec run python3 8999", "tool: exec", "http.server" leaking
+   *      into chat. "off" sends only final assistant text — drops the
+   *      typing-effect partial-stream UX in exchange for never leaking
+   *      tool internals. Reversible per-user via openclaw config set. */
+  version: 68,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -434,6 +450,13 @@ export const VM_MANIFEST = {
     // v2026.2.17–2026.2.23 REJECTS the controlUi key entirely
     "channels.telegram.groupPolicy": "open",
     "channels.telegram.groups.*.requireMention": "false",
+    // v68: OpenClaw's default streaming mode "partial" surfaces tool-call
+    // blocks as separate Telegram messages — users see internals like
+    // "exec run python3 8999", "tool: exec", "http.server" instead of just
+    // the agent's final response. Confirmed fleet-wide (19/20 sampled VMs).
+    // "off" sends only the final assistant text. Trade-off: no typing-effect
+    // partial-stream UX. Reversible per-user.
+    "channels.telegram.streaming.mode": "off",
     "commands.useAccessGroups": "false",
     // v41: CRITICAL — Stop the daily 4 AM session wipe. This is the #1 cause of
     // "agent forgetting" complaints. Session now only resets after 7 days (10080 min)
