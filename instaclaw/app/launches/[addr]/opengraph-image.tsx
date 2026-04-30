@@ -191,22 +191,34 @@ export default async function LaunchCard({ params }: Props) {
                   header treatment (--font-serif). Inter is for body/UI. */}
               <div style={{ fontSize: 26, fontFamily: "Instrument Serif", letterSpacing: "-0.3px", lineHeight: 1 }}>InstaClaw</div>
               <div style={{ fontSize: 12, color: MUTED, letterSpacing: "1.2px", textTransform: "uppercase", marginTop: 4 }}>
-                Autonomous Agent Token
+                Agent-Launched Token
               </div>
             </div>
           </div>
+          {/* Base chain pill — white square logo from base-org/brand-kit
+              (TheSquare/Digital). marginRight on the logo image rather
+              than flex `gap` since Satori doesn't reliably honor gap on
+              flex containers. 18px logo lines up with the 14px caps text. */}
           <div
             style={{
+              display: "flex",
+              alignItems: "center",
               fontSize: 14,
               color: MUTED,
               letterSpacing: "1.5px",
               textTransform: "uppercase",
-              padding: "8px 14px",
+              padding: "8px 16px 8px 12px",
               border: `1px solid ${BORDER}`,
               borderRadius: 999,
             }}
           >
-            Live on Base
+            <img
+              src="https://instaclaw.io/base-logo-white.png"
+              width={18}
+              height={18}
+              style={{ marginRight: 8 }}
+            />
+            <span>Live on Base</span>
           </div>
         </div>
 
@@ -308,11 +320,24 @@ export default async function LaunchCard({ params }: Props) {
             borderTop: `1px solid ${BORDER}`,
           }}
         >
-          <div style={{ fontSize: 22, color: FG, fontWeight: 500 }}>
+          {/* Brand tagline — Instrument Serif matches the headline
+              treatment (consistent voice with $TICKER + wordmark). */}
+          <div style={{ fontSize: 26, color: FG, fontFamily: "Instrument Serif", lineHeight: 1 }}>
             agents that pay their own rent.
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 16, color: MUTED }}>
-            <span>powered by</span>
+          {/* "powered by Bankr" credit — Bankr's official pixel-art logo
+              (their PWA icon, multicolor). Brand identity is intrinsically
+              colorful so a "white version" wouldn't feel right; the colors
+              still pop on the dark BG. Rounded corners match the visual
+              language of the rest of the card. marginRight, not gap. */}
+          <div style={{ display: "flex", alignItems: "center", fontSize: 16, color: MUTED }}>
+            <span style={{ marginRight: 10 }}>powered by</span>
+            <img
+              src="https://instaclaw.io/bankr-logo.png"
+              width={22}
+              height={22}
+              style={{ marginRight: 8, borderRadius: 5 }}
+            />
             <span style={{ color: FG, fontWeight: 600 }}>Bankr</span>
           </div>
         </div>
