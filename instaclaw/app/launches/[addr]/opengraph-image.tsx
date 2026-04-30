@@ -222,8 +222,14 @@ export default async function LaunchCard({ params }: Props) {
             >
               {showAddressAsTicker ? ticker : `$${ticker}`}
             </div>
-            <div style={{ fontSize: 28, color: MUTED, lineHeight: 1.3 }}>
-              deployed by <span style={{ color: FG, fontWeight: 600 }}>{deployedBy}</span>
+            {/* Satori (next/og) requires display:flex on any element with
+                multiple children. Without it, the whole render silently
+                fails and ImageResponse emits a 0-byte 200. flex-wrap +
+                a small column gap preserves the visual space between
+                "deployed by" and the agent name. */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0 0.4ch", fontSize: 28, color: MUTED, lineHeight: 1.3 }}>
+              <span>deployed by</span>
+              <span style={{ color: FG, fontWeight: 600 }}>{deployedBy}</span>
             </div>
             {/* Show full short-address chip only when the ticker is a real
                 symbol — otherwise the address is already the headline. */}

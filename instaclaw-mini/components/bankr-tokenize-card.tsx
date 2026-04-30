@@ -714,7 +714,7 @@ export default function BankrTokenizeCard({
             )}
             {originalSuggestedSym && tokenSym.toUpperCase() !== originalSuggestedSym && tokenSym && (
               <p className="text-[10px] text-muted opacity-60">
-                You changed this from ${originalSuggestedSym}.
+                {`You changed this from $${originalSuggestedSym}.`}
               </p>
             )}
           </div>

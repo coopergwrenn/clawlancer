@@ -853,7 +853,7 @@ export function BankrWalletCard({
                 )}
                 {originalSuggestedSym && tokenSym.toUpperCase() !== originalSuggestedSym && tokenSym && (
                   <p className="text-[10px]" style={{ color: "var(--muted)", opacity: 0.6 }}>
-                    You changed this from ${originalSuggestedSym}.
+                    {`You changed this from $${originalSuggestedSym}.`}
                   </p>
                 )}
               </div>
