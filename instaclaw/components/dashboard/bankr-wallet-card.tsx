@@ -122,6 +122,17 @@ export function BankrWalletCard({
   const [imageError, setImageError] = useState<string | null>(null);
   const [imageVariation, setImageVariation] = useState(0);
   const [personalityHash, setPersonalityHash] = useState<string | null>(null);
+  // ── #4 Auto-suggested token name from agent personality ──
+  // Pre-fills name + symbol from a server-side LLM call against
+  // SOUL.md/MEMORY.md when the form opens. User input always wins:
+  // we only pre-fill if the field is still empty AND the user
+  // hasn't typed anything yet.
+  const [nameSuggestion, setNameSuggestion] = useState<{ name: string; symbol: string; rationale: string | null } | null>(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [originalSuggestedName, setOriginalSuggestedName] = useState<string | null>(null);
+  const [originalSuggestedSym, setOriginalSuggestedSym] = useState<string | null>(null);
+  const [nameTouched, setNameTouched] = useState(false);
+  const [symTouched, setSymTouched] = useState(false);
   // Elapsed seconds during a button-flow launch — drives the phased status
   // text on the Launch Token button so the 60s wait does not feel hung.
   const [launchElapsed, setLaunchElapsed] = useState(0);
@@ -256,10 +267,43 @@ export function BankrWalletCard({
     }
   }
 
+  // #4 — Fetch auto-suggested {name, symbol} from agent personality.
+  // Fired in parallel with PFP gen. Pre-fills the form ONLY if fields
+  // are empty AND user hasn't typed yet. Failure is silent — fall back
+  // to blank fields. Server returns soft-empty on any error path.
+  async function handleSuggestTokenIdentity() {
+    setSuggestLoading(true);
+    try {
+      const res = await fetch("/api/bankr/suggest-token-identity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.name && data?.symbol) {
+        setNameSuggestion({ name: data.name, symbol: data.symbol, rationale: data.rationale ?? null });
+        setOriginalSuggestedName(data.name);
+        setOriginalSuggestedSym(data.symbol);
+        // Pre-fill ONLY if user hasn't already typed AND fields are empty.
+        // Functional updaters so a concurrent user keystroke wins the race.
+        if (!nameTouched) setTokenName((cur) => (cur ? cur : data.name));
+        if (!symTouched) setTokenSym((cur) => (cur ? cur : data.symbol));
+      }
+    } catch {
+      // Silent — blank fields are an acceptable fallback.
+    } finally {
+      setSuggestLoading(false);
+    }
+  }
+
   function handleOpenForm() {
     setShowTokenForm(true);
-    // Auto-generate a personalized PFP immediately
+    // Two parallel server calls: PFP generation + name/symbol suggestion.
+    // Both SSH to read SOUL.md (the SSH layer is per-call so they run
+    // independently — no double-SSH coordination needed in v1).
     handleGenerateImage(agentName || "Agent");
+    handleSuggestTokenIdentity();
   }
 
   async function handleUploadImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -728,30 +772,90 @@ export function BankrWalletCard({
               <p className="text-xs" style={{ color: "var(--muted)" }}>
                 Launch a token for your agent. Trading fees help fund your agent&apos;s compute.
               </p>
-              <input
-                type="text"
-                placeholder="Token Name (e.g. MyAgent)"
-                value={tokenName}
-                onChange={(e) => setTokenName(e.target.value)}
-                maxLength={32}
-                className="w-full px-3 py-2 rounded-md text-sm"
-                style={{
-                  border: "1px solid var(--border)",
-                  background: "white",
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Symbol (e.g. AGENT)"
-                value={tokenSym}
-                onChange={(e) => setTokenSym(e.target.value)}
-                maxLength={10}
-                className="w-full px-3 py-2 rounded-md text-sm uppercase"
-                style={{
-                  border: "1px solid var(--border)",
-                  background: "white",
-                }}
-              />
+
+              {/* Token Name field with suggestion affordance */}
+              <div className="space-y-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder={suggestLoading ? "✨ Asking your agent what it wants to be called..." : "Token Name (e.g. MyAgent)"}
+                    value={tokenName}
+                    onChange={(e) => { setTokenName(e.target.value); setNameTouched(true); }}
+                    maxLength={32}
+                    className="w-full px-3 py-2 pr-8 rounded-md text-sm"
+                    style={{
+                      border: "1px solid var(--border)",
+                      background: suggestLoading ? "rgba(0,0,0,0.02)" : "white",
+                      backgroundImage: suggestLoading ? "linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%)" : undefined,
+                      backgroundSize: suggestLoading ? "200% 100%" : undefined,
+                      animation: suggestLoading ? "shimmer 1.5s infinite linear" : undefined,
+                    }}
+                  />
+                  {tokenName && (
+                    <button
+                      type="button"
+                      onClick={() => { setTokenName(""); setNameTouched(true); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-black/5"
+                      title="Clear"
+                    >
+                      <X className="w-3 h-3" style={{ color: "var(--muted)" }} />
+                    </button>
+                  )}
+                </div>
+                {originalSuggestedName && tokenName === originalSuggestedName && (
+                  <p className="text-[10px] flex items-center gap-1" style={{ color: "var(--muted)" }}>
+                    <span aria-hidden>✨</span>
+                    <span>Suggested based on your agent&apos;s personality — feel free to change it.</span>
+                  </p>
+                )}
+                {originalSuggestedName && tokenName !== originalSuggestedName && tokenName && (
+                  <p className="text-[10px]" style={{ color: "var(--muted)", opacity: 0.6 }}>
+                    You changed this from {originalSuggestedName}.
+                  </p>
+                )}
+              </div>
+
+              {/* Symbol field with suggestion affordance */}
+              <div className="space-y-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder={suggestLoading ? "✨ Suggesting…" : "Symbol (e.g. AGENT)"}
+                    value={tokenSym}
+                    onChange={(e) => { setTokenSym(e.target.value); setSymTouched(true); }}
+                    maxLength={10}
+                    className="w-full px-3 py-2 pr-8 rounded-md text-sm uppercase"
+                    style={{
+                      border: "1px solid var(--border)",
+                      background: suggestLoading ? "rgba(0,0,0,0.02)" : "white",
+                      backgroundImage: suggestLoading ? "linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%)" : undefined,
+                      backgroundSize: suggestLoading ? "200% 100%" : undefined,
+                      animation: suggestLoading ? "shimmer 1.5s infinite linear" : undefined,
+                    }}
+                  />
+                  {tokenSym && (
+                    <button
+                      type="button"
+                      onClick={() => { setTokenSym(""); setSymTouched(true); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-black/5"
+                      title="Clear"
+                    >
+                      <X className="w-3 h-3" style={{ color: "var(--muted)" }} />
+                    </button>
+                  )}
+                </div>
+                {originalSuggestedSym && tokenSym.toUpperCase() === originalSuggestedSym && (
+                  <p className="text-[10px] flex items-center gap-1" style={{ color: "var(--muted)" }}>
+                    <span aria-hidden>✨</span>
+                    <span>Suggested by your agent — change to anything you like.</span>
+                  </p>
+                )}
+                {originalSuggestedSym && tokenSym.toUpperCase() !== originalSuggestedSym && tokenSym && (
+                  <p className="text-[10px]" style={{ color: "var(--muted)", opacity: 0.6 }}>
+                    You changed this from ${originalSuggestedSym}.
+                  </p>
+                )}
+              </div>
               {/* ── Token Image (auto-generated) ── */}
               <input
                 ref={fileInputRef}
@@ -876,6 +980,15 @@ export function BankrWalletCard({
                     setError(null);
                     setImageUrl(null);
                     setImageError(null);
+                    // Reset suggestion state so reopening kicks off a fresh
+                    // suggest call (and a fresh personality read).
+                    setNameSuggestion(null);
+                    setOriginalSuggestedName(null);
+                    setOriginalSuggestedSym(null);
+                    setNameTouched(false);
+                    setSymTouched(false);
+                    setTokenName("");
+                    setTokenSym("");
                   }}
                   className="flex-1 py-2 rounded-md text-sm"
                   style={{ border: "1px solid var(--border)" }}
