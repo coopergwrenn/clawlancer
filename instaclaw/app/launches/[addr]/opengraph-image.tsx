@@ -131,8 +131,12 @@ export default async function LaunchCard({ params }: Props) {
         {/* Header row: InstaClaw mark + "TOKEN LAUNCH" eyebrow */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 40 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {/* Inverted (white-on-transparent) variant of /logo.png — the
+                base logo is a black pixel crab and is invisible against
+                the dark OG card background. logo-white.png was generated
+                via Sharp's negate({alpha:false}) and committed to public/. */}
             <img
-              src="https://instaclaw.io/logo.png"
+              src="https://instaclaw.io/logo-white.png"
               width={44}
               height={44}
               style={{ borderRadius: 10 }}
