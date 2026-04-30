@@ -195,10 +195,10 @@ export default async function LaunchCard({ params }: Props) {
               </div>
             </div>
           </div>
-          {/* Base chain pill — white square logo from base-org/brand-kit
-              (TheSquare/Digital). marginRight on the logo image rather
-              than flex `gap` since Satori doesn't reliably honor gap on
-              flex containers. 18px logo lines up with the 14px caps text. */}
+          {/* Base chain pill — official blue Base square (their actual
+              brand mark; plain rounded blue rectangle is the canonical
+              identity per github.com/base-org/brand-kit). 18px sits
+              cleanly with the 14px caps text. marginRight, not gap. */}
           <div
             style={{
               display: "flex",
@@ -213,10 +213,10 @@ export default async function LaunchCard({ params }: Props) {
             }}
           >
             <img
-              src="https://instaclaw.io/base-logo-white.png"
+              src="https://instaclaw.io/base-logo.png"
               width={18}
               height={18}
-              style={{ marginRight: 8 }}
+              style={{ marginRight: 8, borderRadius: 3 }}
             />
             <span>Live on Base</span>
           </div>
