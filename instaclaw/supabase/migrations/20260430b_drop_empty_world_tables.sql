@@ -1,0 +1,22 @@
+-- Retire the planned-but-never-used World mini-app billing tables.
+--
+-- Investigation 2026-04-30 found three tables referenced only by the
+-- PRD (Section 7) and ad-hoc audit scripts, never wired into any
+-- production code path:
+--
+--   instaclaw_world_payments       — exists, 0 rows. Created earlier when
+--                                    the PRD was first drafted; supplanted
+--                                    by `instaclaw_wld_delegations` for the
+--                                    actual WLD delegation flow.
+--   instaclaw_world_users          — never created (PGRST205 from REST).
+--   instaclaw_world_subscriptions  — never created (PGRST205 from REST).
+--
+-- Drop the only one that exists. CASCADE removes the UNIQUE constraint
+-- `uq_world_payments_reference` added in 20260331b_unique_transaction_id.sql
+-- (that earlier migration becomes a no-op on fresh-DB rebuilds for that
+-- specific ALTER TABLE — acceptable since CLI db push is already manual
+-- via the Supabase dashboard for unrelated reasons).
+--
+-- The PRD has been updated to mark Section 7 as superseded.
+
+DROP TABLE IF EXISTS instaclaw_world_payments CASCADE;
