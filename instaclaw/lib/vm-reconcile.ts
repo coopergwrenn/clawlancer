@@ -2495,104 +2495,75 @@ async function stepSkillDirectories(
 }
 
 /**
- * Step 8j: Gateway watchdog timer.
+ * Step 8j: Gateway watchdog timer — DISABLED in v69 (2026-04-30).
  *
- * Systemd user timer that runs `~/scripts/gateway-watchdog.sh` every 2 minutes
- * to detect frozen gateway processes and force-restart them. Inactive timer =
- * no auto-restart on freeze, which manifests as users hitting unresponsive
- * agents until manual intervention.
+ * Inverted from "ensure enabled" to "ensure disabled". The watchdog script
+ * had two structural bugs that turned it into a kill loop for any user with
+ * cold-start delays or recently-failed inferences:
  *
- * Heal: if the script is present (deployed by stepSkills as part of
- * computer-dispatch/scripts/), write the unit + timer files and start.
+ *   - FROZEN check uses LAST_SEND from /tmp/openclaw/openclaw-$DATE.log
+ *     which persists across gateway restarts. A restarted gateway with no
+ *     successful sendMessage today gets judged "frozen" within ~10 min and
+ *     killed. Confirmed on vm-773 (Lee), vm-780 (Cooper edgecitybot),
+ *     vm-linode-08 (Telly): 20+ SIGTERMs/24h, gateways never staying up.
+ *   - TELEGRAM_DEAD has the same antipattern via LAST_TG_SEND.
+ *
+ * v68's GW_AGE>600 guard only delayed the kill 10 min instead of fixing it.
+ *
+ * The watchdog's value (catching alive-but-stuck gateways) is small —
+ * systemd Restart=on-failure already handles process crashes, and most
+ * "stuck" gateways are legitimately waiting on Anthropic. Cost (killing
+ * working gateways) far exceeded benefit. Disabled fleet-wide until a
+ * properly-rewritten watchdog with "since gateway start" log filtering is
+ * tested and shipped.
+ *
+ * The reconciler now ENSURES the timer is disabled + stopped on every pass.
+ * Unit files are left in place so re-enable is a one-command revert.
  */
 async function stepGatewayWatchdogTimer(
   ssh: SSHConnection,
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
-  isPausedState: boolean,
+  _isPausedState: boolean,
 ): Promise<void> {
   try {
     const probe = await ssh.execCommand(
       `${HEAL_DBUS_PREFIX} && ` +
-      `script=$([ -x $HOME/scripts/gateway-watchdog.sh ] && echo 1 || echo 0); ` +
       `unit=$([ -f $HOME/.config/systemd/user/gateway-watchdog.timer ] && echo 1 || echo 0); ` +
+      `enabled=$(systemctl --user is-enabled gateway-watchdog.timer 2>&1 | grep -q "^enabled$" && echo 1 || echo 0); ` +
       `active=$(systemctl --user is-active gateway-watchdog.timer 2>&1 | grep -q "^active$" && echo 1 || echo 0); ` +
-      `echo "script=$script unit=$unit active=$active"`
+      `echo "unit=$unit enabled=$enabled active=$active"`
     );
-    const m = probe.stdout.match(/script=(\d) unit=(\d) active=(\d)/);
+    const m = probe.stdout.match(/unit=(\d) enabled=(\d) active=(\d)/);
     if (!m) {
       recordHealError(result, strict, `gw-watchdog: probe parse failed: ${probe.stdout.slice(0, 120)}`);
       return;
     }
-    const [hasScript, hasUnit, isActive] = [m[1] === "1", m[2] === "1", m[3] === "1"];
+    const [hasUnit, isEnabled, isActive] = [m[1] === "1", m[2] === "1", m[3] === "1"];
 
-    if (isActive) {
-      result.alreadyCorrect.push("gw-watchdog: timer active");
+    if (!hasUnit) {
+      // No unit file at all — nothing to disable, nothing wrong.
+      result.alreadyCorrect.push("gw-watchdog: no unit (timer absent)");
       return;
     }
-
-    // On suspended/hibernating, the timer SHOULD be inactive (the gateway it
-    // watches is also intentionally stopped). Don't push it as a fix unless
-    // the unit file is also missing — that's drift we can correct safely.
-    if (isPausedState && hasUnit) {
-      result.alreadyCorrect.push("gw-watchdog: timer inactive (VM paused — expected)");
-      return;
-    }
-
-    if (!hasScript) {
-      recordHealError(result, strict, "gw-watchdog: ~/scripts/gateway-watchdog.sh missing (stepSkills should have deployed it)");
+    if (!isEnabled && !isActive) {
+      result.alreadyCorrect.push("gw-watchdog: already disabled + inactive");
       return;
     }
 
     if (dryRun) {
-      const action = isPausedState ? "write unit (skip start — VM paused)" : (hasUnit ? "enable+start timer" : "write unit + start");
-      result.fixed.push(`[dry-run] gw-watchdog: would ${action}`);
+      result.fixed.push(`[dry-run] gw-watchdog: would stop + disable timer (was enabled=${isEnabled} active=${isActive})`);
       return;
     }
 
-    // Always write unit + daemon-reload + enable (config). Skip start when paused.
-    const startBlock = isPausedState
-      ? "echo SKIP_START_PAUSED"
-      : "systemctl --user start gateway-watchdog.timer 2>/dev/null && sleep 1 && systemctl --user is-active gateway-watchdog.timer";
-
-    const setup = await ssh.execCommand(`bash -c '
-${HEAL_DBUS_PREFIX}
-mkdir -p $HOME/.config/systemd/user
-cat > $HOME/.config/systemd/user/gateway-watchdog.service << WDEOF
-[Unit]
-Description=Gateway Watchdog Check
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash /home/openclaw/scripts/gateway-watchdog.sh
-Environment=HOME=/home/openclaw
-WDEOF
-cat > $HOME/.config/systemd/user/gateway-watchdog.timer << WTEOF
-[Unit]
-Description=Gateway Watchdog Timer
-
-[Timer]
-OnBootSec=120
-OnUnitActiveSec=120
-AccuracySec=30
-
-[Install]
-WantedBy=timers.target
-WTEOF
-systemctl --user daemon-reload
-systemctl --user enable gateway-watchdog.timer 2>/dev/null
-${startBlock}
-'`);
-    if (isPausedState) {
-      result.fixed.push("gw-watchdog: unit + enable applied (start skipped — VM paused)");
-      return;
-    }
-    if (!setup.stdout.includes("active")) {
-      recordHealError(result, strict, `gw-watchdog: timer didn't become active: ${setup.stdout.slice(-150)}`);
-      return;
-    }
-    result.fixed.push("gw-watchdog: timer enabled + started");
+    await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && ` +
+      `systemctl --user stop gateway-watchdog.timer 2>/dev/null; ` +
+      `systemctl --user disable gateway-watchdog.timer 2>/dev/null; ` +
+      `systemctl --user is-active gateway-watchdog.timer 2>&1 | head -1`
+    );
+    result.fixed.push(`gw-watchdog: stopped + disabled (was enabled=${isEnabled} active=${isActive})`);
   } catch (err) {
     recordHealError(result, strict, `gw-watchdog: ${String(err).slice(0, 200)}`);
   }

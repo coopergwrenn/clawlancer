@@ -426,8 +426,22 @@ export const VM_MANIFEST = {
    *      saw "exec run python3 8999", "tool: exec", "http.server" leaking
    *      into chat. "off" sends only final assistant text — drops the
    *      typing-effect partial-stream UX in exchange for never leaking
-   *      tool internals. Reversible per-user via openclaw config set. */
-  version: 68,
+   *      tool internals. Reversible per-user via openclaw config set.
+   *
+   * v69 (2026-04-30): Gateway watchdog DISABLED fleet-wide. v68's GW_AGE
+   *  guard only delayed the FROZEN kill 10 min instead of fixing it — the
+   *  underlying bug is reading LAST_SEND from /tmp/openclaw/openclaw-$DATE.log
+   *  which persists across gateway restarts. A restarted gateway with no
+   *  successful sendMessage today gets judged "frozen" indefinitely. Same
+   *  antipattern in TELEGRAM_DEAD's LAST_TG_SEND. Confirmed kill loops on
+   *  vm-773 (Lee) 20 SIGTERMs/24h, vm-780 (edgecitybot) gateway dying 17ms
+   *  after [gateway] ready, vm-linode-08 (Telly) 10 restarts/24h. systemd
+   *  Restart=on-failure handles real crashes; the watchdog was actively
+   *  harmful. Disabled in stepGatewayWatchdogTimer (vm-reconcile.ts) and
+   *  configureOpenClaw (ssh.ts). Unit files left in place for easy
+   *  re-enable when a properly-rewritten watchdog with "since gateway
+   *  start" log filtering ships. */
+  version: 69,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
