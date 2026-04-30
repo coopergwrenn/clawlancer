@@ -440,8 +440,21 @@ export const VM_MANIFEST = {
    *  harmful. Disabled in stepGatewayWatchdogTimer (vm-reconcile.ts) and
    *  configureOpenClaw (ssh.ts). Unit files left in place for easy
    *  re-enable when a properly-rewritten watchdog with "since gateway
-   *  start" log filtering ships. */
-  version: 69,
+   *  start" log filtering ships.
+   *
+   * v70 (2026-04-30): Phase 1 of SOUL.md restructure (PRD-soul-restructure).
+   *  Added `<!-- OPENCLAW_CACHE_BOUNDARY -->` marker to WORKSPACE_SOUL_MD,
+   *  placed between the persona section (Core Truths/Boundaries/Vibe) and
+   *  the agent-editable Learned Preferences. OpenClaw recognizes this marker
+   *  (verified in dist/system-prompt-cache-boundary-BWaaicTu.js) and uses it
+   *  to split the system prompt into a stable prefix (Anthropic-cached) and
+   *  a dynamic suffix. Effect: agent edits to Learned Preferences no longer
+   *  invalidate the entire 30K-token system prompt cache — only the suffix
+   *  re-prefills. Fleet-wide impact: a Learned Preferences edit costs ~10
+   *  cache_write tokens instead of ~14,000 input_tokens. Single highest-
+   *  leverage change in the SOUL.md restructure plan. Phase 2 (full file
+   *  split) follows in a later manifest bump. */
+  version: 70,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
