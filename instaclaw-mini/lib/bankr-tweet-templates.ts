@@ -26,7 +26,11 @@ export interface TweetArgs {
 
 const HASHTAGS = "@instaclaws + @bankrbot";
 const HASHTAGS_VERIFIED = "@instaclaws + @bankrbot · verified human";
-const URL_BASE = "https://bankr.bot/launches/";
+// Item #5: switched from bankr.bot/launches/ to instaclaw.io/launches/
+// so X unfurls our InstaClaw-branded OG card (rendered by the webapp's
+// app/launches/[addr]/opengraph-image.tsx). Mini-app keeps this in sync
+// with the webapp port. The landing page itself credits + links Bankr.
+const URL_BASE = "https://instaclaw.io/launches/";
 const TWEET_LIMIT = 280;
 const TRUNCATE_AT = 275;
 

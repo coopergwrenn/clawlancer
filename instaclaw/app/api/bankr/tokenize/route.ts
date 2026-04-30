@@ -298,15 +298,21 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Real launch succeeded — finalize state
+  // Real launch succeeded — finalize state.
+  // Item #5: persist the token PFP URL so /launches/[addr]/opengraph-image
+  // can render the share card without a runtime SSH or Bankr metadata fetch.
+  // `image` may be undefined (older clients / Path B sync) — column is
+  // nullable, OG card falls back to ticker-initial styling in that case.
+  const finalizePayload: Record<string, unknown> = {
+    tokenization_platform: "bankr",
+    bankr_token_address: launchData.tokenAddress,
+    bankr_token_symbol: tokenSymbol,
+    bankr_token_launched_at: new Date().toISOString(),
+  };
+  if (image) finalizePayload.bankr_token_image_url = image;
   const { error: finalizeErr } = await supabase
     .from("instaclaw_vms")
-    .update({
-      tokenization_platform: "bankr",
-      bankr_token_address: launchData.tokenAddress,
-      bankr_token_symbol: tokenSymbol,
-      bankr_token_launched_at: new Date().toISOString(),
-    })
+    .update(finalizePayload)
     .eq("id", vm.id);
 
   if (finalizeErr) {

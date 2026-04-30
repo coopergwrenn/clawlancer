@@ -32,7 +32,11 @@ export interface TweetArgs {
 
 const HASHTAGS = "@instaclaws + @bankrbot";
 const HASHTAGS_VERIFIED = "@instaclaws + @bankrbot · verified human";
-const URL_BASE = "https://bankr.bot/launches/";
+// Item #5: switched from bankr.bot/launches/ to instaclaw.io/launches/
+// so X unfurls our InstaClaw-branded OG card (rendered by
+// app/launches/[addr]/opengraph-image.tsx) instead of Bankr's. The
+// landing page itself credits + links Bankr prominently.
+const URL_BASE = "https://instaclaw.io/launches/";
 // Twitter caps tweets at 280 chars. We cap at 275 with "…" if a
 // templated string ever exceeds — protects against an unlucky combo of
 // max-length ticker + max-length name + future copy edit blowing the limit.

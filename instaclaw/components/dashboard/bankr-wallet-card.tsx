@@ -419,10 +419,11 @@ export function BankrWalletCard({
   // ── Celebration + Share Card ──
   if (launchSuccess) {
     const hasAddress = !!launchSuccess.address;
-    // Share URL — bankr.bot/launches/:addr is the branded destination for the
-    // partnership announcement. Tweet copy ends with the URL so Twitter renders
-    // it as a link card with token PFP + chart preview from Bankr.
-    const chartUrl = hasAddress ? `https://bankr.bot/launches/${launchSuccess.address}` : "";
+    // Share URL — instaclaw.io/launches/:addr is our branded landing page
+    // (item #5). It auto-renders a 1200x630 OG card with the agent PFP +
+    // ticker + "deployed by …" so X unfurls a clean InstaClaw preview.
+    // The page itself prominently credits + links Bankr for buy CTAs.
+    const chartUrl = hasAddress ? `https://instaclaw.io/launches/${launchSuccess.address}` : "";
     const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
 
     function cancelAutoReload() {
