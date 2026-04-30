@@ -88,6 +88,7 @@ export default auth((req) => {
     "/api/admin/restart-unhealthy", // CRON_SECRET header auth
     "/api/admin/xmtp-send-to-user", // Mini app proxy token or admin key
     "/api/admin/xmtp-refresh-token", // X-Admin-Key header auth
+    "/api/partner/tag", // Self-auth: handles both logged-in (updates user/VM record) and logged-out (sets cookie for next signup) cases; validates partner against VALID_PARTNERS allow-list
   ];
 
   const isAPI = pathname.startsWith("/api/");
