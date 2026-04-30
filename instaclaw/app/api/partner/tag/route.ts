@@ -22,13 +22,21 @@
  * record had no VM and the working VM had an untagged user.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 
 const VALID_PARTNERS = new Set(["edge_city"]);
 const PARTNER_COOKIE = "instaclaw_partner";
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days — survives OAuth round-trip
+
+function withPartnerCookie(res: NextResponse, partner: string): NextResponse {
+  res.cookies.set(PARTNER_COOKIE, partner, {
+    path: "/",
+    maxAge: COOKIE_MAX_AGE_SECONDS,
+    sameSite: "lax",
+  });
+  return res;
+}
 
 export async function POST(req: NextRequest) {
   let partner: string;
@@ -46,31 +54,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Always set the cookie. Covers two cases:
-  //   - logged-out user about to sign up (existing behavior)
-  //   - logged-in user who later signs out + back in on a different account
-  //     (rare, but harmless)
-  const cookieStore = await cookies();
-  cookieStore.set(PARTNER_COOKIE, partner, {
-    path: "/",
-    maxAge: COOKIE_MAX_AGE_SECONDS,
-    sameSite: "lax",
-  });
-
   const session = await auth();
 
   if (!session?.user?.id) {
-    return NextResponse.json({
-      tagged: false,
-      reason: "not_authenticated",
-      redirect_to: "/signup",
-    });
+    // Not logged in — set the cookie so the next Google OAuth signup
+    // picks it up in lib/auth.ts:79 and tags the new user record.
+    return withPartnerCookie(
+      NextResponse.json({
+        tagged: false,
+        reason: "not_authenticated",
+        redirect_to: "/signup",
+      }),
+      partner
+    );
   }
 
   const supabase = getSupabase();
   const userId = session.user.id;
 
-  // Idempotent user update — skip the write if already tagged
+  // Idempotent user update — skip the write if already tagged.
   const { data: user, error: userReadErr } = await supabase
     .from("instaclaw_users")
     .select("partner")
@@ -93,7 +95,7 @@ export async function POST(req: NextRequest) {
     userUpdated = true;
   }
 
-  // Sync to any assigned VMs (idempotent)
+  // Sync to any assigned VMs (idempotent).
   const { data: vms } = await supabase
     .from("instaclaw_vms")
     .select("id, partner")
@@ -114,11 +116,16 @@ export async function POST(req: NextRequest) {
   // tag took effect. If not, send to signup/onboarding so they complete setup.
   const hasVm = (vms?.length ?? 0) > 0;
 
-  return NextResponse.json({
-    tagged: true,
-    userUpdated,
-    vmsUpdated,
-    hasVm,
-    redirect_to: hasVm ? "/dashboard" : "/signup",
-  });
+  // Defensive cookie set — covers re-auth edge cases where the user's
+  // session ends and they sign in again on the same device.
+  return withPartnerCookie(
+    NextResponse.json({
+      tagged: true,
+      userUpdated,
+      vmsUpdated,
+      hasVm,
+      redirect_to: hasVm ? "/dashboard" : "/signup",
+    }),
+    partner
+  );
 }
