@@ -410,7 +410,7 @@ export const VM_MANIFEST = {
    *  launch with zero Solana mention, while "check my SOL balance" and
    *  "swap 0.1 SOL for USDC on Jupiter" both routed to the Solana scripts
    *  normally. Reconciler rewrites SOUL.md and CAPABILITIES.md (both
-   *  `>` overwrite) on next pass — no fleet patch needed. */
+   *  `>` overwrite) on next pass — no fleet patch needed.
    *
    * v68 (2026-04-30): Two fleet-wide reliability fixes.
    *  (a) gateway-watchdog.sh: add GW_AGE>600 guard to the FROZEN check.
