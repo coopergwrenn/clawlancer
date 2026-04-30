@@ -459,8 +459,21 @@ export const VM_MANIFEST = {
    *      retention they grow linearly. vm-435 hit 1.1 GB. Safety net at
    *      04:30 Sunday: `find ~/.openclaw/workspace/backups -mindepth 1
    *      -maxdepth 1 -type d -mtime +14 -exec rm -rf {} +`. No-op on VMs
-   *      without backups/ dir. */
-  version: 71,
+   *      without backups/ dir.
+   *
+   * v72 (2026-04-30): Phase 1 of SOUL.md restructure (PRD-soul-restructure).
+   *  Added `<!-- OPENCLAW_CACHE_BOUNDARY -->` marker to WORKSPACE_SOUL_MD,
+   *  placed between the persona section (Core Truths/Boundaries/Vibe) and
+   *  the agent-editable Learned Preferences. OpenClaw recognizes this marker
+   *  (verified in dist/system-prompt-cache-boundary-BWaaicTu.js) and uses it
+   *  to split the system prompt into a stable prefix (Anthropic-cached) and
+   *  a dynamic suffix. Effect: agent edits to Learned Preferences no longer
+   *  invalidate the entire 30K-token system prompt cache — only the suffix
+   *  re-prefills. Fleet-wide impact: a Learned Preferences edit costs ~10
+   *  cache_write tokens instead of ~14,000 input_tokens. Single highest-
+   *  leverage change in the SOUL.md restructure plan. Phase 2 (full file
+   *  split) follows in a later manifest bump. */
+  version: 72,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
