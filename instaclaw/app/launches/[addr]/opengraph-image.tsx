@@ -131,22 +131,12 @@ export default async function LaunchCard({ params }: Props) {
         {/* Header row: InstaClaw mark + "TOKEN LAUNCH" eyebrow */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 40 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 10,
-                background: INSTACLAW_ORANGE,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 26,
-                fontWeight: 700,
-                color: "#fff",
-              }}
-            >
-              IC
-            </div>
+            <img
+              src="https://instaclaw.io/logo.png"
+              width={44}
+              height={44}
+              style={{ borderRadius: 10 }}
+            />
             <div style={{ display: "flex", flexDirection: "column" }}>
               <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.3px" }}>InstaClaw</div>
               <div style={{ fontSize: 14, color: MUTED, letterSpacing: "1.2px", textTransform: "uppercase" }}>
@@ -223,21 +213,23 @@ export default async function LaunchCard({ params }: Props) {
               {showAddressAsTicker ? ticker : `$${ticker}`}
             </div>
             {/* Satori (next/og) requires display:flex on any element with
-                multiple children. Without it, the whole render silently
-                fails and ImageResponse emits a 0-byte 200. Use a px-value
-                column gap — Satori doesn't reliably parse `ch` units, so
-                `0 0.4ch` rendered the two spans as one word ("deployed
-                byedgecity"). 8px = roughly one space at fontSize 28. */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0 8px", fontSize: 28, color: MUTED, lineHeight: 1.3 }}>
-              <span>deployed by</span>
+                multiple children. Use marginRight on the leading span
+                instead of flex `gap` — Satori doesn't reliably honor
+                gap on flex layouts, which collapsed the visual space
+                ("deployed byedgecity"). marginRight is universally
+                respected. */}
+            <div style={{ display: "flex", flexWrap: "wrap", fontSize: 28, color: MUTED, lineHeight: 1.3 }}>
+              <span style={{ marginRight: 10 }}>deployed by</span>
               <span style={{ color: FG, fontWeight: 600 }}>{deployedBy}</span>
             </div>
-            {/* Show full short-address chip only when the ticker is a real
-                symbol — otherwise the address is already the headline. */}
+            {/* Full contract address — marketing surface, screenshots
+                need to show the entire 0x… string. fontSize 14 fits the
+                42-char address inside the right column at 1200px width
+                without horizontal overflow; monospace for legibility. */}
             {!showAddressAsTicker && (
               <div
                 style={{
-                  fontSize: 18,
+                  fontSize: 14,
                   color: MUTED,
                   fontFamily: "monospace",
                   marginTop: 8,
@@ -246,9 +238,10 @@ export default async function LaunchCard({ params }: Props) {
                   border: `1px solid ${BORDER}`,
                   borderRadius: 10,
                   alignSelf: "flex-start",
+                  letterSpacing: "0.5px",
                 }}
               >
-                {shortAddress(lowerAddr)}
+                {lowerAddr}
               </div>
             )}
           </div>
