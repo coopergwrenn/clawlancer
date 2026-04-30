@@ -56,6 +56,43 @@ function cleanAgentName(raw: string | null | undefined): string | null {
   return name.length >= 2 ? name : null;
 }
 
+// ── Font loading ──
+// Match production typography: Instrument Serif for headlines + the
+// InstaClaw wordmark, Inter for body/UI, Roboto Mono for the contract
+// address chip. Fetched from Google Fonts at first render and cached
+// in module scope — survives across requests within an edge isolate.
+//
+// Google's CSS API serves WOFF2 to modern UAs (which Satori can't parse
+// because it expects TTF/OTF). The Mozilla/5.0 UA spoof flips Google to
+// the legacy TTF endpoint that Satori accepts.
+type LoadedFont = { name: string; data: ArrayBuffer; weight: 400 | 600; style: "normal" };
+let fontsCache: LoadedFont[] | null = null;
+
+async function fetchGoogleTtf(family: string, weight: number): Promise<ArrayBuffer> {
+  const cssUrl = `https://fonts.googleapis.com/css2?family=${family.replace(/ /g, "+")}:wght@${weight}&display=swap`;
+  const css = await fetch(cssUrl, { headers: { "User-Agent": "Mozilla/5.0" } }).then((r) => r.text());
+  const m = css.match(/src:\s*url\(([^)]+?)\)\s+format\(['"]?(?:opentype|truetype)['"]?\)/);
+  if (!m) throw new Error(`No TTF URL in Google Fonts CSS for ${family} ${weight}`);
+  return fetch(m[1]).then((r) => r.arrayBuffer());
+}
+
+async function loadFonts(): Promise<LoadedFont[]> {
+  if (fontsCache) return fontsCache;
+  const [serif, inter400, inter600, mono] = await Promise.all([
+    fetchGoogleTtf("Instrument Serif", 400),
+    fetchGoogleTtf("Inter", 400),
+    fetchGoogleTtf("Inter", 600),
+    fetchGoogleTtf("Roboto Mono", 400),
+  ]);
+  fontsCache = [
+    { name: "Instrument Serif", data: serif, weight: 400, style: "normal" },
+    { name: "Inter", data: inter400, weight: 400, style: "normal" },
+    { name: "Inter", data: inter600, weight: 600, style: "normal" },
+    { name: "Roboto Mono", data: mono, weight: 400, style: "normal" },
+  ];
+  return fontsCache;
+}
+
 export default async function LaunchCard({ params }: Props) {
   const { addr } = await params;
   const lowerAddr = (addr ?? "").toLowerCase();
@@ -101,6 +138,11 @@ export default async function LaunchCard({ params }: Props) {
     "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
   };
 
+  // Load fonts in parallel with the DB read above (already awaited).
+  // Module-scoped cache means only the first request per edge isolate
+  // pays the ~200KB font fetch.
+  const fonts = await loadFonts();
+
   return new ImageResponse(
     (
       <div
@@ -111,7 +153,10 @@ export default async function LaunchCard({ params }: Props) {
           flexDirection: "column",
           background: BG,
           color: FG,
-          fontFamily: "system-ui, -apple-system, sans-serif",
+          // Inter is the default for all body/UI text. Headlines and the
+          // wordmark override to Instrument Serif inline; the address
+          // chip overrides to Roboto Mono.
+          fontFamily: "Inter",
           position: "relative",
           padding: 56,
         }}
@@ -142,8 +187,10 @@ export default async function LaunchCard({ params }: Props) {
               style={{ borderRadius: 10 }}
             />
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.3px" }}>InstaClaw</div>
-              <div style={{ fontSize: 14, color: MUTED, letterSpacing: "1.2px", textTransform: "uppercase" }}>
+              {/* Wordmark uses Instrument Serif to match the website
+                  header treatment (--font-serif). Inter is for body/UI. */}
+              <div style={{ fontSize: 26, fontFamily: "Instrument Serif", letterSpacing: "-0.3px", lineHeight: 1 }}>InstaClaw</div>
+              <div style={{ fontSize: 12, color: MUTED, letterSpacing: "1.2px", textTransform: "uppercase", marginTop: 4 }}>
                 Autonomous Agent Token
               </div>
             </div>
@@ -203,15 +250,14 @@ export default async function LaunchCard({ params }: Props) {
             <div
               style={{
                 // Long-token-address fallback shrinks to fit horizontally.
-                // Ticker max 10 chars (DB-validated) — fit comfortably at 128.
-                fontSize: showAddressAsTicker ? 56 : 128,
-                fontWeight: 800,
-                letterSpacing: showAddressAsTicker ? "-1px" : "-4px",
+                // Ticker max 10 chars (DB-validated) — fit comfortably at 144.
+                fontSize: showAddressAsTicker ? 48 : 144,
+                letterSpacing: showAddressAsTicker ? "-1px" : "-3px",
                 lineHeight: 1,
                 color: FG,
-                fontFamily: showAddressAsTicker
-                  ? "monospace"
-                  : "system-ui, -apple-system, sans-serif",
+                // $TICKER → Instrument Serif (matches website headlines).
+                // Address-as-ticker fallback uses Roboto Mono for legibility.
+                fontFamily: showAddressAsTicker ? "Roboto Mono" : "Instrument Serif",
               }}
             >
               {showAddressAsTicker ? ticker : `$${ticker}`}
@@ -235,7 +281,7 @@ export default async function LaunchCard({ params }: Props) {
                 style={{
                   fontSize: 14,
                   color: MUTED,
-                  fontFamily: "monospace",
+                  fontFamily: "Roboto Mono",
                   marginTop: 8,
                   padding: "10px 14px",
                   background: "rgba(255,255,255,0.04)",
@@ -272,6 +318,6 @@ export default async function LaunchCard({ params }: Props) {
         </div>
       </div>
     ),
-    { ...size, headers }
+    { ...size, headers, fonts }
   );
 }
