@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "packages", "instaclaw"]
+  "exclude": ["node_modules", "packages", "instaclaw", "instaclaw-mini", "instaclaw-chrome-extension", "contracts"]
 }
