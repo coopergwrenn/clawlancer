@@ -137,3 +137,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Cleanup failed' }, { status: 500 })
   }
 }
+
+// Vercel Cron Jobs only send GET requests. Delegate to the POST handler so
+// the daily-cron cleanup uses the exact same logic. Auth header is the same
+// (Bearer ${CRON_SECRET}), and POST doesn't read a request body, so the
+// pass-through is safe.
+export async function GET(request: NextRequest) {
+  return POST(request)
+}
