@@ -20,6 +20,24 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
 
 /**
+ * In-memory cache for the global daily-spend SELECT. Module-scoped so it
+ * persists across requests within the same warm Vercel function instance.
+ *
+ * Why: every proxy request used to do `SELECT message_count FROM
+ * instaclaw_daily_usage WHERE usage_date = today`, returning ALL rows for
+ * today (200+ rows) on every chat completion. With 200 VMs sending traffic,
+ * that's 2-5M Supabase row reads/day just for the daily-spend cap check —
+ * which is computed against a $X/24h budget where 30s of lag is irrelevant.
+ *
+ * 30s TTL: tight enough that cap-trip detection is still near-real-time;
+ * loose enough that warm instances get high hit rates during burst traffic.
+ * Cache key includes today's date so the cache auto-invalidates at UTC
+ * midnight without extra logic.
+ */
+const DAILY_USAGE_CACHE_TTL_MS = 30_000;
+let dailyUsageCache: { date: string; totalUnits: number; activeVmCount: number; expiresAt: number } | null = null;
+
+/**
  * Estimated cost per message unit in dollars (haiku-equivalent).
  * With intelligent routing, some units cost 3.75x (Sonnet) or 18.75x (Opus)
  * more than Haiku. The safety factor compensates for the actual model mix
@@ -364,15 +382,26 @@ export async function POST(req: NextRequest) {
     // --- User's local date for per-user limit checks ---
     const userTz = vm.user_timezone || "America/New_York";
     const userTodayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTz });
-    const { data: totalUsageRows } = await supabase
-      .from("instaclaw_daily_usage")
-      .select("message_count")
-      .eq("usage_date", todayStr);
 
-    const totalUnitsToday = (totalUsageRows ?? []).reduce(
-      (sum: number, row: { message_count: number }) => sum + row.message_count,
-      0
-    );
+    // Cached daily-usage SELECT (see dailyUsageCache definition at top of file).
+    // 30s TTL — daily-spend cap is a 24h budget; 30s lag is irrelevant.
+    let totalUnitsToday: number;
+    let activeVmCount: number;
+    if (dailyUsageCache && dailyUsageCache.date === todayStr && dailyUsageCache.expiresAt > Date.now()) {
+      totalUnitsToday = dailyUsageCache.totalUnits;
+      activeVmCount = dailyUsageCache.activeVmCount;
+    } else {
+      const { data: totalUsageRows } = await supabase
+        .from("instaclaw_daily_usage")
+        .select("message_count")
+        .eq("usage_date", todayStr);
+      totalUnitsToday = (totalUsageRows ?? []).reduce(
+        (sum: number, row: { message_count: number }) => sum + row.message_count,
+        0
+      );
+      activeVmCount = (totalUsageRows ?? []).length;
+      dailyUsageCache = { date: todayStr, totalUnits: totalUnitsToday, activeVmCount, expiresAt: Date.now() + DAILY_USAGE_CACHE_TTL_MS };
+    }
     const estimatedSpend = totalUnitsToday * COST_PER_UNIT * COST_SAFETY_FACTOR;
 
     // 80% warning — alert admin before the breaker trips
@@ -380,7 +409,7 @@ export async function POST(req: NextRequest) {
       circuitBreakerWarningDate = todayStr;
       sendAdminAlertEmail(
         "WARNING: Circuit Breaker at 80% — Approaching Daily Spend Cap",
-        `Estimated spend: $${estimatedSpend.toFixed(2)} / $${DAILY_SPEND_CAP} cap (${((estimatedSpend / DAILY_SPEND_CAP) * 100).toFixed(1)}%)\nTotal units today: ${totalUnitsToday}\nActive VMs: ${(totalUsageRows ?? []).length}\n\nThe circuit breaker will trip at $${DAILY_SPEND_CAP} and block all non-starter requests.\n\nRaise the cap: Set DAILY_SPEND_CAP_DOLLARS in Vercel env vars.`
+        `Estimated spend: $${estimatedSpend.toFixed(2)} / $${DAILY_SPEND_CAP} cap (${((estimatedSpend / DAILY_SPEND_CAP) * 100).toFixed(1)}%)\nTotal units today: ${totalUnitsToday}\nActive VMs: ${activeVmCount}\n\nThe circuit breaker will trip at $${DAILY_SPEND_CAP} and block all non-starter requests.\n\nRaise the cap: Set DAILY_SPEND_CAP_DOLLARS in Vercel env vars.`
       ).catch(() => {});
     }
 
