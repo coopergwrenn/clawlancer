@@ -12,3 +12,9 @@
  * limits, and forwards to api.anthropic.com/v1/messages.
  */
 export { POST } from "../../proxy/route";
+
+// maxDuration must be exported per-route-file; the POST re-export above does
+// not carry it from the source. Without this, this catch-all uses Vercel's
+// 60s default while proxy/route.ts itself uses 300s, causing inconsistent
+// timeout behavior depending on which URL the OpenClaw SDK constructs.
+export const maxDuration = 300;

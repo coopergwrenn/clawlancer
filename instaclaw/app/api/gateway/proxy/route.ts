@@ -10,6 +10,12 @@ import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
 import { TIER_DISPLAY_LIMITS, HEARTBEAT_CYCLE_CAP as HEARTBEAT_CYCLE_CAP_CONST } from "@/lib/credit-constants";
 
+// Vercel Pro plan max for serverless functions. Without this, the default is
+// 60s, which silently kills haiku/sonnet calls with 32K context before our
+// 90s internal AbortController fires — the user sees a Vercel edge timeout
+// while our `LLM API timeout (90s)` log never gets written.
+export const maxDuration = 300;
+
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
 

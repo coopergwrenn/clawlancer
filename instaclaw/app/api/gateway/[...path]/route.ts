@@ -13,3 +13,7 @@
  * that falls through, forwarding to the same proxy handler.
  */
 export { POST } from "../proxy/route";
+
+// Same maxDuration as proxy/route.ts — required because the POST re-export
+// above does not propagate route-level config exports.
+export const maxDuration = 300;

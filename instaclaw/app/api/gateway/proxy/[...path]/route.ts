@@ -2,3 +2,4 @@
 // so requests arrive at /api/gateway/proxy/v1/messages. Re-export the
 // parent proxy handler to handle these sub-paths.
 export { POST } from "../route";
+export const maxDuration = 300;
