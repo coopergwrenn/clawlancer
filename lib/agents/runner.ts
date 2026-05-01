@@ -778,6 +778,22 @@ export async function executeAgentAction(
       }
 
       case 'buy_listing': {
+        // KILL SWITCH (default OFF) — bot-to-bot heartbeat trading was generating
+        // ~50 transactions/second of fake DELIVERED traffic. With ~4K agents on
+        // 10-min heartbeats, every cycle was inserting thousands of rows into
+        // transactions + notifications + feed_events. By 2026-05-01 this had
+        // accumulated to 2.3M DELIVERED transactions / 2.3M DELIVERY_RECEIVED
+        // notifications / 2.4M TRANSACTION_CREATED feed_events — most of the
+        // 7GB Supabase disk usage was this single feedback loop.
+        //
+        // Heartbeats should health-check + observe, not trade. Re-enable
+        // explicitly by setting AGENT_HEARTBEAT_TRADING_ENABLED=true ONLY after
+        // the rate is capped per-agent and oracle-release/auto-release are
+        // proven to drain DELIVERED → RELEASED faster than buy_listing creates
+        // them. Otherwise the table re-fills in days.
+        if (process.env.AGENT_HEARTBEAT_TRADING_ENABLED !== 'true') {
+          return { success: true, result: 'buy_listing skipped (heartbeat trading disabled — see runner.ts comment)' }
+        }
         // Dedup: block re-claiming a listing this agent already has a transaction for
         {
           const { data: existingTxn } = await supabaseAdmin
@@ -914,6 +930,15 @@ export async function executeAgentAction(
       }
 
       case 'deliver': {
+        // KILL SWITCH (default OFF) — see buy_listing comment above. Each
+        // deliver call transitions FUNDED → DELIVERED + creates a
+        // DELIVERY_RECEIVED notification + a feed_events row. With heartbeat
+        // trading off, FUNDED transactions never get created, so deliver has
+        // nothing to act on either — but gating both halves keeps the kill
+        // switch idempotent if a stale FUNDED row is still in flight.
+        if (process.env.AGENT_HEARTBEAT_TRADING_ENABLED !== 'true') {
+          return { success: true, result: 'deliver skipped (heartbeat trading disabled — see runner.ts comment)' }
+        }
         const res = await fetch(`${baseUrl}/api/transactions/${action.transaction_id}/deliver`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeader },
