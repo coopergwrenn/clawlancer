@@ -1,11 +1,89 @@
 # PRD — SOUL.md Restructure (Evidence-Based v2)
 
-**Status:** Draft for review — no implementation
+**Status:** Phase 0 / 0.5 / 0.7 complete. Approved for Phase 1 (code). Cooper signed off 2026-05-01 on canary=vm-733, simplified migration, vm-354 in Phase 3 canary.
 **Owner:** Cooper
 **Author:** Claude Opus 4.7 (1M context)
 **Created:** 2026-04-30
+**Updated:** 2026-05-01 — Phase 0/0.5/0.7 findings, canary swap, migration simplification
 **Branch:** `prd-soul-restructure`
 **Supersedes:** the rushed v1 of this same file (kept in commit `2b9c5056` for reference)
+
+---
+
+## Update Log — 2026-05-01
+
+Phase 0 baseline + 0.5 profiling + 0.7 fleet customization survey ran today. Material updates to the original draft:
+
+### Canary changed: vm-073 → vm-733
+
+**vm-073 was wrong.** PRD §5.1 said vm-073 is "NOT a real user's VM" — verified false today. vm-073 is assigned to **Donna Paulsen (donna.ryanniddel@gmail.com)**, paying power-tier user, telegram bot @DonnaPRyan_bot. Not safe for canary probes.
+
+**Switched to vm-733** — owned by `help@instaclaw.io` (team account), power tier (full skill set), `telegram_bot_username = null` so no live user traffic to disrupt. Health=healthy, cv=74. SOUL.md = 30,402 bytes (3rd-largest hash cluster, 20 VMs at byte-exact match) → fleet-representative.
+
+### Migration is dramatically simpler than originally planned
+
+Phase 0.7 surveyed all 201 reachable VMs:
+
+- Identity customized: **8/201 (4.0%)**
+- Preferences customized: **5/201 (2.5%)**
+- Heavy edits (sections OTHER than canonical): **0/201 (0.0%)** ← the entire heavy-edit branch in §6 is dead code, removed
+- ANY customization: **13/201 (6.5%)**
+- Distinct SOUL.md hashes: 48 (top 5 cover 133 VMs / 66%)
+
+**Migration script can be dropped to ~93% "swap unconditionally" + 7% "extract+merge".** No need for heartbeat-notify-user logic, no archive-and-warn path. The 13 customized VMs are listed below.
+
+### Truncation is fleet-wide and worse than expected
+
+- **165/201 (82.1%)** have SOUL.md > 30,000 bytes → silent truncation on 82% of fleet
+- Size distribution: min=2,059  p25=30,402  median=30,413  p75=32,109  **max=39,151** (one VM losing 9 KB silently)
+
+This is the **strongest single argument** for the restructure. It's a fleet-wide CORRECTNESS bug independent of any latency or cost claim.
+
+### Reframe: this is correctness + cache + cost work, NOT primarily a latency fix
+
+PRD §2.5 already established this on its own evidence (Haiku prefills 32K in <1s; latency dominated by output gen + tool round-trips). Cooper explicitly aligned 2026-05-01: "this is correctness + cache + cost fix, not latency fix. i won't blame the restructure if slow tail persists."
+
+### Manifest is at v76 — restructure becomes v77
+
+Original PRD assumed v70. Intervening manifest bumps (v73 memory integrity, v74 StartLimitAction value, v75 [Unit]/[Service] split, v76 watchdog removal) all shipped today as separate fixes. Restructure is v77.
+
+### Skill injection dwarfs SOUL.md
+
+Phase 0 measured a routing query ("launch a token") with **prompt_tokens = 149,010** vs ~29,200 baseline. SKILL content (`skills.limits.maxSkillsPromptChars=500,000`) is the dominant context-size variable on relevant queries. This restructure helps modestly with bootstrap; **skill discipline is the bigger lever** for variable-size queries (separate PRD per §7.2).
+
+### Phase 0.5 (proxy profiling) is INCONCLUSIVE — separate ticket
+
+`hot-path latency profile` log code shipped in commit `ed545a3d`, deployed in current production (`1a2fc677`). 300+ probes yielded **0 events** in vercel logs despite 5% sample rate (~15 expected). Investigation deferred — does not block Phase 1 since we're not optimizing for latency.
+
+### vm-354 (Timour @edgeclaw1bot) goes in Phase 3 canary
+
+vm-354 is on the customized list (custom identity) AND is our most important partner demo (Edge City). Phase 3 5-VM expansion **must include vm-354 specifically** so we verify byte-perfect identity preservation before any broader rollout.
+
+### Phase 3 canary cohort (revised)
+
+- vm-733 (canary, repeat from Phase 2)
+- **vm-354** (Timour @edgeclaw1bot — custom identity, Edge City demo)
+- vm-780 (Cooper's @edgecitybot — partner demo, sensitive)
+- one more power-tier VM with custom preferences (pick from vm-563 or vm-866 — needs separate "is the user actively using it" check)
+- one more starter-tier template-default VM (representative of 93%)
+
+### Tar artifacts in place (rollback verified)
+
+- vm-073: `~/.openclaw/workspace-pre-restructure-2026-05-01.tar.gz` (49 KB, 44 entries)
+- vm-733: `~/.openclaw/workspace-pre-restructure-2026-05-01-instaclaw-vm-733.tar.gz` (29 KB, 33 entries)
+- Local copies at `/tmp/{vm-073,instaclaw-vm-733}-workspace-pre-restructure-2026-05-01.tar.gz`
+- Atomic-swap rollback proven byte-exact via dry-run on both VMs
+
+### What today's parallel work means for the restructure
+
+These shipped 2026-05-01 (NOT this PRD's work, but they compose with it):
+
+- **maxDuration=300** on proxy routes (was 60s default — actual root cause of "agent not responding" today)
+- **daily_usage cache** in proxy hot path (cuts ~2-5M Supabase reads/day)
+- **vm-watchdog disabled fleet-wide** + manifest v76 removes watchdog crons (was killing healthy slow agents every 6 min)
+- **Memory integrity Phase 1** (`MEMORY_SNAPSHOT_SCRIPT` + ExecStartPre/ExecStopPost) already in v73
+
+The restructure migration step must NOT undo any of v73-v76. Specifically: keep the memory snapshot ExecStartPre/ExecStopPost, keep the [Unit] StartLimit* split, and DON'T re-add the watchdog crons.
 
 ---
 
@@ -415,14 +493,17 @@ Each risk paired with a verifiable test (verifications detailed in §5):
 
 ### 5.1 Canary selection
 
-**Recommended: vm-073** (NOT a real user's VM).
+**REVISED 2026-05-01: vm-733** (see Update Log at top).
 
-Why vm-073 not vm-050 (which I named in v1):
-- vm-073 is healthy with a full skill set installed (verified §1.7)
-- vm-050 IS assigned to a real user — running V1-V11 probes with magic words on a real user's session is intrusive
-- vm-073's owner Cooper-or-team-controlled
+vm-073 was the original recommendation but is assigned to a real paying user (Donna Paulsen). vm-733 is owned by `help@instaclaw.io` (team account), power tier with full skill set, no active telegram bot — safe for V1-V13 probes. Phase 0 verified vm-733's SOUL.md (30,402 bytes) matches the 3rd-largest fleet hash cluster (20 VMs at byte-exact match), so it's representative of the truncation-affected majority.
 
-If vm-073 is also assigned, pick any v67 VM owned by an InstaClaw team account or unassigned-but-configured VM.
+**Phase 3 5-VM canary cohort (revised, must include):**
+
+1. vm-733 (Phase 2 canary — repeat as control)
+2. **vm-354 (Timour @edgeclaw1bot)** — has a CUSTOM identity, AND is the Edge City partner demo. Byte-perfect preservation is mandatory. If migration breaks vm-354's custom identity in any way, ABORT.
+3. vm-780 (Cooper's @edgecitybot) — partner demo (template-default but sensitive)
+4. One power/pro VM with customized preferences (pick from vm-563/vm-866/vm-655/vm-647/vm-321 — verify the user is actively conversing first; pick one that's NOT in the middle of a real session)
+5. One template-default starter-tier VM (representative of the ~93% template-default majority)
 
 ### 5.2 Verification probes
 
@@ -520,17 +601,42 @@ Bump manifest in main. Reconciler propagates over normal cycle (~3 days at 1h ca
 - Update CLAUDE.md with the new file responsibility split
 - Bake new snapshot
 
-### Handling user-customized SOUL.md
+### Handling user-customized SOUL.md (REVISED 2026-05-01 with Phase 0.7 data)
 
-Some agents have edited their SOUL.md. Migration must preserve:
+Phase 0.7 surveyed all 201 reachable VMs and found:
+
+- **0/201** have heavy edits (extra sections beyond canonical) → the entire archive-and-warn branch is REMOVED. Dead code.
+- **8/201 (4.0%)** have customized `## My Identity`
+- **5/201 (2.5%)** have customized `## Learned Preferences`
+- **No overlap** observed (no VM has both)
+
+The complete list of 13 customized VMs (CSV at `/tmp/soul-customization-survey.csv`):
+
+| VM | Tier | Section | Notes |
+|----|------|---------|-------|
+| vm-762 | power | Identity | |
+| vm-312 | starter | Identity | |
+| **vm-354** | starter | **Identity** | **Timour @edgeclaw1bot — Edge City demo (Phase 3 mandatory)** |
+| vm-563 | starter | Preferences | |
+| vm-866 | pro | Preferences | |
+| vm-767 | starter | Identity | |
+| vm-637 | power | Identity | |
+| vm-655 | starter | Preferences | |
+| vm-647 | starter | Preferences | |
+| vm-872 | pro | Identity | |
+| vm-438 | starter | Identity | |
+| vm-321 | starter | Preferences | |
+| vm-547 | starter | Identity | |
+
+Migration preservation rules (simplified):
 
 | Section in old SOUL.md | Preservation rule |
 |---|---|
-| `## My Identity` body | If body differs from "Your identity develops naturally..." template, parse for name/vibe/emoji and write to new IDENTITY.md |
-| `## Learned Preferences` bullets | If non-template bullets exist (anything except 3 example bullets in italic), copy verbatim into new SOUL.md `## Learned Preferences` |
-| Other sections agent may have edited | Detect by hash mismatch with known template; if mismatched, write entire old file to `workspace-archive/` AND notify user via heartbeat that they had custom content (so they can re-apply) |
+| `## My Identity` body | If body differs from canonical template fragments ("Your identity develops naturally..."), extract verbatim and write to new IDENTITY.md. Verify byte-perfect on canary before fleet rollout. |
+| `## Learned Preferences` bullets | If body lacks the canonical italic example bullets ("_(e.g., 'Prefers concise responses…')_"), copy bullets verbatim into new SOUL.md `## Learned Preferences`. |
+| Other sections | NOT HANDLED. Phase 0.7 verified 0% incidence. If reconciler ever encounters a VM with extra sections post-restructure, log+abort that VM (don't silently destroy unknown content). |
 
-Worst case: agent's heavy edits archived; agent reads its own archive in next session and re-applies what matters. Loud (heartbeat notice) but recoverable.
+The reconcile step `migrateExistingSoulMd` runs ONCE per VM (idempotent via marker check on new SOUL.md format) and is gated by env `RECONCILE_SOUL_MIGRATION_ENABLED=true` (default `false`).
 
 ---
 
@@ -544,17 +650,24 @@ Worst case: agent's heavy edits archived; agent reads its own archive in next se
 
 ---
 
-## 8. Decisions needed from Cooper before implementation
+## 8. Decisions — STATUS as of 2026-05-01
 
-1. **Approve the file split** (SOUL persona-only / AGENTS rules+routing / TOOLS environment / IDENTITY identity)
-2. **Approve canary on vm-073** (or pick a different VM)
-3. **Approve probes V1-V11** (or amend)
-4. **Decide CAPABILITIES.md / EARN.md auto-injection** (§4.5, §4.6) — recommendation is keep on-demand
-5. **Approve the `OPENCLAW_CACHE_BOUNDARY` placement** in new SOUL.md (after Vibe, before Learned Preferences)
-6. **OK with bumping manifest to v70** — snapshot already stale-by-3
-7. **OK with archiving (not deleting) user-customized SOUL.md content** during migration
+| # | Decision | Status |
+|---|----------|--------|
+| 1 | File split (SOUL/AGENTS/TOOLS/IDENTITY) | ✅ **APPROVED** |
+| 2 | Canary VM | ✅ **APPROVED — vm-733** (was vm-073, switched per Update Log) |
+| 3 | Probes V1-V11 + V12 (warm-cache latency) + V13 (multi-edit cache test) | ✅ **APPROVED** |
+| 4 | CAPABILITIES.md / EARN.md stay on-demand (Decision B in §4.5) | ✅ **APPROVED** |
+| 5 | `OPENCLAW_CACHE_BOUNDARY` placement after Vibe, before Learned Preferences | ✅ **APPROVED** |
+| 6 | Bump manifest to **v77** (was v70 in original PRD; v76 shipped today for unrelated watchdog fix) | ✅ **APPROVED** |
+| 7 | Heavy-edit handling | **DROPPED** — Phase 0.7 found 0/201 incidence; dead code removed from §6 |
+| 8 | `RECONCILE_SOUL_MIGRATION_ENABLED` env var kill switch (default `false`) | ✅ **APPROVED** |
+| 9 | vm-354 in Phase 3 5-VM canary specifically | ✅ **APPROVED** — must verify byte-perfect identity preservation |
+| 10 | Drop the heavy-edit migration branch entirely | ✅ **APPROVED** — 0% fleet incidence |
 
-Out of scope for this PRD: skill content trimming, MEMORY.md size limits (handled), HEARTBEAT.md (we don't deploy one), OpenClaw issue #3775 (verified not affecting us).
+**Cooper signed off all 10 decisions on 2026-05-01.** Phase 1 (code) is unblocked.
+
+Out of scope for this PRD: skill content trimming (separate PRD per §7.2 — would be much higher impact than SOUL restructure based on Phase 0 measurement of 149K-token routing queries), MEMORY.md size limits (handled in v73 memory integrity), HEARTBEAT.md (we don't deploy one), OpenClaw issue #3775 (verified not affecting us).
 
 ---
 
