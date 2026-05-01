@@ -176,8 +176,10 @@ export async function reconcileVM(
     // writes new V2 SOUL/AGENTS/TOOLS/IDENTITY templates with preserved
     // customization. Idempotent via SOUL_V2_MARKER. PRD prd-soul-restructure.md.
     // ENABLE: set RECONCILE_SOUL_MIGRATION_ENABLED=true (default false).
+    // CANARY scope: set RECONCILE_SOUL_MIGRATION_VM_IDS=<id>,<id> to limit
+    // migration to specific VMs (otherwise fleet-wide once ENABLED is true).
     currentStep = "soul-v2-migration";
-    await stepMigrateSoulV2(ssh, result, dryRun);
+    await stepMigrateSoulV2(ssh, vm.id, result, dryRun);
 
     // ── Step 2b: Bootstrap safety ──
     currentStep = "bootstrap-consumed";
@@ -3165,12 +3167,31 @@ async function writeFileAtomic(
  */
 async function stepMigrateSoulV2(
   ssh: Awaited<ReturnType<typeof connectSSH>>,
+  vmId: string,
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  // ── Kill switch ──
+  // ── Kill switch (boolean) ──
+  // Must be explicitly "true" (lowercase) to enable. Default off.
   if (process.env.RECONCILE_SOUL_MIGRATION_ENABLED !== "true") {
     return; // silent no-op when gate is off
+  }
+
+  // ── Per-VM whitelist (canary scoping) ──
+  // RECONCILE_SOUL_MIGRATION_VM_IDS=<uuid>,<uuid>,...
+  //   - If unset/empty: migration is FLEET-WIDE (every reconciler-eligible VM).
+  //   - If set: migration runs ONLY on listed vmIds. Other VMs no-op silently.
+  // Used for Phase 2 canary (one VM) and Phase 3 expansion (5 VMs) before
+  // dropping the whitelist for fleet rollout in Phase 4.
+  const whitelistRaw = process.env.RECONCILE_SOUL_MIGRATION_VM_IDS;
+  if (whitelistRaw && whitelistRaw.trim().length > 0) {
+    const allowed = whitelistRaw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (allowed.length > 0 && !allowed.includes(vmId)) {
+      return; // not on whitelist, silent no-op
+    }
   }
 
   const workspaceDir = "/home/openclaw/.openclaw/workspace";
