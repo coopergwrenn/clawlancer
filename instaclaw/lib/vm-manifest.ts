@@ -492,7 +492,7 @@ export const VM_MANIFEST = {
    *  failure (one file, no backups) is unacceptable. Phase 2 (full
    *  workspace snapshots, retention rotation, restart deferral for
    *  in-flight tasks) follows in a separate PRD pass. */
-  version: 74,
+  version: 75,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -902,13 +902,24 @@ export const VM_MANIFEST = {
 
   // ── Systemd unit overrides for openclaw-gateway.service ──
   // Applied by reconciler and configureOpenClaw after `openclaw gateway install`.
+  // SPLIT INTO TWO SECTIONS in v75:
+  //   - systemdUnitOverrides → emitted into [Unit] block of override.conf
+  //   - systemdOverrides     → emitted into [Service] block of override.conf
+  //
+  // The split is REQUIRED for systemd correctness. StartLimit* directives ONLY
+  // work in [Unit] — putting them in [Service] silently emits parse warnings
+  // ("Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring")
+  // and the directives themselves get DROPPED, leaving start-limit protection
+  // entirely non-functional. Confirmed via journalctl on vm-780 (2026-05-01).
+  systemdUnitOverrides: {
+    "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec window
+    "StartLimitIntervalSec": "300", // 5-minute window for burst counting
+    "StartLimitAction": "none",    // 'stop' is NOT valid systemd. 'none' = "do nothing extra" — combined with the burst counter, systemd will stop honoring Restart=always once burst is exceeded. (v74 fixed the value, v75 fixes the section.)
+  } as Record<string, string>,
   systemdOverrides: {
     "KillMode": "mixed",           // Kill Chrome children when gateway stops (was: process)
     "Delegate": "yes",             // Keep agent-spawned child processes inside the CGroup so KillMode=mixed catches them
     "RestartSec": "10",            // Wait 10s between restarts (was: 5)
-    "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
-    "StartLimitIntervalSec": "300", // 5-minute window for burst counting
-    "StartLimitAction": "none",    // v74: 'stop' is NOT a valid systemd value — caused 'Failed to parse StartLimitAction=, ignoring: stop' fleet-wide, silently disabling start-limit protection. 'none' is the correct value to halt restart attempts after burst (Restart=always is implicitly suppressed when start limits are hit).
     // v73: appended `memory-snapshot.sh restore` to existing ExecStartPre.
     // Runs before each gateway start: if MEMORY.md is empty/template (<50B)
     // but workspace/memory/MEMORY.md.bak has real content, restore from

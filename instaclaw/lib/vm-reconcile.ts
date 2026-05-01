@@ -1965,6 +1965,7 @@ async function stepSystemdUnit(
   dryRun: boolean,
 ): Promise<void> {
   const overrides = manifest.systemdOverrides;
+  const unitOverrides = (manifest as { systemdUnitOverrides?: Record<string, string> }).systemdUnitOverrides ?? {};
   if (!overrides) return;
 
   const DBUS_PREFIX = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
@@ -1979,8 +1980,18 @@ async function stepSystemdUnit(
     return;
   }
 
-  // Build expected override.conf content
-  const lines = ["[Service]"];
+  // Build expected override.conf content. v75: emit BOTH [Unit] and [Service]
+  // sections — StartLimit* directives MUST live in [Unit] or systemd silently
+  // drops them (parse warning + non-functional restart-limit protection).
+  const lines: string[] = [];
+  if (Object.keys(unitOverrides).length > 0) {
+    lines.push("[Unit]");
+    for (const [key, value] of Object.entries(unitOverrides)) {
+      lines.push(`${key}=${value}`);
+    }
+    lines.push("");
+  }
+  lines.push("[Service]");
   for (const [key, value] of Object.entries(overrides)) {
     lines.push(`${key}=${value}`);
   }
@@ -1994,7 +2005,8 @@ async function stepSystemdUnit(
   }
 
   if (dryRun) {
-    result.fixed.push(`[dry-run] systemd override.conf: would write ${Object.keys(overrides).length} settings`);
+    const totalSettings = Object.keys(overrides).length + Object.keys(unitOverrides).length;
+    result.fixed.push(`[dry-run] systemd override.conf: would write ${totalSettings} settings (${Object.keys(unitOverrides).length} [Unit] + ${Object.keys(overrides).length} [Service])`);
     return;
   }
 
