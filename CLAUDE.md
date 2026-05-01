@@ -187,6 +187,37 @@ If any rows return: those VMs are missing partner-gated skills. Fix by setting `
 
 **Detection:** any `result.fixed.push(...)` that doesn't have a verify-after-set immediately above it is suspect. Strict mode (per-key with exit-code check) is the simplest correct pattern when batched verification is too complex.
 
+### 11. Every LLM/Slow-API Route MUST Set `export const maxDuration = 300`
+
+Every serverless route that calls an LLM, or any external API that could take >10s, MUST have:
+
+```typescript
+export const maxDuration = 300; // Vercel Pro max
+```
+
+**Why:** Vercel's default function timeout on Pro is **60s**. Any LLM call with 30K+ context (Haiku/Sonnet on a real OpenClaw agent) will exceed this. The failure mode is silent and catastrophic:
+
+- Vercel kills the function at 60s
+- The user sees a Vercel edge timeout (or just a hang)
+- Our internal `AbortController` (set to 90s in `app/api/gateway/proxy/route.ts:930`) never fires, so the `LLM API timeout (90s)` log never gets written
+- Logs look "fine"; users say their agent is broken; engineers can't reproduce
+- Per-VM diagnostics show /health=200 — the gateway is healthy, the proxy is the bottleneck
+- This caused the **2026-04-30 → 2026-05-01 fleet-wide "agent not responding" crisis**: every chat through the proxy was being killed at 60s while Haiku needed 60-90s with 32K context. Two days of debugging until the actual root cause was found. Multiple paying users impacted (HotTubLee/Lee, Textmaxmax, others).
+
+**The rule:** if a route's handler can plausibly call Anthropic, MiniMax, OpenAI, or any external service that could exceed 10s, **add `maxDuration` FIRST, before writing or testing the handler.** Do not "hope it stays under 60s" — the only safe assumption is that production traffic eventually hits the slow tail.
+
+**Re-export gotcha (load-bearing):** `maxDuration` (and `runtime`, `preferredRegion`, etc.) are **per-route-file Next.js config exports**. They do NOT propagate through `export { POST } from "../proxy/route"`. Every catch-all that re-exports the proxy handler MUST add its own `export const maxDuration = 300`:
+
+```typescript
+// app/api/gateway/v1/[...path]/route.ts
+export { POST } from "../../proxy/route";
+export const maxDuration = 300; // ← REQUIRED — the re-export above does not carry route config
+```
+
+If you forget this on the catch-all, requests that hit the catch-all URL get the 60s default while the same handler on the original URL gets 300s. Inconsistent timeout behavior depending on which exact path the SDK constructs is one of the worst classes of bug — looks like a flaky upstream until you trace the route resolution.
+
+**Detection:** `grep -L 'maxDuration' app/api/**/route.ts` will list every route file missing the export. Audit periodically; CI rule is on the wishlist.
+
 ---
 
 ## OpenClaw Upgrade Playbook (MANDATORY)
