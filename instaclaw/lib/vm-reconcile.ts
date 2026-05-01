@@ -14,6 +14,13 @@
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
+import {
+  WORKSPACE_SOUL_MD_V2,
+  WORKSPACE_AGENTS_MD_V2,
+  WORKSPACE_TOOLS_MD_V2,
+  WORKSPACE_IDENTITY_MD_V2,
+  SOUL_V2_MARKER,
+} from "./workspace-templates-v2";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
@@ -163,6 +170,14 @@ export async function reconcileVM(
     // ── Step 2: Files ──
     currentStep = "files";
     await stepFiles(ssh, vm, manifest, result, dryRun);
+
+    // ── Step 2a: SOUL.md V2 migration (gated by env var, default OFF) ──
+    // Reads existing V1 SOUL.md, extracts customized Identity + Preferences,
+    // writes new V2 SOUL/AGENTS/TOOLS/IDENTITY templates with preserved
+    // customization. Idempotent via SOUL_V2_MARKER. PRD prd-soul-restructure.md.
+    // ENABLE: set RECONCILE_SOUL_MIGRATION_ENABLED=true (default false).
+    currentStep = "soul-v2-migration";
+    await stepMigrateSoulV2(ssh, result, dryRun);
 
     // ── Step 2b: Bootstrap safety ──
     currentStep = "bootstrap-consumed";
@@ -813,6 +828,22 @@ async function deployFileEntry(
         return;
       }
 
+      // V2-marker skip: SOUL.md/AGENTS.md/TOOLS.md/IDENTITY.md that have been
+      // migrated to V2 own their own content via lib/workspace-templates-v2.ts.
+      // Legacy append_if_marker_absent supplements (INTELLIGENCE_INTEGRATED,
+      // DEGENCLAW_AWARENESS, MEMORY_FILING_SYSTEM) must NOT re-append on top
+      // of V2 SOUL.md or they'd recreate the truncation problem the migration
+      // exists to fix. PRD prd-soul-restructure.md Phase 1.
+      if (remotePath.includes('SOUL.md')) {
+        const v2Check = await ssh.execCommand(
+          `grep -qF "${SOUL_V2_MARKER}" ${remotePath} 2>/dev/null && echo V2 || echo V1`
+        );
+        if (v2Check.stdout.trim() === 'V2') {
+          result.alreadyCorrect.push(`${fileName}: V2 — skipping legacy append (${marker})`);
+          return;
+        }
+      }
+
       const markerCheck = await ssh.execCommand(
         `grep -qF "${marker}" ${remotePath} 2>/dev/null && echo PRESENT || echo ABSENT`
       );
@@ -856,6 +887,17 @@ async function deployFileEntry(
       if (insertFileCheck.stdout.trim() === 'MISSING') {
         result.errors.push(`${fileName}: target file missing, cannot insert before ${marker}`);
         return;
+      }
+
+      // V2-marker skip — same rationale as append_if_marker_absent above.
+      if (remotePath.includes('SOUL.md')) {
+        const v2Check = await ssh.execCommand(
+          `grep -qF "${SOUL_V2_MARKER}" ${remotePath} 2>/dev/null && echo V2 || echo V1`
+        );
+        if (v2Check.stdout.trim() === 'V2') {
+          result.alreadyCorrect.push(`${fileName}: V2 — skipping legacy insert (${marker})`);
+          return;
+        }
       }
 
       const markerCheck = await ssh.execCommand(
@@ -3018,3 +3060,250 @@ ${startBlock}
     recordHealError(result, strict, `node_exporter: ${String(err).slice(0, 200)}`);
   }
 }
+
+// ============================================================================
+// SOUL.md V2 Migration — PRD prd-soul-restructure.md Phase 1
+// ============================================================================
+
+/** Extract a `## <Header>` section body from markdown (between header and next `## `). */
+function extractMarkdownSection(content: string, headerName: string): string | null {
+  const idx = content.indexOf(`## ${headerName}`);
+  if (idx < 0) return null;
+  const startBody = idx + `## ${headerName}`.length;
+  const nextHeaderIdx = content.indexOf("\n## ", startBody);
+  return content
+    .slice(startBody, nextHeaderIdx >= 0 ? nextHeaderIdx : undefined)
+    .trim();
+}
+
+/** Heuristic: does the `## My Identity` body look like the unedited V1 template? */
+function isIdentityTemplateText(body: string): boolean {
+  return body.includes("Your identity develops naturally through your conversations")
+      || body.includes("There is no need to announce or figure out your identity");
+}
+
+/** Heuristic: does the `## Learned Preferences` body look like unedited V1 template? */
+function isPreferencesTemplateText(body: string): boolean {
+  return body.includes("As you learn what your owner likes")
+      && body.includes('_(e.g., "Prefers concise responses, no bullet lists")_');
+}
+
+/** Extract bullets from a Learned Preferences body, dropping the italic example bullets. */
+function extractCustomPreferenceBullets(prefsBody: string): string[] {
+  return prefsBody
+    .split("\n")
+    .map(l => l.trim())
+    .filter(l => l.startsWith("- "))
+    .filter(l => !l.includes("_(e.g."));
+}
+
+/**
+ * Replace V2 SOUL.md's example preference bullets with the agent's preserved bullets.
+ * Returns V2 unchanged if the example block isn't found verbatim (template drift safety).
+ */
+function applyPreservedPreferences(soulV2: string, customBullets: string[]): string {
+  if (customBullets.length === 0) return soulV2;
+  const exampleBlock = `- _(e.g., "Prefers concise responses, no bullet lists")_
+- _(e.g., "Works late nights, don't suggest morning routines")_
+- _(e.g., "Loves code examples, hates pseudocode")_`;
+  if (!soulV2.includes(exampleBlock)) return soulV2;
+  return soulV2.replace(exampleBlock, customBullets.join("\n"));
+}
+
+/**
+ * Append a "## Identity (preserved from V1 SOUL.md)" section to V2 IDENTITY.md,
+ * containing the agent's old `## My Identity` body verbatim. Agent reads both
+ * the V2 fields and the preserved content on next session.
+ */
+function appendPreservedIdentity(identityV2: string, preservedBody: string): string {
+  return identityV2.trimEnd() + `\n\n## Identity (preserved from V1 SOUL.md)
+
+_The following was your previous identity content. Review and integrate into the fields above as desired._
+
+${preservedBody.trim()}
+`;
+}
+
+/**
+ * Atomically write `content` to `path` via tmp + rename. Uses base64 to avoid
+ * shell escaping pitfalls. Returns true on success.
+ */
+async function writeFileAtomic(
+  ssh: Awaited<ReturnType<typeof connectSSH>>,
+  path: string,
+  content: string,
+): Promise<boolean> {
+  const tmp = `${path}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const b64 = Buffer.from(content, "utf-8").toString("base64");
+  // Single command: write tmp + rename. mv is atomic on same filesystem.
+  const r = await ssh.execCommand(
+    `echo '${b64}' | base64 -d > '${tmp}' && mv '${tmp}' '${path}'`
+  );
+  return r.code === 0;
+}
+
+/**
+ * Step 2a: Migrate V1 SOUL.md → V2 SOUL.md + AGENTS.md + TOOLS.md + IDENTITY.md.
+ *
+ * Idempotent: detects SOUL_V2_MARKER and skips if already migrated.
+ * Gated: only runs when RECONCILE_SOUL_MIGRATION_ENABLED=true (default OFF).
+ *
+ * Steps:
+ *   1. Check env gate. If off, no-op.
+ *   2. Read current SOUL.md. If contains SOUL_V2_MARKER, already migrated.
+ *   3. Tar workspace as `~/.openclaw/workspace-pre-soul-v2-migration.tar.gz`
+ *      (idempotent — only tars if file doesn't exist).
+ *   4. Extract `## My Identity` body and `## Learned Preferences` body from old SOUL.
+ *   5. Determine customization (vs. canonical template fragments).
+ *   6. Build new V2 files:
+ *        - SOUL.md = V2 template with preserved Preferences bullets if customized
+ *        - IDENTITY.md = V2 template with preserved Identity body APPENDED if customized
+ *        - TOOLS.md = V2 template (replaces tiny legacy template wholesale)
+ *        - AGENTS.md = V2 template (replaces tiny legacy template wholesale)
+ *   7. Write each via atomic tmp+rename.
+ *   8. Log preservation outcome to result.fixed.
+ */
+async function stepMigrateSoulV2(
+  ssh: Awaited<ReturnType<typeof connectSSH>>,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // ── Kill switch ──
+  if (process.env.RECONCILE_SOUL_MIGRATION_ENABLED !== "true") {
+    return; // silent no-op when gate is off
+  }
+
+  const workspaceDir = "/home/openclaw/.openclaw/workspace";
+  const archiveDir = "/home/openclaw/.openclaw";
+  const soulPath = `${workspaceDir}/SOUL.md`;
+  const identityPath = `${workspaceDir}/IDENTITY.md`;
+  const toolsPath = `${workspaceDir}/TOOLS.md`;
+  const agentsPath = `${workspaceDir}/AGENTS.md`;
+  const tarPath = `${archiveDir}/workspace-pre-soul-v2-migration.tar.gz`;
+
+  // ── Step 1: Read current SOUL.md ──
+  const cur = await ssh.execCommand(`cat ${soulPath} 2>/dev/null`);
+  if (!cur.stdout || cur.stdout.trim().length === 0) {
+    // No SOUL.md exists — nothing to migrate. Fresh VMs will get V2 via a
+    // separate "create from V2 template" path (deferred to Phase 5 manifest cleanup).
+    result.alreadyCorrect.push("soul-v2-migration: no SOUL.md found, nothing to migrate");
+    return;
+  }
+  const oldSoul = cur.stdout;
+
+  // ── Step 2: Idempotent skip if already V2 ──
+  if (oldSoul.includes(SOUL_V2_MARKER)) {
+    result.alreadyCorrect.push("soul-v2-migration: SOUL.md already at V2");
+    return;
+  }
+
+  // ── Step 3: Tar workspace BEFORE any mutation (idempotent) ──
+  if (!dryRun) {
+    const tarResult = await ssh.execCommand(
+      `cd ${archiveDir} && [ ! -f workspace-pre-soul-v2-migration.tar.gz ] ` +
+      `&& tar -czf workspace-pre-soul-v2-migration.tar.gz workspace 2>&1 ` +
+      `|| echo SKIP_EXISTS`
+    );
+    if (
+      !tarResult.stdout.includes("SKIP_EXISTS") &&
+      tarResult.code !== 0
+    ) {
+      result.errors.push(
+        `soul-v2-migration: pre-migration tar failed: ${tarResult.stderr.slice(0, 100)}`
+      );
+      return;
+    }
+  }
+
+  // ── Step 4: Extract customization from old SOUL.md ──
+  const identityBody = extractMarkdownSection(oldSoul, "My Identity");
+  const prefsBody = extractMarkdownSection(oldSoul, "Learned Preferences");
+
+  const identityCustomized =
+    identityBody !== null && !isIdentityTemplateText(identityBody);
+  const prefsCustomized =
+    prefsBody !== null && !isPreferencesTemplateText(prefsBody);
+
+  // ── Step 5: Build new V2 SOUL.md (with preserved Preferences if customized) ──
+  let newSoul = WORKSPACE_SOUL_MD_V2;
+  if (prefsCustomized && prefsBody) {
+    const customBullets = extractCustomPreferenceBullets(prefsBody);
+    if (customBullets.length > 0) {
+      newSoul = applyPreservedPreferences(newSoul, customBullets);
+    }
+  }
+
+  // ── Step 6: Build new V2 IDENTITY.md (with preserved Identity if customized) ──
+  let newIdentity = WORKSPACE_IDENTITY_MD_V2;
+  if (identityCustomized && identityBody) {
+    newIdentity = appendPreservedIdentity(newIdentity, identityBody);
+  }
+
+  // Also check existing IDENTITY.md for non-template field values (separate from
+  // SOUL's "## My Identity" — agents may have filled in fields directly).
+  const existingIdentity = await ssh.execCommand(`cat ${identityPath} 2>/dev/null`);
+  if (
+    existingIdentity.stdout &&
+    existingIdentity.stdout.trim().length > 0 &&
+    !existingIdentity.stdout.includes("Your identity develops naturally") && // not V1 template
+    !existingIdentity.stdout.includes("Fill this in") && // not V1 template instruction
+    !existingIdentity.stdout.includes("INSTACLAW_IDENTITY_V2") // not already V2
+  ) {
+    // Existing IDENTITY.md has agent edits worth preserving
+    newIdentity = newIdentity.trimEnd() + `\n\n## IDENTITY.md (preserved from previous version)
+
+_Your previous IDENTITY.md content is preserved below. Review and integrate into the fields above as desired._
+
+\`\`\`
+${existingIdentity.stdout.trim()}
+\`\`\`
+`;
+  }
+
+  // ── Step 7: Atomic writes (or dry-run logging) ──
+  if (dryRun) {
+    const preservedNotes: string[] = [];
+    if (prefsCustomized) preservedNotes.push(`prefs (${(prefsBody ?? "").length}c)`);
+    if (identityCustomized) preservedNotes.push(`identity (${(identityBody ?? "").length}c)`);
+    result.fixed.push(
+      `[dry-run] soul-v2-migration: would write 4 files; preserved=${
+        preservedNotes.join(",") || "none"
+      }`
+    );
+    return;
+  }
+
+  const writes = [
+    { path: soulPath, content: newSoul, name: "SOUL.md" },
+    { path: identityPath, content: newIdentity, name: "IDENTITY.md" },
+    { path: toolsPath, content: WORKSPACE_TOOLS_MD_V2, name: "TOOLS.md" },
+    { path: agentsPath, content: WORKSPACE_AGENTS_MD_V2, name: "AGENTS.md" },
+  ];
+
+  for (const w of writes) {
+    const ok = await writeFileAtomic(ssh, w.path, w.content);
+    if (!ok) {
+      result.errors.push(`soul-v2-migration: ${w.name} atomic write failed`);
+      return; // bail to avoid partial state — tar backup is in place
+    }
+  }
+
+  // ── Step 8: Log success ──
+  const preserved: string[] = [];
+  if (prefsCustomized) preserved.push("preferences");
+  if (identityCustomized) preserved.push("identity (from SOUL)");
+  if (existingIdentity.stdout && !existingIdentity.stdout.includes("INSTACLAW_IDENTITY_V2")) {
+    preserved.push("existing IDENTITY.md");
+  }
+  result.fixed.push(
+    `soul-v2-migration: migrated SOUL/AGENTS/TOOLS/IDENTITY to V2 (preserved: ${
+      preserved.join(", ") || "none — pure template VM"
+    }); rollback at ${tarPath}`
+  );
+  logger.info("SOUL V2 migration applied", {
+    route: "vm-reconcile",
+    preserved,
+    tarPath,
+  });
+}
+

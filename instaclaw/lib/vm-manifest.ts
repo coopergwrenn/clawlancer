@@ -492,7 +492,7 @@ export const VM_MANIFEST = {
    *  failure (one file, no backups) is unacceptable. Phase 2 (full
    *  workspace snapshots, retention rotation, restart deferral for
    *  in-flight tasks) follows in a separate PRD pass. */
-  version: 76,
+  version: 77,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
