@@ -492,7 +492,7 @@ export const VM_MANIFEST = {
    *  failure (one file, no backups) is unacceptable. Phase 2 (full
    *  workspace snapshots, retention rotation, restart deferral for
    *  in-flight tasks) follows in a separate PRD pass. */
-  version: 75,
+  version: 76,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -837,21 +837,29 @@ export const VM_MANIFEST = {
       command: "python3 ~/.openclaw/scripts/auto-approve-pairing.py > /dev/null 2>&1",
       marker: "auto-approve-pairing.py",
     },
-    {
-      schedule: "* * * * *",
-      command: "python3 ~/.openclaw/scripts/vm-watchdog.py > /dev/null 2>&1",
-      marker: "vm-watchdog.py",
-    },
+    // v76: vm-watchdog.py + silence-watchdog.py REMOVED from cron schedule.
+    //
+    // The 5-min stale-session-jsonl heuristic in vm-watchdog.py was actively
+    // killing working agents that were just SLOW (we measured p99 chat
+    // completion at 69s and max 182s on 2026-05-01; tool-call cycles can run
+    // for many minutes). Multiple paying users had their gateways restarted
+    // every ~6 minutes, which dropped Telegram polling for ~5s per restart
+    // and made messages disappear into the gap.
+    //
+    // The script files themselves stay deployed in ~/.openclaw/scripts/ so a
+    // rewrite can land without re-pushing them — but no cron will run them
+    // until that rewrite ships with:
+    //   1. AGENT_STALE_MINUTES bumped from 5 → 15-30
+    //   2. Real liveness check (active outbound API conn from gateway PID,
+    //      OR last_proxy_call_at timestamp from DB) instead of jsonl mtime
+    //
+    // A fleet-wide one-shot SSH push commented out the cron entries on all
+    // existing VMs (2026-05-01); this manifest change ensures new VMs
+    // provisioned from a fresh snapshot don't get them either.
     {
       schedule: "0 * * * *",
       command: "bash ~/.openclaw/scripts/push-heartbeat.sh",
       marker: "push-heartbeat.sh",
-    },
-    {
-      // Runs every 30 seconds: cron fires at :00, sleep fires at :30
-      schedule: "* * * * *",
-      command: "python3 ~/.openclaw/scripts/silence-watchdog.py > /dev/null 2>&1; sleep 30 && python3 ~/.openclaw/scripts/silence-watchdog.py > /dev/null 2>&1",
-      marker: "silence-watchdog.py",
     },
     {
       schedule: "0 4 * * *",
