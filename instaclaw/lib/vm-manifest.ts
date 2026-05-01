@@ -492,7 +492,7 @@ export const VM_MANIFEST = {
    *  failure (one file, no backups) is unacceptable. Phase 2 (full
    *  workspace snapshots, retention rotation, restart deferral for
    *  in-flight tasks) follows in a separate PRD pass. */
-  version: 73,
+  version: 74,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -908,7 +908,7 @@ export const VM_MANIFEST = {
     "RestartSec": "10",            // Wait 10s between restarts (was: 5)
     "StartLimitBurst": "10",       // Max 10 restarts in StartLimitIntervalSec
     "StartLimitIntervalSec": "300", // 5-minute window for burst counting
-    "StartLimitAction": "stop",    // Stop unit after burst exceeded (was: none → infinite loop)
+    "StartLimitAction": "none",    // v74: 'stop' is NOT a valid systemd value — caused 'Failed to parse StartLimitAction=, ignoring: stop' fleet-wide, silently disabling start-limit protection. 'none' is the correct value to halt restart attempts after burst (Restart=always is implicitly suppressed when start limits are hit).
     // v73: appended `memory-snapshot.sh restore` to existing ExecStartPre.
     // Runs before each gateway start: if MEMORY.md is empty/template (<50B)
     // but workspace/memory/MEMORY.md.bak has real content, restore from
