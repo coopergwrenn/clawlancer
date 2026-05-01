@@ -143,10 +143,10 @@ export async function POST(request: NextRequest) {
 // (Bearer ${CRON_SECRET}), and POST doesn't read a request body, so the
 // pass-through is safe.
 //
-// Build-trigger note: this comment exists to ensure the Vercel ignoreCommand
-// detects a change and runs the build that includes f6049ab7 (the tsconfig
-// fix excluding instaclaw-mini). The kill switch (1058c330) and cleanup cron
-// (4e2fed9a) need this build to land.
+// Build-trigger note: this comment ensures the Vercel ignoreCommand detects
+// a change and runs the build that includes f6049ab7 + cfdcfa74 (tsconfig
+// fixes excluding instaclaw-mini and scripts/). The kill switch (1058c330)
+// and cleanup cron (4e2fed9a) need this build to land.
 export async function GET(request: NextRequest) {
   return POST(request)
 }
