@@ -2546,6 +2546,15 @@ export function toOpenClawModel(model: string): string {
 // OpenClaw reads SOUL.md, USER.md, MEMORY.md, BOOTSTRAP.md from here.
 // AGENTS.md and IDENTITY.md have been merged into SOUL.md (PRD Phase 1).
 
+/**
+ * @deprecated Replaced by WORKSPACE_SOUL_MD_V2 in lib/workspace-templates-v2.ts.
+ * V2 splits this content across SOUL/AGENTS/TOOLS/IDENTITY per OpenClaw's intended
+ * architecture, eliminates the silent truncation that affected 82% of fleet (per
+ * Phase 0.7 survey), and adds the OPENCLAW_CACHE_BOUNDARY marker for cache stability.
+ * PRD prd-soul-restructure.md Phase 1, approved 2026-05-01. Removal scheduled for
+ * Phase 5 cleanup, ~14 days after fleet migration completes. Until then this stays
+ * referenced by configureOpenClaw + the legacy reconciler step.
+ */
 export const WORKSPACE_SOUL_MD = `# SOUL.md — Who You Are
 
 _You're not a chatbot. You're becoming someone._
@@ -2849,6 +2858,13 @@ Each session, you wake up fresh. These files _are_ your memory. Read them. Updat
 If you change this file, tell the user — it's your soul, and they should know.`;
 
 // DEPRECATED: AGENTS.md merged into SOUL.md (PRD Phase 1). Kept for fleet scripts targeting existing VMs.
+/**
+ * @deprecated Replaced by WORKSPACE_AGENTS_MD_V2 in lib/workspace-templates-v2.ts.
+ * The V2 version is the comprehensive operating manual (~18.7K) — current legacy
+ * version (~1K) was just file pointers, with most operational content living in
+ * the bloated SOUL.md. PRD prd-soul-restructure.md Phase 1, approved 2026-05-01.
+ * Removal scheduled for Phase 5 cleanup.
+ */
 const WORKSPACE_AGENTS_MD = `# AGENTS.md - Your Workspace
 
 This folder is home. Treat it that way.
@@ -2889,7 +2905,16 @@ These are yours. Own them.
 - Run \\\`mcporter list\\\` to see MCP tools
 - Skills are in your skills directory — read SKILL.md files to understand them`;
 
-// DEPRECATED: IDENTITY.md merged into SOUL.md "My Identity" section (PRD Phase 1). Kept for fleet scripts.
+/**
+ * @deprecated Replaced by WORKSPACE_IDENTITY_MD_V2 in lib/workspace-templates-v2.ts.
+ * Same 4-field schema (Name / Creature / Vibe / Emoji) so 8 fleet VMs with
+ * customized identity preserve trivially. PRD prd-soul-restructure.md Phase 1,
+ * approved 2026-05-01. Removal scheduled for Phase 5 cleanup.
+ *
+ * (Note: the previous deprecation comment claiming this was merged into SOUL.md
+ * was outdated — it was never actually merged. The V2 restructure now properly
+ * separates IDENTITY.md as its own bootstrap file.)
+ */
 const WORKSPACE_IDENTITY_MD = `# IDENTITY.md - Who Am I?
 
 _Fill this in during your first conversation. Make it yours._

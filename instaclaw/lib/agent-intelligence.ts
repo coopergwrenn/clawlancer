@@ -319,6 +319,12 @@ ${INTELLIGENCE_MARKER_END}`;
  * Contains the critical rules that were previously invisible in system-prompt.md.
  * Uses "Rule priority order" as the detection marker.
  */
+/**
+ * @deprecated Replaced by WORKSPACE_AGENTS_MD_V2 in lib/workspace-templates-v2.ts
+ * (PRD prd-soul-restructure.md, Phase 1, approved 2026-05-01). Removal scheduled
+ * for Phase 5 cleanup, ~14 days after fleet migration completes. Until then this
+ * stays referenced by configureOpenClaw + fleet append-if-marker-absent steps.
+ */
 export const SOUL_MD_INTELLIGENCE_SUPPLEMENT = `
 
 <!-- INTELLIGENCE_INTEGRATED_V1 -->
@@ -750,6 +756,11 @@ export const WORKSPACE_QUICK_REFERENCE_MD = `# Quick Reference — Common Tasks
  * TOOLS.md — Agent-editable personal notebook for tool discoveries.
  * Only written if the file doesn't already exist (preserves agent's notes).
  */
+/**
+ * @deprecated Replaced by WORKSPACE_TOOLS_MD_V2 in lib/workspace-templates-v2.ts
+ * (PRD prd-soul-restructure.md, Phase 1, approved 2026-05-01). Removal scheduled
+ * for Phase 5 cleanup, ~14 days after fleet migration completes.
+ */
 export const WORKSPACE_TOOLS_MD_TEMPLATE = `# TOOLS.md — Your Personal Tool Notes
 
 _This file is YOURS. Update it as you discover tools, workarounds, and useful commands._
@@ -800,6 +811,13 @@ You are a resourceful, autonomous agent. Your default stance is "yes, let me fig
  * Now included directly in the SOUL.md template (PRD Phase 1).
  * Kept for fleet scripts that append to existing VMs' SOUL.md files.
  */
+/**
+ * @deprecated Replaced by the inline Learned Preferences section in
+ * WORKSPACE_SOUL_MD_V2 (lib/workspace-templates-v2.ts), which is positioned
+ * BELOW the OPENCLAW_CACHE_BOUNDARY marker so agent edits don't invalidate the
+ * Anthropic prompt cache. PRD prd-soul-restructure.md Phase 1, approved
+ * 2026-05-01. Removal scheduled for Phase 5 cleanup.
+ */
 export const SOUL_MD_LEARNED_PREFERENCES = `
 
 ## Learned Preferences
@@ -821,6 +839,13 @@ _As you learn what your owner likes (communication style, work patterns, tool pr
  * Inserted into SOUL.md before the "## Boundaries" marker on existing VMs,
  * and appended fresh in configureOpenClaw on every assignment.
  */
+/**
+ * @deprecated Split between WORKSPACE_SOUL_MD_V2 Hard Boundaries (the
+ * never-self-restart and never-openclaw-update rules — these are SAFETY-CRITICAL
+ * and stay in SOUL.md persona) and WORKSPACE_AGENTS_MD_V2 Autonomy Guardrails
+ * (config safety, error handling). PRD prd-soul-restructure.md Phase 1, approved
+ * 2026-05-01. Removal scheduled for Phase 5 cleanup.
+ */
 export const SOUL_MD_OPERATING_PRINCIPLES = `## Operating Principles
 
 1. **Error handling:** Fix routine errors immediately without bothering the user. For anything involving security, data loss, or money — ask first.
@@ -837,6 +862,12 @@ export const SOUL_MD_OPERATING_PRINCIPLES = `## Operating Principles
  * DegenClaw skill awareness — tells the agent the dgclaw skill exists
  * and to follow its SKILL.md when the user mentions perps trading.
  */
+/**
+ * @deprecated Merged into WORKSPACE_AGENTS_MD_V2 Skill Awareness section
+ * (the dgclaw skill row) plus the routing-table keyword "trading competition,
+ * Hyperliquid perps, DegenClaw, $100K challenge". PRD prd-soul-restructure.md
+ * Phase 1, approved 2026-05-01. Removal scheduled for Phase 5 cleanup.
+ */
 export const SOUL_MD_DEGENCLAW_AWARENESS = `
 <!-- DEGENCLAW_AWARENESS_V1 -->
 ## DegenClaw Trading Competition
@@ -847,6 +878,12 @@ You have access to the DegenClaw skill — a $100K weekly perpetuals trading com
  * Memory Filing System — cross-session memory instructions.
  * Appended to SOUL.md via append_if_marker_absent.
  * PRD: instaclaw/docs/prd/cross-session-memory.md
+ */
+/**
+ * @deprecated Consolidated into WORKSPACE_AGENTS_MD_V2 Memory Protocol section
+ * (single canonical source — was duplicated across 4 legacy locations: SOUL §11,
+ * §17, §18, §24). PRD prd-soul-restructure.md Phase 1, approved 2026-05-01.
+ * Removal scheduled for Phase 5 cleanup.
  */
 export const SOUL_MD_MEMORY_FILING_SYSTEM = `
 
