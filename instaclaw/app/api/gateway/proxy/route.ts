@@ -206,10 +206,18 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
 
+    // Hot-path latency profiling. Each phase records ms; emitted at the end
+    // via logger.info with vmId so we can correlate with slow user reports.
+    // Sampled at 5% to keep log volume sane (1 in 20 requests).
+    const profileEnabled = Math.random() < 0.05;
+    const profile: Record<string, number> = {};
+    const reqStart = Date.now();
+    const lookupStart = Date.now();
     const vm = await lookupVMByGatewayToken(
       gatewayToken,
       "id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
     );
+    profile.vm_lookup_ms = Date.now() - lookupStart;
 
     if (!vm) {
       // Track proxy 401 for alerting — find VM by IP and alert if repeated
@@ -385,12 +393,15 @@ export async function POST(req: NextRequest) {
 
     // Cached daily-usage SELECT (see dailyUsageCache definition at top of file).
     // 30s TTL — daily-spend cap is a 24h budget; 30s lag is irrelevant.
+    const dailyUsageStart = Date.now();
     let totalUnitsToday: number;
     let activeVmCount: number;
+    let dailyUsageCacheHit = true;
     if (dailyUsageCache && dailyUsageCache.date === todayStr && dailyUsageCache.expiresAt > Date.now()) {
       totalUnitsToday = dailyUsageCache.totalUnits;
       activeVmCount = dailyUsageCache.activeVmCount;
     } else {
+      dailyUsageCacheHit = false;
       const { data: totalUsageRows } = await supabase
         .from("instaclaw_daily_usage")
         .select("message_count")
@@ -402,6 +413,8 @@ export async function POST(req: NextRequest) {
       activeVmCount = (totalUsageRows ?? []).length;
       dailyUsageCache = { date: todayStr, totalUnits: totalUnitsToday, activeVmCount, expiresAt: Date.now() + DAILY_USAGE_CACHE_TTL_MS };
     }
+    profile.daily_usage_ms = Date.now() - dailyUsageStart;
+    profile.daily_usage_cache_hit = dailyUsageCacheHit ? 1 : 0;
     const estimatedSpend = totalUnitsToday * COST_PER_UNIT * COST_SAFETY_FACTOR;
 
     // 80% warning — alert admin before the breaker trips
@@ -573,10 +586,12 @@ export async function POST(req: NextRequest) {
     // requests can no longer both pass the check — the second sees the first's
     // increment. If the Anthropic call fails after this, the user "loses" one
     // credit unit — acceptable tradeoff vs the race condition.
+    const checkIncStart = Date.now();
     const { data: limitResult, error: limitError } = await supabase.rpc(
       "instaclaw_check_and_increment",
       { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz, p_is_virtuals: isVirtuals, p_is_tool_continuation: isToolContinuation }
     );
+    profile.check_increment_ms = Date.now() - checkIncStart;
 
     if (limitError) {
       logger.error("Usage limit check failed", { error: String(limitError), route: "gateway/proxy", vmId: vm.id });
@@ -964,6 +979,7 @@ export async function POST(req: NextRequest) {
     const abortController = new AbortController();
     const apiTimeout = setTimeout(() => abortController.abort(), 90000);
 
+    const providerStart = Date.now();
     let providerRes: Response;
     try {
       providerRes = await fetch(providerUrl, {
@@ -972,7 +988,11 @@ export async function POST(req: NextRequest) {
         body: providerBody,
         signal: abortController.signal,
       });
+      profile.provider_fetch_ms = Date.now() - providerStart;
+      profile.provider_status = providerRes.status;
     } catch (fetchErr: unknown) {
+      profile.provider_fetch_ms = Date.now() - providerStart;
+      profile.provider_status = -1;
       clearTimeout(apiTimeout);
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         logger.error("LLM API timeout (90s)", {
@@ -994,6 +1014,23 @@ export async function POST(req: NextRequest) {
       throw fetchErr;
     }
     clearTimeout(apiTimeout);
+
+    // --- Hot-path latency profile (sampled at 5%) ---
+    // Emit timings of the 4 blocking phases that gate every chat completion.
+    // Use grep on Vercel logs: `grep "hot-path latency" | jq` to inspect.
+    if (profileEnabled) {
+      profile.total_pre_response_ms = Date.now() - reqStart;
+      logger.info("hot-path latency profile", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        tier,
+        model: requestedModel,
+        provider: isMinimax ? "minimax" : "anthropic",
+        isHeartbeat,
+        isToolContinuation,
+        ...profile,
+      });
+    }
 
     // --- On provider error (4xx/5xx): DON'T increment usage, log and return ---
     // But first: try Sonnet→Opus auto-retry if the router suggested it.
