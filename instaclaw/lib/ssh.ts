@@ -4055,13 +4055,15 @@ export async function configureOpenClaw(
       );
     }
 
-    // Install Consensus 2026 skill (only for consensus_2026 partners)
-    // Same pattern as Edge City: clone into ~/.openclaw/skills/, 30-min refresh cron.
-    // Skill data (sessions/events/speakers JSON) is baked hourly by GitHub Actions
-    // in the skill repo; the VM-side cron pulls those updates.
-    if (config.partner === "consensus_2026") {
+    // Install Consensus 2026 skill — fires for BOTH consensus_2026 and edge_city
+    // partners. Edge City attendees are also at Consensus this week (May 5–7),
+    // so they get the consensus skill alongside their existing edge-esmeralda
+    // skill. partner is a single-string column; this OR is the cheapest way
+    // to give Edge users both contexts without a schema change.
+    // consensus_2026 partners only get this skill (no edge_city installs).
+    if (config.partner === "consensus_2026" || config.partner === "edge_city") {
       scriptParts.push(
-        '# Install Consensus 2026 Miami skill (partner: consensus_2026)',
+        '# Install Consensus 2026 Miami skill (consensus_2026 or edge_city partners)',
         'if [ ! -d "$HOME/.openclaw/skills/consensus-2026" ]; then',
         '  git clone --depth 1 https://github.com/coopergwrenn/consensus-2026-skill.git "$HOME/.openclaw/skills/consensus-2026" 2>/dev/null || true',
         'fi',
@@ -4369,11 +4371,14 @@ When your human first messages you, start with a brief onboarding interview:
 Store their answers in MEMORY.md — you'll use this for people matching and proactive suggestions throughout the event.
 `;
     }
-    // Consensus 2026 partner: terse SOUL section (≤500 chars).
-    // All detail (schemas, query patterns, killer demos, onboarding script) lives
-    // in the on-disk SKILL.md the agent reads on demand. SOUL.md is bootstrap-only
-    // context and competes for the 30K bootstrapMaxChars window.
-    if (config.partner === "consensus_2026") {
+    // Consensus 2026 partner: terse SOUL section (≤500 chars). Fires for BOTH
+    // consensus_2026 and edge_city partners — Edge attendees are also at
+    // Consensus this week. The Edge section above is preserved for edge_city;
+    // this one is appended after it. All detail (schemas, query patterns,
+    // killer demos, onboarding script) lives in the on-disk SKILL.md the agent
+    // reads on demand. SOUL.md is bootstrap-only context and competes for the
+    // 30K bootstrapMaxChars window.
+    if (config.partner === "consensus_2026" || config.partner === "edge_city") {
       soulContent += `
 
 ## Consensus 2026 Miami
