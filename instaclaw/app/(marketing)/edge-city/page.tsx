@@ -86,8 +86,8 @@ const privacyPrinciples = [
     body: "Each agent runs on a dedicated VM in its own filesystem boundary. Conversations, memory, and intros stay on your machine — never shared between agents, never aggregated server-side.",
   },
   {
-    title: "We don't read your conversations",
-    body: "Operators don't read attendee conversations or memory as part of normal operations. We're shipping a Maximum Privacy Mode by May 9 that enforces this in code: operator-side inspection disabled by default, with a user-facing toggle to temporarily enable for support.",
+    title: "Maximum Privacy Mode — opt in anytime",
+    body: "Edge attendees can enable Maximum Privacy Mode in their dashboard — when on, even our operators can't read your conversations or memory. Auto-reverts after 24 hours so you don't accidentally lock out support. Ships May 9.",
   },
   {
     title: "Researchers never see your raw data",
@@ -343,9 +343,10 @@ export default function EdgeCityPage() {
               className="text-sm sm:text-base max-w-lg mx-auto leading-relaxed"
               style={{ color: "#6b6b6b" }}
             >
-              We don&apos;t read your conversations as a routine matter, and
-              we&apos;re shipping the code to enforce that by May 9. Researchers
-              never get raw data — only an anonymized aggregate dataset.
+              We don&apos;t read your conversations as a routine matter. You can
+              enable Maximum Privacy Mode anytime to enforce that in code —
+              auto-reverts after 24 hours. Researchers never get raw data, only
+              an anonymized aggregate dataset.
             </p>
           </div>
 
