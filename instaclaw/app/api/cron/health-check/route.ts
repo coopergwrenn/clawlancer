@@ -437,23 +437,74 @@ else:
                 "rm -f ~/.openclaw/agents/main/sessions/.session-degraded"
               );
               const DBUS = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
-              await billingSSH.execCommand(`touch /tmp/ic-restart.lock && ${DBUS} && systemctl --user restart openclaw-gateway`);
+              // Step 1 — try restart (existing behavior).
+              await billingSSH.execCommand(
+                `touch /tmp/ic-restart.lock && ${DBUS} && systemctl --user restart openclaw-gateway`
+              );
+
+              // Layer-2 verify (task #40): the start half of `systemctl restart`
+              // can fail silently — start-limit-hit, races, etc. — leaving the
+              // gateway DEAD while DB still says healthy. This was the actual
+              // killer of Doug Rathell's vm-725 on 2026-05-02 (gateway died 30s
+              // after this exact line ran). Verify is-active, fall back to
+              // explicit start if not.
+              let cleanupRestartActive = false;
+              await new Promise(r => setTimeout(r, 5000));
+              const check1 = await billingSSH.execCommand(
+                `${DBUS} && systemctl --user is-active openclaw-gateway 2>/dev/null`
+              );
+              cleanupRestartActive = (check1.stdout?.trim() === "active");
+
+              if (!cleanupRestartActive) {
+                // Recovery: reset-failed clears any start-limit-hit state, then
+                // explicit start (idempotent, safer than restart for a stopped
+                // unit).
+                await billingSSH.execCommand(
+                  `${DBUS} && systemctl --user reset-failed openclaw-gateway 2>/dev/null; systemctl --user start openclaw-gateway 2>/dev/null`
+                );
+                await new Promise(r => setTimeout(r, 5000));
+                const check2 = await billingSSH.execCommand(
+                  `${DBUS} && systemctl --user is-active openclaw-gateway 2>/dev/null`
+                );
+                cleanupRestartActive = (check2.stdout?.trim() === "active");
+              }
+
               // Fix 1: Record restart for grace period
               await supabase
                 .from("instaclaw_vms")
                 .update({ last_gateway_restart: new Date().toISOString() })
                 .eq("id", vm.id);
               billingCachesCleared++;
-              logger.warn("Billing cache cleared and gateway restarted", {
-                route: "cron/health-check",
-                vmId: vm.id,
-                vmName: vm.name,
-              });
-              alerts.add(
-                "Billing Cache Cleared",
-                vm.name ?? vm.id,
-                "Cached billing error in auth-profiles.json auto-cleared. Gateway restarted."
-              );
+
+              if (cleanupRestartActive) {
+                logger.warn("Billing cache cleared and gateway restarted (verified active)", {
+                  route: "cron/health-check",
+                  vmId: vm.id,
+                  vmName: vm.name,
+                });
+                alerts.add(
+                  "Billing Cache Cleared",
+                  vm.name ?? vm.id,
+                  "Cached billing error in auth-profiles.json auto-cleared. Gateway restarted and verified active."
+                );
+              } else {
+                // P0: cleanup left the gateway dead. Without this branch, the
+                // failure was silent (the bug class that murdered Doug Rathell's
+                // vm-725, 2026-05-02). Now we alert immediately so manual
+                // intervention can happen within the same cron cycle.
+                logger.error("P0: billing cache cleanup left gateway DEAD (restart + start fallback both failed verify)", {
+                  route: "cron/health-check",
+                  vmId: vm.id,
+                  vmName: vm.name,
+                  ipAddress: vm.ip_address,
+                  assignedTo: vm.assigned_to ?? null,
+                });
+                alerts.add(
+                  "URGENT: Billing Cache Cleanup Killed Gateway",
+                  vm.name ?? vm.id,
+                  `Gateway is DEAD after billing-cache-clear restart + start fallback.\nIP: ${vm.ip_address}\nUser: ${vm.assigned_to ?? "unassigned"}\nManual investigation required — SSH and run \`systemctl --user status openclaw-gateway\`.`
+                );
+              }
             }
           }
         } finally {
