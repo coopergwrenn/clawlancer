@@ -588,6 +588,73 @@ def check_session_quality(jsonl_file, session_id):
     except Exception:
         return None
 
+def trim_failed_turns(jsonl_file):
+    """Surgically remove trailing empty assistant messages.
+
+    Replaces the old "force-archive on N empty responses" behavior, which
+    deleted the session and wiped ALL user conversation context. This trim
+    keeps the user's prior conversation; only the failed retries are removed.
+    On the next gateway reload, the model sees a healthy trajectory and the
+    user's next prompt proceeds normally.
+
+    Empty content patterns (matches check_session_quality): [], "", None, [{}].
+    These have no tool_use blocks by definition — no orphan tool_use/tool_result
+    handling needed. If a TURN (not just a retry) needs cleanup we'd see a
+    subsequent error_loop signal and fall to the existing archive path.
+
+    Returns (removed_count, drop_reasons[]). (0, []) when no trim possible.
+    """
+    try:
+        with open(jsonl_file) as f:
+            lines = f.readlines()
+    except Exception:
+        return 0, []
+
+    if not lines:
+        return 0, []
+
+    keep_until = len(lines)
+    drop_reasons = []
+
+    # Walk backwards. Stop at the first healthy line; everything before is preserved.
+    for i in range(len(lines) - 1, -1, -1):
+        try:
+            d = json.loads(lines[i])
+        except json.JSONDecodeError:
+            keep_until = i
+            drop_reasons.append("malformed_json")
+            continue
+
+        msg = d.get("message", {})
+        role = msg.get("role")
+        content = msg.get("content")
+
+        if role == "assistant" and content in ([], "", None, [{}]):
+            keep_until = i
+            drop_reasons.append("empty_assistant")
+            continue
+
+        # User turn or healthy assistant — boundary. Trim stops here.
+        break
+
+    if keep_until == len(lines):
+        return 0, []
+
+    removed = len(lines) - keep_until
+    tmp = jsonl_file + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.writelines(lines[:keep_until])
+        os.replace(tmp, jsonl_file)
+        return removed, drop_reasons
+    except Exception:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+        return 0, []
+
+
 def extract_session_summary(jsonl_file):
     """Extract key context from a session about to be archived."""
     try:
@@ -1047,44 +1114,34 @@ try:
             largest_active_session = file_size
 
         # ── Phase 1.5: Session quality check (empty responses + error loops) ──
+        # Empty responses get TRIMMED, not archived. Old behavior nuked the
+        # whole session and wiped user conversation context — see CLAUDE.md
+        # "Never destructively modify user state" rule (added 2026-05-02 after
+        # the vm-780 incident: 1 web_fetch failure → 4 retries → session wiped).
+        # error_loop is a different signal (literal SIGKILL/OOM/"empty response"
+        # strings across many turns) and remains an archive-worthy crash signal.
         quality_issue = check_session_quality(jsonl_file, session_id)
         if quality_issue == "empty_responses":
-            # Force-archive the degraded session immediately — don't just set a flag.
-            # The old approach (flag only) caused crash loops: gateway reloads the same
-            # bloated session on restart → empty responses again → flag again → loop.
+            # Surgical trim: drop trailing empty assistant messages only.
+            # Backup first so forensics survive even if trim itself misbehaves.
             try:
-                os.makedirs(ARCHIVE_DIR, exist_ok=True)
-                archive_name = f"{session_id}-degraded-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
-                archive_path = os.path.join(ARCHIVE_DIR, archive_name)
-                shutil.copy2(jsonl_file, archive_path)
-                extract_session_summary(jsonl_file)
                 _backup_session_file(jsonl_file)
-                os.remove(jsonl_file)
-                archived_sessions.append(session_id)
-
-                # Remove from sessions.json
-                try:
-                    with open(SESSIONS_JSON) as f:
-                        sj = json.load(f)
-                    for key in list(sj.keys()):
-                        if sj[key].get("sessionId") == session_id:
-                            del sj[key]
-                    with open(SESSIONS_JSON, "w") as f:
-                        json.dump(sj, f, indent=2)
-                except Exception:
-                    pass
-
-                # Clear degraded flag if it exists
-                try:
-                    if os.path.exists(DEGRADED_FLAG):
-                        os.remove(DEGRADED_FLAG)
-                except Exception:
-                    pass
-
-                inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
-                print(f"SESSION DEGRADED: {session_id} — {EMPTY_RESPONSE_THRESHOLD}+ empty responses, session FORCE-ARCHIVED (crash-loop prevention)")
+                removed, reasons = trim_failed_turns(jsonl_file)
+                if removed > 0:
+                    print(
+                        f"SESSION TRIMMED: {session_id} — removed {removed} trailing failed messages "
+                        f"({','.join(reasons)}); session preserved, user context intact"
+                    )
+                else:
+                    # Quality check fired but trim found nothing to drop. Means
+                    # the empties are interleaved (not at the tail) — old turns.
+                    # Don't archive; just log. Next legitimate turn will probably succeed.
+                    print(
+                        f"SESSION QUALITY WARN: {session_id} — empty_responses signal but no trailing tail to trim "
+                        f"(empties interleaved with healthy turns); no action"
+                    )
             except Exception as e:
-                print(f"Empty response archive failed: {e}")
+                print(f"Empty response trim failed: {e}")
             continue
         elif quality_issue == "error_loop":
             # Force-archive the session and trip circuit breaker
