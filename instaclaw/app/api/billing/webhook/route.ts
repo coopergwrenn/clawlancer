@@ -967,6 +967,12 @@ async function processEvent(event: any) {
                     health_status: "unknown",
                     suspended_at: null,
                     last_health_check: new Date().toISOString(),
+                    // QA fix #1: reset watchdog state — a quarantined VM
+                    // whose owner just resolved past_due must not stay
+                    // quarantined forever (would block all future restarts).
+                    watchdog_consecutive_failures: 0,
+                    watchdog_first_failure_at: null,
+                    watchdog_quarantined_at: null,
                   }).eq("id", fullVm.id);
 
                   logger.info("Reactivated VM on payment success", {

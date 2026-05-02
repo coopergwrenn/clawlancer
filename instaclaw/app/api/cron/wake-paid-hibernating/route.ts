@@ -221,6 +221,8 @@ export async function GET(req: NextRequest) {
       }
 
       // Successful start. Update DB to healthy and clear suspended_at.
+      // QA fix #1: also reset watchdog state — a previously quarantined VM
+      // whose owner pays again must not stay quarantined forever.
       const { error: updErr } = await supabase
         .from("instaclaw_vms")
         .update({
@@ -228,6 +230,10 @@ export async function GET(req: NextRequest) {
           last_health_check: new Date().toISOString(),
           // Clear suspended_at — VM is being resurrected, not asleep
           suspended_at: null,
+          // Watchdog state reset (preserve history fields for forensics)
+          watchdog_consecutive_failures: 0,
+          watchdog_first_failure_at: null,
+          watchdog_quarantined_at: null,
         })
         .eq("id", vm.id);
 

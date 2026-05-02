@@ -75,6 +75,15 @@ export async function wakeIfHibernating(
         .update({
           health_status: "healthy",
           last_health_check: new Date().toISOString(),
+          // QA fix #1: reset watchdog state on successful wake. A previously
+          // quarantined VM whose owner pays again must not stay quarantined
+          // forever (would block all future watchdog restarts on it). Same
+          // logic for failure counter + first_failure_at — fresh start.
+          // History (watchdog_last_restart_at, watchdog_restart_attempts_24h)
+          // is INTENTIONALLY preserved for forensics.
+          watchdog_consecutive_failures: 0,
+          watchdog_first_failure_at: null,
+          watchdog_quarantined_at: null,
         })
         .eq("id", vm.id);
 

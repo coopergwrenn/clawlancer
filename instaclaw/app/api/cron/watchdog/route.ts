@@ -101,13 +101,18 @@ export async function GET(req: NextRequest) {
     const stripe = getStripe();
 
     // Lesson 7: select * for safety-critical reads.
-    // Only consider VMs that are SUPPOSED to be serving (not legitimately asleep).
+    // Only consider VMs that are SUPPOSED to be serving (not legitimately
+    // asleep). QA fix #2: exclude sleeping states at the SQL layer so we
+    // don't waste 10s probe budgets per cycle on ~30 sleeping VMs that
+    // would always fail the probe (gateway is intentionally stopped).
+    // PostgREST `not.in` syntax: comma-separated, parens.
     const { data: vms, error } = await supabase
       .from("instaclaw_vms")
       .select("*")
       .eq("status", "assigned")
       .not("assigned_to", "is", null)
-      .not("gateway_url", "is", null);
+      .not("gateway_url", "is", null)
+      .not("health_status", "in", "(hibernating,suspended,frozen)");
 
     if (error) {
       logger.error("watchdog: query failed", { route: `cron/${CRON_NAME}`, error: error.message });
@@ -127,27 +132,40 @@ export async function GET(req: NextRequest) {
       probeLatencyMs: number;
     };
 
-    const probeResults: ProbeResult[] = await Promise.all(
-      (vms ?? []).map(async (vm): Promise<ProbeResult> => {
-        // Validate row shape (lesson 7) — never act on a malformed row
+    // QA fix #3: bounded concurrency. Promise.all on N VMs would fan out
+    // to N concurrent fetches — at fleet size 200+ this hits Vercel egress
+    // and downstream connection limits. Manual semaphore at 20 concurrent.
+    const PROBE_CONCURRENCY = 20;
+    const queue = vms ?? [];
+    const probeResults: ProbeResult[] = new Array(queue.length);
+    let cursor = 0;
+    async function probeWorker() {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= queue.length) return;
+        const vm = queue[idx];
         if (!vm.id || !vm.gateway_url) {
-          return {
+          probeResults[idx] = {
             vm,
             derivedState: deriveState(vm) as DerivedState,
             probeOk: false,
             probeReason: "row_shape_invalid",
             probeLatencyMs: 0,
           };
+          continue;
         }
         const probe = await probeGatewayHealth(vm.gateway_url);
-        return {
+        probeResults[idx] = {
           vm,
           derivedState: deriveState(vm) as DerivedState,
           probeOk: probe.ok,
           probeReason: probe.reason,
           probeLatencyMs: probe.latencyMs,
         };
-      })
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(PROBE_CONCURRENCY, queue.length) }, () => probeWorker())
     );
 
     // Count derived states for telemetry
@@ -277,8 +295,18 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // Active-user protection (Lesson 6 — uses last_user_activity_at, not last_proxy_call_at)
-      const lastActivity = vm.last_user_activity_at ? new Date(vm.last_user_activity_at).getTime() : 0;
+      // Active-user protection (Lesson 6 — should use last_user_activity_at,
+      // not last_proxy_call_at).
+      // QA fix #4: proxy doesn't yet write last_user_activity_at — column
+      // was backfilled at migration time and is otherwise frozen. Until the
+      // proxy update lands, fall back to last_proxy_call_at as the activity
+      // signal. Tradeoff: heartbeats fire every 3h and update last_proxy_call_at,
+      // so a heartbeat 4 min ago will protect the VM for 1 more min — over-
+      // protective by design (matches our conservative-bias spec).
+      // TODO(proxy): once the proxy classifies user vs heartbeat and writes
+      // last_user_activity_at on real user requests, drop the fallback.
+      const lastActivityRaw = vm.last_user_activity_at ?? vm.last_proxy_call_at ?? null;
+      const lastActivity = lastActivityRaw ? new Date(lastActivityRaw).getTime() : 0;
       if (now - lastActivity < WATCHDOG_ACTIVE_USER_PROTECT_MS) {
         await writeAudit(supabase, {
           vm_id: vm.id,
