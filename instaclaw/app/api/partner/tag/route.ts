@@ -25,7 +25,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 
-const VALID_PARTNERS = new Set(["edge_city"]);
+const VALID_PARTNERS = new Set(["edge_city", "consensus_2026"]);
 const PARTNER_COOKIE = "instaclaw_partner";
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days — survives OAuth round-trip
 

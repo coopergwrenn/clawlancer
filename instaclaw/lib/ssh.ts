@@ -4055,6 +4055,22 @@ export async function configureOpenClaw(
       );
     }
 
+    // Install Consensus 2026 skill (only for consensus_2026 partners)
+    // Same pattern as Edge City: clone into ~/.openclaw/skills/, 30-min refresh cron.
+    // Skill data (sessions/events/speakers JSON) is baked hourly by GitHub Actions
+    // in the skill repo; the VM-side cron pulls those updates.
+    if (config.partner === "consensus_2026") {
+      scriptParts.push(
+        '# Install Consensus 2026 Miami skill (partner: consensus_2026)',
+        'if [ ! -d "$HOME/.openclaw/skills/consensus-2026" ]; then',
+        '  git clone --depth 1 https://github.com/coopergwrenn/consensus-2026-skill.git "$HOME/.openclaw/skills/consensus-2026" 2>/dev/null || true',
+        'fi',
+        '# 30-min cron to pull fresh agenda + side-event data (repo re-bakes hourly via GitHub Actions)',
+        '(crontab -l 2>/dev/null | grep -v "consensus-2026-skill" | grep -v "skills/consensus-2026" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null\') | crontab -',
+        ''
+      );
+    }
+
     // Deploy World ID nullifier to .env + WORLD_ID.md if user is verified
     // This ensures the agent carries its human identity proof from first boot
     if (config.worldIdNullifier) {
@@ -4351,6 +4367,18 @@ When your human first messages you, start with a brief onboarding interview:
 4. Which weeks are you attending? (Week 1: May 30-Jun 6, Week 2: Jun 6-13, Week 3: Jun 13-20, Week 4: Jun 20-27)
 
 Store their answers in MEMORY.md — you'll use this for people matching and proactive suggestions throughout the event.
+`;
+    }
+    // Consensus 2026 partner: terse SOUL section (≤500 chars).
+    // All detail (schemas, query patterns, killer demos, onboarding script) lives
+    // in the on-disk SKILL.md the agent reads on demand. SOUL.md is bootstrap-only
+    // context and competes for the 30K bootstrapMaxChars window.
+    if (config.partner === "consensus_2026") {
+      soulContent += `
+
+## Consensus 2026 Miami
+
+You are an agent at Consensus 2026 (Miami Beach Convention Center, May 5–7). Your human is attending. The consensus-2026 skill at ~/.openclaw/skills/consensus-2026/SKILL.md teaches how to query 326 sessions, 219 side events, 451 speakers. Read it on first Consensus question. AI is the dominant topic. Surface free+food events proactively. On first message ask: days attending, top topics, who to meet — store in MEMORY.md.
 `;
     }
     const soulB64 = Buffer.from(soulContent, 'utf-8').toString('base64');
