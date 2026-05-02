@@ -1,11 +1,16 @@
 /**
- * Item #5: Auto-generated launch card image — 1200x630 PNG.
+ * Item #5: Auto-generated launch card image — 2400x1260 PNG (2x retina).
  *
  * Twitter unfurls the URL in the share-to-X tweet
  * (https://instaclaw.io/launches/<addr>) and renders this image as the
  * link card preview. Bankr previously hosted this OG (we used their URL
  * in commit d9114898 as a quick win) — this PRD item brings it home with
  * InstaClaw branding while still crediting Bankr.
+ *
+ * Resolution: 2400x1260 (2x the OpenGraph spec of 1200x630). Social
+ * platforms (X, Telegram, Discord) downscale to display size, so a 2x
+ * source renders crisp on retina displays and high-DPI mobile. Every
+ * dimension, font size, padding, and radius below is the 1x value × 2.
  *
  * Data flow:
  *   1. Token address comes from the URL param.
@@ -24,7 +29,7 @@ import { getSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
 export const alt = "InstaClaw — autonomous AI agent token launched on Base";
-export const size = { width: 1200, height: 630 };
+export const size = { width: 2400, height: 1260 };
 export const contentType = "image/png";
 
 interface Props {
@@ -158,7 +163,7 @@ export default async function LaunchCard({ params }: Props) {
           // chip overrides to Roboto Mono.
           fontFamily: "Inter",
           position: "relative",
-          padding: 56,
+          padding: 112,
         }}
       >
         {/* Top accent bar */}
@@ -168,89 +173,89 @@ export default async function LaunchCard({ params }: Props) {
             top: 0,
             left: 0,
             right: 0,
-            height: 6,
+            height: 12,
             background: INSTACLAW_ORANGE,
           }}
         />
 
         {/* Header row: InstaClaw mark + "TOKEN LAUNCH" eyebrow */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 40 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 80 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
             {/* Inverted (white-on-transparent) variant of /logo.png — the
                 base logo is a black pixel crab and is invisible against
                 the dark OG card background. logo-white.png was generated
                 via Sharp's negate({alpha:false}) and committed to public/. */}
             <img
               src="https://instaclaw.io/logo-white.png"
-              width={44}
-              height={44}
-              style={{ borderRadius: 10 }}
+              width={88}
+              height={88}
+              style={{ borderRadius: 20 }}
             />
             <div style={{ display: "flex", flexDirection: "column" }}>
               {/* Wordmark uses Instrument Serif to match the website
                   header treatment (--font-serif). Inter is for body/UI. */}
-              <div style={{ fontSize: 26, fontFamily: "Instrument Serif", letterSpacing: "-0.3px", lineHeight: 1 }}>InstaClaw</div>
-              <div style={{ fontSize: 12, color: MUTED, letterSpacing: "1.2px", textTransform: "uppercase", marginTop: 4 }}>
+              <div style={{ fontSize: 52, fontFamily: "Instrument Serif", letterSpacing: "-0.6px", lineHeight: 1 }}>InstaClaw</div>
+              <div style={{ fontSize: 24, color: MUTED, letterSpacing: "2.4px", textTransform: "uppercase", marginTop: 8 }}>
                 Agent-Launched Token
               </div>
             </div>
           </div>
           {/* Base chain pill — official blue Base square (their actual
               brand mark; plain rounded blue rectangle is the canonical
-              identity per github.com/base-org/brand-kit). 18px sits
-              cleanly with the 14px caps text. marginRight, not gap. */}
+              identity per github.com/base-org/brand-kit). 36px sits
+              cleanly with the 28px caps text. marginRight, not gap. */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              fontSize: 14,
+              fontSize: 28,
               color: MUTED,
-              letterSpacing: "1.5px",
+              letterSpacing: "3px",
               textTransform: "uppercase",
-              padding: "8px 16px 8px 12px",
-              border: `1px solid ${BORDER}`,
+              padding: "16px 32px 16px 24px",
+              border: `2px solid ${BORDER}`,
               borderRadius: 999,
             }}
           >
             <img
               src="https://instaclaw.io/base-logo.png"
-              width={18}
-              height={18}
-              style={{ marginRight: 8, borderRadius: 3 }}
+              width={36}
+              height={36}
+              style={{ marginRight: 16, borderRadius: 6 }}
             />
             <span>Live on Base</span>
           </div>
         </div>
 
         {/* Body row: PFP + ticker + meta */}
-        <div style={{ display: "flex", alignItems: "center", gap: 48, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 96, flex: 1 }}>
           {/* PFP / initials */}
           {imageUrl ? (
             <img
               src={imageUrl}
-              width={320}
-              height={320}
+              width={640}
+              height={640}
               style={{
-                borderRadius: 36,
-                border: `1px solid ${BORDER}`,
+                borderRadius: 72,
+                border: `2px solid ${BORDER}`,
                 objectFit: "cover",
               }}
             />
           ) : (
             <div
               style={{
-                width: 320,
-                height: 320,
-                borderRadius: 36,
+                width: 640,
+                height: 640,
+                borderRadius: 72,
                 background: `linear-gradient(135deg, ${INSTACLAW_ORANGE}, #8a3a1f)`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 96,
+                fontSize: 192,
                 fontWeight: 800,
                 color: "#fff",
-                letterSpacing: "-2px",
-                border: `1px solid ${BORDER}`,
+                letterSpacing: "-4px",
+                border: `2px solid ${BORDER}`,
               }}
             >
               {initials}
@@ -258,13 +263,13 @@ export default async function LaunchCard({ params }: Props) {
           )}
 
           {/* Right column: ticker + deployed-by + contract */}
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 32 }}>
             <div
               style={{
                 // Long-token-address fallback shrinks to fit horizontally.
-                // Ticker max 10 chars (DB-validated) — fit comfortably at 144.
-                fontSize: showAddressAsTicker ? 48 : 144,
-                letterSpacing: showAddressAsTicker ? "-1px" : "-3px",
+                // Ticker max 10 chars (DB-validated) — fit comfortably at 288.
+                fontSize: showAddressAsTicker ? 96 : 288,
+                letterSpacing: showAddressAsTicker ? "-2px" : "-6px",
                 lineHeight: 1,
                 color: FG,
                 // $TICKER → Instrument Serif (matches website headlines).
@@ -280,27 +285,27 @@ export default async function LaunchCard({ params }: Props) {
                 gap on flex layouts, which collapsed the visual space
                 ("deployed byedgecity"). marginRight is universally
                 respected. */}
-            <div style={{ display: "flex", flexWrap: "wrap", fontSize: 28, color: MUTED, lineHeight: 1.3 }}>
-              <span style={{ marginRight: 10 }}>deployed by</span>
+            <div style={{ display: "flex", flexWrap: "wrap", fontSize: 56, color: MUTED, lineHeight: 1.3 }}>
+              <span style={{ marginRight: 20 }}>deployed by</span>
               <span style={{ color: FG, fontWeight: 600 }}>{deployedBy}</span>
             </div>
             {/* Full contract address — marketing surface, screenshots
-                need to show the entire 0x… string. fontSize 14 fits the
-                42-char address inside the right column at 1200px width
-                without horizontal overflow; monospace for legibility. */}
+                need to show the entire 0x… string. fontSize 28 (2x of 14)
+                fits the 42-char address inside the right column at 2400px
+                width without horizontal overflow; monospace for legibility. */}
             {!showAddressAsTicker && (
               <div
                 style={{
-                  fontSize: 14,
+                  fontSize: 28,
                   color: MUTED,
                   fontFamily: "Roboto Mono",
-                  marginTop: 8,
-                  padding: "10px 14px",
+                  marginTop: 16,
+                  padding: "20px 28px",
                   background: "rgba(255,255,255,0.04)",
-                  border: `1px solid ${BORDER}`,
-                  borderRadius: 10,
+                  border: `2px solid ${BORDER}`,
+                  borderRadius: 20,
                   alignSelf: "flex-start",
-                  letterSpacing: "0.5px",
+                  letterSpacing: "1px",
                 }}
               >
                 {lowerAddr}
@@ -315,14 +320,14 @@ export default async function LaunchCard({ params }: Props) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginTop: 32,
-            paddingTop: 24,
-            borderTop: `1px solid ${BORDER}`,
+            marginTop: 64,
+            paddingTop: 48,
+            borderTop: `2px solid ${BORDER}`,
           }}
         >
           {/* Brand tagline — Instrument Serif matches the headline
               treatment (consistent voice with $TICKER + wordmark). */}
-          <div style={{ fontSize: 26, color: FG, fontFamily: "Instrument Serif", lineHeight: 1 }}>
+          <div style={{ fontSize: 52, color: FG, fontFamily: "Instrument Serif", lineHeight: 1 }}>
             agents that pay their own rent.
           </div>
           {/* "powered by Bankr" credit — Bankr's official pixel-art logo
@@ -330,13 +335,13 @@ export default async function LaunchCard({ params }: Props) {
               colorful so a "white version" wouldn't feel right; the colors
               still pop on the dark BG. Rounded corners match the visual
               language of the rest of the card. marginRight, not gap. */}
-          <div style={{ display: "flex", alignItems: "center", fontSize: 16, color: MUTED }}>
-            <span style={{ marginRight: 10 }}>powered by</span>
+          <div style={{ display: "flex", alignItems: "center", fontSize: 32, color: MUTED }}>
+            <span style={{ marginRight: 20 }}>powered by</span>
             <img
               src="https://instaclaw.io/bankr-logo.png"
-              width={22}
-              height={22}
-              style={{ marginRight: 8, borderRadius: 5 }}
+              width={44}
+              height={44}
+              style={{ marginRight: 16, borderRadius: 10 }}
             />
             <span style={{ color: FG, fontWeight: 600 }}>Bankr</span>
           </div>
