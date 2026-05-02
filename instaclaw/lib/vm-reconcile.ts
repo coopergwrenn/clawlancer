@@ -14,7 +14,7 @@
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
-import { PRIVACY_BRIDGE_SCRIPT } from "./privacy-bridge-script";
+import { getPrivacyBridgeScript } from "./privacy-bridge-script";
 import * as crypto from "crypto";
 import {
   WORKSPACE_SOUL_MD_V2,
@@ -3346,8 +3346,9 @@ async function stepDeployPrivacyBridge(
 ): Promise<void> {
   if (vm.partner !== "edge_city") return;
 
+  const script = getPrivacyBridgeScript();
   const remotePath = "/home/openclaw/.openclaw/scripts/privacy-bridge.sh";
-  const expectedSha = crypto.createHash("sha256").update(PRIVACY_BRIDGE_SCRIPT).digest("hex");
+  const expectedSha = crypto.createHash("sha256").update(script).digest("hex");
 
   const existing = await ssh.execCommand(
     `[ -f ${remotePath} ] && sha256sum ${remotePath} | awk '{print $1}' || echo MISSING`,
@@ -3364,7 +3365,7 @@ async function stepDeployPrivacyBridge(
     return;
   }
 
-  const b64 = Buffer.from(PRIVACY_BRIDGE_SCRIPT, "utf-8").toString("base64");
+  const b64 = Buffer.from(script, "utf-8").toString("base64");
   const write = await ssh.execCommand(
     `mkdir -p /home/openclaw/.openclaw/scripts && echo '${b64}' | base64 -d > ${remotePath}.tmp && mv ${remotePath}.tmp ${remotePath} && chmod 0755 ${remotePath}`,
   );
