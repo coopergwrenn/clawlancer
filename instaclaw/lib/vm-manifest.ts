@@ -504,8 +504,21 @@ export const VM_MANIFEST = {
    *  staged before cutover; non-edge_city VMs are completely unaffected
    *  (the step early-returns on partner !== "edge_city"). Reminder per
    *  Rule 7: snapshot is now stale — bake a new one before any large
-   *  provisioning run. */
-  version: 78,
+   *  provisioning run.
+   *
+   * v79 (2026-05-02): Privacy bridge security fixes from QA review. Three
+   *  blocker bugs fixed in lib/privacy-bridge.sh — newline injection
+   *  bypass, fail-open on missing-env / missing-token / no-state, and
+   *  unrestricted openclaw CLI access (memory/session/config could leak
+   *  data privacy mode promised to protect). Bridge content SHA changes,
+   *  so the bump is required to make the reconciler push the fixed
+   *  bridge to the 5 edge_city VMs that already have v78 (their
+   *  config_version >= manifest.version filter would otherwise skip
+   *  them). Fleet-wide reconcile churns ~200 non-edge VMs through the
+   *  bridge step, but it early-returns on partner !== "edge_city" so
+   *  net effect there is just a config_version bump. Snapshot stale
+   *  reminder per Rule 7 still applies. */
+  version: 79,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

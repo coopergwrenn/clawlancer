@@ -70,6 +70,14 @@ export async function GET() {
   });
 }
 
+// TODO(privacy-v0-followup): per QA-2026-05-02 #7, this POST relies on
+// SameSite cookie defaults for CSRF defense. v1 should add an explicit
+// CSRF token check on the toggle (defense in depth). Probably easiest via
+// next-auth's built-in csrfToken() and a hidden field round-trip from the
+// dashboard page; or a custom HMAC over the user_id + a short-lived
+// timestamp. Toggling privacy mode without consent isn't catastrophic
+// (24h auto-revert + the toggle is reversible), but a malicious site
+// could induce a temporary lockout — annoying enough to fix.
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {

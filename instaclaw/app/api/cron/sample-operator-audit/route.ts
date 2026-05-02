@@ -45,6 +45,12 @@ export async function GET(request: NextRequest) {
   const supabase = getSupabase();
   const sinceIso = new Date(Date.now() - WINDOW_HOURS * 60 * 60 * 1000).toISOString();
 
+  // TODO(privacy-v0-followup): per QA-2026-05-02 #6, this query has no
+  // .limit() and will OOM the function at scale. v0 traffic is tiny
+  // (5 edge_city VMs, low command volume), but v1 should iterate user-by-
+  // user with a per-user .limit() and order_by created_at DESC, or use a
+  // Postgres-side TABLESAMPLE to do the 5% sampling without loading the
+  // full 24h window into memory.
   const { data: rows, error: selectErr } = await supabase
     .from("instaclaw_operator_audit_log")
     .select("user_id, command, decision, created_at")
