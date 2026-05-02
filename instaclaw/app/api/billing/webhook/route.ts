@@ -7,6 +7,7 @@ import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialE
 import { logger } from "@/lib/logger";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
 import { thawVM } from "@/lib/vm-freeze-thaw";
+import { wakeIfHibernating } from "@/lib/wake-vm";
 import { randomUUID } from "node:crypto";
 
 // Give the function enough time for background processing via after().
@@ -189,6 +190,26 @@ async function handleCreditPackPurchase(session: any): Promise<void> {
   logger.info("Credit pack purchased — credits posted", {
     route: "billing/webhook", vmId, paymentIntent, credits, newBalance,
   });
+
+  // Fix C: wake the VM if it was hibernating. Customers who topped up after
+  // depletion previously stayed asleep because instaclaw_add_credits doesn't
+  // touch health_status. Best-effort — must not fail the webhook (Stripe
+  // retry would double-credit if we threw here).
+  // RCA: docs/wake-from-hibernation-bug-2026-05-02.md
+  try {
+    const { data: vmRow } = await supabase
+      .from("instaclaw_vms")
+      .select("assigned_to")
+      .eq("id", vmId)
+      .single();
+    if (vmRow?.assigned_to) {
+      await wakeIfHibernating(supabase, vmRow.assigned_to, "billing/webhook:credit_pack");
+    }
+  } catch (err) {
+    logger.error("Credit pack: wakeIfHibernating threw", {
+      route: "billing/webhook", vmId, error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -694,6 +715,29 @@ async function processEvent(event: any) {
             error: err instanceof Error ? err.message : String(err),
           });
         }
+
+        // Fix A: wake any hibernating VM on subscription reactivation.
+        // The frozen→thawVM block above only handles the deeper "frozen"
+        // state (Linode instance deleted, snapshot only). Hibernating VMs
+        // (gateway stopped, Linode instance still running) need a separate
+        // path or they stay asleep forever after a customer resubscribes.
+        // RCA: docs/wake-from-hibernation-bug-2026-05-02.md
+        try {
+          const { data: subRowForWake } = await supabase
+            .from("instaclaw_subscriptions")
+            .select("user_id")
+            .eq("stripe_customer_id", customerId)
+            .single();
+          if (subRowForWake?.user_id) {
+            await wakeIfHibernating(supabase, subRowForWake.user_id, "billing/webhook:subscription.updated");
+          }
+        } catch (err) {
+          logger.error("billing/webhook: wakeIfHibernating threw", {
+            route: "billing/webhook",
+            customerId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       break;
@@ -875,7 +919,14 @@ async function processEvent(event: any) {
             .eq("assigned_to", sub.user_id)
             .single();
 
-          if (vm?.health_status === "suspended") {
+          // Fix B: also wake hibernating VMs on payment_succeeded.
+          // Two crons set different state names for the same condition:
+          //   cron/health-check past_due path → "suspended"
+          //   cron/suspend-check past_due path → "hibernating"
+          // Before this fix, only "suspended" got woken — hibernating
+          // customers stayed asleep after their payment recovered.
+          // RCA: docs/wake-from-hibernation-bug-2026-05-02.md
+          if (vm?.health_status === "suspended" || vm?.health_status === "hibernating") {
             // Restart gateway directly (replaces unreliable fire-and-forget fetch)
             const { data: fullVm } = await supabase
               .from("instaclaw_vms").select("*").eq("id", vm.id).single();
@@ -890,8 +941,8 @@ async function processEvent(event: any) {
                     last_health_check: new Date().toISOString(),
                   }).eq("id", fullVm.id);
 
-                  logger.info("Reactivated suspended VM on payment success", {
-                    route: "billing/webhook", userId: sub.user_id, vmId: fullVm.id,
+                  logger.info("Reactivated VM on payment success", {
+                    route: "billing/webhook", userId: sub.user_id, vmId: fullVm.id, priorState: vm.health_status,
                   });
                 }
               } catch (err) {

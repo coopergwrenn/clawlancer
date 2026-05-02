@@ -89,6 +89,7 @@ export default auth((req) => {
     "/api/admin/xmtp-send-to-user", // Mini app proxy token or admin key
     "/api/admin/xmtp-refresh-token", // X-Admin-Key header auth
     "/api/partner/tag", // Self-auth: handles both logged-in (updates user/VM record) and logged-out (sets cookie for next signup) cases; validates partner against VALID_PARTNERS allow-list
+    "/api/internal/wake-vm", // Self-auth: validates X-Mini-App-Token (mini-app → instaclaw bridge) or X-Admin-Key. Wakes hibernating VMs after WLD credit top-ups.
   ];
 
   const isAPI = pathname.startsWith("/api/");
