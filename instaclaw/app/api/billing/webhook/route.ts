@@ -7,6 +7,8 @@ import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialE
 import { logger } from "@/lib/logger";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
 import { thawVM } from "@/lib/vm-freeze-thaw";
+import { wakeIfHibernating } from "@/lib/wake-vm";
+import { clearStaleAuthCacheForUser } from "@/lib/auth-cache";
 import { randomUUID } from "node:crypto";
 
 // Give the function enough time for background processing via after().
@@ -189,6 +191,30 @@ async function handleCreditPackPurchase(session: any): Promise<void> {
   logger.info("Credit pack purchased — credits posted", {
     route: "billing/webhook", vmId, paymentIntent, credits, newBalance,
   });
+
+  // Fix C (credit-pack half): wake the VM if it was hibernating. Otherwise
+  // the user's credits go up but their agent stays asleep. Best-effort —
+  // never throw here (would cause Stripe retry → double-credit).
+  // RCA: docs/wake-from-hibernation-bug-2026-05-02.md
+  try {
+    const supabase = getSupabase();
+    const { data: vmRow } = await supabase
+      .from("instaclaw_vms")
+      .select("*")
+      .eq("id", vmId)
+      .single();
+    if (vmRow?.assigned_to) {
+      await wakeIfHibernating(supabase, vmRow.assigned_to, "billing/webhook:credit_pack");
+      // Defense-in-depth: clear any stale auth-profiles cache. Credit-pack
+      // users typically don't have Stripe-billing failureState, but a user
+      // mixing tiers + credits could; cheap to clear, prevents future loop.
+      await clearStaleAuthCacheForUser(supabase, vmRow.assigned_to, "billing/webhook:credit_pack");
+    }
+  } catch (err) {
+    logger.error("Credit pack: wakeIfHibernating threw", {
+      route: "billing/webhook", vmId, error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -694,6 +720,37 @@ async function processEvent(event: any) {
             error: err instanceof Error ? err.message : String(err),
           });
         }
+
+        // Fix A: wake any hibernating VM on subscription reactivation.
+        // The frozen→thawVM block above only handles the deeper "frozen"
+        // state (Linode instance deleted, snapshot only). Hibernating VMs
+        // (gateway stopped, Linode instance still running) need a separate
+        // path or they stay asleep forever after a customer resubscribes.
+        // RCA: docs/wake-from-hibernation-bug-2026-05-02.md
+        try {
+          const { data: subRowForWake } = await supabase
+            .from("instaclaw_subscriptions")
+            .select("user_id")
+            .eq("stripe_customer_id", customerId)
+            .single();
+          if (subRowForWake?.user_id) {
+            await wakeIfHibernating(supabase, subRowForWake.user_id, "billing/webhook:subscription.updated");
+
+            // After wake, proactively clear stale auth-profiles.json cache.
+            // The Anthropic SDK caches billing-failure state under
+            // failureState/disabledUntil keys; if we don't clear it now,
+            // the asynchronous health-check cleaner will fire and its
+            // systemctl-restart can leave the gateway dead (Doug Rathell
+            // 2026-05-02 incident). Best-effort, never throws.
+            await clearStaleAuthCacheForUser(supabase, subRowForWake.user_id, "billing/webhook:subscription.updated");
+          }
+        } catch (err) {
+          logger.error("billing/webhook: wakeIfHibernating/clearStaleAuthCache threw", {
+            route: "billing/webhook",
+            customerId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       break;
@@ -869,13 +926,35 @@ async function processEvent(event: any) {
         // If they were past_due AND subscription is still active, restart their VM if suspended.
         // A canceled subscription can still have a final invoice payment — don't restart in that case.
         if (sub.payment_status === "past_due" && sub.status === "active") {
+          // Fix B continuation: clear stale auth-profiles cache for every
+          // past_due→active recovery, regardless of VM state. Even a VM
+          // that's currently "healthy" can have stale failureState in
+          // auth-profiles.json that the health-check cleaner will then
+          // try to clear via systemctl restart — and the restart can fail
+          // silently. Pre-emptively clearing here closes that window.
+          // Best-effort, never throws.
+          try {
+            await clearStaleAuthCacheForUser(supabase, sub.user_id, "billing/webhook:payment_succeeded:preemptive");
+          } catch (cacheErr) {
+            logger.error("billing/webhook: preemptive cache clear threw", {
+              route: "billing/webhook", userId: sub.user_id, error: cacheErr instanceof Error ? cacheErr.message : String(cacheErr),
+            });
+          }
+
           const { data: vm } = await supabase
             .from("instaclaw_vms")
             .select("id, health_status")
             .eq("assigned_to", sub.user_id)
             .single();
 
-          if (vm?.health_status === "suspended") {
+          // Fix B: also wake hibernating VMs on payment_succeeded.
+          // Two crons set different state names for the same condition:
+          //   cron/health-check past_due path → "suspended"
+          //   cron/suspend-check past_due path → "hibernating"
+          // Before this fix, only "suspended" got woken — hibernating
+          // customers stayed asleep after their payment recovered.
+          // RCA: docs/wake-from-hibernation-bug-2026-05-02.md
+          if (vm?.health_status === "suspended" || vm?.health_status === "hibernating") {
             // Restart gateway directly (replaces unreliable fire-and-forget fetch)
             const { data: fullVm } = await supabase
               .from("instaclaw_vms").select("*").eq("id", vm.id).single();
@@ -890,9 +969,12 @@ async function processEvent(event: any) {
                     last_health_check: new Date().toISOString(),
                   }).eq("id", fullVm.id);
 
-                  logger.info("Reactivated suspended VM on payment success", {
-                    route: "billing/webhook", userId: sub.user_id, vmId: fullVm.id,
+                  logger.info("Reactivated VM on payment success", {
+                    route: "billing/webhook", userId: sub.user_id, vmId: fullVm.id, priorState: vm.health_status,
                   });
+                  // Note: stale auth-profiles cache was already cleared
+                  // pre-emptively above (outside the if-suspended block)
+                  // so the restarted gateway sees a clean cache.
                 }
               } catch (err) {
                 logger.error("Failed to restart suspended VM on payment success", {

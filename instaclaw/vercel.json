@@ -64,6 +64,14 @@
     {
       "path": "/api/cron/poll-delegation-confirmations",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/watchdog",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/wake-paid-hibernating",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

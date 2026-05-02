@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireSession, signProxyToken } from "@/lib/auth";
 import { supabase, getAgentStatus } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
@@ -66,6 +66,29 @@ export async function POST(req: NextRequest) {
         p_vm_id: agent.id,
         p_credits: payment.credits,
       });
+
+      // Fix C: wake the VM if it was hibernating after a credit reload.
+      // instaclaw_add_credits only touches credit_balance — it has no idea
+      // about gateway state. Without this, WLD users who topped up after
+      // credit depletion stayed asleep indefinitely.
+      // RCA: instaclaw/docs/wake-from-hibernation-bug-2026-05-02.md
+      //
+      // Best-effort: never fail the response if the wake fails. Credits
+      // are already added; the defensive reconciler cron heals stranded
+      // VMs within 15 min as the safety net.
+      try {
+        const apiUrl = process.env.INSTACLAW_API_URL || "https://instaclaw.io";
+        const proxyToken = await signProxyToken(session.userId);
+        await fetch(`${apiUrl}/api/internal/wake-vm`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Mini-App-Token": proxyToken,
+          },
+        }).catch(() => {});
+      } catch (wakeErr) {
+        console.error("pay/confirm: wake-vm call failed", wakeErr);
+      }
     }
 
     const newBalance = agent

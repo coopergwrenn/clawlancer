@@ -578,12 +578,34 @@ else:
           healthy++;
           healthyVmIds.add(vm.id);
         } else {
-          // Both SSH-based check and direct HTTP failed — restart
-          try {
-            await restartGateway(vm);
-            restarted++;
-          } catch (err) {
-            logger.error("Failed to restart gateway", { error: String(err), route: "cron/health-check", vmId: vm.id });
+          // Both SSH-based check and direct HTTP failed — restart.
+          //
+          // Watchdog v2 migration: this restart path is the source of the
+          // "restart healthy agents every 6 minutes" bug (no time-based
+          // threshold, no cooldown, no audit trail). Watchdog v2 (cron/watchdog)
+          // owns restart decisions correctly. While v2 is in shadow mode,
+          // v1 still runs. Once Cooper sets WATCHDOG_V2_MODE=active in Vercel,
+          // this restart path should be disabled by setting
+          // WATCHDOG_V1_RESTART_ENABLED=false (default true for safety).
+          //
+          // The gating is intentionally OPT-OUT: shipping the v1 disable
+          // requires an explicit env var flip, never silent.
+          // RCA: docs/wake-from-hibernation-bug-2026-05-02.md
+          // Spec: docs/watchdog-v2-and-wake-reconciler-design.md
+          if (process.env.WATCHDOG_V1_RESTART_ENABLED !== "false") {
+            try {
+              await restartGateway(vm);
+              restarted++;
+            } catch (err) {
+              logger.error("Failed to restart gateway", { error: String(err), route: "cron/health-check", vmId: vm.id });
+            }
+          } else {
+            logger.info("v1 restart skipped — watchdog v2 owns restarts (WATCHDOG_V1_RESTART_ENABLED=false)", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+              failCount: newFailCount,
+            });
           }
         }
 
