@@ -194,7 +194,7 @@ You have multiple wallets. **Never mix them. Never fabricate addresses from memo
 | Activity | Wallet | How to access |
 |----------|--------|---------------|
 | Crypto trading, swaps, transfers, fee claims (EVM) | **Bankr** | \`bankr\` skill (auth via \`BANKR_API_KEY\` in \`~/.openclaw/.env\`) |
-| Token launch (Base mainnet only — never Solana, never Clanker) | **Bankr** | \`bankr launch\` via \`bankr/SKILL.md\` |
+| Token launch (Base mainnet only — never Solana, never Clanker) | **Bankr** | \`bankr launch\` via \`~/.openclaw/skills/bankr/bankr/SKILL.md\` |
 | Price/chart of your own token | **Bankr** | \`python3 ~/scripts/token-price.py\` (reads \`BANKR_TOKEN_ADDRESS\`) |
 | Clawlancer bounties | **Oracle** | Platform handles signing — no wallet action needed |
 | Virtuals ACP + DegenClaw | **Virtuals** | \`cd ~/virtuals-protocol-acp && npx tsx bin/acp.ts whoami --json\` |
@@ -466,14 +466,14 @@ When the user mentions any of these topics, **run the corresponding script FIRST
 | kalshi, regulated market | \`python3 ~/scripts/kalshi-portfolio.py summary\` |
 | browse markets, trending, hot markets, market scan | \`python3 ~/scripts/polymarket-search.py trending\` |
 | buy, sell, trade, place order (prediction markets) | Read \`~/.openclaw/skills/prediction-markets/SKILL.md\` first, then execute |
-| **launch a token, deploy a token, create a token, mint a token** | **Token launches deploy on Base mainnet via \`bankr launch\`. NEVER Solana, NEVER Clanker.** Read \`~/.openclaw/skills/bankr/SKILL.md\` for the launch flow. |
+| **launch a token, deploy a token, create a token, mint a token** | **Token launches deploy on Base mainnet via \`bankr launch\`. NEVER Solana, NEVER Clanker.** Read \`~/.openclaw/skills/bankr/bankr/SKILL.md\` for the launch flow. |
 | price of my token, my token chart, "how is $X doing", my token price | \`python3 ~/scripts/token-price.py\` (reads \`BANKR_TOKEN_ADDRESS\` from \`~/.openclaw/.env\`) |
 | bankr, bankr wallet, bankr balance, bankr swap | Use the **bankr skill**. Check WALLET.md for your Bankr address. |
 | solana, jupiter, swap, defi | \`python3 ~/scripts/solana-trade.py balance\` |
 | which wallet, what wallet, my wallet, wallet address | Read WALLET.md — lists all wallets and their purposes |
 | set up polymarket, set up kalshi, start trading, configure trading | Read \`~/.openclaw/skills/prediction-markets/SKILL.md\` FIRST. NEVER build custom scripts. |
 | trading competition, Hyperliquid perps, DegenClaw, $100K challenge | Read \`~/.openclaw/skills/dgclaw/SKILL.md\`. Always get explicit user approval before launching tokens or executing trades. |
-| Edge City, EdgeOS, Esmeralda | Read \`~/.openclaw/skills/edge-esmeralda/SKILL.md\`. |
+| Edge City, EdgeOS, Esmeralda | Use the **edge-esmeralda** skill (only installed on \`edge_city\` partner VMs; if absent, tell user this VM isn't an Edge City partner instance). |
 | earn, money, side hustle, freelance | Read \`~/.openclaw/workspace/EARN.md\`. |
 | what can you do, list capabilities, your features | Read \`~/.openclaw/workspace/CAPABILITIES.md\` and present the categorized list. NEVER just dump \`mcporter list\` output. |
 | on my computer, my desktop, my screen, "open [app]", "take a screenshot of my screen", "in my browser" | Try the appropriate dispatch script (see TOOLS.md → Dispatch). If error "not connected": tell user to enable at \`instaclaw.io/settings\`. |
@@ -748,9 +748,9 @@ cat ~/.openclaw/skills/<name>/SKILL.md          # learn the official flow
 
 ### Specific skill pointers
 
-- **bankr** — token launches on Base, EVM trading, fee claims. Read \`~/.openclaw/skills/bankr/SKILL.md\` for the launch flow. Wallet info in WALLET.md. NEVER use Solana for token launches.
+- **bankr** — token launches on Base, EVM trading, fee claims. Read \`~/.openclaw/skills/bankr/bankr/SKILL.md\` for the launch flow. Wallet info in WALLET.md. NEVER use Solana for token launches.
 - **dgclaw** — DegenClaw $100K weekly Hyperliquid perps trading competition by Virtuals Protocol. Read \`~/.openclaw/skills/dgclaw/SKILL.md\`. Always get explicit user approval before launching tokens or trades.
-- **edge-esmeralda** — Edge City partner integration (EdgeOS, Esmeralda residency). Read \`~/.openclaw/skills/edge-esmeralda/SKILL.md\`.
+- **edge-esmeralda** — Edge City partner integration (EdgeOS, Esmeralda residency). Only installed on \`edge_city\` partner VMs; skill content auto-loads when present.
 - **prediction-markets** — Polymarket + Kalshi. Read \`~/.openclaw/skills/prediction-markets/SKILL.md\`. NEVER build custom trading scripts.
 - **solana-defi** — Solana DeFi via Jupiter & PumpPortal. Use \`~/scripts/solana-*.py\`.
 
