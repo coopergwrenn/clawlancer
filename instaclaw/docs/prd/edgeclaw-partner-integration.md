@@ -1,10 +1,38 @@
 # PRD: EdgeClaw — Partner Integration for Edge Esmeralda 2026
 
-**Status:** Draft
+**Status:** Draft (revised 2026-05-01 after working session with Timour + Edge team)
 **Author:** Cooper / Claude
-**Date:** 2026-04-09
+**Date:** 2026-04-09 (initial), 2026-05-01 (architecture revision)
 **Event dates:** 2026-05-30 to 2026-06-27 (4 weeks)
 **Scale:** 500-1,000 attendees
+
+---
+
+## Revision Log
+
+**2026-05-01 — Architecture revision after Edge City working session**
+
+The 2026-05-01 sync with Timour + Edge team produced enough new architectural decisions to justify a major revision. Key changes:
+
+| Area | Change | Section |
+|---|---|---|
+| User paths | Three-path architecture (hosted / terminal / BYO-package) replacing single-path assumption | § 3.5 (NEW) |
+| Index Network | Architecture corrected: separate negotiator agent, user agent invokes/routes to Index (not direct caller) | § 4.9.1 (REWRITE) |
+| Index Network | Plan B: centralized matching engine fallback if Index isn't shipped by May 23 | § 4.15 (NEW) |
+| Notifications | Priority queue (P0–P3) replaces scripted-vs-autonomous dichotomy | § 4.9.2.5 (NEW) |
+| Messaging | Agent-mediated vs system-mediated channel split + cross-system dedup | § 4.13 (NEW) |
+| Onboarding | Pre-deployment placeholder-shell pattern: the "chatbot" IS the user's agent (no handoff) | § 5.0 (NEW, supersedes § 5.3 separate-chatbot proposal) |
+| Branding | edgecity.live/agent-village → instaclaw.io/edge-city redirect; pre-signup pure Edge brand | § 5.1 (UPDATE) |
+| Plaza | Live Activity Dashboard v0 (real-time scrolling feed of actual agent activity); 2D viz becomes v1 | § 4.14 (NEW) |
+| Resilience | Operational kill switch, sponsor-failure plan, privacy-mode audit log | § 4.16 (NEW) |
+| Continuity | Encrypted memory backup/restore for disaster recovery + user portability | § 4.17 (NEW) |
+| Cohort design | Time-staggered feature rollout for clean treatment/control without "bad cohort" complaints | § 4.18 (NEW) |
+| Scale | Anthropic rate-limit staggering, intro aggregation rule (top-K not N) | § 4.19 (NEW) |
+| Research | Pick-list of novel experiments — micropayments, pulse polling, "what would your agent say" | § 4.20 (NEW) |
+| Timeline | Ship target shifted: May 15 = core experience; May 22 = Path B/C; May 30 = launch | § 11 (UPDATE) |
+| Open Qs | Q35–Q44 added; specific decisions blocking specific work | § 8 (UPDATE) |
+
+The original sections (1–11) are preserved; new content is additive. Where a section is partially superseded, the deprecated content is marked inline with `(deprecated 2026-05-01 — see § X)`.
 
 ---
 
@@ -138,6 +166,78 @@ Three markdown files refreshed every 15 min by GitHub Actions indexer:
 | Morning briefing | Cooper (Telegram integration) | Agent compiles matches + events, messages human before they wake up |
 | Governance voting | Cooper + Tule + Protocol Labs | Proposals broadcast via XMTP, agents surface to humans, cast votes |
 | Group coordination | Cooper + Tule | Agents form dinner groups, activity groups, study groups via XMTP |
+
+### 3.5 Three User Paths *(added 2026-05-01)*
+
+The 2026-05-01 sync with Timour established three distinct cohorts and three matching infrastructure paths. Each path delivers the same Edge skill capability set with different operational burden.
+
+| Path | Audience | Where the agent runs | Setup burden | Scale focus |
+|------|----------|----------------------|--------------|-------------|
+| **A. Hosted InstaClaw** *(default)* | Non-technical attendees, vast majority | Dedicated VM on InstaClaw fleet | Lowest — sign up, claim, get a Telegram bot | The 500-attendee village |
+| **B. Terminal / self-serve** | Technical users running their own dev environment | OpenClaw running locally on user's machine | Medium — install OpenClaw + paste config | Engineers, advanced researchers |
+| **C. BYO-agent package** | Builders with an existing Claw/Hermes-style agent | Their existing runtime | Medium — drop the package into their stack | External builders, the broader inbound interest from Edge's blog post |
+
+**Minimum-viable requirement (from the meeting):** Path A *must* be rock-solid. If hosted InstaClaw isn't reliable, we're sending users to set up their own environment instead — much worse adoption story. Cooper committed to having Path A solid within "the next couple days" (the same timeline he needs it solid for his own use). The recent OpenClaw 2026.4.26 fleet incident is the proximate context (CLAUDE.md OpenClaw Upgrade Playbook).
+
+#### 3.5.1 Edge Compatibility Contract
+
+Rather than three diverging implementations, all paths satisfy a single shared interface. This makes the Edge integration *partner-agnostic at the agent runtime layer* — useful immediately for B and C, and reusable for future partners (Eclipse, Devcon).
+
+The contract has four surfaces:
+
+```
+┌─ EDGE COMPATIBILITY CONTRACT ──────────────────────────────────┐
+│                                                                │
+│  1. Skill content                                              │
+│     SKILL.md + reference docs (newsletter, website, wiki).     │
+│     Any Edge-compatible agent loads this content into its      │
+│     skill-loading mechanism.                                   │
+│                                                                │
+│  2. Auth interface                                             │
+│     EDGEOS_BEARER_TOKEN  → Attendee Directory API              │
+│     SOLA_AUTH_TOKEN      → Social Layer (event schedule)       │
+│     Per-participant, scoped, rotatable. Stored as the agent    │
+│     runtime's standard env-var mechanism.                      │
+│                                                                │
+│  3. Index routing surface                                      │
+│     One callable primitive: route_intent(intent, context).     │
+│     Agent invokes when it decides Index should handle a        │
+│     request (matchmaking, group formation, opportunity         │
+│     discovery). See § 4.9.1 for the negotiator pattern.        │
+│                                                                │
+│  4. Memory interface                                           │
+│     A read/write key-value surface for agent memory.           │
+│     Path A: ~/.openclaw/workspace/ files                       │
+│     Path B: same convention, local filesystem                  │
+│     Path C: whatever the host runtime provides; agent must     │
+│              expose conformant read/write helpers              │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Path-conformance test.** A small test suite — call it `edge-conformance` — that any Path B/C deployment can run against itself to verify compatibility. It exercises each contract surface (load the skill content, hit each API with a known token, route a test intent, write/read a memory entry). Returns pass/fail per surface. Builders can submit conformance results when registering their agent with the Edge community.
+
+**Why this matters for a curated marketplace.** The meeting raised the safety concern that public skill ecosystems attract malware. A curated Edge marketplace can require conformance-test-pass + community vetting before listing. Conformance is the gating step that keeps the marketplace from becoming free-for-all.
+
+#### 3.5.2 Path-specific deliverables
+
+**Path A** (already built — Phase 0 + 1 + 1b + 1e):
+- /edge-city portal, ticket validation, configureOpenClaw partner-gated install, EDGEOS + SOLA env vars, SOUL.md edge section. Verified live on vm-354 + vm-780.
+
+**Path B** (new — target May 22):
+- `npx @instaclaw/edge-cli setup` — single-command bootstrap. Pulls the skill content from `aromeoes/edge-agent-skill`, writes auth env-vars (prompts the user for their issued tokens), wires Index routing surface, configures memory directory.
+- Documentation: a 2-page quickstart at `instaclaw.io/edge-city/self-serve`.
+
+**Path C** (new — target May 22):
+- A versioned bundle at `github.com/coopergwrenn/edge-compatibility-pack` (or equivalent) containing:
+  - `SKILL.md` + reference docs (kept in sync with `aromeoes/edge-agent-skill` upstream)
+  - `auth/` — example `.env.template` + token-fetch instructions
+  - `routing/` — reference `route_intent()` implementation with examples for common agent runtimes (Claude Code SDK, OpenAI Assistants, Hermes-style)
+  - `memory/` — reference helpers for the read/write surface
+  - `conformance/` — the `edge-conformance` test runner
+- Distribution: GitHub release with checksummed tarball + npm package.
+
+**Open question (Q35):** Final distribution channel for Path C — GitHub release tarball, npm package, both, or a custom CLI installer? (Recommended: tarball + npm. Tarball is universal; npm is what builders running JavaScript expect.)
 
 ---
 
@@ -351,41 +451,56 @@ XMTP is the communication layer for all agent-to-agent interaction. It replaces 
 ```
 
 - **Telegram** = human <-> agent (user-facing, existing, unchanged)
-- **Index Network** = agent <-> matching engine (backend, new) — every agent submits availability signals here; receives ranked candidates back
+- **Index Network** = agent <-> matching engine (backend, new) — see the corrected architecture below
 - **XMTP** = agent <-> agent (backend, new) — encrypted DMs between specific agents to negotiate the actual intro / RSVP / coordination
-- The agent bridges all three layers: queries Index Network for *who to talk to*, uses XMTP to *talk to them*, and surfaces resulting plans to its human via Telegram
+- The agent bridges all three layers: routes intents to Index Network, uses XMTP to *talk to* counterparts, and surfaces resulting plans to its human via Telegram
 
-Updated layered diagram including the matching layer:
+**Architectural correction (2026-05-01 sync with Edge team):** the user-facing agent does NOT directly perform decentralized negotiation against Index Network. Index Network operates a **separate negotiator agent per user** that handles intent publication, discovery, and background negotiation with other users' negotiators. This is because fully decentralized live negotiation has latency, model, and protocol complexity that isn't production-ready yet — Index's centralized-negotiator design is the bridge.
 
 ```
- ┌─────────────────────────────────────────────────────┐
- │                   HUMAN WORLD                        │
- │   Attendee A          Attendee B          ...        │
- │      │                    │                          │
- │      │ Telegram           │ Telegram                 │
- │      ▼                    ▼                          │
- ├─────────────────────────────────────────────────────┤
- │                   AGENT LAYER                        │
- │                                                      │
- │   Agent A                              Agent B       │
- │      │                                    │          │
- │      │ submit_signal() / get_matches()    │          │
- │      ▼                                    ▼          │
- │  [Index Network — semantic matching engine]          │
- │      │                                    │          │
- │      │ ranked candidates                  │          │
- │      ▼                                    ▼          │
- │   Agent A ◄──── XMTP DM ────► Agent B               │
- │      │            (intro proposal/response)          │
- │      │                                    │          │
- │      ▼                                    ▼          │
- │  XMTP groups: ee26-plaza, ee26-governance, ...       │
- │      │                                    │          │
- │   [VM-A]                              [VM-B]         │
- └─────────────────────────────────────────────────────┘
+ ┌─────────────────────────────────────────────────────────┐
+ │                       HUMAN WORLD                        │
+ │   Attendee A          Attendee B                         │
+ │      │                    │                              │
+ │      │ Telegram           │ Telegram                     │
+ │      ▼                    ▼                              │
+ ├─────────────────────────────────────────────────────────┤
+ │                    USER AGENT LAYER                      │
+ │   Agent A (InstaClaw)        Agent B (InstaClaw)         │
+ │      │                            │                      │
+ │      │ route_intent(intent, ctx)  │ route_intent(...)    │
+ │      ▼                            ▼                      │
+ ├─────────────────────────────────────────────────────────┤
+ │              NEGOTIATION LAYER (Index Network)           │
+ │   Negotiator-A ◄── intents / outcomes ──► Negotiator-B   │
+ │       (publishes opportunities, discovers others,        │
+ │        negotiates in background, returns outcomes        │
+ │        to the user agent for presentation to human)      │
+ ├─────────────────────────────────────────────────────────┤
+ │           AGENT-TO-AGENT MESSAGING (XMTP)                │
+ │   Agent A ◄── encrypted DMs ──► Agent B                  │
+ │   (post-discovery: intro proposals, group formation,     │
+ │    governance votes, RSVPs)                              │
+ └─────────────────────────────────────────────────────────┘
 ```
 
-The flow each night: signal → Index Network ranks → top candidates → XMTP DMs to negotiate → confirmed matches → morning briefing via Telegram.
+**Layer responsibilities:**
+- **User agent** — invokes Index via `route_intent()`, surfaces outcomes to the human, brokers the actual XMTP conversation post-discovery
+- **Index negotiator** — owned by Index team, runs alongside but independent of the user agent. Handles the intent-publication and background-negotiation primitives
+- **XMTP** — the encrypted handshake between two specific user agents, after the negotiator surfaces a candidate
+
+**Routing decision — when does the user agent invoke Index?** This is deliberate *unresolved* product work that Cooper committed to thinking through:
+- Keyword/request-type triggers ("find someone who…", "introduce me to…", "what's happening in [topic] this week")
+- Implicit triggers from ambient context (the agent notices the user keeps mentioning a topic and routes to Index without being asked)
+- Whether negotiation is broad (any outcome type) or narrow (today: only "opportunities"; future: governance, group formation, etc.)
+
+**Implication for the signal-schema spec** (`docs/prd/index-network-signal-schema-spec.md`): the wire format is still correct, but the *caller* is the negotiator agent, not the user agent. The user agent's interaction surface with Index is the higher-level `route_intent()` — see § 3.5.1 (Edge Compatibility Contract). The signal-schema spec needs an addendum.
+
+**Open question (Q36):** Routing trigger policy. Owner: Cooper. Decision needed before Index integration ships in Phase 3.
+
+The flow each night under this architecture: user agent surfaces today's intents to its negotiator → negotiators negotiate overnight → outcomes return to user agents → user agents open XMTP DMs with matched counterparts → confirmed matches roll up into the morning briefing.
+
+> **DEPRECATED 2026-05-01:** the original Section 4.9.1 implied user agents call `submit_signal()` and `get_matches()` directly. That description is wrong; the negotiator-agent pattern above is the correct architecture. The wire format documented in `index-network-signal-schema-spec.md` is unchanged, but the caller is the per-user negotiator, not the user-facing agent.
 
 #### 4.9.2 The Overnight Planning Cycle (Killer Feature)
 
@@ -494,6 +609,34 @@ Each agent compiles all confirmed matches, relevant events, and governance items
 0  5 * * *  — Aggregate confirmed matches, compile morning briefing
 0  7 * * *  — Send morning briefing via Telegram
 ```
+
+**Stagger across the fleet (added 2026-05-01).** Firing all 500 agents at the same minute creates a model-rate-limit spike (see § 4.19). Each cron runs with a per-agent jitter: actual fire time = nominal + `hash(agent_id) % 60` minutes. Spreads the 500-agent thundering herd over a 1-hour window for each cron. Cost-neutral, capacity-friendly, doesn't change UX (briefings still arrive between 7:00–7:59am local).
+
+#### 4.9.2.5 Notification Cadence Design *(added 2026-05-01)*
+
+The Edge team's UX target: one good-morning message + up to 3 ambient notifications + clear total daily cap. The original architecture options (scripted-vs-autonomous) were a false dichotomy. The right design is a **priority queue per agent** with cap-bypass for genuinely urgent items.
+
+**Priority levels:**
+
+| Priority | Definition | Cap behavior |
+|---|---|---|
+| **P0 — Time-critical, high-stakes** | Governance vote closing in < 2h, intro proposal that expires today, security alert. | **Bypasses daily cap.** Always sent. Rare by design. |
+| **P1 — Time-sensitive, normal** | Today's morning briefing, today's intros, today's session reminders. | Counts against daily cap (max 4 ambient + 1 briefing). |
+| **P2 — Aspirational, near-term** | "You might want to attend X tomorrow." | Counts; can be batched into the next P1 if cap is full. |
+| **P3 — Background** | System updates, week-summary roll-ups. | Never sent on its own. Aggregated into the next P1/P2 message. |
+
+**Why this beats Option A vs B:**
+- Captures the "scripted predictability" of Option A: P1 + P2 messages live within the cap, predictable token cost.
+- Captures the "agent-driven relevance" of Option B: P0 lets the agent surface genuinely-urgent stuff without blowing through cap.
+- Failure mode is bounded: a buggy agent can spam P0 only by lying about urgency (we can audit by sampling P0 reasons).
+
+**Mandatory guardrails:**
+- Hard heartbeat-frequency floor: 5-minute minimum at the OpenClaw config layer. Users *cannot* configure 30-second heartbeats.
+- Dashboard shows "your current cadence costs ~$X/day" before the user can raise it.
+- P0 messages must include a structured `urgency_reason` that gets logged for audit. Sample 1% post-village to verify P0 isn't being abused.
+- P0 daily count visible in the privacy mode audit log (§ 4.16).
+
+**Open question (Q37):** Initial thresholds — should P1 start at 4 ambient + 1 briefing, or stricter (2 ambient + 1 briefing)? Owner: Cooper + Timour. Default to stricter for v1; widen post-village if usage suggests headroom.
 
 #### 4.9.3 Additional XMTP Use Cases
 
@@ -1032,15 +1175,331 @@ For EE26 specifically, both paths are exercised:
 
 Per CLAUDE.md Rule 7, every manifest version bump triggers a check: snapshot vs. manifest delta — if the snapshot is more than 3 versions stale, bake a new snapshot before a large provisioning run.
 
+### 4.13 Messaging Integrity — One Voice Across Systems *(added 2026-05-01)*
+
+A recurring concern from the 2026-05-01 sync: if Geo, Index, InstaClaw, and Edge City all message attendees independently, the user experience fragments. The product feels less like *your* personal agent and more like a notification firehose from four vendors.
+
+**The principle.** The user agent is the *only* entity that initiates outbound communication to the user, *with one exception below*. Every external system routes through the user agent's inbox; the agent decides relevance, timing, phrasing.
+
+**Two channels — agent-mediated vs. system-mediated:**
+
+| Channel | Triggers | Examples | Routing |
+|---|---|---|---|
+| **Agent-mediated** *(default)* | Anything an external system wants to communicate | Edge City event reminders, Index Network outcomes, Geo context updates, InstaClaw skill announcements | Deposited into agent's inbox; agent applies cadence cap (§ 4.9.2.5), filters by relevance, phrases in agent's voice |
+| **System-mediated** *(emergencies only)* | Account compromise, billing failure, security alert | "Your wallet is being drained — confirm now" | Direct push from InstaClaw platform to user (Telegram), bypasses agent |
+
+The system-mediated channel is the iOS-system-notification analogue: the OS can override apps for genuinely critical things. We don't send a "billing failed" alert through the agent's voice because the agent itself might be compromised in the failure mode that matters most.
+
+**External-system inbox protocol.** All external systems (Geo, Index, EdgeOS, etc.) deposit messages as JSONL records in the agent's `~/.openclaw/inbox/<source>/` directory:
+
+```jsonl
+{
+  "id": "geo-evt-2026-05-15-1234",        // idempotency key (stable per logical event)
+  "source": "geo.community-knowledge",
+  "received_at": "2026-05-15T18:42:00Z",
+  "kind": "context_update",                // or "intro_proposal", "event_reminder"...
+  "priority_hint": "P2",                   // sender's hint; agent has final say
+  "expires_at": "2026-05-16T00:00:00Z",
+  "payload": { ... }                       // source-specific
+}
+```
+
+**Cross-system idempotency.** When Edge says "your session starts in 1h" and Geo says the same — both with the same logical event ID — the agent dedupes. The `id` field is stable per logical event so multiple sources reporting the same thing collapse to one notification.
+
+**What this rules out.** No partner sends direct Telegram messages outside the user agent's voice. This includes auto-generated event reminders, push notifications from external matching services, and welcome blasts from new partners that join the ecosystem. Partners who want to communicate with users do so by depositing into the inbox.
+
+**Open question (Q38):** Inbox file format — JSONL (working assumption above) vs. a more structured DB-backed queue. JSONL is simpler, works without DB access, matches the existing XMTP inbox pattern. Recommend ship as JSONL for v1.
+
+### 4.14 The Plaza — Live Activity Dashboard (v0) and 2D Visualization (v1) *(added 2026-05-01)*
+
+The 2026-05-01 sync surfaced a "plaza" concept — a visible layer on top of the chat-only UX. Cooper's original framing: a 2D Pokemon-like realm with agents walking around. After the deeper-thinking pass, **the v0 is a Live Activity Dashboard, not a game engine.** The 2D viz is a v1 aspiration.
+
+**Why the dashboard wins as v0.**
+
+The product caveat from the meeting was *non-negotiable*: agents must move with real intent, not fake choreography. A 2D realm has constant pressure to fake motion — "agents need to look alive between events" — that pulls toward dishonesty. A dashboard has the opposite property: it can *only* render real activity, because activity is its source data.
+
+**Dashboard concept (v0):**
+
+```
+─── Edge Esmeralda ── Live Plaza ─────────────────────────────────
+
+⚡ Right now: 47 active conversations · 12 intros forming · 3 dinners forming
+
+Recent activity (last 60 min)
+   ▸ 9:42pm  Sarah's agent and Jamie's agent matched on "biotech founders"
+   ▸ 9:38pm  6-person group forming around "sunset hike tomorrow"
+   ▸ 9:31pm  Alex's agent surfaced governance proposal #7 to 23 humans
+   ▸ 9:23pm  12 agents joined the "AI ethics" plaza topic
+   ▸ 9:18pm  Maya's agent declined an intro proposal (low score)
+   ...
+
+Top topics this week
+   1. AI governance       ███████████  87 active intents
+   2. Biotech / longevity ████████      62
+   3. Decentralized infra ██████        54
+   ...
+
+Tonight's overnight planning kicks off in 23 min.
+```
+
+**Properties:**
+- **Real data, no choreography.** The dashboard queries the actual research export tables (`agent_signals`, `match_outcomes`, `governance_events`). Nothing rendered without a backing event.
+- **Naturally shareable.** People screenshot live counts; the experience travels.
+- **Implementable in days.** Server-rendered HTML + a 5-second polling refresh + Tailwind. Two days end-to-end.
+- **Anonymized public version.** Same dashboard with `agent_id` shown as "Agent #047" can be embedded on the Edge City public site so non-attendees feel the village happening.
+- **Doubles as a research instrument.** The dashboard *is* the live view of the data the researchers will analyze post-village. Vendrov gets a visualizer for free.
+
+**v1 — 2D plaza (post-launch).** Pokemon-like 2D realm with agent avatars. Inherits the same data source — agents only "walk" when they actually negotiated something — so the no-fake-motion principle extends naturally. Philip Rosedale specifically expressed interest. Out of scope for May 30; revisit late June for a possible week-3-or-4 reveal as a wow moment.
+
+**Open question (Q40):** Does the dashboard go live at edgecity.live as a public artifact (anonymized), or stay private to attendees? Recommend public-anonymized; it's a marketing artifact in addition to a product feature.
+
+### 4.15 Plan B — Centralized Matching Fallback *(added 2026-05-01)*
+
+The meeting acknowledged Index Network's negotiator infrastructure isn't production-ready yet. The PRD shouldn't bet the entire matchmaking story on a partner's external timeline. **Plan B is a feature-flagged centralized fallback that ships alongside Index integration.**
+
+**Architecture.** Identical wire format to Index — same `route_intent()` surface (§ 3.5.1), same outcome shape returned. The only difference is that the negotiator runs centrally on InstaClaw infrastructure instead of as a per-user agent on Index's side.
+
+```
+                ROUTE_INTENT INTERFACE (stable)
+                    ▲                  ▲
+                    │                  │
+            ┌───────┴──────┐    ┌──────┴──────┐
+            │              │    │             │
+       [Index Network]    OR    [InstaClaw    ]
+       Per-user negotiators     Centralized
+       (Plan A)                 matching engine
+                                (Plan B)
+```
+
+**Plan B implementation:**
+- Daily batch cron at 3am: read all `agent_signals` from the last 24h
+- Compute embeddings (OpenAI text-embedding-3-small, $0.02 per 1M tokens — trivial cost)
+- Cosine similarity against every other signal in the village's active cohort
+- For each agent, take top-K candidates (K=5 default), apply per-recipient cap (§ 4.19), write outcome to that agent's `~/.openclaw/inbox/index/`
+- Returns the same outcome shape Index would return; user agent doesn't know the difference
+
+**Feature flag.** Single env var: `INDEX_NETWORK_MODE = "live" | "fallback"`. Each VM reads this on each cron tick. Flip is operator-only via reconciler config push, no agent code change required.
+
+**Decision rule (commitment).** If Index Network integration isn't end-to-end functional on canary by **May 23**, flip to Plan B for the May 30 launch. We can always migrate back to Index post-launch — the user-facing surface is identical.
+
+**Why this is genuinely good:**
+- Eliminates the partner-dependency risk for the most important feature
+- Plan B IS a publishable research artifact in its own right ("centralized AI-mediated matchmaking at residential-village scale")
+- Latency is actually better than fully decentralized (no negotiation round-trips)
+- Cost is negligible (~$50 for the entire village's embedding compute)
+
+**Trade-offs vs Plan A:**
+- Plan B has no real "negotiation" — it ranks once, surfaces results, done. No iterative bargaining, no Coasean dynamics. So hypothesis 3 (Coasean bargaining) only validates with Plan A.
+- Plan B keeps signal data on InstaClaw infrastructure (already covered by the research DPA); Plan A had it on Index infra (separate sub-processor agreement)
+
+**Open question (Q41):** What's the cohort design implication if we flip to Plan B mid-village? Probably we hold cohort assignments stable and report which engine ran each match in the export schema. Owner: Cooper + Vendrov.
+
+### 4.16 Operational Resilience *(added 2026-05-01)*
+
+What we ship to 500 attendees needs to *survive failure modes the meeting didn't surface*. Adding the missing operational primitives.
+
+**Disaster recovery — VM death mid-village.**
+- Memory backup: hourly cron exports `~/.openclaw/workspace/` and `~/.openclaw/memory/` to encrypted S3 (user holds the key — see § 4.17).
+- VM death detection: existing fleet-health cron flags unhealthy VMs.
+- Auto-restore: when a fresh VM is provisioned for the same user, configureOpenClaw downloads the most recent backup and restores before first boot. User's continuity preserved.
+
+**Privacy mode audit log.**
+- Every Support Mode toggle (§ 6.1) writes a row to `audit_log` with `who`, `when`, `vm_id`, `duration`, `reason`.
+- Cooper reviews weekly. Anomalies (e.g., one operator flipping Support Mode on dozens of accounts) are surfaced.
+- Sampled 5% of activations get an automatic email to the user: "your support mode was active from X to Y because Z" — keeps the operator honest by making the user aware.
+
+**Sponsor-funding failure plan.**
+- If sponsor pulls funding mid-village (Q22 risk), agents don't immediately stop. Instead:
+  - Token usage is rate-limited per agent (heartbeat frequency drops, briefing length shortens)
+  - Users are notified via system-mediated channel (§ 4.13): "your agent is running on reduced capacity due to a temporary funding gap; full service resumes when this is resolved"
+  - InstaClaw absorbs the cost ceiling for up to 7 days while a replacement sponsor is sought
+- Worst case: revert to BYO API key (existing InstaClaw default) — users provide their own Anthropic key.
+
+**Kill switch.**
+- One operator command at the platform level halts all 500 agents' outbound messages (Telegram + XMTP) for the duration of the kill.
+- Triggered by: confirmed privacy breach, runaway agent behavior detected by safety monitor, organizer-side request during an emergency.
+- Kill is reversible; logs are preserved.
+- Dry-run / test-on-canary path so the kill switch itself doesn't malfunction in a real emergency.
+
+**Open question (Q42):** Authority chain for the kill switch — Cooper alone, or Cooper + Timour both authorize? Recommend single-Cooper for emergency speed, with Timour notified within 5 min.
+
+### 4.17 Memory Continuity & Portability *(added 2026-05-01)*
+
+Agent memory is the source of all personalization. Today, memory lives only on the VM. Two failure modes follow:
+1. **Operational:** VM dies → memory lost → user starts over. The recent vm-773 wipe incident (CLAUDE.md bf46ee3d wipe-guard fix) was a different mechanism but the same fragility.
+2. **Strategic:** users feel locked in. The system isn't trustworthy if leaving means losing what your agent learned about you.
+
+**Solution — encrypted memory backup, user-keyed:**
+
+- Hourly cron on each VM writes `~/.openclaw/workspace/MEMORY.md` + `memory/*.md` to a tarball
+- Tarball encrypted with AES-256 using a key derived from the user's wallet signature (Bankr wallet, already provisioned)
+- Encrypted blob uploaded to InstaClaw-controlled S3 (or partner-controlled object store; configurable)
+- InstaClaw cannot decrypt. Only the user, with their wallet, can.
+
+**Restore paths:**
+- **Fresh VM provisioning** (post-disaster): user signs a challenge → server fetches their encrypted blob → decryption key derived from signature → memory restored before first boot
+- **Manual export** (portability): user requests download from dashboard → encrypted tarball + a one-line decryption recipe sent to their email. They can take it anywhere.
+- **Cross-platform restore** (future): Path B/C deployments can ingest the same blob format using the published decryption recipe.
+
+**Why this matters for research / paper-worthiness.** Memory portability is itself a publishable design pattern — *"agent memory as user-controlled data, agent runtime as fungible infrastructure."* It directly enables research on whether memory continuity changes user behavior across system migrations. Vendrov's hypothesis list could expand to include "personalization durability."
+
+**Open question (Q43):** Should the encrypted blob also include the agent's installed skills + scheduler config, or memory only? Recommend memory-only for v1 (smaller, faster, simpler decryption recipe). Skills + config go in Path B/C bundle separately.
+
+### 4.18 Cohort Design via Time-Staggered Rollout *(added 2026-05-01)*
+
+Vendrov's pre-registered hypotheses depend on having treatment/control cohorts. The standard approach (split the population) creates "I'm in the bad cohort" complaints in a small residential community where everyone talks to each other. **Time-staggered rollout creates clean experimental conditions without dividing the village socially.**
+
+**Pattern:**
+- Pre-register the rollout schedule publicly on day 1
+- Feature X is OFF for all attendees during week 1
+- Feature X turns ON for all attendees at start of week 2
+- All data from week 1 = control cohort; week 2+ = treatment cohort
+- By end of village, every attendee has had every feature
+
+**Concrete experimental schedule (proposed, finalize with Vendrov):**
+- Week 1 (May 30 – Jun 6): baseline. Agents have skill, calendar, attendee directory. NO matchmaking, NO governance.
+- Week 2 (Jun 6 – Jun 13): matchmaking enabled (Index or Plan B). Governance still off.
+- Week 3 (Jun 13 – Jun 20): governance + group formation enabled.
+- Week 4 (Jun 20 – Jun 27): all features enabled. Add experimental features (agent-to-agent micropayments? § 4.20) as they're ready.
+
+**Why this works:**
+- Every attendee gets the full feature set by end of village → no "bad cohort" feeling
+- Cohort transitions are clean (timestamp-based, no per-user assignment)
+- Pre-registration removes researcher-degrees-of-freedom critique
+- Allows graceful failure: if a feature is broken, push the rollout to the next week
+
+**Implication for the export schema (§ 4.10.3):** add a `feature_flags_active` column to `cohort_assignments` so each event can be associated with which features were live when it happened.
+
+**Open question (Q44):** Vendrov's blessing on the specific week-by-week schedule. Owner: Cooper + Vendrov. Decision needed by May 23 to leave time to pre-register publicly.
+
+### 4.19 Scale & Throughput Concerns *(added 2026-05-01)*
+
+A 500-attendee village creates failure modes nobody mentioned in the meeting. Inventory + mitigations:
+
+| Risk | Failure mode | Mitigation |
+|---|---|---|
+| **VM ready pool exhaustion** | Burst signups drain pool, new users hit "no VM available" | Raise `POOL_TARGET` to 50 starting May 20; monitor depletion daily; CLAUDE.md Rule 8 governs manual top-ups |
+| **Anthropic per-minute rate limit** | 500 agents firing the 11pm cron simultaneously hit per-minute output token cap | Stagger cron by `hash(agent_id) % 60` minutes (already in § 4.9.2); spreads spike over 1h |
+| **Telegram bot creation bottleneck** | Each user creates a bot via BotFather (rate-limited) | Pre-provision a pool of Telegram bots; user just signs in, gets assigned a bot; no per-user BotFather interaction |
+| **Stripe webhook flood** | 500 simultaneous checkouts produce a webhook spike | Existing Stripe handling is already idempotent + queued; verify capacity at 500 sustained-RPS |
+| **Index Network throughput** | 500 simultaneous `route_intent()` calls overwhelm Index's negotiator infra | Index team's responsibility; if not validated by May 23, flip to Plan B (§ 4.15) which has known capacity |
+| **Intro fan-in** | 23 different agents independently try to introduce someone to Person X | Intro aggregation rule (below) |
+
+**Intro aggregation rule (NEW principle).** *Never N notifications for N candidates.* Person X's agent receives a single ranked top-K list per day, not 23 independent intro proposals. Implementation:
+- Index negotiator (or Plan B engine) collects all incoming intro proposals for a recipient over the day
+- Ranks by mutual-match score
+- Surfaces top-K (default K=3) to the recipient agent at the briefing time
+- Lower-ranked proposals are recorded as `agent_action: "skipped_due_to_aggregation"` in the research export — actually publishable data
+
+This is the ONLY scalable way to do matchmaking in a 500-person community. Without it, popular attendees become unreachable behind notification storms.
+
+### 4.20 Novel Research Experiments — Pick List *(added 2026-05-01)*
+
+Beyond the five pre-registered hypotheses (§ 4.10.1), there are creative combinations of InstaClaw's existing primitives (Bankr wallets, World ID, Dispatch, skill marketplace, cross-skill agency) that could yield genuinely-unprecedented research artifacts. **This is a pick-list, not a commitment** — Cooper + Vendrov select 1–2 to ship for the village.
+
+| Experiment | Primitive used | Research question | Build cost | Paper-worthiness |
+|---|---|---|---|---|
+| **Agent-to-agent micropayments** | Bankr wallets | Do emergent agent-mediated micro-economies form in residential AI communities? Tipping for great intros, agent-pooled crowdfunding, micro-bidding | Medium (~1 week) | High — first observation of agent-led economy in a real community |
+| **Anonymous pulse polling** | Telegram + briefing | Daily "1-10, how's the village treating you?" → aggregate dashboard. Below-threshold cohort = organizer-review trigger | Low (~2 days) | High — longitudinal community-mood data with daily granularity |
+| **Time-shifted matching** | Existing matchmaking + week-of-attendance metadata | Match attendees across weeks they aren't both physically present (Sarah weeks 1–2, Jamie weeks 3–4 → pre-schedule a video call) | Low (~2 days) | Medium — useful UX feature, clean research signal |
+| **"What would your agent say?"** | Memory + skill | Public website where attendees can query each other's agents (with consent). Agent answers based on its human's MEMORY.md + stated views | Medium (~1 week) | Very high — provocative, citable artifact, generates a cross-attendee data corpus |
+| **Cross-skill agent agency** | Existing skill marketplace | Agent spontaneously proposes using its other skills (Sjinn video, Polymarket, Solana) when contextually relevant during the village | Low — existing skills, just behavior tuning | Medium — observation of agent-driven cross-skill chaining |
+| **MEMORY.md as public resource** | Memory + consent surface | Attendees opt to publish portions of MEMORY.md as cite-able knowledge artifacts. "Sarah's agent's notes on AI governance" becomes a community resource | Low (~2 days) | High — first-of-kind shared agent-curated knowledge base |
+| **World ID-gated trust ranks** | World ID verification status | Agents prefer World-ID-verified counterparts for high-stakes intros (financial, sensitive partnerships). ~80% of attendees verified | Low (~1 day) | Medium — concrete trust-signal demonstration |
+| **Dispatch-mediated "show me" sessions** | Dispatch (remote computer control) | When two agents match on a topic, one offers to use Dispatch to share the user's screen/work. "Show, don't tell" through agent agency | High (~2+ weeks) | Very high — first agent-driven Dispatch use case, but high effort |
+
+**Recommendation for May 30 launch:** ship 2 of the low-cost ones. Best candidates: **anonymous pulse polling** (longitudinal data the meeting didn't realize we could capture) + **MEMORY.md as public resource** (the first concrete demonstration of memory-as-knowledge-artifact).
+
+Save **agent-to-agent micropayments** for week 3–4 reveal — the hardest to build, and shipping it mid-village is the most paper-worthy beat. Bankr wallets are already provisioned; the infrastructure is there.
+
+**Open question (Q45):** Final pick list — which 1–2 (or 3) ship for May 30? Owner: Cooper + Vendrov + Timour. Decision needed by May 13.
+
 ---
 
 ## 5. Partner Portal: `/edge-city`
+
+### 5.0 Pre-Deployment Onboarding — Live Agent (No Chatbot Handoff) *(added 2026-05-01)*
+
+The 2026-05-01 sync produced an onboarding architecture that was a major improvement over the redirect-then-chatbot original. The deeper-thinking pass produced an even better one: **the onboarding IS the user's first conversation with their actual agent.** No separate chatbot, no handoff seam.
+
+**The trick:** a *placeholder shell* runs on a stateless web service (small, cheap, scales to thousands), handles the first ~60 seconds of conversation while the user's VM provisions in the background. When the real agent is ready, the conversation continuation transfers seamlessly. The user never notices the handoff because the message history is preserved and the new agent picks up where the placeholder left off.
+
+```
+User clicks "Claim Your Agent"
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ Live chat opens (websocket)             │
+│ Connected to: PLACEHOLDER SHELL         │  ← stateless, cheap, scales
+│                                         │
+│ Placeholder asks:                       │
+│   1. Sophistication level               │
+│   2. Path selection (defaulted to A)    │
+│   3. First intent / goal                │
+└─────────────────────────────────────────┘
+    │
+    ├─── In parallel: VM provisioning starts
+    │     (pulls from ready pool, ~30-60s)
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ Real agent boots. Receives:             │
+│   - Conversation history so far         │
+│   - User's sophistication / path / intent│
+│   - Edge skill installed, SOUL.md ready │
+│                                         │
+│ Same websocket. Real agent continues:   │
+│   "Got it — biotech founders. Let me    │
+│    ask 1-2 more questions to get you    │
+│    set up. Which weeks are you here?"   │
+└─────────────────────────────────────────┘
+    │
+    ▼
+Telegram handoff: "your agent is ready, continue here"
+```
+
+**Why this is dramatically better than chatbot-then-handoff:**
+- **No UX seam.** The user feels like they're already talking to *their* agent. There's no "now you're handed off, please re-introduce yourself."
+- **Better personalization.** The real agent's first impression includes how the user actually talks (vocabulary, tone, what they emphasize) — much richer than canned answers ported from a separate chatbot.
+- **Faster perceived setup.** The user is already engaged in conversation while provisioning happens in the background. Provisioning latency becomes invisible.
+- **Naturally agentic.** The whole experience feels like AI from the first interaction, not a form that pretends to be one.
+
+**Sophistication branching (still applies):** the very first thing the placeholder asks is the sophistication question, which drives path selection (§ 3.5). For Path A users, the real agent boots automatically. For Path B/C, the placeholder asks the rest of the intent questions, then sends the user to the appropriate setup docs (terminal command for B, package download for C).
+
+**Telegram handoff prompt (still applies):** after the real agent has captured intent + verified setup, it prompts "your agent will primarily work through Telegram for matching and intros. Open the bot here →". The dashboard remains available for users who want a GUI; Telegram is primary.
+
+**Implementation surface:**
+- **Placeholder shell** — new tiny Next.js route or edge function that maintains conversation state in Redis (or similar) keyed by session. Runs the same Anthropic API calls as a real agent but without the full skill stack.
+- **State transfer protocol** — the real agent on the VM, on first boot, fetches `placeholder_state(session_id)` from the placeholder service, ingests it into MEMORY.md, and continues.
+- **Websocket hand-over** — client-side, the websocket reconnects from `wss://placeholder.../<session>` to `wss://<vm-id>.vm.instaclaw.io/<session>` without dropping a message. State has already been ported by the time the new connection completes.
+
+**Failure modes:**
+- VM provisioning fails: placeholder keeps running for up to 5 minutes; if no VM materializes, user is told "we're working on it, you'll get an email" and the conversation state is preserved for restoration.
+- Placeholder service down: fall back to the (now legacy) chatbot-then-handoff path. The placeholder is an *enhancement*, not a hard dependency.
+- User disconnects mid-conversation: state preserved 24h; re-authentication restores.
+
+> **Supersedes** the chatbot-then-port-answers pattern proposed earlier in § 5.3. The post-deployment agent-driven interview (also originally in § 5.3) becomes the *continuation* of this same conversation, not a separate event. § 5.3 is updated below.
+
+**Open question (Q39):** Make Telegram strictly mandatory, or keep dashboard-only as a degraded fallback? The Edge team prefers mandatory (matching works much better in Telegram). Cooper's stance: keep dashboard available for power users; make Telegram the *primary* surface. Recommend: ship as "Telegram strongly recommended, dashboard fallback works but features degraded" — let usage data tell us if hard-mandatory is needed.
 
 ### 5.1 Page Design
 
 The current `/edge-city` route only redirects to the standard signup flow — that's the gap. **The portal needs to become a real, branded one-page Edge experience** before the village goes live, with educational content and a clear CTA. Per the working session with Timour: focus first on the full onboarding flow + landing page + core product clarity. (Future modules — richer event integrations, optional UI surfaces from other partners — layer in after the core lands.)
 
 A dedicated landing page at `instaclaw.io/edge-city` with Edge City branding. "Powered by InstaClaw" in footer. Timour is offering design help; Cooper sets up the structure and shares the repo for collaboration.
+
+**Branding hierarchy (added 2026-05-01).** The Edge team's strong preference is for users to feel they're signing up to *Edge City*, not InstaClaw. The journey breaks into four surfaces with explicit branding ownership:
+
+| Surface | Brand | Domain |
+|---|---|---|
+| Pre-signup landing | **Edge City** (primary) | `edgecity.live/agent-village` (canonical, redirects to instaclaw.io/edge-city for now) |
+| Onboarding flow (§ 5.0) | **Edge City** throughout | Same — single domain experience |
+| Post-signup dashboard | **InstaClaw** (the operational layer) | `instaclaw.io/dashboard` |
+| Telegram interaction | **No brand** — just "your agent" | n/a |
+
+**Tactical:** keep `instaclaw.io/edge-city` as the canonical implementation surface for v1; once Edge's web infra is set up, configure `edgecity.live/agent-village` to proxy/redirect transparently. Users who arrive via the canonical Edge URL never see "instaclaw.io" before signup. Users who arrive directly at `instaclaw.io/edge-city` (via partner mailings, sponsor pitches, etc.) see Edge City branding on the page itself, with InstaClaw only in the footer.
+
+**Index, XMTP, Marlowe attribution:** invisible by default. They appear in the FAQ section ("how does this work?") and in the privacy section, but not as primary brand surfaces.
 
 **Required content (v1, pre-village):**
 
@@ -1083,19 +1542,21 @@ if (partnerCookie === "edge_city") {
 ```
 This removes friction — Edge users don't need to type a code.
 
-### 5.3 Onboarding Interview (Tier 1 Enhancement)
+### 5.3 Onboarding Interview — *now part of § 5.0 continuation*
 
-After agent is deployed, the agent's first Telegram message should be a structured onboarding interview:
+> **Revised 2026-05-01.** The onboarding interview is no longer a separate post-deployment event. It's the *continuation* of the live conversation that started in the placeholder shell (§ 5.0). The real agent inherits whatever the user already shared during the placeholder phase (sophistication, path choice, first intent) and asks only the remaining questions.
 
-1. "Welcome to Edge Esmeralda! I'm your personal agent. A few quick questions so I can help you get the most out of the next 4 weeks."
-2. "What are you most excited about? What are your goals for EE26?"
-3. "What are you working on right now? What's your background?"
-4. "Who do you want to meet? What kind of connections are you looking for?"
-5. "Which weeks are you attending? (Week 1: May 30-Jun 6, Week 2: Jun 6-13, Week 3: Jun 13-20, Week 4: Jun 20-27)"
+The full question set (whether asked by the placeholder, the real agent, or split across both):
 
-Responses stored in agent memory (MEMORY.md) — used for people matching, proactive suggestions, and personalization.
+1. *Sophistication / path* — asked first, by placeholder. Drives the rest.
+2. "What are you most excited about? What are your goals for EE26?" — first intent (placeholder typically captures this; real agent confirms / expands)
+3. "What are you working on right now? What's your background?" — real agent
+4. "Who do you want to meet? What kind of connections are you looking for?" — real agent
+5. "Which weeks are you attending? (Week 1: May 30–Jun 6, Week 2: Jun 6–13, Week 3: Jun 13–20, Week 4: Jun 20–27)" — real agent (or read from ticket validation, § 5.4, if available)
 
-This can be driven by the Edge City SOUL.md section + a BOOTSTRAP.md with the interview script. No special code needed — the agent handles it conversationally.
+Responses stored in agent memory (`MEMORY.md`). Used for matching, proactive suggestions, personalization.
+
+The real agent doesn't need a separate `BOOTSTRAP.md` script — the SOUL.md edge section + the inherited conversation context is enough for the agent to handle the remaining questions conversationally.
 
 ### 5.4 Ticket Validation Flow
 
@@ -1222,6 +1683,38 @@ To avoid any ambiguity about what the research collaboration does and does not i
 - [ ] **Lock the suite by May 23**: After lock, the benchmark is the version-pinned regression check; new transcripts can be added in v2 post-village
 - [ ] **Wire transcripts into the Edge skill**: Decide whether transcripts ship as embedded reference data, are pulled on-demand from a hosted source, or are fetched via Index Network — affects retrieval architecture (open question Q22)
 
+### Phase 1d: Pre-Deployment Onboarding (Live-Agent Pattern) — locked May 13 *(added 2026-05-01)*
+- [ ] **Placeholder shell service**: Stateless edge function (Vercel Edge or similar) that opens a websocket, runs Anthropic API calls, persists session state in Redis. Bootable in <50ms; scales to 1000+ concurrent.
+- [ ] **State transfer protocol**: VM agent on first boot fetches `placeholder_state(session_id)` and continues from where the placeholder left off. Spec the session-id format, the state shape, and the handoff signal.
+- [ ] **Sophistication branching**: First message in the placeholder asks the sophistication question; routes to Path A/B/C UX accordingly.
+- [ ] **Path B handoff**: when the user is on Path B, the placeholder finishes the intent collection, then sends them to the terminal-setup docs at `/edge-city/self-serve` with their captured intent embedded as a copy-paste config block.
+- [ ] **Path C handoff**: similar — captured intent goes into the downloadable bundle's `quickstart.md`.
+- [ ] **Failure-mode handling**: VM provisioning timeout > 5min → user notified, session preserved 24h.
+
+### Phase 1e: Notification Cadence + Messaging Integrity — locked May 13 *(added 2026-05-01)*
+- [ ] **Priority queue implementation** at the agent layer (P0 / P1 / P2 / P3, § 4.9.2.5). Sender hint + agent's-final-say semantics.
+- [ ] **Heartbeat frequency floor** — 5-minute minimum enforced at the OpenClaw config-schema layer (per CLAUDE.md Rule 2: verify schema acceptance before deploying).
+- [ ] **Cost visibility in dashboard** — show user "your current cadence costs ~$X/day" before they raise it. Pulls from credit-ledger to be accurate, not a static estimate.
+- [ ] **External system inbox** — `~/.openclaw/inbox/<source>/` directory + JSONL spec (§ 4.13). Cron polls inbox, agent processes.
+- [ ] **Cross-system idempotency** — dedup by `id` field across sources before surfacing to user.
+- [ ] **System-mediated emergency channel** — separate Telegram path that bypasses the agent for security alerts and billing-critical issues. Identify the audit trail.
+
+### Phase 1f: Operational Resilience — locked May 22 *(added 2026-05-01)*
+- [ ] **Memory backup cron** — hourly tarball of workspace+memory, encrypted with user-derived key from Bankr wallet signature, uploaded to S3 (§ 4.17).
+- [ ] **Auto-restore on fresh-VM provisioning** — configureOpenClaw downloads the most recent backup if `assigned_to` user has prior memory blob.
+- [ ] **Privacy mode audit log** — every Support Mode toggle written to `audit_log` with reason + duration. Sample 5% of activations send the user an automatic email summary.
+- [ ] **Sponsor-failure plan** — token rate-limit logic that triggers if sponsor key is revoked. User notified via system-mediated channel.
+- [ ] **Kill switch** — single operator command halts all 500 agents' outbound (Telegram + XMTP). Test on canary first; document the restore procedure.
+- [ ] **VM ready pool sizing** — raise `POOL_TARGET` to 50 starting May 20 (Q35); monitor depletion daily; coordinate with Linode for capacity.
+
+### Phase 1g: Path B + Path C Distribution — locked May 22 *(added 2026-05-01)*
+- [ ] **Edge Compatibility Contract spec** (§ 3.5.1) — write the four-surface spec as a public document, version it.
+- [ ] **`edge-conformance` test suite** — small CLI that exercises each contract surface, returns pass/fail per surface.
+- [ ] **Path B CLI** — `npx @instaclaw/edge-cli setup` (or equivalent) that bootstraps a local OpenClaw with the Edge skill, tokens, routing surface.
+- [ ] **Path C downloadable bundle** — `github.com/coopergwrenn/edge-compatibility-pack` (or equivalent) with skill content, auth examples, routing reference, conformance runner.
+- [ ] **`/edge-city/self-serve` page** — 2-page quickstart for Path B users.
+- [ ] **`/edge-city/builders` page** — Path C bundle download + integration guide.
+
 ### Phase 2: Test + Launch (1-2 days)
 - [ ] **Canary deploy**: Provision 1 test VM, run full configureOpenClaw() with partner=edge_city
 - [ ] **Run benchmark questions**: Test the full Granola benchmark suite (~20-30 questions, Section 2.5) against the canary agent
@@ -1313,6 +1806,17 @@ To avoid any ambiguity about what the research collaboration does and does not i
 | 32 | **Granola transcript ingestion pipeline** — where do transcripts live (private S3 bucket? committed to a private skill repo? hosted with chunked retrieval)? Are they pulled into every Edge VM at install time (latency: low; storage: bounded) or fetched on-demand (latency: higher; storage: nil; central audit log: yes)? Affects retrieval performance + the meaning of the benchmark numbers. | Cooper | Recommend pulled-at-install for v1 (~MB-scale corpus), fetched-on-demand if corpus grows past hundreds of MB. Lock before May 23 benchmark freeze. |
 | 33 | **User-facing comms when newer OpenClaw features unsupported** — surface area for explaining the "your version is stable, not stale" framing (Section 4.11.4): in-portal FAQ, in-agent system message when a user asks about a feature beyond the pinned version, both? Need a draft FAQ entry plus an agent-side response template before launch. | Cooper / support | Draft as part of Phase 1 portal copy review |
 | 34 | **Per-VM update batch sizing** — the canary-then-fleet rollout (Section 4.11.2) needs concrete batch sizes (e.g., canary: 1 → 5% → 25% → 100%) and pause durations (e.g., 24h soak between canary and 5%). Encode in the reconciler so the policy isn't operator-discretionary. | Cooper | Pick numbers based on existing fleet update incidents; codify in `vm-manifest.ts` |
+| **35** | **Path C distribution channel** (§ 3.5.2) — GitHub release tarball, npm package, both, or a custom installer? | Cooper | Recommend tarball + npm. Tarball is universal; npm is what JS-builders expect. |
+| **36** | **Index Network routing trigger policy** (§ 4.9.1) — when does the user agent invoke `route_intent()`? Keyword triggers, implicit / ambient context, or hybrid? | Cooper | Hybrid: keyword triggers explicit, ambient triggers implicit. Spec the keyword list before Phase 3. |
+| **37** | **Notification-cadence initial thresholds** (§ 4.9.2.5) — does v1 ship with 4 ambient + 1 briefing, or stricter (2 + 1)? | Cooper + Timour | Default to stricter for v1; widen post-village if usage suggests headroom. Decision by May 13. |
+| **38** | **External-system inbox wire format** (§ 4.13) — JSONL files (working assumption) vs. DB-backed queue. | Cooper | Recommend JSONL for v1; matches existing XMTP inbox pattern. |
+| **39** | **Telegram strictly mandatory vs. dashboard-fallback** (§ 5.0) — force Telegram, or allow dashboard-only with degraded features? | Cooper + Timour | Recommend "strongly recommended, not strictly required" for v1; let usage tell us. |
+| **40** | **Live Activity Dashboard scope** (§ 4.14) — public/anonymized at edgecity.live, or attendees-only? | Cooper + Timour | Recommend public-anonymized; doubles as marketing artifact. Decision by May 20. |
+| **41** | **Plan A vs Plan B mid-village transition policy** (§ 4.15) — if we flip mid-village, how do we represent the change in the cohort/research data? | Cooper + Vendrov | Hold cohort assignments stable; record `match_engine: "plan_a"\|"plan_b"` in the export schema. |
+| **42** | **Kill switch authority chain** (§ 4.16) — Cooper alone, or Cooper + Timour both authorize? | Cooper + Timour | Recommend single-Cooper for emergency speed, with Timour notified within 5 min. |
+| **43** | **Memory backup blob scope** (§ 4.17) — memory-only, or also skills + scheduler config? | Cooper | Recommend memory-only for v1; skills + config go in Path B/C bundle separately. |
+| **44** | **Time-staggered rollout schedule** (§ 4.18) — Vendrov's blessing on the week-by-week feature rollout? | Cooper + Vendrov | Decision needed by May 23 to leave time to pre-register publicly. |
+| **45** | **Novel-experiment pick list** (§ 4.20) — which 1–2 ship for May 30? Recommended: pulse polling + MEMORY.md as public resource; agent-to-agent micropayments as week 3–4 reveal. | Cooper + Vendrov + Timour | Decision by May 13. |
 
 ---
 
@@ -1387,8 +1891,11 @@ Future: if we accumulate 5+ partners, refactor into a generic `installPartnerSki
 | **May 5** | Index Network signal submit / match retrieval integrated end-to-end on canary |
 | **May 5-9** | Phase 3b — full Index Network → XMTP → briefing canary on 5-10 test agents. Phase 1c Granola transcript ingest pipeline online. |
 | **May 9** | **Portal live for early signups** (ticket-gated). Maximum Privacy Mode default ON. Iterate on morning briefing format, match quality, privacy controls, FAQ copy on managed updates (resolves Q33). |
+| **May 13** | Phase 1d (live-agent onboarding) + Phase 1e (notification cadence + messaging integrity) locked. Resolves Q37, Q38, Q45. |
 | **May 12-23** | Phase 4 — governance voting, treasury, sentiment aggregation, group formation through Index Network + XMTP |
-| **May 15** | **Sponsor commitments confirmed** (resolves Q22). Lock API key model — Model A/B/C decision (resolves Q23). |
+| **May 15** | **CORE EXPERIENCE SHIP TARGET (revised 2026-05-01).** Path A end-to-end working for 500 attendees: live-agent onboarding, ticket validation, matchmaking (Plan A or B), morning briefing, governance, privacy mode. Sponsor commitments confirmed (resolves Q22). API key model locked (resolves Q23). |
+| **May 22** | Phase 1f (operational resilience) + Phase 1g (Path B/C distribution) locked. Edge Compatibility Contract published. `edge-conformance` test runner shipped. Builders can self-onboard. |
+| **May 23** | **Plan A/B decision deadline (§ 4.15).** If Index Network not E2E-functional on canary by today, flip `INDEX_NETWORK_MODE=fallback` for the launch. Resolves Q41. |
 | **May 19-23** | Load test: simulate 1,000 agents on Index Network + XMTP, verify match latency <5min and throughput |
 | **May 23** | **Granola benchmark suite locked** (Section 2.5 / Phase 1c — ~20-30 questions, ground truth annotated, frozen as the regression check). VM pool scaled to 1,000 (coordinate with Linode — ~$29K/mo). Anonymized data export pipeline live for Vendrov (resolves Q21 implementation). Skill update cadence + batch sizing codified in reconciler (resolves Q30, Q34). |
 | **May 26-29** | Final integration testing, organizer dashboard, dry run with Edge team. Vendrov pre-registers experiments publicly. |
