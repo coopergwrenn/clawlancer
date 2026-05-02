@@ -9,10 +9,20 @@ export interface WakeResult {
 }
 
 /**
- * Wake every VM owned by `userId` whose `health_status='hibernating'`.
+ * Wake every sleeping VM owned by `userId`. Handles BOTH state names:
+ *
+ *   health_status='hibernating' — set by cron/suspend-check
+ *   health_status='suspended'   — set by cron/health-check past_due path
+ *
+ * Same semantics: gateway stopped, Linode instance still running. Different
+ * label depending on which cron fired (the Lesson 5 / 8 issue from the
+ * original wake-bug RCA). The original version of this function only
+ * handled 'hibernating' — it missed 16/17 stuck-paying users in the
+ * 2026-05-02 backlog audit because they were in 'suspended'.
  *
  * Calls `startGateway` (SSH) and, on success, sets `health_status='healthy'`
- * + `last_health_check=NOW()`. Leaves `suspended_at` in place for audit.
+ * + `last_health_check=NOW()` + clears `suspended_at` + resets watchdog
+ * state. History fields (watchdog_last_restart_at, etc.) preserved.
  *
  * Best-effort by design — failures are logged but never thrown. Callers
  * (Stripe webhooks, WLD top-ups, defensive reconciler) MUST NOT fail their
@@ -20,7 +30,7 @@ export interface WakeResult {
  * and double-credit the user, and the defensive reconciler cron catches
  * stranded VMs within 15 minutes anyway.
  *
- * Most users have at most one hibernating VM, but we iterate to handle the
+ * Most users have at most one sleeping VM, but we iterate to handle the
  * rare multi-VM-per-user case correctly.
  *
  * Spec: instaclaw/docs/watchdog-v2-and-wake-reconciler-design.md
@@ -32,11 +42,12 @@ export async function wakeIfHibernating(
   source: string,
 ): Promise<WakeResult[]> {
   // Lesson 7: select * to avoid silent column-grant / RLS empty rows.
+  // Lesson 5: BOTH 'hibernating' AND 'suspended' — same semantics.
   const { data: vms, error } = await supabase
     .from("instaclaw_vms")
     .select("*")
     .eq("assigned_to", userId)
-    .eq("health_status", "hibernating");
+    .in("health_status", ["hibernating", "suspended"]);
 
   if (error) {
     logger.error("wakeIfHibernating: lookup failed", { userId, source, error: error.message });
@@ -75,10 +86,12 @@ export async function wakeIfHibernating(
         .update({
           health_status: "healthy",
           last_health_check: new Date().toISOString(),
+          // VM is being resurrected — clear suspended_at since it's no
+          // longer asleep. Audit trail preserved via watchdog_last_restart_at.
+          suspended_at: null,
           // QA fix #1: reset watchdog state on successful wake. A previously
           // quarantined VM whose owner pays again must not stay quarantined
-          // forever (would block all future watchdog restarts on it). Same
-          // logic for failure counter + first_failure_at — fresh start.
+          // forever (would block all future watchdog restarts on it).
           // History (watchdog_last_restart_at, watchdog_restart_attempts_24h)
           // is INTENTIONALLY preserved for forensics.
           watchdog_consecutive_failures: 0,
