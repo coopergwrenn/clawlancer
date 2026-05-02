@@ -415,32 +415,109 @@ const vm = vmsByLinodeId.get(Number(linode.id));
 
 **Anything that touches a user's session jsonl, MEMORY.md, or conversation trajectory in a way the user can perceive MUST preserve their existing context. Failure recovery and crash-loop prevention are real concerns, but they don't override the user's right to remember the conversation they just had.**
 
-**The 2026-05-02 vm-780 incident.** Cooper sent "Build me a 3-day AI itinerary for Consensus." The agent web-fetched cryptonomads.org instead of using the on-disk consensus skill (root cause: SOUL.md directive too soft). The 403 response carried a Cloudflare anti-injection wrapper. Sonnet returned an empty response, retried empty, failed over to Haiku, retried empty — 4 empties in a single user turn. `strip-thinking.py:check_session_quality()` flagged `"empty_responses"` (threshold = 3). The handler `os.remove()`d the active jsonl + removed the entry from `sessions.json`. Cooper's next message hit a brand-new session: the agent responded "Hey Cooper! What's up?" with zero memory of the prior conversation.
+#### The full incident timeline
 
-The crash-loop-prevention rationale was sound (gateway reloads bloated session → empty responses → flagged → no progress). The implementation was too aggressive. **One bad turn from one user prompt = full memory wipe = "an agent that forgets you after one error is not an agent."**
+This rule was written after a 46-day production bug that silently wiped user conversations on every error event. Reading the full chain end-to-end is mandatory — most engineers reading this rule will be tempted to "fix a crash loop" by reintroducing the same destructive pattern under a different name. **Don't.** Read all three commits below before touching session state.
 
-**The fix (deployed 2026-05-02):** the `empty_responses` path now calls `trim_failed_turns(jsonl_file)` which **walks the trajectory backward, drops only trailing empty assistant messages, and atomic-rewrites the jsonl in place.** User's prior conversation is preserved; only the failed retries are removed. On the next gateway tick the model sees a healthy trajectory and the user's next prompt proceeds normally. Force-archive remains in place for the `error_loop` branch (5+ messages containing literal "SIGKILL"/"OOM"/"empty response") because that's a different signal — multiple user prompts all failing — and represents a real session-level crash.
+**Commit 1 — `3333b48f`, 2026-03-04 (original protection, SOFT):**
+*"feat: session protection system — circuit breaker, auto-backup, watchdog growth detection"* (co-authored by Claude Opus 4.6).
 
-**Banned patterns** in any cron, hook, watchdog, reconciler step, or admin script that touches session/memory state:
+Triggered by the **pump.fun incident** — a runaway agent task accumulated tool results until the session file bloated and bricked. Original implementation:
+- `empty_responses` (3+ tail-empty assistant messages): write `.session-degraded` flag + inject MEMORY.md warning. **Did NOT delete the session.** Agent on next message would see the warning and was prompted to write a summary.
+- `error_loop` (5+ literal "SIGKILL"/"OOM"/"empty response" tokens in tail): force-archive (`os.remove` + remove from `sessions.json`). Reasonable for genuine crash signals.
+
+This was the right shape: soft-by-default for ambiguous signals, hard-only for unambiguous crashes.
+
+**Commit 2 — `f7109f95`, 2026-03-17 (the escalation, the bug introduced):**
+*"fix: three-layer defense against web fetch session blowouts"* (co-authored by Claude Opus 4.6).
+
+Triggered by the **Jimmy crash-loop** — Jimmy's session hit 488KB from accumulated web-fetch tool results. The bloat caused empty LLM responses. The soft `empty_responses` handler set its flag but didn't archive. The gateway restarted, reloaded the same 488KB bloated session, generated empty responses again, flagged again — a true loop with no progress. Root cause was the bloat itself; the symptom was empty responses.
+
+The fix shipped three layers:
+1. 100KB per-request proxy truncation (already deployed, not in this commit)
+2. `MAX_SESSION_BYTES` dropped 512KB → 200KB
+3. **`empty_responses` escalated from flag-only to force-archive** ← THIS WAS THE BUG
+
+The escalation collapsed two distinct failure modes into one destructive response:
+- **Mode A** (the one Jimmy hit): bloated session → every request fails empty. True crash loop. Force-archive is correct.
+- **Mode B** (every other case — the one Cooper hit 6 weeks later): single user prompt + bad tool result → 3-4 empty retries from the same prompt's failover sequence. Not a crash loop. The session is fine; only that one exchange failed. Force-archive nukes the user's healthy conversation history.
+
+The handler couldn't distinguish A from B. Both got nuked. Mode B is the common case in production.
+
+**Commit 3 — `a495680d`, 2026-05-02 (the fix):**
+*"fix(strip-thinking): trim trailing empty turns, never nuke active session"*.
+
+Cooper discovered the side effect during the Consensus skill canary. Specific cascade:
+1. Cooper sent "Build me a 3-day AI itinerary for Consensus" to @edgecitybot.
+2. Agent web-fetched cryptonomads.org instead of reading the on-disk skill (separate bug — SOUL.md directive too soft).
+3. cryptonomads returned a 403 with a Cloudflare anti-injection wrapper. The wrapper text contained prompt-injection-defense language that confused the model.
+4. Sonnet generated empty content, retried empty (1, 2). Model-fallback to Haiku. Haiku empty, retry empty (3, 4).
+5. `strip-thinking.py:check_session_quality()` matched the 4 empties against `EMPTY_RESPONSE_THRESHOLD=3` → returned `"empty_responses"`.
+6. The handler from commit 2 fired: archived the jsonl as `<sid>-degraded-<ts>.jsonl`, **`os.remove(jsonl_file)`**, removed the session from `sessions.json`, injected the misleading "session about to be archived" warning into MEMORY.md.
+7. Cooper's next Telegram message arrived with no entry in `sessions.json` for his bot → gateway created a brand-new session → loaded MEMORY.md (preserved — has user persona) but **no conversation history** → agent responded "Hey Cooper! What's up?" with zero memory of the past conversation.
+
+Cooper: *"an agent that forgets you after one error is not an agent."*
+
+The fix replaced the `empty_responses` branch with a call to `trim_failed_turns(jsonl_file)`:
+1. Walks the trajectory backward.
+2. Drops trailing assistant messages whose content matches the empty patterns (`[]`, `""`, `None`, `[{}]`).
+3. Stops at the first healthy line; everything before is preserved.
+4. Atomic-rewrites the jsonl in place.
+
+**No archive. No `sessions.json` mutation. No misleading warning.** User's prior conversation is intact; only the failed retries are removed. Next gateway tick reads a healthy trajectory and the user's next prompt proceeds normally.
+
+`error_loop` was kept unchanged — it still fires on 5+ literal SIGKILL/OOM/"empty response" tokens across many turns, which is a real session-level crash signal. Force-archive is the right call there. The distinction matters: empty *content* on the model side (transient) vs. literal error *strings* in tool output across many turns (persistent crash).
+
+#### Blast radius
+
+The destructive code was live **March 17 → May 2 = 46 days**. Every user across the active fleet who experienced any 3-empty-response burst — bad tool result, transient model error, rate-limit blip, context-window-near-edge response, web-fetch 403 with anti-injection wrapper, etc. — had their entire session deleted within one minute (the cron tick) of the burst. They received no error message; on their next chat they got a "Hey, what's up?" reply from an agent that no longer remembered them. No support ticket would have surfaced this clearly because users assume "the agent is bad at memory" rather than "the platform deleted my context"; this is **the kind of bug that drives silent churn**.
+
+The fix was deployed to the full healthy fleet on 2026-05-02:
+- 5 edge_city VMs (manually) — first canary
+- 141 other healthy assigned linode VMs (`scripts/_fleet-push-strip-thinking-hotfix.ts`, concurrency=5, wave=20, 0 failures, 50s wall-clock)
+- All 146 VMs verified to have the canonical `STRIP_THINKING_SCRIPT` from `lib/ssh.ts`
+- `configureOpenClaw()` deploys the canonical version on every new VM (`lib/ssh.ts:4391`), so newly-provisioned VMs are covered automatically
+
+#### The broader principle
+
+A crashed agent is recoverable. A *forgetful* agent is not. Paying users assume their agent is a persistent companion; the product's whole value proposition collapses if a single error wipes that. Treat session preservation as a load-bearing feature, not a side-concern.
+
+Concretely, when designing or reviewing any cron / hook / watchdog / reconciler step / admin script that touches session/memory state:
+
+**Banned patterns:**
 
 - `os.remove(jsonl_file)` to "clean up" sessions that produced an error in the most recent turn
 - Removing entries from `sessions.json` so the gateway treats the next message as a fresh session
 - Wholesale rewrite of MEMORY.md (use marker-based `inject_memory_section` / `remove_memory_section`)
 - Any "force restart" path that loses live conversation buffers (gateway restart that re-reads from disk is fine; one that nukes the on-disk session is not)
 - "Crash-loop prevention" via deletion when trim or compaction would suffice
+- Collapsing distinct failure modes into a single destructive response (the commit-2 mistake)
 
 **Required patterns:**
 
-1. **Trim over nuke.** If the trailing N turns are bad, rewrite the jsonl without those N turns. Anthropic's API requires every `tool_use` to have a matching `tool_result`; if you drop an assistant `tool_use` block, also drop the orphaned `tool_result` in the next turn (and vice versa). Empty-content assistants (`[]`, `""`, `None`, `[{}]`) by definition have no `tool_use`, so they're always safe to drop standalone — but anything more complex demands the orphan check.
-2. **Backup before destructive ops.** `_backup_session_file(jsonl_file)` to `~/.openclaw/session-backups/<ts>-<sessionId>.jsonl` BEFORE any modification. Backup retention is `SESSION_BACKUP_RETENTION_DAYS` (currently 7). This is the recovery path of last resort; never bypass it.
-3. **Atomic writes.** Always write to `<path>.tmp` and `os.replace()`. Never leave a session jsonl half-written — that's worse than the original problem.
-4. **Document the recovery procedure.** For any cron/script that archives sessions, the same script (or a sibling) MUST have a documented "restore session for vm-X" path. If you can't say in one sentence how to undo what your code did, you don't get to ship it.
+1. **Trim over nuke.** If the trailing N turns are bad, rewrite the jsonl without those N turns. Anthropic's API requires every `tool_use` to have a matching `tool_result`; if you drop an assistant `tool_use` block, also drop the orphaned `tool_result` in the next turn (and vice versa). Empty-content assistants (`[]`, `""`, `None`, `[{}]`) by definition have no `tool_use`, so they're safe to drop standalone — anything more complex demands the orphan check.
+2. **Distinguish failure modes before responding.** Before adding a destructive branch, name at least two distinct failure modes that would land in it. If only one fits, the destructive branch is too broad. Soft-by-default; hard-only for unambiguous signals.
+3. **Backup before destructive ops.** `_backup_session_file(jsonl_file)` to `~/.openclaw/session-backups/<ts>-<sessionId>.jsonl` BEFORE any modification. Backup retention is `SESSION_BACKUP_RETENTION_DAYS` (currently 7). This is the recovery path of last resort; never bypass it.
+4. **Atomic writes.** Always write to `<path>.tmp` and `os.replace()`. Never leave a session jsonl half-written — that's worse than the original problem.
+5. **Document the recovery procedure.** For any cron/script that archives sessions, the same script (or a sibling) MUST have a documented "restore session for vm-X" path. If you can't say in one sentence how to undo what your code did, you don't get to ship it.
 
-**Known follow-up that violates this rule and needs the same treatment:** the size-based archival path (`if file_size > MAX_SESSION_BYTES`, currently 200 KB) **still nukes**. A user whose session organically grows past 200 KB loses everything. Fix: compact instead of archive — strip thinking blocks (already done), strip tool results older than the last N turns, prune image base64 from older turns, keep last K healthy turns intact, leave the file in place. Track this as a P1 follow-up.
+**Detection rule:** any `os.remove`, `shutil.rmtree`, or file deletion in a script that touches `~/.openclaw/sessions/`, `~/.openclaw/workspace/`, or anything under `~/.openclaw/agents/main/sessions/` (excluding the backups dir age-based purge) is a code-review red flag. Justify why trim/compact wasn't sufficient. Default-no.
 
-**Detection rule:** any `os.remove`, `shutil.rmtree`, or file deletion in a script that touches `~/.openclaw/sessions/`, `~/.openclaw/workspace/`, or anything under `~/.openclaw/agents/main/sessions/` (excluding the backups dir cleanup) is a code-review red flag. Justify why trim/compact wasn't sufficient. Default-no.
+**Detection rule (escalation):** if a "fix" PR widens an existing destructive branch's trigger conditions (lowers a threshold, adds more signals to a kill switch, changes a flag-only path to delete-the-file), require an explicit failure-mode enumeration in the PR description. The commit-2 mistake had a sound rationale for one specific failure mode (Jimmy) but accidentally widened the destructive blast radius to cover every other case in the same code path.
 
-**Why this is rule 22 and not rule 30-something:** it's the most expensive class of bug in this product. A crashed agent is recoverable (user retries, error message, etc.). A *forgetful* agent destroys the relationship — paying users assume their agent is a persistent companion, and the product's whole value proposition collapses if a single error wipes that. Treat session preservation as a load-bearing feature, not a side-concern.
+#### Known follow-up
+
+The **size-based archival path** (`if file_size > MAX_SESSION_BYTES`, currently 200 KB) **still nukes**. A user whose session organically grows past 200 KB loses everything via the same `os.remove(jsonl_file)` pattern. The original Jimmy-style protection (Mode A above) is real — bloated sessions DO need intervention — but the fix is **compact, not archive**:
+
+1. Strip thinking blocks (already done in `strip_thinking_blocks`).
+2. Strip image base64 from older messages (already done in `strip_images_from_older_messages`).
+3. Add: prune older tool results beyond a per-result size budget (e.g., last K messages keep full tool results, older keep only first 500 chars).
+4. Add: drop turns older than a recency window if the file is still over budget after 1-3.
+5. Keep the file in place. Never `os.remove`.
+
+If a session is genuinely irrecoverable (parse errors, non-JSON content, structurally broken), THEN archive — but `error_loop` (the 5+ literal-error-string detector) already catches that case correctly, so the size-based branch should not also do it.
+
+Track as P1 follow-up.
 
 ---
 
