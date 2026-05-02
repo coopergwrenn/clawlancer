@@ -246,6 +246,185 @@ This is a reordering rule, not a fix-the-code rule: you might still need to fix 
 
 **Detection:** after creating a new route file `app/api/<path>/route.ts`, immediately probe it from the preview deployment with `curl` (no auth) and confirm you get the expected response, NOT `{"error":"Unauthorized"}`. If you get the latter and you intended it to be public/self-auth, you forgot the middleware entry.
 
+### 14. Use `lib/billing-status.ts` as the SINGLE SOURCE OF TRUTH for "is this customer paying"
+
+NEVER re-implement billing classification inline. ALL code that needs to know "should this VM be served / kept alive / restarted / counted as waste" calls `lib/billing-status.ts`:
+
+```ts
+import { getBillingStatus, getBillingStatusVerified } from "@/lib/billing-status";
+
+// Cheap path: local DB only. UI, dashboards, surveys.
+const status = await getBillingStatus(supabase, vmId);
+
+// Verified path: hits Stripe API for ground truth.
+// Use BEFORE any destructive action (hibernate, restart, freeze, delete).
+const status = await getBillingStatusVerified(supabase, stripe, vmId);
+
+if (status.isPaying) { /* serve */ }
+```
+
+`isPaying` is true if ANY of:
+- Active/trialing Stripe sub
+- `payment_status='past_due'` within the 7-day grace window
+- `credit_balance > 0` (WLD users)
+- `partner` set (edge_city, eclipse, etc.)
+- `api_mode='all_inclusive' AND tier IN (starter, pro, power)` with active sub (Lesson 4 — these have `credit_balance=0` *normally*)
+
+**The 2026-05-02 "38 orphan" incident:** A census script classified 38 VMs as "orphans" worth suspending. All 38 turned out to be paying WLD users — the script only checked Stripe sub status, missed `credit_balance`, missed `partner`, missed `api_mode='all_inclusive'`. Each gap had a different cause but the root issue was: classification logic was reinvented per-script, each version drifting differently. The single SoT module fixes that.
+
+**Detection:** if you find yourself writing `if (sub.status === "active" || credits > 0 || ...)` outside `lib/billing-status.ts`, STOP. Use the module. If the module is missing a case, ADD it there, then call from your code.
+
+**Companion lesson (DB drift from Stripe):** `getBillingStatusVerified` queries Stripe API directly. Local DB `instaclaw_subscriptions` can drift (webhook delivery hiccups, race conditions). Trust Stripe over local DB when about to take action a paying customer would notice. The `2026-05-02` Doug Rathell wake bug had a sub showing `current_period_end` 24 days in the past — local DB lied; Stripe said active.
+
+### 15. Three Sleep States — All Wake Paths Must Handle BOTH `hibernating` AND `suspended`
+
+The codebase has three sleep states for VMs:
+
+| `health_status` | Set by | Linode instance | Wake path |
+|---|---|---|---|
+| `hibernating` | `cron/suspend-check` | running | `wakeIfHibernating` (the lib helper) |
+| `suspended` | `cron/health-check` past_due Pass 3 (legacy name) | running | `wakeIfHibernating` (same — both states are equivalent) |
+| `frozen` | `lib/vm-freeze-thaw` after 90+ days | DELETED (snapshot only) | `thawVM` (re-provisions from image) |
+
+`hibernating` and `suspended` are **operationally identical** — gateway stopped, Linode running. The two names exist because two different crons created the state at different points in history. Any code that operates on sleeping VMs must handle BOTH:
+
+```ts
+// CORRECT
+.in("health_status", ["hibernating", "suspended"])
+
+// WRONG — misses 16/17 stuck-paying users in the 2026-05-02 backlog
+.eq("health_status", "hibernating")
+```
+
+`lib/wake-vm.ts` `wakeIfHibernating` (despite the name) handles both states. Never split them in queries.
+
+**The 2026-05-02 wake-vm.ts bug:** my first version of `wakeIfHibernating` only matched `'hibernating'`. The fleet truth audit surfaced 17 stuck-paying customers; targeted recovery woke only 1 because the other 16 were `'suspended'`. Same class of bug as the original wake-from-hibernation issue we fixed three commits earlier.
+
+**Detection:** after any cron, helper, or query that touches sleep states, grep for `eq("health_status",` and verify the test value isn't a single sleeping state. Pair with `in("health_status", ["hibernating", "suspended"])` or include the explicit `IN` clause.
+
+### 16. Proactive Auth-Cache Clear on Every Billing Recovery
+
+The Anthropic SDK caches billing-failure state to disk in `~/.openclaw/agents/main/agent/auth-profiles.json` under per-profile `failureState` and `disabledUntil` keys. When a customer's billing recovers, our wake path restarts the gateway — but the cache on disk stays stale. The asynchronous `cron/health-check` billing-cache cleaner then tries to clear the cache via `systemctl restart`, which can fail silently and leave the gateway dead.
+
+**The defense:** every billing-recovery code path MUST call `clearStaleAuthCacheForUser` proactively, BEFORE the async cleaner can race. Three layers:
+
+1. **Layer 1 (proactive):** `lib/auth-cache.ts` `clearStaleAuthCacheForUser(supabase, userId, source)` is called from:
+   - `billing/webhook` `customer.subscription.updated` (post-wake)
+   - `billing/webhook` `invoice.payment_succeeded` (preemptive on past_due→active)
+   - `billing/webhook` credit-pack handler (post-add, defense in depth)
+   - `cron/wake-paid-hibernating` (post-wake)
+2. **Layer 2 (verify-after-restart):** `cron/health-check`'s billing-cache restart now polls `is-active` for 5s, falls back to `systemctl start` if not active, alerts P0 on permanent failure. Replaces the silent `systemctl restart` killer.
+3. **Layer 3 (periodic detection sweep):** future PR — find any VM with paying status AND stale `failureState`, clear it.
+
+**The 2026-05-02 Doug Rathell incident:** Doug's gateway died 30 seconds after our manual wake brought it back. Trace: health-check's billing-cache cleaner ran, cleared the cache, called `systemctl restart`, restart's start half failed silently (start-limit-hit). Both layer 1 and layer 2 are deployed; layer 3 is the safety net for any future drift.
+
+**Detection:** any new code path that re-establishes a paying state (Stripe sub reactivated, credits added, partner tag set) should call `clearStaleAuthCacheForUser` post-state-change. It's idempotent and best-effort — never throws.
+
+### 17. Watchdog v2 — Conservative-Bias, Shadow-Mode-First Rollout
+
+`cron/watchdog` (every 5 min) replaces the implicit restart logic in `cron/health-check`. It is the SINGLE owner of restart decisions. The old health-check restart path is still present but gated behind `WATCHDOG_V1_RESTART_ENABLED` env var (default `true` for safety).
+
+**Restart fires only when ALL conditions hold simultaneously:**
+1. `watchdog_consecutive_failures ≥ 3` AND `(NOW − watchdog_first_failure_at) ≥ 15min` (no per-cycle restarts)
+2. `(NOW − watchdog_last_restart_at) ≥ 20min` (cooldown)
+3. `<3 restart attempts in 24h` (rolling-window quarantine)
+4. `(NOW − last_user_activity_at) ≥ 5min` (don't disrupt active user)
+5. **NOT** privacy mode (privacy_mode_until > NOW skips inspection-grade SSH operations; restart still allowed)
+6. Direct-HTTP re-probe right before restart still fails (transient guard)
+7. `<50%` of fleet failing this cycle (network-anomaly halt)
+8. `getBillingStatusVerified` says `isPaying = true` (Lesson 2)
+
+False negatives (miss broken VM 15 more min) are vastly cheaper than false positives (restart healthy VM mid-conversation). Defaults are conservative; tune sleeping vs serving via env var, not via code edits.
+
+**Rollout sequence (env-var-driven, no code change required to flip):**
+- Day 0: ship. `WATCHDOG_V2_MODE=shadow` (default). `WATCHDOG_V1_RESTART_ENABLED=true` (default). v2 records what it would do; v1 acts as before.
+- Day 3-7: review `instaclaw_watchdog_audit` table. Compare what v2 would do vs what v1 did. If clean, set `WATCHDOG_V2_MODE=active` AND `WATCHDOG_V1_RESTART_ENABLED=false` together.
+- Day 14: separate PR deletes the v1 restart code outright.
+
+**Audit trail:** every action logged to `instaclaw_watchdog_audit` with `action`, `prior_state`, `new_state`, `reason`, `consecutive_failures`, `meta jsonb`. Use this for forensics — never claim "the watchdog killed my gateway" without an audit row backing it up.
+
+**Defensive net:** `cron/wake-paid-hibernating` (every 15 min) catches VMs in sleeping states whose owner is paying — wakes them via `wakeIfHibernating`. Stripe-verified before action. 15-min interval = 15-min max-customer-downtime SLA from any future bug.
+
+### 18. SSH-Using Scripts Must Load BOTH `.env.local` AND `.env.ssh-key`
+
+`SSH_PRIVATE_KEY_B64` lives in `.env.ssh-key`, NOT `.env.local`. Scripts that use `connectSSH`/`startGateway`/`stopGateway`/`checkSSHConnectivity` need both files loaded:
+
+```ts
+for (const f of [
+  "/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local",
+  "/Users/cooperwrenn/wild-west-bots/instaclaw/.env.ssh-key",
+]) {
+  const env = readFileSync(f, "utf-8");
+  for (const l of env.split("\n")) {
+    const m = l.match(/^([^#=]+)=(.*)$/);
+    if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, "");
+  }
+}
+```
+
+**The 2026-05-02 wake-script silent-fail:** my first wake script halted at the first SSH-check call because `SSH_PRIVATE_KEY_B64` was undefined → `checkSSHConnectivity` returns `false` immediately. Loading the second env file fixed it. Vercel cron routes inherit env vars from Vercel's dashboard so they don't have this issue — only locally-run tsx scripts.
+
+### 19. Use `.select("*")` for Safety-Critical Reads — Never Trust Explicit Column Lists
+
+PostgREST can silently return empty values for some columns under RLS or column-grant misconfiguration. The cheap workaround is `.select("*")`:
+
+```ts
+// CORRECT — gets every column, validate row shape on read
+const { data: vm } = await supabase.from("instaclaw_vms").select("*").eq("id", vmId).single();
+
+// RISKY — if column 'foo' isn't in PostgREST's grant, you get null silently
+const { data: vm } = await supabase.from("instaclaw_vms").select("id, foo").eq("id", vmId).single();
+```
+
+**The 2026-05-02 verify-script ghost-row bug:** `_verify-6-stuck-stripe.ts` queried `select("user_id,status,...")` and got 0 sub rows back; `_dump-subs-6-users.ts` queried `select("*")` for the same userIds and got all 6 rows. Difference was the column list. The discrepancy made the verify script falsely report "no active sub" for all 6, even though Stripe and a `select("*")` confirmed they were active. Wasted 30+ min chasing a ghost.
+
+**When to use explicit columns:** non-safety-critical reads where you know the columns exist and have grants (UI rendering, simple lookups). When the consequence of being wrong is "user gets a wrong number on a dashboard for a moment," explicit is fine. When the consequence is "we hibernate a paying customer," use `.select("*")`.
+
+### 20. Verify Column Names Against Actual Schema BEFORE Writing Queries
+
+Always run a one-shot schema check before writing a query that depends on a column you haven't personally verified exists in production. The PostgREST cheap path: `select * from <table> limit 1` and inspect the returned keys.
+
+```ts
+const { data } = await sb.from("instaclaw_vms").select("*").limit(1);
+console.log(Object.keys(data[0] ?? {}));
+```
+
+**The 2026-05-02 `provider_id` vs `provider_server_id` bug:** my first census script queried `provider_id` and got null for every Linode ID. The actual column is `provider_server_id`. Fix took 3 minutes after detection but the script ran for 4 minutes before producing visibly-wrong output, AND I sent Cooper an inflated $1,102/mo waste number that we then had to retract. Five-minute schema-check pre-flight would have caught it.
+
+**Detection:** before writing any new census/audit/migration script, run a 5-line schema verification. Templates exist (`_verify-privacy-mode-schema.ts` is the reference).
+
+### 21. PostgREST Returns Large Integers as Strings — Coerce to Number for Map Keys
+
+Linode instance IDs (8-digit numbers) are stored in `provider_server_id` as integer in Postgres but **returned by PostgREST as a STRING** (BigInt-safety convention, even though Linode IDs are within JS safe integer range). The Linode API returns `id` as a number. Comparing the two fails silently:
+
+```ts
+// WRONG — Map.get(95530493) misses entry stored as Map["95530493"]
+vmsByLinodeId.set(vm.provider_server_id, vm);
+const vm = vmsByLinodeId.get(linode.id);
+
+// CORRECT — coerce both sides to Number
+vmsByLinodeId.set(Number(vm.provider_server_id), vm);
+const vm = vmsByLinodeId.get(Number(linode.id));
+```
+
+**The 2026-05-02 Joey-numbers bug:** my cross-reference script returned "all 220 Linode instances unmatched" — every single live Linode classified as having no DB row. Cause: Map key type mismatch. Fix: 2-character change (add `Number()` on both sides). Validation: previously 0 matches → after fix, 217 matches.
+
+**Detection:** when a join/lookup returns 0 matches and you can manually verify a sample DOES match, suspect type coercion before suspecting query logic.
+
+---
+
+## Linode-vs-DB Drift (Reality Checks)
+
+The DB has 836 rows with `provider_server_id` set; Linode reports only **220 live instances**. Most "terminated" VMs in our DB still carry stale Linode IDs from instances that were deleted long ago. **For any cost calculation or census reported externally, query the Linode API for the live count** — never multiply DB row count × $29.
+
+```bash
+# One-shot truth check — Linode API total
+curl -s "https://api.linode.com/v4/linode/instances?page=1&page_size=1" \
+  -H "Authorization: Bearer $LINODE_API_TOKEN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["results"])'
+```
+
+`scripts/_joey-real-numbers.ts` is the reference cross-reference tool — Linode API truth × `lib/billing-status.ts` classification. Re-run this before any external infrastructure conversation.
+
 ---
 
 ## OpenClaw Upgrade Playbook (MANDATORY)
