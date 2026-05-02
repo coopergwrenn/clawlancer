@@ -66,6 +66,14 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/expire-privacy-mode",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sample-operator-audit",
+      "schedule": "0 12 * * *"
+    },
+    {
       "path": "/api/cron/watchdog",
       "schedule": "*/5 * * * *"
     },

@@ -459,6 +459,51 @@ export async function sendCustomEmail(
   await resend.emails.send({ from: FROM, replyTo: REPLY_TO, to, subject, html });
 }
 
+export async function sendOperatorAuditSampleEmail(
+  to: string,
+  totalCount: number,
+  samples: Array<{ command: string; decision: string; created_at: string }>,
+): Promise<void> {
+  const resend = getResend();
+  const baseUrl = getBaseUrl();
+  const escape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const sampleRows = samples
+    .map((s) => {
+      const t = new Date(s.created_at).toISOString().replace("T", " ").slice(0, 16);
+      const tag = s.decision === "blocked"
+        ? '<span style="color:#dc6743">blocked</span>'
+        : s.decision === "allowed_privacy_off"
+          ? '<span style="color:#888">normal</span>'
+          : '<span style="color:#2a9d4a">allowed</span>';
+      return `<tr><td style="padding:6px 12px 6px 0;color:#888;font-size:12px;white-space:nowrap">${t} UTC</td><td style="padding:6px 12px 6px 0;font-size:12px">${tag}</td><td style="padding:6px 0;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all">${escape(s.command)}</td></tr>`;
+    })
+    .join("");
+  await resend.emails.send({
+    from: FROM,
+    replyTo: REPLY_TO,
+    to,
+    subject: `Operator activity sample — ${samples.length} of ${totalCount} commands in the last 24h`,
+    html: `
+      <div style="font-family: system-ui, sans-serif; max-width: 640px; margin: 0 auto; padding: 32px; background: #fff; color: #111;">
+        <h1 style="font-size: 20px; margin: 0 0 8px;">Operator activity sample</h1>
+        <p style="color:#555;line-height:1.6;margin:0 0 16px;">
+          You're an Edge City attendee. We promised transparency about what our
+          operators do on your VM — here's a random 5% sample of the
+          ${totalCount} command${totalCount === 1 ? "" : "s"} that ran in the last 24 hours.
+        </p>
+        <table style="border-collapse:collapse;width:100%;margin:0 0 16px;">${sampleRows}</table>
+        <p style="color:#555;line-height:1.6;margin:0 0 16px;font-size:14px;">
+          Want to lock everything down? Enable
+          <a href="${baseUrl}/dashboard/privacy" style="color:#dc6743">Maximum Privacy Mode</a>
+          and operators lose access for 24 hours.
+        </p>
+      </div>
+    `,
+    headers: UNSUB_HEADERS,
+  });
+}
+
 export async function sendCanceledEmail(email: string): Promise<void> {
   const resend = getResend();
   const billingUrl = `${getBaseUrl()}/billing`;

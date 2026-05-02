@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
       // and fs.existsSync returns false in production → silent skip → relay
       // never deploys fleet-wide.
       "./scripts/browser-relay-server/**/*",
+      // privacy-bridge.sh is read at runtime by lib/privacy-bridge-script.ts
+      // (which the reconciler imports) and deployed to edge_city VMs.
+      "./lib/privacy-bridge.sh",
     ],
   },
   async rewrites() {

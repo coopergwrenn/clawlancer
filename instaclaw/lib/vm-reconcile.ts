@@ -14,6 +14,8 @@
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
+import { PRIVACY_BRIDGE_SCRIPT } from "./privacy-bridge-script";
+import * as crypto from "crypto";
 import {
   WORKSPACE_SOUL_MD_V2,
   WORKSPACE_AGENTS_MD_V2,
@@ -308,6 +310,14 @@ export async function reconcileVM(
 
     currentStep = "heal-node-exporter";
     await stepNodeExporter(ssh, result, dryRun, strict, isPausedState);
+
+    // ── Step 8n: Privacy-mode SSH bridge (edge_city VMs only) ──
+    // Deploys ~/.openclaw/scripts/privacy-bridge.sh. Does NOT modify
+    // ~/.ssh/authorized_keys — that cutover happens via the manual fleet
+    // script (instaclaw/scripts/_deploy-privacy-bridge-cutover.ts) once
+    // canary-tested. Until cutover, deploying the bridge is a no-op for SSH.
+    currentStep = "privacy-bridge-deploy";
+    await stepDeployPrivacyBridge(ssh, vm, result, dryRun);
 
     // ── Step 9: Gateway restart (if auth-profiles changed or cooldown cleared) ──
     // Skipped when caller passes skipGatewayRestart (suspended/hibernating
@@ -3328,3 +3338,49 @@ ${existingIdentity.stdout.trim()}
   });
 }
 
+async function stepDeployPrivacyBridge(
+  ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  if (vm.partner !== "edge_city") return;
+
+  const remotePath = "/home/openclaw/.openclaw/scripts/privacy-bridge.sh";
+  const expectedSha = crypto.createHash("sha256").update(PRIVACY_BRIDGE_SCRIPT).digest("hex");
+
+  const existing = await ssh.execCommand(
+    `[ -f ${remotePath} ] && sha256sum ${remotePath} | awk '{print $1}' || echo MISSING`,
+  );
+  const onDiskSha = (existing.stdout || "").trim();
+
+  if (onDiskSha === expectedSha) {
+    result.alreadyCorrect.push("privacy-bridge.sh");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] would deploy privacy-bridge.sh (current=${onDiskSha.slice(0, 8)})`);
+    return;
+  }
+
+  const b64 = Buffer.from(PRIVACY_BRIDGE_SCRIPT, "utf-8").toString("base64");
+  const write = await ssh.execCommand(
+    `mkdir -p /home/openclaw/.openclaw/scripts && echo '${b64}' | base64 -d > ${remotePath}.tmp && mv ${remotePath}.tmp ${remotePath} && chmod 0755 ${remotePath}`,
+  );
+  if (write.code !== 0) {
+    result.errors.push(`privacy-bridge write failed: ${(write.stderr || write.stdout).slice(0, 200)}`);
+    return;
+  }
+
+  // Verify (Rule 10) — re-read sha and compare
+  const verify = await ssh.execCommand(`sha256sum ${remotePath} | awk '{print $1}'`);
+  const verifySha = (verify.stdout || "").trim();
+  if (verifySha !== expectedSha) {
+    result.errors.push(`privacy-bridge verify mismatch: expected=${expectedSha.slice(0, 12)} got=${verifySha.slice(0, 12)}`);
+    return;
+  }
+
+  result.fixed.push("privacy-bridge.sh deployed");
+  logger.info("privacy-bridge deployed", { route: "vm-reconcile", vmId: vm.id });
+}

@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
     // priority over v57 VMs (only 1 version behind).
     const { data: staleVms, error: queryErr } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, tier, api_mode, user_timezone, strict_hold_streak")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, tier, api_mode, user_timezone, strict_hold_streak, partner")
       .eq("status", "assigned")
       .eq("provider", "linode")
       .in("health_status", ["healthy", "suspended", "hibernating"])

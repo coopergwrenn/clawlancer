@@ -491,8 +491,21 @@ export const VM_MANIFEST = {
    *  test proved OpenClaw doesn't wipe MEMORY.md, but a single point of
    *  failure (one file, no backups) is unacceptable. Phase 2 (full
    *  workspace snapshots, retention rotation, restart deferral for
-   *  in-flight tasks) follows in a separate PRD pass. */
-  version: 77,
+   *  in-flight tasks) follows in a separate PRD pass.
+   *
+   * v78 (2026-05-02): Maximum Privacy Mode — SSH command bridge deployment
+   *  for edge_city VMs only. New reconciler step `stepDeployPrivacyBridge`
+   *  writes ~/.openclaw/scripts/privacy-bridge.sh from the canonical
+   *  PRIVACY_BRIDGE_SCRIPT constant in lib/privacy-bridge-script.ts. The
+   *  bridge is a no-op until the manual cutover script
+   *  (instaclaw/scripts/_deploy-privacy-bridge-cutover.ts) wires it into
+   *  ~/.ssh/authorized_keys via the OpenSSH `command="..."` directive. Bump
+   *  triggers a fleet-wide reconcile so all edge_city VMs get the bridge
+   *  staged before cutover; non-edge_city VMs are completely unaffected
+   *  (the step early-returns on partner !== "edge_city"). Reminder per
+   *  Rule 7: snapshot is now stale — bake a new one before any large
+   *  provisioning run. */
+  version: 78,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
