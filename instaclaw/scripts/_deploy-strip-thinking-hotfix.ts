@@ -44,7 +44,15 @@ if (!TARGET_IP) {
 async function main(): Promise<void> {
   // Sanity: confirm the new code path is in the script.  If lib/ssh.ts wasn't
   // saved, abort before SSH.
-  const sentinels = ["def trim_failed_turns", "SESSION TRIMMED:"];
+  // Sentinels match vm-manifest.ts STRIP_THINKING_SCRIPT requiredSentinels.
+  // Both function-signature AND log-line markers — a refactor that renames
+  // one would still trip the other.  Each pair represents one load-bearing
+  // fix; missing either suggests stale module cache (Rule 23).
+  const sentinels = [
+    "def trim_failed_turns", "SESSION TRIMMED:",         // 2026-05-02 trim-not-nuke
+    "def run_periodic_summary_hook", "PERIODIC_SUMMARY_V1", // 2026-05-03 periodic memory
+    "PRE_ARCHIVE_SUMMARY_V1",                              // 2026-05-03 pre-archive safety net
+  ];
   for (const s of sentinels) {
     if (!STRIP_THINKING_SCRIPT.includes(s)) {
       throw new Error(`STRIP_THINKING_SCRIPT is missing sentinel "${s}" — did you save lib/ssh.ts?`);
@@ -92,7 +100,10 @@ echo "[deploy] syntax OK ($(wc -c < $TMP) bytes)"
 # 3. Sentinel grep — fail loudly if expected text isn't there
 grep -q 'def trim_failed_turns' "$TMP"
 grep -q 'SESSION TRIMMED:' "$TMP"
-echo "[deploy] sentinels present"
+grep -q 'def run_periodic_summary_hook' "$TMP"
+grep -q 'PERIODIC_SUMMARY_V1' "$TMP"
+grep -q 'PRE_ARCHIVE_SUMMARY_V1' "$TMP"
+echo "[deploy] sentinels present (all 5)"
 
 # 4. Atomic install
 chmod +x "$TMP"

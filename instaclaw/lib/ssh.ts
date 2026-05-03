@@ -962,6 +962,288 @@ def run_session_end_hook():
     state["last_check_ts"] = int(time.time())
     _save_summary_state(state)
 
+# ═══════════════════════════════════════════════════════════
+# PERIODIC_SUMMARY_V1 — time-driven cross-session memory hardening
+# ═══════════════════════════════════════════════════════════
+# 2026-05-03 audit: 84% of fleet had empty session-log.md, 97% empty
+# active-tasks.md.  Root cause: run_session_end_hook only fires on session
+# TRANSITION (main session ID change), but with v41's session-persistence
+# fix sessions effectively never transition.  So the safety net for
+# legitimate session rotation never had any content to fall back to.
+#
+# Fix: time-driven summary that fires every PERIODIC_SUMMARY_INTERVAL
+# regardless of session transition.  Reuses the existing Haiku
+# infrastructure but with a structured-output prompt that produces BOTH a
+# prose summary (→ session-log.md) AND user_facts (→ MEMORY.md, marker-
+# replaced).  The MEMORY.md update is what makes the agent feel like it
+# "knows you" across sessions.
+#
+# Failure handling: if Haiku is rate-limited or returns malformed JSON,
+# fall back to prose-only summary (preserves session-log.md update).  Cron
+# will retry next tick.
+#
+# De-duplication: if session-log.md already has an entry from the last 30
+# minutes (the agent voluntarily wrote one), skip — no duplicate entries.
+
+PERIODIC_SUMMARY_INTERVAL = 7200      # 2 hours
+PERIODIC_SUMMARY_MIN_NEW_MSGS = 3
+PERIODIC_RECENT_DEDUPE_SECONDS = 1800  # 30 min — skip if agent wrote recently
+PRE_ARCHIVE_SUMMARY_RECENT_THRESHOLD = 1800  # 30 min
+
+USER_FACTS_MARKER_START = "<!-- INSTACLAW:LATEST_USER_FACTS:START -->"
+USER_FACTS_MARKER_END = "<!-- INSTACLAW:LATEST_USER_FACTS:END -->"
+
+
+def _call_haiku_structured(messages, existing_facts=""):
+    """Single Haiku call producing JSON: {summary, user_facts:{...}}.
+
+    Falls back to prose-only summary on JSON parse failure (returns
+    {"summary": prose, "user_facts": None}).  Returns None on hard error
+    (no gateway token, http failure, empty model response).
+    """
+    gw_token = _get_gateway_token()
+    if not gw_token: return None
+    parts = []
+    for m in messages:
+        label = "User" if m["role"] == "user" else "Agent"
+        parts.append(label + ": " + m["text"])
+    convo = "\\n".join(parts)
+    facts_block = existing_facts.strip() if existing_facts else "(none yet)"
+    prompt_text = (
+        "You are summarizing a recent conversation between a User and their personal AI Agent. "
+        "Output ONLY valid JSON in this exact shape:\\n"
+        "{\\n"
+        '  "summary": "3-5 sentence prose summary of what the user wanted, key decisions, what is still open",\\n'
+        '  "user_facts": {\\n'
+        '    "name": "user\\'s name if stated, else empty string",\\n'
+        '    "interests": ["short interest phrases extracted from conversation"],\\n'
+        '    "ongoing_tasks": ["tasks the user is actively working on"],\\n'
+        '    "preferences": ["communication preferences, working style, things they want or avoid"]\\n'
+        "  }\\n"
+        "}\\n"
+        "\\n"
+        "EXISTING FACTS about this user (preserve correct ones, add new ones, correct contradictions):\\n"
+        + facts_block
+        + "\\n\\nRECENT CONVERSATION:\\n"
+        + convo
+        + "\\n\\nRespond with ONLY the JSON object, no preamble, no code fences."
+    )
+    payload = json.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 800,
+        "messages": [{"role": "user", "content": prompt_text}],
+    })
+    try:
+        result = _sp.run(
+            ["curl", "-s", "--max-time", "30",
+             "-H", "Authorization: Bearer " + gw_token,
+             "-H", "Content-Type: application/json",
+             "-H", "x-model-override: claude-haiku-4-5-20251001",
+             "-d", payload,
+             "https://instaclaw.io/api/gateway/proxy"],
+            capture_output=True, text=True, timeout=35)
+        if result.returncode != 0: return None
+        resp = json.loads(result.stdout)
+        content = resp.get("content", [])
+        if not (content and isinstance(content, list)): return None
+        text = content[0].get("text", "").strip()
+        if not text: return None
+    except Exception: return None
+
+    # Try to parse as the structured JSON shape.
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict) and isinstance(parsed.get("summary"), str):
+            return {
+                "summary": parsed["summary"].strip(),
+                "user_facts": parsed.get("user_facts") if isinstance(parsed.get("user_facts"), dict) else None,
+            }
+    except (json.JSONDecodeError, ValueError):
+        pass
+    # Fallback: treat the whole response as prose summary.  Preserves the
+    # core session-log.md update path even if Haiku ignored the JSON spec.
+    return {"summary": text, "user_facts": None}
+
+
+def _format_user_facts_md(facts, ts_iso):
+    """Render the structured user_facts dict as a Markdown block."""
+    name = (facts.get("name") or "").strip()
+    interests = [str(x).strip() for x in (facts.get("interests") or []) if str(x).strip()]
+    ongoing = [str(x).strip() for x in (facts.get("ongoing_tasks") or []) if str(x).strip()]
+    prefs = [str(x).strip() for x in (facts.get("preferences") or []) if str(x).strip()]
+    lines = ["## Latest User Profile (auto-extracted " + ts_iso + ")", ""]
+    if name:
+        lines += ["**Name:** " + name, ""]
+    if interests:
+        lines += ["**Interests:**"] + ["- " + i for i in interests] + [""]
+    if ongoing:
+        lines += ["**Ongoing tasks:**"] + ["- " + i for i in ongoing] + [""]
+    if prefs:
+        lines += ["**Preferences:**"] + ["- " + i for i in prefs] + [""]
+    return "\\n".join(lines).rstrip() + "\\n"
+
+
+def _update_user_facts_in_memory(facts):
+    """Marker-replace the LATEST_USER_FACTS section in MEMORY.md.
+
+    Idempotent.  Other sections of MEMORY.md (agent-written persona,
+    user-edited content, session-log injections) are preserved untouched.
+    Uses the existing inject_memory_section helper for atomic write.
+    """
+    if not facts: return False
+    has_any = bool(
+        (facts.get("name") or "").strip()
+        or facts.get("interests")
+        or facts.get("ongoing_tasks")
+        or facts.get("preferences")
+    )
+    if not has_any: return False
+    try:
+        ts_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        block = "\\n" + _format_user_facts_md(facts, ts_iso)
+        # Remove any existing block first so we always reflect the latest call.
+        # inject_memory_section bails when marker is already present, so we
+        # explicitly remove + insert for a guaranteed atomic replace.
+        remove_memory_section(MEMORY_MD, USER_FACTS_MARKER_START, USER_FACTS_MARKER_END)
+        inject_memory_section(MEMORY_MD, USER_FACTS_MARKER_START, USER_FACTS_MARKER_END, block)
+        return True
+    except Exception as e:
+        log_telemetry("PERIODIC_SUMMARY_V1: facts update failed: " + str(e))
+        return False
+
+
+def _session_log_was_recently_written(threshold_seconds):
+    """De-dup guard: if the session-log.md mtime is within threshold, skip."""
+    try:
+        if not os.path.exists(_SESSION_LOG): return False
+        age = time.time() - os.path.getmtime(_SESSION_LOG)
+        return age < threshold_seconds
+    except Exception:
+        return False
+
+
+def run_periodic_summary_hook():
+    """Time-driven summary hook (PERIODIC_SUMMARY_V1).
+
+    Fires on every cron tick (1 min); throttles internally to fire at most
+    every PERIODIC_SUMMARY_INTERVAL.  Writes prose summary to session-log.md
+    AND structured user_facts to MEMORY.md.  Skips if the agent voluntarily
+    wrote to session-log.md in the last PERIODIC_RECENT_DEDUPE_SECONDS.
+    """
+    state = _load_summary_state()
+    current_main = _get_main_session_id()
+    if not current_main: return
+    now = int(time.time())
+    last_ts = int(state.get("last_periodic_summary_ts", 0))
+    last_msg_count = int(state.get("last_periodic_msg_count", 0))
+    last_summarized_sid = state.get("last_periodic_session_id", "")
+
+    if current_main != last_summarized_sid:
+        # New session — reset the message-count baseline so we don't
+        # mis-compute new_msgs.  The transition itself is handled by
+        # run_session_end_hook for the previous session.
+        last_ts = 0
+        last_msg_count = 0
+
+    if now - last_ts < PERIODIC_SUMMARY_INTERVAL:
+        return  # throttle
+
+    # Skip if agent wrote a session-log entry recently (avoid duplication).
+    if _session_log_was_recently_written(PERIODIC_RECENT_DEDUPE_SECONDS):
+        log_telemetry("PERIODIC_SUMMARY_V1: agent wrote recently, skipping cron summary")
+        state["last_periodic_summary_ts"] = now  # treat as covered
+        state["last_periodic_session_id"] = current_main
+        _save_summary_state(state)
+        return
+
+    session_file = os.path.join(SESSIONS_DIR, current_main + ".jsonl")
+    if not os.path.exists(session_file): return
+    messages = _extract_conversation(session_file, max_msgs=200)
+    new_msgs = len(messages) - last_msg_count
+    if new_msgs < PERIODIC_SUMMARY_MIN_NEW_MSGS:
+        return  # not enough new content
+
+    recent_slice = messages[-min(40, max(new_msgs, 8)):]
+    existing_facts = ""
+    try:
+        with open(MEMORY_MD) as f:
+            mc = f.read()
+        s = mc.find(USER_FACTS_MARKER_START)
+        e = mc.find(USER_FACTS_MARKER_END)
+        if s != -1 and e != -1 and e > s:
+            existing_facts = mc[s + len(USER_FACTS_MARKER_START):e].strip()
+    except (FileNotFoundError, IOError): pass
+
+    out = _call_haiku_structured(recent_slice, existing_facts=existing_facts)
+    if not out:
+        log_telemetry("PERIODIC_SUMMARY_V1: haiku call failed, will retry next tick")
+        return
+
+    summary_text = out.get("summary", "").strip()
+    if summary_text:
+        _append_session_log(summary_text)
+    facts_updated = False
+    if out.get("user_facts"):
+        facts_updated = _update_user_facts_in_memory(out["user_facts"])
+
+    state["last_periodic_summary_ts"] = now
+    state["last_periodic_msg_count"] = len(messages)
+    state["last_periodic_session_id"] = current_main
+    _save_summary_state(state)
+    log_telemetry(
+        "PERIODIC_SUMMARY_V1: wrote summary (" + str(len(summary_text)) + " chars), "
+        + "facts_updated=" + str(facts_updated)
+        + ", covered=" + str(len(recent_slice)) + " msgs"
+    )
+
+
+def _ensure_recent_summary_before_archive(jsonl_file, session_id):
+    """Pre-archive safety net (PRE_ARCHIVE_SUMMARY_V1).
+
+    Force a structured-summary call BEFORE archiving the session jsonl, so
+    user context is preserved in MEMORY.md / session-log.md even when the
+    archival path fires (size cap, error_loop) before the periodic summary
+    has a chance to run.  CLAUDE.md Rule 22 in spirit: never destroy state
+    without preserving recovery context.
+    """
+    try:
+        state = _load_summary_state()
+        last_ts = int(state.get("last_periodic_summary_ts", 0))
+        now = int(time.time())
+        # Recent summary already covers this session — nothing to do.
+        if (state.get("last_periodic_session_id") == session_id
+                and now - last_ts < PRE_ARCHIVE_SUMMARY_RECENT_THRESHOLD):
+            return
+        if not os.path.exists(jsonl_file): return
+        messages = _extract_conversation(jsonl_file, max_msgs=200)
+        if len(messages) < _MIN_MSGS_FOR_SUMMARY: return
+        existing_facts = ""
+        try:
+            with open(MEMORY_MD) as f:
+                mc = f.read()
+            s = mc.find(USER_FACTS_MARKER_START)
+            e = mc.find(USER_FACTS_MARKER_END)
+            if s != -1 and e != -1 and e > s:
+                existing_facts = mc[s + len(USER_FACTS_MARKER_START):e].strip()
+        except (FileNotFoundError, IOError): pass
+
+        out = _call_haiku_structured(messages, existing_facts=existing_facts)
+        if not out:
+            log_telemetry("PRE_ARCHIVE_SUMMARY_V1: haiku call failed for " + session_id)
+            return
+        summary_text = (out.get("summary") or "").strip()
+        if summary_text:
+            _append_session_log("[PRE_ARCHIVE_SUMMARY_V1] " + summary_text)
+        if out.get("user_facts"):
+            _update_user_facts_in_memory(out["user_facts"])
+        state["last_periodic_summary_ts"] = now
+        state["last_periodic_session_id"] = session_id
+        _save_summary_state(state)
+        log_telemetry("PRE_ARCHIVE_SUMMARY_V1: saved summary before archiving " + session_id)
+    except Exception as e:
+        log_telemetry("PRE_ARCHIVE_SUMMARY_V1: error: " + str(e))
+
+
 total_stripped = 0
 total_truncated = 0
 total_images_stripped = 0
@@ -1017,13 +1299,28 @@ try:
     # Run daily hygiene (self-throttled to once per ~23 hours via marker file)
     daily_hygiene()
 
-    # Cross-session memory: detect session transitions, generate summaries
+    # Cross-session memory — two complementary paths:
+    #  1. run_session_end_hook: event-driven (fires on session-ID change).
+    #     Useful when a session genuinely ends (e.g., /new command).
+    #  2. run_periodic_summary_hook (PERIODIC_SUMMARY_V1): time-driven.
+    #     Fires every PERIODIC_SUMMARY_INTERVAL on long-running sessions
+    #     so persistent memory keeps growing even if the user never
+    #     transitions sessions.  Without this, ~84% of VMs end up with
+    #     empty session-log.md (2026-05-03 audit).
     try:
         run_session_end_hook()
     except Exception as _hook_err:
         try:
             with open("/tmp/session-summary-error.log", "a") as _ef:
                 _ef.write(datetime.now(timezone.utc).isoformat() + " " + str(_hook_err) + "\\n")
+        except Exception:
+            pass
+    try:
+        run_periodic_summary_hook()
+    except Exception as _hook_err:
+        try:
+            with open("/tmp/session-summary-error.log", "a") as _ef:
+                _ef.write(datetime.now(timezone.utc).isoformat() + " periodic " + str(_hook_err) + "\\n")
         except Exception:
             pass
 
@@ -1077,6 +1374,16 @@ try:
             if not flag_existed:
                 inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
                 print(f"WARNING: Session {session_id} skipped memory warning window ({file_size} bytes, no prior flag). Injected memory prompt for next session.")
+
+            # PRE_ARCHIVE_SUMMARY_V1: force a structured summary into
+            # session-log.md + MEMORY.md BEFORE we destroy the session jsonl.
+            # CLAUDE.md Rule 22 in spirit: never destroy state without
+            # preserving recovery context.  Bounded by Haiku's 30s timeout
+            # so it can't hang the cron.
+            try:
+                _ensure_recent_summary_before_archive(jsonl_file, session_id)
+            except Exception as _se:
+                log_telemetry("PRE_ARCHIVE_SUMMARY_V1: pre-size-archive call failed: " + str(_se))
 
             _backup_session_file(jsonl_file)
             os.remove(jsonl_file)
@@ -1144,12 +1451,19 @@ try:
                 print(f"Empty response trim failed: {e}")
             continue
         elif quality_issue == "error_loop":
-            # Force-archive the session and trip circuit breaker
+            # Force-archive the session and trip circuit breaker.
+            # PRE_ARCHIVE_SUMMARY_V1: save user context to MEMORY.md +
+            # session-log.md before destroying the trajectory.  Genuine
+            # crash signal but user shouldn't lose conversational continuity.
             try:
                 os.makedirs(ARCHIVE_DIR, exist_ok=True)
                 archive_name = f"{session_id}-errorloop-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
                 archive_path = os.path.join(ARCHIVE_DIR, archive_name)
                 shutil.copy2(jsonl_file, archive_path)
+                try:
+                    _ensure_recent_summary_before_archive(jsonl_file, session_id)
+                except Exception as _se:
+                    log_telemetry("PRE_ARCHIVE_SUMMARY_V1: pre-error-loop call failed: " + str(_se))
                 _backup_session_file(jsonl_file)
                 os.remove(jsonl_file)
                 archived_sessions.append(session_id)
@@ -4401,12 +4715,38 @@ export async function configureOpenClaw(
     // degenclaw/memory-filing sections until the next reconciler pass.
     // Order matches the marker order the reconciler uses on existing VMs.
     // For Edge City partners, append Edge Esmeralda context section.
+    // SOUL.md priority-tier ordering (2026-05-03 redesign).
+    //
+    // Background: SOUL.md routinely exceeds 30K on production VMs (median 32K,
+    // max 39K). With bootstrapMaxChars=30,000 (line 3168 of this file), OpenClaw
+    // silently truncates whatever is at the tail. The 2026-05-03 audit found
+    // 84% of fleet had empty session-log.md and 97% empty active-tasks.md
+    // because SOUL_MD_MEMORY_FILING_SYSTEM was at byte 30,213+ — past the cap.
+    // Agents literally could not see the "write to session-log.md" instructions.
+    //
+    // Three coordinated fixes:
+    //  (1) bootstrapMaxChars raised 30,000 → 35,000 below (line 3168). Costs
+    //      ~$2.6K/year extra inference fleet-wide, but eliminates silent
+    //      memory loss for 84%+ of users. Reversible once SOUL.md is properly
+    //      trimmed (P1 follow-up).
+    //  (2) Reorder this concat so MEMORY_FILING_SYSTEM is in priority slot
+    //      (right after OPERATING_PRINCIPLES) and DegenClaw goes to the tail.
+    //      DegenClaw is partner-specific; on non-DegenClaw VMs it's noise.
+    //      DegenClaw users still have ~/.openclaw/skills/dgclaw/SKILL.md
+    //      read on demand.
+    //  (3) Partner sections (Edge City, Consensus) are appended below BEFORE
+    //      DegenClaw so they fit within 35K even on a 32K base — partner
+    //      content is the whole point of partner-tagged VMs.
+    //
+    // Final on-disk order for a Consensus partner VM:
+    //   WORKSPACE + INTELLIGENCE + LEARNED + OPERATING + MEMORY_FILING
+    //   + Edge section (if edge_city) + Consensus section
+    //   + DegenClaw (truncates last when over budget)
     let soulContent =
       WORKSPACE_SOUL_MD +
       SOUL_MD_INTELLIGENCE_SUPPLEMENT +
       SOUL_MD_LEARNED_PREFERENCES +
       "\n\n" + SOUL_MD_OPERATING_PRINCIPLES +
-      SOUL_MD_DEGENCLAW_AWARENESS +
       SOUL_MD_MEMORY_FILING_SYSTEM;
     if (config.partner === "edge_city") {
       soulContent += `

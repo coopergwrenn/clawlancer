@@ -545,6 +545,24 @@ export const VM_MANIFEST = {
     // ~24 message exchanges/day into the user's chat context. Schema-verified on vm-379.
     "agents.defaults.heartbeat.session": "heartbeat",
     "agents.defaults.compaction.reserveTokensFloor": "35000",
+    // 2026-05-03: bumped from 30000 → 35000.  SOUL.md routinely exceeds 30K
+    // on production VMs (median ~32K, max ~39K), causing OpenClaw to silently
+    // truncate the tail.  Until 2026-05-03 the truncated tail included the
+    // SOUL_MD_MEMORY_FILING_SYSTEM section which names session-log.md and
+    // active-tasks.md; the agent literally couldn't see the instructions to
+    // write cross-session summaries.  Audit found 84% of fleet had empty
+    // session-log.md and 97% empty active-tasks.md as a direct consequence.
+    //
+    // Trade-off accepted: ~$2.6K/year extra inference cost across the fleet
+    // (5K extra chars × every chat completion).  Pales next to the silent
+    // churn from "agent forgets you" UX.  Reversible the moment SOUL.md is
+    // properly trimmed below 30K (P1 follow-up).
+    //
+    // CLAUDE.md OpenClaw Upgrade Playbook said "treat any further bump as
+    // a hard stop until trimmed" — that calculus assumed silent memory
+    // loss wasn't the dominant cost.  It was.  The reorder + bump are the
+    // immediate fix; trim is the long-term one.
+    "agents.defaults.bootstrapMaxChars": "35000",
     "agents.defaults.compaction.memoryFlush.enabled": "true",
     // v41: Raise softThresholdTokens from default 4000 to 8000 — gives the agent more
     // room to write durable notes before compaction fires. OpenClaw Issue #31435 recommends 8000+.
@@ -786,13 +804,36 @@ export const VM_MANIFEST = {
       mode: "overwrite",
       executable: true,
       useSFTP: true,
-      // CLAUDE.md Rule 22+23: trim_failed_turns is the trim-not-nuke fix that
-      // protects user conversation context on empty-response cascades; SESSION
-      // TRIMMED: is its log marker.  Both must be present in any in-memory
-      // STRIP_THINKING_SCRIPT a reconciler is about to write — if either is
-      // missing the process is running stale code and writing it would
-      // regress every VM it touches (the 2026-05-02 incident).
-      requiredSentinels: ["def trim_failed_turns", "SESSION TRIMMED:"],
+      // CLAUDE.md Rule 23: refuse to write if any sentinel is missing.
+      // Pair each load-bearing fix with both a function-signature sentinel
+      // AND a log-line sentinel — robust to refactors that rename one but
+      // keep the other.
+      //
+      //   trim_failed_turns / SESSION TRIMMED:
+      //     The 2026-05-02 trim-not-nuke fix.  Replaces force-archive on
+      //     empty-response cascades with surgical trim — preserves user
+      //     conversation context.  Original incident: vm-780 / Doug.
+      //
+      //   run_periodic_summary_hook / PERIODIC_SUMMARY_V1
+      //     The 2026-05-03 cross-session memory hardening.  Time-driven
+      //     summary that fires every 2h regardless of session transition,
+      //     writing prose to session-log.md and structured user_facts to
+      //     MEMORY.md.  Original incident: 84% of fleet had empty
+      //     session-log.md, sessions never transitioned post-v41
+      //     persistence fix so the existing event-driven hook never fired.
+      //
+      //   PRE_ARCHIVE_SUMMARY_V1
+      //     The 2026-05-03 pre-archive safety net.  Forces a structured
+      //     summary into MEMORY.md before any destructive archival path
+      //     (size cap, error_loop) — Rule 22 in spirit: never destroy
+      //     state without preserving recovery context.
+      requiredSentinels: [
+        "def trim_failed_turns",
+        "SESSION TRIMMED:",
+        "def run_periodic_summary_hook",
+        "PERIODIC_SUMMARY_V1",
+        "PRE_ARCHIVE_SUMMARY_V1",
+      ],
     },
     {
       remotePath: "~/.openclaw/scripts/auto-approve-pairing.py",

@@ -184,6 +184,9 @@ set -eu
 python3 -m py_compile ${remotePath}.tmp
 grep -q 'def trim_failed_turns' ${remotePath}.tmp
 grep -q 'SESSION TRIMMED:' ${remotePath}.tmp
+grep -q 'def run_periodic_summary_hook' ${remotePath}.tmp
+grep -q 'PERIODIC_SUMMARY_V1' ${remotePath}.tmp
+grep -q 'PRE_ARCHIVE_SUMMARY_V1' ${remotePath}.tmp
 chmod +x ${remotePath}.tmp
 mv ${remotePath}.tmp ${remotePath}
 echo OK
@@ -245,7 +248,11 @@ async function fetchFleetVMs(): Promise<
 async function main(): Promise<void> {
   // Sanity: confirm the bundled script has the new code (same check the
   // single-VM hotfix does).  If lib/ssh.ts wasn't saved, abort before SSH.
-  const sentinels = ["def trim_failed_turns", "SESSION TRIMMED:"];
+  const sentinels = [
+    "def trim_failed_turns", "SESSION TRIMMED:",
+    "def run_periodic_summary_hook", "PERIODIC_SUMMARY_V1",
+    "PRE_ARCHIVE_SUMMARY_V1",
+  ];
   for (const s of sentinels) {
     if (!STRIP_THINKING_SCRIPT.includes(s)) {
       throw new Error(`STRIP_THINKING_SCRIPT missing sentinel "${s}" — did lib/ssh.ts save?`);
