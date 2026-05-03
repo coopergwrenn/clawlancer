@@ -11,11 +11,12 @@ ALL new VMs must use these exact specs:
 - **Provider:** Linode ONLY (never Hetzner or DigitalOcean)
 - **Type:** `g6-dedicated-2` (Dedicated 4GB — 2 dedicated vCPU, 4GB RAM, 80GB disk)
 - **Region:** `us-east`
-- **Snapshot:** `private/38458138` (instaclaw-base-v62-bankr-cli-0.3.1 — baked 2026-04-27 from v58 base. OpenClaw v2026.4.5, **@bankr/cli@0.3.1** (was 0.2.15 in v58 — bumped for direct claim API target POST /token-launches/:tokenAddress/fees/claim). All other v58 contents preserved: v58 manifest scripts at canonical SHAs, full concatenated SOUL.md, workspace files at canonical v58, Chromium 147, ffmpeg, Xvfb, x11vnc, websockify, node_exporter, jq, both SSH deploy keys, 7/7 crons, exec-approvals.json security=full. 5296 MB. 7/7 verified.)
+- **Snapshot:** `private/38575292` (instaclaw-base-v79-2026-05-03 — baked 2026-05-03 from v64 baseline (private/38496803). OpenClaw 2026.4.26, Node v22.22.2, manifest v79. Reconciler applied 44 fixes during bake (latest workspace files, v79 systemd overrides 12 settings, v77 routing table patch, 22 skills + 54 scripts, workspace backups cron, POLYGON_RPC_URL env, sshd OOM protection drop-in, model defaults set, telegram streaming/sandbox/strict-mode config). 5342 MB. NOTE: vm-watchdog + silence-watchdog crons present (carried from v64 — production fleet has these manually disabled; new VMs from this snapshot will re-enable them unless removed during configureOpenClaw).)
+- **Rollback snapshot (1-week window):** `private/38496803` (v64, baked 2026-04-28). Re-set LINODE_SNAPSHOT_ID to this if v79 has issues. Keep until 2026-05-10.
 - **Cost:** $29/mo per VM (negotiated Linode rate)
 - **DB status:** `provisioning` (cloud-init-poll cron auto-marks as `ready` in ~3-5 min)
 
-NEVER use old snapshots (private/36895419, private/38069990, private/38111101 (v58), or any pre-v62 image). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
+NEVER use old snapshots (private/36895419, private/38069990, private/38111101 (v58), private/38458138 (v62), or any pre-v64 image). NEVER provision shared CPU (g6-standard-2). NEVER provision on Hetzner or DigitalOcean.
 
 ## Project Structure
 
