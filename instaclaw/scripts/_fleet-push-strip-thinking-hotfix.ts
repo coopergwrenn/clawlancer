@@ -152,9 +152,14 @@ async function deployToVM(
     return { status: "failed", reason: `ssh_connect: ${(e as Error).message.slice(0, 100)}` };
   }
 
+  // tmpPath must be unique per-worker — race condition (2026-05-03): two
+  // workers running in the same millisecond generated the same `ts` →
+  // same tmpPath → worker A's unlinkSync deleted it before worker B's
+  // putFile finished, surfacing as ENOENT on 4 of 146 VMs.  Salt with
+  // vm.id (uuid) so collisions are impossible.
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const remotePath = `/home/${username}/.openclaw/scripts/strip-thinking.py`;
-  const tmpPath = `/tmp/strip-thinking-${ts}.py`;
+  const tmpPath = `/tmp/strip-thinking-${vm.id}-${ts}.py`;
 
   try {
     // 1. SFTP upload — same approach the reconciler uses for STRIP_THINKING_SCRIPT,

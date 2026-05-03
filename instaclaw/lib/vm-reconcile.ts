@@ -764,6 +764,34 @@ async function deployFileEntry(
     content = (entry as { content: string }).content;
   }
 
+  // ── Sentinel guard (CLAUDE.md Rule 23) ────────────────────────────────
+  // Refuse to write any entry whose canonical post-fix markers are missing
+  // from the resolved in-memory content.  Defends against stale module
+  // caches in long-running reconciler processes — the 2026-05-02 incident
+  // where mass-reconcile-v79 was started before the strip-thinking
+  // trim_failed_turns commit and silently overwrote the hotfix on every VM
+  // it processed afterwards.  Push to result.errors so the caller can
+  // refuse to bump config_version (analogous to Rule 10's verify-after-set
+  // pattern).  Skip the write entirely — keep the on-disk version, which
+  // is presumed at-or-newer than this stale in-memory version.
+  if (entry.requiredSentinels?.length) {
+    const missing = entry.requiredSentinels.filter((s) => !content.includes(s));
+    if (missing.length) {
+      const tplKey = entry.source === "template"
+        ? (entry as { templateKey?: string }).templateKey ?? "(unknown)"
+        : "(inline)";
+      const msg =
+        `[sentinel-guard] refusing to write ${fileName}: in-memory content for "${tplKey}" ` +
+        `is missing required sentinel(s) ${missing.map((s) => JSON.stringify(s)).join(", ")}. ` +
+        `This process is likely running stale code from before the fix landed; ` +
+        `restart the reconciler so it loads the current module state. ` +
+        `On-disk version preserved.`;
+      console.error(msg);
+      result.errors.push(msg);
+      return;
+    }
+  }
+
   switch (entry.mode) {
     case "overwrite": {
       if (dryRun) {

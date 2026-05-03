@@ -39,6 +39,22 @@ interface ManifestFileBase {
   executable?: boolean;
   /** Use SFTP (putFile) instead of echo|base64 pipe — needed for large files (>40KB) */
   useSFTP?: boolean;
+  /**
+   * Refuse to write if any of these strings is missing from the resolved
+   * content.  Defends against stale module caches in long-running reconciler
+   * processes (CLAUDE.md Rule 23).  Use canonical post-fix markers; when
+   * this list is non-empty, a regression check runs before any disk write,
+   * and a missing sentinel pushes an error to result.errors instead of
+   * overwriting good on-disk content with stale in-memory content.
+   *
+   * The classic motivating bug: 2026-05-02 mass-reconcile-v79 was started
+   * before the strip-thinking trim_failed_turns commit landed.  Its Node
+   * process held the OLD STRIP_THINKING_SCRIPT in memory and silently
+   * overwrote every VM's hotfix as it crawled the queue.  A sentinel
+   * ["def trim_failed_turns", "SESSION TRIMMED:"] would have caught this
+   * on the FIRST VM and surfaced a loud error instead of regressing 141.
+   */
+  requiredSentinels?: string[];
 }
 
 interface ManifestFileTemplate extends ManifestFileBase {
@@ -770,6 +786,13 @@ export const VM_MANIFEST = {
       mode: "overwrite",
       executable: true,
       useSFTP: true,
+      // CLAUDE.md Rule 22+23: trim_failed_turns is the trim-not-nuke fix that
+      // protects user conversation context on empty-response cascades; SESSION
+      // TRIMMED: is its log marker.  Both must be present in any in-memory
+      // STRIP_THINKING_SCRIPT a reconciler is about to write — if either is
+      // missing the process is running stale code and writing it would
+      // regress every VM it touches (the 2026-05-02 incident).
+      requiredSentinels: ["def trim_failed_turns", "SESSION TRIMMED:"],
     },
     {
       remotePath: "~/.openclaw/scripts/auto-approve-pairing.py",

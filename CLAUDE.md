@@ -520,6 +520,83 @@ If a session is genuinely irrecoverable (parse errors, non-JSON content, structu
 
 Track as P1 follow-up.
 
+### 23. Long-Running Reconcilers Have Stale Module Caches — Sentinel-Grep Required Templates Before Writing
+
+**Any process that holds large embedded templates in memory and writes them to remote machines as it crawls a queue MUST sentinel-grep its in-memory content against canonical post-fix markers before each write.** If the markers are missing, the process is running stale code (started before the fix landed) and writing it would silently regress every machine it touches afterward.
+
+This rule sits next to Rule 22 — they're a pair. Rule 22 is about not destructively modifying user state. Rule 23 is about not silently undoing fixes via module-cache amnesia. Both are catastrophic in the same way: invisible to alerts, only surfaceable through user complaints, and capable of regressing the entire fleet between cron ticks.
+
+#### The 2026-05-02 incident
+
+Timeline:
+- **18:48 UTC** — commit `a495680d` lands the trim-not-nuke fix in `lib/ssh.ts:STRIP_THINKING_SCRIPT` (the Python source embedded as a TypeScript template literal).
+- **19:00 UTC** — `_fleet-push-strip-thinking-hotfix.ts` pushes the new `STRIP_THINKING_SCRIPT` to all 141 healthy assigned VMs. Fresh process; correctly loads the post-fix module. ✓
+- **19:??–overnight** — `_mass-reconcile-v79.ts`, started before 18:48, has the OLD `STRIP_THINKING_SCRIPT` baked into its Node module cache. As it processes each VM in its queue, `vm-reconcile.ts:deployFileEntry()` resolves `STRIP_THINKING_SCRIPT` via `getTemplateContent()` and SFTP's it to the VM with `mode: "overwrite"`. The OLD content (with the session-nuking `os.remove(jsonl_file)` path) is faithfully written to every VM the reconciler touches.
+- **20:34 UTC** — vm-725 (Doug, paying customer) gets clobbered. His just-deployed hotfix is overwritten with the version that wipes user sessions on a 3-empty-response burst.
+- **overnight** — additional ~140 VMs get clobbered the same way.
+- **2026-05-03 morning** — Cooper notices, fleet-pusher run #2 re-deploys the correct version. 141/146 success on first run; 5 failures on a separate tmpPath race condition (workers in the same millisecond collided on `/tmp/strip-thinking-${ts}.py`) — fixed by salting the path with `vm.id` and retrying the 5.
+
+**Net regression:** ~140 paying-customer VMs went from "protected by trim-not-nuke" to "back to session-nuking on any error event" — for the entire window the long-running mass-reconcile was crawling them. Effectively, every error any user experienced during that window had a chance of wiping their conversation context.
+
+#### Why this is structurally impossible to alert on without the guard
+
+- The reconciler's exit code is 0 — no error.
+- File mtimes update — but match a "successful write."
+- The destination file is the right size, the right path, the right permissions.
+- The agent on the VM keeps running normally — the strip-thinking.py cron only fires on a session-quality event, which is rare.
+- No metric, log line, or alert distinguishes "wrote canonical" from "wrote stale" — the reconciler treats both as success.
+- The damage only manifests when the next user happens to trigger a 3-empty-response burst, at which point Rule 22's no-recovery memory wipe activates.
+
+The only signal the system has is the *content* of what's about to be written. Rule 23 is the rule that says: when you know the canonical content has specific load-bearing markers, make their absence loud.
+
+#### The fix
+
+`ManifestFileEntry` now carries `requiredSentinels?: string[]` (`lib/vm-manifest.ts:36-58`). When set, `deployFileEntry()` (`lib/vm-reconcile.ts:766+`) checks the resolved in-memory content for ALL listed strings BEFORE any write path runs. If any sentinel is missing:
+
+- Push a clear error to `result.errors` (so `app/api/cron/reconcile-fleet/route.ts:245` `pushFailed` gate refuses to bump `config_version` — analogous to Rule 10's verify-after-set discipline).
+- `console.error` a loud line naming the missing sentinel and the suspected cause.
+- Skip the write entirely. **The on-disk version is preserved** (presumed at-or-newer than this stale in-memory version).
+- The process continues to other VMs — but every single one will hit the same guard, so the reconciler will accumulate errors and the operator will see the message immediately on the first failed write.
+
+The strip-thinking.py entry now requires:
+
+```typescript
+requiredSentinels: ["def trim_failed_turns", "SESSION TRIMMED:"]
+```
+
+Both must be in the in-memory script. If either is missing, the reconciler is stale and refuses to write.
+
+#### Required patterns
+
+For any new entry in `vm-manifest.ts:files[]` whose template represents a load-bearing fix (anything that protects user state, prevents data loss, fixes a previously-shipped bug, or implements a Rule-22-class invariant):
+
+1. **Add `requiredSentinels` immediately, in the same PR as the fix.** Don't ship the fix without the guard.
+2. **Pick sentinels that are unique to the post-fix version.** The OLD code's `FORCE-ARCHIVED` is fine as a NEGATIVE check, but for `requiredSentinels` you want strings that ONLY appear in the new code (`def trim_failed_turns`, `SESSION TRIMMED:`).
+3. **Include both a function/class signature AND a log-line literal.** A code refactor might rename the function but keep the log line, or vice versa. Two independent signals reduce false-clear risk.
+4. **Document in code why each sentinel is there.** Future readers should know which incident motivated it. See the strip-thinking entry's comment for the model.
+
+#### Banned patterns
+
+- Long-running reconciler/admin processes that hold templates in module-level state without a guard. If the process can outlive a deployment, it MUST gate its writes on sentinels.
+- Adding to `TEMPLATE_REGISTRY` without checking whether downstream entries should require sentinels.
+- "Just restart the reconciler when you ship a fix." Operators forget; reconcilers can be invoked by Vercel cron, manual scripts, dev workflows, and CI in ways that are easy to miss. The guard must be code, not procedure.
+- Treating reconciler success counts as ground truth. A "100/100 reconciled" log line means "100 writes happened" not "100 writes were correct" — the sentinel guard is what makes those equivalent.
+- **Per-worker filesystem temp paths derived only from `Date.now()` / ISO timestamps.** With concurrency > 1, two workers in the same millisecond produce the same path. Race conditions follow. Salt the path with a unique per-work-item ID (vm.id, uuid, crypto.randomBytes). The strip-thinking fleet-pusher hit this on retry day with 4/146 ENOENTs.
+
+#### Detection rule
+
+When you ship a Rule-22-class fix to a template that's referenced by `vm-manifest.ts:files[]`, the PR diff MUST also touch the entry's `requiredSentinels` array. CI rule on the wishlist; for now treat it as a code-review checkbox: "Did this fix's template gain a `requiredSentinels` entry that would have caught a stale-cache regression?"
+
+#### Related (out of scope for this rule)
+
+The same incident also exposed two separate failures that the sentinel guard does NOT cover:
+
+1. **Manifest discipline for per-VM config overrides.** Mass-reconcile-v79 overwrote vm-725's manual `agents.defaults.timeoutSeconds=300` with the manifest default, undoing Cooper's hand-applied fix. The sentinel guard catches stale templates but NOT stale config defaults. Fix path: any per-VM config override applied to address a paying-customer issue should be representable in the manifest itself, otherwise the next reconcile will undo it. P1 follow-up.
+
+2. **WORKSPACE_SOUL_MD growth past `bootstrapMaxChars`.** Mass-reconcile-v79 also bumped the SOUL.md template by 775 bytes (from 31,902 → 32,677 chars), pushing every VM further over the 30,000 cap. The OpenClaw Upgrade Playbook calls this out as a hard stop ("Treat any further bump as a hard stop until trimmed") — the playbook discipline failed during this rollout. Separate from sentinel guards; tracked under that section.
+
+3. **Cross-session memory persistence (session-log.md / active-tasks.md) is empty on real user VMs.** Cooper's @edgebot, after a legitimate session rotation, admitted: *"session-log.md and active-tasks.md are both empty — just the default template text. Previous sessions never actually wrote anything to them. The instructions to write are there in AGENTS.md, but it just... didn't happen."* Even with the trim-not-nuke fix in place, when sessions DO legitimately rotate (size limits, true crash loops), users still lose everything because the safety net was never populated. The agent isn't following the AGENTS.md instructions reliably. P1 follow-up: survey what fraction of fleet has empty session-log.md, harden the write step, possibly enforce via a pre-rotation hook in strip-thinking.py.
+
 ---
 
 ## Linode-vs-DB Drift (Reality Checks)
