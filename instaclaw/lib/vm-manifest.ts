@@ -629,10 +629,21 @@ export const VM_MANIFEST = {
     // upgrade. Samuel was on 2026.4.5 and didn't have the issue; Lee + Textmaxmax
     // got upgraded to 2026.4.26 and started timing out. The gateway's own error
     // message literally suggests "increase agents.defaults.timeoutSeconds".
-    // 90s gives Haiku room to finish even on cold-start VMs while still well
-    // under any user-perceptible "the bot is dead" threshold (Telegram itself
-    // doesn't time out the long-poll; users do).
-    "agents.defaults.timeoutSeconds": "90",
+    //
+    // 2026-05-03: bumped 90 → 300.  90s was the original fix above, sized for
+    // Haiku alone (20-45s).  Reality with the post-v67 production profile is
+    // different: 32K bootstrap context + skill SKILL.md read + 1-2 jq tool
+    // calls per turn pushes Sonnet over 90s on a non-trivial query.  Cooper's
+    // vm-780 hit a 3-MINUTE response time on "what's happening at consensus
+    // tomorrow?" — Sonnet timed out at 90s, failed over to Haiku, Haiku then
+    // took another 60-90s to complete.  At 300s Sonnet has room to finish on
+    // its first attempt without failover; Haiku as fallback only fires for
+    // truly-stuck calls (which need to be triaged separately).
+    //
+    // 300 = Vercel Pro maxDuration ceiling (CLAUDE.md Rule 11), so we're not
+    // exceeding any upstream cap.  Per-chat token cost rises slightly because
+    // Sonnet has more time to over-deliberate; net UX is dramatically better.
+    "agents.defaults.timeoutSeconds": "300",
     // v61: Enable OpenClaw's OpenAI-compatible POST /v1/chat/completions endpoint.
     // Disabled by default per the runtime schema. Without this, Vercel's three
     // gateway-calling paths all fall back to direct Anthropic (no workspace
