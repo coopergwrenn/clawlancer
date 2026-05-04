@@ -28,9 +28,9 @@ const glassOrange = {
 export const metadata = createMetadata({
   title: "Personal AI Agent for Consensus 2026 Miami",
   description:
-    "Every Consensus attendee gets a personal AI agent that knows all 326 sessions across 9 stages and all 219 side events. Ask it where the free dinner is. Ask it which talks mention zk. Ask it to build you an AI-track itinerary. Free 3-day trial.",
+    "Every Consensus attendee gets a personal AI agent that knows all 338 sessions across 9 stages and all 229 side events. Ask it where the free dinner is. Ask it which talks mention zk. Ask it to build you an AI-track itinerary. Free 3-day trial.",
   path: "/consensus",
-  ogTitle: "Your AI agent for Consensus 2026 · 326 sessions · 219 side events",
+  ogTitle: "Your AI agent for Consensus 2026 · 338 sessions · 229 side events",
 });
 
 const eventJsonLd = {
@@ -76,7 +76,7 @@ const queryDemos = [
   {
     label: "Speaker stalker",
     prompt: "Where's Saylor speaking?",
-    body: "The full speaker index across 451 names is pre-built. Ask about anyone (Saylor, Raoul Pal, A-Rod, Grant Cardone) and get every venue, every time, sorted chronologically.",
+    body: "The full speaker index across 463 names is pre-built. Ask about anyone (Saylor, Raoul Pal, A-Rod, Grant Cardone) and get every venue, every time, sorted chronologically.",
   },
   {
     label: "Conflict detector",
@@ -86,14 +86,14 @@ const queryDemos = [
   {
     label: "Intent matching · Beta",
     prompt: "Find me the right people at Consensus this week.",
-    body: "Tell your agent what you're working on, what you're after, who you want to meet. It cross-references the 451 speakers, 219 side events, and your fellow attendees, then surfaces the people most relevant to your goals. Investor hunting deals, builder looking for a co-founder, attendee chasing the right afterparty: it matches on intent, not on job title.",
+    body: "Tell your agent what you're working on, what you're after, who you want to meet. It cross-references the 463 speakers, 229 side events, and your fellow attendees, then surfaces the people most relevant to your goals. Investor hunting deals, builder looking for a co-founder, attendee chasing the right afterparty: it matches on intent, not on job title.",
   },
 ];
 
 const features = [
   {
     title: "Knows the official agenda cold",
-    body: "All 326 sessions across 9 venues, with speakers, tracks, tags, and descriptions. Refreshes every hour through the conference so last-minute changes show up in your next message.",
+    body: "All 338 sessions across 9 venues, with speakers, tracks, tags, and descriptions. Refreshes every hour through the conference so last-minute changes show up in your next message.",
   },
   {
     title: "Knows the side-event scene",
@@ -170,7 +170,7 @@ export default function ConsensusPage() {
             className="text-base sm:text-lg max-w-xl mx-auto mb-10 leading-relaxed"
             style={{ color: "#6b6b6b" }}
           >
-            Knows all 326 sessions across 9 stages. Knows all 219 side events.
+            Knows all 338 sessions across 9 stages. Knows all 229 side events.
             Asks what you care about. Tells you where to be. After Consensus,
             it stays.
           </p>
@@ -188,9 +188,9 @@ export default function ConsensusPage() {
         <div className="max-w-3xl mx-auto">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { stat: "326", label: "Sessions" },
-              { stat: "219", label: "Side events" },
-              { stat: "451", label: "Speakers" },
+              { stat: "338", label: "Sessions" },
+              { stat: "229", label: "Side events" },
+              { stat: "463", label: "Speakers" },
               { stat: "9", label: "Stages" },
             ].map((s) => (
               <div
@@ -364,8 +364,8 @@ export default function ConsensusPage() {
               style={{ color: "#6b6b6b" }}
             >
               Tell your agent what you&apos;re working on, what you&apos;re
-              after, who you want to meet. It cross-references the 451 speakers,
-              219 side events, and your fellow Consensus attendees, then
+              after, who you want to meet. It cross-references the 463 speakers,
+              229 side events, and your fellow Consensus attendees, then
               surfaces the people most relevant to your goals.
             </p>
             <p

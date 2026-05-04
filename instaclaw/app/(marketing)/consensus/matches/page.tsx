@@ -123,8 +123,8 @@ export default function ConsensusMatchesPreviewPage() {
             className="text-base sm:text-lg max-w-xl mx-auto leading-relaxed"
             style={{ color: "#6b6b6b" }}
           >
-            Tell your agent what you&apos;re working on. It scans 451 speakers,
-            219 side events, and your fellow attendees, then surfaces the people
+            Tell your agent what you&apos;re working on. It scans 463 speakers,
+            229 side events, and your fellow attendees, then surfaces the people
             most relevant to your goals.
           </p>
         </div>
@@ -171,7 +171,7 @@ export default function ConsensusMatchesPreviewPage() {
             style={glassStyle}
           >
             {[
-              "Scanning 451 speakers, 219 side events, 326 sessions.",
+              "Scanning 463 speakers, 229 side events, 338 sessions.",
               "Filtering by stated focus: onchain AI · infrastructure · privacy primitives.",
               "Cross-referencing your project notes with speaker session topics and panel descriptions.",
               "Found 23 candidates. Ranking by problem-overlap, not by topic tag.",
