@@ -687,27 +687,29 @@ export function BankrWalletCard({
           </div>
 
           {/* Primary CTA — Trade on Bankr (only reliable V4/Doppler trade
-              surface today). Orange brand gradient (primary CTA needs to
-              pop), rounded card shape, Bankr's pixel-art mark inline with
-              the wordmark instead of a generic external-link arrow. Real
-              breathing room above and below so it isn't kissing the
-              "How to buy" section beneath. */}
+              surface today). Style sourced from the Buy Credits button on
+              dashboard/page.tsx: rounded-full pill, orange-500→600 gradient,
+              ring + lift + inner-highlight shadow stack, backdrop blur.
+              Bankr's pixel-art mark inline with the wordmark instead of
+              a generic external-link arrow. */}
           <div className="px-4 pt-3 pb-4">
             <a
               href="https://bankr.bot/terminal"
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-xl w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all hover:scale-[1.005] active:scale-[0.99]"
+              className="w-full rounded-full px-5 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99]"
               style={{
-                background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
-                color: "white",
-                textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
-                boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+                background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                color: "#fff",
+                boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                textShadow: "0 1px 2px rgba(0,0,0,0.15)",
               }}
             >
               <span>Trade on</span>
               <img src="/bankr-logo.png" alt="" width={18} height={18} style={{ borderRadius: 4 }} />
-              <span className="font-semibold">Bankr</span>
+              <span>Bankr</span>
             </a>
           </div>
 
@@ -779,12 +781,14 @@ export function BankrWalletCard({
 
               <button
                 onClick={handleOpenForm}
-                className="w-full py-2.5 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                className="w-full rounded-full px-5 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99]"
                 style={{
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
-                  color: "white",
-                  boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
-                  textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+                  background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                  color: "#fff",
+                  boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                  backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.15)",
                 }}
               >
                 <Sparkles className="w-4 h-4" />
