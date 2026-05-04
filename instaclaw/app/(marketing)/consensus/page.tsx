@@ -6,7 +6,7 @@ import { ConsensusClient } from "./consensus-client";
 export const metadata = createMetadata({
   title: "Personal AI Agent for Consensus 2026 Miami",
   description:
-    "Every Consensus attendee gets a personal AI agent that knows all 326 sessions across 9 stages and all 219 side events. Ask it where the free dinner is. Ask it which talks mention zk. Ask it to build you an AI-track itinerary. Free for the first 100 attendees.",
+    "Every Consensus attendee gets a personal AI agent that knows all 326 sessions across 9 stages and all 219 side events. Ask it where the free dinner is. Ask it which talks mention zk. Ask it to build you an AI-track itinerary. Free 3-day trial.",
   path: "/consensus",
   ogTitle: "Your AI agent for Consensus 2026 · 326 sessions · 219 side events",
 });
@@ -85,7 +85,7 @@ const features = [
 const faqs = [
   {
     q: "What does it cost?",
-    a: "Free for the first 100 Consensus attendees who claim during the week. Inference is on us. After 100, normal InstaClaw pricing applies — but we'll bump the cap if it fills before Tuesday.",
+    a: "Every plan comes with a 3-day free trial. Full access, no restrictions, no credit card to start. Standard InstaClaw pricing ($29/$99/$299/mo) kicks in after the trial — cancel anytime before then and you won't be charged.",
   },
   {
     q: "Do I need a Consensus ticket?",
@@ -150,7 +150,7 @@ export default function ConsensusPage() {
           <ConsensusClient />
 
           <p className="text-xs mt-5" style={{ color: "#9a9a9a" }}>
-            Free for the first 100 Consensus attendees. No ticket required.
+            Free 3-day trial. No ticket required, no credit card.
           </p>
         </div>
       </section>
@@ -390,8 +390,7 @@ export default function ConsensusPage() {
             className="text-sm sm:text-base mb-8 leading-relaxed"
             style={{ color: "#6b6b6b" }}
           >
-            Free for the first 100 Consensus attendees. No ticket required, no
-            credit card, no waitlist if there's still room.
+            Free 3-day trial. No ticket required, no credit card, no waitlist.
           </p>
           <ConsensusClient />
           <p className="text-xs mt-8" style={{ color: "#9a9a9a" }}>

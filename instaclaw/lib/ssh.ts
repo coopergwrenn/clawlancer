@@ -4446,23 +4446,23 @@ export async function configureOpenClaw(
       );
     }
 
-    // Install Consensus 2026 skill — fires for BOTH consensus_2026 and edge_city
-    // partners. Edge City attendees are also at Consensus this week (May 5–7),
-    // so they get the consensus skill alongside their existing edge-esmeralda
-    // skill. partner is a single-string column; this OR is the cheapest way
-    // to give Edge users both contexts without a schema change.
-    // consensus_2026 partners only get this skill (no edge_city installs).
-    if (config.partner === "consensus_2026" || config.partner === "edge_city") {
-      scriptParts.push(
-        '# Install Consensus 2026 Miami skill (consensus_2026 or edge_city partners)',
-        'if [ ! -d "$HOME/.openclaw/skills/consensus-2026" ]; then',
-        '  git clone --depth 1 https://github.com/coopergwrenn/consensus-2026-skill.git "$HOME/.openclaw/skills/consensus-2026" 2>/dev/null || true',
-        'fi',
-        '# 30-min cron to pull fresh agenda + side-event data (repo re-bakes hourly via GitHub Actions)',
-        '(crontab -l 2>/dev/null | grep -v "consensus-2026-skill" | grep -v "skills/consensus-2026" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null\') | crontab -',
-        ''
-      );
-    }
+    // Install Consensus 2026 skill UNIVERSALLY — every new signup gets it,
+    // regardless of partner tag.  2026-05-04 launch decision: it's conference
+    // week, the skill is useful for any crypto-native user (not just Consensus
+    // attendees — anyone tracking the agenda from afar gets value).  Cheap to
+    // install, gracefully degrades for non-attendees (skill loads only when
+    // queried).  Previously gated on partner === "consensus_2026" || "edge_city";
+    // gate dropped so the launch tweet can link to instaclaw.io main and every
+    // signup carries the skill.
+    scriptParts.push(
+      '# Install Consensus 2026 Miami skill (universal — every signup)',
+      'if [ ! -d "$HOME/.openclaw/skills/consensus-2026" ]; then',
+      '  git clone --depth 1 https://github.com/coopergwrenn/consensus-2026-skill.git "$HOME/.openclaw/skills/consensus-2026" 2>/dev/null || true',
+      'fi',
+      '# 30-min cron to pull fresh agenda + side-event data (repo re-bakes hourly via GitHub Actions)',
+      '(crontab -l 2>/dev/null | grep -v "consensus-2026-skill" | grep -v "skills/consensus-2026" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null\') | crontab -',
+      ''
+    );
 
     // Deploy World ID nullifier to .env + WORLD_ID.md if user is verified
     // This ensures the agent carries its human identity proof from first boot
