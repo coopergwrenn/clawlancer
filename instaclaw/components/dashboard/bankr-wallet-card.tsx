@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X, Gift } from "lucide-react";
 import { HowToBuy } from "./how-to-buy";
+import { WhyTokenize } from "./why-tokenize";
 import { pickTweetTemplate } from "@/lib/bankr-tweet-templates";
 
 interface BankrWalletCardProps {
@@ -685,22 +686,24 @@ export function BankrWalletCard({
             )}
           </div>
 
-          {/* Primary CTA — Trade on Bankr (the only reliable V4/Doppler trade surface today) */}
-          <a
-            href="https://bankr.bot/terminal"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-center py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:scale-[1.005] active:scale-[0.995]"
-            style={{
-              background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
-              color: "white",
-              textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
-              borderTop: "1px solid var(--border)",
-            }}
-          >
-            Trade on Bankr
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          {/* Primary CTA — Trade on Bankr (only reliable V4/Doppler trade
+              surface today). Glass-styled to match HowToBuy + the rest of
+              the dashboard system. Bankr's pixel-art mark sits inline with
+              the wordmark instead of a generic external-link arrow — the
+              brand is the link target, surface it. */}
+          <div className="px-4 pt-3 pb-1">
+            <a
+              href="https://bankr.bot/terminal"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="glass rounded-xl w-full flex items-center justify-center gap-2 py-2.5 text-sm hover:bg-black/5 transition-all active:scale-[0.99]"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <span style={{ color: "var(--muted)" }}>Trade on</span>
+              <img src="/bankr-logo.png" alt="" width={18} height={18} style={{ borderRadius: 4 }} />
+              <span className="font-semibold">Bankr</span>
+            </a>
+          </div>
 
           {/* How-to-buy disclosure — V4/Doppler tokens need a short explainer */}
           <div
@@ -752,19 +755,36 @@ export function BankrWalletCard({
       ) : (
         <>
           {!showTokenForm ? (
-            <button
-              onClick={handleOpenForm}
-              className="w-full py-2.5 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
-              style={{
-                background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
-                color: "white",
-                boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
-                textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
-              }}
-            >
-              <Sparkles className="w-4 h-4" />
-              Tokenize Your Agent
-            </button>
+            <div className="space-y-3">
+              {/* Plain-language value prop — sits above the button so the
+                  user knows WHY they'd click before they read the label. */}
+              <div
+                className="glass rounded-xl px-4 py-3 text-sm leading-relaxed"
+                style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+              >
+                Launch a token so your agent can earn trading fees and pay for
+                its own compute. <span style={{ color: "var(--foreground)" }}>No more monthly bills</span> — your agent sustains itself.
+              </div>
+
+              {/* Collapsible "Why tokenize?" accordion — same pattern as
+                  HowToBuy that appears post-launch. Optional read; doesn't
+                  push the CTA below the fold by default. */}
+              <WhyTokenize />
+
+              <button
+                onClick={handleOpenForm}
+                className="w-full py-2.5 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                style={{
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+                  color: "white",
+                  boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+                  textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+                }}
+              >
+                <Sparkles className="w-4 h-4" />
+                Tokenize Your Agent
+              </button>
+            </div>
           ) : !showConfirm ? (
             <div
               className="rounded-lg p-4 space-y-3"
