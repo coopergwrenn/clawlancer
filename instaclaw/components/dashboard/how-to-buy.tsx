@@ -53,7 +53,7 @@ export function HowToBuy({ tokenAddress, tokenSymbol }: HowToBuyProps) {
                   rel="noopener noreferrer"
                   className="text-[11px] px-2.5 py-1 rounded-md flex items-center gap-1 font-medium hover:scale-[1.02] active:scale-[0.98] transition-transform"
                   style={{
-                    background: "linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                     color: "white",
                     textShadow: "0 1px 1px rgba(0,0,0,0.12)",
                   }}
@@ -143,7 +143,7 @@ function Step({ n, text, children }: { n: number; text: string; children?: React
       <div
         className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
         style={{
-          background: "linear-gradient(135deg, #f5a623, #d4911d)",
+          background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
           color: "white",
           textShadow: "0 1px 1px rgba(0,0,0,0.15)",
         }}
