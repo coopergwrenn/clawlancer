@@ -242,6 +242,12 @@ export default async function LaunchCard({ params }: Props) {
               }}
             />
           ) : (
+            // No PFP on file (Path B chat-launch, simulate predictions, or
+            // direct visit to an unknown address). Render the InstaClaw
+            // white crab on the brand gradient — keeps the card on-brand
+            // instead of falling back to a placeholder ticker like "TKN".
+            // If we have a symbol, set it in serif beneath the mark; if
+            // not, the mark alone holds the square.
             <div
               style={{
                 width: 640,
@@ -249,16 +255,31 @@ export default async function LaunchCard({ params }: Props) {
                 borderRadius: 72,
                 background: `linear-gradient(135deg, ${INSTACLAW_ORANGE}, #8a3a1f)`,
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 192,
-                fontWeight: 800,
-                color: "#fff",
-                letterSpacing: "-4px",
                 border: `2px solid ${BORDER}`,
               }}
             >
-              {initials}
+              <img
+                src="https://instaclaw.io/logo-white.png"
+                width={symbol ? 280 : 360}
+                height={symbol ? 280 : 360}
+              />
+              {symbol && (
+                <div
+                  style={{
+                    fontFamily: "Instrument Serif",
+                    fontSize: 96,
+                    color: "#fff",
+                    letterSpacing: "-2px",
+                    lineHeight: 1,
+                    marginTop: 32,
+                  }}
+                >
+                  {`$${symbol}`}
+                </div>
+              )}
             </div>
           )}
 
