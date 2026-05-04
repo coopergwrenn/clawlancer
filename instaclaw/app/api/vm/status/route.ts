@@ -48,7 +48,14 @@ export async function GET() {
       let liveTokenAddress = vm.bankr_token_address;
       let liveTokenSymbol = vm.bankr_token_symbol;
       let liveTokenizationPlatform = vm.tokenization_platform;
-      if (vm.bankr_wallet_id && !vm.bankr_token_address && !vm.tokenization_platform) {
+      // DISABLE_BANKR_PATH_B_SYNC: temporary kill-switch used during the
+      // 2026-05-04 announcement-record window. When Cooper needs to re-launch
+      // his demo agent, his TESTER token still exists on-chain so Bankr's
+      // creator-fees API rediscovers it within ~1s and writes back the old
+      // address before he can click. Setting this env to "true" pauses the
+      // on-demand sync inside /api/vm/status. Cron sync still runs.
+      const disablePathBSync = process.env.DISABLE_BANKR_PATH_B_SYNC === "true";
+      if (!disablePathBSync && vm.bankr_wallet_id && !vm.bankr_token_address && !vm.tokenization_platform) {
         try {
           const sync = await syncBankrLaunchForVm(vm.id);
           if (sync.updated && sync.tokenAddress && sync.tokenSymbol) {
