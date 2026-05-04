@@ -83,6 +83,11 @@ const queryDemos = [
     prompt: "I want to go to X and Y at 2:30 Wednesday.",
     body: "Your agent compares the two by speaker firepower (rare-appearance vs. always-on), track centrality, and panel format — and tells you which to pick and why. No more fomo whiplash on the convention floor.",
   },
+  {
+    label: "Founder matching · Beta",
+    prompt: "I'm building onchain AI infra. Find my people.",
+    body: "Tell your agent your project — stack, stage, problem. It cross-references the 451 speakers and your fellow attendees and surfaces the founders working on the same thing, with warm intros queued up. Match on what you're actually building, not on labels.",
+  },
 ];
 
 const features = [
@@ -189,7 +194,7 @@ export default function ConsensusPage() {
             ].map((s) => (
               <div
                 key={s.label}
-                className="p-6 text-center rounded-xl"
+                className="p-6 text-center rounded-xl transition-all duration-300 hover:-translate-y-0.5"
                 style={glassStyle}
               >
                 <div
@@ -221,7 +226,7 @@ export default function ConsensusPage() {
               className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] leading-[1.1] mb-4"
               style={{ fontFamily: "var(--font-serif)" }}
             >
-              Four answers your agent has, that no app has.
+              Five answers your agent has, that no app has.
             </h2>
             <p
               className="text-sm sm:text-base max-w-lg mx-auto leading-relaxed"
@@ -298,7 +303,7 @@ export default function ConsensusPage() {
             {features.map((f) => (
               <div
                 key={f.title}
-                className="p-6 sm:p-7 rounded-xl"
+                className="p-6 sm:p-7 rounded-xl transition-all duration-300 hover:-translate-y-0.5"
                 style={glassStyle}
               >
                 <h3
@@ -315,6 +320,60 @@ export default function ConsensusPage() {
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Founder matching — BETA highlight */}
+      <section className="px-4 pb-20">
+        <div className="max-w-3xl mx-auto">
+          <div
+            className="rounded-2xl p-8 sm:p-12 transition-all"
+            style={glassStyle}
+          >
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.18em] mb-6"
+              style={{
+                ...glassOrange,
+                color: "#DC6743",
+                fontFamily: "var(--font-serif)",
+              }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: "#DC6743" }}
+              />
+              Beta · Full launch tomorrow
+            </div>
+
+            <p
+              className="text-xs uppercase tracking-[0.15em] mb-3"
+              style={{ color: "#DC6743" }}
+            >
+              Founder matching
+            </p>
+            <h2
+              className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] leading-[1.1] mb-5"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Match by what you&apos;re building.
+            </h2>
+            <p
+              className="text-sm sm:text-base leading-relaxed mb-4 max-w-2xl"
+              style={{ color: "#6b6b6b" }}
+            >
+              Tell your agent the problem you&apos;re solving — your stack,
+              your stage, what&apos;s keeping you up at night. It cross-references
+              the 451 speakers and your fellow Consensus attendees and surfaces
+              the founders working on the same thing. Real overlap. Real intros.
+              No &ldquo;AI people&rdquo; or &ldquo;DePIN people&rdquo; lists.
+            </p>
+            <p
+              className="text-sm leading-relaxed"
+              style={{ color: "#9a9a9a" }}
+            >
+              Live in beta now — full feature ships tomorrow.
+            </p>
           </div>
         </div>
       </section>

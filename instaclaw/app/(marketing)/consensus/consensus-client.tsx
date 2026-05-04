@@ -127,7 +127,7 @@ export function ConsensusClient() {
       <button
         onClick={handleClaim}
         disabled={claiming}
-        className="w-full px-6 py-3.5 rounded-full text-sm font-medium transition-all hover:opacity-90 disabled:opacity-60"
+        className="w-full px-6 py-3.5 rounded-full text-sm font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 active:brightness-95 disabled:opacity-60 disabled:translate-y-0"
         style={{
           ...glassButtonOrange,
           color: "#ffffff",
@@ -158,7 +158,7 @@ export function ConsensusClient() {
           placeholder="you@example.com"
           required
           disabled={loading}
-          className="flex-1 px-4 py-3 rounded-full text-sm outline-none transition-all"
+          className="flex-1 px-4 py-3 rounded-full text-sm outline-none transition-all duration-200 focus:ring-2 focus:ring-[#DC6743]/30 disabled:opacity-60"
           style={{
             ...glassStyle,
             color: "#333334",
@@ -167,7 +167,7 @@ export function ConsensusClient() {
         <button
           type="submit"
           disabled={loading}
-          className="px-5 py-3 rounded-full text-sm font-medium transition-all hover:opacity-90 disabled:opacity-60"
+          className="px-5 py-3 rounded-full text-sm font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-90 disabled:opacity-60 disabled:translate-y-0"
           style={{
             ...glassButtonDark,
             color: "#ffffff",
