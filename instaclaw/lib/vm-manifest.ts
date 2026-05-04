@@ -533,8 +533,17 @@ export const VM_MANIFEST = {
    *  them). Fleet-wide reconcile churns ~200 non-edge VMs through the
    *  bridge step, but it early-returns on partner !== "edge_city" so
    *  net effect there is just a config_version bump. Snapshot stale
-   *  reminder per Rule 7 still applies. */
-  version: 79,
+   *  reminder per Rule 7 still applies.
+   *
+   * v80 (2026-05-04): PERIODIC_SUMMARY_V1_RESHRINK fix. Added negative-
+   *  new_msgs handler to run_periodic_summary_hook in strip-thinking.py.
+   *  2026-05-04 audit found 2/5 active VMs had the hook silently blocked:
+   *  last_periodic_msg_count was a pre-shrink count, new_msgs went
+   *  negative after in-place compaction, gate fires forever. Re-baseline
+   *  count without advancing throttle timer so summary fires once enough
+   *  new content accumulates. Sentinel "PERIODIC_SUMMARY_V1_RESHRINK"
+   *  added to STRIP_THINKING_SCRIPT requiredSentinels per Rule 23. */
+  version: 80,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -838,12 +847,22 @@ export const VM_MANIFEST = {
       //     summary into MEMORY.md before any destructive archival path
       //     (size cap, error_loop) — Rule 22 in spirit: never destroy
       //     state without preserving recovery context.
+      //
+      //   PERIODIC_SUMMARY_V1_RESHRINK
+      //     The 2026-05-04 negative-new_msgs fix.  When the session
+      //     shrinks (in-place compaction, strip-thinking text-block
+      //     stripping, silent rotation), last_periodic_msg_count was a
+      //     pre-shrink count — new_msgs goes negative, gate fires forever,
+      //     the hook is permanently silent. Re-baseline the count so the
+      //     next tick computes correctly.  2026-05-04 audit: 2/5 active
+      //     VMs had the hook silently blocked by this.
       requiredSentinels: [
         "def trim_failed_turns",
         "SESSION TRIMMED:",
         "def run_periodic_summary_hook",
         "PERIODIC_SUMMARY_V1",
         "PRE_ARCHIVE_SUMMARY_V1",
+        "PERIODIC_SUMMARY_V1_RESHRINK",
       ],
     },
     {

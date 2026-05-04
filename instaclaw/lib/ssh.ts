@@ -1160,6 +1160,26 @@ def run_periodic_summary_hook():
     if not os.path.exists(session_file): return
     messages = _extract_conversation(session_file, max_msgs=200)
     new_msgs = len(messages) - last_msg_count
+
+    # PERIODIC_SUMMARY_V1_RESHRINK: handle session shrinkage.
+    # 2026-05-04 audit: 2/5 active VMs had the hook silently blocked because
+    # last_periodic_msg_count was a pre-shrink count (in-place compaction,
+    # strip-thinking text-block stripping, or silent rotation reduces the
+    # count returned by _extract_conversation). new_msgs goes negative,
+    # the next gate fires forever, hook never runs again. Re-baseline the
+    # count so the next tick can compute correctly. Do NOT advance the
+    # throttle timer — we want to summarize as soon as enough new content
+    # accumulates, not 2 hours from now.
+    if new_msgs < 0:
+        state["last_periodic_msg_count"] = len(messages)
+        _save_summary_state(state)
+        log_telemetry(
+            "PERIODIC_SUMMARY_V1_RESHRINK: session shrank ("
+            + str(last_msg_count) + " -> " + str(len(messages))
+            + "), re-baselined count, skipping this tick"
+        )
+        return
+
     if new_msgs < PERIODIC_SUMMARY_MIN_NEW_MSGS:
         return  # not enough new content
 
