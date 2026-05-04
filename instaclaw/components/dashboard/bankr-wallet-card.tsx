@@ -612,10 +612,17 @@ export function BankrWalletCard({
           </p>
         </div>
       ) : hasToken ? (
-        /* ── POST-LAUNCH TOKEN DASHBOARD ── */
+        /* ── POST-LAUNCH TOKEN DASHBOARD ──
+            Outer container: `glass` matches the rest of the dashboard
+            cards (HowToBuy, AgentWalletFundingCard) — the prior
+            `rgba(0,0,0,0.03)` darkened the card and pulled an olive
+            tinge from the warm cream page background.
+            Avatar gradient: brand orange-500→600 (the same pair driving
+            Buy Credits, Tokenize, and Trade-on-Bankr) — was #f5a623 which
+            reads dull/olive against Tailwind orange. */
         <div
-          className="rounded-xl overflow-hidden"
-          style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
+          className="glass rounded-xl overflow-hidden"
+          style={{ border: "1px solid var(--border)" }}
         >
           {/* Token header */}
           <div className="p-4">
@@ -624,7 +631,7 @@ export function BankrWalletCard({
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
                   style={{
-                    background: "linear-gradient(135deg, #f5a623, #d4911d)",
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                     color: "white",
                     textShadow: "0 1px 1px rgba(0,0,0,0.15)",
                   }}
