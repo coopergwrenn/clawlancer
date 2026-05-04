@@ -219,31 +219,37 @@ def build_extractor_user_prompt(memory_text: str, recent_text: str) -> str:
 
 # ─── Haiku call (via gateway proxy) ─────────────────────────────────
 
-def call_haiku(messages: list[dict], stricter_retry: bool = False) -> str | None:
-    """POST to gateway proxy with Haiku model override. Returns raw response text or None."""
+def call_haiku(system_prompt: str, user_prompt: str, stricter_retry: bool = False) -> str | None:
+    """POST to gateway proxy with Haiku model override. Returns raw response text or None.
+
+    Uses Anthropic Messages API format: 'system' is a top-level parameter,
+    not a role in the messages array. (OpenAI-style {role:'system', content:...}
+    works on some backends but is rejected when the gateway routes to
+    Anthropic Claude. Anthropic format is the canonical format for claude-*
+    model names; downstream gateway adapters should translate as needed.)
+    """
     token = get_gateway_token()
     if not token:
         log("ERROR: no GATEWAY_TOKEN found; cannot call Haiku")
         return None
 
+    user_content = user_prompt
     if stricter_retry:
         # On retry, prepend a stricter "JSON only" instruction
-        msgs = list(messages)
-        msgs[-1] = {
-            **msgs[-1],
-            "content": (
-                "Your previous response was not valid JSON. Try again. "
-                "Output STRICT JSON object ONLY. No prose, no code fences, no commentary. "
-                "Just the JSON object.\n\n"
-                + msgs[-1]["content"]
-            ),
-        }
-        messages = msgs
+        user_content = (
+            "Your previous response was not valid JSON. Try again. "
+            "Output STRICT JSON object ONLY. No prose, no code fences, no commentary. "
+            "Just the JSON object.\n\n"
+            + user_prompt
+        )
 
     payload = {
         "model": HAIKU_MODEL,
         "max_tokens": MAX_TOKENS,
-        "messages": messages,
+        "system": system_prompt,
+        "messages": [
+            {"role": "user", "content": user_content},
+        ],
     }
 
     try:
@@ -411,18 +417,15 @@ def extract_intent(memory_text: str | None = None,
     if cold:
         log(f"extract_intent: cold-start (memory={len(memory_text)} chars); will floor confidence")
 
-    messages = [
-        {"role": "system", "content": EXTRACTOR_SYSTEM_PROMPT},
-        {"role": "user", "content": build_extractor_user_prompt(memory_text, recent_text)},
-    ]
+    user_prompt = build_extractor_user_prompt(memory_text, recent_text)
 
     # First attempt
-    raw = call_haiku(messages, stricter_retry=False)
+    raw = call_haiku(EXTRACTOR_SYSTEM_PROMPT, user_prompt, stricter_retry=False)
     obj = parse_and_validate(raw or "")
     if obj is None:
         log("extract_intent: first attempt failed; retrying with stricter prompt")
         time.sleep(1.0)
-        raw = call_haiku(messages, stricter_retry=True)
+        raw = call_haiku(EXTRACTOR_SYSTEM_PROMPT, user_prompt, stricter_retry=True)
         obj = parse_and_validate(raw or "")
         if obj is None:
             log("extract_intent: second attempt also failed; returning None")

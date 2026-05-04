@@ -97,3 +97,63 @@ curl -sI https://<vm-id>.vm.instaclaw.io/relay/extension/status
 ```
 
 **Severity:** P0 customer-facing. Triage state shipped buys time — real fix needed within days.
+
+
+## 2026-05-04 — Gateway proxy `x-model-override` routing is unstable + format-translation gap
+
+**Surfaced by:** Component 3 (`scripts/consensus_intent_extract.py`) testing during the matchpool build today. Same prompt, same `x-model-override: claude-haiku-4-5-20251001` header, ran twice ~30 minutes apart on vm-780:
+
+- 17:30 UTC: response `model: "MiniMax-M2.5"` with `thinking` content blocks
+- 18:24 UTC: response `model: "claude-sonnet-4-6"` (Sonnet, not Haiku)
+
+Direct probe via curl with the same payload at 18:25 UTC also returned `claude-sonnet-4-6`.
+
+**The shape — two distinct issues:**
+
+### Issue 1: `x-model-override` header not respected
+
+We send `x-model-override: claude-haiku-4-5-20251001`. Gateway returns *something else* — sometimes MiniMax-M2.5, sometimes Sonnet-4-6, never Haiku. The override header appears to be advisory or ignored entirely.
+
+For matchmaking Component 3 (intent extraction), output quality is fine in either case. **For Component 8 (Layer 3 deliberation, ships Wednesday), this is a real blocker.** Layer 3 explicitly needs Sonnet quality — the architecture commitment in the PRD is that Sonnet's nuanced reasoning catches MEMORY.md signals (e.g., "user mentioned frustration with current auditor in passing") that Haiku and MiniMax often miss. Routing roulette breaks the moat.
+
+### Issue 2: Format translation across providers
+
+OpenAI/MiniMax accept `{role: 'system', content: ...}` in the messages array. Anthropic Claude rejects it and requires `system` as a top-level parameter. Component 3's first version sent OpenAI-format and worked when proxy routed to MiniMax; failed when it routed to Sonnet with:
+
+```
+"messages: Unexpected role \"system\". The Messages API accepts a top-level
+`system` parameter, not \"system\" as an input message role."
+```
+
+Workaround applied in Component 3: send Anthropic-format (top-level `system`). This works for Claude routes; works for MiniMax routes because MiniMax accepts the top-level field too apparently. But it's fragile — it depends on every provider being lenient about the format we happen to send.
+
+**Why both matter:**
+
+- **Cost predictability:** MiniMax pricing differs from Anthropic. Users' tier credits drain at different rates depending on which provider gets routed to. We're billing Anthropic credits for what might be MiniMax inference.
+- **Quality consistency:** Layer 3 deliberation (the Wednesday ship that's the central matchmaking moat) relies on consistent Sonnet quality. If routing flips to MiniMax mid-conference, deliberation quality degrades silently.
+- **Determinism:** Operators can't reason about model behavior when "claude-haiku-4-5-20251001" might respond as Haiku, MiniMax, or Sonnet on any given call.
+- **Format gap:** The proxy should normalize/translate request formats per the actual provider it routes to, not pass through whatever shape the client sent.
+
+**Suspected root cause (not verified):** the gateway proxy at `https://instaclaw.io/api/gateway/proxy` likely has a routing logic that picks a provider based on availability, capacity, or cost — but the routing decision isn't honoring the `x-model-override` header, and it isn't translating the request format to the picked provider's expected shape.
+
+**Where to look:**
+
+- `instaclaw/app/api/gateway/proxy/route.ts` — the proxy handler
+- Anything that picks a model/provider from a routing table
+- `lib/model-fallback*` if it exists
+- The `x-model-override` header parsing path
+
+**Remediation (rough estimate, not committed):**
+
+1. **Honor `x-model-override` strictly.** If the header specifies `claude-haiku-4-5-20251001`, route to Anthropic Haiku — period. If Anthropic is unavailable, return an error rather than silently substituting MiniMax. Predictability > availability for this case.
+2. **Translate request format per provider.** If routing decides to use Anthropic, lift `role: system` messages into the top-level `system` parameter. If routing to OpenAI/MiniMax, fold a top-level `system` parameter into a `role: system` message. This should be a pre-dispatch normalization in the proxy.
+3. **Log the actual model used in the response payload** (already happens via `model:` field) AND **emit telemetry showing the requested-vs-served model mismatch rate.** Build observability for the issue.
+
+**Severity for the matchmaking sprint:**
+
+- Component 3 (intent extraction, Tuesday): ✅ unblocked. Anthropic-format payload works regardless of which provider gets routed to.
+- Component 5/6 (platform endpoint + scoring, Tuesday): ✅ unaffected (no LLM calls).
+- Component 7 (Layer 2 listwise rerank, Tuesday afternoon): ⚠️ would prefer Sonnet quality but tolerates MiniMax/Sonnet roulette.
+- Component 8 (Layer 3 per-candidate deliberation, Wednesday): 🚨 **blocks the central moat** if routing remains unstable. Must fix before Layer 3 ships, OR have a deterministic Sonnet path the deliberation lib can rely on.
+
+**Action item:** assign before Wed 9am.
