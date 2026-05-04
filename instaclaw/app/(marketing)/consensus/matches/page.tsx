@@ -4,7 +4,7 @@ import { createMetadata } from "@/lib/seo";
 export const metadata = createMetadata({
   title: "Intent Matching · Preview · InstaClaw",
   description:
-    "What intent matching looks like at Consensus 2026. Tell your agent what you're working on, what you're after, who you want to meet. It surfaces the people most relevant to your goals — speakers, attendees, side-event hosts. Beta this week, full feature ships tomorrow.",
+    "What intent matching looks like at Consensus 2026. Tell your agent what you're working on, what you're after, who you want to meet. It surfaces the people most relevant to your goals: speakers, attendees, side-event hosts. Beta this week, full feature ships tomorrow.",
   path: "/consensus/matches",
 });
 
@@ -52,7 +52,7 @@ const matches = [
     relevance: 94,
     why: "Building infra for the institutional crypto stack. His Wednesday panel on \"DeFi's Infra, Data & Oracle Renaissance\" is the closest agenda match to your stated focus on onchain AI infrastructure.",
     where: "Wed · 11:30 AM · Frontier Stage",
-    intro: "Coffee right after his panel — Frontier lobby, ~12:35 PM",
+    intro: "Coffee right after his panel. Frontier lobby, ~12:35 PM.",
   },
   {
     initial: "DJ",
@@ -62,7 +62,7 @@ const matches = [
     relevance: 91,
     why: "Confidential compute for AI workloads is his exact wedge. His talk \"Enterprise AI Without Surveillance: Privacy, Confidential Compute\" overlaps directly with the privacy primitives on your roadmap.",
     where: "Tue · 3:15 PM · Convergence Stage",
-    intro: "He has a 30-min open block Tuesday after his talk — 4:00 PM, Speaker Lounge",
+    intro: "30-min open block Tuesday after his talk. 4:00 PM, Speaker Lounge.",
   },
   {
     initial: "BT",
@@ -70,9 +70,9 @@ const matches = [
     role: "Chief Growth Officer",
     company: "Succinct Labs",
     relevance: 87,
-    why: "Succinct's zk-prover stack is what every agentic settlement layer eventually needs. He's at the same DeFi infra panel as Wachsman — natural double-up.",
+    why: "Succinct's zk-prover stack is what every agentic settlement layer eventually needs. He's at the same DeFi infra panel as Wachsman. Natural double-up.",
     where: "Wed · 11:30 AM · Frontier Stage",
-    intro: "Catch him at the Succinct booth Tuesday afternoon — confirmed 2–4 PM block",
+    intro: "Catch him at the Succinct booth Tuesday afternoon (confirmed 2–4 PM block).",
   },
   {
     initial: "MZ",
@@ -82,7 +82,7 @@ const matches = [
     relevance: 82,
     why: "Enterprise voice on agent payments. Her panel \"Scaling Agentic Commerce through Crypto-Rails and Open Protocols\" is the demand-side perspective you need before pitching infra to enterprise.",
     where: "Wed · 2:45 PM · Mainstage",
-    intro: "PayPal hosting a meet-and-greet Tuesday 6 PM at the W Brickell — RSVP queued",
+    intro: "PayPal hosting a meet-and-greet Tuesday 6 PM at the W Brickell. RSVP queued.",
   },
 ];
 
