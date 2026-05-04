@@ -97,7 +97,7 @@ const features = [
   },
   {
     title: "Knows the side-event scene",
-    body: "All 219 events from plan.wtf (parties, breakfasts, panels, yacht meetups), searchable by day, vibe, organizer, free-or-paid, food-or-bar. The directory crypto Twitter wishes it had.",
+    body: "All 229 events from plan.wtf (parties, breakfasts, panels, yacht meetups), searchable by day, vibe, organizer, free-or-paid, food-or-bar. The directory crypto Twitter wishes it had.",
   },
   {
     title: "Built for the floor, not the page",
