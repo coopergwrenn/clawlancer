@@ -61,6 +61,7 @@ interface VMStatus {
     bankrEvmAddress: string | null;
     bankrTokenAddress: string | null;
     bankrTokenSymbol: string | null;
+    bankrTokenImageUrl: string | null;
     tokenizationPlatform: string | null;
     // Already returned by /api/vm/status (see route.ts), now consumed
     // by BankrWalletCard for the verified-human creator badge.
@@ -537,6 +538,7 @@ export default function DashboardPage() {
           evmAddress={vm.bankrEvmAddress}
           tokenAddress={vm.bankrTokenAddress}
           tokenSymbol={vm.bankrTokenSymbol}
+          tokenImageUrl={vm.bankrTokenImageUrl}
           tokenizationPlatform={vm.tokenizationPlatform}
           agentName={vm.telegramBotUsername}
           freshLaunch={vmStatus?.freshLaunch ?? null}

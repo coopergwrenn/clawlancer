@@ -11,6 +11,12 @@ interface BankrWalletCardProps {
   evmAddress: string | null;
   tokenAddress: string | null;
   tokenSymbol: string | null;
+  // PFP for the post-launch token avatar. Written to instaclaw_vms.
+  // bankr_token_image_url during finalize when the dashboard sent
+  // `image:` in the tokenize body. May be null for chat-launched
+  // tokens (Path B) or launches where image gen hadn't completed
+  // before the user clicked Launch — avatar falls back to initials.
+  tokenImageUrl?: string | null;
   tokenizationPlatform: string | null;
   agentName?: string | null;
   // Set by /api/vm/status on the one poll that discovered a chat-driven
@@ -83,6 +89,7 @@ export function BankrWalletCard({
   evmAddress,
   tokenAddress,
   tokenSymbol,
+  tokenImageUrl,
   tokenizationPlatform,
   agentName,
   freshLaunch,
@@ -628,16 +635,27 @@ export function BankrWalletCard({
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{
-                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
-                    color: "white",
-                    textShadow: "0 1px 1px rgba(0,0,0,0.15)",
-                  }}
-                >
-                  {tokenSymbol?.slice(0, 2)}
-                </div>
+                {tokenImageUrl ? (
+                  <img
+                    src={tokenImageUrl}
+                    alt={tokenSymbol ? `${tokenSymbol} token logo` : "Token logo"}
+                    width={32}
+                    height={32}
+                    className="rounded-full object-cover"
+                    style={{ border: "1px solid var(--border)" }}
+                  />
+                ) : (
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                      color: "white",
+                      textShadow: "0 1px 1px rgba(0,0,0,0.15)",
+                    }}
+                  >
+                    {tokenSymbol?.slice(0, 2)}
+                  </div>
+                )}
                 <div>
                   <span className="text-sm font-semibold">${tokenSymbol}</span>
                   <span
