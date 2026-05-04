@@ -256,6 +256,39 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // --- Consensus matching pipeline bypass ---
+    // The matching pipeline (consensus_match_rerank.py + deliberate.py)
+    // makes 5 Sonnet calls per cycle, every 30 minutes. If the cycle
+    // happens to start within the 5-min `heartbeatRecent` window after
+    // a heartbeat fires, the heartbeat classifier above mis-tags ALL
+    // those calls as heartbeats — forcing them to MiniMax (line 555+)
+    // and, once `heartbeat_cycle_calls` exceeds the cap (10/cycle),
+    // returning silentEmptyResponse() with empty content (line 579).
+    //
+    // The empty response was the P1 launch-blocker for Consensus 2026:
+    // ~50% of L3 deliberation batches landed in this trap, corrupting
+    // the per-candidate rationale that's the moat. The fallback path
+    // protected users from seeing fabricated rationale, but the moat
+    // was degraded.
+    //
+    // Same security model as strictCanaryBypass: this flag only flips
+    // FROM heartbeat (cheap, MiniMax) TO user-chat (expensive,
+    // Anthropic). Bypass costs MORE per call, not less — not
+    // exploitable. The user's tier credits absorb the cost (which is
+    // the architecturally correct accounting for matching: it's
+    // user-paid, agent-with-memory work, not platform-paid heartbeat).
+    const callKindHeader = req.headers.get("x-call-kind");
+    const matchPipelineBypass =
+      typeof callKindHeader === "string" &&
+      callKindHeader.toLowerCase() === "match-pipeline";
+    if (matchPipelineBypass) {
+      logger.info("proxy: match-pipeline bypass active", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        gatewayTokenPrefix: gatewayToken.slice(0, 8) + "...",
+      });
+    }
+
     // --- Reject VMs with no api_mode set (misconfigured) ---
     if (!vm.api_mode) {
       logger.error("VM has null api_mode — blocking request", {
@@ -522,7 +555,7 @@ export async function POST(req: NextRequest) {
     // hard-overrides heartbeat classification so the canary hits the real
     // Anthropic user-chat path, not the MiniMax heartbeat shortcut. See the
     // rationale in the bypass-detection block above.
-    const isHeartbeat = strictCanaryBypass
+    const isHeartbeat = (strictCanaryBypass || matchPipelineBypass)
       ? false
       : !!(heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage);
 

@@ -341,6 +341,11 @@ def call_deliberation(
                 "-H", f"Authorization: Bearer {token}",
                 "-H", "Content-Type: application/json",
                 "-H", f"x-model-override: {DELIBERATION_MODEL}",
+                # Bypass heartbeat reclassification — see proxy/route.ts
+                # matchPipelineBypass. Without this, calls during the
+                # 5-min post-heartbeat window get force-routed to MiniMax
+                # and return silentEmptyResponse on cap.
+                "-H", "x-call-kind: match-pipeline",
                 "-d", json.dumps(payload),
                 GATEWAY_PROXY_URL,
             ],

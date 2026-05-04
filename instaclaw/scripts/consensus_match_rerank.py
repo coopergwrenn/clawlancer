@@ -372,6 +372,12 @@ def call_sonnet_rerank(token: str, anchor: str, candidates_text: str) -> str | N
                 "-H", f"Authorization: Bearer {token}",
                 "-H", "Content-Type: application/json",
                 "-H", f"x-model-override: {SONNET_MODEL}",
+                # Bypass heartbeat reclassification in the gateway proxy.
+                # Without this, calls during the 5-min post-heartbeat window
+                # get force-routed to MiniMax and (past the 10/cycle cap)
+                # return silentEmptyResponse() with empty content. See
+                # app/api/gateway/proxy/route.ts:matchPipelineBypass.
+                "-H", "x-call-kind: match-pipeline",
                 "-d", json.dumps(payload),
                 GATEWAY_PROXY_URL,
             ],

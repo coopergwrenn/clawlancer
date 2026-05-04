@@ -1000,6 +1000,7 @@ export const VM_MANIFEST = {
         "fabrication rule",                      // hardened prompt landed
         "Banned phrases",                        // banned-AI-speak enumeration
         "def shuffle_candidates",                // P1-8 positional debiasing
+        "x-call-kind: match-pipeline",           // gateway heartbeat bypass
       ],
     },
     {
@@ -1014,6 +1015,7 @@ export const VM_MANIFEST = {
         "fabrication rule",
         "skip-reason discipline",
         "def make_fallback",                     // graceful-degradation contract
+        "x-call-kind: match-pipeline",           // gateway heartbeat bypass
       ],
     },
     {
