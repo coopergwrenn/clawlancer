@@ -90,6 +90,7 @@ export default auth((req) => {
     "/api/admin/xmtp-refresh-token", // X-Admin-Key header auth
     "/api/partner/tag", // Self-auth: handles both logged-in (updates user/VM record) and logged-out (sets cookie for next signup) cases; validates partner against VALID_PARTNERS allow-list
     "/api/internal", // X-Gateway-Token header auth (VM-side internal endpoints, e.g. check-privacy-mode for the SSH bridge)
+    "/api/match", // Authorization: Bearer or X-Gateway-Token (matchpool VM bridge endpoints — POST /v1/profile, etc.)
   ];
 
   const isAPI = pathname.startsWith("/api/");
