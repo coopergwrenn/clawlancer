@@ -32,6 +32,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // DISABLE_BANKR_PATH_B_SYNC: same kill-switch the on-demand sync inside
+  // /api/vm/status honors. When set to "true", this cron also no-ops so
+  // the demo VM (vm-780) stays clean during the announcement-record
+  // window. Cooper's TESTER token persists on Bankr's creator-fees API,
+  // so any sync run rediscovers it and writes back the address.
+  if (process.env.DISABLE_BANKR_PATH_B_SYNC === "true") {
+    logger.info("sync-bankr-launches: DISABLE_BANKR_PATH_B_SYNC=true, skipping", {
+      route: "cron/sync-bankr-launches",
+    });
+    return NextResponse.json({ skipped: "disabled_via_env" });
+  }
+
   const lockAcquired = await tryAcquireCronLock(CRON_NAME, LOCK_TTL_SECONDS);
   if (!lockAcquired) {
     logger.info("sync-bankr-launches: lock held, skipping", {
