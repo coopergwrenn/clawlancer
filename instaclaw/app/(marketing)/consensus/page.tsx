@@ -171,7 +171,8 @@ export default function ConsensusPage() {
             style={{ color: "#6b6b6b" }}
           >
             Knows all 326 sessions across 9 stages. Knows all 219 side events.
-            Asks what you care about. Tells you where to be.
+            Asks what you care about. Tells you where to be. After Consensus,
+            it stays.
           </p>
 
           <ConsensusClient />
@@ -374,6 +375,77 @@ export default function ConsensusPage() {
             >
               Live in beta now — full feature ships tomorrow.
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Beyond Consensus — platform reframe */}
+      <section className="px-4 pb-20">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-12">
+            <p
+              className="text-xs uppercase tracking-[0.15em] mb-3"
+              style={{ color: "#DC6743" }}
+            >
+              Beyond Consensus
+            </p>
+            <h2
+              className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] leading-[1.1] mb-5"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              The agent stays.
+            </h2>
+            <p
+              className="text-base sm:text-lg max-w-2xl mx-auto leading-relaxed"
+              style={{ color: "#6b6b6b" }}
+            >
+              Consensus is the hook. InstaClaw is the product.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[
+              {
+                eyebrow: "Architecture",
+                title: "It's actually yours.",
+                body: "Every InstaClaw agent runs on its own dedicated VM with its own crypto wallet, persistent memory, and real autonomy. Not a shared chatbot. Not a wrapper. A sovereign agent with onchain identity.",
+              },
+              {
+                eyebrow: "Memory",
+                title: "It learns you.",
+                body: "Tell it your projects, your priorities, your patterns once. Every recommendation after that is filtered for who you actually are. The longer you use it, the sharper it gets.",
+              },
+              {
+                eyebrow: "Skills",
+                title: "Consensus is one of many.",
+                body: "Research, writing, scheduling, code review, onchain transactions — whatever you teach it next is what it does next. The conference is just where you start.",
+              },
+            ].map((b) => (
+              <div
+                key={b.title}
+                className="p-6 sm:p-7 rounded-xl transition-all duration-300 hover:-translate-y-0.5"
+                style={glassStyle}
+              >
+                <p
+                  className="text-[10px] uppercase tracking-[0.15em] mb-3"
+                  style={{ color: "#DC6743" }}
+                >
+                  {b.eyebrow}
+                </p>
+                <h3
+                  className="text-lg font-normal tracking-[-0.2px] mb-3 leading-snug"
+                  style={{ fontFamily: "var(--font-serif)" }}
+                >
+                  {b.title}
+                </h3>
+                <p
+                  className="text-sm leading-relaxed"
+                  style={{ color: "#6b6b6b" }}
+                >
+                  {b.body}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
