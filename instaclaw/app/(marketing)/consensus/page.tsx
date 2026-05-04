@@ -3,7 +3,7 @@ import { createMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/marketing/json-ld";
 import { ConsensusClient } from "./consensus-client";
 
-// Canonical project glass UI — matches components/landing/pricing.tsx and the
+// Canonical project glass UI: matches components/landing/pricing.tsx and the
 // rest of the marketing site. Light-glass surface with subtle gradient,
 // backdrop blur, and inset highlights for depth.
 const glassStyle = {
@@ -36,7 +36,7 @@ export const metadata = createMetadata({
 const eventJsonLd = {
   "@context": "https://schema.org",
   "@type": "Event",
-  name: "Consensus 2026 — Miami",
+  name: "Consensus 2026: Miami",
   description:
     "InstaClaw partner skill: a personal AI agent for every Consensus 2026 attendee, with the full official agenda and the full side-event scene at its fingertips.",
   startDate: "2026-05-05",
@@ -66,7 +66,7 @@ const queryDemos = [
   {
     label: "Free-food finder",
     prompt: "Where's the free dinner Tuesday?",
-    body: "37 free events with food on Tuesday alone. Your agent surfaces them by time, organizer, and location — and offers to filter to your neighborhood. The single most-asked Consensus question, answered in one tap.",
+    body: "37 free events with food on Tuesday alone. Your agent surfaces them by time, organizer, and location, then offers to filter to your neighborhood. The single most-asked Consensus question, answered in one tap.",
   },
   {
     label: "AI-track binge mode",
@@ -76,17 +76,17 @@ const queryDemos = [
   {
     label: "Speaker stalker",
     prompt: "Where's Saylor speaking?",
-    body: "The full speaker index across 451 names is pre-built. Ask about anyone — Saylor, Raoul Pal, A-Rod, Grant Cardone — and get every venue, every time, sorted chronologically.",
+    body: "The full speaker index across 451 names is pre-built. Ask about anyone (Saylor, Raoul Pal, A-Rod, Grant Cardone) and get every venue, every time, sorted chronologically.",
   },
   {
     label: "Conflict detector",
     prompt: "I want to go to X and Y at 2:30 Wednesday.",
-    body: "Your agent compares the two by speaker firepower (rare-appearance vs. always-on), track centrality, and panel format — and tells you which to pick and why. No more fomo whiplash on the convention floor.",
+    body: "Your agent compares the two by speaker firepower (rare-appearance vs. always-on), track centrality, and panel format, then tells you which to pick and why. No more fomo whiplash on the convention floor.",
   },
   {
-    label: "Founder matching · Beta",
-    prompt: "I'm building onchain AI infra. Find my people.",
-    body: "Tell your agent your project — stack, stage, problem. It cross-references the 451 speakers and your fellow attendees and surfaces the founders working on the same thing, with warm intros queued up. Match on what you're actually building, not on labels.",
+    label: "Intent matching · Beta",
+    prompt: "Find me the right people at Consensus this week.",
+    body: "Tell your agent what you're working on, what you're after, who you want to meet. It cross-references the 451 speakers, 219 side events, and your fellow attendees, then surfaces the people most relevant to your goals. Investor hunting deals, builder looking for a co-founder, attendee chasing the right afterparty: it matches on intent, not on job title.",
   },
 ];
 
@@ -97,11 +97,11 @@ const features = [
   },
   {
     title: "Knows the side-event scene",
-    body: "All 219 events from plan.wtf — parties, breakfasts, panels, yacht meetups — searchable by day, vibe, organizer, free-or-paid, food-or-bar. The directory crypto Twitter wishes it had.",
+    body: "All 219 events from plan.wtf (parties, breakfasts, panels, yacht meetups), searchable by day, vibe, organizer, free-or-paid, food-or-bar. The directory crypto Twitter wishes it had.",
   },
   {
     title: "Built for the floor, not the page",
-    body: "Ask in plain English from your phone. Your agent runs on its own VM and answers via Telegram or chat — no app to install, no schedule to memorize, no PDF to scroll.",
+    body: "Ask in plain English from your phone. Your agent runs on its own VM and answers via Telegram or chat. No app to install, no schedule to memorize, no PDF to scroll.",
   },
   {
     title: "Memory that lasts the week",
@@ -112,11 +112,11 @@ const features = [
 const faqs = [
   {
     q: "What does it cost?",
-    a: "Every plan comes with a 3-day free trial. Full access, no restrictions, no credit card to start. Standard InstaClaw pricing ($29/$99/$299/mo) kicks in after the trial — cancel anytime before then and you won't be charged.",
+    a: "Every plan comes with a 3-day free trial. Full access, no restrictions, no credit card to start. Standard InstaClaw pricing ($29/$99/$299/mo) kicks in after the trial. Cancel anytime before then and you won't be charged.",
   },
   {
     q: "Do I need a Consensus ticket?",
-    a: "No. The skill is open to anyone — including remote attendees following along. Tagging your account just unlocks the Consensus-specific skill on your VM. If you do have a ticket, the agent is more useful because the on-the-ground queries (free food, walking time, who's at this party) actually apply.",
+    a: "No. The skill is open to anyone, including remote attendees following along. Tagging your account just unlocks the Consensus-specific skill on your VM. If you do have a ticket, the agent is more useful because the on-the-ground queries (free food, walking time, who's at this party) actually apply.",
   },
   {
     q: "How fresh is the data?",
@@ -124,15 +124,15 @@ const faqs = [
   },
   {
     q: "What can it actually answer?",
-    a: 'Things like: "what\'s on Mainstage at 2pm Wednesday?", "free dinner Tuesday near Brickell with food and a bar?", "which talks mention zk on Wednesday?", "find me other AI-track sessions overlapping Saylor\'s keynote", "build me a 3-day AI itinerary". Try it during the conference — the agent gets sharper as it learns your interests.',
+    a: 'Things like: "what\'s on Mainstage at 2pm Wednesday?", "free dinner Tuesday near Brickell with food and a bar?", "which talks mention zk on Wednesday?", "find me other AI-track sessions overlapping Saylor\'s keynote", "build me a 3-day AI itinerary". Try it during the conference. The agent gets sharper as it learns your interests.',
   },
   {
     q: "Where does the data come from?",
-    a: "Two public sources: CoinDesk's official Consensus 2026 agenda (consensus.coindesk.com) for sessions, and plan.wtf (community-maintained by @sheeetsxyz) for side events. We thank both — credit where it's due.",
+    a: "Two public sources: CoinDesk's official Consensus 2026 agenda (consensus.coindesk.com) for sessions, and plan.wtf (community-maintained by @sheeetsxyz) for side events. We thank both. Credit where it's due.",
   },
   {
     q: "Will this work after Consensus?",
-    a: "The Consensus-specific skill ratchets down post-event, but your InstaClaw agent stays. Same agent, different skills loaded — Bitcoin 2026 (Las Vegas, July) and Token2049 (Singapore, October) are next, and your agent will pick up those skills when you tell it where you're going.",
+    a: "The Consensus-specific skill ratchets down post-event, but your InstaClaw agent stays. Same agent, different skills loaded. Bitcoin 2026 (Las Vegas, July) and Token2049 (Singapore, October) are next, and your agent will pick up those skills when you tell it where you're going.",
   },
 ];
 
@@ -325,7 +325,7 @@ export default function ConsensusPage() {
         </div>
       </section>
 
-      {/* Founder matching — BETA highlight */}
+      {/* Intent matching: BETA highlight */}
       <section className="px-4 pb-20">
         <div className="max-w-3xl mx-auto">
           <div
@@ -351,35 +351,43 @@ export default function ConsensusPage() {
               className="text-xs uppercase tracking-[0.15em] mb-3"
               style={{ color: "#DC6743" }}
             >
-              Founder matching
+              Intent matching
             </p>
             <h2
               className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] leading-[1.1] mb-5"
               style={{ fontFamily: "var(--font-serif)" }}
             >
-              Match by what you&apos;re building.
+              Match by intent, not by title.
             </h2>
             <p
               className="text-sm sm:text-base leading-relaxed mb-4 max-w-2xl"
               style={{ color: "#6b6b6b" }}
             >
-              Tell your agent the problem you&apos;re solving — your stack,
-              your stage, what&apos;s keeping you up at night. It cross-references
-              the 451 speakers and your fellow Consensus attendees and surfaces
-              the founders working on the same thing. Real overlap. Real intros.
-              No &ldquo;AI people&rdquo; or &ldquo;DePIN people&rdquo; lists.
+              Tell your agent what you&apos;re working on, what you&apos;re
+              after, who you want to meet. It cross-references the 451 speakers,
+              219 side events, and your fellow Consensus attendees, then
+              surfaces the people most relevant to your goals.
+            </p>
+            <p
+              className="text-sm sm:text-base leading-relaxed mb-4 max-w-2xl"
+              style={{ color: "#6b6b6b" }}
+            >
+              Investor hunting deals. Builder looking for a co-founder. Operator
+              chasing partnerships. Attendee finding the right afterparty crowd.
+              No &ldquo;AI people&rdquo; or &ldquo;DePIN people&rdquo; lists. It
+              matches on what you&apos;re actually after, not on a title.
             </p>
             <p
               className="text-sm leading-relaxed"
               style={{ color: "#9a9a9a" }}
             >
-              Live in beta now — full feature ships tomorrow.
+              Live in beta now. Full feature ships tomorrow.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Beyond Consensus — platform reframe */}
+      {/* Beyond Consensus: platform reframe */}
       <section className="px-4 pb-20">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-12">
@@ -418,7 +426,7 @@ export default function ConsensusPage() {
               {
                 eyebrow: "Skills",
                 title: "Consensus is one of many.",
-                body: "Research, writing, scheduling, code review, onchain transactions — whatever you teach it next is what it does next. The conference is just where you start.",
+                body: "Research, writing, scheduling, code review, onchain transactions. Whatever you teach it next is what it does next. The conference is just where you start.",
               },
             ].map((b) => (
               <div

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-// Canonical project glass UI — matches components/landing/pricing.tsx and the
+// Canonical project glass UI: matches components/landing/pricing.tsx and the
 // rest of the marketing site. Light-glass surface with subtle gradient,
 // backdrop blur, and inset highlights for depth.
 const glassStyle = {
@@ -15,7 +15,7 @@ const glassStyle = {
     "rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset",
 } as const;
 
-// Orange-tinted glass — matches the brand pill on /consensus and FAQ "+" badge.
+// Orange-tinted glass: matches the brand pill on /consensus and FAQ "+" badge.
 const glassOrange = {
   background:
     "linear-gradient(-75deg, rgba(220,103,67,0.08), rgba(220,103,67,0.22), rgba(220,103,67,0.08))",
