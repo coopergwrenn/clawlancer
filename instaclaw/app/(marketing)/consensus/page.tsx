@@ -3,6 +3,28 @@ import { createMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/marketing/json-ld";
 import { ConsensusClient } from "./consensus-client";
 
+// Canonical project glass UI — matches components/landing/pricing.tsx and the
+// rest of the marketing site. Light-glass surface with subtle gradient,
+// backdrop blur, and inset highlights for depth.
+const glassStyle = {
+  background:
+    "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow:
+    "rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset",
+} as const;
+
+// Orange-tinted glass for brand pills and accents (date pill, FAQ "+" badge).
+const glassOrange = {
+  background:
+    "linear-gradient(-75deg, rgba(220,103,67,0.08), rgba(220,103,67,0.22), rgba(220,103,67,0.08))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow:
+    "rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.4) 0px -2px 2px 0px inset, rgba(220, 103, 67, 0.15) 0px 2px 4px 0px, rgba(255, 255, 255, 0.18) 0px 0px 1.6px 4px inset",
+} as const;
+
 export const metadata = createMetadata({
   title: "Personal AI Agent for Consensus 2026 Miami",
   description:
@@ -120,7 +142,7 @@ export default function ConsensusPage() {
           <div
             className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs mb-8"
             style={{
-              background: "rgba(220,103,67,0.08)",
+              ...glassOrange,
               color: "#DC6743",
               fontFamily: "var(--font-serif)",
             }}
@@ -158,10 +180,7 @@ export default function ConsensusPage() {
       {/* Stat strip */}
       <section className="px-4 pb-16">
         <div className="max-w-3xl mx-auto">
-          <div
-            className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-lg overflow-hidden"
-            style={{ background: "rgba(0,0,0,0.08)" }}
-          >
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { stat: "326", label: "Sessions" },
               { stat: "219", label: "Side events" },
@@ -170,8 +189,8 @@ export default function ConsensusPage() {
             ].map((s) => (
               <div
                 key={s.label}
-                className="p-6 text-center"
-                style={{ background: "#f8f7f4" }}
+                className="p-6 text-center rounded-xl"
+                style={glassStyle}
               >
                 <div
                   className="text-3xl sm:text-4xl font-normal tracking-[-1px] mb-1"
@@ -280,10 +299,7 @@ export default function ConsensusPage() {
               <div
                 key={f.title}
                 className="p-6 sm:p-7 rounded-xl"
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid rgba(0,0,0,0.06)",
-                }}
+                style={glassStyle}
               >
                 <h3
                   className="text-lg sm:text-xl font-normal tracking-[-0.2px] mb-3"
@@ -341,7 +357,7 @@ export default function ConsensusPage() {
                     <span
                       className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-transform group-open:rotate-45"
                       style={{
-                        background: "rgba(220,103,67,0.08)",
+                        ...glassOrange,
                         color: "#DC6743",
                       }}
                     >

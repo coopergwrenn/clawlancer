@@ -3,6 +3,50 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+// Canonical project glass UI — matches components/landing/pricing.tsx and the
+// rest of the marketing site. Light-glass surface with subtle gradient,
+// backdrop blur, and inset highlights for depth.
+const glassStyle = {
+  background:
+    "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow:
+    "rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset",
+} as const;
+
+// Orange-tinted glass — matches the brand pill on /consensus and FAQ "+" badge.
+const glassOrange = {
+  background:
+    "linear-gradient(-75deg, rgba(220,103,67,0.08), rgba(220,103,67,0.22), rgba(220,103,67,0.08))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow:
+    "rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.4) 0px -2px 2px 0px inset, rgba(220, 103, 67, 0.15) 0px 2px 4px 0px, rgba(255, 255, 255, 0.18) 0px 0px 1.6px 4px inset",
+} as const;
+
+// Solid orange-glass for the primary CTA button. Stronger gradient + brand
+// color so the button reads as the action while still using the project's
+// glass treatment (gradient direction + insets matched to glassStyle).
+const glassButtonOrange = {
+  background:
+    "linear-gradient(-75deg, rgba(220,103,67,0.85), rgba(220,103,67,1), rgba(220,103,67,0.85))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow:
+    "rgba(255, 255, 255, 0.2) 0px 2px 2px 0px inset, rgba(0, 0, 0, 0.15) 0px -2px 2px 0px inset, rgba(220, 103, 67, 0.4) 0px 2px 8px 0px, rgba(255, 255, 255, 0.25) 0px 0px 1.6px 4px inset",
+} as const;
+
+// Dark-glass for the secondary "Notify me" button.
+const glassButtonDark = {
+  background:
+    "linear-gradient(-75deg, rgba(51,51,52,0.85), rgba(51,51,52,1), rgba(51,51,52,0.85))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow:
+    "rgba(255, 255, 255, 0.18) 0px 2px 2px 0px inset, rgba(0, 0, 0, 0.2) 0px -2px 2px 0px inset, rgba(0, 0, 0, 0.2) 0px 2px 6px 0px, rgba(255, 255, 255, 0.15) 0px 0px 1.6px 4px inset",
+} as const;
+
 export function ConsensusClient() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -68,7 +112,7 @@ export function ConsensusClient() {
       <div
         className="max-w-md mx-auto px-5 py-4 rounded-full text-sm"
         style={{
-          background: "rgba(220,103,67,0.08)",
+          ...glassOrange,
           color: "#DC6743",
           fontFamily: "var(--font-serif)",
         }}
@@ -85,10 +129,8 @@ export function ConsensusClient() {
         disabled={claiming}
         className="w-full px-6 py-3.5 rounded-full text-sm font-medium transition-all hover:opacity-90 disabled:opacity-60"
         style={{
-          background: "#DC6743",
+          ...glassButtonOrange,
           color: "#ffffff",
-          boxShadow:
-            "inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 3px rgba(220,103,67,0.3)",
         }}
       >
         {claiming ? "Claiming…" : "Claim your agent →"}
@@ -118,8 +160,7 @@ export function ConsensusClient() {
           disabled={loading}
           className="flex-1 px-4 py-3 rounded-full text-sm outline-none transition-all"
           style={{
-            background: "#ffffff",
-            border: "1px solid rgba(0,0,0,0.12)",
+            ...glassStyle,
             color: "#333334",
           }}
         />
@@ -128,7 +169,7 @@ export function ConsensusClient() {
           disabled={loading}
           className="px-5 py-3 rounded-full text-sm font-medium transition-all hover:opacity-90 disabled:opacity-60"
           style={{
-            background: "#333334",
+            ...glassButtonDark,
             color: "#ffffff",
           }}
         >
