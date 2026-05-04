@@ -985,6 +985,7 @@ export const VM_MANIFEST = {
         "FALLBACK_ABORT_THRESHOLD",                  // P0-5 abort discipline
         "snapshot_anchor",                           // anchor-freeze contract
         "CONSENSUS_MEMORY_PATH",                     // env-var override for L2/L3
+        "maybe_send_match_notification",             // Telegram notify (cheap path)
       ],
     },
     {

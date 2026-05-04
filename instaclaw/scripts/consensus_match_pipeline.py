@@ -62,7 +62,17 @@ MIN_INTERVAL_SECONDS = 25 * 60  # 25 min — gives a small headroom under cron t
 # deliberation (the agent has no specific signals to reference, and Layer 3
 # would be tempted to fabricate). Below this threshold we ship Layer 2 only
 # and label the matches as preliminary.
-COLD_START_MEMORY_BYTES = 5_000
+#
+# Sizing: the default MEMORY.md template is ~120 bytes. The periodic_summary
+# cron grows it to 1-2 KB after the first real conversation by writing a
+# USER_FACTS section. By 2 KB the file typically contains: onboarding
+# blurb (~700 B) + at least one user-facts extraction (~500 B) + at least
+# one recent-session summary (~500 B). That's enough specific signal for
+# honest deliberation. Below 2 KB: cold-start, ship preliminary L2-only.
+#
+# Empirically: vm-780 has 3.5 KB after weeks of use; new VMs from snapshot
+# are at 0.1 KB. The 2 KB cut cleanly separates these populations.
+COLD_START_MEMORY_BYTES = 2_000
 
 # Fallback abort: if more than this fraction of Layer 3 deliberations come
 # back as fallbacks (LLM call failed, parse failed, batch dropped), the
@@ -93,6 +103,12 @@ SUBPROCESS_TIMEOUT_SECONDS = 90  # rerank ~12s, deliberate ~18s, headroom
 RATIONALE_PREFIX_L2_ONLY = "<l2-only> "
 RATIONALE_PREFIX_FALLBACK = "<fallback: "
 RATIONALE_PREFIX_DELIB_FAIL = "<deliberation unavailable: "
+
+# Notification: shell out to the existing notify_user.sh which sends a
+# Telegram message via the agent's bot. The script is deployed to every
+# VM by the manifest (NOTIFY_USER_SCRIPT entry) and reads BOT_TOKEN +
+# CHAT_ID from ~/.openclaw/.env. We don't reinvent Telegram delivery.
+NOTIFY_SCRIPT = os.path.expanduser("~/scripts/notify_user.sh")
 
 
 def log(msg: str) -> None:
@@ -293,6 +309,117 @@ def count_fallbacks(deliberations: list[dict]) -> int:
         if rationale.startswith(RATIONALE_PREFIX_FALLBACK) or rationale.startswith(RATIONALE_PREFIX_DELIB_FAIL):
             n += 1
     return n
+
+
+# ─── Telegram notification (cheap path) ─────────────────────────────
+
+
+def strip_rationale_prefix(s: str) -> str:
+    """Drop our internal labels before user-facing display. Keeps the
+    notification clean: 'You're actively pushing a fix...' not
+    '<l2-only> You're actively pushing...'"""
+    s = s.lstrip()
+    for prefix in (RATIONALE_PREFIX_L2_ONLY, RATIONALE_PREFIX_FALLBACK, RATIONALE_PREFIX_DELIB_FAIL):
+        if s.startswith(prefix):
+            close = s.find(">")
+            if close > 0:
+                return s[close + 1:].lstrip()
+            return s[len(prefix):].lstrip()
+    return s
+
+
+def format_match_notification(top_delib: dict, kind: str) -> str:
+    """Compose the Telegram message body. The rationale is already in
+    first-person agent voice (per the L3 prompt's voice rule), so we
+    can lean on it verbatim. We add a short framing sentence + link.
+
+    Telegram supports plain text well; we avoid markdown to dodge the
+    parse-mode flag. Keep it under ~600 chars total to fit naturally
+    in a phone notification."""
+    rationale = strip_rationale_prefix(top_delib.get("rationale", "")).strip()
+    topic = (top_delib.get("conversation_topic") or "").strip()
+    window = (top_delib.get("meeting_window") or "").strip()
+
+    # Cap each piece so the total stays mobile-friendly
+    rationale = rationale[:380]
+    topic = topic[:200]
+    window = window[:120]
+
+    if kind == "preliminary":
+        intro = "I found someone for you at Consensus this week (preliminary — I'll get sharper as I learn more about you):"
+    else:
+        intro = "I found someone you should meet at Consensus this week:"
+
+    parts = [intro, "", rationale]
+    if topic:
+        parts.extend(["", f"Talk about: {topic}"])
+    if window:
+        parts.append(f"When: {window}")
+    parts.extend(["", "All 3 here: https://instaclaw.io/consensus/my-matches"])
+    return "\n".join(parts)
+
+
+def send_telegram_notification(message: str) -> bool:
+    """Shell out to ~/scripts/notify_user.sh. Returns True on success.
+    Never raises — notification failure does not abort the pipeline."""
+    if not os.path.isfile(NOTIFY_SCRIPT):
+        log("notify_skipped no_notify_script")
+        return False
+    try:
+        proc = subprocess.run(
+            [NOTIFY_SCRIPT, message],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if proc.returncode == 0:
+            log("notify_sent")
+            return True
+        log(f"notify_failed rc={proc.returncode} stderr={proc.stderr[:200]}")
+        return False
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log(f"notify_failed transport={type(e).__name__}")
+        return False
+
+
+def maybe_send_match_notification(
+    deliberations: list[dict],
+    top3: list[str],
+    last_top1: str | None,
+    is_cold_start: bool,
+) -> str | None:
+    """Send a Telegram notification iff the top1 candidate changed since
+    last successful cycle (or this is the first successful cycle).
+    Returns the new top1 user_id (so caller can persist to state) or
+    None if no notification was sent.
+
+    Material-change gate avoids spamming the user every 30 minutes when
+    the same person sits at top. Per PRD §2.4 cadence rules:
+    notifications fire ONLY on top-3 material shifts."""
+    if not top3:
+        return None
+    new_top1 = top3[0]
+    if last_top1 == new_top1:
+        log("notify_skipped no_top1_change")
+        return new_top1  # state still records but no message
+
+    # Find the deliberation for this top1
+    top_delib = next((d for d in deliberations if d.get("user_id") == new_top1), None)
+    if not top_delib:
+        log(f"notify_skipped no_delib_for_top1={new_top1[:8]}")
+        return new_top1
+
+    # Check if the rationale is actually surfaceable (not a hard fallback).
+    # L2-only (cold start) is fine to surface — it's labeled in the message.
+    rationale = (top_delib.get("rationale") or "").lstrip()
+    if rationale.startswith(RATIONALE_PREFIX_FALLBACK) or rationale.startswith(RATIONALE_PREFIX_DELIB_FAIL):
+        log("notify_skipped top1_is_fallback")
+        return new_top1
+
+    kind = "preliminary" if is_cold_start else "full"
+    message = format_match_notification(top_delib, kind)
+    send_telegram_notification(message)
+    return new_top1
 
 
 # ─── Pipeline ────────────────────────────────────────────────────────
@@ -534,12 +661,20 @@ def main() -> int:
     top3 = body.get("top3", [])
     log(f"post_results_ok elapsed_ms={post_ms} written={body.get('written')} top3_n={len(top3)}")
 
+    # ─ Telegram notification on material change ─
+    # Material gate: top1 changed since last successful cycle. Cold-start
+    # cycles get the same notification path but with a "preliminary" frame.
+    last_top3 = state.get("last_top3") or []
+    last_top1: str | None = last_top3[0] if last_top3 else None
+    new_top1 = maybe_send_match_notification(deliberations, top3, last_top1, is_cold_start)
+
     outcome = "ok_cold_start" if is_cold_start else "ok"
     state_out = {
         "last_run_at": now,
         "last_pv": profile_version,
         "last_outcome": outcome,
         "last_top3": top3,
+        "last_notified_top1": new_top1,
     }
     write_state(state_out)
 
