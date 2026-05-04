@@ -687,19 +687,25 @@ export function BankrWalletCard({
           </div>
 
           {/* Primary CTA — Trade on Bankr (only reliable V4/Doppler trade
-              surface today). Glass-styled to match HowToBuy + the rest of
-              the dashboard system. Bankr's pixel-art mark sits inline with
-              the wordmark instead of a generic external-link arrow — the
-              brand is the link target, surface it. */}
-          <div className="px-4 pt-3 pb-1">
+              surface today). Orange brand gradient (primary CTA needs to
+              pop), rounded card shape, Bankr's pixel-art mark inline with
+              the wordmark instead of a generic external-link arrow. Real
+              breathing room above and below so it isn't kissing the
+              "How to buy" section beneath. */}
+          <div className="px-4 pt-3 pb-4">
             <a
               href="https://bankr.bot/terminal"
               target="_blank"
               rel="noopener noreferrer"
-              className="glass rounded-xl w-full flex items-center justify-center gap-2 py-2.5 text-sm hover:bg-black/5 transition-all active:scale-[0.99]"
-              style={{ border: "1px solid var(--border)" }}
+              className="rounded-xl w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all hover:scale-[1.005] active:scale-[0.99]"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
+                color: "white",
+                textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+                boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+              }}
             >
-              <span style={{ color: "var(--muted)" }}>Trade on</span>
+              <span>Trade on</span>
               <img src="/bankr-logo.png" alt="" width={18} height={18} style={{ borderRadius: 4 }} />
               <span className="font-semibold">Bankr</span>
             </a>

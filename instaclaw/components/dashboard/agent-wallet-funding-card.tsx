@@ -167,7 +167,7 @@ export function AgentWalletFundingCard({ evmAddress }: AgentWalletFundingCardPro
         className="text-xs"
         style={{ color: "var(--muted)", opacity: 0.65 }}
       >
-        Auto-gas is coming soon — this step will be handled automatically in a
+        Auto-gas is coming soon. This step will be handled automatically in a
         future update.
       </p>
     </div>
