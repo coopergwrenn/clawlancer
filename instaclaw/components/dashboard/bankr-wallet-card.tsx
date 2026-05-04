@@ -467,7 +467,7 @@ export function BankrWalletCard({
         <div
           className="text-3xl font-bold mb-2"
           style={{
-            background: "linear-gradient(135deg, #f5a623, #fbbf24)",
+            background: "linear-gradient(135deg, rgb(249,115,22), rgb(251,146,60))",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
           }}
@@ -1053,12 +1053,14 @@ export function BankrWalletCard({
                 </button>
                 <button
                   onClick={handleShowConfirm}
-                  className="flex-1 py-2 rounded-md text-sm font-medium transition-all hover:scale-[1.01] active:scale-[0.99]"
+                  className="flex-1 py-2 rounded-md text-sm font-semibold transition-all cursor-pointer active:scale-[0.99]"
                   style={{
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
-                    color: "white",
-                    boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
-                    textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                    color: "#fff",
+                    boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                    backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.15)",
                   }}
                 >
                   Review &amp; Launch
@@ -1077,7 +1079,7 @@ export function BankrWalletCard({
           {showTokenForm && showConfirm && (
             <div
               className="rounded-lg p-5 space-y-4 mt-3"
-              style={{ background: "rgba(245,166,35,0.05)", border: "1px solid rgba(245,166,35,0.25)" }}
+              style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.25)" }}
             >
               <div className="flex flex-col items-center text-center gap-2 pt-2">
                 {imageUrl ? (
@@ -1086,16 +1088,16 @@ export function BankrWalletCard({
                     src={imageUrl}
                     alt="Token PFP"
                     className="w-20 h-20 rounded-full object-cover"
-                    style={{ boxShadow: "0 4px 12px rgba(180,120,0,0.20)" }}
+                    style={{ boxShadow: "0 4px 12px rgba(234,88,12,0.20)" }}
                   />
                 ) : (
                   <div
                     className="w-20 h-20 rounded-full flex items-center justify-center text-base font-bold"
                     style={{
-                      background: "linear-gradient(135deg, #f5a623, #d4911d)",
+                      background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                       color: "white",
                       textShadow: "0 1px 2px rgba(0,0,0,0.18)",
-                      boxShadow: "0 4px 12px rgba(180,120,0,0.20)",
+                      boxShadow: "0 4px 12px rgba(234,88,12,0.20)",
                     }}
                   >
                     {tokenSym.trim().toUpperCase().slice(0, 3) || "?"}
@@ -1104,7 +1106,7 @@ export function BankrWalletCard({
                 <div
                   className="text-2xl font-bold"
                   style={{
-                    background: "linear-gradient(135deg, #f5a623, #fbbf24)",
+                    background: "linear-gradient(135deg, rgb(249,115,22), rgb(251,146,60))",
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
                   }}
@@ -1153,12 +1155,14 @@ export function BankrWalletCard({
                 <button
                   onClick={handleTokenize}
                   disabled={tokenizing}
-                  className="flex-[2] py-2.5 rounded-md text-sm font-semibold transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60"
+                  className="flex-[2] py-2.5 rounded-md text-sm font-semibold transition-all cursor-pointer active:scale-[0.99] disabled:opacity-60"
                   style={{
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 50%, transparent 100%), linear-gradient(180deg, #f5a623 0%, #d4911d 100%)",
-                    color: "white",
-                    boxShadow: "0 2px 6px rgba(180, 120, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
-                    textShadow: "0 1px 1px rgba(0, 0, 0, 0.12)",
+                    background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+                    color: "#fff",
+                    boxShadow: "0 0 0 1px rgba(249,115,22,0.3), 0 2px 8px rgba(249,115,22,0.25), inset 0 1px 0 rgba(255,255,255,0.2)",
+                    backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.15)",
                   }}
                 >
                   {tokenizing
