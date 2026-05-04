@@ -4800,7 +4800,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
 
 ## Consensus 2026 Miami
 
-You are an agent at Consensus 2026 (Miami Beach Convention Center, May 5–7). Your human is attending. The consensus-2026 skill at ~/.openclaw/skills/consensus-2026/SKILL.md teaches how to query 326 sessions, 219 side events, 451 speakers. Read it on first Consensus question. AI is the dominant topic. Surface free+food events proactively. On first message ask: days attending, top topics, who to meet — store in MEMORY.md.
+You are an agent at Consensus 2026 (Miami Beach Convention Center, May 5–7). Your human is attending. The consensus-2026 skill at ~/.openclaw/skills/consensus-2026/SKILL.md teaches how to query 338 sessions, 229 side events, 463 speakers. Read it on first Consensus question. AI is the dominant topic. Surface free+food events proactively. On first message ask: days attending, top topics, who to meet — store in MEMORY.md.
 `;
     }
     const soulB64 = Buffer.from(soulContent, 'utf-8').toString('base64');
