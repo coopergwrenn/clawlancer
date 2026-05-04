@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
       // privacy-bridge.sh is read at runtime by lib/privacy-bridge-script.ts
       // (which the reconciler imports) and deployed to edge_city VMs.
       "./lib/privacy-bridge.sh",
+      // Consensus matching engine VM-side scripts (Components 7, 8, 9, 10).
+      // Loaded lazily by lib/matchpool-scripts.ts on first reconcile call;
+      // without this include Next's tracing skips them and the reconciler
+      // throws on getTemplateContent for the matchpool keys.
+      "./scripts/consensus_match_pipeline.py",
+      "./scripts/consensus_match_rerank.py",
+      "./scripts/consensus_match_deliberate.py",
+      "./scripts/consensus_match_consent.py",
     ],
   },
   async rewrites() {

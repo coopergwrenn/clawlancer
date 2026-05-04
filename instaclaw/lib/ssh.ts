@@ -2913,6 +2913,13 @@ registerTemplate("DELIVER_FILE_SCRIPT", DELIVER_FILE_SCRIPT);
 registerTemplate("NOTIFY_USER_SCRIPT", NOTIFY_USER_SCRIPT);
 registerTemplate("TOKEN_PRICE_SCRIPT", TOKEN_PRICE_SCRIPT);
 
+// Matchpool VM-side scripts (Components 7, 8, 9, 10) — registered as
+// LAZY templates because they live in scripts/*.py rather than as TS
+// template literals (the .py files are the source of truth, tested
+// directly via _test-match-*-vm780.ts). Importing this module triggers
+// the registerLazyTemplate calls; no I/O happens until first reconcile.
+import "./matchpool-scripts";
+
 // Strict input validation to prevent shell injection
 function assertSafeShellArg(value: string, label: string): void {
   // Only allow alphanumeric, dashes, underscores, colons, dots, slashes, and tilde

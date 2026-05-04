@@ -250,8 +250,9 @@ async function testBasicTopK() {
   if (matches[1]?.user_id === userH_id) ok("H is rank #2 (partial match)");
   else bad(`rank #2 is not H (got ${matches[1]?.user_id})`);
 
-  if (matches[1] && approxEq(matches[1].mutual_score, 0.5)) ok("H mutual_score ≈ 0.5");
-  else bad(`H mutual_score = ${matches[1]?.mutual_score} (expected ≈0.5)`);
+  // H's mixed concept vectors give fwd=rev=1/√2, so mutual = sqrt(0.5) = 1/√2 ≈ 0.707
+  if (matches[1] && approxEq(matches[1].mutual_score, Math.SQRT1_2)) ok("H mutual_score ≈ 0.707 (sqrt(1/2))");
+  else bad(`H mutual_score = ${matches[1]?.mutual_score} (expected ≈0.707)`);
 
   // Geometric mean sanity: H.fwd × H.rev should round-trip via sqrt
   if (matches[1]) {
@@ -294,9 +295,11 @@ async function testTopKLimit() {
 }
 
 async function testMinMutualScore() {
-  console.log("\n── Test 5: minMutualScore=0.7 filters H but keeps B ──");
-  const matches = await computeTopKMutual(callerId, 10, { minMutualScore: 0.7 });
-  if (matches.length === 1) ok("only B passes the 0.7 threshold");
+  console.log("\n── Test 5: minMutualScore=0.8 filters H but keeps B ──");
+  // H's mutual is 0.707 (geometric mean of fwd=rev=1/√2). 0.8 threshold
+  // sits above H but below B's 1.0.
+  const matches = await computeTopKMutual(callerId, 10, { minMutualScore: 0.8 });
+  if (matches.length === 1) ok("only B passes the 0.8 threshold");
   else bad(`${matches.length} passed (expected 1)`);
   if (matches[0]?.user_id === userB_id) ok("B is the only result");
   else bad(`got ${matches[0]?.user_id}`);

@@ -118,12 +118,34 @@ export function registerTemplate(key: string, content: string): void {
   TEMPLATE_REGISTRY[key] = content;
 }
 
+/**
+ * Lazy resolver registry. For templates whose content lives in an
+ * external file we don't want to fs.readFileSync at module load —
+ * Turbopack's "Collecting page data" pass evaluates server modules
+ * with __dirname resolving to a phantom path where the file doesn't
+ * exist (see lib/privacy-bridge-script.ts comment). Lazy resolvers
+ * defer the read to first call from the reconciler, by which point
+ * we're in real serverless runtime.
+ *
+ * The matchpool VM-side Python scripts (consensus_match_pipeline.py
+ * etc.) are registered this way by lib/matchpool-scripts.ts, imported
+ * via ssh.ts alongside the other registerTemplate calls.
+ */
+const LAZY_RESOLVERS: Record<string, () => string> = {};
+
+export function registerLazyTemplate(key: string, resolver: () => string): void {
+  LAZY_RESOLVERS[key] = resolver;
+}
+
 export function getTemplateContent(key: string): string {
   const content = TEMPLATE_REGISTRY[key];
-  if (!content) {
-    throw new Error(`VM Manifest: unknown template key "${key}". Did you call registerTemplate()?`);
-  }
-  return content;
+  if (content) return content;
+  const resolver = LAZY_RESOLVERS[key];
+  if (resolver) return resolver();
+  throw new Error(
+    `VM Manifest: unknown template key "${key}". ` +
+    `Did you call registerTemplate() / registerLazyTemplate()?`
+  );
 }
 
 // ── Silence watchdog — universal safety net against agent going silent ──
@@ -542,8 +564,21 @@ export const VM_MANIFEST = {
    *  negative after in-place compaction, gate fires forever. Re-baseline
    *  count without advancing throttle timer so summary fires once enough
    *  new content accumulates. Sentinel "PERIODIC_SUMMARY_V1_RESHRINK"
-   *  added to STRIP_THINKING_SCRIPT requiredSentinels per Rule 23. */
-  version: 80,
+   *  added to STRIP_THINKING_SCRIPT requiredSentinels per Rule 23.
+   *
+   * v81 (2026-05-04): Consensus matching engine VM-side scripts ship.
+   *  Adds 4 Python files to ~/.openclaw/scripts/:
+   *    consensus_match_pipeline.py  — Layer 1 → 2 → 3 → POST orchestrator
+   *    consensus_match_rerank.py    — Layer 2 listwise rerank (Sonnet)
+   *    consensus_match_deliberate.py — Layer 3 per-candidate deliberation
+   *    consensus_match_consent.py    — privacy opt-in helper
+   *  + 30-min cron for consensus_match_pipeline.py.
+   *  Lazy-registered via lib/matchpool-scripts.ts (privacy-bridge pattern)
+   *  to avoid Turbopack page-data fs.readFileSync crashes.
+   *  Each script carries Rule 23 sentinels for stale-cache regression
+   *  detection. PRD: docs/prd/consensus-intent-matching-2026-05-04.md
+   */
+  version: 81,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -922,6 +957,76 @@ export const VM_MANIFEST = {
       mode: "overwrite",
       executable: true,
     },
+
+    // ── Consensus matching engine (Components 7, 8, 9, 10) ──
+    // The full pipeline: Layer 1 retrieval (server-side via /api/match/v1/route_intent)
+    // → Layer 2 listwise rerank (rerank.py, this VM, prompt-cached anchor)
+    // → Layer 3 per-candidate deliberation (deliberate.py, this VM, batched)
+    // → POST results (server-side via /api/match/v1/results)
+    // The pipeline.py orchestrator calls L2 + L3 as subprocesses with a
+    // frozen anchor snapshot in env vars so MEMORY.md is byte-identical
+    // across both layers (cache hit).
+    //
+    // PRD: instaclaw/docs/prd/consensus-intent-matching-2026-05-04.md §2.5
+    //
+    // Sentinels (Rule 23): each script's load-bearing function name +
+    // a load-bearing string from its hardened prompt or contract.
+    // Refusal-on-stale prevents the 2026-05-02-class regression where
+    // a long-running reconciler held an OLD script in module cache.
+    {
+      remotePath: "~/.openclaw/scripts/consensus_match_pipeline.py",
+      source: "template",
+      templateKey: "CONSENSUS_MATCH_PIPELINE_PY",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "def build_l2_passthrough_deliberations",  // cold-start branch
+        "FALLBACK_ABORT_THRESHOLD",                  // P0-5 abort discipline
+        "snapshot_anchor",                           // anchor-freeze contract
+        "CONSENSUS_MEMORY_PATH",                     // env-var override for L2/L3
+      ],
+    },
+    {
+      remotePath: "~/.openclaw/scripts/consensus_match_rerank.py",
+      source: "template",
+      templateKey: "CONSENSUS_MATCH_RERANK_PY",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "RERANK_INSTRUCTIONS",                  // prompt const present
+        "fabrication rule",                      // hardened prompt landed
+        "Banned phrases",                        // banned-AI-speak enumeration
+        "def shuffle_candidates",                // P1-8 positional debiasing
+      ],
+    },
+    {
+      remotePath: "~/.openclaw/scripts/consensus_match_deliberate.py",
+      source: "template",
+      templateKey: "CONSENSUS_MATCH_DELIBERATE_PY",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "DELIBERATION_INSTRUCTIONS",
+        "fabrication rule",
+        "skip-reason discipline",
+        "def make_fallback",                     // graceful-degradation contract
+      ],
+    },
+    {
+      remotePath: "~/.openclaw/scripts/consensus_match_consent.py",
+      source: "template",
+      templateKey: "CONSENSUS_MATCH_CONSENT_PY",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "VALID_TIERS",
+        "interests_plus_name",
+      ],
+    },
   ] as ManifestFileEntry[],
 
   // ── Skill files ──
@@ -999,6 +1104,23 @@ export const VM_MANIFEST = {
       schedule: "30 4 * * 0",
       command: "find ~/.openclaw/workspace/backups -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null",
       marker: "workspace/backups",
+    },
+    // ── Consensus matching pipeline ──
+    // Runs Layer 1 → Layer 2 → Layer 3 → POST results every 30 minutes.
+    // The orchestrator self-throttles (25-min minimum interval) and applies
+    // 0-240s startup jitter to prevent 200-VM thundering herd against
+    // Anthropic. Cold-start branch handles thin-MEMORY.md users (skips L3,
+    // labels output preliminary). Aborts cycle on >25% Layer 3 fallback
+    // rate to preserve last-good cached_top3 instead of writing degraded
+    // results. Output to /tmp/consensus_match.log for forensics; stderr
+    // contains pipeline.<event> telemetry.
+    //
+    // Lays dormant on existing VMs until the next manifest version bump
+    // triggers reconciler propagation.
+    {
+      schedule: "*/30 * * * *",
+      command: "python3 ~/.openclaw/scripts/consensus_match_pipeline.py >> /tmp/consensus_match.log 2>&1",
+      marker: "consensus_match_pipeline.py",
     },
   ] as ManifestCronJob[],
 
