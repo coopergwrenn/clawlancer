@@ -143,9 +143,8 @@ function Step({ n, text, children }: { n: number; text: string; children?: React
       <div
         className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
         style={{
-          background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
+          background: "rgb(249, 115, 22)",
           color: "white",
-          textShadow: "0 1px 1px rgba(0,0,0,0.15)",
         }}
       >
         {n}

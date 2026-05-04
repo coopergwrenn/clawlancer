@@ -359,15 +359,45 @@ def format_match_notification(top_delib: dict, kind: str) -> str:
     return "\n".join(parts)
 
 
+def telegram_safe(s: str) -> str:
+    """Sanitize a message for ~/scripts/notify_user.sh.
+
+    The script sends with parse_mode=Markdown AND builds the JSON via
+    shell-string interpolation (not python json.dumps), which means:
+      1. A literal " in the message breaks the JSON before Telegram
+         even sees it → curl posts malformed JSON → 400 Bad Request.
+      2. Unbalanced * _ [ ] or ` characters break Markdown parsing →
+         Telegram returns "Bad Request: can't parse entities."
+
+    Either failure exits the script with rc=1, with the error in stdout
+    (json_error). We sanitize defensively here so the message always
+    survives both layers. Lossy but reliable.
+
+    Follow-up (manifest v82): notify_user.sh should accept a parse_mode
+    flag and build JSON via python json.dumps so this sanitization
+    isn't needed — but for tonight, defense in depth wins.
+    """
+    return (
+        s.replace("\\", "")     # ditch backslashes outright
+         .replace('"', "'")      # quotes break JSON; swap to apostrophe
+         .replace("_", " ")      # markdown italic
+         .replace("*", "")       # markdown bold
+         .replace("[", "(")      # markdown link bracket
+         .replace("]", ")")      # markdown link bracket
+         .replace("`", "'")      # markdown code
+    )
+
+
 def send_telegram_notification(message: str) -> bool:
     """Shell out to ~/scripts/notify_user.sh. Returns True on success.
     Never raises — notification failure does not abort the pipeline."""
     if not os.path.isfile(NOTIFY_SCRIPT):
         log("notify_skipped no_notify_script")
         return False
+    safe_message = telegram_safe(message)
     try:
         proc = subprocess.run(
-            [NOTIFY_SCRIPT, message],
+            [NOTIFY_SCRIPT, safe_message],
             capture_output=True,
             text=True,
             timeout=15,
@@ -375,7 +405,11 @@ def send_telegram_notification(message: str) -> bool:
         if proc.returncode == 0:
             log("notify_sent")
             return True
-        log(f"notify_failed rc={proc.returncode} stderr={proc.stderr[:200]}")
+        # Log BOTH stderr and stdout — notify_user.sh writes its
+        # json_error to stdout, which we'd otherwise lose.
+        out_blob = (proc.stdout or "").strip()[:240]
+        err_blob = (proc.stderr or "").strip()[:240]
+        log(f"notify_failed rc={proc.returncode} stdout={out_blob} stderr={err_blob}")
         return False
     except (subprocess.TimeoutExpired, OSError) as e:
         log(f"notify_failed transport={type(e).__name__}")
