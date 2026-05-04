@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { Circle, Square, Download, Share2 } from "lucide-react";
+import { Circle, Square, Download, Share2, X } from "lucide-react";
 
 interface ClipRecorderProps {
   /** The container element that holds the noVNC canvas */
@@ -11,7 +11,7 @@ interface ClipRecorderProps {
 type RecordingState = "idle" | "recording" | "done";
 
 const CLIP_DURATION = 15; // seconds
-const SHARE_TEXT = "Watch my @instaclaws agent work autonomously 🤖";
+const SHARE_TEXT = "Watch my @instaclaws agent work autonomously";
 
 export function ClipRecorder({ targetRef }: ClipRecorderProps) {
   const [state, setState] = useState<RecordingState>("idle");
@@ -145,9 +145,10 @@ export function ClipRecorder({ targetRef }: ClipRecorderProps) {
       </button>
       <button
         onClick={reset}
-        className="px-2 py-1 rounded-full text-[10px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+        title="Discard"
       >
-        ✕
+        <X className="w-3 h-3" />
       </button>
     </div>
   );

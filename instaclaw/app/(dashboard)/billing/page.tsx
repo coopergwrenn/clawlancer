@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CreditCard } from "lucide-react";
+import { CreditCard, Check } from "lucide-react";
 import { motion } from "motion/react";
 
 const tiers = [
@@ -344,10 +344,8 @@ export default function BillingPage() {
 
               <div className="space-y-2">
                 {features.map((f) => (
-                  <div key={f} className="text-xs flex items-start" style={{ color: "var(--muted)" }}>
-                    <span className="mr-2" style={{ color: "var(--accent)" }}>
-                      ✓
-                    </span>
+                  <div key={f} className="text-xs flex items-start gap-1.5" style={{ color: "var(--muted)" }}>
+                    <Check className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "var(--accent)" }} aria-hidden />
                     <span>{f}</span>
                   </div>
                 ))}

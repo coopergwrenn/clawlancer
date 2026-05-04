@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X } from "lucide-react";
+import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X, Gift } from "lucide-react";
 import { HowToBuy } from "./how-to-buy";
 import { pickTweetTemplate } from "@/lib/bankr-tweet-templates";
 
@@ -779,7 +779,7 @@ export function BankrWalletCard({
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder={suggestLoading ? "✨ Asking your agent what it wants to be called..." : "Token Name (e.g. MyAgent)"}
+                    placeholder={suggestLoading ? "Asking your agent what it wants to be called..." : "Token Name (e.g. MyAgent)"}
                     value={tokenName}
                     onChange={(e) => { setTokenName(e.target.value); setNameTouched(true); }}
                     maxLength={32}
@@ -804,8 +804,8 @@ export function BankrWalletCard({
                   )}
                 </div>
                 {originalSuggestedName && tokenName === originalSuggestedName && (
-                  <p className="text-[10px] flex items-center gap-1" style={{ color: "var(--muted)" }}>
-                    <span aria-hidden>✨</span>
+                  <p className="text-[10px] flex items-center gap-1.5" style={{ color: "var(--muted)" }}>
+                    <Sparkles className="w-3 h-3 flex-shrink-0" aria-hidden />
                     <span>Suggested based on your agent&apos;s personality — feel free to change it.</span>
                   </p>
                 )}
@@ -821,7 +821,7 @@ export function BankrWalletCard({
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder={suggestLoading ? "✨ Suggesting…" : "Symbol (e.g. AGENT)"}
+                    placeholder={suggestLoading ? "Suggesting…" : "Symbol (e.g. AGENT)"}
                     value={tokenSym}
                     onChange={(e) => { setTokenSym(e.target.value); setSymTouched(true); }}
                     maxLength={10}
@@ -846,8 +846,8 @@ export function BankrWalletCard({
                   )}
                 </div>
                 {originalSuggestedSym && tokenSym.toUpperCase() === originalSuggestedSym && (
-                  <p className="text-[10px] flex items-center gap-1" style={{ color: "var(--muted)" }}>
-                    <span aria-hidden>✨</span>
+                  <p className="text-[10px] flex items-center gap-1.5" style={{ color: "var(--muted)" }}>
+                    <Sparkles className="w-3 h-3 flex-shrink-0" aria-hidden />
                     <span>Suggested by your agent — change to anything you like.</span>
                   </p>
                 )}
@@ -966,7 +966,7 @@ export function BankrWalletCard({
                   color: "var(--muted)",
                 }}
               >
-                <span aria-hidden>🎁</span>
+                <Gift className="w-3 h-3 flex-shrink-0" style={{ color: "rgb(34,197,94)" }} aria-hidden />
                 <span>Free to launch — InstaClaw covers gas.</span>
               </div>
 
@@ -1076,7 +1076,7 @@ export function BankrWalletCard({
                 className="rounded-md px-3 py-2 text-[11px] flex items-start gap-2"
                 style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", color: "#15803d" }}
               >
-                <span aria-hidden>🎁</span>
+                <Gift className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" aria-hidden />
                 <span>
                   Free to launch — InstaClaw covers gas. Trading fees flow back to your agent automatically.
                 </span>
