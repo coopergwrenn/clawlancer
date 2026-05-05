@@ -385,25 +385,43 @@ async function verifyIntroSender(senderXmtp) {
  *
  * `forXmtp` toggles whether to apply the Telegram-Markdown sanitizer
  * (which would strip @, *, _ etc that are fine in plain XMTP text).
+ *
+ * CTA routing: the receiver-facing reachback uses the sender's
+ * personal Telegram handle when available (header.from_telegram_handle
+ * AND verifiedSender.telegram_handle are both forward-compatible
+ * fields). It deliberately does NOT fall back to the sender's bot
+ * username — routing one person to chat with another person's AI
+ * bot is a UX dead end (Cooper, 2026-05-05). When no personal
+ * handle is known, fall back to the /consensus/my-matches link.
  */
 function buildIntroBody(verifiedSender, envelopeProse, header, forXmtp) {
   const senderName = verifiedSender.name || "An InstaClaw user";
-  const senderBot = verifiedSender.telegram_bot_username || null;
-  const topic = (header.topic || "").toString().trim();
-  const window = (header.window || "").toString().trim();
 
-  const lines = [
-    "Consensus 2026 intro received",
-    "",
-    `${senderName}'s agent just reached out about meeting up.`,
-  ];
-  if (envelopeProse) lines.push("", envelopeProse);
-  if (topic) lines.push("", `Topic: ${topic}`);
-  if (window) lines.push(`Window: ${window}`);
-  if (senderBot) {
-    lines.push("", `Reach out: @${senderBot} on Telegram (their agent will relay).`);
+  // Receiver-side rendering is intentionally minimal: the SENDER
+  // already composed a complete message (greeting + rationale +
+  // topic/window + CTA). Re-extracting topic/window from the header
+  // and tacking on another CTA would duplicate content the receiver
+  // is about to read inline anyway.
+  //
+  // We only add a single contextual header line ("intro from X")
+  // so the receiver can tell at a glance what kind of message it
+  // is, then render the prose verbatim.
+  const lines = [`Consensus 2026 intro from ${senderName}:`, ""];
+  if (envelopeProse && envelopeProse.trim().length > 0) {
+    lines.push(envelopeProse.trim());
+  } else {
+    // Defensive fallback if the envelope had no prose. Shouldn't
+    // happen in production — the sender's agent_outreach.py always
+    // builds prose. If it does, give the user enough to act on.
+    const senderHandle = (verifiedSender.telegram_handle || header.from_telegram_handle || "")
+      .toString().trim().replace(/^@/, "");
+    lines.push(`${senderName}'s agent reached out about meeting up at Consensus 2026.`);
+    if (senderHandle) {
+      lines.push("", `To reply, DM ${senderName} directly: @${senderHandle} on Telegram.`);
+    } else {
+      lines.push("", "See full context: https://instaclaw.io/consensus/my-matches");
+    }
   }
-  lines.push("", "All your matches: https://instaclaw.io/consensus/my-matches");
 
   const text = lines.join("\n");
   if (forXmtp) return text;

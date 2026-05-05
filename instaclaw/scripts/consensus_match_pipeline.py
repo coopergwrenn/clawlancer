@@ -730,6 +730,13 @@ def maybe_send_agent_outreach(
         "from_user_id": self_info.get("user_id"),
         "from_name": self_info.get("name"),
         "from_agent_name": self_info.get("agent_name"),
+        # Personal handle is the user-facing CTA target (e.g. "@cooperwrenn").
+        # The bot username (e.g. "@edgecitybot") goes on the envelope for
+        # forensics but is NOT used in the receiver-facing prose CTA —
+        # routing humans to chat with someone else's AI bot is a UX
+        # dead end. When the personal handle is unknown, the prose
+        # falls back to the /consensus/my-matches link.
+        "from_telegram_handle": self_info.get("telegram_handle"),
         "from_telegram_bot_username": self_info.get("telegram_bot_username"),
         "from_identity_wallet": self_info.get("identity_wallet"),
     }

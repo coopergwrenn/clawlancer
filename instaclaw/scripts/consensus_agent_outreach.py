@@ -169,9 +169,18 @@ def build_intro_prose(payload: dict, target_name: str) -> str:
     """The text that shows up in the receiver's Telegram. First-person,
     polite, factual. The sender's agent voice — same conventions as the
     L3 rationale prompt (no banned phrases).
+
+    CTA routing: prefer the sender's personal Telegram handle (a
+    `from_telegram_handle` field on the payload — NOT stored on
+    instaclaw_users today, but the field is forward-compatible for
+    when we add it). Bot username is deliberately NOT used as a
+    fallback — routing humans to chat with another person's AI bot
+    is a UX dead end (Cooper, 2026-05-05). Fall back to the
+    /consensus/my-matches link, which is where the receiver can see
+    the full match context and decide what to do.
     """
     from_name = payload.get("from_name", "An InstaClaw user").strip() or "An InstaClaw user"
-    from_bot = (payload.get("from_telegram_bot_username") or "").strip().lstrip("@")
+    from_handle = (payload.get("from_telegram_handle") or "").strip().lstrip("@")
     rationale = (payload.get("rationale") or "").strip()
     topic = (payload.get("topic") or "").strip()
     window = (payload.get("window") or "").strip()
@@ -189,12 +198,14 @@ def build_intro_prose(payload: dict, target_name: str) -> str:
     if window:
         parts.append(f"Possible window: {window}")
     parts.append("")
-    if from_bot:
+    if from_handle:
         parts.append(
-            f"If you want to follow up, message @{from_bot} on Telegram and {from_name}'s agent will relay."
+            f"To say hi to {from_name} directly, DM @{from_handle} on Telegram."
         )
     else:
-        parts.append(f"Reply here on XMTP if you want to coordinate.")
+        parts.append(
+            "See full match context (and the other people you matched with): https://instaclaw.io/consensus/my-matches"
+        )
     return "\n".join(parts)
 
 
@@ -284,12 +295,19 @@ def main() -> int:
     log_id = resp.get("log_id")
 
     # 3. Build envelope and send.
+    # `from_telegram_handle` is the sender's PERSONAL Telegram handle
+    # (e.g. "@cooperwrenn"), distinct from from_telegram_bot_username
+    # (their AGENT'S bot, e.g. "@edgecitybot"). Bot username kept on
+    # the envelope for forensic / future-routing use, but the
+    # human-facing CTA in the prose uses the personal handle when
+    # available — never the bot.
     header = {
         "v": 1,
         "from_xmtp": get_self_xmtp_address(),
         "from_user_id": payload.get("from_user_id"),
         "from_name": payload.get("from_name"),
         "from_agent_name": payload.get("from_agent_name"),
+        "from_telegram_handle": payload.get("from_telegram_handle"),
         "from_telegram_bot_username": payload.get("from_telegram_bot_username"),
         "from_identity_wallet": payload.get("from_identity_wallet"),
         "topic": payload.get("topic") or "",

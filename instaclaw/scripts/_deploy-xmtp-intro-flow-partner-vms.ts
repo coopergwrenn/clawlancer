@@ -67,6 +67,8 @@ const FILES = [
     //   - appendPendingIntro + xmtp_user = three-tier delivery
     //   - readSeenLogIds = dedup-on-intake (server poll vs XMTP race)
     //   - ackIntroToServer = stops the sender's retry loop on success
+    //   - "Consensus 2026 intro from" = new rendering header that
+    //     replaces the bot-CTA mistake (Cooper, 2026-05-05).
     sentinels: [
       "[INSTACLAW_AGENT_INTRO_V1]",
       "startLocalSendServer",
@@ -75,6 +77,7 @@ const FILES = [
       "xmtp_user",
       "readSeenLogIds",
       "ackIntroToServer",
+      "Consensus 2026 intro from",
     ],
   },
   {
@@ -86,12 +89,18 @@ const FILES = [
       "poll_my_intros",
       "retry_unacked_outreach",
       "MY_INTROS_URL",
+      "from_telegram_handle",
     ],
   },
   {
     localPath: `${PROJECT_ROOT}/scripts/consensus_agent_outreach.py`,
     remotePath: "/home/openclaw/.openclaw/scripts/consensus_agent_outreach.py",
-    sentinels: ["build_envelope", "INSTACLAW_AGENT_INTRO_V1", "get_self_xmtp_address"],
+    sentinels: [
+      "build_envelope",
+      "INSTACLAW_AGENT_INTRO_V1",
+      "get_self_xmtp_address",
+      "from_telegram_handle",
+    ],
   },
 ];
 
