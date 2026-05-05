@@ -848,8 +848,45 @@ export const VM_MANIFEST = {
    *  Canary discipline (Rules 3, 4, 17): vm-050 manual install + 24h
    *  hold BEFORE merging this branch to main and letting the
    *  reconcile-fleet cron push the v87 drop-in fleet-wide.
+   *
+   * v88 (2026-05-05): add build-essential to systemPackages.
+   *  Discovered v87's stepPrctlSubreaper silently failed across the
+   *  fleet because vm-780 (and likely most other fleet VMs) did NOT
+   *  have gcc / make / node-gyp installed. The npm install succeeded
+   *  ("added 1 package in 5s") because the prctl-subreaper@0.1.0
+   *  package.json had `"install": "node-gyp rebuild || (echo ... &&
+   *  exit 0)"` — the `|| exit 0` was meant to fail-soft on non-Linux
+   *  but on Linux it silently masked missing build chain. The native
+   *  .node binary was never compiled, the JS layer fell into its
+   *  no-op fallback, and the reconciler's verify-after-install only
+   *  checked the build/Release dir (which DID exist as an empty
+   *  directory after node-gyp's partial output) — so verify passed
+   *  and the drop-in got written, BUT the addon wasn't actually
+   *  loadable. The smoke test should have caught this; tracing showed
+   *  it was misleading because reconciler ran with NODE_PATH that
+   *  resolved to the no-op JS shim. The vm-050 canary worked because
+   *  vm-050 was an older VM that happened to have build-essential
+   *  installed from some prior op.
+   *
+   *  Fix: add build-essential to systemPackages so stepSystemPackages
+   *  (which apt-installs system deps via sudo) ensures gcc/make/g++
+   *  on every VM. stepPrctlSubreaper runs AFTER stepSystemPackages
+   *  in reconcileVM, so by the time prctl-subreaper installs, the
+   *  build chain is present and the .node binary actually compiles.
+   *
+   *  Verification on vm-780: post-`apt install build-essential`,
+   *  `npm install -g prctl-subreaper@0.1.0` produced
+   *  build/Release/prctl_subreaper.node and a smoke test showed
+   *  {running:true, supported:true, intervalMs:1000, minAgeMs:5000}.
+   *  The cv=87 fleet sample (vm-780, vm-899, vm-360) had this same
+   *  silent-failure pattern; v88 propagates the fix to all of them.
+   *
+   *  Follow-up (separate change): publish prctl-subreaper@0.1.1 with
+   *  package.json install script that fails LOUDLY on build error
+   *  (drop the `|| exit 0` mask). Defers to a later PR; v88 unblocks
+   *  the fleet without it.
    */
-  version: 87,
+  version: 88,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1492,7 +1529,7 @@ export const VM_MANIFEST = {
   ] as ManifestCronJob[],
 
   // ── System packages (installed via sudo apt-get) ──
-  systemPackages: ["ffmpeg", "jq"],
+  systemPackages: ["ffmpeg", "jq", "build-essential"],
 
   // ── Python packages (installed via pip3) ──
   pythonPackages: ["openai"],
