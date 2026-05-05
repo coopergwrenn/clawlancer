@@ -412,6 +412,148 @@ echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') status=$STATUS" >> "$LOGFILE"
 tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 `;
 
+// ── Skill integrity self-healing cron (Rule 24, item 4) ──
+// Hourly walk of git-cloned skills. Detects corrupted .git/ AND missing
+// expected files (SKILL.md or scripts/dgclaw.sh per the taxonomy). Self-heals
+// by backing up SKILL.md, nuking the dir, and re-cloning.
+//
+// Static skills are NOT touched — they need the manifest reconciler push.
+// This script only fixes the failure modes that vm-321/vm-729 hit:
+//   - Sibling ~/dgclaw-skill/ partial install (no .git, no scripts/)
+//   - Git-cloned skill with corrupted .git/ from interrupted git operation
+//
+// Logs every action to ~/.openclaw/logs/skill-integrity.log AND syslog.
+// Format: "SKILL_RECOVERED skill=<n> path=<p> reason=<r> attempt=<n>"
+//         "SKILL_OK skill=<n> path=<p>"
+//         "SKILL_VERIFY_FAILED skill=<n> path=<p> reason=<r>" (after retry exhausted)
+export const SKILL_INTEGRITY_CHECK_SH = String.raw`#!/bin/bash
+# Self-healing skill integrity check — Rule 24
+# Runs hourly via cron. Idempotent. Sudo-free. Logs to journal + file.
+set +e
+LOGFILE=~/.openclaw/logs/skill-integrity.log
+mkdir -p ~/.openclaw/logs
+TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+log() {
+  echo "$TS $*" >> "$LOGFILE"
+  logger -t skill-integrity "$*" 2>/dev/null
+}
+log_recovered() {
+  echo "$TS SKILL_RECOVERED skill=$1 path=$2 reason=\"$3\" attempt=$4" >> "$LOGFILE"
+  logger -t skill-integrity "SKILL_RECOVERED skill=$1 path=$2 reason=\"$3\" attempt=$4" 2>/dev/null
+}
+log_ok() {
+  # Don't spam ok lines into journal — file only
+  echo "$TS SKILL_OK skill=$1 path=$2" >> "$LOGFILE"
+}
+log_failed() {
+  echo "$TS SKILL_VERIFY_FAILED skill=$1 path=$2 reason=\"$3\"" >> "$LOGFILE"
+  logger -t skill-integrity "SKILL_VERIFY_FAILED skill=$1 path=$2 reason=\"$3\"" 2>/dev/null
+}
+
+# Verify a git-cloned skill at the given path. If broken, backup SKILL.md (if
+# present), rm -rf, re-clone. Retry once. Then give up + log loudly.
+# Args: $1=skill_name $2=path $3=git_url $4=required_file (optional, e.g.
+# scripts/dgclaw.sh; for monorepos like bankr, leave empty and we'll just
+# check .git + at least one SKILL.md anywhere in the tree)
+verify_or_heal_git_skill() {
+  local skill="$1"
+  local path="$2"
+  local url="$3"
+  local required="$4"
+
+  # If dir doesn't exist at all, nothing to verify (some skills are conditional)
+  if [ ! -d "$path" ]; then
+    return 0
+  fi
+
+  for attempt in 1 2; do
+    local has_git=N
+    local has_required=N
+    local has_skill_md=N
+
+    [ -d "$path/.git" ] && has_git=Y
+    if [ -n "$required" ]; then
+      [ -e "$path/$required" ] && has_required=Y
+    else
+      has_required=Y  # no specific required file
+    fi
+    # For monorepos, accept SKILL.md anywhere
+    if find "$path" -maxdepth 4 -name SKILL.md -not -path '*/.git/*' 2>/dev/null | grep -q .; then
+      has_skill_md=Y
+    fi
+
+    # Sanity: a healthy clone has .git AND (SKILL.md OR required-file)
+    if [ "$has_git" = "Y" ] && { [ "$has_skill_md" = "Y" ] || [ "$has_required" = "Y" ]; }; then
+      # Additional integrity: 'git rev-parse HEAD' should return a hash
+      if (cd "$path" && git rev-parse HEAD >/dev/null 2>&1); then
+        log_ok "$skill" "$path"
+        return 0
+      fi
+    fi
+
+    # Broken — record reason + attempt recovery
+    local reason="has_git=$has_git has_skill_md=$has_skill_md has_required=$has_required"
+
+    # Phase 5 blast-radius mitigation: BACKUP wallet keys + SKILL.md + .env
+    # before any destructive op.  Loss of ~/dgclaw-skill/private.pem means a
+    # user's API wallet keys are gone.  Backup tarball includes any *.pem,
+    # any .env, any *.json, plus SKILL.md.  Stored under
+    # ~/.openclaw/skill-backups/<skill>-<timestamp>.tgz with 7-day retention.
+    local backup_dir=~/.openclaw/skill-backups
+    mkdir -p "$backup_dir"
+    local stamp=$(date +%Y%m%dT%H%M%S)
+    local backup="$backup_dir/$skill-$stamp.tgz"
+    if (cd "$path" 2>/dev/null && \
+        tar czf "$backup" \
+          $(find . -maxdepth 3 \( -name '*.pem' -o -name '.env' -o -name 'config.json' -o -name 'SKILL.md' \) 2>/dev/null) \
+          2>/dev/null); then
+      log "BACKUP_BEFORE_HEAL skill=$skill backup=$backup"
+    fi
+    # Age out backups older than 7 days
+    find "$backup_dir" -type f -name '*.tgz' -mtime +7 -delete 2>/dev/null
+
+    rm -rf "$path"
+    if git clone --depth 1 "$url" "$path" >>"$LOGFILE" 2>&1; then
+      # Set executable on common script paths
+      chmod +x "$path/scripts/"*.sh 2>/dev/null
+      chmod +x "$path/scripts/"*.ts 2>/dev/null
+
+      # Verify again next loop iteration; first attempt will log_recovered if good
+      if [ $attempt -eq 1 ]; then
+        log_recovered "$skill" "$path" "$reason" 1
+      fi
+    else
+      reason="$reason clone_failed"
+    fi
+
+    if [ $attempt -eq 2 ]; then
+      log_failed "$skill" "$path" "$reason"
+      return 1
+    fi
+  done
+}
+
+# ─── Git-cloned skills under ~/.openclaw/skills/ ───
+# Per Rule 24 taxonomy: bankr (monorepo), consensus-2026, edge-esmeralda
+verify_or_heal_git_skill "bankr" "$HOME/.openclaw/skills/bankr" \
+  "https://github.com/BankrBot/skills" ""
+verify_or_heal_git_skill "consensus-2026" "$HOME/.openclaw/skills/consensus-2026" \
+  "https://github.com/coopergwrenn/consensus-2026-skill.git" "SKILL.md"
+verify_or_heal_git_skill "edge-esmeralda" "$HOME/.openclaw/skills/edge-esmeralda" \
+  "https://github.com/aromeoes/edge-agent-skill.git" "SKILL.md"
+
+# ─── Sibling git clones at $HOME ───
+# ~/dgclaw-skill — installed only when agdp_enabled. The exact failure mode that
+# bricked vm-729 (Notboredclaw) and vm-321 (frankyecash). Required file:
+# scripts/dgclaw.sh (without it, the dgclaw command on PATH does nothing).
+verify_or_heal_git_skill "dgclaw-skill" "$HOME/dgclaw-skill" \
+  "https://github.com/Virtual-Protocol/dgclaw-skill" "scripts/dgclaw.sh"
+
+# Trim log
+tail -1000 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
+`;
+
 // ── The Manifest ──
 
 export const VM_MANIFEST = {
@@ -614,8 +756,29 @@ export const VM_MANIFEST = {
    *    skill state first) + §4 Organic Activation (strong-signal
    *    detection rules + offer template + USER_FACTS dedup pattern).
    *    Auto-syncs to fleet via 30-min skill-repo git pull cron.
+   *
+   * v85 (2026-05-05): Rule 24 — skill install verification + self-healing.
+   *  - skill-integrity-check.sh deployed to ~/.openclaw/scripts/
+   *    Hourly cron at :17 walks git-cloned skills (bankr,
+   *    consensus-2026, edge-esmeralda, ~/dgclaw-skill), detects
+   *    .git/ corruption or missing scripts/dgclaw.sh, backs up
+   *    SKILL.md, re-clones, retries once, logs SKILL_RECOVERED /
+   *    SKILL_VERIFY_FAILED to journal + ~/.openclaw/logs/skill-
+   *    integrity.log. Sentinel-grep guards against stale module
+   *    cache regressions per Rule 23.
+   *  - lib/ssh.ts:installAgdpSkill — both AGDP and DGCLAW clones
+   *    now verify-after-write (Rule 24 #1). If .git/ + required
+   *    file aren't present after clone, retry once, then exit 1
+   *    with a SKILL_INSTALL_VERIFY_FAILED line so the install
+   *    can't silently leave a partial state (vm-321 / vm-729
+   *    failure mode).
+   *  - lib/vm-reconcile.ts:stepSkillIntegrity — runs every
+   *    reconcile cycle (NOT gated on config_version) per Rule 24
+   *    #3, catches skills that degraded after the VM reached the
+   *    current manifest version (the vm-893/895/896 lying-DB
+   *    pattern).
    */
-  version: 84,
+  version: 85,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -974,6 +1137,16 @@ export const VM_MANIFEST = {
       executable: true,
     },
     {
+      // Rule 24 self-healing skill cron — runs hourly, detects + repairs
+      // git-cloned skill corruption (the vm-321 / vm-729 failure mode).
+      remotePath: "~/.openclaw/scripts/skill-integrity-check.sh",
+      source: "inline",
+      content: SKILL_INTEGRITY_CHECK_SH,
+      mode: "overwrite",
+      executable: true,
+      requiredSentinels: ["verify_or_heal_git_skill", "SKILL_RECOVERED"],
+    },
+    {
       remotePath: "~/.openclaw/scripts/silence-watchdog.py",
       source: "inline",
       content: SILENCE_WATCHDOG_SCRIPT,
@@ -1187,6 +1360,13 @@ export const VM_MANIFEST = {
     // A fleet-wide one-shot SSH push commented out the cron entries on all
     // existing VMs (2026-05-01); this manifest change ensures new VMs
     // provisioned from a fresh snapshot don't get them either.
+    {
+      // Rule 24 self-healing skill cron. Hourly at :17 to avoid colliding
+      // with the existing :00 SHM_CLEANUP / push-heartbeat / memory-index burst.
+      schedule: "17 * * * *",
+      command: "bash ~/.openclaw/scripts/skill-integrity-check.sh > /dev/null 2>&1",
+      marker: "skill-integrity-check.sh",
+    },
     {
       schedule: "0 * * * *",
       command: "bash ~/.openclaw/scripts/push-heartbeat.sh",

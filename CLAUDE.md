@@ -597,6 +597,55 @@ The same incident also exposed two separate failures that the sentinel guard doe
 
 3. **Cross-session memory persistence (session-log.md / active-tasks.md) is empty on real user VMs.** Cooper's @edgebot, after a legitimate session rotation, admitted: *"session-log.md and active-tasks.md are both empty — just the default template text. Previous sessions never actually wrote anything to them. The instructions to write are there in AGENTS.md, but it just... didn't happen."* Even with the trim-not-nuke fix in place, when sessions DO legitimately rotate (size limits, true crash loops), users still lose everything because the safety net was never populated. The agent isn't following the AGENTS.md instructions reliably. P1 follow-up: survey what fraction of fleet has empty session-log.md, harden the write step, possibly enforce via a pre-rotation hook in strip-thinking.py.
 
+### 24. Skill Installations Must Verify Completeness — and Know the Skill Taxonomy
+
+Every skill install path that performs a clone, file deploy, or extraction MUST verify post-write that the expected files are present. A partial install (e.g., `git clone` succeeds but `scripts/` directory ends up empty) is silent and persistent: the agent looks like it has the skill but the runtime path fails. The reconciler considers `config_version=N` to mean "fully configured" and excludes the VM from future ticks, so a half-installed skill stays half-installed forever — same lying-DB pattern as Rule 23, applied to skills.
+
+#### The 2026-05-05 incidents
+
+Three independent failure modes surfaced in one 24-hour window:
+
+1. **vm-729 (Notboredclaw, paying)** — `~/dgclaw-skill/` sibling clone broken since 2026-04-11: existed but had no `.git/` and no `scripts/` directory, only a stale `.env` + key files. The agent's `bankr launch`-equivalent dgclaw flow silently failed every attempt for ~3 weeks. Doug-class engagement, lost faith, threatened to tweet.
+
+2. **vm-321 (frankyecash, paying)** — Identical broken-sibling pattern. Same fix shape as vm-729 (rm -rf + re-clone). Discovered only via a fleet-wide Phase 2 audit; no cron, watchdog, or reconciler step would ever have caught it.
+
+3. **vm-893/895/896 (3 freshly-provisioned VMs)** — `~/.openclaw/skills/dgclaw/` static-extracted SKILL.md was missing entirely. All three at `config_version=82` (current manifest), so the reconciler's `lt("config_version", 82)` filter excludes them forever. The skill-deploy step in the reconciler succeeded according to its return signal but produced no on-disk file.
+
+In all three cases, /health was 200, status was `assigned/healthy`, no alert fired, no telemetry distinguished "skill present" from "skill missing." The only signal was a paying customer noticing the agent couldn't do the thing it advertised.
+
+#### The skill taxonomy (load-bearing — confused by Phase 1 forensics)
+
+There are **three distinct install patterns**. Confusing them is the most common bug class. Memorize this table before debugging any skill issue:
+
+| Path | Install method | Has `.git/` | What's there | Examples |
+|---|---|---|---|---|
+| `~/.openclaw/skills/<name>/` | **git-cloned**, auto-pull cron every 30 min | **Yes** | Full repo (with subskills for monorepos) | `bankr` (multi-skill repo with 25+ subdirs each having their own `SKILL.md`), `consensus-2026`, `edge-esmeralda` (partner-gated to `edge_city`) |
+| `~/.openclaw/skills/<name>/` | **static-extracted** from `instaclaw/skills/` via manifest's `skillsFromRepo` + `extraSkillFiles` | **No (by design)** | `SKILL.md` + optional `references/`, `assets/` | `agentbook`, `brand-design`, `code-execution`, `competitive-intelligence`, `computer-dispatch`, `dgclaw` (static SKILL.md + `references/api.md` + `references/strategy-playbook.md`), `ecommerce-marketplace`, `email-outreach`, `financial-analysis`, `higgsfield-video`, `instagram-automation`, `language-teacher`, `marketplace-earning`, `motion-graphics` (+ `assets/template-basic/`), `newsworthy`, `prediction-markets`, `sjinn-video` (+ `references/`), `social-media-content`, `solana-defi`, `voice-audio-production`, `web-search-browser`, `x-twitter-search`, `xmtp-agent` |
+| `~/<name>-skill/` (sibling at $HOME, NOT under `.openclaw/skills/`) | **git-cloned** by a per-skill installer (e.g. `installAgdpSkill`); script directory added to `PATH` via `.bashrc` | **Yes** | Full repo with `scripts/` for CLI executables | `~/dgclaw-skill/` (provides `scripts/dgclaw.sh` for the `dgclaw` command — only installed when `agdp_enabled=true`) |
+
+**Critical dgclaw nuance** (the one that fooled Phase 1 of the 2026-05-05 investigation): `dgclaw` exists in TWO places simultaneously and they serve different purposes — the static `~/.openclaw/skills/dgclaw/SKILL.md` is the agent's reference doc (read on demand, present on every VM), and the sibling `~/dgclaw-skill/` is the executable CLI (only on `agdp_enabled` VMs). A "missing scripts/" complaint about `~/.openclaw/skills/dgclaw/` is **expected** — it never has scripts/ — but the same complaint about `~/dgclaw-skill/` is a real defect. Always disambiguate which path before debugging.
+
+**`<name>.disabled` siblings** are normal — agents toggle skills on/off and the disabled rename keeps the SKILL.md off the upfront-context loader. Not a defect.
+
+#### Required patterns
+
+1. **Verify-after-write for every install.** After any `git clone`, `git pull`, file SCP, or template extraction that's expected to produce specific files, the install code MUST `test -f` (or the language equivalent) every required file and `test -d` every required directory before returning success. For git-cloned skills: at minimum verify `.git/HEAD` exists AND `SKILL.md` exists OR (for monorepos) ≥1 subdir SKILL.md exists AND any expected `scripts/` directory has ≥1 entry. For static-extracted skills: verify the `SKILL.md` written; if `extraSkillFiles` includes references, verify each.
+2. **Retry once, then error LOUDLY.** If verification fails, retry the install once. If the second attempt also fails, push to `result.errors` (so the reconciler's `pushFailed` gate refuses to bump `config_version` per Rule 10) AND log a clearly searchable line like `SKILL_INSTALL_VERIFY_FAILED skill=<name> vm=<id> missing=<path>`. Never silently leave a partial install — that's the lying-DB pattern.
+3. **Reconciler MUST check skill integrity on every health cycle, not just on first install.** Add a per-skill verification step that runs even when `config_version` is current: walk the expected skill list, confirm presence + integrity, re-deploy on miss. The cost is one `ls`-equivalent per skill per cycle; the alternative is silent fleet rot. Without this, drift detected post-`config_version=N` is invisible.
+4. **Git-pull cron MUST self-heal corrupted `.git/`.** For each git-cloned skill (taxonomy column 1 + column 3), the periodic pull cron should: (a) try `git pull --ff-only`, (b) if it errors with "fatal", "corrupt", "loose object", "bad object", or "not a git repository", back up the SKILL.md (`cp SKILL.md /tmp/SKILL.md.<ts>.bak`), `rm -rf` the directory, re-clone fresh, restore SKILL.md if the clone is missing it, log `SKILL_RECOVERED skill=<name> reason=<error>`. Never leave a corrupt `.git/` in place — every subsequent `git pull` will re-error and the cron will keep silent-failing.
+5. **Disambiguate path before any "broken skill" claim.** An audit script that flags "`~/.openclaw/skills/dgclaw/` missing `.git/`" without checking the taxonomy is wrong — that path is supposed to have no `.git/`. Always categorize the skill against the taxonomy table FIRST, then check what THAT install pattern requires.
+
+#### Banned patterns
+
+- `git clone ... 2>/dev/null || true` (or any `|| true` after a clone) without a verify-after-write check. The Bankr install in `lib/ssh.ts:4382` and similar lines pre-date this rule and are exactly the failure mode that produced vm-321/vm-729's broken siblings — silent failure swallowed.
+- Reporting an install "succeeded" because the install function returned `true`. The function returning `true` only means "no exception" — verify the file actually exists.
+- An audit script that checks "has `.git/`" uniformly across all skills. Static-extracted skills have no `.git/` by design. The Phase 1 alarm "22 of 25 skills lack `.git/`" was a false positive that consumed an hour of investigation; the audit script must consult the taxonomy.
+- Using a single check (e.g. `test -f SKILL.md`) to validate a multi-skill repo like bankr — bankr's top-level has no SKILL.md; the SKILL.md files live in subdirs.
+
+#### Detection rule
+
+When you write any new skill installer or modify an existing one, the PR diff must include both: (a) the install code, (b) the verify-after-write block. Reviewers should ask: "if the clone succeeds but produces an empty directory, does this code report success or failure?" If success, reject. If you discover a paying customer with a broken skill, the post-incident question is always "could the install have verified its own work?" — if yes, that's a Rule 24 violation.
+
 ---
 
 ## Linode-vs-DB Drift (Reality Checks)

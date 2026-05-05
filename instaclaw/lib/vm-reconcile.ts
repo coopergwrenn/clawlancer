@@ -1650,7 +1650,38 @@ async function stepSkills(
       fs.unlinkSync(tmpLocal);
     }
     await ssh.execCommand('bash /tmp/ic-skill-deploy.sh && rm -f /tmp/ic-skill-deploy.sh');
-    result.fixed.push(`skill SKILL.md files (${skillCount} skills, ${scriptFileCount} scripts)`);
+
+    // Rule 24 #1 + Rule 23: verify-after-write.  Without this gate, a silent
+    // SCP/base64 failure leaves a SKILL.md missing while marking the deploy
+    // "successful," then config_version bumps and the VM is excluded from
+    // future reconciles forever.  This is the vm-893/895/896 lying-DB pattern.
+    // Build expected-paths list from the same skillDirs we just deployed.
+    const expectedPaths = skillDirs
+      .filter(s => fs.existsSync(path.join(skillsBaseDir, s, "SKILL.md")))
+      .map(s => `$HOME/.openclaw/skills/${s}/SKILL.md`);
+    if (expectedPaths.length > 0) {
+      // Build a single composite test — count how many expected files exist
+      const verifyCmd = `bash -c 'cnt=0; missing=""; for f in ${expectedPaths.map(p => `"${p}"`).join(" ")}; do if [ -f "$f" ] && [ -s "$f" ]; then cnt=$((cnt+1)); else missing="$missing $f"; fi; done; echo "VERIFY_PRESENT:$cnt EXPECTED:${expectedPaths.length} MISSING:$missing"'`;
+      const verifyResult = await ssh.execCommand(verifyCmd);
+      const presentMatch = verifyResult.stdout.match(/VERIFY_PRESENT:(\d+)/);
+      const present = presentMatch ? Number(presentMatch[1]) : 0;
+      if (present !== expectedPaths.length) {
+        const missingMatch = verifyResult.stdout.match(/MISSING:(.*)/);
+        const missing = (missingMatch?.[1] ?? "").trim();
+        const errMsg = `stepSkills verify-after-write FAILED: deployed=${expectedPaths.length} on-disk=${present} missing=${missing}`;
+        result.errors.push(errMsg);
+        logger.error("SKILL_INSTALL_VERIFY_FAILED", {
+          step: "stepSkills",
+          vmId: vm.id,
+          expected: expectedPaths.length,
+          present,
+          missing,
+          route: "lib/vm-reconcile.stepSkills",
+        });
+        return;
+      }
+    }
+    result.fixed.push(`skill SKILL.md files (${skillCount} skills, ${scriptFileCount} scripts) [verified ${expectedPaths.length}/${expectedPaths.length}]`);
   } catch (err) {
     result.errors.push(`skills deployment: ${String(err)}`);
   }

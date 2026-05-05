@@ -9254,6 +9254,18 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       `rm -rf "${AGDP_DIR}"`,
       `git clone --depth 1 ${AGDP_REPO} "${AGDP_DIR}" 2>&1`,
       'echo "STEP:repo_cloned"',
+      // Rule 24: verify-after-write — retry once if .git missing, then exit loudly
+      `if [ ! -d "${AGDP_DIR}/.git" ] || [ ! -f "${AGDP_DIR}/package.json" ]; then`,
+      `  echo "STEP:agdp_VERIFY_FAIL_1 has_git=$(test -d ${AGDP_DIR}/.git && echo Y || echo N) has_pkg=$(test -f ${AGDP_DIR}/package.json && echo Y || echo N)"`,
+      `  rm -rf "${AGDP_DIR}"`,
+      `  git clone --depth 1 ${AGDP_REPO} "${AGDP_DIR}" 2>&1`,
+      `  if [ ! -d "${AGDP_DIR}/.git" ] || [ ! -f "${AGDP_DIR}/package.json" ]; then`,
+      `    echo "SKILL_INSTALL_VERIFY_FAILED skill=agdp path=${AGDP_DIR} missing_git=$(test -d ${AGDP_DIR}/.git || echo Y) missing_pkg=$(test -f ${AGDP_DIR}/package.json || echo Y)"`,
+      `    exit 1`,
+      `  fi`,
+      `  echo "STEP:agdp_recovered_via_retry"`,
+      `fi`,
+      'echo "STEP:agdp_verified"',
       `cd "${AGDP_DIR}" && HUSKY=0 npm install --production --ignore-scripts 2>&1`,
       'echo "STEP:npm_installed"',
       '',
@@ -9273,12 +9285,29 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       'echo "STEP:systemd_configured"',
       '',
       '# Clone DegenClaw trading competition skill (bash only, no npm install needed)',
-      `if [ -d "${DGCLAW_DIR}" ]; then`,
-      `  cd "${DGCLAW_DIR}" && git pull --ff-only 2>&1 || true`,
+      '# Rule 24: verify-after-write semantics. If existing dir lacks .git OR scripts/dgclaw.sh,',
+      '# treat it as broken (vm-321 / vm-729 failure mode: dir present but no .git, no scripts).',
+      `if [ -d "${DGCLAW_DIR}/.git" ] && [ -f "${DGCLAW_DIR}/scripts/dgclaw.sh" ]; then`,
+      `  cd "${DGCLAW_DIR}" && git pull --ff-only 2>&1 || echo "WARN:dgclaw_pull_failed_continuing_with_existing"`,
       'else',
+      `  echo "STEP:dgclaw_dir_missing_or_corrupt — wiping and re-cloning"`,
+      `  rm -rf "${DGCLAW_DIR}"`,
       `  git clone --depth 1 ${DGCLAW_REPO} "${DGCLAW_DIR}" 2>&1`,
       'fi',
       `chmod +x "${DGCLAW_DIR}/scripts/dgclaw.sh" 2>/dev/null || true`,
+      '# Verify completeness: .git/ + scripts/dgclaw.sh + SKILL.md (Rule 24)',
+      `if [ ! -d "${DGCLAW_DIR}/.git" ] || [ ! -f "${DGCLAW_DIR}/scripts/dgclaw.sh" ]; then`,
+      `  echo "STEP:dgclaw_VERIFY_FAIL_1 has_git=$(test -d ${DGCLAW_DIR}/.git && echo Y || echo N) has_script=$(test -f ${DGCLAW_DIR}/scripts/dgclaw.sh && echo Y || echo N)"`,
+      `  rm -rf "${DGCLAW_DIR}"`,
+      `  git clone --depth 1 ${DGCLAW_REPO} "${DGCLAW_DIR}" 2>&1`,
+      `  chmod +x "${DGCLAW_DIR}/scripts/dgclaw.sh" 2>/dev/null || true`,
+      `  if [ ! -d "${DGCLAW_DIR}/.git" ] || [ ! -f "${DGCLAW_DIR}/scripts/dgclaw.sh" ]; then`,
+      `    echo "SKILL_INSTALL_VERIFY_FAILED skill=dgclaw path=${DGCLAW_DIR} missing_git=$(test -d ${DGCLAW_DIR}/.git || echo Y) missing_script=$(test -f ${DGCLAW_DIR}/scripts/dgclaw.sh || echo Y)"`,
+      `    exit 1`,
+      `  fi`,
+      `  echo "STEP:dgclaw_recovered_via_retry"`,
+      `fi`,
+      'echo "STEP:dgclaw_verified"',
       '# Add dgclaw.sh to PATH via shell profile',
       `grep -qF 'dgclaw-skill/scripts' ~/.bashrc 2>/dev/null || echo 'export PATH="$HOME/dgclaw-skill/scripts:$PATH"' >> ~/.bashrc`,
       'echo "STEP:dgclaw_cloned"',
@@ -9366,12 +9395,25 @@ with open(sys.argv[1], 'w') as f: json.dump(cfg, f, indent=2)
     const lastStep = completedSteps[completedSteps.length - 1] || "none";
 
     if (result.code !== 0 || !result.stdout.includes("AGDP_INSTALL_DONE")) {
+      // Rule 24: surface verify-failure separately so it's grepable in logs
+      const verifyFailMatch = result.stdout.match(/SKILL_INSTALL_VERIFY_FAILED skill=(\S+)\s+path=(\S+)\s+(.+)/);
+      if (verifyFailMatch) {
+        logger.error("SKILL_INSTALL_VERIFY_FAILED", {
+          skill: verifyFailMatch[1],
+          path: verifyFailMatch[2],
+          missing: verifyFailMatch[3],
+          lastStep,
+          vmId: vm.id,
+          route: "lib/ssh.installAgdpSkill",
+        });
+      }
       logger.error("aGDP install failed", {
         error: result.stderr,
         stdout: result.stdout.slice(-500),
         lastStep,
         completedSteps,
         exitCode: result.code,
+        verifyFailed: !!verifyFailMatch,
         route: "lib/ssh",
       });
       throw new Error(`aGDP install failed at step "${lastStep}" (exit ${result.code}). stderr: ${result.stderr?.slice(-400) || "none"} | stdout tail: ${result.stdout?.slice(-400) || "none"}`);
