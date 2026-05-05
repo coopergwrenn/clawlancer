@@ -9617,6 +9617,451 @@ export async function uninstallSolanaDefiSkill(vm: VMRecord): Promise<void> {
   }
 }
 
+// ── Moltbank skill install/uninstall ──
+// Moltbank provides a treasury for the agent: pay for paid services,
+// track spending, set spending budgets. Auth uses the OAuth device-code
+// flow via @moltbankhq/cli, so no API key is ever held in Instaclaw.
+// Funding: users deposit USDC on Base network only. The pairing step
+// returns the primary account address to display in the UI.
+
+export interface MoltbankPairingInfo {
+  sessionId: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn?: number;
+}
+
+export interface MoltbankInstallResult {
+  pairing?: MoltbankPairingInfo;
+  /** True if the VM already had credentials and is authenticated. */
+  alreadyPaired?: boolean;
+  accountAddress?: string;
+  accountName?: string;
+}
+
+export interface MoltbankPollResult {
+  paired: boolean;
+  accountAddress?: string;
+  accountName?: string;
+  expired?: boolean;
+}
+
+/**
+ * Install the Moltbank skill on a VM.
+ * - Installs the `@moltbankhq/cli` npm package globally for the VM user.
+ * - Registers an MCP server via mcporter so the agent can discover Moltbank tools.
+ * - Starts the OAuth device-code flow and returns the verification URL + code.
+ *
+ * Idempotent: re-running when already paired short-circuits.
+ */
+export async function installMoltbankSkill(
+  vm: VMRecord
+): Promise<MoltbankInstallResult> {
+  const ssh = await connectSSH(vm);
+  try {
+    const script = [
+      "#!/bin/bash",
+      "set -o pipefail",
+      NVM_PREAMBLE,
+      "",
+      'echo "STEP:start"',
+      "",
+      "# Install the Moltbank CLI globally (idempotent)",
+      "npm install -g @moltbankhq/cli@0.1.2 --silent 2>/dev/null || npm install -g @moltbankhq/cli@0.1.2",
+      'echo "STEP:cli_installed"',
+      "",
+      "# Register MCP server (remove any previous entry first)",
+      "mcporter config remove moltbank 2>/dev/null || true",
+      'mcporter config add moltbank \\',
+      '  --command "npx" \\',
+      '  --args "-y,@moltbankhq/cli,mcp,stdio" \\',
+      '  --scope home \\',
+      '  --description "Moltbank treasury — pay for paid services" || true',
+      'echo "STEP:mcp_registered"',
+      "",
+      "# If credentials already exist and are valid, short-circuit.",
+      "# whoami returns {organization, credentialsPath}; we emit just the org",
+      "# name and let the caller fetch the account address separately.",
+      'if moltbank doctor --json 2>/dev/null | grep -q \'"ok":true\'; then',
+      '  ORG=$(moltbank whoami --json 2>/dev/null | jq -r \'.data.organization // empty\' 2>/dev/null)',
+      '  echo "ALREADY_PAIRED_ORG=$ORG"',
+      '  echo "STEP:already_paired"',
+      '  echo "MOLTBANK_INSTALL_DONE"',
+      "  exit 0",
+      "fi",
+      "",
+      "# Begin OAuth device-code flow",
+      'AUTH_JSON=$(moltbank auth begin --json 2>&1)',
+      'echo "AUTH_BEGIN=$AUTH_JSON"',
+      'echo "STEP:auth_started"',
+      "",
+      'echo "MOLTBANK_INSTALL_DONE"',
+    ].join("\n");
+
+    await ssh.execCommand(
+      `cat > /tmp/ic-moltbank-install.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-moltbank-install.sh; EC=$?; rm -f /tmp/ic-moltbank-install.sh; exit $EC"
+    );
+
+    const completedSteps = (result.stdout.match(/STEP:\w+/g) || []).map(
+      (s: string) => s.replace("STEP:", "")
+    );
+    const lastStep = completedSteps[completedSteps.length - 1] || "none";
+
+    if (result.code !== 0 || !result.stdout.includes("MOLTBANK_INSTALL_DONE")) {
+      logger.error("Moltbank install failed", {
+        error: result.stderr,
+        stdout: result.stdout.slice(-500),
+        lastStep,
+        completedSteps,
+        exitCode: result.code,
+        route: "lib/ssh",
+      });
+      throw new Error(
+        `Moltbank install failed at step "${lastStep}" (exit ${result.code}). stderr: ${result.stderr?.slice(-400) || "none"}`
+      );
+    }
+
+    // Fast path: already authenticated on a previous install. The caller
+    // (api/skills/toggle) will kick off fetchMoltbankAccount to fill in
+    // the account address via the balance → account details chain.
+    const alreadyMatch = result.stdout.match(/ALREADY_PAIRED_ORG=(.+)/);
+    if (alreadyMatch) {
+      const org = pickString(alreadyMatch[1]);
+      logger.info("Moltbank install: already paired", {
+        vmId: vm.id,
+        organization: org || "unknown",
+        route: "lib/ssh",
+      });
+      return {
+        alreadyPaired: true,
+        accountName: org || undefined,
+      };
+    }
+
+    // Parse the device-code payload from `moltbank auth begin --json`
+    const authMatch = result.stdout.match(/AUTH_BEGIN=(.+)/);
+    if (!authMatch) {
+      throw new Error(
+        "Moltbank install succeeded but auth begin response was not captured"
+      );
+    }
+
+    const pairing = parseMoltbankAuthBegin(authMatch[1]);
+    logger.info("Moltbank install: device-code flow started", {
+      vmId: vm.id,
+      userCode: pairing.userCode,
+      route: "lib/ssh",
+    });
+
+    return { pairing };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Uninstall the Moltbank skill from a VM.
+ * - Removes the mcporter entry.
+ * - Runs `moltbank auth cancel` best-effort to revoke any in-flight pairing.
+ * - Leaves the CLI binary + credentials intact so re-enabling is fast and
+ *   funds are never orphaned.
+ */
+export async function uninstallMoltbankSkill(vm: VMRecord): Promise<void> {
+  const ssh = await connectSSH(vm);
+  try {
+    const script = [
+      "#!/bin/bash",
+      NVM_PREAMBLE,
+      "",
+      "# Best-effort cancel of any pending pairing session",
+      "moltbank auth cancel --all --json 2>/dev/null || true",
+      "",
+      "# Remove MCP registration",
+      "mcporter config remove moltbank 2>/dev/null || true",
+      "",
+      'echo "MOLTBANK_UNINSTALL_DONE"',
+    ].join("\n");
+
+    await ssh.execCommand(
+      `cat > /tmp/ic-moltbank-uninstall.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-moltbank-uninstall.sh; EC=$?; rm -f /tmp/ic-moltbank-uninstall.sh; exit $EC"
+    );
+
+    if (result.code !== 0 || !result.stdout.includes("MOLTBANK_UNINSTALL_DONE")) {
+      logger.error("Moltbank uninstall failed", {
+        error: result.stderr,
+        stdout: result.stdout,
+        route: "lib/ssh",
+      });
+      throw new Error(
+        `Moltbank uninstall failed: ${result.stderr || result.stdout}`
+      );
+    }
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Poll the Moltbank device-code flow for completion.
+ * Called from /api/skills/moltbank/status while the pairing modal is open.
+ *
+ * Validated against @moltbankhq/cli@0.1.2:
+ *  - success:  `{ok:true, data:{organization, tokenType, credentialsPath, session_id}}`
+ *  - pending:  `{ok:false, error:{code:"AUTH_PENDING", ...}}`
+ *  - expired:  `{ok:false, error:{code:"AUTH_CODE_EXPIRED", ...}}`
+ *  - no-pend:  `{ok:false, error:{code:"NO_PENDING_AUTH", ...}}`
+ *
+ * On approval we chain `balance` → `account details` on the VM (both return
+ * `{ok:true, data:...}`) to resolve the first account's Safe address for
+ * deposit display. jq is guaranteed available on the VM snapshot.
+ *
+ * Returns:
+ *  - { paired: true, accountAddress, accountName } on success
+ *  - { paired: false }                            still waiting for user
+ *  - { paired: false, expired: true }             session expired — caller should re-install
+ */
+export async function pollMoltbankAuth(
+  vm: VMRecord
+): Promise<MoltbankPollResult> {
+  const ssh = await connectSSH(vm);
+  try {
+    const script = [
+      "#!/bin/bash",
+      NVM_PREAMBLE,
+      "",
+      'POLL_JSON=$(moltbank auth poll --json 2>&1 || true)',
+      'echo "POLL_OUTPUT=$POLL_JSON"',
+      "",
+      '# Extract ok/code with jq; if jq fails on malformed JSON treat as still-pending.',
+      'OK=$(echo "$POLL_JSON" | jq -r \'.ok // empty\' 2>/dev/null)',
+      'ERR_CODE=$(echo "$POLL_JSON" | jq -r \'.error.code // empty\' 2>/dev/null)',
+      "",
+      'if [ "$OK" = "true" ]; then',
+      '  # Approved. Resolve organization → first account → Safe address.',
+      '  ORG=$(echo "$POLL_JSON" | jq -r \'.data.organization // empty\')',
+      '  echo "APPROVED_ORG=$ORG"',
+      '  if [ -n "$ORG" ]; then',
+      '    BAL_JSON=$(moltbank balance --org "$ORG" --chains base --json 2>/dev/null || echo "{}")',
+      '    ACCT_NAME=$(echo "$BAL_JSON" | jq -r \'.data[0].name // empty\' 2>/dev/null)',
+      '    echo "APPROVED_ACCT_NAME=$ACCT_NAME"',
+      '    if [ -n "$ACCT_NAME" ]; then',
+      '      DETAILS_JSON=$(moltbank account details --org "$ORG" --account "$ACCT_NAME" --json 2>/dev/null || echo "{}")',
+      '      ADDR=$(echo "$DETAILS_JSON" | jq -r \'.data.address // empty\' 2>/dev/null)',
+      '      echo "APPROVED_ACCT_ADDR=$ADDR"',
+      '    fi',
+      '  fi',
+      'fi',
+      "",
+      'echo "MOLTBANK_POLL_DONE"',
+    ].join("\n");
+
+    await ssh.execCommand(
+      `cat > /tmp/ic-moltbank-poll.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-moltbank-poll.sh; EC=$?; rm -f /tmp/ic-moltbank-poll.sh; exit $EC"
+    );
+
+    if (!result.stdout.includes("MOLTBANK_POLL_DONE")) {
+      logger.warn("Moltbank poll did not complete cleanly", {
+        vmId: vm.id,
+        stderr: result.stderr?.slice(-200),
+        route: "lib/ssh",
+      });
+      return { paired: false };
+    }
+
+    const pollMatch = result.stdout.match(/POLL_OUTPUT=(.+)/);
+    const pollStr = pollMatch?.[1] ?? "";
+
+    // Approved: the script's jq chain already resolved org/account/address.
+    // We still re-verify here defensively by parsing the raw poll response.
+    const pollJson = safeParseJson(pollStr);
+    if (isWrappedOk(pollJson)) {
+      const orgName = pickString(result.stdout.match(/APPROVED_ORG=(.+)/)?.[1]);
+      const acctName = pickString(
+        result.stdout.match(/APPROVED_ACCT_NAME=(.+)/)?.[1]
+      );
+      const addrRaw = pickString(
+        result.stdout.match(/APPROVED_ACCT_ADDR=(.+)/)?.[1]
+      );
+      return {
+        paired: true,
+        accountAddress: isBaseEvmAddress(addrRaw) ? addrRaw : undefined,
+        accountName: acctName || orgName || undefined,
+      };
+    }
+
+    // Expired or session-not-found: caller should re-install to get a fresh code.
+    const errCode = pollJson?.error?.code ?? "";
+    if (errCode === "AUTH_CODE_EXPIRED" || errCode === "NO_PENDING_AUTH") {
+      return { paired: false, expired: true };
+    }
+
+    // AUTH_PENDING, slow_down, or any other transient: keep polling.
+    return { paired: false };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Fetch the primary account address for display in the Skills page.
+ *
+ * Uses the real CLI chain: whoami → balance → account details. We prefer
+ * whoami to discover the org (the config row may not yet have it cached);
+ * once we have org + first account name, account details returns the Safe
+ * address that users deposit USDC-on-Base to.
+ *
+ * @param knownOrg optional pre-cached organization name from pairing
+ */
+export async function fetchMoltbankAccount(
+  vm: VMRecord,
+  knownOrg?: string
+): Promise<{ accountAddress?: string; accountName?: string; organization?: string }> {
+  const ssh = await connectSSH(vm);
+  try {
+    const orgShellVar = knownOrg
+      ? `ORG=${JSON.stringify(knownOrg)}`
+      : 'ORG=$(moltbank whoami --json 2>/dev/null | jq -r \'.data.organization // empty\' 2>/dev/null)';
+
+    const script = [
+      "#!/bin/bash",
+      NVM_PREAMBLE,
+      "",
+      orgShellVar,
+      'echo "ORG=$ORG"',
+      "",
+      'if [ -z "$ORG" ]; then',
+      '  echo "MOLTBANK_ACCT_DONE"',
+      '  exit 0',
+      'fi',
+      "",
+      'BAL_JSON=$(moltbank balance --org "$ORG" --chains base --json 2>/dev/null || echo "{}")',
+      'ACCT_NAME=$(echo "$BAL_JSON" | jq -r \'.data[0].name // empty\' 2>/dev/null)',
+      'echo "ACCT_NAME=$ACCT_NAME"',
+      "",
+      'if [ -n "$ACCT_NAME" ]; then',
+      '  DETAILS_JSON=$(moltbank account details --org "$ORG" --account "$ACCT_NAME" --json 2>/dev/null || echo "{}")',
+      '  ADDR=$(echo "$DETAILS_JSON" | jq -r \'.data.address // empty\' 2>/dev/null)',
+      '  echo "ACCT_ADDR=$ADDR"',
+      'fi',
+      "",
+      'echo "MOLTBANK_ACCT_DONE"',
+    ].join("\n");
+
+    await ssh.execCommand(
+      `cat > /tmp/ic-moltbank-acct.sh << 'ICEOF'\n${script}\nICEOF`
+    );
+    const result = await ssh.execCommand(
+      "bash /tmp/ic-moltbank-acct.sh; EC=$?; rm -f /tmp/ic-moltbank-acct.sh; exit $EC"
+    );
+
+    if (!result.stdout.includes("MOLTBANK_ACCT_DONE")) {
+      return {};
+    }
+
+    const org = pickString(result.stdout.match(/ORG=(.+)/)?.[1]);
+    const acctName = pickString(result.stdout.match(/ACCT_NAME=(.+)/)?.[1]);
+    const addr = pickString(result.stdout.match(/ACCT_ADDR=(.+)/)?.[1]);
+
+    return {
+      organization: org || undefined,
+      accountName: acctName || undefined,
+      accountAddress: isBaseEvmAddress(addr) ? addr : undefined,
+    };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+// ── Moltbank response parsers ──
+//
+// Schema-verified against @moltbankhq/cli@0.1.2:
+//  - auth begin success: { ok:true, data:{session_id, user_code, verification_uri, verification_uri_complete, expires_in, interval} }
+//  - auth poll success:  { ok:true, data:{organization, tokenType, credentialsPath, session_id} }
+//  - auth poll pending:  { ok:false, error:{code:"AUTH_PENDING", ...} }
+//  - auth poll expired:  { ok:false, error:{code:"AUTH_CODE_EXPIRED" | "NO_PENDING_AUTH", ...} }
+//  - balance success:    { ok:true, data:[{name, balances:[...]}, ...] }
+//  - account details:    { ok:true, data:{name, address, owners, threshold} }
+//
+// Parsers accept camelCase fallbacks defensively in case the CLI upgrades
+// to a different naming convention in a future release.
+
+function parseMoltbankAuthBegin(raw: string): MoltbankPairingInfo {
+  const parsed = safeParseJson(raw);
+  if (!parsed) {
+    throw new Error("Moltbank auth-begin returned non-JSON payload");
+  }
+  if (parsed.ok === false) {
+    throw new Error(
+      `Moltbank auth-begin error: ${parsed.error?.code ?? "unknown"} — ${parsed.error?.message ?? "no message"}`
+    );
+  }
+  const data = parsed.data ?? parsed;
+  if (!data || typeof data !== "object") {
+    throw new Error("Moltbank auth-begin payload missing data");
+  }
+  const obj = data as Record<string, unknown>;
+
+  const sessionId = String(obj.session_id ?? obj.sessionId ?? "");
+  const userCode = String(obj.user_code ?? obj.userCode ?? "");
+  // Prefer the complete URL (already has ?code=XXX for a click-through link)
+  const verificationUri = String(
+    obj.verification_uri_complete ??
+      obj.verificationUriComplete ??
+      obj.verification_uri ??
+      obj.verificationUri ??
+      ""
+  );
+  const expiresIn =
+    typeof obj.expires_in === "number"
+      ? obj.expires_in
+      : typeof obj.expiresIn === "number"
+        ? obj.expiresIn
+        : undefined;
+
+  if (!sessionId || !userCode || !verificationUri) {
+    throw new Error(
+      "Moltbank auth-begin payload is missing required fields (session_id, user_code, or verification_uri)"
+    );
+  }
+  return { sessionId, userCode, verificationUri, expiresIn };
+}
+
+// Shared helpers used by both poll and fetchAccount.
+function safeParseJson(raw: string): (Record<string, unknown> & { ok?: unknown; data?: unknown; error?: { code?: string; message?: string } }) | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isWrappedOk(
+  v: ReturnType<typeof safeParseJson>
+): v is Record<string, unknown> & { ok: true; data: unknown } {
+  return Boolean(v && v.ok === true);
+}
+
+function pickString(raw: string | undefined): string {
+  if (!raw) return "";
+  // Trim trailing \r that Windows-formatted VMs sometimes emit.
+  return raw.replace(/\r$/, "").trim();
+}
+
+function isBaseEvmAddress(s: string | undefined): s is string {
+  return typeof s === "string" && /^0x[a-fA-F0-9]{40}$/.test(s);
+}
+
 // ── Higgsfield AI Video skill install/uninstall ──
 
 /**
