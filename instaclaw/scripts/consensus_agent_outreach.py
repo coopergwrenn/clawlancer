@@ -90,6 +90,29 @@ def get_gateway_token() -> str | None:
     return None
 
 
+# ─── Self XMTP address ───────────────────────────────────────────────
+
+
+def get_self_xmtp_address() -> str | None:
+    """Resolve this VM's own XMTP wallet address. xmtp-agent.mjs writes it
+    to ~/.openclaw/xmtp/address on every successful start. We prefer the
+    env override (so the pipeline can pass a verified value), but fall
+    back to the file so direct invocations from a test or admin script
+    still produce a valid envelope."""
+    v = (os.environ.get("XMTP_SELF_ADDRESS") or "").strip().lower()
+    if v.startswith("0x") and len(v) == 42:
+        return v
+    addr_path = os.path.expanduser("~/.openclaw/xmtp/address")
+    try:
+        with open(addr_path) as f:
+            v2 = f.read().strip().lower()
+            if v2.startswith("0x") and len(v2) == 42:
+                return v2
+    except (FileNotFoundError, IOError):
+        pass
+    return None
+
+
 # ─── HTTP helpers ────────────────────────────────────────────────────
 
 
@@ -260,7 +283,7 @@ def main() -> int:
     # 3. Build envelope and send.
     header = {
         "v": 1,
-        "from_xmtp": (os.environ.get("XMTP_SELF_ADDRESS") or "").lower() or None,
+        "from_xmtp": get_self_xmtp_address(),
         "from_user_id": payload.get("from_user_id"),
         "from_name": payload.get("from_name"),
         "from_agent_name": payload.get("from_agent_name"),

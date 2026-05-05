@@ -276,6 +276,38 @@ async function recordGreetingDelivered() {
   }
 }
 
+// ── Dynamic gateway-token resolver ──
+
+/**
+ * Read the current GATEWAY_TOKEN from ~/.openclaw/.env on every call.
+ *
+ * The xmtp-agent service loads ~/.openclaw/xmtp/.env via systemd's
+ * EnvironmentFile at startup, but that file is only written by setupXMTP
+ * at first provisioning. resyncGatewayToken (the canonical rotation
+ * path) updates ~/.openclaw/.env, openclaw.json, auth-profiles.json, and
+ * the DB — but NOT xmtp/.env. Across a token rotation, xmtp-agent's
+ * cached GATEWAY_TOKEN goes stale and identify-agent / outreach calls
+ * 401 for hours until the next service restart.
+ *
+ * Reading the canonical token per-call costs one syscall and survives
+ * any rotation. Cached value is the env-loaded one (cheap fallback).
+ */
+function getGatewayToken() {
+  try {
+    const lines = readFileSync(join(HOME, ".openclaw", ".env"), "utf-8").split("\n");
+    for (const l of lines) {
+      const trimmed = l.trim();
+      if (trimmed.startsWith("GATEWAY_TOKEN=")) {
+        const v = trimmed.slice("GATEWAY_TOKEN=".length).trim().replace(/^["']|["']$/g, "");
+        if (v) return v;
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return GATEWAY_TOKEN; // env-cached value as last resort
+}
+
 // ── Agent-to-Agent Intro Flow ──
 
 /**
@@ -328,7 +360,7 @@ async function verifyIntroSender(senderXmtp) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${GATEWAY_TOKEN}`,
+        "Authorization": `Bearer ${getGatewayToken()}`,
       },
       body: JSON.stringify({ sender_xmtp_address: senderXmtp }),
       signal: AbortSignal.timeout(15_000),
@@ -389,15 +421,24 @@ function notifyUserOfIntro(verifiedSender, envelopeProse, header) {
     .replace(/\]/g, ")")
     .replace(/`/g, "'");
 
+  // Pass the receiver's chat_id explicitly via env so notify_user.sh
+  // skips its flaky sessions.json + getUpdates discovery path. The
+  // identify-agent endpoint returns it from the DB.
+  const childEnv = { ...process.env };
+  if (verifiedSender.receiver_telegram_chat_id) {
+    childEnv.TELEGRAM_CHAT_ID = String(verifiedSender.receiver_telegram_chat_id);
+  }
+
   return new Promise((resolve) => {
     execFile(
       NOTIFY_USER_SCRIPT,
       [safe],
-      { timeout: 15_000 },
+      { timeout: 15_000, env: childEnv },
       (err, stdout, stderr) => {
         if (err) {
           log("WARN", "notify_user.sh failed", {
             error: err.message,
+            stdout: (stdout || "").slice(0, 200),
             stderr: (stderr || "").slice(0, 200),
           });
           resolve(false);
@@ -462,12 +503,19 @@ function startLocalSendServer(agent) {
       res.end(JSON.stringify({ ok: false, error: "not found" }));
       return;
     }
-    const auth = req.headers["authorization"] || "";
-    const expected = `Bearer ${GATEWAY_TOKEN}`;
-    if (!GATEWAY_TOKEN || auth !== expected) {
-      res.statusCode = 401;
+    // Localhost trust model: the listener is bound to 127.0.0.1 so the
+    // kernel already restricts callers to processes on this VM. Anything
+    // running as the openclaw user can reach the XMTP wallet key on disk
+    // directly anyway, so a Bearer-token check on top adds no security
+    // and creates a token-drift footgun (mjs reads ~/.openclaw/xmtp/.env,
+    // python reads ~/.openclaw/.env — these can desync after a gateway
+    // token rotation, and the local send call would 401 even when both
+    // processes are healthy on the same VM).
+    const remote = req.socket?.remoteAddress || "";
+    if (remote !== "127.0.0.1" && remote !== "::1" && remote !== "::ffff:127.0.0.1") {
+      res.statusCode = 403;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: false, error: "unauthorized" }));
+      res.end(JSON.stringify({ ok: false, error: "non-local origin" }));
       return;
     }
     let raw = "";
@@ -575,7 +623,10 @@ async function main() {
     const text = ctx.message.content;
     const convId = ctx.conversation.id;
 
-    log("INFO", `Message from ${sender} in ${convId}: ${text.slice(0, 100)}${text.length > 100 ? "..." : ""}`);
+    // Diagnostic — first 60 raw chars (printable + literal markers) so
+    // we can tell envelope-from-marker-mismatch from real user prompts.
+    const headRaw = (typeof text === "string" ? text : JSON.stringify(text)).slice(0, 60);
+    log("INFO", `Message from ${sender} in ${convId}: ${(typeof text === "string" ? text : "(non-string)").toString().slice(0, 100)}${typeof text === "string" && text.length > 100 ? "..." : ""}  [head=${JSON.stringify(headRaw)}]`);
 
     // ── Agent-to-agent intro envelope short-circuit ──
     // If the message starts with [INSTACLAW_AGENT_INTRO_V1], it's another
@@ -583,18 +634,24 @@ async function main() {
     // the intro handler (verify, notify user via Telegram, ack on XMTP);
     // never forward to gateway — the gateway would treat it as a real
     // user prompt and waste tokens responding to structured envelope text.
-    if (text && text.startsWith(INTRO_MARKER)) {
-      const parsed = parseIntroEnvelope(text);
+    if (typeof text === "string" && text.includes(INTRO_MARKER)) {
+      // Tolerant prefix check: some XMTP installations / content-type
+      // wrappers add a brief leading whitespace or quoted-printable
+      // header before the body. We match `includes` and then realign
+      // the parser to the marker offset.
+      const idx = text.indexOf(INTRO_MARKER);
+      const slice = text.slice(idx);
+      const parsed = parseIntroEnvelope(slice);
       if (parsed) {
         const handled = await handleInboundIntro(ctx, parsed);
         if (handled) return;
       } else {
-        log("WARN", "intro marker present but envelope malformed — dropping");
+        log("WARN", "intro marker present but envelope malformed — dropping (no fallback reply)");
         return;
       }
     }
     // Suppress ACK envelopes from showing up in user-facing chat.
-    if (text && text.startsWith(INTRO_ACK_MARKER)) {
+    if (typeof text === "string" && text.includes(INTRO_ACK_MARKER)) {
       log("INFO", "intro ack received from peer agent");
       return;
     }
@@ -606,10 +663,14 @@ async function main() {
       await ctx.conversation.sendText(response);
       log("INFO", `Replied to ${sender}: ${response.slice(0, 100)}${response.length > 100 ? "..." : ""}`);
     } else {
-      await ctx.conversation.sendText(
-        "I'm having trouble processing your message right now. Please try again in a moment."
-      );
-      log("WARN", `No response from gateway for ${sender}`);
+      // No fallback reply. If we send "I'm having trouble..." here and
+      // the sender is another instaclaw agent (or a buggy XMTP echo),
+      // we get a runaway reply loop — both sides bouncing the same
+      // failure message back and forth at full XMTP speed (~30 msg/s).
+      // Burns through gateway/Anthropic credits on the responding side
+      // and floods XMTP with traffic. Silent log is the safe choice;
+      // a real user retrying gets the next attempt naturally.
+      log("WARN", `No response from gateway for ${sender} — dropping silently (no reply, no loop risk)`);
     }
   });
 

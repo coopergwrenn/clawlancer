@@ -68,12 +68,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing authentication" }, { status: 401 });
   }
 
-  const receiverVm = await lookupVMByGatewayToken(gatewayToken, "id, assigned_to");
+  const receiverVm = await lookupVMByGatewayToken(gatewayToken, "id, assigned_to, telegram_chat_id");
   if (!receiverVm) return NextResponse.json({ error: "Invalid gateway token" }, { status: 401 });
   if (!receiverVm.assigned_to) {
     return NextResponse.json({ error: "VM has no assigned user" }, { status: 409 });
   }
   const receiverUserId = receiverVm.assigned_to as string;
+  const receiverTelegramChatId = (receiverVm.telegram_chat_id as string | null) || null;
 
   let body: unknown;
   try {
@@ -157,5 +158,10 @@ export async function POST(req: NextRequest) {
     telegram_bot_username: tgUsername ? tgUsername.replace(/^@/, "") : null,
     identity_wallet: identityWallet,
     vm_name: (senderVm.name as string | null) || null,
+    // Receiver's own telegram_chat_id, so the receiving xmtp-agent.mjs
+    // can pass it as TELEGRAM_CHAT_ID env to notify_user.sh. Discovery
+    // via sessions.json + getUpdates is unreliable on VMs whose users
+    // haven't recently DM'd the bot — DB is the canonical source.
+    receiver_telegram_chat_id: receiverTelegramChatId,
   });
 }
