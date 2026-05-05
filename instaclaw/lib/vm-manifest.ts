@@ -793,8 +793,29 @@ export const VM_MANIFEST = {
    *    #3, catches skills that degraded after the VM reached the
    *    current manifest version (the vm-893/895/896 lying-DB
    *    pattern).
+   *
+   * v86 (2026-05-05): TasksMax raised 75 → 120 on the openclaw-gateway
+   *  cgroup. Triggered by vm-724 incident: 34 fork errors in 24h with
+   *  only 1 transient zombie. Fleet diagnostic on n=50 healthy VMs the
+   *  same day (instaclaw/docs/zombie-classification-2026-05-05.json)
+   *  confirmed the structural cliff is per-cgroup TasksMax, NOT zombie
+   *  pile-up: 2 total zombies in the sample (both Class A_INTERMEDIATE,
+   *  on vm-890), 0 Class B (node-direct), 0 Class A_INIT (orphan-
+   *  reparented). vm-724 specifically: 39 fork errors, 0 zombies at
+   *  probe time. The "Was 150 — reduced to prevent runaway agent
+   *  forks" comment dates from a one-incident overreaction; 120
+   *  restores burst headroom (Chrome ~50 + Node ~11 + agent burst →
+   *  61–80 typical, 14-task headroom at 75 was the real failure mode)
+   *  without restoring full pre-incident risk. Canary plan: vm-050
+   *  manual reconcile + 24h hold before letting the cron pick it up
+   *  fleet-wide. See docs/prd/zombie-reaping-tini-analysis-2026-05-05.md
+   *  §11 for the full data + analysis. Note: prctl-subreaper integration
+   *  (independently fixes Class B leaks via the libuv #1911 path) is
+   *  staged at github.com/coopergwrenn/prctl-subreaper and lands as v87
+   *  once the npm package is published — kept separate so each change
+   *  has its own canary.
    */
-  version: 85,
+  version: 86,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1496,7 +1517,7 @@ export const VM_MANIFEST = {
     "ExecStopPost": "/bin/bash /home/openclaw/.openclaw/scripts/memory-snapshot.sh pre-stop 2>/dev/null || true",
     "MemoryHigh": "3G",             // Soft limit: kernel throttles at 3GB (gateway slows, doesn't die)
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
-    "TasksMax": "75",               // Max threads+processes (Node ~11 + Chrome ~50 + small headroom). Was 150 — reduced to prevent runaway agent forks
+    "TasksMax": "120",              // v86 (2026-05-05): raised 75 → 120. The 75 cap was the *real* root cause of vm-724-class fork errors (34/24h on vm-724 with 0 zombies in the snapshot — see docs/prd/zombie-reaping-tini-analysis-2026-05-05.md §11). Chrome alone uses ~50; Node ~11; idle headroom was 14 — easily blown by an agent burst. 120 restores burst headroom (~59) without restoring the full pre-incident 150 risk. Canary on vm-050 first per Upgrade Playbook before fleet rollout.
     "OOMScoreAdjust": "500",        // Higher = killed first. sshd has -900. Gateway dies before sshd.
     "RuntimeMaxSec": "86400",       // Auto-restart gateway after 24h to prevent memory bloat
     "RuntimeRandomizedExtraSec": "3600", // Stagger restarts across fleet by up to 1h
