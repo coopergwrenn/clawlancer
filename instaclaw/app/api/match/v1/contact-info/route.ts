@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
 
   const { data: userRows, error: userErr } = await supabase
     .from("instaclaw_users")
-    .select("id, name, world_wallet_address")
+    .select("id, name, world_wallet_address, telegram_handle")
     .in("id", safeIds);
 
   if (userErr) {
@@ -179,10 +179,14 @@ export async function POST(req: NextRequest) {
         (u?.world_wallet_address as string | null) ||
         null;
       const tgUsername = (vmRow.telegram_bot_username as string | null) || null;
+      // Normalize the personal handle for renderers — stored
+      // without "@", returned without "@", renderer prepends.
+      const personalHandle = (u?.telegram_handle as string | null);
       return {
         user_id: userId,
         name: (u?.name as string | null) || (vmRow.agent_name as string | null) || "InstaClaw user",
         agent_name: (vmRow.agent_name as string | null) || null,
+        telegram_handle: personalHandle ? personalHandle.replace(/^@/, "") : null,
         telegram_bot_username: tgUsername ? tgUsername.replace(/^@/, "") : null,
         xmtp_address: vmRow.xmtp_address as string,
         identity_wallet: identityWallet,

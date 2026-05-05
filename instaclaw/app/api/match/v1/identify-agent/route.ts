@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
   // 3. Resolve sender's display info.
   const { data: senderUser } = await supabase
     .from("instaclaw_users")
-    .select("id, name, world_wallet_address")
+    .select("id, name, world_wallet_address, telegram_handle")
     .eq("id", senderUserId)
     .maybeSingle();
 
@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
     null;
   const tgUsername = (senderVm.telegram_bot_username as string | null) || null;
 
+  const personalHandle = (senderUser?.telegram_handle as string | null);
   return NextResponse.json({
     ok: true,
     is_instaclaw_agent: true,
@@ -155,6 +156,13 @@ export async function POST(req: NextRequest) {
     user_id: senderUserId,
     name: (senderUser?.name as string | null) || (senderVm.agent_name as string | null) || "InstaClaw user",
     agent_name: (senderVm.agent_name as string | null) || null,
+    // Sender's PERSONAL Telegram handle. Used by the receiver's
+    // renderer to compose a "DM @handle directly" CTA — distinct
+    // from telegram_bot_username, which is the sender's AI bot.
+    // Receivers do NOT see the bot username as a CTA fallback;
+    // when telegram_handle is null, the renderer falls back to
+    // the /consensus/my-matches link.
+    telegram_handle: personalHandle ? personalHandle.replace(/^@/, "") : null,
     telegram_bot_username: tgUsername ? tgUsername.replace(/^@/, "") : null,
     identity_wallet: identityWallet,
     vm_name: (senderVm.name as string | null) || null,

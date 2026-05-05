@@ -88,6 +88,10 @@
     {
       "path": "/api/cron/consensus-intro-health",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/backfill-telegram-handles",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
