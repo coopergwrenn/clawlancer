@@ -37,6 +37,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 # Same dir as the extractor, by convention. Both ship via the same deploy.
@@ -57,6 +59,8 @@ STATE_PATH = os.path.expanduser("~/.openclaw/.consensus_intent_state.json")
 LOCK_PATH = os.path.expanduser("~/.openclaw/.consensus_intent.lock")
 
 PROFILE_ENDPOINT = "https://instaclaw.io/api/match/v1/profile"
+CONSENT_ENDPOINT = "https://instaclaw.io/api/match/v1/consent"
+SKILL_CHECK_TIMEOUT_SECONDS = 8
 POST_TIMEOUT_SECONDS = 20
 MAX_POST_RETRIES = 3
 RETRY_BACKOFFS = [1.0, 3.0, 8.0]   # seconds
@@ -151,6 +155,48 @@ def should_extract(state: dict, current_text: str, current_hash: str) -> tuple[b
         return False, f"char_delta_too_small (Δ={char_delta} < {MIN_CHAR_DELTA_FOR_RE_EXTRACT})"
 
     return True, f"material_change (Δ={char_delta} chars, age={age}s)"
+
+
+# ─── Skill-state check ──────────────────────────────────────────────
+
+def check_skill_enabled(gateway_token: str) -> tuple[bool, str]:
+    """Hit /api/match/v1/consent GET to read the skill_enabled flag.
+
+    Returns (enabled, reason). Reason is informational telemetry text.
+
+    Failure modes — defaults to "off" so we never accidentally extract
+    intent for a non-attending user when the network is glitchy:
+      - HTTP error (4xx/5xx)            → (False, "http_error_<status>")
+      - Network failure (DNS, timeout)  → (False, "network_error")
+      - JSON parse failure              → (False, "parse_error")
+      - Field missing (skill_enabled)   → (False, "field_missing")
+
+    Cost: ~1 round trip per cron tick (4/hr). Negligible.
+    """
+    req = urllib.request.Request(
+        CONSENT_ENDPOINT,
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {gateway_token}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=SKILL_CHECK_TIMEOUT_SECONDS) as resp:
+            try:
+                body = json.loads(resp.read().decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                return False, f"parse_error: {type(e).__name__}"
+            enabled = body.get("skill_enabled")
+            if enabled is None:
+                # Older server (pre-v82.5) didn't return the field. Treat as
+                # "off" — the cron tick is cheap; better to no-op than
+                # extract for an indeterminate user.
+                return False, "field_missing"
+            return bool(enabled), f"ok ({body.get('skill_slug', '?')}={'on' if enabled else 'off'})"
+    except urllib.error.HTTPError as e:
+        return False, f"http_error_{e.code}"
+    except urllib.error.URLError as e:
+        return False, f"network_error: {e.reason}"
 
 
 # ─── HTTP POST to platform ──────────────────────────────────────────
@@ -264,6 +310,27 @@ def main() -> int:
     lock_fd = acquire_lock_or_exit()
 
     try:
+        # ─ Skill gate: don't burn Haiku tokens on non-attending users ─
+        # Get token first; without it we'd fail anyway when POSTing.
+        # Then check whether the consensus-2026 skill is enabled. If off:
+        # silently exit. The user either isn't attending Consensus or has
+        # explicitly disabled matching. The agent on this VM may still
+        # offer to enable the skill via the organic-activation flow when
+        # strong Consensus signals appear in chat.
+        #
+        # --force bypasses this check too — useful for operator/test paths
+        # that want to force an extraction regardless of skill state.
+        if not args.force and not args.dry_run:
+            gateway_token = get_gateway_token()
+            if not gateway_token:
+                log("no GATEWAY_TOKEN; cannot check skill state, exiting cleanly")
+                return 0
+            enabled, reason = check_skill_enabled(gateway_token)
+            log(f"skill_check: enabled={enabled} reason={reason}")
+            if not enabled:
+                log("skip skill_disabled")
+                return 0
+
         # Load current state
         state = load_state()
         memory_text = read_memory_md()

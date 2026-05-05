@@ -588,8 +588,24 @@ export const VM_MANIFEST = {
    *  always-loaded SOUL footprint small. Also brings the matchpool
    *  rerank.py + deliberate.py with x-call-kind: match-pipeline header
    *  (gateway heartbeat bypass) for any VMs still on v79/v80.
+   *
+   * v83 (2026-05-05): Skill-toggle gate + Component 4 fleet-wide.
+   *  - Pipeline + intent_sync now gate on the consensus-2026 skill
+   *    state via /api/match/v1/consent (skill_enabled field). Non-
+   *    attending users incur zero Haiku/Sonnet cost. Sentinel
+   *    "skip skill_disabled" added to pipeline.py + intent_sync.py
+   *    for stale-cache regression protection (Rule 23).
+   *  - Component 4 (consensus_intent_sync.py + extract.py) finally
+   *    lazy-registered + added to manifest files[]. Previously these
+   *    scripts only existed on vm-780 by hand. Without this entry,
+   *    fleet VMs had no path to populate matchpool_profiles, even
+   *    after toggling the skill on.
+   *  - 15-min cron for consensus_intent_sync.py registered.
+   *  See instaclaw_skills row 'consensus-2026' in 'live-events'
+   *  category for the user-facing toggle. Auto-enabled for partners
+   *  edge_city + consensus_2026 via /api/partner/tag.
    */
-  version: 82,
+  version: 83,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1010,6 +1026,7 @@ export const VM_MANIFEST = {
         "snapshot_anchor",                           // anchor-freeze contract
         "CONSENSUS_MEMORY_PATH",                     // env-var override for L2/L3
         "maybe_send_match_notification",             // Telegram notify (cheap path)
+        "skip skill_disabled",                       // Path 1 skill gate (2026-05-05)
       ],
     },
     {
@@ -1052,6 +1069,41 @@ export const VM_MANIFEST = {
       requiredSentinels: [
         "VALID_TIERS",
         "interests_plus_name",
+      ],
+    },
+
+    // ── Component 4: VM-side intent extraction + sync ──
+    // Until this manifest entry, these scripts existed only on vm-780
+    // (hand-uploaded for testing). Component 4 was committed but never
+    // wired into the deploy path — meaning fleet VMs never built a
+    // matchpool_profile. Gating ensures non-attending VMs still incur
+    // zero Haiku cost (sync.py exits early if the consensus-2026 skill
+    // is disabled).
+    {
+      remotePath: "~/.openclaw/scripts/consensus_intent_sync.py",
+      source: "template",
+      templateKey: "CONSENSUS_INTENT_SYNC_PY",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "def check_skill_enabled",   // skill-state gate (added 2026-05-05)
+        "CONSENT_ENDPOINT",           // gate URL constant
+        "skip skill_disabled",        // gate telemetry log line
+        "MIN_EXTRACT_INTERVAL_SECONDS", // throttle constant — load-bearing
+      ],
+    },
+    {
+      remotePath: "~/.openclaw/scripts/consensus_intent_extract.py",
+      source: "template",
+      templateKey: "CONSENSUS_INTENT_EXTRACT_PY",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "HAIKU_MODEL",
+        "MIN_MEMORY_CHARS",
+        "def extract_intent",
       ],
     },
   ] as ManifestFileEntry[],
@@ -1148,6 +1200,16 @@ export const VM_MANIFEST = {
       schedule: "*/30 * * * *",
       command: "python3 ~/.openclaw/scripts/consensus_match_pipeline.py >> /tmp/consensus_match.log 2>&1",
       marker: "consensus_match_pipeline.py",
+    },
+    // ── Intent extraction (Component 4) ──
+    // Runs every 15 minutes on each VM. Self-throttles internally (only
+    // extracts when MEMORY.md has materially changed AND last extraction
+    // is ≥2h old). Exits silently if the consensus-2026 skill is OFF —
+    // so non-attending VMs incur zero cost despite the universal cron.
+    {
+      schedule: "*/15 * * * *",
+      command: "python3 ~/.openclaw/scripts/consensus_intent_sync.py >> /tmp/consensus_intent_sync.log 2>&1",
+      marker: "consensus_intent_sync.py",
     },
   ] as ManifestCronJob[],
 

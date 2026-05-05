@@ -23,6 +23,8 @@ const nextConfig: NextConfig = {
       "./scripts/consensus_match_rerank.py",
       "./scripts/consensus_match_deliberate.py",
       "./scripts/consensus_match_consent.py",
+      "./scripts/consensus_intent_sync.py",
+      "./scripts/consensus_intent_extract.py",
     ],
   },
   async rewrites() {

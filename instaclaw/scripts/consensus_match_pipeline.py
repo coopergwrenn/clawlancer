@@ -524,7 +524,21 @@ def main() -> int:
     profile_version = body.get("profile_version")
     consent_tier = body.get("consent_tier")
     candidates = body.get("candidates") or []
-    log(f"layer1_ok elapsed_ms={layer1_ms} pv={profile_version} tier={consent_tier} n_candidates={len(candidates)}")
+    reason = body.get("reason")  # "skill_disabled" when consensus-2026 skill is off
+    log(f"layer1_ok elapsed_ms={layer1_ms} pv={profile_version} tier={consent_tier} n_candidates={len(candidates)} reason={reason}")
+
+    # ─ Skill gate (route_intent returns reason=skill_disabled when off) ─
+    # The user has not enabled the consensus-2026 skill — either they're
+    # not attending Consensus, or they declined the agent's organic-
+    # activation offer. Either way: exit silently. The agent on this VM
+    # may still detect strong Consensus signals and offer to enable the
+    # skill (see SKILL.md §Organic Activation); enabling flips the state
+    # via /api/match/v1/skill-toggle and the next cron tick proceeds.
+    if reason == "skill_disabled":
+        log(f"skip skill_disabled slug={body.get('skill_slug', 'consensus-2026')}")
+        if not args.dry_run:
+            write_state({**state, "last_run_at": now, "last_outcome": "skill_disabled"})
+        return 0
 
     if profile_version is None:
         log("skip no_profile")

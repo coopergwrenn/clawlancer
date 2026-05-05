@@ -51,3 +51,13 @@ registerLazyTemplate("CONSENSUS_MATCH_DELIBERATE_PY", () =>
 registerLazyTemplate("CONSENSUS_MATCH_CONSENT_PY", () =>
   lazyLoad("consensus_match_consent.py"),
 );
+// Component 4 scripts. Previously only deployed to vm-780 by hand; without
+// these in the manifest the rest of the fleet has no way to populate
+// matchpool_profiles. Both gate on the consensus-2026 skill state via
+// /api/match/v1/consent (so non-attending users incur zero Haiku cost).
+registerLazyTemplate("CONSENSUS_INTENT_SYNC_PY", () =>
+  lazyLoad("consensus_intent_sync.py"),
+);
+registerLazyTemplate("CONSENSUS_INTENT_EXTRACT_PY", () =>
+  lazyLoad("consensus_intent_extract.py"),
+);
