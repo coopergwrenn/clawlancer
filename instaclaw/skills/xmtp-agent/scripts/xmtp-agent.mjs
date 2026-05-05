@@ -397,30 +397,76 @@ async function verifyIntroSender(senderXmtp) {
 function buildIntroBody(verifiedSender, envelopeProse, header, forXmtp) {
   const senderName = verifiedSender.name || "An InstaClaw user";
 
-  // Receiver-side rendering is intentionally minimal: the SENDER
-  // already composed a complete message (greeting + rationale +
-  // topic/window + CTA). Re-extracting topic/window from the header
-  // and tacking on another CTA would duplicate content the receiver
-  // is about to read inline anyway.
+  // Draft C structure (2026-05-05): receiver wrapper is the conversation
+  // — sender's prose is quoted within it.
+  //   1. relationship-warm framing line (your agent introducing the intro)
+  //   2. quote intro ("Here's what they said:")
+  //   3. sender's prose verbatim (rationale + topic + window only)
+  //   4. CTA: personal handle when known, else my-matches link
+  //   5. match-count link (omit count when 0; always link to my-matches)
+  //   6. quiet "(Quick note:...)" footer about the cap + how to change it
   //
-  // We only add a single contextual header line ("intro from X")
-  // so the receiver can tell at a glance what kind of message it
-  // is, then render the prose verbatim.
-  const lines = [`Consensus 2026 intro from ${senderName}:`, ""];
+  // The sender prose intentionally stops at topic/window — the receiver
+  // wrapper owns CTA + count + cap because those are about the
+  // RECEIVER's experience, not the sender's intent.
+  const senderHandle = (verifiedSender.telegram_handle || header.from_telegram_handle || "")
+    .toString().trim().replace(/^@/, "");
+  const otherCount = Math.max(0, parseInt(header.target_pending_intro_count, 10) || 0);
+  const cap = Math.max(0, parseInt(header.intro_per_receiver_cap, 10) || 3);
+
+  const lines = [];
+  lines.push(`${senderName}'s agent reached out — they think you two should meet.`);
+  lines.push("");
+  lines.push("Here's what they said:");
+  lines.push("");
   if (envelopeProse && envelopeProse.trim().length > 0) {
     lines.push(envelopeProse.trim());
   } else {
-    // Defensive fallback if the envelope had no prose. Shouldn't
-    // happen in production — the sender's agent_outreach.py always
-    // builds prose. If it does, give the user enough to act on.
-    const senderHandle = (verifiedSender.telegram_handle || header.from_telegram_handle || "")
-      .toString().trim().replace(/^@/, "");
-    lines.push(`${senderName}'s agent reached out about meeting up at Consensus 2026.`);
-    if (senderHandle) {
-      lines.push("", `To reply, DM ${senderName} directly: @${senderHandle} on Telegram.`);
-    } else {
-      lines.push("", "See full context: https://instaclaw.io/consensus/my-matches");
-    }
+    // Defensive fallback: prose was missing or empty. Shouldn't happen
+    // in production but we want to never render "Here's what they
+    // said:" followed by nothing.
+    lines.push(`${senderName} thinks you should connect at Consensus 2026.`);
+  }
+
+  // CTA — personal handle preferred, my-matches fallback. Bot is
+  // never used as a fallback (Cooper, 2026-05-05).
+  lines.push("");
+  if (senderHandle) {
+    lines.push(`You can DM ${senderName} directly: @${senderHandle} on Telegram.`);
+  } else {
+    lines.push(`To follow up, see your matches page: https://instaclaw.io/consensus/my-matches`);
+  }
+
+  // Match count + page link. Phrasing differs by count: "X other"
+  // when there are others, plain link when there aren't (avoids
+  // saying "0 others matched" which reads weird). Personal-handle
+  // CTA already linked the user to a way to reach the sender, so
+  // the matches page becomes a "see all your matches" surface.
+  lines.push("");
+  if (otherCount === 1) {
+    lines.push(`One other person matched with you today — see them on your page: https://instaclaw.io/consensus/my-matches`);
+  } else if (otherCount >= 2) {
+    lines.push(`${otherCount} other people matched with you today — see them on your page: https://instaclaw.io/consensus/my-matches`);
+  } else if (!senderHandle) {
+    // No-handle CTA already showed the link above; don't duplicate.
+    // Leave this slot empty so we don't re-print the URL.
+  } else {
+    // Have-handle CTA pointed at Telegram. Add the my-matches link
+    // as a secondary surface even when count is 0 — the page is the
+    // hub for "see all your matches" regardless of count.
+    lines.push(`See all your matches: https://instaclaw.io/consensus/my-matches`);
+  }
+
+  // Cap-controls footer. Quiet, parenthetical, conversational —
+  // not a settings UI. cap=0 means kill-switch active for inbound;
+  // shouldn't happen in practice (no intros would land), so we
+  // skip the footer in that case to avoid contradiction.
+  if (cap > 0) {
+    lines.push("");
+    lines.push(
+      `(Quick note: you're set to ${cap} ${cap === 1 ? "intro" : "intros"}/day. ` +
+      `Just tell me "pause intros", "change to N/day", or "daily summary instead" if you want me to adjust.)`
+    );
   }
 
   const text = lines.join("\n");

@@ -47,6 +47,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
+import { getPerReceiverCap } from "@/lib/outreach-feature-flag";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -170,6 +171,33 @@ export async function POST(req: NextRequest) {
   }
   const userById = new Map((userRows || []).map((u) => [u.id as string, u]));
 
+  // Per-target unacked-intro count, computed at compose time so the
+  // sender's pipeline can put it on the envelope. This is the count
+  // BEFORE the new intro is reserved — the receiver-side renderer
+  // reads this as "X OTHERS in your matches page" (i.e., other than
+  // the one they're reading right now). Bulk query: one IN-clause
+  // count grouped per target.
+  //
+  // We can't do a single supabase.from(...).group() through PostgREST,
+  // so we issue one COUNT per target in parallel. With safeIds capped
+  // at MAX_USER_IDS (12), this is at most 12 concurrent requests —
+  // acceptable cost for a per-pipeline-cycle call.
+  const sinceUnacked = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const unackedCounts = await Promise.all(
+    safeIds.map(async (uid) => {
+      const { count } = await supabase
+        .from("agent_outreach_log")
+        .select("id", { count: "exact", head: true })
+        .eq("target_user_id", uid)
+        .in("status", ["pending", "sent"])
+        .is("ack_received_at", null)
+        .gte("sent_at", sinceUnacked);
+      return [uid, count ?? 0] as const;
+    }),
+  );
+  const unackedByUser = new Map(unackedCounts);
+  const introCap = getPerReceiverCap();
+
   const contacts = (vmRows || [])
     .map((vmRow) => {
       const userId = vmRow.assigned_to as string;
@@ -191,6 +219,12 @@ export async function POST(req: NextRequest) {
         xmtp_address: vmRow.xmtp_address as string,
         identity_wallet: identityWallet,
         vm_name: (vmRow.name as string | null) || null,
+        // Receiver-experience fields, surfaced to the sender's pipeline
+        // so the user-facing message can render the correct count + cap.
+        // target_pending_intro_count = count BEFORE this new intro fires
+        // (so the receiver-side renderer treats it as "X OTHERS").
+        target_pending_intro_count: unackedByUser.get(userId) ?? 0,
+        intro_per_receiver_cap: introCap,
       };
     })
     .filter((c) => !!c.xmtp_address);

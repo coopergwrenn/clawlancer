@@ -77,7 +77,11 @@ const FILES = [
       "xmtp_user",
       "readSeenLogIds",
       "ackIntroToServer",
-      "Consensus 2026 intro from",
+      // Draft C wrapper signature — new framing line + cap-controls
+      // footer. Catches a stale-cache regression that drops the new
+      // copy and reverts to the old "intro from {name}:" header.
+      "they think you two should meet",
+      "Quick note:",
     ],
   },
   {
@@ -100,6 +104,9 @@ const FILES = [
       "INSTACLAW_AGENT_INTRO_V1",
       "get_self_xmtp_address",
       "from_telegram_handle",
+      // Draft C envelope-header field — confirms the script is
+      // populating the count + cap fields the receiver wrapper reads.
+      "target_pending_intro_count",
     ],
   },
 ];

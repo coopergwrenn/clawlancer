@@ -166,46 +166,32 @@ def build_envelope(header: dict, prose: str) -> str:
 
 
 def build_intro_prose(payload: dict, target_name: str) -> str:
-    """The text that shows up in the receiver's Telegram. First-person,
-    polite, factual. The sender's agent voice — same conventions as the
-    L3 rationale prompt (no banned phrases).
+    """The CORE prose body — what the SENDER's agent specifically said
+    about the match. Receiver wrapper composes the greeting, CTA,
+    match count, and cap controls around this.
 
-    CTA routing: prefer the sender's personal Telegram handle (a
-    `from_telegram_handle` field on the payload — NOT stored on
-    instaclaw_users today, but the field is forward-compatible for
-    when we add it). Bot username is deliberately NOT used as a
-    fallback — routing humans to chat with another person's AI bot
-    is a UX dead end (Cooper, 2026-05-05). Fall back to the
-    /consensus/my-matches link, which is where the receiver can see
-    the full match context and decide what to do.
+    Scope is intentionally tight (Draft C, 2026-05-05): just rationale
+    + topic + window. The opener used to include "Hi Timour, this is
+    Cooper's agent reaching out via Consensus 2026 matching" but the
+    receiver wrapper now provides that framing line ("Cooper Wrenn's
+    agent reached out — they think you two should meet"), so repeating
+    it here was double-greeting. Same with the closing CTA — moved to
+    the wrapper so the receiver's renderer can decide: personal
+    Telegram handle if known, else my-matches link, never the bot.
     """
-    from_name = payload.get("from_name", "An InstaClaw user").strip() or "An InstaClaw user"
-    from_handle = (payload.get("from_telegram_handle") or "").strip().lstrip("@")
     rationale = (payload.get("rationale") or "").strip()
     topic = (payload.get("topic") or "").strip()
     window = (payload.get("window") or "").strip()
 
     parts: list[str] = []
-    parts.append(
-        f"Hi {target_name}, this is {from_name}'s agent reaching out via Consensus 2026 matching."
-    )
     if rationale:
-        parts.append("")
         parts.append(rationale)
     if topic:
-        parts.append("")
+        if parts:
+            parts.append("")
         parts.append(f"Worth talking about: {topic}")
     if window:
         parts.append(f"Possible window: {window}")
-    parts.append("")
-    if from_handle:
-        parts.append(
-            f"To say hi to {from_name} directly, DM @{from_handle} on Telegram."
-        )
-    else:
-        parts.append(
-            "See full match context (and the other people you matched with): https://instaclaw.io/consensus/my-matches"
-        )
     return "\n".join(parts)
 
 
@@ -262,6 +248,9 @@ def main() -> int:
     target = contacts[0]
     target_xmtp = target.get("xmtp_address")
     target_name = target.get("name") or "there"
+    target_pending_count = int(target.get("target_pending_intro_count") or 0)
+    intro_cap = int(target.get("intro_per_receiver_cap") or 3)
+    target_personal_handle = target.get("telegram_handle") or None
     if not target_xmtp:
         print(json.dumps({"ok": True, "status": "skipped", "reason": "no_xmtp_address"}))
         return 0
@@ -301,6 +290,11 @@ def main() -> int:
     # the envelope for forensic / future-routing use, but the
     # human-facing CTA in the prose uses the personal handle when
     # available — never the bot.
+    # Receiver-experience fields go on the envelope so the receiver's
+    # mjs renderer can compose the user-facing message (header + CTA +
+    # match count + cap controls) without round-tripping back to the
+    # server. Count is captured at compose time — represents OTHERS
+    # already in the receiver's queue, not including this new intro.
     header = {
         "v": 1,
         "from_xmtp": get_self_xmtp_address(),
@@ -314,6 +308,9 @@ def main() -> int:
         "window": payload.get("window") or "",
         "rationale": payload.get("rationale") or "",
         "log_id": log_id,
+        # Draft C wrapper inputs.
+        "target_pending_intro_count": target_pending_count,
+        "intro_per_receiver_cap": intro_cap,
     }
     envelope = build_envelope(header, prose)
 

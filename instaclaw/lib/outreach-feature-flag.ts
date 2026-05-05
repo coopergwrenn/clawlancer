@@ -40,3 +40,20 @@ export function isOutreachEnabled(): boolean {
 export function flagName(): string {
   return FLAG_NAME;
 }
+
+/**
+ * Per-receiver inbound cap. Default 3/24h. Configurable via
+ * CONSENSUS_INTRO_PER_RECEIVER_CAP_24H env var. 0 disables ALL inbound
+ * (a softer kill-switch — useful for "pause inbound while we tune").
+ *
+ * Same source-of-truth used by both the reserve gate (refuses inserts
+ * over cap) and the contact-info endpoint (surfaces cap to senders so
+ * the user-facing message can render the right number).
+ */
+export function getPerReceiverCap(): number {
+  const raw = process.env.CONSENSUS_INTRO_PER_RECEIVER_CAP_24H;
+  if (!raw) return 3;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return 3;
+  return n;
+}
