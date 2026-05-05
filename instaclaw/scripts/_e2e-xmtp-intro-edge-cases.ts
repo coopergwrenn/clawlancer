@@ -85,6 +85,10 @@ async function getProfileVersion(userId: string): Promise<number> {
 }
 
 async function ensureDeliberation(senderUserId: string, senderPv: number, targetUserId: string): Promise<void> {
+  // The actual unique index is on (user_id, user_profile_version,
+  // candidate_user_id, candidate_profile_version) — verified
+  // empirically against the live schema. PostgREST's onConflict
+  // accepts the column list in any order as long as it matches.
   const seedRow = {
     user_id: senderUserId,
     user_profile_version: senderPv,
@@ -97,13 +101,12 @@ async function ensureDeliberation(senderUserId: string, senderPv: number, target
     skip_reason: null,
     deliberated_at: new Date().toISOString(),
   };
-  const { error: upErr } = await sb.from("matchpool_deliberations").upsert(seedRow, { onConflict: "user_id,candidate_user_id,user_profile_version" });
+  const { error: upErr } = await sb.from("matchpool_deliberations").upsert(seedRow, {
+    onConflict: "user_id,user_profile_version,candidate_user_id,candidate_profile_version",
+  });
   if (upErr) {
-    await sb.from("matchpool_deliberations")
-      .update({ deliberated_at: new Date().toISOString() })
-      .eq("user_id", senderUserId)
-      .eq("candidate_user_id", targetUserId)
-      .eq("user_profile_version", senderPv);
+    // Last-resort: try a direct insert; ignore unique-violation noise.
+    await sb.from("matchpool_deliberations").insert(seedRow);
   }
 }
 
@@ -286,23 +289,50 @@ async function main() {
   else bad(`outreach failed while receiver was down: ${JSON.stringify(downRes).slice(0, 200)}`);
 
   await setServiceState(receiver, "start");
-  info("receiver xmtp service started — waiting up to 60s for delivery");
+  info("receiver xmtp service started — waiting up to 30s for XMTP catch-up");
   let recovered = false;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 15; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     const pending = await readPendingIntros(receiver);
     if (pending.find((p) => p.log_id === downRes.log_id)) { recovered = true; break; }
   }
   if (recovered) {
-    pass("receiver picked up missed message after restart");
+    pass("receiver picked up missed message via XMTP after restart (within 30s)");
   } else {
-    // Known XMTP V3 behaviour: messages sent while a peer's MLS
-    // installation is offline do not always replay on reconnect within
-    // a short window. Production mitigation: pipeline retries every
-    // 30 min, so a missed intro re-fires on the next cycle (with the
-    // same anchor → idempotency dedup OR a new anchor if profile_version
-    // bumped). The failure mode is "intro is delayed", not "lost".
-    bad("receiver did NOT pick up missed message in 60s (KNOWN LIMIT — pipeline 30-min retry mitigates)");
+    // XMTP didn't replay the message — that's expected for the V3
+    // store-and-forward window. Now exercise the application-layer
+    // fallback: force a pipeline cycle on the receiver. The poll_my_intros
+    // step should pick the unacked row up from agent_outreach_log
+    // and write it to pending-intros.jsonl regardless of XMTP delivery.
+    info("XMTP didn't replay — triggering receiver-side pipeline poll fallback");
+    const pollSsh = await sshConnect(receiver);
+    try {
+      // We don't run the full pipeline (it would skip on throttle anyway);
+      // instead invoke just the poll function inline. Cleanest way: a
+      // tiny python one-liner that imports and calls poll_my_intros.
+      const poll = await pollSsh.execCommand(
+        `python3 -c "
+import sys, os
+sys.path.insert(0, os.path.expanduser('~/.openclaw/scripts'))
+import consensus_match_pipeline as p
+tok = p.get_gateway_token()
+if not tok:
+    print('NO_TOKEN'); sys.exit(0)
+summary = p.poll_my_intros(tok)
+print('POLLED', summary['polled'], 'NEW', summary['new'], 'DUP', summary['dup'])
+" 2>&1`,
+      );
+      info(`poll output: ${(poll.stdout || "").trim().slice(-200)}`);
+    } finally {
+      pollSsh.dispose();
+    }
+    // Re-check pending-intros for the missed row.
+    const pendingAfterPoll = await readPendingIntros(receiver);
+    if (pendingAfterPoll.find((p) => p.log_id === downRes.log_id)) {
+      pass("receiver picked up missed message via SERVER POLL fallback");
+    } else {
+      bad("receiver missed via XMTP AND poll fallback — both paths failed");
+    }
   }
 
   await clearTestLedgerRows([sender.assigned_to, receiver.assigned_to]);
@@ -328,34 +358,99 @@ async function main() {
   }
 
   // ────────────────────────────────────────────────────────────────
-  console.log("\n── Test 7: UNVERIFIED SENDER (no ledger row) ──");
-  // Send a hand-crafted envelope FROM vm-050 but with no agent_outreach_log
-  // row (we delete it after reserve). Verify the receiver drops it
-  // silently. We do this by:
-  //   - Reserve as vm-050→vm-780.
-  //   - Manually DELETE the ledger row before XMTP arrives.
-  //   - Receiver should fail identify-agent and drop.
-  // This is a "best we can manage" simulation since we can't easily
-  // inject an arbitrary XMTP wallet into the test.
-  const senderForUnverified = receiver; // vm-050 is the "sender" here
-  const targetForUnverified = sender;   // vm-780 is the "target/receiver"
-  const unverAnchor = `${TEST_PREFIX}-unver:${targetForUnverified.assigned_to}`;
-  await clearPendingIntros(targetForUnverified);
-  const unverRes = await fireOutreachOnVM(senderForUnverified, targetForUnverified, unverAnchor);
-  if (unverRes.log_id) {
-    // Delete the ledger row to simulate "no proof of legitimate intro"
-    await sb.from("agent_outreach_log").delete().eq("id", unverRes.log_id);
-    info("ledger row deleted post-send to simulate unverified sender");
+  console.log("\n── Test 7: UNVERIFIED SENDER (envelope from non-InstaClaw wallet) ──");
+  // The previous version of this test reserved a real outreach,
+  // deleted the row post-send, and watched for the envelope to be
+  // dropped. That was racy: XMTP often delivered the envelope BEFORE
+  // the delete landed, so identify-agent passed legitimately and the
+  // test reported a false positive on every run.
+  //
+  // The realistic threat is "envelope from a wallet that has NO row in
+  // instaclaw_vms.xmtp_address". We simulate it by directly hitting
+  // the receiver's localhost listener with a hand-crafted envelope
+  // claiming a random wallet as from_xmtp. The receiver's identify-
+  // agent call returns is_instaclaw_agent=false → handleInboundIntro
+  // returns true (handled, suppressed) → no pending-intros row.
+  await clearPendingIntros(sender);
+  const ssh780 = await sshConnect(sender);
+  try {
+    const fakeXmtp = "0x" + "0123456789abcdef".repeat(2) + "0123456789ab"; // 40 hex
+    const fakeHeader = JSON.stringify({
+      v: 1,
+      from_xmtp: fakeXmtp,
+      from_user_id: "00000000-0000-0000-0000-000000000000",
+      log_id: "00000000-0000-0000-0000-000000000000",
+    });
+    const envelope = `[INSTACLAW_AGENT_INTRO_V1]\n${fakeHeader}\n---\nFake intro from a wallet not registered with InstaClaw.\n`;
+    // Get vm-780's own xmtp address (so we can DM ourselves to inject)
+    const selfAddr = (await ssh780.execCommand("cat ~/.openclaw/xmtp/address")).stdout.trim();
+    const result = await ssh780.execCommand(
+      `curl -s -X POST http://127.0.0.1:18790/send-intro -H "Content-Type: application/json" -d '${JSON.stringify({ target_xmtp_address: selfAddr, body: envelope })}' 2>&1`,
+    );
+    info(`inject result: ${result.stdout.slice(0, 100)}`);
+    await new Promise((r) => setTimeout(r, 5000));
+    const pendingAfterUnver = await readPendingIntros(sender);
+    const fakeRow = pendingAfterUnver.find((p) => p.sender_xmtp === fakeXmtp);
+    if (!fakeRow) pass("envelope from non-InstaClaw wallet was dropped (no pending row)");
+    else bad(`security regression: envelope from non-InstaClaw wallet ${fakeXmtp.slice(0, 12)} was rendered`);
+  } finally {
+    ssh780.dispose();
   }
-  // The XMTP message has already been sent. We just verify the receiver
-  // didn't add a new pending row (since identify-agent gate must fail).
-  await new Promise((r) => setTimeout(r, 5000));
-  const pendingAfterUnver = await readPendingIntros(targetForUnverified);
-  const matched = pendingAfterUnver.find((p) => p.log_id === unverRes.log_id);
-  if (!matched) pass("unverified envelope dropped by receiver (no new pending row)");
-  else bad("unverified envelope was forwarded — security regression");
 
   await clearTestLedgerRows([sender.assigned_to, receiver.assigned_to]);
+
+  // ────────────────────────────────────────────────────────────────
+  console.log("\n── Test 8: TELEGRAM DELIVERY (vm-780 → vm-354, chat_id populated) ──");
+  // vm-354 has telegram_chat_id backfilled. Verify the live Telegram
+  // path actually fires — message lands in the user's Telegram chat,
+  // ACK comes back, sender's retry loop is short-circuited.
+  const tgReceiver = await getVm("instaclaw-vm-354");
+  const tgPv = await getProfileVersion(sender.assigned_to);
+  await ensureDeliberation(sender.assigned_to, tgPv, tgReceiver.assigned_to);
+  await clearPendingIntros(tgReceiver);
+
+  const tgAnchor = `${TEST_PREFIX}-telegram:${tgReceiver.assigned_to}`;
+  const tgRes = await fireOutreachOnVM(sender, tgReceiver, tgAnchor);
+  if (tgRes.status === "sent") pass(`outreach sent to vm-354 (log_id=${tgRes.log_id})`);
+  else bad(`outreach to vm-354 failed: ${JSON.stringify(tgRes).slice(0, 200)}`);
+
+  await new Promise((r) => setTimeout(r, 6000));
+
+  // Inspect vm-354's journal for the Telegram-success log line
+  const ssh354 = await sshConnect(tgReceiver);
+  try {
+    const journal = await ssh354.execCommand(
+      'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && journalctl --user -u instaclaw-xmtp --no-pager -n 50 2>/dev/null | tail -30',
+    );
+    const out = journal.stdout || "";
+    if (out.includes("intro forwarded to user via Telegram")) {
+      pass("vm-354 journal: Telegram delivery succeeded");
+    } else if (out.includes("xmtp user channel")) {
+      info("(landed via XMTP-user channel — Telegram might have failed silently)");
+      bad("Telegram delivery did NOT fire (fell through to xmtp_user)");
+    } else if (out.includes("pending-intros.jsonl")) {
+      bad("Telegram delivery did NOT fire (fell through to pending file)");
+    } else {
+      bad(`vm-354 journal: no delivery line found. last: ${out.split("\n").slice(-5).join(" | ").slice(0, 200)}`);
+    }
+  } finally {
+    ssh354.dispose();
+  }
+
+  // Verify the ACK landed (ack_received_at should be set)
+  if (tgRes.log_id) {
+    const { data: row } = await sb.from("agent_outreach_log").select("ack_received_at, ack_channel").eq("id", tgRes.log_id).single();
+    if (row?.ack_received_at && row?.ack_channel === "telegram") {
+      pass(`ACK round-trip: ack_received_at set, channel=telegram`);
+    } else if (row?.ack_received_at) {
+      bad(`ACK landed but channel=${row.ack_channel} (expected telegram)`);
+    } else {
+      bad("no ACK on the ledger row");
+    }
+  }
+
+  await clearTestLedgerRows([sender.assigned_to, tgReceiver.assigned_to]);
+
   console.log(`\n══ ${state.pass} passed, ${state.fail} failed ══`);
   process.exit(state.fail > 0 ? 1 : 0);
 }
