@@ -15,17 +15,20 @@ const nextConfig: NextConfig = {
       // privacy-bridge.sh is read at runtime by lib/privacy-bridge-script.ts
       // (which the reconciler imports) and deployed to edge_city VMs.
       "./lib/privacy-bridge.sh",
-      // Consensus matching engine VM-side scripts (Components 7, 8, 9, 10).
+      // Consensus matching engine VM-side scripts (Components 4, 7, 8, 9, 10).
       // Loaded lazily by lib/matchpool-scripts.ts on first reconcile call;
       // without this include Next's tracing skips them and the reconciler
       // throws on getTemplateContent for the matchpool keys.
-      "./scripts/consensus_match_pipeline.py",
-      "./scripts/consensus_match_rerank.py",
-      "./scripts/consensus_match_deliberate.py",
-      "./scripts/consensus_match_consent.py",
-      "./scripts/consensus_intent_sync.py",
-      "./scripts/consensus_intent_extract.py",
-      "./scripts/consensus_match_skill_toggle.py",
+      //
+      // 2026-05-05: switched from individual file paths to globs. Individual
+      // entries (e.g. "./scripts/consensus_match_pipeline.py") were silently
+      // not being bundled by Next 15's tracer — every cv=82 VM that survived
+      // long enough to reach stepFiles hit `ENOENT '/ROOT/instaclaw/scripts/
+      // consensus_match_pipeline.py'` and pushFailed → cv held. Hidden under
+      // the reconcile-fleet 300s timeout until the batch=10→3 fix landed.
+      // Globs (./skills/**/*, ./scripts/browser-relay-server/**/*) work fine,
+      // so we use the same shape here. Catches any future consensus_*.py too.
+      "./scripts/consensus_*.py",
     ],
   },
   async rewrites() {
