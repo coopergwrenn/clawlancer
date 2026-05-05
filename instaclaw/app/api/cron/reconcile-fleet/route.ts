@@ -19,7 +19,14 @@ export const maxDuration = 300;
 
 const CRON_NAME = "reconcile-fleet";
 const LOCK_TTL_SECONDS = 360; // > maxDuration with 60s headroom
-const CONFIG_AUDIT_BATCH_SIZE = 10;
+// 2026-05-05: dropped 10 → 3 to fit under Vercel 300s maxDuration.
+// Per-VM cost on stale cohort (cv=82) is ~150-300s after v87 added
+// stepPrctlSubreaper (180s npm install + node-gyp) and v88 added
+// build-essential to stepSystemPackages. Batch of 10 was hitting
+// FUNCTION_INVOCATION_TIMEOUT and only the first VM was getting cv-bumped.
+// 3 × ~300s worst case fits within budget. Throughput 60/hr (was nominally
+// 200/hr but actual was ~20/hr due to timeouts).
+const CONFIG_AUDIT_BATCH_SIZE = 3;
 
 /**
  * Strict-mode allowlist. Comma-separated VM UUIDs. Any VM whose id is in
