@@ -875,6 +875,21 @@ You have access to the DegenClaw skill — a $100K weekly perpetuals trading com
 `;
 
 /**
+ * Consensus 2026 matching awareness — appended to SOUL.md so the agent
+ * knows the matching pipeline exists and when to engage. The detailed
+ * flow (consent ask template, tier explanations, "show me my matches"
+ * response) lives in the consensus-2026 skill SKILL.md to keep this
+ * footprint small (skill-size-budget rule).
+ *
+ * PRD: instaclaw/docs/prd/consensus-intent-matching-2026-05-04.md
+ */
+export const SOUL_MD_CONSENSUS_MATCHING_AWARENESS = `
+<!-- CONSENSUS_MATCHING_AWARENESS_V1 -->
+## Consensus 2026 Matching
+Your VM runs a matching pipeline every 30 min on May 5-7 that picks the 1-3 most useful Consensus attendees for your user to meet. Default is hidden (they appear in nobody's matches). After their first matchpool_profile is created — check via \`python3 ~/.openclaw/scripts/consensus_match_consent.py\` — ASK ONCE whether to opt in. For "show me my matches" / "find me my people," read consensus-2026 skill §Intent Matching, or link https://instaclaw.io/consensus/my-matches.
+`;
+
+/**
  * Memory Filing System — cross-session memory instructions.
  * Appended to SOUL.md via append_if_marker_absent.
  * PRD: instaclaw/docs/prd/cross-session-memory.md

@@ -577,8 +577,19 @@ export const VM_MANIFEST = {
    *  to avoid Turbopack page-data fs.readFileSync crashes.
    *  Each script carries Rule 23 sentinels for stale-cache regression
    *  detection. PRD: docs/prd/consensus-intent-matching-2026-05-04.md
+   *
+   * v82 (2026-05-05): Consensus matching agent awareness ships.
+   *  Adds CONSENSUS_MATCHING_AWARENESS_V1 to SOUL.md so the agent
+   *  proactively asks the consent question once after the user's first
+   *  matchpool_profile is created, and knows to point users to
+   *  /consensus/my-matches for "show me my matches" queries. The
+   *  detailed flow (consent template, tier mapping, surface logic)
+   *  lives in consensus-2026 SKILL.md §Intent Matching to keep the
+   *  always-loaded SOUL footprint small. Also brings the matchpool
+   *  rerank.py + deliberate.py with x-call-kind: match-pipeline header
+   *  (gateway heartbeat bypass) for any VMs still on v79/v80.
    */
-  version: 81,
+  version: 82,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -816,6 +827,19 @@ export const VM_MANIFEST = {
       content: "\\n<!-- DEGENCLAW_AWARENESS_V1 -->\\n## DegenClaw Trading Competition\\nYou have access to the DegenClaw skill — a $100K weekly perpetuals trading competition on Hyperliquid, run by Virtuals Protocol. If your user mentions trading competitions, Hyperliquid perps, DegenClaw, the $100K challenge, or wanting to compete/trade perps competitively, read and follow the dgclaw SKILL.md for the full setup and trading flow. You can help them join the competition, trade perps, manage their forum, check the leaderboard, and attract subscribers. **Always get explicit user approval before launching tokens or executing trades.**\\n",
       mode: "append_if_marker_absent",
       marker: "DEGENCLAW_AWARENESS",
+    },
+
+    // --- Consensus 2026 matching awareness (v82) ---
+    // Tells the agent the matching pipeline exists, when to ask the
+    // consent question, and where to find the detail (consensus-2026
+    // SKILL.md §Intent Matching). Detail lives in the skill repo; this
+    // SOUL.md addition is just the always-loaded awareness pointer.
+    {
+      remotePath: "~/.openclaw/workspace/SOUL.md",
+      source: "inline",
+      content: "\\n<!-- CONSENSUS_MATCHING_AWARENESS_V1 -->\\n## Consensus 2026 Matching\\nYour VM runs a matching pipeline every 30 min on May 5-7 that picks the 1-3 most useful Consensus attendees for your user to meet. Default is hidden (they appear in nobody's matches). After their first matchpool_profile is created — check via `python3 ~/.openclaw/scripts/consensus_match_consent.py` — ASK ONCE whether to opt in. For \\\"show me my matches\\\" / \\\"find me my people,\\\" read consensus-2026 skill §Intent Matching, or link https://instaclaw.io/consensus/my-matches.\\n",
+      mode: "append_if_marker_absent",
+      marker: "CONSENSUS_MATCHING_AWARENESS",
     },
     {
       remotePath: "~/.openclaw/workspace/SOUL.md",
