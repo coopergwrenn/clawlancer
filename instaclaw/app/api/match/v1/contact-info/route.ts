@@ -112,8 +112,11 @@ export async function POST(req: NextRequest) {
   // (you can't deliberate against yourself), and also from the harvested
   // VM lookup unless include_self=true. The introducer needs its own
   // contact info to compose the envelope; that's the only legitimate
-  // self-lookup case.
-  const selfRequested = includeSelf && (rawIds as string[]).includes(callerUserId);
+  // self-lookup case. include_self does NOT require the caller's own
+  // id to be in the request array — the introducer doesn't always know
+  // its own user_id (it auths via gateway_token), so a "give me the
+  // caller's contact info" call passes any UUID + include_self=true.
+  const selfRequested = includeSelf;
   const requestedIds = (rawIds as string[]).filter((id) => id !== callerUserId);
 
   const supabase = getSupabase();
