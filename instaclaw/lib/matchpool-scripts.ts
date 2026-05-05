@@ -61,3 +61,8 @@ registerLazyTemplate("CONSENSUS_INTENT_SYNC_PY", () =>
 registerLazyTemplate("CONSENSUS_INTENT_EXTRACT_PY", () =>
   lazyLoad("consensus_intent_extract.py"),
 );
+// Path 2 §Organic Activation helper. Called by the agent when the user
+// agrees to enable matching after a strong-signal offer.
+registerLazyTemplate("CONSENSUS_MATCH_SKILL_TOGGLE_PY", () =>
+  lazyLoad("consensus_match_skill_toggle.py"),
+);

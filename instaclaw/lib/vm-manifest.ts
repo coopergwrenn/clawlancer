@@ -604,8 +604,18 @@ export const VM_MANIFEST = {
    *  See instaclaw_skills row 'consensus-2026' in 'live-events'
    *  category for the user-facing toggle. Auto-enabled for partners
    *  edge_city + consensus_2026 via /api/partner/tag.
+   *
+   * v84 (2026-05-05): Path 2 §Organic Activation ships.
+   *  - consensus_match_skill_toggle.py — agent-callable helper that
+   *    POSTs to /api/match/v1/skill-toggle. Used when user accepts
+   *    an offer to enable matching after a strong-signal trigger
+   *    (e.g., user says "Consensus 2026" in chat with skill OFF).
+   *  - consensus-2026 SKILL.md gains §0 Precondition (always check
+   *    skill state first) + §4 Organic Activation (strong-signal
+   *    detection rules + offer template + USER_FACTS dedup pattern).
+   *    Auto-syncs to fleet via 30-min skill-repo git pull cron.
    */
-  version: 83,
+  version: 84,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1069,6 +1079,23 @@ export const VM_MANIFEST = {
       requiredSentinels: [
         "VALID_TIERS",
         "interests_plus_name",
+      ],
+    },
+    // Path 2 §Organic Activation helper. The agent calls this when the
+    // user accepts an offer to enable matching after a strong Consensus
+    // signal in chat. POSTs to /api/match/v1/skill-toggle (gateway_token
+    // auth, restricted to live-events category).
+    {
+      remotePath: "~/.openclaw/scripts/consensus_match_skill_toggle.py",
+      source: "template",
+      templateKey: "CONSENSUS_MATCH_SKILL_TOGGLE_PY",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "TOGGLE_ENDPOINT",
+        "consensus-2026",        // hardcoded slug — the helper is single-purpose
+        "def post_toggle",
       ],
     },
 

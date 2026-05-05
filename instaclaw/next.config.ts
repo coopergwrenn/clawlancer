@@ -25,6 +25,7 @@ const nextConfig: NextConfig = {
       "./scripts/consensus_match_consent.py",
       "./scripts/consensus_intent_sync.py",
       "./scripts/consensus_intent_extract.py",
+      "./scripts/consensus_match_skill_toggle.py",
     ],
   },
   async rewrites() {
