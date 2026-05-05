@@ -72,6 +72,26 @@ export const maxDuration = 30;
 // 20 gives one intro every 24 minutes on average — well above the
 // natural shift rate of a careful matching pipeline.
 const MAX_OUTREACH_PER_24H = 20;
+
+// Per-receiver cap: a popular user (relevant to many people) was
+// getting 4+ Telegram intros within an hour of launch, which felt
+// like spam to them. Cap at 3 inbound attempts per 24h regardless of
+// sender. Counts pending+sent rows only — duplicate/failed rows don't
+// actually deliver, so they shouldn't count against the receiver's
+// quota.
+//
+// Configurable via env so we can tighten (e.g. 1 during a quiet
+// window) or loosen (e.g. 5 during peak conference hours) without
+// a redeploy. Set CONSENSUS_INTRO_PER_RECEIVER_CAP_24H=0 to refuse
+// ALL inbound for ALL receivers (a softer kill-switch than the
+// global flag, useful for "pause inbound while we tune").
+function getPerReceiverCap(): number {
+  const raw = process.env.CONSENSUS_INTRO_PER_RECEIVER_CAP_24H;
+  if (!raw) return 3;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return 3;
+  return n;
+}
 // Stored on the row so the receiver-poll fallback can render the same
 // content the XMTP envelope would have given. 4000 = Telegram's text
 // cap; longer prose is truncated by the receiving renderer anyway.
@@ -299,7 +319,7 @@ export async function POST(req: NextRequest) {
   }
   const messagePreview = messagePreviewRaw.slice(0, MESSAGE_PREVIEW_MAX_CHARS);
 
-  // Rate limit: 5 outreach per 24h per outbound user.
+  // Rate limit: outreach per 24h per outbound user.
   const sinceIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { count, error: countErr } = await supabase
     .from("agent_outreach_log")
@@ -316,6 +336,40 @@ export async function POST(req: NextRequest) {
       reason: "rate_limited",
       window_count: count,
       window_cap: MAX_OUTREACH_PER_24H,
+    });
+  }
+
+  // Per-receiver cap: refuse if the TARGET has already received the
+  // configured number of attempted-or-delivered intros in 24h. This
+  // is the spam-protection gate for popular users (someone relevant
+  // to many people) — without it, 5 different senders all hitting
+  // the same receiver as top-1 produces 5 Telegram intros to that
+  // person in a day, which feels like spam.
+  const perReceiverCap = getPerReceiverCap();
+  if (perReceiverCap === 0) {
+    return NextResponse.json({
+      ok: true,
+      allowed: false,
+      reason: "target_inbound_disabled",
+      env: "CONSENSUS_INTRO_PER_RECEIVER_CAP_24H=0",
+    });
+  }
+  const { count: targetCount, error: targetErr } = await supabase
+    .from("agent_outreach_log")
+    .select("id", { count: "exact", head: true })
+    .eq("target_user_id", targetUserId)
+    .in("status", ["pending", "sent"])
+    .gte("sent_at", sinceIso);
+  if (targetErr) {
+    return NextResponse.json({ error: "target-cap query failed" }, { status: 503 });
+  }
+  if ((targetCount ?? 0) >= perReceiverCap) {
+    return NextResponse.json({
+      ok: true,
+      allowed: false,
+      reason: "target_inbox_full",
+      target_count: targetCount,
+      target_cap: perReceiverCap,
     });
   }
 
