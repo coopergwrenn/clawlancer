@@ -61,28 +61,37 @@ const FILES = [
   {
     localPath: `${PROJECT_ROOT}/skills/xmtp-agent/scripts/xmtp-agent.mjs`,
     remotePath: "/home/openclaw/scripts/xmtp-agent.mjs",
-    // Sentinels: marker constant, listener bootstrap, dynamic-token
-    // resolver (from the rotation-drift fix), pending-intros recovery
-    // (so chat_id-null receivers don't drop intros), and the XMTP-user
-    // channel fallback (key for the partner-VM cohort whose users live
-    // on World Chat, not Telegram).
+    // Sentinels capture every load-bearing post-fix code path:
+    //   - INTRO_MARKER + listener bootstrap = base intro plumbing
+    //   - getGatewayToken = dynamic-resolution, survives rotations
+    //   - appendPendingIntro + xmtp_user = three-tier delivery
+    //   - readSeenLogIds = dedup-on-intake (server poll vs XMTP race)
+    //   - ackIntroToServer = stops the sender's retry loop on success
     sentinels: [
       "[INSTACLAW_AGENT_INTRO_V1]",
       "startLocalSendServer",
       "getGatewayToken",
       "appendPendingIntro",
       "xmtp_user",
+      "readSeenLogIds",
+      "ackIntroToServer",
     ],
   },
   {
     localPath: `${PROJECT_ROOT}/scripts/consensus_match_pipeline.py`,
     remotePath: "/home/openclaw/.openclaw/scripts/consensus_match_pipeline.py",
-    sentinels: ["maybe_send_agent_outreach", "OUTREACH_SCRIPT"],
+    sentinels: [
+      "maybe_send_agent_outreach",
+      "OUTREACH_SCRIPT",
+      "poll_my_intros",
+      "retry_unacked_outreach",
+      "MY_INTROS_URL",
+    ],
   },
   {
     localPath: `${PROJECT_ROOT}/scripts/consensus_agent_outreach.py`,
     remotePath: "/home/openclaw/.openclaw/scripts/consensus_agent_outreach.py",
-    sentinels: ["build_envelope", "INSTACLAW_AGENT_INTRO_V1"],
+    sentinels: ["build_envelope", "INSTACLAW_AGENT_INTRO_V1", "get_self_xmtp_address"],
   },
 ];
 

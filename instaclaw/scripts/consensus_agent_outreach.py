@@ -257,7 +257,10 @@ def main() -> int:
 
     # 2. Reserve outreach (rate limit + idempotency).
     prose = build_intro_prose(payload, target_name)
-    preview = prose[:280]
+    # The preview is what the receiver-side polling fallback uses to
+    # render the intro when XMTP delivery missed. Full prose (up to
+    # 4000 chars — Telegram cap) ensures parity with the live channel.
+    preview = prose[:4000]
     log(f"reserve target={str(target_user_id)[:8]} anchor={top1_anchor[:24]}")
     status, resp = post_json(
         OUTREACH_URL,

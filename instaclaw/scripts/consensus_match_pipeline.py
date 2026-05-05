@@ -118,6 +118,21 @@ OUTREACH_TIMEOUT_SECONDS = 45  # contact-info + reserve + xmtp-send + finalize
 CONTACT_INFO_URL = "https://instaclaw.io/api/match/v1/contact-info"
 XMTP_ADDRESS_FILE = os.path.expanduser("~/.openclaw/xmtp/address")
 
+# Application-layer delivery guarantees (sender retry + receiver poll).
+# Every cycle:
+#   1. Pull intros targeting me that haven't been acked → surface them.
+#   2. Pull my outbound rows that haven't been acked → re-fire XMTP.
+# Together with the receiver's mjs ACK on successful surface, this
+# bounds worst-case delivery latency to one cron tick (30 min) even
+# when XMTP store-and-forward drops the message entirely.
+MY_INTROS_URL = "https://instaclaw.io/api/match/v1/my-intros"
+MY_PENDING_RETRIES_URL = "https://instaclaw.io/api/match/v1/my-pending-retries"
+OUTREACH_URL = "https://instaclaw.io/api/match/v1/outreach"
+LOCAL_XMTP_SEND_URL = "http://127.0.0.1:18790/send-intro"
+PENDING_INTROS_FILE = os.path.expanduser("~/.openclaw/xmtp/pending-intros.jsonl")
+PENDING_INTROS_SEEN_FILE = os.path.expanduser("~/.openclaw/xmtp/pending-intros-seen.jsonl")
+RETRY_BUDGET_PER_CYCLE = 5  # cap the redelivery work in any one tick
+
 
 def log(msg: str) -> None:
     sys.stderr.write(f"pipeline.{msg}\n")
@@ -424,6 +439,201 @@ def send_telegram_notification(message: str) -> bool:
         return False
 
 
+# ─── Application-layer delivery guarantees ───────────────────────────
+
+
+def get_request(url: str, token: str) -> tuple[int, dict | None]:
+    """GET helper for the my-intros / my-pending-retries endpoints."""
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
+            try:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return resp.status, None
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            return e.code, None
+    except urllib.error.URLError as e:
+        log(f"http_url_error url={url} reason={e.reason}")
+        return 0, None
+
+
+def read_seen_log_ids() -> set:
+    """Union of every log_id ever written to pending-intros{,-seen}.jsonl
+    so the receiver poll dedupes against XMTP arrivals (and vice versa).
+    log_id is the universal idempotency key — same row in the server
+    ledger always produces one on-disk entry regardless of channel."""
+    seen: set = set()
+    for p in (PENDING_INTROS_FILE, PENDING_INTROS_SEEN_FILE):
+        if not os.path.isfile(p):
+            continue
+        try:
+            with open(p) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                        lid = row.get("log_id")
+                        if lid:
+                            seen.add(str(lid))
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+        except OSError:
+            continue
+    return seen
+
+
+def append_pending_intro_from_poll(intro: dict) -> bool:
+    """Write a poll-discovered intro to pending-intros.jsonl in the
+    same row shape the xmtp-agent.mjs receiver writes. Caller has
+    already deduped by log_id; we just append."""
+    os.makedirs(os.path.dirname(PENDING_INTROS_FILE), exist_ok=True)
+    row = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "log_id": intro.get("log_id"),
+        "sender_user_id": intro.get("sender_user_id"),
+        "sender_name": intro.get("sender_name"),
+        "sender_bot": intro.get("sender_telegram_bot_username"),
+        "sender_xmtp": intro.get("sender_xmtp_address"),
+        "sender_identity_wallet": intro.get("sender_identity_wallet"),
+        "topic": "",  # not stored on the row; reconstructed from prose
+        "window": "",
+        "prose": intro.get("message_preview") or "",
+        "source": "polled",
+    }
+    try:
+        with open(PENDING_INTROS_FILE, "a") as f:
+            f.write(json.dumps(row) + "\n")
+        return True
+    except OSError as e:
+        log(f"pending_append_failed: {e}")
+        return False
+
+
+def ack_outreach(log_id: str, channel: str, token: str) -> None:
+    """Best-effort ACK so the sender's retry loop stops. Idempotent
+    on the server side. Failure here is logged but never aborts the
+    pipeline — the intro is already on disk for the agent to surface.
+    """
+    try:
+        post_json(OUTREACH_URL, {"phase": "ack", "log_id": log_id, "channel": channel}, token)
+    except Exception as e:  # noqa: BLE001
+        log(f"ack_failed log_id={log_id[:8]} err={type(e).__name__}")
+
+
+def poll_my_intros(token: str) -> dict:
+    """Pull unacked intros targeting me from the server ledger and
+    write any new ones to pending-intros.jsonl. The XMTP envelope is
+    the fast path; this is the at-most-30-min fallback. Returns a
+    summary dict for the cycle log."""
+    summary = {"polled": 0, "new": 0, "dup": 0, "appended": 0, "errors": 0}
+    status, resp = get_request(MY_INTROS_URL, token)
+    if status != 200 or not resp:
+        summary["errors"] += 1
+        return summary
+    intros = resp.get("intros") or []
+    summary["polled"] = len(intros)
+    if not intros:
+        return summary
+    seen = read_seen_log_ids()
+    for intro in intros:
+        log_id = intro.get("log_id")
+        if not log_id:
+            continue
+        if str(log_id) in seen:
+            summary["dup"] += 1
+            # Still ACK in case the prior surface didn't successfully ack
+            # (network blip, etc). Idempotent.
+            ack_outreach(log_id, "polled", token)
+            continue
+        if append_pending_intro_from_poll(intro):
+            summary["appended"] += 1
+            summary["new"] += 1
+            ack_outreach(log_id, "polled", token)
+        else:
+            summary["errors"] += 1
+    return summary
+
+
+def retry_unacked_outreach(token: str) -> dict:
+    """Pull my outbound rows that lack ACK and re-fire the XMTP send
+    via the local listener. POST phase=retry to bump retry_count and
+    last_retry_at. Hard-capped at RETRY_BUDGET_PER_CYCLE so a fleet
+    incident can't fan out into a ledger-replay storm."""
+    summary = {"pending": 0, "retried": 0, "skipped": 0, "errors": 0}
+    status, resp = get_request(MY_PENDING_RETRIES_URL, token)
+    if status != 200 or not resp:
+        summary["errors"] += 1
+        return summary
+    pending = resp.get("pending") or []
+    summary["pending"] = len(pending)
+    if not pending:
+        return summary
+
+    # Build the envelope using whatever info we have on the row. The
+    # original prose is in message_preview. We can't reconstruct the
+    # envelope JSON header exactly (the receiver doesn't strictly
+    # need every field — only from_xmtp + log_id are load-bearing).
+    self_xmtp = read_self_xmtp_address()
+    if not self_xmtp:
+        log("retry_skipped no_self_xmtp")
+        summary["skipped"] = len(pending)
+        return summary
+
+    fired = 0
+    for row in pending:
+        if fired >= RETRY_BUDGET_PER_CYCLE:
+            summary["skipped"] += 1
+            continue
+        log_id = row.get("log_id")
+        target_xmtp = row.get("target_xmtp_address")
+        prose = row.get("message_preview") or ""
+        if not (log_id and target_xmtp and prose):
+            summary["errors"] += 1
+            continue
+        # Wire format mirrors consensus_agent_outreach.build_envelope.
+        header = {"v": 1, "from_xmtp": self_xmtp, "log_id": log_id}
+        envelope = (
+            "[INSTACLAW_AGENT_INTRO_V1]\n"
+            + json.dumps(header, separators=(",", ":"))
+            + "\n---\n"
+            + prose.strip()
+            + "\n"
+        )
+        # Send via local mjs listener.
+        try:
+            req = urllib.request.Request(
+                LOCAL_XMTP_SEND_URL,
+                data=json.dumps({"target_xmtp_address": target_xmtp, "body": envelope}).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as r:
+                code = r.status
+                _ = r.read()
+        except Exception as e:  # noqa: BLE001
+            log(f"retry_send_failed log_id={str(log_id)[:8]} err={type(e).__name__}")
+            summary["errors"] += 1
+            continue
+        if code == 200:
+            # Bump retry_count via API
+            post_json(OUTREACH_URL, {"phase": "retry", "log_id": log_id}, token)
+            summary["retried"] += 1
+            fired += 1
+        else:
+            summary["errors"] += 1
+    return summary
+
+
 def read_self_xmtp_address() -> str | None:
     """Read this VM's own XMTP wallet address. Written at agent start by
     xmtp-agent.mjs to ~/.openclaw/xmtp/address. Used to populate the
@@ -613,6 +823,20 @@ def main() -> int:
 
     state = read_state()
     now = int(time.time())
+
+    # ─ Receiver-side delivery fallback (runs every cycle) ─
+    # Pull intros targeting me that have not been acked yet and write
+    # them to pending-intros.jsonl. Independent of the skill-disabled
+    # gate below — even users who haven't opted in to matching can
+    # receive intros from others. Worst-case delivery latency is one
+    # cron tick (30 min) when XMTP V3 store-and-forward drops the
+    # original envelope.
+    poll_summary = poll_my_intros(token)
+    if poll_summary["polled"] > 0 or poll_summary["errors"] > 0:
+        log(
+            f"intros_poll polled={poll_summary['polled']} new={poll_summary['new']} "
+            f"dup={poll_summary['dup']} appended={poll_summary['appended']} errors={poll_summary['errors']}"
+        )
 
     # Time-only throttle. We deliberately DO NOT short-circuit on pv
     # unchanged: a new candidate can opt in without my pv changing, and
@@ -874,6 +1098,23 @@ def main() -> int:
         "last_notified_top1": new_top1,
     }
     write_state(state_out)
+
+    # ─ Sender-side delivery retry (end of cycle) ─
+    # XMTP V3 store-and-forward is opportunistic; if the receiver's
+    # peer was offline when the original envelope went out, the
+    # message can be lost. Re-fire any of MY outbound rows that are
+    # >15 min old, status=sent, ack_received_at IS NULL, and
+    # retry_count < 3. The receiver's mjs ACKs on successful surface
+    # so this naturally stops once delivery completes via any channel.
+    try:
+        retry_summary = retry_unacked_outreach(token)
+        if retry_summary["pending"] > 0 or retry_summary["errors"] > 0:
+            log(
+                f"retry_unacked pending={retry_summary['pending']} retried={retry_summary['retried']} "
+                f"skipped={retry_summary['skipped']} errors={retry_summary['errors']}"
+            )
+    except Exception as e:  # noqa: BLE001
+        log(f"retry_unacked_exception {type(e).__name__}")
 
     top1 = top3[0] if top3 else None
     print(f"{outcome} n={len(deliberations)} top1={top1}")

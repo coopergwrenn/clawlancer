@@ -1,49 +1,61 @@
 /**
  * POST /api/match/v1/outreach
  *
- * Two-phase ledger for agent-to-agent intro DMs.
+ * Four-phase ledger for agent-to-agent intro DMs. The phases together
+ * make XMTP delivery exactly-once-perceived even when the underlying
+ * transport drops messages or peers are briefly offline:
+ *
+ *   reserve  →  finalize  →  ack         (happy path, sender + receiver)
+ *               retry → ack              (XMTP redelivery loop)
  *
  * Phase 1 — reserve (default if `phase` omitted):
- *   Pre-flight rate-limit + idempotency check. If allowed, INSERT a
- *   pending row in agent_outreach_log and return the log_id. The
- *   caller then attempts the XMTP send and reports back via phase=finalize.
+ *   Sender's pre-flight rate-limit + idempotency check. INSERT pending.
+ *   Returns log_id used by every subsequent phase.
  *
  *   Body:
- *     {
- *       "phase": "reserve",                    -- optional, default
- *       "target_user_id": "<uuid>",
- *       "target_xmtp_address": "0x...",
- *       "top1_anchor": "<pv>:<target_user_id>", -- idempotency key
- *       "message_preview": "..."               -- first ~280 chars for forensics
- *     }
- *
+ *     { phase: "reserve", target_user_id, target_xmtp_address,
+ *       top1_anchor, message_preview }
  *   Returns:
- *     { ok: true, allowed: true, log_id: "<uuid>" }
- *     { ok: true, allowed: false, reason: "rate_limited" | "duplicate" }
- *     -- duplicate may include existing_log_id for forensics
+ *     { ok, allowed, log_id }
+ *     { ok, allowed: false, reason: "rate_limited" | "duplicate", existing_log_id? }
  *
- * Phase 2 — finalize:
- *   After the XMTP send, the caller updates the log to its terminal
- *   state. Required so we can answer "did the intro actually arrive?"
- *   without polling XMTP.
+ * Phase 2 — finalize (sender):
+ *   After the first XMTP send, sender records terminal status.
  *
  *   Body:
- *     {
- *       "phase": "finalize",
- *       "log_id": "<uuid>",
- *       "status": "sent" | "failed",
- *       "error_message": "..."   -- optional, only when status=failed
- *     }
- *
+ *     { phase: "finalize", log_id, status: "sent"|"failed", error_message? }
  *   Returns:
- *     { ok: true }
+ *     { ok }
  *
- * Auth: Bearer <gateway_token>. Caller must be the outbound VM.
+ * Phase 3 — retry (sender, NEW):
+ *   When a row sits at status=sent + ack_received_at IS NULL for >15 min,
+ *   the sender's pipeline re-fires the XMTP send and records the
+ *   attempt here. Increments retry_count, sets last_retry_at. Capped
+ *   at 3 retries by the client.
  *
- * Rate limit: MAX_OUTREACH_PER_24H per outbound_user_id (5 to start).
+ *   Body:
+ *     { phase: "retry", log_id }
+ *   Returns:
+ *     { ok, retry_count }
  *
+ * Phase 4 — ack (receiver, NEW):
+ *   When the receiver successfully surfaces the intro to its human
+ *   (Telegram, XMTP user channel, or pending-intros.jsonl), it marks
+ *   ack_received_at so sender retries stop. Idempotent — a second
+ *   ack is a no-op.
+ *
+ *   Body:
+ *     { phase: "ack", log_id, channel: "telegram"|"xmtp_user"|"pending"|"polled" }
+ *   Returns:
+ *     { ok, already_acked? }
+ *
+ * Auth: Bearer <gateway_token>. Each phase enforces caller identity
+ * against the appropriate side of the ledger row (outbound for retry,
+ * target for ack).
+ *
+ * Rate limit on reserve: MAX_OUTREACH_PER_24H per outbound_user_id.
  * Per CLAUDE.md Rule 14, billing classification is NOT consulted here —
- * outreach is a feature, not a paid action. Rate limit is the abuse gate.
+ * outreach is a feature, not a paid action.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
@@ -59,7 +71,13 @@ export const maxDuration = 30;
 // 20 gives one intro every 24 minutes on average — well above the
 // natural shift rate of a careful matching pipeline.
 const MAX_OUTREACH_PER_24H = 20;
-const MESSAGE_PREVIEW_MAX_CHARS = 500;
+// Stored on the row so the receiver-poll fallback can render the same
+// content the XMTP envelope would have given. 4000 = Telegram's text
+// cap; longer prose is truncated by the receiving renderer anyway.
+const MESSAGE_PREVIEW_MAX_CHARS = 4000;
+// Hard cap on retries — beyond this we give up and accept the intro
+// ended in the pending-intros recovery file.
+const MAX_RETRIES = 3;
 
 function extractGatewayToken(req: NextRequest): string | null {
   const authHeader = req.headers.get("authorization");
@@ -118,7 +136,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabase();
 
-  // ── Phase: finalize ──
+  // ── Phase: finalize (sender) ──
   if (phase === "finalize") {
     const logId = b.log_id;
     const status = b.status;
@@ -149,6 +167,88 @@ export async function POST(req: NextRequest) {
       .from("agent_outreach_log")
       .update({ status, error_message: errorMessage })
       .eq("id", logId);
+    if (updErr) {
+      return NextResponse.json({ error: "update failed" }, { status: 503 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Phase: retry (sender) ──
+  if (phase === "retry") {
+    const logId = b.log_id;
+    if (!isUUID(logId)) return NextResponse.json({ error: "log_id must be UUID" }, { status: 400 });
+
+    const { data: existing, error: lookupErr } = await supabase
+      .from("agent_outreach_log")
+      .select("id, outbound_user_id, status, retry_count, ack_received_at")
+      .eq("id", logId)
+      .single();
+    if (lookupErr || !existing) {
+      return NextResponse.json({ error: "log_id not found" }, { status: 404 });
+    }
+    if (existing.outbound_user_id !== outboundUserId) {
+      return NextResponse.json({ error: "log_id belongs to a different user" }, { status: 403 });
+    }
+    if (existing.ack_received_at) {
+      // Receiver already acked — no point retrying. Tell the sender
+      // so it stops the loop.
+      return NextResponse.json({ ok: true, already_acked: true, retry_count: existing.retry_count });
+    }
+    if ((existing.retry_count as number) >= MAX_RETRIES) {
+      return NextResponse.json({ ok: true, capped: true, retry_count: existing.retry_count });
+    }
+    const { data: updated, error: updErr } = await supabase
+      .from("agent_outreach_log")
+      .update({
+        retry_count: ((existing.retry_count as number) || 0) + 1,
+        last_retry_at: new Date().toISOString(),
+      })
+      .eq("id", logId)
+      .select("retry_count")
+      .single();
+    if (updErr || !updated) {
+      return NextResponse.json({ error: "update failed" }, { status: 503 });
+    }
+    return NextResponse.json({ ok: true, retry_count: updated.retry_count });
+  }
+
+  // ── Phase: ack (receiver) ──
+  if (phase === "ack") {
+    const logId = b.log_id;
+    const channel = typeof b.channel === "string" ? b.channel : null;
+    if (!isUUID(logId)) return NextResponse.json({ error: "log_id must be UUID" }, { status: 400 });
+    const ALLOWED_CHANNELS = ["telegram", "xmtp_user", "pending", "polled"] as const;
+    if (!channel || !ALLOWED_CHANNELS.includes(channel as (typeof ALLOWED_CHANNELS)[number])) {
+      return NextResponse.json({ error: `channel must be one of ${ALLOWED_CHANNELS.join("|")}` }, { status: 400 });
+    }
+
+    // The "outboundUserId" var in this scope is the CALLER. For ack the
+    // caller is the RECEIVER, so we check target_user_id matches.
+    const { data: existing, error: lookupErr } = await supabase
+      .from("agent_outreach_log")
+      .select("id, target_user_id, ack_received_at")
+      .eq("id", logId)
+      .single();
+    if (lookupErr || !existing) {
+      return NextResponse.json({ error: "log_id not found" }, { status: 404 });
+    }
+    if (existing.target_user_id !== outboundUserId) {
+      return NextResponse.json({ error: "log_id does not target this caller" }, { status: 403 });
+    }
+    if (existing.ack_received_at) {
+      return NextResponse.json({ ok: true, already_acked: true });
+    }
+
+    const { error: updErr } = await supabase
+      .from("agent_outreach_log")
+      .update({
+        ack_received_at: new Date().toISOString(),
+        ack_channel: channel,
+      })
+      .eq("id", logId)
+      // Race-tight: only update if still NULL (the partial-index
+      // optimisation; second ACK becomes a no-op).
+      .is("ack_received_at", null);
     if (updErr) {
       return NextResponse.json({ error: "update failed" }, { status: 503 });
     }

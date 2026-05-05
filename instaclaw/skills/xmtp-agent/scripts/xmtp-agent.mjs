@@ -420,13 +420,54 @@ function buildIntroBody(verifiedSender, envelopeProse, header, forXmtp) {
 }
 
 /**
+ * Read every log_id ever written to pending-intros.jsonl OR
+ * pending-intros-seen.jsonl (the agent's archive after surfacing).
+ * Used for dedup-on-intake: if an intro arrives via XMTP but it was
+ * already polled in by the pipeline (or vice-versa), we don't double-
+ * append. log_id is the universal idempotency key — same row in the
+ * server ledger maps to one entry on disk regardless of channel.
+ */
+function readSeenLogIds() {
+  const seen = new Set();
+  for (const name of ["pending-intros.jsonl", "pending-intros-seen.jsonl"]) {
+    const p = join(XMTP_DIR, name);
+    if (!existsSync(p)) continue;
+    try {
+      const txt = readFileSync(p, "utf-8");
+      for (const line of txt.split("\n")) {
+        const t = line.trim();
+        if (!t) continue;
+        try {
+          const row = JSON.parse(t);
+          if (row?.log_id) seen.add(String(row.log_id));
+        } catch {
+          // malformed line; skip
+        }
+      }
+    } catch {
+      // unreadable; skip
+    }
+  }
+  return seen;
+}
+
+/**
  * Append an intro to the on-disk pending-intros log so the agent
  * surfaces it in MEMORY.md or future conversations even if the live
  * Telegram + XMTP delivery paths both fail. This is the recovery-of-
  * last-resort: an intro that arrived but couldn't be surfaced live
  * is NOT dropped on the floor.
+ *
+ * Returns true if a new line was appended, false if log_id was already
+ * present (dedup hit). Caller can use the boolean to suppress double
+ * notifications.
  */
 function appendPendingIntro(verifiedSender, prose, header, log_id) {
+  const seen = readSeenLogIds();
+  if (log_id && seen.has(String(log_id))) {
+    log("INFO", `pending-intros dedup: log_id=${log_id} already seen`);
+    return false;
+  }
   const path = join(XMTP_DIR, "pending-intros.jsonl");
   const row = {
     ts: new Date().toISOString(),
@@ -442,8 +483,46 @@ function appendPendingIntro(verifiedSender, prose, header, log_id) {
   };
   try {
     appendFileSync(path, JSON.stringify(row) + "\n");
+    return true;
   } catch (e) {
     log("WARN", "appendPendingIntro failed", { error: e?.message || String(e) });
+    return false;
+  }
+}
+
+/**
+ * POST /api/match/v1/outreach phase=ack — tells the server we've
+ * surfaced this intro to the user via the named channel. Stops the
+ * sender's retry loop. Idempotent — second ack is a no-op.
+ *
+ * Failure here is logged but NOT fatal: the user already has the
+ * intro on disk / in Telegram. Worst case, the sender retries and
+ * the receiver dedups by log_id.
+ */
+async function ackIntroToServer(log_id, channel) {
+  if (!log_id || !channel) return;
+  try {
+    const res = await fetch(`${INSTACLAW_API_URL}/api/match/v1/outreach`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${getGatewayToken()}`,
+      },
+      body: JSON.stringify({ phase: "ack", log_id, channel }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      log("WARN", `ack POST returned ${res.status}`);
+      return;
+    }
+    const data = await res.json().catch(() => null);
+    if (data?.already_acked) {
+      log("INFO", `ack: log_id=${log_id} already acked (no-op)`);
+    } else {
+      log("INFO", `ack: log_id=${log_id} channel=${channel}`);
+    }
+  } catch (err) {
+    log("WARN", "ack failed (non-fatal)", { error: err?.message || String(err) });
   }
 }
 
@@ -464,6 +543,21 @@ function appendPendingIntro(verifiedSender, prose, header, log_id) {
  * channel-or-disk delivery so an intro is never silently lost.
  */
 async function notifyUserOfIntro(agent, verifiedSender, envelopeProse, header, log_id) {
+  // Dedup-on-intake: if this log_id was already surfaced (via the
+  // poll path or a prior XMTP retry), short-circuit. The server-side
+  // ACK is idempotent so we still post it — sender's retry loop
+  // depends on seeing the ACK.
+  if (log_id) {
+    const seen = readSeenLogIds();
+    if (seen.has(String(log_id))) {
+      log("INFO", `notifyUserOfIntro dedup: log_id=${log_id} already surfaced`);
+      // Best-effort ACK so sender stops retrying. Channel "polled" is
+      // the canonical "delivered out-of-band" marker.
+      ackIntroToServer(log_id, "polled");
+      return "duplicate";
+    }
+  }
+
   // ── Channel 1: Telegram via notify_user.sh ──
   const chatId = verifiedSender.receiver_telegram_chat_id
     ? String(verifiedSender.receiver_telegram_chat_id)
@@ -492,6 +586,12 @@ async function notifyUserOfIntro(agent, verifiedSender, envelopeProse, header, l
     });
     if (sent) {
       log("INFO", "intro forwarded to user via Telegram");
+      // Also append to pending-intros.jsonl so the agent can re-render
+      // history when asked, and so dedup-on-intake works for any future
+      // XMTP retry that arrives for the same log_id.
+      const proseForDisk = buildIntroBody(verifiedSender, envelopeProse, header, /* forXmtp= */ true);
+      appendPendingIntro(verifiedSender, proseForDisk, header, log_id);
+      ackIntroToServer(log_id, "telegram");
       return "telegram";
     }
   } else {
@@ -508,6 +608,9 @@ async function notifyUserOfIntro(agent, verifiedSender, envelopeProse, header, l
       const dm = await agent.createDmWithAddress(userAddr);
       await dm.sendText(body);
       log("INFO", "intro forwarded to user via XMTP user channel", { user: userAddr.slice(0, 10) });
+      const proseForDisk = body;
+      appendPendingIntro(verifiedSender, proseForDisk, header, log_id);
+      ackIntroToServer(log_id, "xmtp_user");
       return "xmtp_user";
     } catch (err) {
       log("WARN", "xmtp user-channel send failed (will fall through to pending)", {
@@ -520,8 +623,14 @@ async function notifyUserOfIntro(agent, verifiedSender, envelopeProse, header, l
 
   // ── Channel 3: pending-intros.jsonl on disk ──
   const proseForDisk = buildIntroBody(verifiedSender, envelopeProse, header, /* forXmtp= */ true);
-  appendPendingIntro(verifiedSender, proseForDisk, header, log_id);
-  log("WARN", "intro stored to pending-intros.jsonl — no live channel succeeded");
+  const appended = appendPendingIntro(verifiedSender, proseForDisk, header, log_id);
+  if (appended) {
+    log("WARN", "intro stored to pending-intros.jsonl — no live channel succeeded");
+  }
+  // Even when no live channel succeeded, ACK to the server so the
+  // sender's retry loop stops. The intro IS delivered (durably, on
+  // disk for the agent to surface). "pending" is the channel name.
+  ackIntroToServer(log_id, "pending");
   return "pending";
 }
 
