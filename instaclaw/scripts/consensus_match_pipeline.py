@@ -110,6 +110,14 @@ RATIONALE_PREFIX_DELIB_FAIL = "<deliberation unavailable: "
 # CHAT_ID from ~/.openclaw/.env. We don't reinvent Telegram delivery.
 NOTIFY_SCRIPT = os.path.expanduser("~/scripts/notify_user.sh")
 
+# Agent-to-agent intro outreach. Fires after a top-1 change so the
+# matched user's agent receives an XMTP DM (forwarded to their human
+# via Telegram). Co-located with the other consensus scripts.
+OUTREACH_SCRIPT = os.path.join(SCRIPT_DIR, "consensus_agent_outreach.py")
+OUTREACH_TIMEOUT_SECONDS = 45  # contact-info + reserve + xmtp-send + finalize
+CONTACT_INFO_URL = "https://instaclaw.io/api/match/v1/contact-info"
+XMTP_ADDRESS_FILE = os.path.expanduser("~/.openclaw/xmtp/address")
+
 
 def log(msg: str) -> None:
     sys.stderr.write(f"pipeline.{msg}\n")
@@ -416,6 +424,129 @@ def send_telegram_notification(message: str) -> bool:
         return False
 
 
+def read_self_xmtp_address() -> str | None:
+    """Read this VM's own XMTP wallet address. Written at agent start by
+    xmtp-agent.mjs to ~/.openclaw/xmtp/address. Used to populate the
+    `from_xmtp` envelope field so the receiver can verify the sender via
+    /api/match/v1/identify-agent."""
+    try:
+        with open(XMTP_ADDRESS_FILE) as f:
+            v = f.read().strip()
+            return v if v.startswith("0x") and len(v) == 42 else None
+    except (FileNotFoundError, IOError):
+        return None
+
+
+def fetch_self_info(token: str) -> dict | None:
+    """Resolve the caller's own display fields (name, agent_name,
+    telegram_bot_username, identity_wallet) via /api/match/v1/contact-info
+    with include_self=true. We need self-info on the VM to compose the
+    intro envelope locally without bundling user-record reads into every
+    pipeline tick."""
+    # We need our own user_id to ask for it. The route_intent response
+    # carries user_id, but we don't keep it across this function call —
+    # so we ask contact-info to include self by looking up via gateway
+    # token alone. Trick: pass a dummy user_id list with include_self.
+    # The endpoint takes the caller's user_id from gateway_token auth.
+    body = {"user_ids": ["00000000-0000-0000-0000-000000000000"], "include_self": True}
+    status, resp = post_json(CONTACT_INFO_URL, body, token)
+    if status != 200 or not resp:
+        return None
+    contacts = resp.get("contacts") or []
+    if not contacts:
+        return None
+    # Find the contact whose user_id is NOT the dummy. include_self
+    # appends caller's own contact regardless of the deliberation gate.
+    for c in contacts:
+        if c.get("user_id") != "00000000-0000-0000-0000-000000000000":
+            return c
+    return None
+
+
+def maybe_send_agent_outreach(
+    new_top1: str | None,
+    last_top1: str | None,
+    deliberations: list[dict],
+    profile_version: int,
+    is_cold_start: bool,
+    token: str,
+) -> dict:
+    """Fire an agent-to-agent intro DM iff the top-1 changed since last
+    successful cycle AND the current top-1 is a full deliberation (not
+    cold-start L2-only, not a fallback). Mirrors the gating in
+    maybe_send_match_notification — same change events, different
+    delivery channel.
+
+    Returns a dict summarizing what happened (for the pipeline log).
+    Never raises. The pipeline's try/except wrapper would catch anything
+    anyway; defensive belt-and-suspenders.
+    """
+    if not new_top1:
+        return {"status": "skipped", "reason": "no_top1"}
+    if last_top1 == new_top1:
+        return {"status": "skipped", "reason": "no_top1_change"}
+    if is_cold_start:
+        # L2-only rationales are too thin for agent-to-agent intros.
+        # Notify the user via Telegram (preliminary) but DO NOT spam
+        # the matched person's agent based on profile-fit alone.
+        return {"status": "skipped", "reason": "cold_start"}
+    if not os.path.isfile(OUTREACH_SCRIPT):
+        return {"status": "skipped", "reason": "no_outreach_script"}
+
+    # Find the deliberation for new_top1.
+    top_delib = next((d for d in deliberations if d.get("user_id") == new_top1), None)
+    if not top_delib:
+        return {"status": "skipped", "reason": "no_delib_for_top1"}
+    rationale_raw = (top_delib.get("rationale") or "").lstrip()
+    if (
+        rationale_raw.startswith(RATIONALE_PREFIX_FALLBACK)
+        or rationale_raw.startswith(RATIONALE_PREFIX_DELIB_FAIL)
+        or rationale_raw.startswith(RATIONALE_PREFIX_L2_ONLY)
+    ):
+        return {"status": "skipped", "reason": "top1_not_full_deliberation"}
+
+    # Resolve self info for the envelope.
+    self_info = fetch_self_info(token)
+    if not self_info:
+        return {"status": "skipped", "reason": "self_info_unresolved"}
+
+    self_xmtp = read_self_xmtp_address()
+    payload = {
+        "target_user_id": new_top1,
+        "profile_version": profile_version,
+        "rationale": strip_rationale_prefix(rationale_raw),
+        "topic": top_delib.get("conversation_topic") or "",
+        "window": top_delib.get("meeting_window") or "",
+        "from_user_id": self_info.get("user_id"),
+        "from_name": self_info.get("name"),
+        "from_agent_name": self_info.get("agent_name"),
+        "from_telegram_bot_username": self_info.get("telegram_bot_username"),
+        "from_identity_wallet": self_info.get("identity_wallet"),
+    }
+    env = os.environ.copy()
+    if self_xmtp:
+        env["XMTP_SELF_ADDRESS"] = self_xmtp
+    try:
+        proc = subprocess.run(
+            ["python3", OUTREACH_SCRIPT],
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            timeout=OUTREACH_TIMEOUT_SECONDS,
+            env=env,
+        )
+        if proc.returncode != 0:
+            return {"status": "error", "reason": f"rc={proc.returncode}", "stderr": (proc.stderr or "")[:240]}
+        try:
+            return json.loads((proc.stdout or "").strip().split("\n")[-1])
+        except (json.JSONDecodeError, ValueError):
+            return {"status": "error", "reason": "parse_failed", "stdout": (proc.stdout or "")[:240]}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "reason": "timeout"}
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "reason": f"exception_{type(e).__name__}"}
+
+
 def maybe_send_match_notification(
     deliberations: list[dict],
     top3: list[str],
@@ -715,6 +846,24 @@ def main() -> int:
     last_top3 = state.get("last_top3") or []
     last_top1: str | None = last_top3[0] if last_top3 else None
     new_top1 = maybe_send_match_notification(deliberations, top3, last_top1, is_cold_start)
+
+    # ─ Agent-to-agent intro DM (XMTP) on material change ─
+    # Same change-gate as the Telegram notification, but with an extra
+    # cold-start guard (L2-only rationales aren't strong enough to DM
+    # someone on the user's behalf). Wrapped in try/except so an
+    # outreach hiccup never tanks the pipeline.
+    try:
+        outreach_result = maybe_send_agent_outreach(
+            new_top1=new_top1,
+            last_top1=last_top1,
+            deliberations=deliberations,
+            profile_version=profile_version,
+            is_cold_start=is_cold_start,
+            token=token,
+        )
+        log(f"outreach status={outreach_result.get('status')} reason={outreach_result.get('reason', '')}")
+    except Exception as e:  # noqa: BLE001
+        log(f"outreach exception {type(e).__name__}")
 
     outcome = "ok_cold_start" if is_cold_start else "ok"
     state_out = {
