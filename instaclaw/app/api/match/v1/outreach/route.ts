@@ -52,7 +52,13 @@ import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const MAX_OUTREACH_PER_24H = 5;
+// Rate limit picked to allow ~one fresh top-1 per pipeline cycle (every
+// 30 min) for a full 8-hour conference day, with headroom. 5 is too
+// tight: a user whose match feed shifts hourly during a busy day will
+// hit the cap by lunch and miss real intros for the rest of the day.
+// 20 gives one intro every 24 minutes on average — well above the
+// natural shift rate of a careful matching pipeline.
+const MAX_OUTREACH_PER_24H = 20;
 const MESSAGE_PREVIEW_MAX_CHARS = 500;
 
 function extractGatewayToken(req: NextRequest): string | null {

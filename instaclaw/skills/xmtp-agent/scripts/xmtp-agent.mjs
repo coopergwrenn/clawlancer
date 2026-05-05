@@ -379,31 +379,25 @@ async function verifyIntroSender(senderXmtp) {
 }
 
 /**
- * Forward an intro to the receiving user's Telegram via notify_user.sh.
- * Notification text is built from the verified sender info + envelope
- * prose so we never trust unverified envelope fields for display.
+ * Build a user-facing intro message. Reused by both Telegram (passed
+ * to notify_user.sh) and XMTP (sent to USER_WALLET_ADDRESS) paths so
+ * the user sees the same content regardless of channel.
+ *
+ * `forXmtp` toggles whether to apply the Telegram-Markdown sanitizer
+ * (which would strip @, *, _ etc that are fine in plain XMTP text).
  */
-function notifyUserOfIntro(verifiedSender, envelopeProse, header) {
-  if (!existsSync(NOTIFY_USER_SCRIPT)) {
-    log("WARN", "notify_user.sh missing — intro received but not forwarded");
-    return false;
-  }
+function buildIntroBody(verifiedSender, envelopeProse, header, forXmtp) {
   const senderName = verifiedSender.name || "An InstaClaw user";
   const senderBot = verifiedSender.telegram_bot_username || null;
   const topic = (header.topic || "").toString().trim();
   const window = (header.window || "").toString().trim();
 
-  // Build a compact, Telegram-safe message. We mirror the sanitization
-  // the pipeline does for notify_user.sh (parse_mode=Markdown), so the
-  // message survives the script's shell-string JSON build path.
   const lines = [
     "Consensus 2026 intro received",
     "",
     `${senderName}'s agent just reached out about meeting up.`,
   ];
-  if (envelopeProse) {
-    lines.push("", envelopeProse);
-  }
+  if (envelopeProse) lines.push("", envelopeProse);
   if (topic) lines.push("", `Topic: ${topic}`);
   if (window) lines.push(`Window: ${window}`);
   if (senderBot) {
@@ -411,8 +405,11 @@ function notifyUserOfIntro(verifiedSender, envelopeProse, header) {
   }
   lines.push("", "All your matches: https://instaclaw.io/consensus/my-matches");
 
-  const safe = lines
-    .join("\n")
+  const text = lines.join("\n");
+  if (forXmtp) return text;
+  // Telegram parse_mode=Markdown sanitizer: strip chars that break
+  // notify_user.sh's shell-string JSON build path.
+  return text
     .replace(/\\/g, "")
     .replace(/"/g, "'")
     .replace(/_/g, " ")
@@ -420,43 +417,123 @@ function notifyUserOfIntro(verifiedSender, envelopeProse, header) {
     .replace(/\[/g, "(")
     .replace(/\]/g, ")")
     .replace(/`/g, "'");
+}
 
-  // Pass the receiver's chat_id explicitly via env so notify_user.sh
-  // skips its flaky sessions.json + getUpdates discovery path. The
-  // identify-agent endpoint returns it from the DB.
-  const childEnv = { ...process.env };
-  if (verifiedSender.receiver_telegram_chat_id) {
-    childEnv.TELEGRAM_CHAT_ID = String(verifiedSender.receiver_telegram_chat_id);
+/**
+ * Append an intro to the on-disk pending-intros log so the agent
+ * surfaces it in MEMORY.md or future conversations even if the live
+ * Telegram + XMTP delivery paths both fail. This is the recovery-of-
+ * last-resort: an intro that arrived but couldn't be surfaced live
+ * is NOT dropped on the floor.
+ */
+function appendPendingIntro(verifiedSender, prose, header, log_id) {
+  const path = join(XMTP_DIR, "pending-intros.jsonl");
+  const row = {
+    ts: new Date().toISOString(),
+    log_id,
+    sender_user_id: verifiedSender.user_id,
+    sender_name: verifiedSender.name,
+    sender_bot: verifiedSender.telegram_bot_username,
+    sender_xmtp: header.from_xmtp,
+    sender_identity_wallet: verifiedSender.identity_wallet,
+    topic: header.topic || "",
+    window: header.window || "",
+    prose,
+  };
+  try {
+    appendFileSync(path, JSON.stringify(row) + "\n");
+  } catch (e) {
+    log("WARN", "appendPendingIntro failed", { error: e?.message || String(e) });
+  }
+}
+
+/**
+ * Forward an intro to the receiving user via the BEST available channel:
+ *   1. Telegram via notify_user.sh, IF TELEGRAM_CHAT_ID is known.
+ *      (Receiver's identify-agent response carries this from the DB.)
+ *   2. XMTP DM to USER_WALLET_ADDRESS, IF set in agent env.
+ *      (This is the same channel as the proactive greeting — lands in
+ *       the user's World Chat thread with their agent.)
+ *   3. Fallthrough: append to pending-intros.jsonl on disk so the
+ *      agent can surface it in a future conversation.
+ *
+ * Returns the channel that succeeded ("telegram" | "xmtp_user" |
+ * "pending") or "failed" if all paths failed.
+ *
+ * Either path failing falls through to the next; we want at-least-one-
+ * channel-or-disk delivery so an intro is never silently lost.
+ */
+async function notifyUserOfIntro(agent, verifiedSender, envelopeProse, header, log_id) {
+  // ── Channel 1: Telegram via notify_user.sh ──
+  const chatId = verifiedSender.receiver_telegram_chat_id
+    ? String(verifiedSender.receiver_telegram_chat_id)
+    : null;
+  if (chatId && existsSync(NOTIFY_USER_SCRIPT)) {
+    const safe = buildIntroBody(verifiedSender, envelopeProse, header, /* forXmtp= */ false);
+    const childEnv = { ...process.env, TELEGRAM_CHAT_ID: chatId };
+    const sent = await new Promise((resolve) => {
+      execFile(
+        NOTIFY_USER_SCRIPT,
+        [safe],
+        { timeout: 15_000, env: childEnv },
+        (err, stdout, stderr) => {
+          if (err) {
+            log("WARN", "notify_user.sh failed (will try XMTP fallback)", {
+              error: err.message,
+              stdout: (stdout || "").slice(0, 200),
+              stderr: (stderr || "").slice(0, 200),
+            });
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        }
+      );
+    });
+    if (sent) {
+      log("INFO", "intro forwarded to user via Telegram");
+      return "telegram";
+    }
+  } else {
+    log("INFO", chatId
+      ? "TELEGRAM_CHAT_ID present but notify_user.sh missing — falling back to XMTP-user channel"
+      : "no TELEGRAM_CHAT_ID for receiver — falling back to XMTP-user channel");
   }
 
-  return new Promise((resolve) => {
-    execFile(
-      NOTIFY_USER_SCRIPT,
-      [safe],
-      { timeout: 15_000, env: childEnv },
-      (err, stdout, stderr) => {
-        if (err) {
-          log("WARN", "notify_user.sh failed", {
-            error: err.message,
-            stdout: (stdout || "").slice(0, 200),
-            stderr: (stderr || "").slice(0, 200),
-          });
-          resolve(false);
-        } else {
-          log("INFO", "intro forwarded to user via Telegram");
-          resolve(true);
-        }
-      }
-    );
-  });
+  // ── Channel 2: XMTP DM to USER_WALLET_ADDRESS (World Chat / mini app) ──
+  const userAddr = process.env.USER_WALLET_ADDRESS;
+  if (userAddr && /^0x[a-fA-F0-9]{40}$/.test(userAddr)) {
+    try {
+      const body = buildIntroBody(verifiedSender, envelopeProse, header, /* forXmtp= */ true);
+      const dm = await agent.createDmWithAddress(userAddr);
+      await dm.sendText(body);
+      log("INFO", "intro forwarded to user via XMTP user channel", { user: userAddr.slice(0, 10) });
+      return "xmtp_user";
+    } catch (err) {
+      log("WARN", "xmtp user-channel send failed (will fall through to pending)", {
+        error: err?.message || String(err),
+      });
+    }
+  } else {
+    log("INFO", "USER_WALLET_ADDRESS not set — skipping XMTP-user channel");
+  }
+
+  // ── Channel 3: pending-intros.jsonl on disk ──
+  const proseForDisk = buildIntroBody(verifiedSender, envelopeProse, header, /* forXmtp= */ true);
+  appendPendingIntro(verifiedSender, proseForDisk, header, log_id);
+  log("WARN", "intro stored to pending-intros.jsonl — no live channel succeeded");
+  return "pending";
 }
 
 /**
  * Handle an inbound intro envelope. Verify, forward to user, ack
  * back to sender. Returns true if the message was handled (caller
  * should NOT fall through to gateway), false otherwise.
+ *
+ * `agent` is needed so the user-channel fallback can `createDmWithAddress`
+ * for users without a known Telegram chat_id.
  */
-async function handleInboundIntro(ctx, parsed) {
+async function handleInboundIntro(agent, ctx, parsed) {
   const senderXmtp = (parsed.header.from_xmtp || "").toString().toLowerCase();
   if (!senderXmtp) {
     log("WARN", "intro envelope missing from_xmtp — dropping");
@@ -472,15 +549,22 @@ async function handleInboundIntro(ctx, parsed) {
     return true; // handled (suppressed) — do NOT forward to gateway
   }
 
-  await notifyUserOfIntro(verified, parsed.prose, parsed.header);
+  const channel = await notifyUserOfIntro(
+    agent,
+    verified,
+    parsed.prose,
+    parsed.header,
+    verified.log_id || parsed.header.log_id || null,
+  );
 
   // Ack back to sender — useful for forensics on the introducer's side.
-  // Failure here is non-fatal; the user already saw the Telegram intro.
+  // Failure here is non-fatal; the user already saw the intro.
   try {
     const ack = `${INTRO_ACK_MARKER}\n${JSON.stringify({
       v: 1,
       received: true,
-      log_id: parsed.header.log_id || null,
+      channel,
+      log_id: verified.log_id || parsed.header.log_id || null,
     })}\n`;
     await ctx.conversation.sendText(ack);
   } catch (err) {
@@ -643,7 +727,7 @@ async function main() {
       const slice = text.slice(idx);
       const parsed = parseIntroEnvelope(slice);
       if (parsed) {
-        const handled = await handleInboundIntro(ctx, parsed);
+        const handled = await handleInboundIntro(agent, ctx, parsed);
         if (handled) return;
       } else {
         log("WARN", "intro marker present but envelope malformed — dropping (no fallback reply)");
