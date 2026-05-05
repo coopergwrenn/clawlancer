@@ -13,7 +13,7 @@
  */
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
-import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
+import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { getPrivacyBridgeScript } from "./privacy-bridge-script";
 import * as crypto from "crypto";
 import {
@@ -261,6 +261,13 @@ export async function reconcileVM(
     // ── Step 8c: Systemd unit overrides (KillMode, crash-loop breaker, Chrome cleanup) ──
     currentStep = "systemd-unit";
     await stepSystemdUnit(ssh, manifest, result, dryRun);
+
+    // ── Step 8c2: prctl-subreaper install + systemd drop-in ──
+    // Independent of stepSystemdUnit's override.conf — writes its own
+    // prctl-subreaper.conf drop-in so rollback is a single-file delete.
+    // See docs/prd/v87-prctl-subreaper-integration-plan.md.
+    currentStep = "prctl-subreaper";
+    await stepPrctlSubreaper(ssh, result, dryRun);
 
     // ── Step 8d: sshd OOM protection (OOMScoreAdjust=-900 drop-in) ──
     currentStep = "sshd-protection";
@@ -1553,6 +1560,138 @@ async function stepEnforceModelPrimary(
   // the new value takes effect on the next chat completion.
   result.gatewayRestartNeeded = true;
   result.fixed.push(`agents.defaults.model.primary: ${cur} → ${targetPrimary}`);
+}
+
+/**
+ * stepPrctlSubreaper — install prctl-subreaper@PRCTL_SUBREAPER_PINNED_VERSION
+ * globally via npm, verify the native addon (.node) compiled, smoke-test
+ * `require('prctl-subreaper').stats()` returns {supported:true, running:true},
+ * then write a separate systemd drop-in `prctl-subreaper.conf` that injects
+ * NODE_PATH + NODE_OPTIONS=--require prctl-subreaper into the
+ * openclaw-gateway service environment. Sets gatewayRestartNeeded so the
+ * existing Step 9 picks up the new env on the next gateway boot.
+ *
+ * Failure modes — all safe (gateway keeps running without the addon):
+ *   - npm install fails → push to result.errors, drop-in NOT written
+ *   - native build missing → push to result.errors, drop-in NOT written
+ *     (likely cause: build-essential or python3 absent on the VM)
+ *   - smoke test fails → push to result.errors, drop-in NOT written
+ *   - drop-in write fails → push to result.errors
+ *
+ * Idempotent: if the package is at the pinned version AND the drop-in
+ * already references the correct npm root + has NODE_OPTIONS set,
+ * returns early via `result.alreadyCorrect`.
+ *
+ * On Node version bump (NODE_PINNED_VERSION change), the npm root path
+ * baked into the drop-in goes stale; the next smoke test still passes
+ * because the package is reinstalled via stepNpmPinDrift's similar
+ * upgrade discipline, but we regenerate the drop-in here on every cycle
+ * if the resolved npm root drifts from what's on disk.
+ */
+async function stepPrctlSubreaper(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // 1. What version is currently installed globally?
+  const versionCheck = await ssh.execCommand(
+    `${NVM_PREAMBLE} && npm ls -g --depth=0 prctl-subreaper 2>/dev/null | grep -oE 'prctl-subreaper@[0-9]+\\.[0-9]+\\.[0-9]+'`,
+  );
+  const installed = versionCheck.stdout.trim();
+  const target = `prctl-subreaper@${PRCTL_SUBREAPER_PINNED_VERSION}`;
+
+  // 2. Resolve the actual npm global root (per-Node-version under NVM).
+  const npmRootResult = await ssh.execCommand(`${NVM_PREAMBLE} && npm root -g`);
+  const npmRoot = npmRootResult.stdout.trim();
+  if (!npmRoot || !npmRoot.startsWith("/")) {
+    result.errors.push(`stepPrctlSubreaper: could not resolve npm root -g (got: ${JSON.stringify(npmRoot.slice(0, 80))})`);
+    return;
+  }
+
+  // 3. Is the systemd drop-in present and pointing at the current npm root?
+  const dropInPath = "$HOME/.config/systemd/user/openclaw-gateway.service.d/prctl-subreaper.conf";
+  const dropInCheck = await ssh.execCommand(
+    `if test -f ${dropInPath} && grep -qF 'NODE_PATH=${npmRoot}' ${dropInPath} && grep -qF 'NODE_OPTIONS=--require prctl-subreaper' ${dropInPath}; then echo OK; else echo MISSING; fi`,
+  );
+  const dropInOk = dropInCheck.stdout.trim() === "OK";
+
+  if (installed === target && dropInOk) {
+    result.alreadyCorrect.push(`prctl-subreaper@${PRCTL_SUBREAPER_PINNED_VERSION}`);
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] prctl-subreaper installed=${installed || "<unset>"} target=${target} dropIn=${dropInOk ? "present" : "missing"}`);
+    return;
+  }
+
+  // 4. Install or upgrade if needed.
+  if (installed !== target) {
+    const install = await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm install -g prctl-subreaper@${PRCTL_SUBREAPER_PINNED_VERSION} 2>&1`,
+      { execOptions: { timeout: 180_000 } },
+    );
+    if (install.code !== 0) {
+      result.errors.push(`stepPrctlSubreaper: npm install -g failed (exit=${install.code}): ${(install.stdout + install.stderr).slice(-400)}`);
+      return;
+    }
+
+    // Verify the native addon binary exists.
+    const verify = await ssh.execCommand(
+      `${NVM_PREAMBLE} && find ${npmRoot}/prctl-subreaper/build/Release -name '*.node' -type f 2>/dev/null | head -1`,
+    );
+    if (!verify.stdout.trim()) {
+      result.errors.push(`stepPrctlSubreaper: prctl_subreaper.node not found after install (build-essential or python3 missing? install output: ${(install.stdout || "").slice(-200)})`);
+      return;
+    }
+
+    // Smoke test — load the module via the same NODE_PATH we'll inject into systemd.
+    const smoke = await ssh.execCommand(
+      `${NVM_PREAMBLE} && NODE_PATH='${npmRoot}' PRCTL_SUBREAPER_SILENT=1 node -e 'const s=require("prctl-subreaper"); const st=s.stats(); console.log(JSON.stringify({sup:s.isSupported(),running:st.running,pid:st.pid,interval:st.intervalMs,minAge:st.minAgeMs}))' 2>&1`,
+      { execOptions: { timeout: 15_000 } },
+    );
+    const smokeOut = smoke.stdout.trim();
+    if (!smokeOut.includes('"sup":true') || !smokeOut.includes('"running":true')) {
+      result.errors.push(`stepPrctlSubreaper: smoke test failed: ${smokeOut.slice(-300)}`);
+      return;
+    }
+
+    result.fixed.push(`prctl-subreaper: ${installed || "<unset>"} → ${target}`);
+  }
+
+  // 5. Write the drop-in (separate file from override.conf for clean rollback).
+  const dropInBody =
+    `[Service]\n` +
+    `Environment="NODE_PATH=${npmRoot}"\n` +
+    `Environment="NODE_OPTIONS=--require prctl-subreaper"\n` +
+    `Environment="PRCTL_SUBREAPER_INTERVAL_MS=1000"\n` +
+    `Environment="PRCTL_SUBREAPER_MIN_AGE_MS=5000"\n`;
+
+  const writeResult = await ssh.execCommand(
+    `mkdir -p $HOME/.config/systemd/user/openclaw-gateway.service.d && cat > ${dropInPath} <<'PRCTL_DROPIN_EOF'\n${dropInBody}PRCTL_DROPIN_EOF\nchmod 644 ${dropInPath}`,
+  );
+  if (writeResult.code !== 0) {
+    result.errors.push(`stepPrctlSubreaper: drop-in write failed (exit=${writeResult.code}): ${writeResult.stderr.slice(-200)}`);
+    return;
+  }
+
+  // Verify-after-write per Rule 10.
+  const reCheck = await ssh.execCommand(
+    `if test -f ${dropInPath} && grep -qF 'NODE_PATH=${npmRoot}' ${dropInPath} && grep -qF 'NODE_OPTIONS=--require prctl-subreaper' ${dropInPath}; then echo OK; else echo MISSING; fi`,
+  );
+  if (reCheck.stdout.trim() !== "OK") {
+    result.errors.push(`stepPrctlSubreaper: drop-in verify-after-write FAILED — re-check returned ${JSON.stringify(reCheck.stdout)}`);
+    return;
+  }
+
+  // daemon-reload so the next gateway start picks up the env. Don't restart
+  // here — Step 9 (stepGatewayRestart) handles that with health checks.
+  await ssh.execCommand(
+    `export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user daemon-reload 2>&1 || true`,
+  );
+
+  result.fixed.push(`prctl-subreaper drop-in written (NODE_PATH=${npmRoot})`);
+  result.gatewayRestartNeeded = true;
 }
 
 async function stepSkills(

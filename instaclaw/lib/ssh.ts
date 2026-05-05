@@ -130,6 +130,32 @@ export const NODE_PINNED_VERSION = "22.22.2";
 // Mirror of the OPENCLAW_PINNED_VERSION discipline above.
 export const BANKR_CLI_PINNED_VERSION = "0.3.1";
 
+// prctl-subreaper — n-api addon that calls prctl(PR_SET_CHILD_SUBREAPER, 1)
+// on the openclaw-gateway Node process and runs a /proc-walking polling
+// reaper for zombies whose ppid matches us. Loaded into the gateway via
+// systemd Environment="NODE_OPTIONS=--require prctl-subreaper" (drop-in
+// written by stepPrctlSubreaper in vm-reconcile.ts). See
+//   docs/prd/zombie-reaping-tini-analysis-2026-05-05.md §11.4
+//   docs/prd/v87-prctl-subreaper-integration-plan.md
+//   github.com/coopergwrenn/prctl-subreaper
+//
+// Three classes of zombies covered:
+//   A. Orphan reparenting (parent died) — equivalent to tini-as-PID-1.
+//   B. libuv #1911 close-before-exit (parent alive, libuv unregistered
+//      its waitpid for the pid). tini-as-PID-1 cannot reap this; the
+//      subreaper-as-self approach can.
+//   C. child.kill() leak — same shape as B from the process-tree
+//      perspective.
+//
+// On Node version bump (NODE_PINNED_VERSION change), the absolute global
+// node_modules path baked into the systemd drop-in goes stale.
+// stepPrctlSubreaper detects this via the smoke test failure and
+// regenerates the drop-in with the new path on the next reconcile cycle.
+//
+// IMPORTANT: When bumping this, ALSO bump VM_MANIFEST.version so the
+// reconciler reinstalls the addon across the fleet.
+export const PRCTL_SUBREAPER_PINNED_VERSION = "0.1.0";
+
 // ── Bankr skill InstaClaw overlay (V1) ──
 // The upstream Bankr skill repo (BankrBot/skills) contains:
 //   - bankr/bankr/SKILL.md — describes both Clanker (EVM) and Raydium LaunchLab
