@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser, OPENCLAW_PINNED_VERSION } from "@/lib/ssh";
-import { VM_MANIFEST, getTemplateContent } from "@/lib/vm-manifest";
+import { VM_MANIFEST, getTemplateContent, BOOTSTRAP_MAX_CHARS } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
 import { AlertCollector } from "@/lib/admin-alert";
 import { logger } from "@/lib/logger";
@@ -1912,7 +1912,9 @@ else:
       }
 
       // MEMORY_OVERSIZED: MEMORY.md exceeds 25KB — risks truncation during bootstrap injection.
-      // bootstrapMaxChars is 30K, so 25KB is the warning threshold before content gets lost.
+      // bootstrapMaxChars (now 35K via BOOTSTRAP_MAX_CHARS) is the upfront-context ceiling
+      // shared with SOUL.md + CAPABILITIES.md + TOOLS.md, so MEMORY.md eating 25KB leaves
+      // only ~10K for everything else. Keep 25KB as the conservative warning threshold.
       if (memHealth.memSizeBytes > MEMORY_OVERSIZED_BYTES) {
         memoryOversizedAlerts++;
         logger.warn("Memory oversized — bootstrap truncation risk", {
@@ -1921,7 +1923,7 @@ else:
           vmName: vm.name,
           memSizeBytes: memHealth.memSizeBytes,
           memSizeKB: Math.round(memHealth.memSizeBytes / 1024),
-          bootstrapMaxChars: 30000,
+          bootstrapMaxChars: BOOTSTRAP_MAX_CHARS,
           assignedTo: vm.assigned_to,
         });
 

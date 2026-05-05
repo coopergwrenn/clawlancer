@@ -412,6 +412,22 @@ echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') status=$STATUS" >> "$LOGFILE"
 tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 `;
 
+// ── Bootstrap-max-chars (single source of truth) ──
+// Effective ceiling for upfront agent context (SOUL.md + supplements +
+// CAPABILITIES.md + TOOLS.md). Reconciler pushes this via
+// `agents.defaults.bootstrapMaxChars` in configSettings every cycle, so the
+// manifest value WINS over any legacy hardcode on a reconciled VM. Exporting
+// as a const lets initial-provision code paths (configureOpenClaw,
+// fix-infra route, health-check warning threshold) reference the same source
+// rather than scattering 30000 hardcodes that drift over time.
+//
+// History: was 30000 in the snapshot baseline (still present at lib/ssh.ts:3509
+// for fresh provision until reconciler ticks). Raised to 35000 in v82+ to
+// reduce silent context truncation on fully-loaded VMs (SOUL.md grew to ~33K).
+// Per Rule 12: changing this value requires bumping VM_MANIFEST.version so
+// every VM reconciles to the new ceiling.
+export const BOOTSTRAP_MAX_CHARS = 35000;
+
 // ── Skill integrity self-healing cron (Rule 24, item 4) ──
 // Hourly walk of git-cloned skills. Detects corrupted .git/ AND missing
 // expected files (SKILL.md or scripts/dgclaw.sh per the taxonomy). Self-heals
@@ -806,7 +822,7 @@ export const VM_MANIFEST = {
     // a hard stop until trimmed" — that calculus assumed silent memory
     // loss wasn't the dominant cost.  It was.  The reorder + bump are the
     // immediate fix; trim is the long-term one.
-    "agents.defaults.bootstrapMaxChars": "35000",
+    "agents.defaults.bootstrapMaxChars": String(BOOTSTRAP_MAX_CHARS),
     "agents.defaults.compaction.memoryFlush.enabled": "true",
     // v41: Raise softThresholdTokens from default 4000 to 8000 — gives the agent more
     // room to write durable notes before compaction fires. OpenClaw Issue #31435 recommends 8000+.

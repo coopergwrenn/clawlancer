@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { connectSSH, NVM_PREAMBLE, type VMRecord } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
+import { BOOTSTRAP_MAX_CHARS } from "@/lib/vm-manifest";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 600; // v48: push-soul-principles
@@ -55,7 +56,7 @@ function buildStandardConfig(vm: FullVMRecord): Record<string, unknown> {
           primary: openclawModel,
           fallbacks: ["anthropic/claude-haiku-4-5-20251001"],
         },
-        bootstrapMaxChars: 30000,
+        bootstrapMaxChars: BOOTSTRAP_MAX_CHARS,
         heartbeat: { every: "3h", session: "heartbeat" },
         compaction: {
           reserveTokensFloor: 35000,

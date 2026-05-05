@@ -21,7 +21,7 @@ import {
 } from "@/lib/acp-api";
 import {
   VM_MANIFEST, CONFIG_SPEC, registerTemplate, getTemplateContent,
-  PUSH_HEARTBEAT_SH, SILENCE_WATCHDOG_SCRIPT,
+  PUSH_HEARTBEAT_SH, SILENCE_WATCHDOG_SCRIPT, BOOTSTRAP_MAX_CHARS,
 } from "./vm-manifest";
 import { reconcileVM } from "./vm-reconcile";
 import * as fs from "fs";
@@ -3506,7 +3506,7 @@ export function buildOpenClawConfig(
           primary: openclawModel,
           fallbacks: ["anthropic/claude-haiku-4-5-20251001"],
         },
-        bootstrapMaxChars: 30000,
+        bootstrapMaxChars: BOOTSTRAP_MAX_CHARS,
         heartbeat: {
           every: "3h",
           // Route heartbeats to own session — prevents polluting user's conversation
@@ -4745,15 +4745,17 @@ export async function configureOpenClaw(
     // SOUL.md priority-tier ordering (2026-05-03 redesign).
     //
     // Background: SOUL.md routinely exceeds 30K on production VMs (median 32K,
-    // max 39K). With bootstrapMaxChars=30,000 (line 3168 of this file), OpenClaw
-    // silently truncates whatever is at the tail. The 2026-05-03 audit found
+    // max 39K). The historical bootstrapMaxChars=30,000 caused OpenClaw to
+    // silently truncate whatever was at the tail. The 2026-05-03 audit found
     // 84% of fleet had empty session-log.md and 97% empty active-tasks.md
     // because SOUL_MD_MEMORY_FILING_SYSTEM was at byte 30,213+ — past the cap.
     // Agents literally could not see the "write to session-log.md" instructions.
     //
     // Three coordinated fixes:
-    //  (1) bootstrapMaxChars raised 30,000 → 35,000 below (line 3168). Costs
-    //      ~$2.6K/year extra inference fleet-wide, but eliminates silent
+    //  (1) bootstrapMaxChars raised 30,000 → 35,000 — now centralized as
+    //      BOOTSTRAP_MAX_CHARS in lib/vm-manifest.ts (single source of truth
+    //      consumed here, in fix-infra route, and in health-check warnings).
+    //      Costs ~$2.6K/year extra inference fleet-wide, but eliminates silent
     //      memory loss for 84%+ of users. Reversible once SOUL.md is properly
     //      trimmed (P1 follow-up).
     //  (2) Reorder this concat so MEMORY_FILING_SYSTEM is in priority slot
@@ -4801,7 +4803,7 @@ Store their answers in MEMORY.md — you'll use this for people matching and pro
     // this one is appended after it. All detail (schemas, query patterns,
     // killer demos, onboarding script) lives in the on-disk SKILL.md the agent
     // reads on demand. SOUL.md is bootstrap-only context and competes for the
-    // 30K bootstrapMaxChars window.
+    // BOOTSTRAP_MAX_CHARS window (35K — see lib/vm-manifest.ts).
     if (config.partner === "consensus_2026" || config.partner === "edge_city") {
       soulContent += `
 
@@ -9250,13 +9252,34 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       '',
       'echo "STEP:nvm_loaded"',
       '',
+      // Phase 5 blast-radius mitigation — backup wallet keys + SKILL.md + .env
+      // + config.json before any destructive op (rm -rf). Each call writes a
+      // tarball to ~/.openclaw/skill-backups/<label>-<ts>.tgz with 7-day
+      // retention. Mirrors the cron logic in SKILL_INTEGRITY_CHECK_SH so the
+      // install path is no riskier than the autonomous heal path.
+      'backup_wallet_state() {',
+      '  local label="$1"',
+      '  local target="$2"',
+      '  [ -d "$target" ] || return 0',
+      '  local backup_dir=~/.openclaw/skill-backups',
+      '  mkdir -p "$backup_dir"',
+      '  local stamp=$(date +%Y%m%dT%H%M%S)',
+      '  local backup="$backup_dir/$label-$stamp.tgz"',
+      `  if (cd "$target" 2>/dev/null && tar czf "$backup" $(find . -maxdepth 3 \\( -name '*.pem' -o -name '.env' -o -name 'config.json' -o -name 'SKILL.md' \\) 2>/dev/null) 2>/dev/null); then`,
+      '    echo "STEP:backup_before_rm label=$label backup=$backup"',
+      '  fi',
+      `  find "$backup_dir" -type f -name '*.tgz' -mtime +7 -delete 2>/dev/null`,
+      '}',
+      '',
       '# Fresh clone — remove stale dir from previous failed attempts',
+      `backup_wallet_state agdp "${AGDP_DIR}"`,
       `rm -rf "${AGDP_DIR}"`,
       `git clone --depth 1 ${AGDP_REPO} "${AGDP_DIR}" 2>&1`,
       'echo "STEP:repo_cloned"',
       // Rule 24: verify-after-write — retry once if .git missing, then exit loudly
       `if [ ! -d "${AGDP_DIR}/.git" ] || [ ! -f "${AGDP_DIR}/package.json" ]; then`,
       `  echo "STEP:agdp_VERIFY_FAIL_1 has_git=$(test -d ${AGDP_DIR}/.git && echo Y || echo N) has_pkg=$(test -f ${AGDP_DIR}/package.json && echo Y || echo N)"`,
+      `  backup_wallet_state agdp "${AGDP_DIR}"`,
       `  rm -rf "${AGDP_DIR}"`,
       `  git clone --depth 1 ${AGDP_REPO} "${AGDP_DIR}" 2>&1`,
       `  if [ ! -d "${AGDP_DIR}/.git" ] || [ ! -f "${AGDP_DIR}/package.json" ]; then`,
@@ -9291,6 +9314,7 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       `  cd "${DGCLAW_DIR}" && git pull --ff-only 2>&1 || echo "WARN:dgclaw_pull_failed_continuing_with_existing"`,
       'else',
       `  echo "STEP:dgclaw_dir_missing_or_corrupt — wiping and re-cloning"`,
+      `  backup_wallet_state dgclaw-skill "${DGCLAW_DIR}"`,
       `  rm -rf "${DGCLAW_DIR}"`,
       `  git clone --depth 1 ${DGCLAW_REPO} "${DGCLAW_DIR}" 2>&1`,
       'fi',
@@ -9298,6 +9322,7 @@ export async function installAgdpSkill(vm: VMRecord): Promise<AgdpInstallResult>
       '# Verify completeness: .git/ + scripts/dgclaw.sh + SKILL.md (Rule 24)',
       `if [ ! -d "${DGCLAW_DIR}/.git" ] || [ ! -f "${DGCLAW_DIR}/scripts/dgclaw.sh" ]; then`,
       `  echo "STEP:dgclaw_VERIFY_FAIL_1 has_git=$(test -d ${DGCLAW_DIR}/.git && echo Y || echo N) has_script=$(test -f ${DGCLAW_DIR}/scripts/dgclaw.sh && echo Y || echo N)"`,
+      `  backup_wallet_state dgclaw-skill "${DGCLAW_DIR}"`,
       `  rm -rf "${DGCLAW_DIR}"`,
       `  git clone --depth 1 ${DGCLAW_REPO} "${DGCLAW_DIR}" 2>&1`,
       `  chmod +x "${DGCLAW_DIR}/scripts/dgclaw.sh" 2>/dev/null || true`,
