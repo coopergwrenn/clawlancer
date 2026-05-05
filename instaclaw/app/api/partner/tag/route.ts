@@ -29,6 +29,25 @@ const VALID_PARTNERS = new Set(["edge_city", "consensus_2026"]);
 const PARTNER_COOKIE = "instaclaw_partner";
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days — survives OAuth round-trip
 
+/**
+ * Live-events skills to auto-enable per partner.
+ *
+ * Both edge_city and consensus_2026 partners attend Consensus 2026 — they
+ * get the matching skill turned on at tag time so the user doesn't have to
+ * find the Skills page to discover it.
+ *
+ * For future conferences (Bitcoin 2026, Token2049, etc.) add a new partner
+ * to VALID_PARTNERS and a new entry here.
+ *
+ * Auto-enable uses ignoreDuplicates: true on the upsert so it won't override
+ * a user's explicit OFF choice. If they later disable the skill in the UI
+ * and the partner is re-tagged (rare but possible), their preference wins.
+ */
+const PARTNER_LIVE_EVENT_SKILLS: Record<string, string[]> = {
+  edge_city: ["consensus-2026"],
+  consensus_2026: ["consensus-2026"],
+};
+
 function withPartnerCookie(res: NextResponse, partner: string): NextResponse {
   res.cookies.set(PARTNER_COOKIE, partner, {
     path: "/",
@@ -112,6 +131,45 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Auto-enable live-events skills for this partner ──
+  // Only fires for partners with a registered mapping. ignoreDuplicates:true
+  // means we never overwrite an existing row, so a user who has explicitly
+  // disabled the skill keeps it disabled even if their partner is re-tagged.
+  // First-time partner tag → row doesn't exist → we insert enabled=true.
+  let skillsEnabled = 0;
+  const liveEventSlugs = PARTNER_LIVE_EVENT_SKILLS[partner] ?? [];
+  if (liveEventSlugs.length > 0 && (vms?.length ?? 0) > 0) {
+    // Resolve slugs → skill_ids. Single round trip.
+    const { data: skills } = await supabase
+      .from("instaclaw_skills")
+      .select("id, slug")
+      .in("slug", liveEventSlugs);
+    if (skills && skills.length > 0) {
+      const rows: Array<{ vm_id: string; skill_id: string; enabled: boolean }> = [];
+      for (const vm of vms ?? []) {
+        for (const skill of skills) {
+          rows.push({
+            vm_id: vm.id as string,
+            skill_id: skill.id as string,
+            enabled: true,
+          });
+        }
+      }
+      if (rows.length > 0) {
+        const { error: skillErr, count } = await supabase
+          .from("instaclaw_vm_skills")
+          .upsert(rows, {
+            onConflict: "vm_id,skill_id",
+            ignoreDuplicates: true,
+            count: "exact",
+          });
+        if (!skillErr) {
+          skillsEnabled = count ?? 0;
+        }
+      }
+    }
+  }
+
   // If the user already has a VM, send them to dashboard so they can see the
   // tag took effect. If not, send to signup/onboarding so they complete setup.
   const hasVm = (vms?.length ?? 0) > 0;
@@ -123,6 +181,7 @@ export async function POST(req: NextRequest) {
       tagged: true,
       userUpdated,
       vmsUpdated,
+      skillsEnabled,
       hasVm,
       redirect_to: hasVm ? "/dashboard" : "/signup",
     }),

@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     // Look up the skill in the registry
     const { data: skill } = await supabase
       .from("instaclaw_skills")
-      .select("id, slug, name, item_type, requires_restart, status")
+      .select("id, slug, name, item_type, requires_restart, status, category")
       .eq("slug", skillSlug)
       .single();
 
@@ -265,6 +265,34 @@ export async function POST(req: NextRequest) {
           { status: 500 }
         );
       }
+    }
+
+    // ── Live-events category: DB-only toggle (no SSH, no restart) ──
+    // Live-events skills (Consensus 2026, Bitcoin 2026, Token2049, …) are
+    // gated by a runtime check in their own per-VM cron — not by skill-dir
+    // presence and not by a gateway restart. Their SKILL.md must remain on
+    // disk even when "disabled" so the agent can do organic detection of
+    // strong intent signals in chat and offer to re-enable. Toggling just
+    // updates the DB; the pipeline picks up the new state at the next cron
+    // tick (≤30 min). Returns restarted=false so the UI doesn't wait or
+    // claim a restart happened.
+    if (skill.category === "live-events") {
+      await supabase
+        .from("instaclaw_vm_skills")
+        .upsert(
+          { vm_id: vm.id, skill_id: skill.id, enabled },
+          { onConflict: "vm_id,skill_id" },
+        );
+
+      logger.info("Live-events skill toggled (DB-only)", {
+        slug: skill.slug,
+        enabled,
+        vmId: vm.id,
+        userId: userId,
+        route: "api/skills/toggle",
+      });
+
+      return NextResponse.json({ success: true, restarted: false });
     }
 
     // ── Generic toggle: skill dirs and MCP servers ──

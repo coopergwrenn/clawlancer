@@ -46,6 +46,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { computeTopKMutual } from "@/lib/match-scoring";
+import { getSkillState, CONSENSUS_2026_SKILL_SLUG } from "@/lib/match-skill-status";
 
 export const dynamic = "force-dynamic";
 // Layer 1 is fast (~80ms PG query) but we set max so unexpected HNSW
@@ -141,6 +142,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "VM has no assigned user" }, { status: 409 });
   }
   const userId = vm.assigned_to as string;
+  const vmId = vm.id as string;
+
+  // ─ Skill gate ─
+  // Live-events skills (consensus-2026) default OFF. Pipeline calls this
+  // endpoint at the start of every cycle; if the skill is disabled we
+  // return a normal 200 with empty candidates and a reason flag so the
+  // pipeline can log the skip and exit silently. We deliberately do NOT
+  // 403 here — pipeline.py's existing "no_candidates" path handles 200
+  // + empty list cleanly without a backoff cascade.
+  const supabaseForSkill = getSupabase();
+  const skillState = await getSkillState(supabaseForSkill, vmId, CONSENSUS_2026_SKILL_SLUG);
+  if (!skillState.enabled) {
+    return NextResponse.json({
+      ok: true,
+      user_id: userId,
+      profile_version: null,
+      consent_tier: null,
+      candidates: [],
+      reason: "skill_disabled",
+      skill_slug: CONSENSUS_2026_SKILL_SLUG,
+    });
+  }
 
   // ─ Body validation (body optional — defaults are fine) ─
   let parsedBody: unknown = null;

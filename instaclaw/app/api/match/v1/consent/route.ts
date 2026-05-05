@@ -33,6 +33,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
+import { getSkillState, CONSENSUS_2026_SKILL_SLUG } from "@/lib/match-skill-status";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -56,7 +57,9 @@ function extractGatewayToken(req: NextRequest): string | null {
   return null;
 }
 
-async function authedUserIdFromToken(req: NextRequest): Promise<{ userId: string } | NextResponse> {
+async function authedUserIdFromToken(
+  req: NextRequest,
+): Promise<{ userId: string; vmId: string } | NextResponse> {
   const token = extractGatewayToken(req);
   if (!token) return NextResponse.json({ error: "Missing authentication" }, { status: 401 });
   const vm = await lookupVMByGatewayToken(token, "id, assigned_to");
@@ -64,7 +67,7 @@ async function authedUserIdFromToken(req: NextRequest): Promise<{ userId: string
   if (!vm.assigned_to) {
     return NextResponse.json({ error: "VM has no assigned user" }, { status: 409 });
   }
-  return { userId: vm.assigned_to as string };
+  return { userId: vm.assigned_to as string, vmId: vm.id as string };
 }
 
 export async function GET(req: NextRequest) {
@@ -82,12 +85,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "lookup failed", detail: error.message }, { status: 500 });
   }
 
+  // Skill enabled-state lookup. The agent uses this to decide whether to
+  // proactively ask the consent question (only when skill is on AND profile
+  // exists), or to do organic-activation detection (when skill is off and
+  // user mentions strong Consensus signals — see consensus-2026 skill
+  // SKILL.md §Organic Activation).
+  const skillState = await getSkillState(supabase, authed.vmId, CONSENSUS_2026_SKILL_SLUG);
+
   return NextResponse.json({
     ok: true,
     user_id: authed.userId,
     consent_tier: (data?.consent_tier as string) ?? null,
     profile_version: (data?.profile_version as number) ?? null,
     has_profile: !!data,
+    skill_enabled: skillState.enabled,
+    skill_slug: CONSENSUS_2026_SKILL_SLUG,
   });
 }
 

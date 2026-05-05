@@ -39,6 +39,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 const CATEGORIES = [
   "all",
+  "live-events",
   "creative",
   "productivity",
   "commerce",
@@ -50,6 +51,7 @@ const CATEGORIES = [
 
 const CATEGORY_LABELS: Record<string, string> = {
   all: "All",
+  "live-events": "Live Events",
   creative: "Creative",
   productivity: "Productivity",
   commerce: "Commerce",
