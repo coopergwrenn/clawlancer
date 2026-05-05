@@ -85,23 +85,30 @@ const PREFIX_L2_ONLY = "<l2-only> ";
 const PREFIX_FALLBACK = "<fallback: ";
 const PREFIX_DELIB_FAIL = "<deliberation unavailable: ";
 
+// Replace em-dashes (—) and en-dashes (–) with regular hyphens. The LLM
+// loves em-dashes, but Cooper has called them out as a tell of "AI text"
+// that breaks the agent-voice illusion. Runtime sanitization here covers
+// LLM-generated rationale + topic + window without re-deploying scripts.
+function stripDashes(s: string): string {
+  return s.replace(/[—–]/g, "-");
+}
+
 function classifyRationale(raw: string): { kind: MatchKind; cleaned: string } {
   const trimmed = raw.trimStart();
   if (trimmed.startsWith(PREFIX_L2_ONLY)) {
-    return { kind: "preliminary", cleaned: trimmed.slice(PREFIX_L2_ONLY.length).trim() };
+    return { kind: "preliminary", cleaned: stripDashes(trimmed.slice(PREFIX_L2_ONLY.length).trim()) };
   }
   if (trimmed.startsWith(PREFIX_FALLBACK)) {
-    // Strip the "<fallback: REASON>" wrapper if present
     const close = trimmed.indexOf(">");
     const after = close > 0 ? trimmed.slice(close + 1).trim() : trimmed;
-    return { kind: "fallback", cleaned: after || "best-effort match — deliberation step degraded" };
+    return { kind: "fallback", cleaned: stripDashes(after) || "best-effort match (deliberation step degraded)" };
   }
   if (trimmed.startsWith(PREFIX_DELIB_FAIL)) {
     const close = trimmed.indexOf(">");
     const after = close > 0 ? trimmed.slice(close + 1).trim() : trimmed;
-    return { kind: "fallback", cleaned: after || "best-effort match — deliberation step degraded" };
+    return { kind: "fallback", cleaned: stripDashes(after) || "best-effort match (deliberation step degraded)" };
   }
-  return { kind: "full", cleaned: trimmed };
+  return { kind: "full", cleaned: stripDashes(trimmed) };
 }
 
 async function loadMatches(userId: string): Promise<MatchesResult> {
@@ -172,14 +179,17 @@ async function loadMatches(userId: string): Promise<MatchesResult> {
       forward_score: 0,
       reverse_score: 0,
     };
+    const topic = d.conversation_topic as string | null;
+    const window = d.meeting_window as string | null;
+    const skip = d.skip_reason as string | null;
     out.push({
       candidate_user_id: cid,
       match_score: Number(d.match_score) || 0,
       rationale: cleaned,
       kind,
-      conversation_topic: (d.conversation_topic as string | null) ?? null,
-      meeting_window: (d.meeting_window as string | null) ?? null,
-      skip_reason: (d.skip_reason as string | null) ?? null,
+      conversation_topic: topic ? stripDashes(topic) : null,
+      meeting_window: window ? stripDashes(window) : null,
+      skip_reason: skip ? stripDashes(skip) : null,
       display: projectForConsent(candidate),
     });
   }
@@ -247,8 +257,8 @@ export default async function ConsensusMyMatchesPage() {
             className="text-base sm:text-lg max-w-xl mx-auto leading-relaxed"
             style={{ color: "#6b6b6b" }}
           >
-            Each match below is your own agent&apos;s judgment — based on weeks of
-            context with you — about who&apos;s worth a 30-minute meeting at
+            Each match below is your own agent&apos;s judgment, based on weeks of
+            context with you, about who&apos;s worth a 30-minute meeting at
             Consensus this week.
           </p>
           {freshness ? (
@@ -266,8 +276,8 @@ export default async function ConsensusMyMatchesPage() {
           <div className="max-w-3xl mx-auto">
             <div className="rounded-xl px-5 py-3 text-sm" style={{ ...glassOrange, color: "#7a3a26" }}>
               <span style={{ fontFamily: "var(--font-serif)" }}>Preliminary matches.</span>{" "}
-              Your agent is still building context with you — these are based
-              on profile fit, not on weeks of conversation. Talk to your
+              Your agent is still building context with you. These matches are
+              based on profile fit, not on weeks of conversation. Talk to your
               agent more and the matches will get sharper.
             </div>
           </div>
@@ -276,7 +286,7 @@ export default async function ConsensusMyMatchesPage() {
         <section className="px-4 pb-2">
           <div className="max-w-3xl mx-auto">
             <div className="rounded-xl px-5 py-3 text-sm" style={{ ...glassOrange, color: "#7a3a26" }}>
-              One or more matches below are best-effort — the deliberation
+              One or more matches below are best-effort. The deliberation
               step degraded. Your agent will produce richer rationale on the
               next pipeline run.
             </div>
@@ -454,7 +464,7 @@ export default async function ConsensusMyMatchesPage() {
             <div className="text-center pt-4">
               <p className="text-xs" style={{ color: "#9a9a9a" }}>
                 Updated as your agent learns more about you. Reach the candidate
-                via your agent — XMTP intro flow ships Wednesday.
+                via your agent. XMTP intro flow ships Wednesday.
               </p>
             </div>
           </div>
