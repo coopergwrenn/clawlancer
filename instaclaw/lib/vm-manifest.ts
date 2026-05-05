@@ -814,8 +814,42 @@ export const VM_MANIFEST = {
    *  staged at github.com/coopergwrenn/prctl-subreaper and lands as v87
    *  once the npm package is published — kept separate so each change
    *  has its own canary.
+   *
+   * v87 (2026-05-05): prctl-subreaper integration. New reconciler step
+   *  stepPrctlSubreaper (lib/vm-reconcile.ts) installs
+   *  prctl-subreaper@PRCTL_SUBREAPER_PINNED_VERSION via `npm install -g`,
+   *  verifies the native addon (.node binary) actually compiled,
+   *  smoke-tests `require('prctl-subreaper').stats()` returns
+   *  {running:true, supported:true}, then writes a separate systemd
+   *  drop-in `prctl-subreaper.conf` that sets:
+   *    Environment="NODE_PATH=<resolved npm root -g>"
+   *    Environment="NODE_OPTIONS=--require prctl-subreaper"
+   *    Environment="PRCTL_SUBREAPER_INTERVAL_MS=1000"
+   *    Environment="PRCTL_SUBREAPER_MIN_AGE_MS=5000"
+   *  The drop-in is intentionally separate from the existing override.conf
+   *  so rollback is a single-file delete + daemon-reload + restart.
+   *  daemon-reload runs after write; gateway restart deferred to the
+   *  existing Step 9 (only fires when result.gatewayRestartNeeded is set
+   *  by another step or by this step's drop-in write). If install or
+   *  smoke test fails, push to result.errors and SKIP the drop-in write
+   *  — gateway keeps running without the addon, no breakage. Per Rule
+   *  10 (verify-after-set) and Rule 22 (trim, don't nuke).
+   *
+   *  Behavioral effect: the openclaw-gateway Node process becomes a
+   *  PR_SET_CHILD_SUBREAPER for its own descendants (no tini wrapper, no
+   *  PID-1 dependency) and a polling /proc walker reaps zombies whose
+   *  ppid matches the gateway's PID. Catches all three classes: orphans
+   *  (Path A), libuv #1911 close-before-exit zombies (Path B — the one
+   *  tini-as-PID-1 cannot reap), and child.kill() leaks (Path C).
+   *  See docs/prd/zombie-reaping-tini-analysis-2026-05-05.md §11.4 for
+   *  the full design discussion and docs/prd/v87-prctl-subreaper-
+   *  integration-plan.md for the canary + rollback plan.
+   *
+   *  Canary discipline (Rules 3, 4, 17): vm-050 manual install + 24h
+   *  hold BEFORE merging this branch to main and letting the
+   *  reconcile-fleet cron push the v87 drop-in fleet-wide.
    */
-  version: 86,
+  version: 87,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
