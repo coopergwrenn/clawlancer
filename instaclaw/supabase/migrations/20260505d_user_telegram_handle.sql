@@ -25,3 +25,5 @@ COMMENT ON COLUMN instaclaw_users.telegram_handle IS
 CREATE INDEX IF NOT EXISTS idx_users_handle_null
   ON instaclaw_users (id)
   WHERE telegram_handle IS NULL;
+
+-- Re-trigger build after migration applied (PostgREST schema cache lag)
