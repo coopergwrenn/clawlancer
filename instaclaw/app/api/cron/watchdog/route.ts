@@ -209,19 +209,35 @@ export async function GET(req: NextRequest) {
 
       // ──────────── HEALTHY-PATH: probe succeeded ────────────
       if (probeOk) {
-        await writeAudit(supabase, {
-          vm_id: vm.id,
-          user_id: vm.assigned_to,
-          action: "probe_healthy",
-          prior_state: derivedState,
-          new_state: "HEALTHY",
-          consecutive_failures: 0,
-          meta: { mode, probeLatencyMs, gatewayUrl: vm.gateway_url },
-        });
-
-        // Reset failure counter if currently nonzero (and we're not in shadow).
-        // The reset itself is informational — we don't gate it on shadow because
-        // it's harmless (we're just clearing degraded/unhealthy state).
+        // probe_healthy audit row INTENTIONALLY NOT WRITTEN.
+        //
+        // 2026-05-05 audit: instaclaw_watchdog_audit had 129K rows growing
+        // 1.8K/hour — 96.4% were probe_healthy no-op rows with zero
+        // forensic value (no action taken; no state transition). The
+        // table was the largest in the DB by 25× and Supabase flagged
+        // resource exhaustion the day before Consensus launch.
+        //
+        // What's still written (Rule 17 forensic invariants preserved):
+        //   - probe_failed: every failed probe (~1% of cycles)
+        //   - reset_after_recovery: when a previously-failing VM probes
+        //     healthy (rare, forensically valuable — captures recovery
+        //     moments)
+        //   - All restart_skipped_* (every gate that blocked a restart)
+        //   - restart_attempted / restart_succeeded / restart_failed
+        //   - inspection_skipped_privacy_mode, quarantined, wake_*
+        //
+        // The fleet-failure-ratio guard (line ~186) computes from the
+        // in-memory probeResults of THIS cycle — it does NOT read the
+        // audit table — so suppressing healthy rows does not affect the
+        // restart gate. The watchdog state machine reads
+        // watchdog_consecutive_failures from instaclaw_vms, not the
+        // audit table — also unaffected. There are zero readers of the
+        // audit table in the production codebase (verified via grep);
+        // it is forensic-only per Rule 17.
+        //
+        // Reset detection (below) still runs for the rare healthy-probe-
+        // after-failure case, and we still write a reset_after_recovery
+        // row when it fires — that IS the moment worth recording.
         if ((vm.watchdog_consecutive_failures ?? 0) > 0 || vm.watchdog_first_failure_at) {
           await supabase
             .from("instaclaw_vms")

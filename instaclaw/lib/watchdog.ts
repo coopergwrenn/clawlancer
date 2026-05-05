@@ -109,9 +109,17 @@ export async function isPrivacyModeActive(
 
 // ─── Audit trail ───────────────────────────────────────────────────────────
 // Keep this enum in sync with the CHECK constraint in the migration.
+//
+// "probe_healthy" was REMOVED from the union on 2026-05-05 (the day before
+// Consensus 2026 launch) after diagnosis showed it was 96% of all writes
+// at 1.8K/hour with zero forensic value (no state transition, no action
+// taken). The DB CHECK constraint still permits the value — historical
+// rows pre-prune may have it — but no code path in this repo should
+// emit a new one. If you find yourself wanting to re-add a no-op
+// "probe was OK" audit row, read app/api/cron/watchdog/route.ts:212
+// first; the rationale for never doing this again is in that comment.
 
 export type WatchdogAction =
-  | "probe_healthy"
   | "probe_failed"
   | "restart_attempted"
   | "restart_succeeded"
