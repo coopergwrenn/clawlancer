@@ -60,6 +60,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
+import { isOutreachEnabled, flagName } from "@/lib/outreach-feature-flag";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -175,6 +176,18 @@ export async function POST(req: NextRequest) {
 
   // ── Phase: retry (sender) ──
   if (phase === "retry") {
+    if (!isOutreachEnabled()) {
+      // Kill-switch: don't bump retry counters when the feature is
+      // disabled. The sender's pipeline will see allowed=false and
+      // skip; ledger rows freeze at their current state until the
+      // flag flips back.
+      return NextResponse.json({
+        ok: true,
+        allowed: false,
+        reason: "feature_disabled",
+        flag: flagName(),
+      });
+    }
     const logId = b.log_id;
     if (!isUUID(logId)) return NextResponse.json({ error: "log_id must be UUID" }, { status: 400 });
 
@@ -256,6 +269,17 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Phase: reserve (default) ──
+  if (!isOutreachEnabled()) {
+    // Kill-switch — refuse new outreach. Default response shape mirrors
+    // the rate-limit / duplicate denial so the sender's pipeline treats
+    // it as a soft skip instead of a hard error.
+    return NextResponse.json({
+      ok: true,
+      allowed: false,
+      reason: "feature_disabled",
+      flag: flagName(),
+    });
+  }
   const targetUserId = b.target_user_id;
   const targetXmtpAddress = b.target_xmtp_address;
   const top1Anchor = b.top1_anchor;
