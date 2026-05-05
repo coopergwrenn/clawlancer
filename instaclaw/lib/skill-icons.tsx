@@ -132,6 +132,10 @@ const SKILL_ORB_MAP: Record<string, SkillOrbEntry> = {
   "higgsfield-video":      { color: "#E87461", type: "brand-image", src: "/skill-icons/higgsfield.jpg" },
   "virtuals-agdp":         { color: "#7C3AED", type: "brand-image", src: "/skill-icons/virtuals.png" },
   "clawlancer":            { color: "#E5A13B", type: "brand-image", src: "/skill-icons/clawlancer.png" },
+  // Live Events. Orb color matches the Consensus brand cyan so the
+  // circular crop of the logo blends seamlessly into the orb's
+  // background fill.
+  "consensus-2026":        { color: "#22D3EE", type: "brand-image", src: "/skill-icons/consensus-2026.jpg" },
 };
 
 // ── Orb render component ────────────────────────────
