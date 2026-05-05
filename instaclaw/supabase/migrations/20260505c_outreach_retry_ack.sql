@@ -57,3 +57,5 @@ CREATE INDEX IF NOT EXISTS idx_outreach_unacked_outbound
 CREATE INDEX IF NOT EXISTS idx_outreach_unacked_target
   ON agent_outreach_log (target_user_id, sent_at ASC)
   WHERE status = 'sent' AND ack_received_at IS NULL;
+
+-- Re-trigger Vercel build after migration applied
