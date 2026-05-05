@@ -146,9 +146,24 @@ export async function GET(req: NextRequest) {
   // Fix 7: Use HTTP endpoint as primary monitor. Only SSH for diagnosis.
   // This eliminates fail2ban/UFW issues and reduces SSH connections from
   // ~200/cycle to only the unhealthy VMs that need intervention.
+  //
+  // 2026-05-05 — batched DB writes. Previously each healthy VM triggered
+  // an individual UPDATE inside the loop (855 UPDATEs/cycle on a healthy
+  // fleet, dominant Supabase load source per the pre-Consensus diagnostic).
+  // We now collect IDs into two buckets and do TWO bulk UPDATEs after the
+  // loop: one for plain timestamp touches, one for counter resets. The
+  // counter-reset payload is hard-coded identical across VMs ({status:
+  // 'healthy', health_fail_count: 0, ssh_fail_count: 0}), so a single
+  // UPDATE ... WHERE id IN (...) is semantically equivalent to N
+  // single-row UPDATEs. Net: 855 → 2 queries on the dominant path.
+  // Crash-window risk: a process kill between loop-end and bulk-write
+  // loses one cycle of timestamps; the next 2-min cron tick catches up
+  // idempotently. Acceptable.
   // ========================================================================
   const sshAliveVms: typeof vms = [];
   const httpFailedVms: typeof vms = [];
+  const healthyVmIdsTouchOnly: string[] = []; // need only last_health_check bumped
+  const healthyVmIdsResetCounters: string[] = []; // need full counter reset
 
   for (const vm of vms) {
     // Fix 1: Skip VMs in restart grace period
@@ -192,19 +207,18 @@ export async function GET(req: NextRequest) {
       httpPreCheckPassed++;
       sshAliveVms.push(vm);
 
-      // Always update last_health_check + reset any stale failure counters
-      const healthUpdate: Record<string, unknown> = {
-        last_health_check: new Date().toISOString(),
-      };
-      if ((vm.health_fail_count ?? 0) > 0 || (vm.ssh_fail_count ?? 0) > 0 || vm.health_status !== "healthy") {
-        healthUpdate.health_status = "healthy";
-        healthUpdate.health_fail_count = 0;
-        healthUpdate.ssh_fail_count = 0;
+      // Bucket the VM for the post-loop bulk UPDATE. Same logic as before:
+      // counter reset only when ANY of (health_fail_count, ssh_fail_count
+      // were non-zero, or health_status drifted from "healthy").
+      const needsReset =
+        (vm.health_fail_count ?? 0) > 0 ||
+        (vm.ssh_fail_count ?? 0) > 0 ||
+        vm.health_status !== "healthy";
+      if (needsReset) {
+        healthyVmIdsResetCounters.push(vm.id);
+      } else {
+        healthyVmIdsTouchOnly.push(vm.id);
       }
-      await supabase
-        .from("instaclaw_vms")
-        .update(healthUpdate)
-        .eq("id", vm.id);
 
       healthy++;
       continue;
@@ -212,6 +226,47 @@ export async function GET(req: NextRequest) {
 
     // HTTP failed — this VM needs SSH diagnosis
     httpFailedVms.push(vm);
+  }
+
+  // Bulk UPDATE 1: VMs that only need their last_health_check touched.
+  // Single SQL: UPDATE instaclaw_vms SET last_health_check = $1 WHERE id IN (...).
+  // Replaces N single-row UPDATEs.
+  const passZeroTimestamp = new Date().toISOString();
+  if (healthyVmIdsTouchOnly.length > 0) {
+    const { error: touchErr } = await supabase
+      .from("instaclaw_vms")
+      .update({ last_health_check: passZeroTimestamp })
+      .in("id", healthyVmIdsTouchOnly);
+    if (touchErr) {
+      // Log but don't fail the cron — next cycle re-evaluates idempotently.
+      logger.warn("health-check pass0 bulk-touch UPDATE failed", {
+        route: "cron/health-check",
+        n: healthyVmIdsTouchOnly.length,
+        error: touchErr.message,
+      });
+    }
+  }
+
+  // Bulk UPDATE 2: VMs that need counter reset + healthy status. Same
+  // hard-coded payload across all rows in this bucket, so a single
+  // bulk UPDATE is semantically identical to N single-row UPDATEs.
+  if (healthyVmIdsResetCounters.length > 0) {
+    const { error: resetErr } = await supabase
+      .from("instaclaw_vms")
+      .update({
+        last_health_check: passZeroTimestamp,
+        health_status: "healthy",
+        health_fail_count: 0,
+        ssh_fail_count: 0,
+      })
+      .in("id", healthyVmIdsResetCounters);
+    if (resetErr) {
+      logger.warn("health-check pass0 bulk-reset UPDATE failed", {
+        route: "cron/health-check",
+        n: healthyVmIdsResetCounters.length,
+        error: resetErr.message,
+      });
+    }
   }
 
   // ========================================================================
