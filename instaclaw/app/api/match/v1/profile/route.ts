@@ -251,6 +251,16 @@ export async function POST(req: NextRequest) {
     upsertPayload.embedding_model = embeddingModel;
   }
 
+  // Partner-aware consent default. Visiting /edge-city or /consensus is
+  // itself the discoverability consent — those users wouldn't be on a
+  // partner page if they didn't want to be matched. Generic /signup
+  // users still hit the column default ('hidden') and need the explicit
+  // /api/match/v1/consent opt-in. Only fires on first insert to avoid
+  // overwriting a user who later set themselves to hidden via /consent.
+  if (!existing && (partner === "edge_city" || partner === "consensus_2026")) {
+    upsertPayload.consent_tier = "interests";
+  }
+
   const { data: upserted, error: upsertErr } = await supabase
     .from("matchpool_profiles")
     .upsert(upsertPayload, { onConflict: "user_id" })
