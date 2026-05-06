@@ -6,63 +6,48 @@
  *   instaclaw/scripts/consensus_match_rerank.py      (Component 7 — Layer 2)
  *   instaclaw/scripts/consensus_match_deliberate.py  (Component 8 — Layer 3)
  *   instaclaw/scripts/consensus_match_consent.py     (Component 10 helper)
+ *   instaclaw/scripts/consensus_intent_sync.py       (Component 4)
+ *   instaclaw/scripts/consensus_intent_extract.py    (Component 4)
+ *   instaclaw/scripts/consensus_match_skill_toggle.py (Path 2 §Organic Activation)
  *
- * Why lazy: Turbopack's "Collecting page data" pass evaluates server
- * modules with __dirname resolving to a phantom path where the .py
- * files don't exist (same issue as lib/privacy-bridge-script.ts).
- * Top-level fs.readFileSync would crash the build. Lazy reads defer
- * the actual file load to the first reconciler call, by which point
- * we're in real serverless runtime with outputFileTracingIncludes
- * (next.config.ts) ensuring the files are present.
+ * 2026-05-05: switched from runtime fs.readFileSync to build-time embedded
+ * content. The previous approach used `path.resolve(__dirname, "..", "scripts", filename)`
+ * + Next.js `outputFileTracingIncludes` to bundle the .py files into the
+ * serverless function output. No glob shape worked on Vercel — local
+ * `next build` traced the files correctly into route.js.nft.json, but
+ * the deploy bundle didn't actually copy them, so the reconciler threw
+ * `ENOENT '/ROOT/instaclaw/scripts/consensus_match_pipeline.py'` for every
+ * cv=82 VM that survived long enough to reach stepFiles, holding the
+ * entire 86-VM cohort behind that one error. Likely a Vercel-monorepo /
+ * @vercel/nft asymmetry with Next 16's tracing — not worth debugging
+ * further when embedding eliminates the dependency entirely.
  *
- * The reconciler's getTemplateContent() falls back to LAZY_RESOLVERS
- * if a key isn't in TEMPLATE_REGISTRY, so we register the lazy
- * resolvers at module load time without doing any I/O.
+ * Now: scripts/_generate-matchpool-content.ts reads each .py file at
+ * build time and writes lib/matchpool-scripts-content.ts with the
+ * contents as base64 → utf-8 string exports. This file imports those
+ * constants and registers them. Next.js compiles the strings into the
+ * JS bundle through the normal import graph — no fs reads, no
+ * outputFileTracingIncludes, no Vercel-specific bundling magic.
  *
- * Imported by lib/ssh.ts adjacent to its other registerTemplate calls
- * (STRIP_THINKING_SCRIPT, etc.) — the import is what triggers
- * registration. See vm-manifest.ts files[] for the consumer entries.
+ * The generator runs as `npm run prebuild` (see package.json). Editing
+ * a .py file invalidates the build; the generator picks it up on the
+ * next build.
  */
-import * as fs from "fs";
-import * as path from "path";
 import { registerLazyTemplate } from "./vm-manifest";
+import {
+  CONSENSUS_MATCH_PIPELINE_PY,
+  CONSENSUS_MATCH_RERANK_PY,
+  CONSENSUS_MATCH_DELIBERATE_PY,
+  CONSENSUS_MATCH_CONSENT_PY,
+  CONSENSUS_INTENT_SYNC_PY,
+  CONSENSUS_INTENT_EXTRACT_PY,
+  CONSENSUS_MATCH_SKILL_TOGGLE_PY,
+} from "./matchpool-scripts-content";
 
-const cache: Record<string, string> = {};
-
-function lazyLoad(filename: string): string {
-  if (!cache[filename]) {
-    cache[filename] = fs.readFileSync(
-      path.resolve(__dirname, "..", "scripts", filename),
-      "utf-8",
-    );
-  }
-  return cache[filename];
-}
-
-registerLazyTemplate("CONSENSUS_MATCH_PIPELINE_PY", () =>
-  lazyLoad("consensus_match_pipeline.py"),
-);
-registerLazyTemplate("CONSENSUS_MATCH_RERANK_PY", () =>
-  lazyLoad("consensus_match_rerank.py"),
-);
-registerLazyTemplate("CONSENSUS_MATCH_DELIBERATE_PY", () =>
-  lazyLoad("consensus_match_deliberate.py"),
-);
-registerLazyTemplate("CONSENSUS_MATCH_CONSENT_PY", () =>
-  lazyLoad("consensus_match_consent.py"),
-);
-// Component 4 scripts. Previously only deployed to vm-780 by hand; without
-// these in the manifest the rest of the fleet has no way to populate
-// matchpool_profiles. Both gate on the consensus-2026 skill state via
-// /api/match/v1/consent (so non-attending users incur zero Haiku cost).
-registerLazyTemplate("CONSENSUS_INTENT_SYNC_PY", () =>
-  lazyLoad("consensus_intent_sync.py"),
-);
-registerLazyTemplate("CONSENSUS_INTENT_EXTRACT_PY", () =>
-  lazyLoad("consensus_intent_extract.py"),
-);
-// Path 2 §Organic Activation helper. Called by the agent when the user
-// agrees to enable matching after a strong-signal offer.
-registerLazyTemplate("CONSENSUS_MATCH_SKILL_TOGGLE_PY", () =>
-  lazyLoad("consensus_match_skill_toggle.py"),
-);
+registerLazyTemplate("CONSENSUS_MATCH_PIPELINE_PY", () => CONSENSUS_MATCH_PIPELINE_PY);
+registerLazyTemplate("CONSENSUS_MATCH_RERANK_PY", () => CONSENSUS_MATCH_RERANK_PY);
+registerLazyTemplate("CONSENSUS_MATCH_DELIBERATE_PY", () => CONSENSUS_MATCH_DELIBERATE_PY);
+registerLazyTemplate("CONSENSUS_MATCH_CONSENT_PY", () => CONSENSUS_MATCH_CONSENT_PY);
+registerLazyTemplate("CONSENSUS_INTENT_SYNC_PY", () => CONSENSUS_INTENT_SYNC_PY);
+registerLazyTemplate("CONSENSUS_INTENT_EXTRACT_PY", () => CONSENSUS_INTENT_EXTRACT_PY);
+registerLazyTemplate("CONSENSUS_MATCH_SKILL_TOGGLE_PY", () => CONSENSUS_MATCH_SKILL_TOGGLE_PY);

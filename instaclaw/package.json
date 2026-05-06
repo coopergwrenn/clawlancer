@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
-    "build": "npx tsx scripts/verify-migrations.ts && rm -rf .next/cache/.tsbuildinfo && next build",
+    "build": "npx tsx scripts/verify-migrations.ts && npx tsx scripts/_generate-matchpool-content.ts && rm -rf .next/cache/.tsbuildinfo && next build",
     "start": "next start",
     "lint": "eslint"
   },
