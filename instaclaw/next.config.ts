@@ -20,16 +20,21 @@ const nextConfig: NextConfig = {
       // without this include Next's tracing skips them and the reconciler
       // throws on getTemplateContent for the matchpool keys.
       //
-      // 2026-05-05: lazy-loaded matchpool .py scripts. Three glob patterns
-      // tried and each silently dropped by Next 15's tracer:
+      // 2026-05-05: lazy-loaded matchpool .py scripts. Multiple glob shapes
+      // tried — each silently dropped by Next 15's tracer:
       //   "./scripts/consensus_match_pipeline.py" (3f3443d2 — individual)
       //   "./scripts/consensus_*.py" (3f3443d2 — mid-name wildcard)
       //   "./scripts/**/*.py" (d28bf919 — recursive .py-only)
-      // Switched to "./scripts/**/*" — the literal shape that works for
-      // ./skills/**/* and ./scripts/browser-relay-server/**/* in the same
-      // config object. Bundles all of scripts/ but everything not .py is
-      // .ts/.tsx/.mjs which Next would already bundle anyway via import
-      // graph. Trade-off accepted to unblock the cv=82 cohort (86 VMs).
+      //   "./scripts/**/*" (cb4d20c3 — recursive everything)
+      //
+      // Hypothesis: Next's glob requires `**` to match ≥1 path segment, so
+      // `./scripts/**/*` only matches files in *subdirs* of scripts/. The
+      // working `./skills/**/*` and `./scripts/browser-relay-server/**/*`
+      // both point at directories with nested file structure. The matchpool
+      // .py files live directly in `instaclaw/scripts/` (no subdir) so
+      // every `**`-style glob misses them. Pair with a top-level `*.py`
+      // glob to catch them.
+      "./scripts/*.py",
       "./scripts/**/*",
     ],
   },
