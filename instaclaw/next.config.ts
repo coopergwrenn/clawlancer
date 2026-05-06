@@ -20,15 +20,17 @@ const nextConfig: NextConfig = {
       // without this include Next's tracing skips them and the reconciler
       // throws on getTemplateContent for the matchpool keys.
       //
-      // 2026-05-05: switched from individual file paths to globs. Individual
-      // entries (e.g. "./scripts/consensus_match_pipeline.py") were silently
-      // not being bundled by Next 15's tracer — every cv=82 VM that survived
-      // long enough to reach stepFiles hit `ENOENT '/ROOT/instaclaw/scripts/
+      // 2026-05-05: switched from individual file paths to a **/* glob.
+      // Individual file entries ("./scripts/consensus_match_pipeline.py") and
+      // mid-name wildcards ("./scripts/consensus_*.py") were both silently
+      // dropped by Next 15's tracer — every cv=82 VM that survived long
+      // enough to reach stepFiles hit `ENOENT '/ROOT/instaclaw/scripts/
       // consensus_match_pipeline.py'` and pushFailed → cv held. Hidden under
       // the reconcile-fleet 300s timeout until the batch=10→3 fix landed.
-      // Globs (./skills/**/*, ./scripts/browser-relay-server/**/*) work fine,
-      // so we use the same shape here. Catches any future consensus_*.py too.
-      "./scripts/consensus_*.py",
+      // The only shape that works in this codebase is `<dir>/**/*` (see the
+      // working `./skills/**/*` and `./scripts/browser-relay-server/**/*`
+      // entries above). Use the same shape here.
+      "./scripts/**/*.py",
     ],
   },
   async rewrites() {
