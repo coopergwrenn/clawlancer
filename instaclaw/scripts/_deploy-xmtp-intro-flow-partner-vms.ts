@@ -94,6 +94,12 @@ const FILES = [
       "retry_unacked_outreach",
       "MY_INTROS_URL",
       "from_telegram_handle",
+      // Sender-side notification refresh (2026-05-05): refactored
+      // header + truthful CTA line. These markers catch a stale-cache
+      // regression that drops the new format.
+      "_build_sender_cta_line",
+      "Found one for you at Consensus",
+      "fetch_target_contact",
     ],
   },
   {
@@ -107,6 +113,9 @@ const FILES = [
       // Draft C envelope-header field — confirms the script is
       // populating the count + cap fields the receiver wrapper reads.
       "target_pending_intro_count",
+      // Sender-notification refresh — common_out fields surfaced on
+      // every output path so pipeline can compose accurate Telegram.
+      "common_out",
     ],
   },
 ];

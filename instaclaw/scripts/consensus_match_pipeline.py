@@ -351,34 +351,122 @@ def strip_rationale_prefix(s: str) -> str:
     return s
 
 
-def format_match_notification(top_delib: dict, kind: str) -> str:
-    """Compose the Telegram message body. The rationale is already in
-    first-person agent voice (per the L3 prompt's voice rule), so we
-    can lean on it verbatim. We add a short framing sentence + link.
+def _build_sender_cta_line(target_name: str, target_handle: str | None,
+                           outreach_status: str | None,
+                           outreach_reason: str | None) -> str:
+    """The action line in the sender-side notification — varies by what
+    the agent actually did. The pipeline reorders so outreach fires
+    BEFORE notification, which means we can be honest here ('I sent
+    the intro') instead of speculating ('I'll send shortly')."""
+    handle_part = f"@{target_handle}" if target_handle else None
 
-    Telegram supports plain text well; we avoid markdown to dodge the
-    parse-mode flag. Keep it under ~600 chars total to fit naturally
-    in a phone notification."""
+    if outreach_status == "sent":
+        if handle_part:
+            return (
+                f"I just sent {target_name}'s agent an intro on your behalf. "
+                f"You can also DM them directly: {handle_part}."
+            )
+        return f"I just sent {target_name}'s agent an intro on your behalf."
+
+    if outreach_status == "skipped" and outreach_reason in ("rate_limited",):
+        if handle_part:
+            return f"Hit my daily intro cap so I didn't reach out. DM {target_name} directly: {handle_part}."
+        return "Hit my daily intro cap so I didn't reach out."
+
+    if outreach_status == "skipped" and outreach_reason == "target_inbox_full":
+        if handle_part:
+            return f"{target_name} is at their daily intro cap. DM them directly: {handle_part}."
+        return f"{target_name} is at their daily intro cap."
+
+    if outreach_status == "skipped" and outreach_reason == "no_contact_resolved":
+        return f"{target_name} isn't in our matchpool yet, so I couldn't reach their agent. See the match details below."
+
+    if outreach_status == "skipped" and outreach_reason == "duplicate":
+        if handle_part:
+            return f"Already sent an intro about this match. DM {target_name} directly: {handle_part}."
+        return "Already sent an intro about this match earlier."
+
+    if outreach_status == "skipped" and outreach_reason == "cold_start":
+        # Cold-start path: outreach intentionally not fired.
+        if handle_part:
+            return f"DM {target_name} directly: {handle_part}."
+        return "Match details below."
+
+    if outreach_status == "send_failed" or outreach_status == "failed":
+        if handle_part:
+            return f"My intro to {target_name} didn't go through. Try DMing them: {handle_part}."
+        return "My intro send didn't go through. See match details below."
+
+    # Default fallback (outreach didn't run, error state, etc.)
+    if handle_part:
+        return f"DM {target_name} directly: {handle_part}."
+    return "See match details below."
+
+
+def format_match_notification(
+    top_delib: dict,
+    kind: str,
+    target_name: str,
+    target_handle: str | None,
+    outreach_status: str | None,
+    outreach_reason: str | None,
+    intro_cap: int,
+) -> str:
+    """Sender-side Telegram message when the user's pipeline finds them
+    a top-1 match.
+
+    Refreshed 2026-05-05 (Cooper). Cleaner structure with similar
+    energy to Draft C receiver-side intros, but from the perspective
+    of 'here's who I found for you' rather than 'someone's agent
+    reached out.' Uses outreach_status to truthfully report whether
+    the cross-agent intro fired.
+
+    Structure:
+      1. Header: 'Found one for you at Consensus: {name}' (+ preliminary tag)
+      2. Rationale (agent voice, verbatim)
+      3. Topic + Window labeled
+      4. CTA line — varies by outreach result (see _build_sender_cta_line)
+      5. 'All your matches: ...' link
+      6. Cap-controls footer
+    """
     rationale = strip_rationale_prefix(top_delib.get("rationale", "")).strip()
     topic = (top_delib.get("conversation_topic") or "").strip()
     window = (top_delib.get("meeting_window") or "").strip()
 
-    # Cap each piece so the total stays mobile-friendly
+    # Cap each piece so the total stays mobile-friendly.
     rationale = rationale[:380]
     topic = topic[:200]
     window = window[:120]
 
+    name_for_header = target_name or "someone"
     if kind == "preliminary":
-        intro = "I found someone for you at Consensus this week (preliminary — I'll get sharper as I learn more about you):"
+        header = f"Found one for you at Consensus: {name_for_header} (preliminary, will sharpen as I learn more about you)."
     else:
-        intro = "I found someone you should meet at Consensus this week:"
+        header = f"Found one for you at Consensus: {name_for_header}."
 
-    parts = [intro, "", rationale]
+    parts: list[str] = [header]
+    if rationale:
+        parts.extend(["", rationale])
     if topic:
-        parts.extend(["", f"Talk about: {topic}"])
+        parts.extend(["", f"Topic: {topic}"])
     if window:
-        parts.append(f"When: {window}")
-    parts.extend(["", "All 3 here: https://instaclaw.io/consensus/my-matches"])
+        parts.append(f"Window: {window}")
+
+    parts.append("")
+    parts.append(_build_sender_cta_line(
+        name_for_header, target_handle, outreach_status, outreach_reason,
+    ))
+
+    parts.append("")
+    parts.append("All your matches: https://instaclaw.io/consensus/my-matches")
+
+    if intro_cap > 0:
+        parts.append("")
+        unit = "intro" if intro_cap == 1 else "intros"
+        parts.append(
+            f"(Set to {intro_cap} {unit}/day. Tell me 'pause intros' or 'change to N/day' anytime.)"
+        )
+
     return "\n".join(parts)
 
 
@@ -647,6 +735,23 @@ def read_self_xmtp_address() -> str | None:
         return None
 
 
+def fetch_target_contact(token: str, target_user_id: str) -> dict | None:
+    """Lightweight contact-info fetch for a single target — populates
+    target_name + telegram_handle + intro_per_receiver_cap so the
+    user-facing notification has these fields even on early-skip
+    outreach paths (cold_start, no_outreach_script).
+
+    The anti-harvest gate in /contact-info passes because the caller's
+    pipeline has just deliberated against this target.
+    """
+    body = {"user_ids": [target_user_id]}
+    status, resp = post_json(CONTACT_INFO_URL, body, token)
+    if status != 200 or not resp:
+        return None
+    contacts = resp.get("contacts") or []
+    return contacts[0] if contacts else None
+
+
 def fetch_self_info(token: str) -> dict | None:
     """Resolve the caller's own display fields (name, agent_name,
     telegram_bot_username, identity_wallet) via /api/match/v1/contact-info
@@ -695,30 +800,42 @@ def maybe_send_agent_outreach(
         return {"status": "skipped", "reason": "no_top1"}
     if last_top1 == new_top1:
         return {"status": "skipped", "reason": "no_top1_change"}
+
+    # Resolve target identity early so EVERY return path carries
+    # target_name + handle + cap. The user-facing notification
+    # (maybe_send_match_notification) needs these regardless of
+    # whether the outreach itself fired.
+    target_contact = fetch_target_contact(token, new_top1) or {}
+    target_enrich = {
+        "target_name": target_contact.get("name") or "someone",
+        "target_handle": target_contact.get("telegram_handle") or None,
+        "intro_cap": int(target_contact.get("intro_per_receiver_cap") or 3),
+    }
+
     if is_cold_start:
         # L2-only rationales are too thin for agent-to-agent intros.
         # Notify the user via Telegram (preliminary) but DO NOT spam
         # the matched person's agent based on profile-fit alone.
-        return {"status": "skipped", "reason": "cold_start"}
+        return {**target_enrich, "status": "skipped", "reason": "cold_start"}
     if not os.path.isfile(OUTREACH_SCRIPT):
-        return {"status": "skipped", "reason": "no_outreach_script"}
+        return {**target_enrich, "status": "skipped", "reason": "no_outreach_script"}
 
     # Find the deliberation for new_top1.
     top_delib = next((d for d in deliberations if d.get("user_id") == new_top1), None)
     if not top_delib:
-        return {"status": "skipped", "reason": "no_delib_for_top1"}
+        return {**target_enrich, "status": "skipped", "reason": "no_delib_for_top1"}
     rationale_raw = (top_delib.get("rationale") or "").lstrip()
     if (
         rationale_raw.startswith(RATIONALE_PREFIX_FALLBACK)
         or rationale_raw.startswith(RATIONALE_PREFIX_DELIB_FAIL)
         or rationale_raw.startswith(RATIONALE_PREFIX_L2_ONLY)
     ):
-        return {"status": "skipped", "reason": "top1_not_full_deliberation"}
+        return {**target_enrich, "status": "skipped", "reason": "top1_not_full_deliberation"}
 
     # Resolve self info for the envelope.
     self_info = fetch_self_info(token)
     if not self_info:
-        return {"status": "skipped", "reason": "self_info_unresolved"}
+        return {**target_enrich, "status": "skipped", "reason": "self_info_unresolved"}
 
     self_xmtp = read_self_xmtp_address()
     payload = {
@@ -753,15 +870,20 @@ def maybe_send_agent_outreach(
             env=env,
         )
         if proc.returncode != 0:
-            return {"status": "error", "reason": f"rc={proc.returncode}", "stderr": (proc.stderr or "")[:240]}
+            return {**target_enrich, "status": "error", "reason": f"rc={proc.returncode}", "stderr": (proc.stderr or "")[:240]}
         try:
-            return json.loads((proc.stdout or "").strip().split("\n")[-1])
+            # Script's JSON output already carries target_name/handle/cap.
+            # Merging target_enrich first means script values win on
+            # collision (script's contact-info call is the more recent
+            # read).
+            parsed = json.loads((proc.stdout or "").strip().split("\n")[-1])
+            return {**target_enrich, **parsed}
         except (json.JSONDecodeError, ValueError):
-            return {"status": "error", "reason": "parse_failed", "stdout": (proc.stdout or "")[:240]}
+            return {**target_enrich, "status": "error", "reason": "parse_failed", "stdout": (proc.stdout or "")[:240]}
     except subprocess.TimeoutExpired:
-        return {"status": "error", "reason": "timeout"}
+        return {**target_enrich, "status": "error", "reason": "timeout"}
     except Exception as e:  # noqa: BLE001
-        return {"status": "error", "reason": f"exception_{type(e).__name__}"}
+        return {**target_enrich, "status": "error", "reason": f"exception_{type(e).__name__}"}
 
 
 def maybe_send_match_notification(
@@ -769,6 +891,7 @@ def maybe_send_match_notification(
     top3: list[str],
     last_top1: str | None,
     is_cold_start: bool,
+    outreach_result: dict | None = None,
 ) -> str | None:
     """Send a Telegram notification iff the top1 candidate changed since
     last successful cycle (or this is the first successful cycle).
@@ -777,7 +900,14 @@ def maybe_send_match_notification(
 
     Material-change gate avoids spamming the user every 30 minutes when
     the same person sits at top. Per PRD §2.4 cadence rules:
-    notifications fire ONLY on top-3 material shifts."""
+    notifications fire ONLY on top-3 material shifts.
+
+    `outreach_result` is the dict returned by maybe_send_agent_outreach
+    when called BEFORE this function (pipeline now reorders so the
+    outreach attempt completes first, allowing the notification to
+    truthfully report what the agent did). Carries: status, reason,
+    target_name, target_handle, intro_cap.
+    """
     if not top3:
         return None
     new_top1 = top3[0]
@@ -799,7 +929,16 @@ def maybe_send_match_notification(
         return new_top1
 
     kind = "preliminary" if is_cold_start else "full"
-    message = format_match_notification(top_delib, kind)
+    or_ = outreach_result or {}
+    message = format_match_notification(
+        top_delib=top_delib,
+        kind=kind,
+        target_name=(or_.get("target_name") or "").strip() or "someone",
+        target_handle=(or_.get("target_handle") or None),
+        outreach_status=or_.get("status"),
+        outreach_reason=or_.get("reason"),
+        intro_cap=int(or_.get("intro_cap") or 3),
+    )
     send_telegram_notification(message)
     return new_top1
 
@@ -1071,30 +1210,41 @@ def main() -> int:
     top3 = body.get("top3", [])
     log(f"post_results_ok elapsed_ms={post_ms} written={body.get('written')} top3_n={len(top3)}")
 
-    # ─ Telegram notification on material change ─
-    # Material gate: top1 changed since last successful cycle. Cold-start
-    # cycles get the same notification path but with a "preliminary" frame.
+    # ─ Material-change gate (top1 changed since last successful cycle) ─
+    # Reordered 2026-05-05: outreach now fires BEFORE the user-facing
+    # Telegram notification so the message can truthfully say "I sent
+    # the intro" vs "I hit my cap" vs "their inbox was full." Both
+    # functions remain idempotent and safe to call independently;
+    # this just sequences them so the notification gets the outreach
+    # result as input.
     last_top3 = state.get("last_top3") or []
     last_top1: str | None = last_top3[0] if last_top3 else None
-    new_top1 = maybe_send_match_notification(deliberations, top3, last_top1, is_cold_start)
+    candidate_top1: str | None = top3[0] if top3 else None
 
-    # ─ Agent-to-agent intro DM (XMTP) on material change ─
-    # Same change-gate as the Telegram notification, but with an extra
-    # cold-start guard (L2-only rationales aren't strong enough to DM
-    # someone on the user's behalf). Wrapped in try/except so an
-    # outreach hiccup never tanks the pipeline.
-    try:
-        outreach_result = maybe_send_agent_outreach(
-            new_top1=new_top1,
-            last_top1=last_top1,
-            deliberations=deliberations,
-            profile_version=profile_version,
-            is_cold_start=is_cold_start,
-            token=token,
-        )
-        log(f"outreach status={outreach_result.get('status')} reason={outreach_result.get('reason', '')}")
-    except Exception as e:  # noqa: BLE001
-        log(f"outreach exception {type(e).__name__}")
+    # ─ 1. Agent-to-agent intro DM (XMTP) on material change ─
+    # Wrapped in try/except so an outreach hiccup never tanks the
+    # pipeline. Returns a dict with status, reason, target_name,
+    # target_handle, intro_cap — consumed by the notification step.
+    outreach_result: dict = {}
+    if candidate_top1 is not None and last_top1 != candidate_top1:
+        try:
+            outreach_result = maybe_send_agent_outreach(
+                new_top1=candidate_top1,
+                last_top1=last_top1,
+                deliberations=deliberations,
+                profile_version=profile_version,
+                is_cold_start=is_cold_start,
+                token=token,
+            )
+            log(f"outreach status={outreach_result.get('status')} reason={outreach_result.get('reason', '')}")
+        except Exception as e:  # noqa: BLE001
+            log(f"outreach exception {type(e).__name__}")
+            outreach_result = {"status": "error", "reason": f"exception_{type(e).__name__}"}
+
+    # ─ 2. Telegram notification on material change (with outreach context) ─
+    new_top1 = maybe_send_match_notification(
+        deliberations, top3, last_top1, is_cold_start, outreach_result,
+    )
 
     outcome = "ok_cold_start" if is_cold_start else "ok"
     state_out = {

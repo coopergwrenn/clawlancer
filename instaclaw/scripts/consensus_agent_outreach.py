@@ -251,8 +251,19 @@ def main() -> int:
     target_pending_count = int(target.get("target_pending_intro_count") or 0)
     intro_cap = int(target.get("intro_per_receiver_cap") or 3)
     target_personal_handle = target.get("telegram_handle") or None
+
+    # Common fields surfaced on every output path so the calling
+    # pipeline (consensus_match_pipeline.maybe_send_agent_outreach)
+    # can compose an accurate user-facing Telegram notification —
+    # 'I sent the intro' vs 'I hit my cap' vs 'their inbox was full'.
+    common_out = {
+        "target_name": target_name,
+        "target_handle": target_personal_handle,
+        "intro_cap": intro_cap,
+    }
+
     if not target_xmtp:
-        print(json.dumps({"ok": True, "status": "skipped", "reason": "no_xmtp_address"}))
+        print(json.dumps({**common_out, "ok": True, "status": "skipped", "reason": "no_xmtp_address"}))
         return 0
 
     # 2. Reserve outreach (rate limit + idempotency).
@@ -274,12 +285,12 @@ def main() -> int:
         token,
     )
     if status != 200 or not resp:
-        print(json.dumps({"ok": False, "status": "reserve_failed", "http_status": status}))
+        print(json.dumps({**common_out, "ok": False, "status": "reserve_failed", "http_status": status}))
         return 0
     if not resp.get("allowed"):
         reason = resp.get("reason", "denied")
         log(f"skip {reason}")
-        print(json.dumps({"ok": True, "status": "skipped", "reason": reason}))
+        print(json.dumps({**common_out, "ok": True, "status": "skipped", "reason": reason}))
         return 0
     log_id = resp.get("log_id")
 
@@ -330,10 +341,10 @@ def main() -> int:
 
     if sent:
         log(f"sent log_id={log_id}")
-        print(json.dumps({"ok": True, "status": "sent", "log_id": log_id, "target_xmtp": target_xmtp}))
+        print(json.dumps({**common_out, "ok": True, "status": "sent", "log_id": log_id, "target_xmtp": target_xmtp}))
     else:
         log(f"send_failed err={err}")
-        print(json.dumps({"ok": False, "status": "send_failed", "log_id": log_id, "error": err}))
+        print(json.dumps({**common_out, "ok": False, "status": "send_failed", "log_id": log_id, "error": err}))
     return 0
 
 
