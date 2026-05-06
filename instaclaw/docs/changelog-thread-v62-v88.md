@@ -13,13 +13,13 @@ Posting notes:
 
 ## 1/ Lead
 
-@instaclaws v62 → v88 🦀
+@instaclaws v62 → v88 🦀  —  149 paying-customer VMs, six weeks, no downtime.
 
-🤝 Consensus 2026 — agents that intro you to the right people, in 1.77s
-🛡️ Maximum Privacy Mode for Edge City attendees
-🧠 Memory that survives any crash + 1000x cheaper learning
-🔌 Open-sourced an 8-year-old libuv zombie fix
-🩹 Replaced the gateway watchdog with systemd
+🤝 1.77s end-to-end agent-to-agent intros (Consensus 2026)
+🧠 Cross-restart memory + 1000× cheaper system-prompt edits
+🔌 Open-sourced an 8-year-old libuv zombie that tini doesn't catch
+🛡️ Privacy mode where even our team can't read your sessions
+🩹 Removed the watchdog that was killing healthy gateways
 
 The release where the fleet stopped fighting itself.
 
@@ -81,9 +81,15 @@ For Edge City attendees. SSH bridge enforces a command allowlist + sensitive-pat
 
 ---
 
-## 11/ 🔌 Open-sourced prctl-subreaper@0.1.0
+## 11/ 🔌 Open-sourced prctl-subreaper@0.1.1
 
-npm package that fixes an 8-year-old libuv bug (#1911) — Node child processes close before exit and become zombies that PID-1 (tini) can't reap. Gateway Node process becomes `PR_SET_CHILD_SUBREAPER`. Polling /proc walker reaps them. @garrytan is testing it. Works with Node and Bun.
+npm package that fixes an 8-year-old libuv bug (#1911). Node calls `uv_close` BEFORE `waitpid`; child's exit notification gets dropped → zombie that tini-as-PID-1 cannot reap (the parent already missed the SIGCHLD).
+
+Fix: gateway Node process becomes `PR_SET_CHILD_SUBREAPER`. Polling /proc walker on a background thread reaps any orphaned descendant in the same process tree. N-API addon, MIT, Bun-compatible.
+
+v0.1.1 dropped a `npm install || exit 0` mask from v0.1.0 that was hiding native-build failures. We caught it because gcc was absent on a slice of the fleet — so the install "succeeded" and the addon silently never loaded.
+
+github.com/coopergwrenn/prctl-subreaper. @garrytan is testing it.
 
 ---
 
