@@ -915,3 +915,86 @@ Poll `GET /v4/images/{IMAGE_ID}` until status=available. Verify size < 6144MB.
 - **OpenClaw caches MEMORY.md at session creation** — changes to MEMORY.md during an active session are NOT visible until the next session starts. This is by design for cross-session memory.
 - **Image creation takes ~5 minutes** — poll status every 20 seconds. Size field shows disk size (25088MB) during creation, then actual image size after completion.
 - **Old images can pile up** — Linode had 196 orphaned images (2TB) from deleted VMs. Periodically audit with `GET /v4/images` and delete unused ones.
+
+---
+
+## Manifest Version Changelog
+
+Single source of truth for what each `VM_MANIFEST.version` bump contains. Used for release notes, fleet-drift debugging, and post-mortems. Append-only — never rewrite history. Update at the same time as the version bump itself.
+
+### v88 — 2026-05-05 (build-essential added to systemPackages)
+
+- **Manifest change**: Added `build-essential` to `systemPackages` in `lib/vm-manifest.ts`.
+- **Why**: prctl-subreaper's native node-gyp compile silently failed on the cv=82 cohort because they had no `gcc`. Required as a precondition so `stepPrctlSubreaper` can succeed on every VM.
+- **Reconciler impact**: `stepSystemPackages` (Step 5) now installs `gcc + g++ + make` on the first reconcile of any VM that doesn't already have it.
+- **Detection note**: `which build-essential` is always MISSING (it's a meta-package with no binary) — so `stepSystemPackages` retries the install on every cycle. Real verification is `which gcc`.
+
+### v87 — 2026-05-05 (prctl-subreaper integration)
+
+- **Manifest change**: New step `stepPrctlSubreaper` (Step 8c2) in `lib/vm-reconcile.ts:1591-1695`. Pinned to `prctl-subreaper@0.1.1`.
+- **Why**: Garry Tan flagged Node zombie workers on the OpenClaw fleet. The reflexive answer is tini-as-PID-1, but tini cannot reap libuv #1911 close-before-exit zombies (parent calls `uv_close` BEFORE `waitpid` and the child's exit notification is dropped). Going deeper: have node itself become a subreaper via `PR_SET_CHILD_SUBREAPER` and run a polling waitpid reaper thread.
+- **Package**: `prctl-subreaper` on npm — N-API addon, MIT-licensed, github.com/coopergwrenn/prctl-subreaper. ~280 lines C++. Bun-compatible via Node-API. v0.1.1 dropped the `|| exit 0` install mask from v0.1.0 that was hiding native-build failures.
+- **Wire-up**: systemd drop-in (`prctl-subreaper.conf`, separate from `override.conf` for clean rollback) injects `NODE_PATH` + `NODE_OPTIONS=--require prctl-subreaper`. Addon self-initializes on require.
+- **Canary**: Phase 1 (vm-050, Cooper's test agent) — `addon mapped: 1` in `/proc/$PID/maps`, `stats() = {supported:true, running:true, intervalMs:1000, minAgeMs:5000}`. Phase 2 (vm-050, vm-767, vm-337, vm-780) — same verification, no regressions over 1h soak.
+- **Soft fail**: every failure mode (npm install fails, native build missing, smoke test fails, drop-in write fails) pushes to `result.errors` and the gateway keeps running without the addon. No way for stepPrctlSubreaper to brick a VM.
+
+### v86 — 2026-05-05 (TasksMax 75 → 120)
+
+- **Manifest change**: `TasksMax` 75 → 120 in `systemdOverrides` in `lib/vm-manifest.ts`.
+- **Why**: vm-724-class cgroup throttle. Old gateway processes were brushing the 75-task cap, causing fork() EAGAIN that surfaced as "process froze" from outside. Fleet zombie audit (n=50) found 2 cases of Class A_INTERMEDIATE — too narrow a problem to justify rolling back to a broader fix, but tightness on a 14-task headroom workload was real.
+- **Sizing rationale**: 2-vCPU dedicated Linode + Node + Chromium + browser auto + telegram + heartbeat = ~60-70 tasks under load. 120 buys ~50 task headroom. Required precondition for the gbrain rollout (gbrain serve adds ~7 tasks; without v86 it'd re-enter throttle).
+
+### Today's other ships (2026-05-05) — not manifest bumps
+
+- **`reconcile-fleet` `CONFIG_AUDIT_BATCH_SIZE` 10 → 3** (commit `9beb74bf`). Per-VM reconcile cost on the cv=82 cohort jumped to ~150-300s after v87 + v88. Batches of 10 were hitting Vercel's 300s `FUNCTION_INVOCATION_TIMEOUT` — only the first VM was getting cv-bumped, the rest killed mid-step. 3 VMs × ~300s comfortably fits.
+- **`outputFileTracingIncludes` glob fix** (commits `3f3443d2`, `d28bf919`). Individual file paths and mid-name wildcards (`./scripts/consensus_*.py`) were silently not bundled by Next 15's tracer; only `<dir>/**/*` shape works. Switched to `./scripts/**/*.py`. Was holding the entire cv=82 cohort behind a `consensus_match_pipeline.py: ENOENT` push error — hidden under the timeout until the batch=3 fix landed.
+- **`prctl-subreaper@0.1.1` published to npm** — drops the `|| exit 0` install mask from v0.1.0 that was hiding native-build failures.
+- **PRD-gbrain C1-C20 corrections applied** (`instaclaw/docs/prd/PRD-gbrain-integration.md`, commit `dd144bde`) — phase 5 floor revised 3 KB → 6-8 KB; cost re-derivation ~$25-30/month per VM, Haiku-dominant; §6.6 per-version migration playbook; risk register R17/R18/R19 updated.
+
+---
+
+## Open P1 Follow-Ups (Tracker)
+
+Bugs and audit items deferred from active work. Each entry must include: discovery date, symptom, hypothesis, why we can't fix tonight, and an investigation plan. Resolve in-place; never silently delete.
+
+### P1-1: Reconciler bumps `config_version` on lying-DB VMs (multiple silent-no-op steps)
+
+- **Discovered**: 2026-05-05 during the v88 rollout audit.
+- **Symptom**: vm-893 and vm-895 (both from the 2026-04-30 freshly-provisioned cohort) have `config_version=88` in `instaclaw_vms` but are missing the corresponding artifacts:
+  - vm-893: OpenClaw 2026.4.5 (manifest wants 2026.4.26), `TasksMax=4666` (manifest wants 120), no prctl-subreaper package/binary/drop-in, no `consensus_match_*.py` scripts.
+  - vm-895: same shape — TasksMax=4666, no `gcc` (build-essential not installed), no prctl-subreaper artifacts.
+- **Hypothesis**: At least one of these reconciler steps reports success (no `result.errors.push`) without actually applying changes:
+  1. `stepSystemdUnit` — `override.conf` write or `daemon-reload` succeeded by exit code but didn't take effect.
+  2. `stepSystemPackages` — `apt-get install build-essential` returned `INSTALLED` but didn't actually install gcc.
+  3. `stepNpmPinDrift` — openclaw upgrade succeeded by exit code but didn't actually advance the binary.
+  4. `stepPrctlSubreaper` — early-return on stale `npm-ls` match without verifying the .node binary exists.
+  5. `configureOpenClaw()` initial-setup path bumps `config_version` to current manifest BEFORE the reconciler runs (or instead of running it).
+- **Why we can't diagnose tonight**: The cv=82 cohort (86 VMs) is blocked by the matchpool ENOENT bug — once that frees up (consensus_*.py glob fix in commit `d28bf919`), real bumps will start happening and we can audit the on-disk state of any VM that bumps in real-time.
+- **Investigation plan (post-Consensus)**:
+  1. Pick 3 VMs that bump from cv=82 → cv=88 in the next 24h after the matchpool fix lands. Capture their `result.fixed`/`result.errors`/`result.alreadyCorrect` from the cron logs.
+  2. SSH-audit each VM immediately after the bump. Compare on-disk state (gcc, openclaw --version, TasksMax via systemctl show, prctl-subreaper artifacts, override.conf content) vs what the manifest claims at v88.
+  3. For every step where on-disk doesn't match manifest but no `result.errors` were pushed, that's a Rule 10 violation. Add a verify-after-write block.
+  4. Likely candidates per the 2026-05-05 evidence: `stepSystemdUnit` (TasksMax not landing on freshly-provisioned VMs), `stepNpmPinDrift` (OpenClaw 2026.4.26 not advancing past 2026.4.5), `stepSystemPackages` (`build-essential` reporting INSTALLED but `gcc` still absent — most likely a `which build-essential` always-MISSING quirk hiding the real failure).
+  5. Add Rule 23 sentinel guards to `stepPrctlSubreaper` (binary present + `Environment=NODE_OPTIONS` line in drop-in) and `stepSystemdUnit` (TasksMax line in override.conf) so the reconciler refuses to bump cv if its own writes didn't land.
+- **Why this matters**: Rule 10 was specifically written to prevent this class of bug. Either the rule's discipline didn't get applied to all steps, or there's a path that bypasses verify-after-write entirely. Two paying-customer VMs (vm-893 freshly-provisioned; vm-895 freshly-provisioned) have been running stale OpenClaw + missing matchpool scripts for 5 days behind a green DB row.
+
+### P1-2: `stepNodeExporter` — surface systemctl failure reason on PORT_FAIL
+
+- **Discovered**: 2026-05-06 while diagnosing the cv=82 cohort post-matchpool-fix.
+- **Symptom**: vm-632 had bin + unit + user all present, service `inactive (dead)`, port 9100 not listening, **no journal entries** (because the openclaw user can't read system service logs without sudo). The reconciler reported `node_exporter: port did not open ()` — the trailing `()` is `install.stdout.slice(-200)` empty.
+- **Immediate fix shipped (commit `8ffc2970`)**: `sleep 2` → `sleep 5` after `systemctl restart node_exporter`. Measured on vm-632: v1.8.2 takes ~3s to bind :9100 on a 2-vCPU dedicated Linode. The 2s probe was firing before the port was up, false-negative PORT_FAIL.
+- **Residual concern**: when the start truly fails (not a timing issue), the reconciler still pushes only `port did not open ({last 200 chars of install.stdout})` — which is empty in the common case because the install script's tail commands all redirect to /dev/null or echo PORT_FAIL with no other output. We can't tell *why* node_exporter wouldn't start. The diagnostic on vm-632 had to be done by hand-SSHing and running `sudo systemctl status node_exporter --no-pager` + `sudo journalctl -u node_exporter`.
+- **Investigation plan (post-Consensus)**:
+  1. On PORT_FAIL, capture `sudo systemctl status node_exporter --no-pager` (last 20 lines) and `sudo journalctl -u node_exporter --no-pager -n 20` and include those in the error string. Bounded to ~500 chars to avoid log bloat.
+  2. Distinguish PORT_FAIL_TRANSIENT (port came up later) from PORT_FAIL_SERVICE_DEAD (service exited). A second `systemctl is-active` check after the sleep classifies cleanly.
+  3. If the binary is corrupt (rare), the current install path skips reinstall via `[ ! -x /usr/local/bin/node_exporter ]`. Add a version check: if `/usr/local/bin/node_exporter --version` doesn't include `NE_VERSION`, force reinstall.
+
+### P1-3: `vm-726` is SSH-broken-but-TCP-reachable — generic candidate filter doesn't catch this class
+
+- **Discovered**: 2026-05-06. `nc -zv 45.33.74.147 22` succeeds (TCP handshake completes) but `ssh2` library handshake hangs past 8s. Linode API confirms the instance is `running`. DB had it as `health_status=suspended`, so it was being picked by `reconcile-fleet`'s candidate query (`.in("healthy","suspended","hibernating")`) on every cycle, erroring with "Timed out while waiting for handshake", holding cv.
+- **Immediate fix shipped**: One-shot `UPDATE instaclaw_vms SET health_status='unhealthy' WHERE name='instaclaw-vm-726'` to exclude it from the query. Single VM, low risk; no recent activity (last_health_check 2026-04-25).
+- **Residual concern**: Other VMs in the same SSH-broken-but-TCP-reachable state will hit the same blocking failure mode. The reconcile-fleet candidate query has no notion of "ssh-degraded" — only the four discrete health states. Right now we'd need a one-off DB update for each occurrence.
+- **Investigation plan (post-Consensus)**:
+  1. Add a TCP-level reachability probe to `connectSSH` (or to the cron's per-VM try/catch wrapper) that fails fast (<3s) before the ssh2 handshake's 8s readyTimeout. If TCP reaches but ssh2 hangs, increment a per-VM `ssh_handshake_fail_count`.
+  2. After N consecutive ssh_handshake fails (e.g., 5 cron cycles), automatically mark `health_status='unhealthy'` and emit an admin alert. Same shape as `health_fail_count` but for SSH-layer failures specifically.
+  3. Audit how many other VMs are in this state right now — would expect 0-2 at most, but if it's 10+, that's a systemic issue worth deeper investigation.
