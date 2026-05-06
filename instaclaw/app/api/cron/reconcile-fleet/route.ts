@@ -26,6 +26,14 @@ const LOCK_TTL_SECONDS = 360; // > maxDuration with 60s headroom
 // FUNCTION_INVOCATION_TIMEOUT and only the first VM was getting cv-bumped.
 // 3 × ~300s worst case fits within budget. Throughput 60/hr (was nominally
 // 200/hr but actual was ~20/hr due to timeouts).
+//
+// Cache-bust touch 2026-05-05 23:50 UTC: editing this file forces Vercel to
+// re-run @vercel/nft on this route, which is the only way to pick up the
+// outputFileTracingIncludes glob change in next.config.ts (commits 3f3443d2
+// → cb4d20c3 → 48c98a93). Build cache key is per-route source file, not
+// config — local builds picked up the change immediately, but every Vercel
+// deploy was restoring the old route.js.nft.json. Touch comment is harmless
+// and load-bearing; do not remove without re-deploying first.
 const CONFIG_AUDIT_BATCH_SIZE = 3;
 
 /**
