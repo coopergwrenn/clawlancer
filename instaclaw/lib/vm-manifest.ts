@@ -885,8 +885,34 @@ export const VM_MANIFEST = {
    *  package.json install script that fails LOUDLY on build error
    *  (drop the `|| exit 0` mask). Defers to a later PR; v88 unblocks
    *  the fleet without it.
+   *
+   * v89 (2026-05-06): InstaClaw platform identity fix.
+   *  Triggered by 2026-05-06 user complaint (HotTubLee) that the agent
+   *  identifies as an "OpenClaw agent" and describes InstaClaw as a
+   *  third-party platform it doesn't have access to. Same kind of
+   *  template gap as v67 (in-place replacement that no manifest mode
+   *  supports), so v89 ships:
+   *    - WORKSPACE_SOUL_MD (lib/ssh.ts) gains a "## Platform" section
+   *      inserted before "## My Identity". Names InstaClaw as the
+   *      hosting platform; clarifies OpenClaw is the runtime kernel,
+   *      not the identity. Tells the agent to read CAPABILITIES.md +
+   *      EARN.md as the single source of truth for what it can do
+   *      (and not to hallucinate features that aren't documented).
+   *    - WORKSPACE_SOUL_MD_V2 (lib/workspace-templates-v2.ts) gains the
+   *      same section so V2-migrated VMs ship with it inline.
+   *    - lib/vm-reconcile.ts:stepInstaClawIdentityPatch — surgical
+   *      Python patch on existing fleet, idempotent via
+   *      INSTACLAW_PLATFORM_V1 marker, V2-aware (skips V2-migrated
+   *      VMs since their template already has it). Anchor:
+   *      "## My Identity" header (which is universally present on V1
+   *      SOUL.md and remains the user-customizable personality
+   *      section). User customizations under "## My Identity" are
+   *      untouched — Platform section is INSERTED ABOVE the anchor.
+   *    - Wired into reconcileVM as step 8f3 right after
+   *      stepV67RoutingTablePatch. anchor-not-found = customized
+   *      template, treated as alreadyCorrect (don't break customs).
    */
-  version: 88,
+  version: 89,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

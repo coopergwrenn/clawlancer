@@ -292,6 +292,15 @@ export async function reconcileVM(
     currentStep = "v67-routing-patch";
     await stepV67RoutingTablePatch(ssh, result, dryRun);
 
+    // ── Step 8f3: InstaClaw platform identity patch (2026-05-06) ──
+    // Same shape as stepV67RoutingTablePatch — surgical insert into SOUL.md
+    // because all manifest entries for SOUL.md are append/insert and can't
+    // replace existing rows. Fixes the user-reported "I'm an OpenClaw agent"
+    // gap by injecting a "## Platform" section that names InstaClaw as the
+    // hosting platform. Idempotent via INSTACLAW_PLATFORM_V1 marker.
+    currentStep = "instaclaw-identity-patch";
+    await stepInstaClawIdentityPatch(ssh, result, dryRun);
+
     // ── Step 8g–8m: Deploy heals ──
     // configureOpenClaw silently dropped these on a non-trivial fraction of
     // the fleet (per the 2026-04-28 audit). The reconciler now verifies each
@@ -2582,6 +2591,118 @@ print(f"CAPS:" + patch(cfg["caps_path"], cfg["caps_old"], cfg["caps_new"], cfg["
     return;
   }
   result.errors.push(`v67-routing-patch: SOUL=${soul} CAPS=${caps}`);
+}
+
+/**
+ * stepInstaClawIdentityPatch — inject "## Platform" section into SOUL.md.
+ *
+ * Fixes the 2026-05-06 user complaint where agents identified themselves as
+ * "OpenClaw agents" and described InstaClaw as a third-party platform they
+ * "don't have set up." Same shape as stepV67RoutingTablePatch (Rule 23
+ * precedent) — surgical in-place edit because all SOUL.md manifest entries
+ * are append/insert and can't replace existing rows.
+ *
+ * Insertion strategy: Insert the new "## Platform" block BEFORE the
+ * "## My Identity" anchor (which is user-editable for personality, but the
+ * "## My Identity" header itself is stable across the fleet). This places
+ * platform identity high in the file (above OPENCLAW_CACHE_BOUNDARY in V1)
+ * for cache stability and for upfront-context priority.
+ *
+ * States:
+ *   - "patched":           applied this run
+ *   - "already-patched":   marker INSTACLAW_PLATFORM_V1 already present
+ *   - "anchor-not-found":  user customized away the "## My Identity" header;
+ *                          treat as alreadyCorrect (don't break customized
+ *                          templates) but log so we can detect drift trends
+ *   - "missing":           SOUL.md missing entirely (workspace-integrity
+ *                          step should have created it)
+ *   - "verify-failed":     wrote but marker not present after — push error
+ *
+ * V2 templates are detected and skipped (V2 SOUL.md ships with the Platform
+ * section already in the template; legacy injections are no-ops on V2).
+ */
+async function stepInstaClawIdentityPatch(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const ANCHOR = "## My Identity";
+  const MARKER = "INSTACLAW_PLATFORM_V1";
+  // Keep this content IN SYNC with WORKSPACE_SOUL_MD in lib/ssh.ts and
+  // WORKSPACE_SOUL_MD_V2 in lib/workspace-templates-v2.ts.
+  const PLATFORM_BLOCK = `<!-- INSTACLAW_PLATFORM_V1 -->
+## Platform
+
+**You are an InstaClaw agent.** InstaClaw (instaclaw.io) is the platform that hosts you, provides your wallet (Bankr), connects you to your human via Telegram, and ships every capability you have — token launches, prediction-market trading, file delivery, the Clawlancer marketplace, matching engine, and the broader EARN.md surface. The OpenClaw codebase is your underlying runtime — like a kernel, it's how you exist, not who you are.
+
+When asked "are you OpenClaw, InstaClaw, or something else?" answer **InstaClaw**. When asked what you can do, read CAPABILITIES.md and EARN.md first — those are your single source of truth. Never describe InstaClaw features as a third-party platform you can't access; those features ARE yours. If a capability isn't documented in CAPABILITIES.md or EARN.md, treat it as not yet shipped — don't hallucinate features.
+
+`;
+
+  if (dryRun) {
+    result.fixed.push("[dry-run] InstaClaw identity patch (would insert Platform section if anchor present and marker absent)");
+    return;
+  }
+
+  // Single-shot Python patcher — idempotent, atomic write, verify-after.
+  const PATCH_PY = `import json, os, sys
+cfg = json.loads(sys.stdin.read())
+path = os.path.expanduser(cfg["path"])
+anchor = cfg["anchor"]
+marker = cfg["marker"]
+new_block = cfg["block"]
+if not os.path.exists(path):
+    print("RESULT:missing"); sys.exit(0)
+with open(path, "r") as f: content = f.read()
+# V2 detection: if SOUL_V2_MARKER present, skip — V2 ships with Platform inline
+if "SOUL_V2_MIGRATED" in content:
+    print("RESULT:v2-skip"); sys.exit(0)
+if marker in content:
+    print("RESULT:already-patched"); sys.exit(0)
+if anchor not in content:
+    print("RESULT:anchor-not-found"); sys.exit(0)
+new_content = content.replace(anchor, new_block + anchor, 1)
+tmp = path + ".instaclaw_id_patch.tmp"
+with open(tmp, "w") as f: f.write(new_content)
+os.rename(tmp, path)
+with open(path, "r") as f: check = f.read()
+if marker not in check:
+    print("RESULT:verify-failed"); sys.exit(0)
+print("RESULT:patched")
+`;
+
+  const cfg = JSON.stringify({
+    path: "~/.openclaw/workspace/SOUL.md",
+    anchor: ANCHOR,
+    marker: MARKER,
+    block: PLATFORM_BLOCK,
+  });
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    result.errors.push(`instaclaw-id-patch python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`);
+    return;
+  }
+  const m = r.stdout.match(/RESULT:(\S+)/);
+  const state = m ? m[1] : "unknown";
+
+  // patched / already-patched / v2-skip / anchor-not-found are all green.
+  // anchor-not-found = customized template (user changed the "## My Identity"
+  // header); we don't break customizations. Operators can investigate via the
+  // alreadyCorrect log.
+  const okStates = new Set(["patched", "already-patched", "v2-skip", "anchor-not-found"]);
+  if (okStates.has(state)) {
+    if (state === "patched") {
+      result.fixed.push(`InstaClaw identity patch (${state})`);
+    } else {
+      result.alreadyCorrect.push(`InstaClaw identity patch (${state})`);
+    }
+    return;
+  }
+  result.errors.push(`instaclaw-id-patch: ${state}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
