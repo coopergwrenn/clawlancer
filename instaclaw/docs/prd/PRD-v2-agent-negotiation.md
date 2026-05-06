@@ -1150,19 +1150,21 @@ User-level signal: "people who accepted intros from this user reported the meeti
 
 ---
 
-## 12. Open questions
+## 12. Open questions — LOCKED
 
-1. **Should mutual-PROPOSE dedup at reserve time auto-merge the two threads, or just refuse the second?** I propose: refuse the second, return the existing thread_id, let the second sender's pipeline log a skip. Merging is too complex. ✅ Locking in "refuse + return existing".
+All resolved as of 2026-05-05. Recording for the implementation phase.
 
-2. **Server cron `/negotiation-expire` cadence: 30 min or hourly?** 30-min matches existing pipeline cadence. Hourly reduces server load. I propose 30 min for tighter expiry SLA. ✅ Locking 30 min.
+1. **Should mutual-PROPOSE dedup at reserve time auto-merge the two threads, or just refuse the second?** ✅ **Locked: refuse + return existing.** Merging is too complex. The second sender's pipeline logs the skip, the existing thread continues normally.
 
-3. **MCP tool vs OpenClaw upstream tool?** Recommended MCP for v2.0 launch speed. ✅ Locking MCP.
+2. **Server cron `/negotiation-expire` cadence: 30 min or hourly?** ✅ **Locked: 30 min.** Matches existing pipeline cadence; tight expiry SLA wins over marginal server-load saving.
 
-4. **Sender-side notification on PROPOSE sent?** I added "Sent intro to Timour, waiting on response" Telegram in scenario walkthroughs. Cooper, do you want this or do you want sender-side to stay quiet until terminal? ❓ Pending.
+3. **MCP tool vs OpenClaw upstream tool?** ✅ **Locked: MCP.** Existing infra, ships in days. v2.2+ may consider upstreaming once protocol stabilizes.
 
-5. **`negotiation_user_overrides` audit log table — needed for v2.0 or v2.1?** I leaned v2.1 (simpler). Cooper, want it from day one for forensics? ❓ Pending.
+4. **Sender-side notification on PROPOSE sent?** ✅ **Locked: yes.** When the sender's pipeline fires a PROPOSE, the sender's user gets a brief Telegram: *"I sent an intro to {receiver_name}'s agent — waiting on their response."* Closes the loop on the sender side. The user knows their agent did something on their behalf, doesn't have to wait silently for the terminal-state Telegram. Concise (no rationale repeat); the Telegram only fires once per thread (on PROPOSE, not on retries).
 
-6. **Gating behavior when target's user has both v1 (INTRO) and v2 (NEGOTIATION) inbox traffic active.** Should the per-receiver cap (3/24h) count both v1 unacked and v2 active threads, or separate? I propose: combined count (a target with 2 v1 unacked + 1 active v2 thread = 3 total, hits cap). Cleaner UX. ❓ Pending.
+5. **`negotiation_user_overrides` audit log table — needed for v2.0 or v2.1?** ✅ **Locked: v2.1.** v2.0 ships without the explicit audit table. The state-machine messages in `negotiation_messages` are sufficient forensic record for v2.0 (all USER_CANCEL transitions land as `cancel` envelopes with `cancelled_by="user_override"` in payload). v2.1 adds the dedicated table when we want richer audit + analytics on user-override patterns.
+
+6. **Gating behavior when target's user has both v1 (INTRO) and v2 (NEGOTIATION) inbox traffic active. Combined or separate cap?** ✅ **Locked: combined v1 + v2.** A target with 2 unacked v1 INTRO rows + 1 active v2 NEGOTIATION thread = 3 total. Cap hit. Cleaner from a user perspective: "you have N intros pending" is one count regardless of protocol version. Implementation: `getPendingIntroCount(target_user_id)` in `lib/outreach-feature-flag.ts` queries both `agent_outreach_log` (where `status='sent' AND ack_received_at IS NULL`) AND `negotiation_threads` (where `state IN ('proposed','countered')`), sums, returns the total. Reserve gate refuses if `total >= cap`.
 
 ---
 
