@@ -20,17 +20,17 @@ const nextConfig: NextConfig = {
       // without this include Next's tracing skips them and the reconciler
       // throws on getTemplateContent for the matchpool keys.
       //
-      // 2026-05-05: switched from individual file paths to a **/* glob.
-      // Individual file entries ("./scripts/consensus_match_pipeline.py") and
-      // mid-name wildcards ("./scripts/consensus_*.py") were both silently
-      // dropped by Next 15's tracer — every cv=82 VM that survived long
-      // enough to reach stepFiles hit `ENOENT '/ROOT/instaclaw/scripts/
-      // consensus_match_pipeline.py'` and pushFailed → cv held. Hidden under
-      // the reconcile-fleet 300s timeout until the batch=10→3 fix landed.
-      // The only shape that works in this codebase is `<dir>/**/*` (see the
-      // working `./skills/**/*` and `./scripts/browser-relay-server/**/*`
-      // entries above). Use the same shape here.
-      "./scripts/**/*.py",
+      // 2026-05-05: lazy-loaded matchpool .py scripts. Three glob patterns
+      // tried and each silently dropped by Next 15's tracer:
+      //   "./scripts/consensus_match_pipeline.py" (3f3443d2 — individual)
+      //   "./scripts/consensus_*.py" (3f3443d2 — mid-name wildcard)
+      //   "./scripts/**/*.py" (d28bf919 — recursive .py-only)
+      // Switched to "./scripts/**/*" — the literal shape that works for
+      // ./skills/**/* and ./scripts/browser-relay-server/**/* in the same
+      // config object. Bundles all of scripts/ but everything not .py is
+      // .ts/.tsx/.mjs which Next would already bundle anyway via import
+      // graph. Trade-off accepted to unblock the cv=82 cohort (86 VMs).
+      "./scripts/**/*",
     ],
   },
   async rewrites() {
