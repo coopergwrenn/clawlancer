@@ -3223,7 +3223,11 @@ async function stepNodeExporter(
     // WantedBy=multi-user.target instead of right now.
     const startBlock = isPausedState
       ? "echo SKIP_START_PAUSED"
-      : "sudo systemctl restart node_exporter && sleep 2 && (ss -tln 2>/dev/null | grep -q ':9100 ' && echo PORT_OK || echo PORT_FAIL)";
+      // 2026-05-06: sleep 2 → 5. node_exporter v1.8.2 takes ~3s to bind :9100
+      // on a 2-vCPU dedicated Linode (measured on vm-632 — see commit message).
+      // 2s was a false-negative: PORT_FAIL got pushed even though the service
+      // was healthy and bound the port a fraction of a second after the probe.
+      : "sudo systemctl restart node_exporter && sleep 5 && (ss -tln 2>/dev/null | grep -q ':9100 ' && echo PORT_OK || echo PORT_FAIL)";
 
     const install = await ssh.execCommand(`bash -c '
 set +e
