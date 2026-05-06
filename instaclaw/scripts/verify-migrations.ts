@@ -71,7 +71,19 @@ async function verifyColumn(supabase: ReturnType<typeof createClient>, table: st
     const { error } = await supabase.from(table).select(column).limit(0);
     if (!error) return true;
     const msg = (error.message || "").toLowerCase();
-    if (msg.includes("does not exist") || msg.includes("is not") || error.code === "PGRST204" || error.code === "42703") {
+    // Missing-column patterns include the missing-table cases, since
+    // a missing table also fails a column probe with "could not find".
+    // Without the could_not_find branch we'd silently pass columns on
+    // missing tables (paired with the verifyTable bug it produced the
+    // 2026-05-06 v2 false-pass).
+    if (
+      msg.includes("does not exist") ||
+      msg.includes("is not") ||
+      msg.includes("could not find") ||
+      error.code === "PGRST204" ||
+      error.code === "PGRST205" ||
+      error.code === "42703"
+    ) {
       return false;
     }
     return true; // RLS errors etc. mean the column exists
@@ -85,7 +97,21 @@ async function verifyTable(supabase: ReturnType<typeof createClient>, name: stri
     const { error } = await supabase.from(name).select("*").limit(0);
     if (!error) return true;
     const msg = (error.message || "").toLowerCase();
-    if (msg.includes("does not exist") || msg.includes("relation") || error.code === "PGRST204") {
+    // Missing-table error patterns:
+    //   PostgREST PGRST205: "Could not find the table 'public.X' in the schema cache"
+    //   PostgREST PGRST204: schema cache miss
+    //   pg "relation X does not exist" (when caught raw)
+    // The original code checked only the bottom row, which silently passed
+    // missing tables that returned the schema-cache error — caught when
+    // negotiation_threads / negotiation_messages went undetected during
+    // the 2026-05-06 v2 migration apply gap.
+    if (
+      msg.includes("does not exist") ||
+      msg.includes("relation") ||
+      msg.includes("could not find") ||
+      error.code === "PGRST204" ||
+      error.code === "PGRST205"
+    ) {
       return false;
     }
     return true;
