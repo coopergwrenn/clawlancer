@@ -2420,8 +2420,14 @@ async function stepCaddyUIBlock(
     return;
   }
 
-  // Extract hostname from first line (e.g. "abc123.vm.instaclaw.io {")
-  const hostnameMatch = catResult.stdout.match(/^([a-zA-Z0-9][a-zA-Z0-9.\-]+)\s*\{/);
+  // Extract hostname from any line that starts with `<host>[:<port>] {`.
+  // The `m` flag is load-bearing — without it, the `^` only matches the very
+  // first character of the file, so a Caddyfile that begins with a comment,
+  // blank line, or global options `{ ... }` block silently fails to parse and
+  // pushes "caddy: could not parse hostname" to result.errors → cv held.
+  // 2026-05-06: surfaced after the matchpool ENOENT fix unblocked the cv=82
+  // cohort and exposed downstream stepCaddyUIBlock failures.
+  const hostnameMatch = catResult.stdout.match(/^([a-zA-Z0-9][a-zA-Z0-9.\-]+(?::\d+)?)\s*\{/m);
   if (!hostnameMatch) {
     result.errors.push("caddy: could not parse hostname from Caddyfile");
     return;
