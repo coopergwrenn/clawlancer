@@ -49,6 +49,17 @@ const INTRO_MARKER = "[INSTACLAW_AGENT_INTRO_V1]";
 const INTRO_ACK_MARKER = "[INSTACLAW_AGENT_INTRO_ACK_V1]";
 const INTRO_SEPARATOR = "---";
 
+// v2 negotiation envelope. Five sub-types (propose, counter, accept,
+// decline, cancel) all share this top-level marker; receiver-side
+// dispatch reads `header.type`. The separator stays "---" so the wire
+// parser is identical to v1.
+//
+// PRD: instaclaw/docs/prd/PRD-v2-agent-negotiation.md §3.1.
+const NEGOTIATION_V2_MARKER = "[INSTACLAW_AGENT_NEGOTIATION_V2]";
+const NEGOTIATION_V2_ACK_MARKER = "[INSTACLAW_AGENT_NEGOTIATION_ACK_V2]";
+const NEGOTIATION_V2_TYPES = new Set(["propose", "counter", "accept", "decline", "cancel"]);
+const PENDING_NEGOTIATIONS_FILE = join(XMTP_DIR, "pending-negotiations.jsonl");
+
 // Ensure directories exist
 mkdirSync(LOG_DIR, { recursive: true });
 mkdirSync(XMTP_DIR, { recursive: true });
@@ -746,6 +757,374 @@ async function handleInboundIntro(agent, ctx, parsed) {
   return true;
 }
 
+// ── v2 Agent-to-Agent Negotiation (PROPOSE / COUNTER / ACCEPT / DECLINE / CANCEL) ──
+// PRD: instaclaw/docs/prd/PRD-v2-agent-negotiation.md
+//
+// Wire format mirrors v1 (marker line, JSON header, "---", prose body)
+// but with five sub-types and a thread_id grouping turns. This block is
+// the receiver side of the conversation. The sender side (composing
+// PROPOSE envelopes from a pipeline cycle) lives in
+// consensus_agent_negotiation.py — that script POSTs to this VM's
+// existing /send-intro local listener with the v2 envelope as the body,
+// so no new outbound listener is needed.
+
+/**
+ * Detect and parse an [INSTACLAW_AGENT_NEGOTIATION_V2] envelope.
+ *
+ *   [INSTACLAW_AGENT_NEGOTIATION_V2]
+ *   {"v":2,"type":"propose","thread_id":"...","turn":1,"from_xmtp":"0x...",...,"payload":{...}}
+ *   ---
+ *   <human-readable prose>
+ *
+ * Returns { header, prose } on success, or null if not a v2 negotiation
+ * envelope (or malformed). Validates that header.type is one of the
+ * five known types — unknown types fall through to gateway just like
+ * unknown markers, so future versioned types don't break us.
+ */
+function parseNegotiationEnvelope(text) {
+  if (typeof text !== "string" || !text.startsWith(NEGOTIATION_V2_MARKER)) return null;
+  const lines = text.split("\n");
+  if (lines.length < 4) return null;
+  if (lines[2].trim() !== INTRO_SEPARATOR) return null;
+  let header;
+  try {
+    header = JSON.parse(lines[1]);
+  } catch {
+    return null;
+  }
+  if (!header || typeof header !== "object") return null;
+  if (header.v !== 2) return null;
+  if (!NEGOTIATION_V2_TYPES.has(header.type)) return null;
+  if (typeof header.thread_id !== "string" || header.thread_id.length < 8) return null;
+  if (![1, 2, 3, 4].includes(header.turn)) return null;
+  const prose = lines.slice(3).join("\n").trim();
+  return { header, prose };
+}
+
+/**
+ * Ask the server what to do with this envelope. Returns the decide
+ * result on success or null on failure (mjs falls back to a default
+ * PRESENT_TO_USER copy without the LLM-generated summary — proposal
+ * still gets surfaced, just plainer).
+ *
+ * Endpoint may not exist yet (v2 phased rollout). 404 / 5xx → null →
+ * fallback path. Same pattern as `verifyIntroSender` graceful failure.
+ */
+async function decideNegotiation(threadId, envelopeTurn, senderXmtp) {
+  try {
+    const res = await fetch(`${INSTACLAW_API_URL}/api/match/v1/negotiation/decide`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${getGatewayToken()}`,
+      },
+      body: JSON.stringify({
+        thread_id: threadId,
+        envelope_turn: envelopeTurn,
+        sender_xmtp_address: senderXmtp,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      log("WARN", `decide returned ${res.status} (fallback to default present_to_user)`);
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    log("WARN", "decide failed (fallback to default present_to_user)", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
+ * Build the receiver-facing Telegram message for PROPOSE / COUNTER.
+ * Uses the LLM-enriched summary when /decide returned one, otherwise
+ * a clean default. PRD §5.6 templates.
+ *
+ * `kind`: "propose" or "counter".
+ * `decide`: the /decide response, may be null on fallback.
+ */
+function buildNegotiationProposalUserMessage(parsed, decide, kind) {
+  const fromName = parsed.header.from_name || "An agent";
+  const payload = parsed.header.payload || {};
+
+  if (kind === "propose") {
+    const windows = Array.isArray(payload.proposed_windows) ? payload.proposed_windows : [];
+    const summary = decide?.summary_for_user || payload.rationale || "";
+    const recommended = decide?.windows_recommendation;
+    const concerns = decide?.potential_concerns;
+
+    const primary = (recommended && windows.includes(recommended))
+      ? recommended
+      : (windows[0] || "(no window proposed)");
+    const others = windows.filter((w) => w !== primary);
+
+    const lines = [];
+    lines.push(`${fromName}'s agent wants to meet — they suggest ${primary}.`);
+    if (others.length) {
+      lines.push("");
+      lines.push(`(Or ${others.join(", or ")} if that doesn't work.)`);
+    }
+    if (summary) {
+      lines.push("");
+      lines.push(`Here's why: ${summary}`);
+    }
+    if (concerns) {
+      lines.push("");
+      lines.push(`Heads up: ${concerns}`);
+    }
+    lines.push("");
+    lines.push("Want me to:");
+    lines.push(`- Accept ${primary}`);
+    lines.push("- Counter with a different time");
+    lines.push("- Decline");
+    lines.push("");
+    lines.push("Just reply and I'll handle it.");
+    return lines.join("\n");
+  }
+
+  if (kind === "counter") {
+    const counterWindow = payload.counter_window || "(no window provided)";
+    const reason = payload.user_facing_reason || "";
+    const lines = [];
+    lines.push(`${fromName} countered your proposal — they suggest ${counterWindow} instead.`);
+    if (reason) {
+      lines.push("");
+      lines.push(`Their note: "${reason}"`);
+    }
+    lines.push("");
+    lines.push("Want me to:");
+    lines.push(`- Accept ${counterWindow}`);
+    lines.push("- Decline (no meeting)");
+    lines.push("");
+    lines.push("Just reply and I'll handle it.");
+    lines.push("");
+    lines.push("(Note: this is the last round. We can't counter again.)");
+    return lines.join("\n");
+  }
+
+  return `${fromName}'s agent reached out about a meeting. See match details: https://instaclaw.io/consensus/my-matches`;
+}
+
+/**
+ * Build the receiver-facing Telegram message for ACCEPT / DECLINE / CANCEL.
+ * Terminal — no action options offered. PRD §5.6.
+ */
+function buildNegotiationTerminalUserMessage(parsed, kind) {
+  const fromName = parsed.header.from_name || "Your match";
+  const fromHandle = parsed.header.from_telegram_handle;
+  const payload = parsed.header.payload || {};
+
+  if (kind === "accept") {
+    const window = payload.accepted_window || "(window not specified)";
+    const handleLine = fromHandle
+      ? `You can DM them directly: @${fromHandle} on Telegram.`
+      : `Open your matches page to find their contact: https://instaclaw.io/consensus/my-matches`;
+    const lines = [];
+    lines.push(`Confirmed: you're meeting ${fromName} ${window}.`);
+    lines.push("");
+    lines.push(handleLine);
+    lines.push("");
+    lines.push(`Need to cancel? Just say "cancel my meeting with ${fromName.split(" ")[0] || "them"}" within the next hour.`);
+    return lines.join("\n");
+  }
+
+  if (kind === "decline") {
+    const reason = payload.user_facing_reason || "";
+    const lines = [];
+    lines.push(`${fromName} passed on the meeting.`);
+    if (reason) {
+      lines.push("");
+      lines.push(`Their note: "${reason}"`);
+    }
+    lines.push("");
+    lines.push("Your matches page has others: https://instaclaw.io/consensus/my-matches");
+    return lines.join("\n");
+  }
+
+  if (kind === "cancel") {
+    const cancelledBy = payload.cancelled_by;
+    const reason = payload.user_facing_reason || "";
+    const lines = [];
+    if (cancelledBy === "user_override") {
+      lines.push(`${fromName} cancelled the meeting we set up.`);
+    } else {
+      lines.push(`${fromName} took back the proposal they sent earlier.`);
+    }
+    if (reason) {
+      lines.push("");
+      lines.push(`Their note: "${reason}"`);
+    }
+    if (fromHandle) {
+      lines.push("");
+      lines.push(`Want to reach out directly? @${fromHandle} on Telegram.`);
+    }
+    return lines.join("\n");
+  }
+
+  return `Update on your meeting with ${fromName}. See https://instaclaw.io/consensus/my-matches`;
+}
+
+/**
+ * Append a negotiation envelope to ~/.openclaw/xmtp/pending-negotiations.jsonl
+ * so the agent's gateway-side tool resolution (Claude reading recent
+ * threads when the user replies "accept the thursday one") can find
+ * thread_id by recency. Mirrors v1's pending-intros.jsonl pattern.
+ */
+function appendPendingNegotiation(parsed) {
+  try {
+    const entry = {
+      ts: new Date().toISOString(),
+      thread_id: parsed.header.thread_id,
+      turn: parsed.header.turn,
+      type: parsed.header.type,
+      from_user_id: parsed.header.from_user_id,
+      from_name: parsed.header.from_name,
+      from_xmtp: parsed.header.from_xmtp,
+      from_telegram_handle: parsed.header.from_telegram_handle || null,
+      payload: parsed.header.payload || {},
+      prose_preview: (parsed.prose || "").slice(0, 400),
+    };
+    appendFileSync(PENDING_NEGOTIATIONS_FILE, JSON.stringify(entry) + "\n");
+    return true;
+  } catch (e) {
+    log("WARN", "appendPendingNegotiation failed", { error: e?.message || String(e) });
+    return false;
+  }
+}
+
+/**
+ * Top-level handler. Same shape as handleInboundIntro: verify (via
+ * /decide which does sender-verification + state validation in one
+ * call), surface to user, ACK back. v2.0 always presents to user —
+ * no autonomous accepts on the receive side; the user's reply through
+ * Telegram → gateway → tool → /respond is the actual decision.
+ *
+ * Returns true if handled (caller should NOT fall through to gateway).
+ */
+async function handleInboundNegotiation(agent, ctx, parsed) {
+  const senderXmtp = (parsed.header.from_xmtp || "").toString().toLowerCase();
+  if (!senderXmtp) {
+    log("WARN", "negotiation envelope missing from_xmtp — dropping");
+    return false;
+  }
+  const threadId = parsed.header.thread_id;
+  const turn = parsed.header.turn;
+  const type = parsed.header.type;
+
+  // Server is the verification + state-machine gate. mjs makes no
+  // decisions in v2.0 (PRD §5.3). Endpoint may be 404 during phased
+  // rollout — `decide` returns null in that case and we use fallback
+  // copy. Either way, the envelope still gets surfaced.
+  const decide = await decideNegotiation(threadId, turn, senderXmtp);
+
+  // Sender-verification gate. If /decide responded with verification
+  // failure (sender not a known InstaClaw VM, no matching ledger row),
+  // drop silently — same posture as v1 unverified senders.
+  if (decide && decide.verified === false) {
+    log("INFO", `negotiation from ${senderXmtp.slice(0, 10)}... unverified — dropping`);
+    return true;
+  }
+
+  // Determine the user-facing rendering kind.
+  let userMessage;
+  if (type === "propose" || type === "counter") {
+    userMessage = buildNegotiationProposalUserMessage(parsed, decide, type);
+  } else if (type === "accept" || type === "decline" || type === "cancel") {
+    userMessage = buildNegotiationTerminalUserMessage(parsed, type);
+  } else {
+    log("WARN", `unknown negotiation type ${type} — dropping`);
+    return true;
+  }
+
+  // Surface to user via the same cascade v1 uses (Telegram → XMTP user → disk).
+  // We reuse the v1 verifiedSender shape because notifyUserOfIntro reads
+  // chat_id from there. For v2, /decide carries `receiver_telegram_chat_id`
+  // identical to identify-agent's response, so the same cascade works.
+  const verifiedShim = {
+    receiver_telegram_chat_id: decide?.receiver_telegram_chat_id ?? null,
+    sender_name: parsed.header.from_name,
+    sender_telegram_handle: parsed.header.from_telegram_handle ?? null,
+    log_id: null, // not applicable for v2
+  };
+
+  const channel = await notifyUserViaCascade(agent, verifiedShim, userMessage);
+
+  // Persist for tool resolution.
+  appendPendingNegotiation(parsed);
+
+  // ACK back to sender. Always best-effort — failure here doesn't
+  // unset what we just delivered.
+  try {
+    const ack = `${NEGOTIATION_V2_ACK_MARKER}\n${JSON.stringify({
+      v: 2,
+      received: true,
+      thread_id: threadId,
+      turn,
+      type,
+      channel,
+    })}\n`;
+    await ctx.conversation.sendText(ack);
+  } catch (err) {
+    log("WARN", "negotiation ack failed", { error: err?.message || String(err) });
+  }
+  return true;
+}
+
+/**
+ * Generic "deliver this user-facing message via the best available
+ * channel" cascade — Telegram → XMTP user → pending-on-disk only.
+ *
+ * Extracted from notifyUserOfIntro's three-layer logic so v2 can reuse
+ * it. Returns the channel that succeeded.
+ */
+async function notifyUserViaCascade(agent, verifiedShim, userMessage) {
+  // Telegram path
+  const chatId = verifiedShim.receiver_telegram_chat_id
+    ? String(verifiedShim.receiver_telegram_chat_id)
+    : null;
+  if (chatId && existsSync(NOTIFY_USER_SCRIPT)) {
+    const childEnv = { ...process.env, TELEGRAM_CHAT_ID: chatId };
+    const sent = await new Promise((resolve) => {
+      execFile(
+        NOTIFY_USER_SCRIPT,
+        [userMessage],
+        { timeout: 15_000, env: childEnv },
+        (err, stdout, stderr) => {
+          if (err) {
+            log("WARN", "notify_user.sh failed (negotiation; XMTP fallback)", {
+              error: err.message,
+              stdout: (stdout || "").slice(0, 200),
+              stderr: (stderr || "").slice(0, 200),
+            });
+            resolve(false);
+          } else resolve(true);
+        }
+      );
+    });
+    if (sent) {
+      log("INFO", "negotiation forwarded to user via Telegram");
+      return "telegram";
+    }
+  }
+
+  // XMTP user channel
+  const userAddr = process.env.USER_WALLET_ADDRESS;
+  if (userAddr && /^0x[a-fA-F0-9]{40}$/.test(userAddr)) {
+    try {
+      const dm = await agent.createDmWithAddress(userAddr);
+      await dm.sendText(userMessage);
+      log("INFO", "negotiation forwarded to user via XMTP user channel", { user: userAddr.slice(0, 10) });
+      return "xmtp_user";
+    } catch (err) {
+      log("WARN", "XMTP user fallback failed", { error: err?.message || String(err) });
+    }
+  }
+
+  log("INFO", "negotiation queued to disk only — no Telegram chat_id and no USER_WALLET_ADDRESS");
+  return "pending";
+}
+
 /**
  * Localhost HTTP server so consensus_agent_outreach.py (running as a
  * separate process) can ask the agent to send an XMTP DM. The python
@@ -910,6 +1289,30 @@ async function main() {
     // Suppress ACK envelopes from showing up in user-facing chat.
     if (typeof text === "string" && text.includes(INTRO_ACK_MARKER)) {
       log("INFO", "intro ack received from peer agent");
+      return;
+    }
+
+    // ── v2 negotiation envelope short-circuit ──
+    // PROPOSE / COUNTER / ACCEPT / DECLINE / CANCEL — same dispatcher,
+    // routes by header.type. handleInboundNegotiation calls /decide
+    // (sender-verify + state validation in one server call), surfaces
+    // to the user, and ACKs back. v2.0 = always PRESENT_TO_USER; the
+    // user's reply via Telegram → gateway → tool → /respond commits
+    // the next state.
+    if (typeof text === "string" && text.includes(NEGOTIATION_V2_MARKER)) {
+      const idx = text.indexOf(NEGOTIATION_V2_MARKER);
+      const slice = text.slice(idx);
+      const parsed = parseNegotiationEnvelope(slice);
+      if (parsed) {
+        const handled = await handleInboundNegotiation(agent, ctx, parsed);
+        if (handled) return;
+      } else {
+        log("WARN", "negotiation_v2 marker present but envelope malformed — dropping (no fallback reply)");
+        return;
+      }
+    }
+    if (typeof text === "string" && text.includes(NEGOTIATION_V2_ACK_MARKER)) {
+      log("INFO", "negotiation_v2 ack received from peer agent");
       return;
     }
 
