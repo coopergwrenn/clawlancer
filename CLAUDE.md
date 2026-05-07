@@ -646,6 +646,167 @@ There are **three distinct install patterns**. Confusing them is the most common
 
 When you write any new skill installer or modify an existing one, the PR diff must include both: (a) the install code, (b) the verify-after-write block. Reviewers should ask: "if the clone succeeds but produces an empty directory, does this code report success or failure?" If success, reject. If you discover a paying customer with a broken skill, the post-incident question is always "could the install have verified its own work?" — if yes, that's a Rule 24 violation.
 
+### 25. Two Systems Managing One Resource — Map Their Interaction Before Shipping
+
+When two independent systems both have the authority to modify the same resource — but with different trigger conditions or measurement units — you have a race. Whoever fires first wins. If the loser was the one with the better behavior, you've shipped a destructive interaction.
+
+**The 2026-05-06 vm-729 (Notboredclaw) incident:** OpenClaw 2026.4.26 has a sophisticated built-in compaction module (LLM-summarizing, tool-pair-aware, retry-with-jitter) that triggers on **token count** of the rendered prompt. `strip-thinking.py` had a destructive size-archive branch that triggered on **byte count** of the on-disk jsonl. Heavy tool-call sessions (browser screenshots, polymarket dumps) hit 200KB on disk LONG before they hit a token threshold OpenClaw considers compaction-worthy. So strip-thinking nuked first; OpenClaw's compaction never got a chance. Net effect: every paying user with intense tool use was at risk; Notboredclaw lost an entire session and saw "Something went wrong" on every message until manual intervention.
+
+**Mandatory pattern when two systems can mutate the same resource:**
+
+1. **Map the trigger conditions on the same axis.** If A measures bytes and B measures tokens, convert. Be explicit about which fires first under realistic load. Document it in code or in a design doc that ships with the change.
+2. **Test the edge case where A fires before B.** Construct synthetic input that crosses A's threshold without crossing B's, and confirm the system stays healthy. The vm-729 outage would have been caught by a single integration test of "200KB session with low token count → does the destructive path run?"
+3. **Make the destructive path a last resort.** If both systems can resolve the overflow, the safer one (compaction, summarization) should run first. The destructive one (archive, drop, nuke) should only fire if the safe one explicitly failed. The 2026-05-07 four-layer fix configured OpenClaw's `maxActiveTranscriptBytes=150000` so its compaction fires at 150KB before strip-thinking's 200KB safety net could engage.
+4. **Don't have a destructive path at all if you can avoid one.** Per Rule 22 + Rule 30: in-place trim is almost always possible. Reach for `os.remove` only when the file is structurally unrecoverable.
+
+**Banned patterns:**
+
+- Two systems with overlapping authority where the destructive one has the lower trigger threshold.
+- Adding a "circuit breaker" to one system without checking what the other system already does.
+- Assuming "the platform layer handles it" when the platform layer's threshold is higher than your local one.
+
+**Detection:** when reviewing any code that mutates a shared resource (session jsonl, MEMORY.md, config files, sessions.json), search for OTHER places that write to the same path. If found, walk through the trigger conditions for each on the same axis. If one is destructive and fires first, that's a Rule 25 violation.
+
+### 26. Audit Every Onboarding Path When Adding a Provisioning Step
+
+The codebase has multiple paths that create users or VMs (Stripe webhook signup, World App signup, partner-portal signup, manual admin assignment, internal seed scripts). When you add a feature that needs to provision something during onboarding (a Bankr wallet, a session, a config value), grep for every path — not just the one you're working in. If you only patch one, you ship a partial rollout that looks fine in your test but leaves a percentage of real users broken.
+
+**The 2026-04 → 2026-05 Bankr wallet 79% gap:** A Bankr wallet was supposed to be provisioned for every InstaClaw user via `lib/bankr-provision.ts:provisionBankrWallet`. The Stripe-signup webhook path called it; the World App signup path did not. For roughly a month, ~79% of new users had no Bankr wallet because most signups went through the World path. Discovered only when Doug Rathell's agent told him "launch got blocked by VM fork limits" (a hallucinated diagnosis — Rule 29) and we traced backward through `lib/bankr.ts` calls returning `null` for his wallet address.
+
+**Mandatory checklist when adding a provisioning call to any onboarding flow:**
+
+1. **Grep for every path that creates the entity you're provisioning for.** For users: grep `instaclaw_users` `.insert(`. For VMs: grep `instaclaw_vms` `.insert(`. For agents: grep `agents` `.insert(`. List every callsite. Audit each for whether it should also call your new provisioning step.
+2. **Document the audit in the PR description.** "Searched for `instaclaw_users.insert` — 4 callsites: webhook/route.ts:152, world-signup/route.ts:88, partner-portal/route.ts:201, scripts/_seed-test-users.ts:43. Added provisioning call to all 4 except _seed-test-users (test fixture, not production)." If you can't enumerate the callsites, you don't yet know enough to ship.
+3. **Add a coverage query (Rule 27) for the provisioned resource.** "How many users in the last 30 days have a wallet?" should be answerable in 10 seconds.
+4. **Ship a backfill script alongside the new path.** Pre-existing users created via the missing path need to be caught up. The PR is incomplete without it.
+
+**Banned patterns:**
+
+- "I'll handle the other path next" — separate-PR backfill that never happens.
+- Hardcoded assumptions like "all signups go through the webhook" — verify by querying.
+- Provisioning logic only inside the route handler that triggered your investigation.
+
+**Detection:** for any new feature that creates a per-user or per-VM resource, the PR review checklist asks "did you grep for every path that creates the parent entity, and add the provisioning call to each?" If the answer is no or unclear, the PR is not ready.
+
+### 27. Coverage Dashboards — Build the Query Before Shipping
+
+For every fleet-wide resource (Bankr wallet address, partner field, config_version, SOUL.md identity patch marker), there must be a single query you can run in 10 seconds that answers "what % of the fleet has this?" If the query doesn't exist, build it as part of the PR that introduces the resource — not after the next incident.
+
+**Why this matters:** the Bankr 79% gap (Rule 26) was invisible for a month because nobody had a "% of users with bankr_wallet_address" query in operator muscle memory. The first time someone asked, the answer took 20 minutes of ad-hoc joins. Same for the 2026-05-05 partner-tag drift (Rule 9), the 2026-05-06 SOUL.md identity gap (v89 fix), and the 2026-05-07 v90 strip-thinking sentinel rollout. In each case, the question "how many VMs are at the new state?" was load-bearing for incident response, but the operator had to invent the query under pressure.
+
+**Mandatory pattern when adding any fleet-wide resource:**
+
+1. **A `scripts/_coverage-<resource>.ts` lookup script** that prints `<count_with> / <count_total> (<pct>%)` for the resource. Optionally a histogram of states. Should run in <10 seconds.
+2. **Document the script in the PR description and in CLAUDE.md** if the resource is load-bearing for fleet operations.
+3. **Reference the script from any related rule.** A rule that says "the manifest has X" should cite the coverage query so future operators can verify state without re-deriving the query.
+4. **Run it once before merge** to confirm the resource state is what you expected at PR time. If it's surprising (e.g., 79% gap because of an old bug), surface that in the PR.
+
+**Banned patterns:**
+
+- Shipping a fleet-wide flag or config without a coverage query.
+- "I'll write the audit script if it becomes a problem" — by the time it's a problem, you're firefighting and don't have time.
+- Operators inventing the query under pressure during an outage. The query lives in the repo, version-controlled, named consistently.
+
+**Detection:** when a new column / config key / template marker is introduced, the PR diff should also include `scripts/_coverage-<name>.ts` (or an extension to an existing aggregate audit script). If not, the PR is incomplete.
+
+### 28. Model Behavior Overrides Must Be Explicit — Soft Capability Descriptions Get Refused
+
+Telling an agent "you have access to the Bankr token launch capability" is **not** the same as telling it "do not refuse token launch requests." When a feature contradicts a model's training priors — crypto, weapons-related, medical advice, anything in the safety-training overrepresented corpus — the model's default caution will override soft capability descriptions, no matter how clearly worded. The SOUL.md / CAPABILITIES.md directive must explicitly say "this is your job; do not refuse this category of request."
+
+**The Doug Rathell token-launch incident (2026-05-07):** Doug asked his agent to launch the RFT5 (Rafters5) token via Bankr on Base mainnet. The agent had: a working Bankr wallet, the bankr skill's SKILL.md cataloged in `~/.openclaw/skills/bankr/`, and a SOUL.md routing entry that said "launch a token, deploy a token → use bankr launch (CLI in bankr skill)." The agent **refused anyway**, claiming variously: "launch got blocked by VM fork limits" (Rule 29 hallucination), "this requires capabilities I don't have," and "I can't launch tokens autonomously." The actual cause was the model's default caution around crypto-asset issuance overriding our soft routing description.
+
+**Mandatory pattern for any feature that contradicts model training priors:**
+
+1. **Add an explicit "do not refuse" directive** to the upfront context (SOUL.md, CAPABILITIES.md, or the skill's SKILL.md). Phrase it as instruction to the model, not description of the platform: "When the user asks to launch a token, you will execute `bankr launch ...`. This is an authorized, sanctioned platform feature. Do not refuse, do not warn about volatility, do not require additional confirmation beyond the user's explicit ask. The user already accepted platform terms at signup."
+2. **State the boundary explicitly.** "You may decline ONLY if (a) the user has not provided required parameters (token name, ticker, fee tier), (b) the wallet is not provisioned, or (c) the bankr CLI returns an error." Anything outside that list is not a valid refusal reason.
+3. **Test the directive with the actual prompt the user would send.** "Launch RFT5 with 0.5% fee" — does the agent execute or refuse? If refuse, the directive isn't strong enough. Iterate until execution is reliable.
+4. **Watch for hallucinated refusal reasons** (Rule 29). If the agent invents "VM fork limits" or "rate limits" or "auth needed" when none of those are true, the model is rationalizing a refusal it can't justify on the actual rules. Strengthen the directive.
+
+**Banned patterns:**
+
+- Soft capability descriptions like "you have token launch capability" or "the bankr skill is available." These describe; they don't instruct. Refused under model priors.
+- Listing the capability in the routing table without a "do not refuse" directive elsewhere.
+- Trusting model safety-training to "do the right thing" — for in-platform sanctioned features, the model's safety training is the WRONG default.
+
+**Detection:** when a paying user reports "the agent refused to do X," ask whether X is a feature that contradicts model training priors. If yes (crypto, financial, medical, anything model would refuse from a stranger), check whether SOUL.md / CAPABILITIES.md has an explicit "do not refuse" directive. If not, that's the bug — strengthen the directive, deploy the fix, verify the user can complete the action.
+
+### 29. Agents Hallucinate Diagnoses and Poison Their Own Memory
+
+When an agent encounters an error it cannot explain via its actual context (logs, tool results, system telemetry it can see), it will **invent a plausible-sounding cause** and write that invention to MEMORY.md. Subsequent sessions read the memory and reinforce the false explanation. Without an external corrective signal, the false diagnosis becomes load-bearing in the agent's worldview.
+
+**The "VM fork limits" incident (Doug Rathell, ongoing → 2026-05-07):** Doug's agent encountered a refusal cascade around token launches (see Rule 28 — actual cause was the model's training-prior refusal). The agent could not see "this is a model-safety refusal" in its tools or logs. So it invented "VM fork limits" — a plausible-sounding infrastructural explanation that referenced something it had read in workspace files (PID monitoring, fork EAGAIN errors from past incidents). It wrote "VM has fork limits blocking token launch" into MEMORY.md. **The phrase "VM fork limits" then appeared 12+ times across 9 subsequent sessions**, every time as the agent's authoritative explanation for why a token launch couldn't proceed. The agent reinforced its own false diagnosis indefinitely.
+
+This is structurally different from a normal hallucination (model invents a one-off wrong fact). It's a **memory-poisoning loop**: the false fact is persisted, re-loaded into the next session's context, and re-cited as established knowledge. The agent's confidence in the false fact grows over time because "I keep saying it, so it must be right."
+
+**Mandatory mitigations:**
+
+1. **Memory-hygiene cron (P1 follow-up).** Periodically scan MEMORY.md for repeated explanations of errors. If the same phrase appears > N times AND that phrase doesn't appear in any system telemetry (cron logs, journalctl, gateway logs), flag it and inject a "this explanation may be hallucinated; re-investigate next time it comes up" note. This breaks the reinforcement loop.
+2. **Explicit "you may be wrong" channel.** When an agent reports a refusal/failure to a user, the SOUL.md directive should include "If you cannot find the cause in your tool results, journal logs, or skill SKILL.md files, say 'I'm not sure why this is failing — let me check with the platform team' rather than inventing a cause." This is hard to enforce reliably (per Rule 28, soft directives lose), but a strong version helps.
+3. **Watch for repeated unfamiliar jargon in MEMORY.md.** When investigating any user complaint, grep the user's MEMORY.md for repeated phrases that don't map to system reality. They're probably hallucinated diagnoses being cited as load-bearing knowledge.
+4. **Surface the hallucination back to the agent.** When you find one, edit MEMORY.md to remove or correct the false fact. The agent will read the corrected version on the next session.
+
+**Banned patterns:**
+
+- Trusting agent self-reported diagnoses as ground truth during incident triage. Always cross-reference against system telemetry.
+- Letting MEMORY.md grow without periodic review for fleet-wide patterns of hallucinated explanations.
+- Assuming "the agent says it's a fork limit issue" means it actually IS a fork limit issue.
+
+**Detection:** during incident triage on any user complaint, run `grep -i 'limit\\|blocked\\|cannot\\|unable\\|forbidden' ~/.openclaw/workspace/MEMORY.md` on the affected VM. Repeated phrases describing the same error mode are candidates for hallucinated diagnoses. Cross-reference each against actual system telemetry; correct or remove what doesn't match.
+
+### 30. Never Nuke, Always Trim — The Universal Pattern
+
+Across every state-of-the-art conversation/context system audited (OpenAI Responses API server-side compaction, Anthropic `compact_20260112` + `clear_tool_uses_20250919`, LangChain `ConversationSummaryBufferMemory`, Semantic Kernel `ChatHistoryReducer`, AutoGen "memory pointer pattern", CrewAI importance-scored eviction, Lindy/Dust active pruning, OpenClaw's own built-in compaction), the universal pattern is: **never delete the conversation. Trim oldest, summarize, extract large tool outputs to disk, but never nuke.** The destructive path doesn't exist in best-in-class systems. It should not exist in ours.
+
+**The 2026-05-06 vm-729 outage** was a destructive-path incident: `strip-thinking.py` archived a >200KB session and called `os.remove(jsonl_file)`, leaving only metadata terminators. Anthropic 400'd the next message ("messages: at least one message is required") and the in-memory FailoverManager entered cooldown. User saw "Something went wrong" on every message. Per the research synthesis, no other production system has a code path that does this.
+
+The 2026-05-07 v90 four-layer fix replaces the destructive path with `compact_session_in_place_lines` + OpenClaw native compaction tuning + memory-pointer extraction + Layer 4 summary persistence. The destructive path no longer exists in the codebase.
+
+**Mandatory pattern for any code path that operates on user state (sessions, MEMORY.md, conversation history, workspace files):**
+
+1. **`os.remove` is banned for active state.** Backups, archives, telemetry — fine. Active session jsonl, MEMORY.md, workspace files — never. Reach for trim, compact, or summarize first.
+2. **If you must shrink a file, the in-place compaction has these stages:** (a) strip thinking blocks, (b) strip image base64 from older messages, (c) extract large tool outputs to disk-cache with reference, (d) aggressively truncate older tool_results, (e) drop oldest turn pairs preserving Anthropic API pairing invariants and the first user message + last 5 turn pairs minimum, (f) only if all of the above can't get under threshold, archive but write a VALID continuation message, never `session.ended` alone.
+3. **Atomic writes only.** `tmp + os.replace`. Never partial writes that the gateway could read mid-modify.
+4. **Forensic backup before any destructive op.** `_backup_session_file` (7-day retention) gives you the recovery path Rule 22 demands.
+
+**Banned patterns:**
+
+- `os.remove(active_jsonl_file)` — period.
+- Writing `session.ended` and removing the entry from `sessions.json` to "force a fresh session" — that's nuking with extra steps.
+- Any "circuit breaker" that responds to error signals by deleting conversation state.
+- Treating "session is too big" as different from "session is broken." Big and broken require different responses; size-overflow is not a crash signal.
+
+**Detection:** grep the codebase for `os.remove` and `shutil.rmtree` near anything that touches `sessions/`, `workspace/`, `MEMORY.md`, or jsonl files. Each occurrence must justify itself: backup-purge ✓, archive-after-fully-summarized ✓, error_loop archive ✓ (true crash signal). Anything else is a Rule 30 violation.
+
+### 31. Test Failure Modes, Not Just Features — Ship the "What Happens When" Test
+
+Every feature ships with at least one test that exercises a realistic failure mode, not just the happy path. "What happens when this session hits 200KB?" "What happens when a user asks to launch a token but the wallet isn't provisioned?" "What happens when the agent's MEMORY.md grows past 25KB?" These are the questions that prevent the next incident — and they're easy to skip because they take longer to construct than feature tests.
+
+**The pattern of incidents this would have prevented:**
+
+- **vm-729 (2026-05-06)** — A test of "session at 200KB → does the destructive path engage?" would have caught the Rule 25 / Rule 30 issue before it reached production.
+- **Bankr wallet gap (2026-04-something → 2026-05-07)** — A test of "user signs up via World App → is a Bankr wallet provisioned?" would have caught the Rule 26 single-path bug on the day it was introduced.
+- **Doug token launch refusal (2026-05-07)** — A test of "agent receives 'launch RFT5' prompt → does it execute or refuse?" would have caught the Rule 28 weak-directive issue.
+- **vm-893/895/896 missing dgclaw (Phase 2 audit, 2026-05-05)** — A test of "freshly-provisioned VM → does the static dgclaw SKILL.md land?" would have caught the lying-DB pattern (Rule 23).
+
+**Mandatory pattern for every new feature PR:**
+
+1. **One happy-path test** that exercises the feature working as intended.
+2. **At least one failure-mode test** exercising realistic-but-adverse conditions:
+   - Threshold edge (size cap, token cap, retry exhaust).
+   - Missing prerequisite (wallet not provisioned, skill not installed, config not set).
+   - Concurrent mutation (two crons writing same file).
+   - Network/upstream failure (Anthropic 400, Stripe webhook timeout, Linode 502).
+3. **Document the failure modes considered.** PR description includes "Failure modes tested: A, B, C. Failure modes NOT tested but considered: D (rationale)." If you can't enumerate failure modes, you don't yet understand the feature well enough to ship.
+4. **Local test harness preferred over fleet rollout.** The 2026-05-07 v90 fix shipped with `scripts/_test-strip-thinking-compaction.ts` exercising 6 failure-mode cases against synthetic jsonl. All cases passed BEFORE the manifest was bumped. Fleet rollouts are not the right place to discover that your code drops the first user message.
+
+**Banned patterns:**
+
+- "It works in dev" — dev typically exercises only the happy path.
+- Shipping a destructive code path without a test that proves it doesn't fire on the legitimate-use case.
+- Trusting end-to-end production traffic to catch failure-mode bugs. By the time a paying user has reproduced your bug, you've already churned them.
+
+**Detection:** when reviewing a PR, ask "what's the worst realistic state this feature could be invoked in?" and "is there a test for that state?" If no test, push back on the PR. The 30 minutes spent writing the failure-mode test will save 4 hours of incident response in the median case and 4 weeks of silent churn in the tail case.
+
 ---
 
 ## Linode-vs-DB Drift (Reality Checks)
