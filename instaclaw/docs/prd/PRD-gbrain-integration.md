@@ -214,27 +214,24 @@ The downside — no cross-agent knowledge sharing — does not matter for us. Ag
 
 ### 4.2 OpenClaw ↔ gbrain wiring
 
-OpenClaw already supports MCP servers via stdio. Existing MCP servers on a typical VM include `clawlancer`, `polymarket`, etc. We add one entry to `~/.openclaw/openclaw.json`:
+OpenClaw supports MCP servers via stdio. Configuration goes under `mcp.servers` in `~/.openclaw/openclaw.json`. **Use the `openclaw mcp set` CLI** — direct edits at root-level `mcpServers` are rejected by the schema (per §6.7 finding #1). The CLI handles validation, atomic write, and creates `openclaw.json.bak` automatically.
 
-```json
-{
-  "mcpServers": {
-    "gbrain": {
-      "command": "/home/openclaw/.bun/bin/gbrain",
-      "args": ["serve"],
-      "env": {
-        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
-        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
-        "GBRAIN_DATABASE_URL": "pglite:///home/openclaw/.gbrain/pglite",
-        "GBRAIN_EMBEDDING_MODEL": "openai:text-embedding-3-large",
-        "GBRAIN_EMBEDDING_DIMENSIONS": "1024"
-      }
-    }
+```bash
+openclaw mcp set gbrain '{
+  "command": "/home/openclaw/.bun/bin/gbrain",
+  "args": ["serve"],
+  "env": {
+    "OPENAI_API_KEY": "<literal-key-value>",
+    "GBRAIN_DATABASE_URL": "pglite:///home/openclaw/.gbrain/brain.pglite",
+    "GBRAIN_EMBEDDING_MODEL": "openai:text-embedding-3-large",
+    "GBRAIN_EMBEDDING_DIMENSIONS": "1024"
   }
-}
+}'
 ```
 
-This makes `gbrain.query`, `gbrain.put_page`, `gbrain.search`, `gbrain.graph_query`, `gbrain.timeline_add` available as native MCP tools to the agent. The agent's `SOUL.md` is updated to instruct: "Before answering questions about people, companies, deals, or past conversations, call `gbrain.query` first. Only fall back to MEMORY.md if gbrain returns no results."
+`openclaw mcp set` triggers `config hot reload applied (mcp)` immediately — **no gateway restart needed** (per §6.7 finding #2). Env values must be literal strings; `${OPENAI_API_KEY}` interpolation is not supported (per §6.7 finding #3). `ANTHROPIC_API_KEY` is omitted because we use `openai:text-embedding-3-large` for embeddings; if Anthropic-side embeddings ever needed, add the literal key.
+
+This makes 43 `gbrain__<verb>` tools available to the agent (note: double underscore separator, not dot — per §6.7 finding #8). Highlights: `gbrain__query`, `gbrain__put_page`, `gbrain__search`, `gbrain__traverse_graph`, `gbrain__add_timeline_entry`. The agent's `SOUL.md` is updated to instruct: "Before answering questions about people, companies, deals, or past conversations, call `gbrain__query` first. Only fall back to MEMORY.md if gbrain returns no results." See §6.7 for the full 43-tool inventory.
 
 **Critical security boundary:** stdio transport ONLY. Per the v0.26.9 changelog ([garrytan/gbrain CHANGELOG](https://github.com/garrytan/gbrain/blob/master/CHANGELOG.md)), HTTP MCP transport had an RCE: a missing `remote: true` field on the request handler context allowed a write-scoped OAuth token to submit `shell` jobs and execute arbitrary commands on the gbrain host. Fixed in v0.26.9, but the lesson is: **never run `gbrain serve --http` on our VMs.** Stdio is local-process-only and not exposed over the network. This is enforced by the manifest entry above (no `--http` flag) and validated by the reconciler (check that no `gbrain serve --http` process is running).
 
@@ -285,17 +282,17 @@ OpenClaw's prompt cache has a 5-minute TTL. Currently SOUL.md changes invalidate
 
 2. **Install Bun.** `curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"`. Verify `bun --version`.
 
-3. **Clone gbrain at v0.27.0.** `git clone https://github.com/garrytan/gbrain.git ~/gbrain && cd ~/gbrain && git checkout v0.27.0 && bun install && bun link`. Verify `gbrain --version` matches `0.27.0` exactly. Log to `journalctl --user -u openclaw-gateway`.
+3. **Clone gbrain at the pinned commit/version.** gbrain has no git tags (per §6.7 finding #4) so pin via `package.json` version OR commit hash. Current pin: `0.28.1` (commit `2ea5b71`, "fix: zombie process accumulation"). Install: `git clone https://github.com/garrytan/gbrain.git ~/gbrain && cd ~/gbrain && git checkout <commit> && bun install && bun link`. Verify `gbrain --version` outputs exactly `0.28.1`.
 
-4. **Initialize PGLite.** `gbrain init --pglite --embedding-model openai:text-embedding-3-large --embedding-dimensions 1024`. Verify with `gbrain doctor --json` — all checks must be green.
+4. **Initialize PGLite.** `gbrain init --pglite` (the `--embedding-model` and `--embedding-dimensions` flags don't persist, per §6.7 finding #5 — embedding config flows through the MCP env vars in step 5). Verify with `gbrain doctor --json` — `health_score >= 90`, `skill_conformance: ok`. The 30+ "routing_miss" warnings on built-in skills (perplexity-research, archive-crawler, etc.) are unrelated to our use case and acceptable.
 
-5. **Wire MCP into OpenClaw.** Add the `gbrain` entry to `~/.openclaw/openclaw.json` mcpServers. Restart `openclaw-gateway` per Rule 5 (active + health 200 within 30 s; revert + report if not).
+5. **Wire gbrain MCP via the canonical CLI.** `openclaw mcp set gbrain '<JSON>'` (per §4.2 example above). Hot reload happens automatically — **NO gateway restart**. Verify with `openclaw mcp show gbrain` and `openclaw mcp list`. If gateway needs to be restarted later for unrelated reasons, Rule 5 still applies (active + /health 200 within 30s; revert via `openclaw mcp unset gbrain` if it doesn't come back).
 
-6. **Smoke test #1 — basic MCP availability.** Send a chat completion that requires the agent to know what tools it has. Verify `gbrain.query`, `gbrain.put_page`, `gbrain.graph_query` show up in the agent's tool list.
+6. **Smoke test #1 — basic MCP availability.** Send a chat completion that requires the agent to know what tools it has. Verify `gbrain__query`, `gbrain__put_page`, `gbrain__search`, `gbrain__traverse_graph` show up in the agent's tool list. (Note: tool names use double underscore separator, not dot — per §6.7 finding #8. Cold-start chat completion can take 30-180s; use `curl -m 280` to stay under `agents.defaults.timeoutSeconds=300`.)
 
-7. **Smoke test #2 — write-then-read.** Through the agent: "remember that Cooper's favorite color is blue." Agent should call `gbrain.put_page` with slug `cooper` and the fact in compiled_truth. Then "what's Cooper's favorite color?" Agent should call `gbrain.query` and get the answer back. End-to-end round-trip confirms the integration works.
+7. **Smoke test #2 — write-then-read.** Through the agent: "use `gbrain__put_page` with slug `cooper-favorite-color` and body 'Cooper's favorite color is blue', then immediately use `gbrain__query` to retrieve it and report the result." The first chat call lazy-spawns gbrain serve as a child of the gateway (`bun /home/openclaw/.bun/bin/gbrain serve`, parent PID = gateway PID). Verify on the VM: `gbrain get cooper-favorite-color` (CLI side-channel) shows the page.
 
-8. **Smoke test #3 — migration import.** `gbrain import ~/.openclaw/workspace/MEMORY.md --no-embed && gbrain import ~/.openclaw/workspace/memory/ --no-embed && gbrain embed --stale`. Verify `gbrain stats` shows pages > 0. Re-run query test — does retrieval surface a fact that was previously buried in MEMORY.md?
+8. **Smoke test #3 — migration import.** `gbrain import ~/.openclaw/workspace/ --no-embed && gbrain import ~/.openclaw/workspace/memory/ --no-embed && gbrain embed --stale`. Note: `gbrain import <single-file>` fails with `ENOTDIR` (per §6.7 finding #6) — pass directories only; gbrain walks for markdown. Verify `gbrain stats` shows pages > 0. Re-run query test — does retrieval surface a fact that was previously buried in MEMORY.md?
 
 9. **Real-traffic test.** Cooper runs ~5 representative chats with the agent over 30 minutes. Watch `journalctl -f`. No SIGTERM, no watchdog kill, no empty-response loop. Chat completions complete in <30 s with the new `gbrain.query` tool calls in the trajectory.
 
@@ -422,9 +419,12 @@ Mirror the existing `OPENCLAW_PINNED_VERSION` pattern at `instaclaw/lib/ssh.ts:1
 
 ```typescript
 // instaclaw/lib/ssh.ts (alongside the existing *_PINNED_VERSION constants)
-export const GBRAIN_PINNED_VERSION = "0.27.0";
+export const GBRAIN_PINNED_VERSION = "0.28.1";
+export const GBRAIN_PINNED_COMMIT = "2ea5b71"; // commit for 0.28.1; gbrain has no git tags
 export const BUN_PINNED_VERSION = "1.x"; // gbrain works with any 1.x; pin major
 ```
+
+**Important** (per §6.7 finding #4): gbrain has NO git tags. `git checkout v0.28.1` will fail with `pathspec did not match any file(s) known to git`. Pin via `package.json` version exact-match AND/OR commit hash. Verify after install with `gbrain --version | grep -F "$GBRAIN_PINNED_VERSION"`.
 
 Reconciler refuses to bump a VM's `config_version` unless `gbrain --version` exits 0 with the pinned version (Rule 10 verify-after-set). Drift detected → push to `result.errors`, manual investigation required.
 
@@ -607,6 +607,46 @@ Those migration steps are **markdown for an agent to read** — not idempotent c
 5. **CHANGELOG read mandatory** before bumping `GBRAIN_PINNED_VERSION`. Any of: new schema migration, security fix, config schema change, CLI rename → full Phase 0 + Phase 1 cycle. No exceptions for "small" version bumps. Mirrors the OpenClaw Upgrade Playbook discipline.
 
 Without this playbook, a v0.28 bump can silently leave half the fleet on a stale schema for weeks (Rule 7 snapshot-refresh recurrence in a different shape).
+
+### 6.7 Phase 0 canary corrections (2026-05-06/07, vm-050)
+
+The Phase 0 canary on vm-050 (Cooper's test agent) succeeded — all three smoke tests passed (tool list enumeration, write-then-read round-trip, migration import) and gbrain serve runs as a child of the gateway via lazy spawn on first MCP tool call. Eight findings during the canary contradict the original PRD. Each is corrected in-line in the relevant section above; the consolidated list below exists as an audit trail and a quick reference for the Phase 1 author.
+
+**1. MCP config key is `mcp.servers`, not `mcpServers` at root.** OpenClaw's config schema rejects root-level `mcpServers` with `Invalid config: Unrecognized key: "mcpServers"` and crash-loops the gateway. The canonical write path is the CLI:
+
+```bash
+openclaw mcp set <name> '<JSON>'    # writes to mcp.servers.<name>
+openclaw mcp show <name>            # verify
+openclaw mcp list                   # list all
+openclaw mcp unset <name>           # remove
+```
+
+The CLI handles schema validation, atomic write, and creates `openclaw.json.bak` automatically. Direct edits to `openclaw.json` are NOT supported and violate the same spirit as Rule 2 (verify the schema before changing config). Update §4.2 example accordingly: NOT `"mcpServers": {...}` — instead `"mcp": {"servers": {...}}` (and prefer the CLI over hand-editing).
+
+**2. Hot reload — NO gateway restart needed.** `openclaw mcp set` triggers `config hot reload applied (mcp)` automatically. PRD §5.2 step 5's "Restart `openclaw-gateway` per Rule 5 (active + health 200 within 30 s; revert + report if not)" is wrong AND dangerous: the canary's first attempt followed PRD literally, did the unnecessary `systemctl restart`, and gateway-with-gbrain failed Rule 5 because cold full-start with new MCP config exceeds 30s on a 2-vCPU Linode. Hot reload bypasses this entirely. Replace step 5 with: `openclaw mcp set gbrain '<JSON>'` (no restart, no Rule 5 dance). Skip §5.2 step 5 entirely; the set command is the wire-up.
+
+**3. No `${VAR}` interpolation in env values.** OpenClaw does not resolve shell-style `${OPENAI_API_KEY}` placeholders in `mcp.servers[].env`. Use literal values. The clawlancer entry in `~/.mcporter/mcporter.json` confirms: it uses `"CLAWLANCER_API_KEY": ""` (literal empty), never `${...}`. Update §4.2's example accordingly. The canary used Python on the VM to read `OPENAI_API_KEY` from `~/.openclaw/.env` and embed the literal value into the JSON — this works cleanly.
+
+**4. gbrain has no git tags.** `git checkout v0.27.0` (and v0.28.0, v0.28.1, etc.) all fail with `pathspec did not match any file(s) known to git`. Releases are tracked only in PR-merge commit messages and `package.json`'s `version` field. Pin via:
+
+- `package.json` version field (current: `0.28.1`), checked at install via `gbrain --version` exact match, OR
+- A specific commit hash (current `master`/v0.28.1: `2ea5b71`)
+
+`GBRAIN_PINNED_VERSION = "0.27.0"` in PRD §6.1 cannot be implemented as a git checkout. Update to "0.28.1" with a comment explaining the no-tags reality. v0.28.1 is "fix: zombie process accumulation + health endpoint timeout (#637)" — directly relevant to InstaClaw's own zombie/tini work, more reason to use it.
+
+**5. `gbrain init` doesn't accept `--embedding-model` / `--embedding-dimensions` flags persistently.** PRD §5.2 step 4's `gbrain init --pglite --embedding-model openai:text-embedding-3-large --embedding-dimensions 1024` is misleading — gbrain ignores those flags at init time. Embedding config is set at runtime via env vars in the MCP entry: `GBRAIN_EMBEDDING_MODEL`, `GBRAIN_EMBEDDING_DIMENSIONS`. PRD §4.2 already shows this correctly; §5.2 step 4 should just be `gbrain init --pglite`.
+
+**6. `gbrain import <single-file>` fails with `ENOTDIR: not a directory`.** It only accepts directory paths. PRD §5.2 step 8's `gbrain import ~/.openclaw/workspace/MEMORY.md --no-embed` errors out. Use `gbrain import ~/.openclaw/workspace/ --no-embed` (the parent directory is fine — gbrain walks for markdown). On the canary, `gbrain import ~/.openclaw/workspace/memory/ --no-embed` correctly imported 2 pages (session-log, active-tasks).
+
+**7. Agent runtime is `agentHarnessId: "pi"`** ("Pi" runtime per the schema's "Embedded Pi and other runtime adapters" comment). Tools registered at `mcp.servers` flow to the agent through Pi's ACP setup (`bundle-mcp-82QbQAvk.js` accepts both `mcpServers` and nested `servers` shapes; ACP's `assertSupportedSessionSetup` gates the call). Confirmed via session inspection: `systemPromptReport.tools` on a fresh agent session contained all 43 `gbrain__*` tool names. This implies any future MCP-server-related debugging should look at the Pi adapter and ACP session setup, not the gateway HTTP layer.
+
+**8. Tool naming is `gbrain__<verb>` (double underscore), not `gbrain.<verb>`.** PRD references like `gbrain.query`, `gbrain.put_page`, `gbrain.graph_query` should be `gbrain__query`, `gbrain__put_page`, `gbrain__traverse_graph`. Affects:
+- §4.2 ("makes `gbrain.query`, `gbrain.put_page`, …" → `gbrain__query`, `gbrain__put_page`, …)
+- §5.2 step 6 (smoke test #1 mentions `gbrain.query`/`gbrain.put_page`/`gbrain.graph_query`)
+- §5.2 step 7 (smoke test #2 mentions `gbrain.put_page` and `gbrain.query`)
+- SOUL.md routing instructions (Phase 5) must reference `gbrain__query`, not `gbrain.query`, or the agent will fail at tool resolution
+
+**Full tool inventory at v0.28.1** (43 tools, captured 2026-05-06 from agent session): `gbrain__add_link`, `gbrain__add_tag`, `gbrain__add_timeline_entry`, `gbrain__cancel_job`, `gbrain__delete_page`, `gbrain__file_list`, `gbrain__file_upload`, `gbrain__file_url`, `gbrain__find_orphans`, `gbrain__get_backlinks`, `gbrain__get_chunks`, `gbrain__get_health`, `gbrain__get_ingest_log`, `gbrain__get_job`, `gbrain__get_job_progress`, `gbrain__get_links`, `gbrain__get_page`, `gbrain__get_raw_data`, `gbrain__get_stats`, `gbrain__get_tags`, `gbrain__get_timeline`, `gbrain__get_versions`, `gbrain__list_jobs`, `gbrain__list_pages`, `gbrain__log_ingest`, `gbrain__pause_job`, `gbrain__purge_deleted_pages`, `gbrain__put_page`, `gbrain__put_raw_data`, `gbrain__query`, `gbrain__remove_link`, `gbrain__remove_tag`, `gbrain__replay_job`, `gbrain__resolve_slugs`, `gbrain__restore_page`, `gbrain__resume_job`, `gbrain__retry_job`, `gbrain__revert_version`, `gbrain__search`, `gbrain__send_job_message`, `gbrain__submit_job`, `gbrain__sync_brain`, `gbrain__traverse_graph`.
 
 ---
 
