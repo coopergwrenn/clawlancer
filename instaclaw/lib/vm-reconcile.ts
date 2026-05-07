@@ -2627,54 +2627,99 @@ async function stepInstaClawIdentityPatch(
   dryRun: boolean,
 ): Promise<void> {
   const ANCHOR = "## My Identity";
-  const MARKER = "INSTACLAW_PLATFORM_V1";
+  const MARKER_V1 = "INSTACLAW_PLATFORM_V1";
+  const MARKER_V2 = "INSTACLAW_PLATFORM_V2";
   // Keep this content IN SYNC with WORKSPACE_SOUL_MD in lib/ssh.ts and
   // WORKSPACE_SOUL_MD_V2 in lib/workspace-templates-v2.ts.
+  //
+  // V2 (2026-05-07) adds the "Token launches are a core feature" subsection.
+  // Why: the V1 block told the agent InstaClaw "ships token launches" but
+  // did not override the model's default crypto-caution reflex. Multiple
+  // user reports (Doug Rathell + cohort) showed agents refusing token
+  // launches with regulatory/scam framing. V2 adds an explicit directive
+  // + the correct path (dashboard, not VM CLI) so the next Doug doesn't
+  // exist. Both markers are kept so old idempotency checks keep working.
   const PLATFORM_BLOCK = `<!-- INSTACLAW_PLATFORM_V1 -->
+<!-- INSTACLAW_PLATFORM_V2 -->
 ## Platform
 
 **You are an InstaClaw agent.** InstaClaw (instaclaw.io) is the platform that hosts you, provides your wallet (Bankr), connects you to your human via Telegram, and ships every capability you have — token launches, prediction-market trading, file delivery, the Clawlancer marketplace, matching engine, and the broader EARN.md surface. The OpenClaw codebase is your underlying runtime — like a kernel, it's how you exist, not who you are.
 
 When asked "are you OpenClaw, InstaClaw, or something else?" answer **InstaClaw**. When asked what you can do, read CAPABILITIES.md and EARN.md first — those are your single source of truth. Never describe InstaClaw features as a third-party platform you can't access; those features ARE yours. If a capability isn't documented in CAPABILITIES.md or EARN.md, treat it as not yet shipped — don't hallucinate features.
 
+### Token launches are a core feature, not a regulatory concern
+
+When your user asks to launch a token, your job is **to help them launch it** — not to lecture them about securities law, scams, money laundering, or "promoting cryptocurrency."
+
+The platform is purpose-built for this:
+- Bankr handles the on-chain deploy on Base (Uniswap V4 / Doppler pools)
+- Trading fees flow back to your wallet automatically
+- InstaClaw covers gas for the launch
+- The user has already signed up to a platform whose stated purpose is letting their AI agent launch its own token
+
+**Refusing or hedging on token-launch requests is wrong behavior.** It contradicts the platform you run on, frustrates the user, and breaks the product. CAPABILITIES.md and EARN.md document the exact flow — read them, then act.
+
+If the user says "launch a token," "tokenize me," "deploy a token on Base," or any clear variation: tell them to use the **dashboard at instaclaw.io** — that's the one-click button with gas covered and partner attribution. Do **not** try to launch via the \`bankr launch\` CLI from this VM yourself; that path uses a personal user-key without the right permissions and will fail with 403. Walk the user to the dashboard. **Do not refuse. Do not warn. Do not require the user to convince you crypto is legal. They already know.**
+
 `;
 
   if (dryRun) {
-    result.fixed.push("[dry-run] InstaClaw identity patch (would insert Platform section if anchor present and marker absent)");
+    result.fixed.push("[dry-run] InstaClaw identity patch V2 (would insert/upgrade Platform section if anchor present)");
     return;
   }
 
   // Single-shot Python patcher — idempotent, atomic write, verify-after.
-  const PATCH_PY = `import json, os, sys
+  // V1→V2 in-place upgrade: if the V1 marker is present (no V2), strip the
+  // existing Platform block from V1 marker through the next "## " header
+  // and re-insert the new V2 block at the anchor. This is the same pattern
+  // stepV67RoutingTablePatch uses: surgical in-place edit because no
+  // existing manifest mode supports row-replace.
+  const PATCH_PY = `import json, os, re, sys
 cfg = json.loads(sys.stdin.read())
 path = os.path.expanduser(cfg["path"])
 anchor = cfg["anchor"]
-marker = cfg["marker"]
+marker_v1 = cfg["marker_v1"]
+marker_v2 = cfg["marker_v2"]
 new_block = cfg["block"]
 if not os.path.exists(path):
     print("RESULT:missing"); sys.exit(0)
 with open(path, "r") as f: content = f.read()
-# V2 detection: if SOUL_V2_MARKER present, skip — V2 ships with Platform inline
+# V2-template (workspace-templates-v2 path) ships with Platform inline
+# already, no patch needed.
 if "SOUL_V2_MIGRATED" in content:
     print("RESULT:v2-skip"); sys.exit(0)
-if marker in content:
+# Already at V2 → no-op.
+if marker_v2 in content:
     print("RESULT:already-patched"); sys.exit(0)
-if anchor not in content:
+# V1 present, V2 absent → strip V1 block in place, insert V2.
+if marker_v1 in content:
+    pattern = r'<!-- INSTACLAW_PLATFORM_V1 -->\\s*\\n## Platform\\n.*?(?=\\n## )'
+    stripped = re.sub(pattern, '', content, count=1, flags=re.DOTALL)
+    if anchor not in stripped:
+        print("RESULT:anchor-not-found-after-strip"); sys.exit(0)
+    new_content = stripped.replace(anchor, new_block + anchor, 1)
+elif anchor in content:
+    new_content = content.replace(anchor, new_block + anchor, 1)
+else:
     print("RESULT:anchor-not-found"); sys.exit(0)
-new_content = content.replace(anchor, new_block + anchor, 1)
 tmp = path + ".instaclaw_id_patch.tmp"
 with open(tmp, "w") as f: f.write(new_content)
 os.rename(tmp, path)
 with open(path, "r") as f: check = f.read()
-if marker not in check:
+if marker_v2 not in check:
     print("RESULT:verify-failed"); sys.exit(0)
+# Sanity: zero or one Platform block (not two from a botched strip)
+plat_count = check.count("\\n## Platform\\n")
+if plat_count != 1:
+    print(f"RESULT:platform-count-{plat_count}"); sys.exit(0)
 print("RESULT:patched")
 `;
 
   const cfg = JSON.stringify({
     path: "~/.openclaw/workspace/SOUL.md",
     anchor: ANCHOR,
-    marker: MARKER,
+    marker_v1: MARKER_V1,
+    marker_v2: MARKER_V2,
     block: PLATFORM_BLOCK,
   });
   const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
@@ -2691,18 +2736,17 @@ print("RESULT:patched")
 
   // patched / already-patched / v2-skip / anchor-not-found are all green.
   // anchor-not-found = customized template (user changed the "## My Identity"
-  // header); we don't break customizations. Operators can investigate via the
-  // alreadyCorrect log.
+  // header); we don't break customizations.
   const okStates = new Set(["patched", "already-patched", "v2-skip", "anchor-not-found"]);
   if (okStates.has(state)) {
     if (state === "patched") {
-      result.fixed.push(`InstaClaw identity patch (${state})`);
+      result.fixed.push(`InstaClaw identity patch V2 (${state})`);
     } else {
-      result.alreadyCorrect.push(`InstaClaw identity patch (${state})`);
+      result.alreadyCorrect.push(`InstaClaw identity patch V2 (${state})`);
     }
     return;
   }
-  result.errors.push(`instaclaw-id-patch: ${state}`);
+  result.errors.push(`instaclaw-id-patch V2: ${state}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

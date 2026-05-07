@@ -965,8 +965,38 @@ export const VM_MANIFEST = {
    *  Sentinels added per Rule 23: compact_session_in_place_lines,
    *  SESSION COMPACTED:, _extract_large_tool_results_to_cache,
    *  LAYER3_EXTRACTED:.
+   *
+   * v91 (2026-05-07): SOUL.md Platform block V1 → V2 upgrade.
+   *  Triggered by Doug Rathell (vm-725) reporting his agent refused to
+   *  launch a token, framing it as a regulatory/scam concern. V1's block
+   *  was descriptive ("InstaClaw ships token launches") and didn't
+   *  override the model's default crypto-caution reflex. Plus the fleet
+   *  audit found the wrong path was being taken — agents trying
+   *  `bankr launch` from the VM with personal user-keys, getting 403s.
+   *
+   *  V2 (INSTACLAW_PLATFORM_V2 marker) adds:
+   *    - "Token launches are a core feature, not a regulatory concern"
+   *      subsection: explicit "do not refuse" directive + the right path
+   *      (dashboard at instaclaw.io, NOT `bankr launch` CLI from the VM).
+   *    - lib/vm-reconcile.ts:stepInstaClawIdentityPatch upgraded to do
+   *      V1→V2 in-place strip+replace (the existing append-style insert
+   *      can't replace existing rows; same surgical pattern as
+   *      stepV67RoutingTablePatch). Verifies via post-patch
+   *      Platform-section count == 1 (catches botched strips).
+   *    - WORKSPACE_SOUL_MD (lib/ssh.ts) and WORKSPACE_SOUL_MD_V2
+   *      (lib/workspace-templates-v2.ts) updated to ship V2 inline so
+   *      fresh provisions get the V2 block directly without needing the
+   *      reconciler patch.
+   *
+   *  Bankr wallet coverage gap (separately, not a manifest entry but
+   *  ships in the same window): /api/vm/assign now also calls
+   *  provisionBankrWallet (was Stripe-webhook-only, leaving World mini
+   *  app users without a wallet). Existing 165 broken VMs backfilled
+   *  via scripts/_phase2-backfill-bankr-wallets.ts. New cron at
+   *  /api/cron/provision-missing-bankr-wallets (every 30 min) catches
+   *  any future regression. See docs/bankr-wallet-coverage-gap-2026-05-07.md.
    */
-  version: 90,
+  version: 91,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

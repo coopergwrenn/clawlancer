@@ -4,6 +4,8 @@ import { getSupabase } from "@/lib/supabase";
 import { assignVMWithSSHCheck } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 import { logOnboardingEvent } from "@/lib/onboarding-events";
+import { provisionBankrWallet } from "@/lib/bankr-provision";
+import { sendAdminAlertEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -169,6 +171,61 @@ export async function POST(req: NextRequest) {
         is_mini_app: isMiniApp,
       },
     });
+
+    // Provision Bankr wallet for this agent. Mirrors the Stripe webhook
+    // path (app/api/billing/webhook/route.ts) so mini-app signups (which
+    // never go through Stripe) also get an InstaClaw-managed Bankr wallet.
+    // Without this, a 79% fleet coverage gap built up over months —
+    // every mini-app user ended up agent-less for token launches and
+    // had to either give up or `bankr login` with a personal user-key
+    // that lacks token-launch permissions (403s on the launch endpoint).
+    //
+    // Idempotency key `instaclaw_user_${userId}` means re-runs (any path,
+    // any retry) return the SAME wallet via Bankr's 409 → success flow.
+    // Non-fatal: returns null on Bankr API hiccup or missing partner key;
+    // the every-30-min /api/cron/provision-missing-bankr-wallets safety
+    // net catches anything that slipped through.
+    //
+    // Post-assignment ownership re-check mirrors the webhook's pattern
+    // — guards against the (very narrow) race where two assigns happen
+    // for the same user concurrently and the row's owner gets reassigned
+    // mid-call. We refuse to provision a wallet for a user who isn't
+    // actually the row's owner anymore.
+    try {
+      const { data: assignedCheck } = await supabase
+        .from("instaclaw_vms")
+        .select("assigned_to, ip_address")
+        .eq("id", vm.id)
+        .single();
+
+      if (assignedCheck?.assigned_to !== targetUserId) {
+        logger.error("CRITICAL: VM ownership mismatch in /api/vm/assign — skipping bankr provision", {
+          route: "vm/assign",
+          userId: targetUserId,
+          vmId: vm.id,
+          actualOwner: assignedCheck?.assigned_to,
+        });
+        sendAdminAlertEmail(
+          "VM ownership race in /api/vm/assign",
+          `VM ${vm.id} was assigned to ${targetUserId} but immediately re-read shows owner=${assignedCheck?.assigned_to}. Bankr provisioning skipped — manual reconciliation needed.`
+        ).catch(() => {});
+      } else if (assignedCheck.ip_address) {
+        await provisionBankrWallet({
+          vmId: vm.id,
+          userId: targetUserId,
+          vmIp: assignedCheck.ip_address,
+          idempotencyKey: `instaclaw_user_${targetUserId}`,
+        });
+      }
+    } catch (provisionErr) {
+      logger.error("Bankr provision failed in /api/vm/assign (non-fatal)", {
+        route: "vm/assign",
+        error: provisionErr instanceof Error ? provisionErr.message : String(provisionErr),
+        vmId: vm.id,
+        userId: targetUserId,
+      });
+      // Non-fatal: cron safety net catches it on the next cycle.
+    }
 
     return NextResponse.json({ assigned: true, vm });
   } catch (err) {
