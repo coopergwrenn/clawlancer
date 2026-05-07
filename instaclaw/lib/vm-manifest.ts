@@ -911,8 +911,62 @@ export const VM_MANIFEST = {
    *    - Wired into reconcileVM as step 8f3 right after
    *      stepV67RoutingTablePatch. anchor-not-found = customized
    *      template, treated as alreadyCorrect (don't break customs).
+   *
+   * v90 (2026-05-07): Four-layer session-overflow reliability fix.
+   *  Triggered by the 2026-05-06 vm-729 (Notboredclaw) outage where a
+   *  >200KB jsonl was archived + os.remove'd, leaving only metadata
+   *  terminators. The agent then sent an empty messages array to
+   *  Anthropic → 400 → in-memory FailoverManager cooldown loop → user
+   *  saw "Something went wrong" on every message AND the agent was
+   *  apparently making unauthorized trades during the chaos.
+   *
+   *  Research-backed plan (Cooper-directed deep research session
+   *  2026-05-07): OpenAI Responses API server-side compaction,
+   *  Anthropic clear_tool_uses_20250919 + compact_20260112,
+   *  Semantic Kernel ChatHistoryReducer (function-call pairing
+   *  protection), AutoGen "memory pointer pattern", and OpenClaw's
+   *  own built-in compaction module. Universal pattern: NEVER NUKE.
+   *  Trim while preserving (a) tool_use/tool_result pairing,
+   *  (b) recent context, (c) the original prompt.
+   *
+   *  Layer 1 — strip-thinking.py: replaces destructive Phase 1
+   *  archive with compact_session_in_place_lines. Preserves the
+   *  first user message + last 5 turn pairs; computes safe drop
+   *  boundaries via _find_safe_turn_starts (tracks pending
+   *  tool_use_ids set, never splits a pair). Atomic write via
+   *  tmp + os.replace. Forensic backup via _backup_session_file
+   *  before any drop. Phase A: aggressive truncation of
+   *  older-than-recent-10 tool_results to 500 chars. Phase B:
+   *  drop oldest turn pair, repeat until under threshold.
+   *
+   *  Layer 2 — OpenClaw native compaction tuning: this manifest
+   *  block. mode=safeguard, maxActiveTranscriptBytes=150000,
+   *  recentTurnsPreserve=10, qualityGuard.{enabled,maxRetries=2},
+   *  notifyUser=true, truncateAfterCompaction=true. Goal: OpenClaw's
+   *  LLM-summarizing compactor fires at 150KB BEFORE Layer 1's
+   *  150KB-byte trigger ever needs to. Layer 1 is now a safety net.
+   *
+   *  Layer 3 — memory pointer pattern in strip-thinking.py:
+   *  _extract_large_tool_results_to_cache. tool_results > 20KB
+   *  go to ~/.openclaw/workspace/tool-cache/<sha>.txt with a short
+   *  inline reference. Stops browser screenshots, polymarket dumps,
+   *  hyperliquid orderbooks from stuffing the active context.
+   *  Cache files age out via _purge_old_tool_cache (7d retention,
+   *  called from daily_hygiene). Content-addressable via sha256
+   *  for natural dedup of identical tool outputs.
+   *
+   *  Layer 4 — persistent memory writes on every compaction:
+   *  _ensure_recent_summary_before_archive (existing PRE_ARCHIVE_
+   *  SUMMARY_V1 hook) is now also called BEFORE compaction, not
+   *  just before archive. Haiku generates a summary that lands in
+   *  MEMORY.md + session-log.md so the agent retains cross-session
+   *  knowledge of dropped content even if Layer 1's turn-drop fires.
+   *
+   *  Sentinels added per Rule 23: compact_session_in_place_lines,
+   *  SESSION COMPACTED:, _extract_large_tool_results_to_cache,
+   *  LAYER3_EXTRACTED:.
    */
-  version: 89,
+  version: 90,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -945,6 +999,39 @@ export const VM_MANIFEST = {
     // v41: Raise softThresholdTokens from default 4000 to 8000 — gives the agent more
     // room to write durable notes before compaction fires. OpenClaw Issue #31435 recommends 8000+.
     "agents.defaults.compaction.memoryFlush.softThresholdTokens": "8000",
+    // ── Layer 2 (2026-05-07): tune OpenClaw native compaction ──────────────
+    // OpenClaw 2026.4.26 has a sophisticated built-in compaction module
+    // (compaction-CciVUU6P.js) that LLM-summarizes old turns with proper
+    // tool_use/tool_result pairing. Until 2026-05-07 we set only memoryFlush
+    // knobs — most compaction params ran on schema defaults. The 2026-05-06
+    // vm-729 (Notboredclaw) outage exposed that strip-thinking.py's 200KB
+    // byte-trigger fired BEFORE OpenClaw's compaction (which triggers on
+    // tokens, much later) — so the destructive Python path nuked the session
+    // before OpenClaw had a chance to summarize.
+    //
+    // Layer 2 fix: configure OpenClaw to compact AGGRESSIVELY (well before
+    // any byte-level threshold). The Python compactor (Layer 1) is now a
+    // last-resort safety net that almost never needs to fire.
+    //
+    // Schema knobs (per OpenClaw runtime-schema-TpYHXgGk.js):
+    //   mode: "default" | "safeguard" — safeguard = stricter guardrails
+    //         to preserve recent context near limit boundaries
+    //   maxActiveTranscriptBytes — hard byte ceiling on transcript before
+    //         compaction is forced (matches our 150KB to fire BEFORE the
+    //         Python 200KB safety net)
+    //   recentTurnsPreserve — keep last N turns RAW (un-summarized)
+    //   qualityGuard.enabled — verify the LLM-generated summary post-hoc
+    //   qualityGuard.maxRetries — retry budget on bad summaries
+    //   notifyUser — emit an in-conversation notice on compaction so the
+    //         agent and user both know context was just summarized
+    //         (avoids the "Spanish mid-conversation" / lost-state confusion)
+    "agents.defaults.compaction.mode": "safeguard",
+    "agents.defaults.compaction.maxActiveTranscriptBytes": "150000",
+    "agents.defaults.compaction.recentTurnsPreserve": "10",
+    "agents.defaults.compaction.qualityGuard.enabled": "true",
+    "agents.defaults.compaction.qualityGuard.maxRetries": "2",
+    "agents.defaults.compaction.notifyUser": "true",
+    "agents.defaults.compaction.truncateAfterCompaction": "true",
     "agents.defaults.memorySearch.enabled": "true",
     "commands.restart": "true",
     // NOTE: gateway.controlUi is version-dependent and handled by
@@ -1238,6 +1325,22 @@ export const VM_MANIFEST = {
       //     the hook is permanently silent. Re-baseline the count so the
       //     next tick computes correctly.  2026-05-04 audit: 2/5 active
       //     VMs had the hook silently blocked by this.
+      //
+      //   compact_session_in_place_lines / SESSION COMPACTED:
+      //     The 2026-05-07 four-layer reliability fix (Layer 1).
+      //     Replaces the destructive size-archive path with in-place
+      //     compaction that preserves the first user message + last 5
+      //     turn pairs + tool_use/tool_result pairing. Original
+      //     incident: vm-729 (Notboredclaw) 2026-05-06 — size-based
+      //     archival nuked active session leaving only metadata
+      //     terminators, agent sent empty messages array to Anthropic.
+      //
+      //   _extract_large_tool_results_to_cache / LAYER3_EXTRACTED:
+      //     The 2026-05-07 Layer 3 (memory pointer pattern) addition.
+      //     Tool_results > 20KB are written to ~/.openclaw/workspace/
+      //     tool-cache/<sha>.txt and replaced with a short reference,
+      //     stopping browser screenshots / polymarket dumps /
+      //     hyperliquid orderbooks from stuffing the active context.
       requiredSentinels: [
         "def trim_failed_turns",
         "SESSION TRIMMED:",
@@ -1245,6 +1348,10 @@ export const VM_MANIFEST = {
         "PERIODIC_SUMMARY_V1",
         "PRE_ARCHIVE_SUMMARY_V1",
         "PERIODIC_SUMMARY_V1_RESHRINK",
+        "def compact_session_in_place_lines",
+        "SESSION COMPACTED:",
+        "def _extract_large_tool_results_to_cache",
+        "LAYER3_EXTRACTED:",
       ],
     },
     {

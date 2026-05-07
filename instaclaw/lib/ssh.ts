@@ -281,10 +281,13 @@ SESSION_BACKUP_RETENTION_DAYS = 7
 LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
 LOG_DIR = os.path.expanduser("~/.openclaw/logs")
 LOG_FILE = os.path.join(LOG_DIR, "strip-thinking.log")
-MAX_SESSION_BYTES = ${200 * 1024}  # 200KB — archive sessions larger than this (lowered from 512KB after web fetch blowouts)
+MAX_SESSION_BYTES = ${200 * 1024}  # 200KB — trigger in-place compaction (NOT archive)
 MEMORY_WARN_BYTES = ${160 * 1024}  # 160KB (80% of max) — trigger memory write request
 MAX_TOOL_RESULT_CHARS = 8000       # Truncate individual tool results over this
+LARGE_TOOL_RESULT_BYTES = ${20 * 1024}  # 20KB — Layer 3 extract-to-cache threshold
 IMAGE_KEEP_RECENT = 0              # Strip ALL base64 images from session history
+TOOL_CACHE_DIR = os.path.expanduser("~/.openclaw/workspace/tool-cache")
+TOOL_CACHE_RETENTION_DAYS = 7      # Layer 3: tool-cache files age out after this
 
 # Workspace paths
 WORKSPACE_DIR = os.path.expanduser("~/.openclaw/workspace")
@@ -471,6 +474,11 @@ def daily_hygiene():
         backups_purged = _purge_old_session_backups()
         if backups_purged:
             print(f"daily_hygiene: purged {backups_purged} session backups (>{SESSION_BACKUP_RETENTION_DAYS}d old)")
+
+        # 1c. Purge Layer 3 tool-cache files older than retention window
+        tool_cache_purged = _purge_old_tool_cache()
+        if tool_cache_purged:
+            print(f"daily_hygiene: purged {tool_cache_purged} tool-cache files (>{TOOL_CACHE_RETENTION_DAYS}d old)")
 
         # 2. Rebuild sessions.json — remove entries whose .jsonl no longer exists
         try:
@@ -679,6 +687,295 @@ def trim_failed_turns(jsonl_file):
         except Exception:
             pass
         return 0, []
+
+
+# ──────────────────────────────────────────────────────────────────────
+# In-place size-based compaction (Layer 1 — replaces destructive archive)
+#
+# Background: research on OpenAI Responses API server-side compaction,
+# Anthropic clear_tool_uses_20250919, Semantic Kernel ChatHistoryReducer,
+# and OpenClaw's own compaction module all reach the same conclusion:
+# never NUKE a session on size overflow. The state-of-the-art is "trim
+# while preserving (a) tool_use/tool_result pairing, (b) recent context,
+# (c) the original prompt that started the session." This implementation
+# applies that pattern locally as a SAFETY NET in case OpenClaw's native
+# compaction (Layer 2) doesn't fire in time.
+#
+# Returned shape from compact_session_in_place_lines:
+#   { lines, initial_bytes, final_bytes, phases_applied,
+#     dropped_turns, bytes_truncated, still_oversized }
+# ──────────────────────────────────────────────────────────────────────
+
+def _classify_jsonl_line(line):
+    """Parse one jsonl line. Returns dict with: ok, is_metadata, role,
+    tool_use_ids, tool_result_ids, is_user_text_only.
+
+    is_metadata=True for type-only entries (model.completed, trace.artifacts,
+    session.ended, malformed).  These are preserved in place but don't
+    participate in turn-boundary computation."""
+    try:
+        d = json.loads(line)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {"ok": False, "is_metadata": True, "role": None,
+                "tool_use_ids": [], "tool_result_ids": [], "is_user_text_only": False}
+    msg = d.get("message")
+    if not isinstance(msg, dict) or not msg:
+        return {"ok": True, "is_metadata": True, "role": None,
+                "tool_use_ids": [], "tool_result_ids": [], "is_user_text_only": False}
+    role = msg.get("role")
+    content = msg.get("content")
+    tool_use_ids = []
+    tool_result_ids = []
+    is_user_text_only = False
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict): continue
+            t = block.get("type")
+            if t == "tool_use":
+                tu_id = block.get("id")
+                if tu_id: tool_use_ids.append(tu_id)
+            elif t == "tool_result":
+                tu_id = block.get("tool_use_id")
+                if tu_id: tool_result_ids.append(tu_id)
+        if role == "user":
+            non_text = any(isinstance(b, dict) and b.get("type") not in ("text",) for b in content)
+            is_user_text_only = (not non_text and len(content) > 0)
+    elif isinstance(content, str):
+        if role == "user": is_user_text_only = True
+    return {"ok": True, "is_metadata": False, "role": role,
+            "tool_use_ids": tool_use_ids, "tool_result_ids": tool_result_ids,
+            "is_user_text_only": is_user_text_only}
+
+def _find_safe_turn_starts(lines):
+    """Walk forward, return line indices where:
+       - line is a fresh user-text turn (role=user, content text-only or string)
+       - no prior tool_use is unfulfilled
+    These are SAFE drop boundaries — cutting RIGHT BEFORE this line preserves
+    Anthropic API validity (every tool_use has its matching tool_result).
+
+    Returns list[int]. Empty/short if no safe boundaries (rare — corrupted)."""
+    starts = []
+    pending = set()
+    for i, line in enumerate(lines):
+        c = _classify_jsonl_line(line)
+        if not c["ok"] or c["is_metadata"]:
+            continue
+        if c["role"] == "assistant":
+            for tu in c["tool_use_ids"]: pending.add(tu)
+        if c["tool_result_ids"]:
+            for tu in c["tool_result_ids"]: pending.discard(tu)
+        if c["role"] == "user" and c["is_user_text_only"] and not pending:
+            starts.append(i)
+    return starts
+
+def _aggressive_truncate_old_tool_results(lines, keep_recent_n, max_chars_old):
+    """For tool_result blocks older than the last keep_recent_n tool_results,
+    truncate inner text to max_chars_old (vs the standard MAX_TOOL_RESULT_CHARS).
+    Used by the in-place compactor when standard truncation isn't enough.
+    Returns (new_lines, count, bytes_saved)."""
+    tr_lines = []
+    for i, line in enumerate(lines):
+        c = _classify_jsonl_line(line)
+        if not c["ok"] or c["is_metadata"]: continue
+        if c["tool_result_ids"]: tr_lines.append(i)
+    if len(tr_lines) <= keep_recent_n:
+        return lines, 0, 0
+    aggressive_indices = set(tr_lines[:-keep_recent_n])
+    new_lines = []
+    truncated_count = 0
+    bytes_saved = 0
+    for i, line in enumerate(lines):
+        if i not in aggressive_indices:
+            new_lines.append(line); continue
+        try:
+            d = json.loads(line)
+            msg = d.get("message", {})
+            content = msg.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict): continue
+                    if block.get("type") != "tool_result": continue
+                    inner = block.get("content")
+                    if isinstance(inner, str) and len(inner) > max_chars_old:
+                        old_len = len(inner)
+                        block["content"] = inner[:max_chars_old] + "\\n... [older tool result aggressively truncated by compactor]"
+                        bytes_saved += old_len - len(block["content"])
+                        truncated_count += 1
+                    elif isinstance(inner, list):
+                        for sub in inner:
+                            if not isinstance(sub, dict) or sub.get("type") != "text": continue
+                            text = sub.get("text", "")
+                            if len(text) > max_chars_old:
+                                old_len = len(text)
+                                sub["text"] = text[:max_chars_old] + "\\n... [older tool result aggressively truncated by compactor]"
+                                bytes_saved += old_len - len(sub["text"])
+                                truncated_count += 1
+            new_lines.append(json.dumps(d, ensure_ascii=False))
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            new_lines.append(line)
+    return new_lines, truncated_count, bytes_saved
+
+def _extract_large_tool_results_to_cache(lines):
+    """Layer 3: Memory pointer pattern.
+
+    When a tool_result block's inner content is larger than LARGE_TOOL_RESULT_BYTES,
+    write the content to ~/.openclaw/workspace/tool-cache/<sha>.txt and replace
+    the inline tool_result with a short reference. The agent can re-read on
+    demand via cat / Read tool, exactly the AutoGen "memory pointer" pattern
+    (also recommended by Anthropic's own context-engineering guide).
+
+    This is post-hoc extraction — applied to existing oversized tool_results in
+    the jsonl. Upstream scripts (polymarket-*.py, dgclaw.sh, browser screenshots)
+    can also pre-emptively write to the cache and emit references; this hook
+    is the safety net for scripts that haven't yet adopted the pattern.
+
+    Returns (new_lines, extract_count, bytes_saved)."""
+    import hashlib
+    try:
+        os.makedirs(TOOL_CACHE_DIR, exist_ok=True)
+    except Exception:
+        return lines, 0, 0
+    new_lines = []
+    extract_count = 0
+    bytes_saved = 0
+    for line in lines:
+        c = _classify_jsonl_line(line)
+        if not c["ok"] or c["is_metadata"] or not c["tool_result_ids"]:
+            new_lines.append(line); continue
+        try:
+            d = json.loads(line)
+            msg = d.get("message", {})
+            content = msg.get("content")
+            if not isinstance(content, list):
+                new_lines.append(line); continue
+            modified_block = False
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                inner = block.get("content")
+                # Inner is a string
+                if isinstance(inner, str) and len(inner) > LARGE_TOOL_RESULT_BYTES:
+                    sha = hashlib.sha256(inner.encode("utf-8", errors="ignore")).hexdigest()[:16]
+                    cache_path = os.path.join(TOOL_CACHE_DIR, sha + ".txt")
+                    if not os.path.exists(cache_path):
+                        try:
+                            with open(cache_path, "w") as cf: cf.write(inner)
+                        except Exception:
+                            continue
+                    old_len = len(inner)
+                    ref = "[Tool output cached by session manager: " + str(old_len // 1024) + "KB at " + cache_path + ". Read via cat or the Read tool to access full content.]"
+                    block["content"] = ref
+                    bytes_saved += old_len - len(ref)
+                    extract_count += 1
+                    modified_block = True
+                # Inner is a list of blocks (each may have type=text)
+                elif isinstance(inner, list):
+                    for sub in inner:
+                        if not isinstance(sub, dict) or sub.get("type") != "text": continue
+                        text = sub.get("text", "")
+                        if len(text) > LARGE_TOOL_RESULT_BYTES:
+                            sha = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:16]
+                            cache_path = os.path.join(TOOL_CACHE_DIR, sha + ".txt")
+                            if not os.path.exists(cache_path):
+                                try:
+                                    with open(cache_path, "w") as cf: cf.write(text)
+                                except Exception:
+                                    continue
+                            old_len = len(text)
+                            ref = "[Tool output cached by session manager: " + str(old_len // 1024) + "KB at " + cache_path + ". Read via cat or the Read tool to access full content.]"
+                            sub["text"] = ref
+                            bytes_saved += old_len - len(ref)
+                            extract_count += 1
+                            modified_block = True
+            if modified_block:
+                new_lines.append(json.dumps(d, ensure_ascii=False))
+            else:
+                new_lines.append(line)
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            new_lines.append(line)
+    return new_lines, extract_count, bytes_saved
+
+def _purge_old_tool_cache(retention_days=TOOL_CACHE_RETENTION_DAYS):
+    """Age out tool-cache files older than retention_days. Mirrors
+    _purge_old_session_backups; called from daily_hygiene."""
+    try:
+        if not os.path.isdir(TOOL_CACHE_DIR):
+            return 0
+        cutoff = time.time() - (retention_days * 86400)
+        deleted = 0
+        for f in glob.glob(os.path.join(TOOL_CACHE_DIR, "*")):
+            try:
+                if os.path.getmtime(f) < cutoff:
+                    os.remove(f)
+                    deleted += 1
+            except Exception:
+                pass
+        return deleted
+    except Exception:
+        return 0
+
+def compact_session_in_place_lines(lines, max_bytes, min_turn_pairs=5):
+    """Compact an oversized session jsonl WITHOUT destroying it.
+
+    Replaces the legacy archive-then-os.remove path that nuked user
+    conversations on >MAX_SESSION_BYTES files (the vm-729 / Notboredclaw
+    failure mode of 2026-05-06). Layered approach:
+
+      Phase A: aggressive tool_result truncation (older-than-recent-N → 500 chars)
+      Phase B: drop oldest turn pairs preserving:
+                 (1) the FIRST user message ALWAYS (Cooper directive)
+                 (2) the LAST min_turn_pairs turns (Cooper directive: 5)
+
+    Anthropic API safety: turn boundaries are only computed at points where
+    no tool_use is unfulfilled. Tool_use/tool_result pairs are NEVER split.
+
+    Returns dict with keys: lines, initial_bytes, final_bytes, phases_applied,
+    dropped_turns, bytes_truncated, still_oversized."""
+    AGGRESSIVE_TRUNC_CHARS = 500
+    KEEP_FULL_RECENT_TR = 10
+    MAX_DROP_ITERATIONS = 200
+
+    initial_bytes = sum(len(l) for l in lines)
+    phases = []
+
+    # Phase A: aggressive truncation of older tool_results
+    lines, truncated, bytes_saved = _aggressive_truncate_old_tool_results(
+        lines, KEEP_FULL_RECENT_TR, AGGRESSIVE_TRUNC_CHARS)
+    if truncated > 0:
+        phases.append("aggr_trunc:" + str(truncated))
+    current_bytes = sum(len(l) for l in lines)
+
+    # Phase B: drop oldest turn pairs while preserving guarantees
+    dropped_turns = 0
+    safety = 0
+    while current_bytes > max_bytes and safety < MAX_DROP_ITERATIONS:
+        safety += 1
+        starts = _find_safe_turn_starts(lines)
+        # starts[0] = first user msg (NEVER drop)
+        # starts[-1] = most recent user msg
+        # Need at least: 1 (first user) + min_turn_pairs (recent) entries to drop
+        if len(starts) <= 1 + min_turn_pairs:
+            break
+        drop_start = starts[1]
+        drop_end = starts[2]
+        if drop_end <= drop_start:
+            break
+        lines = lines[:drop_start] + lines[drop_end:]
+        dropped_turns += 1
+        current_bytes = sum(len(l) for l in lines)
+
+    if dropped_turns > 0:
+        phases.append("dropped_turns:" + str(dropped_turns))
+
+    return {
+        "lines": lines,
+        "initial_bytes": initial_bytes,
+        "final_bytes": current_bytes,
+        "phases_applied": phases,
+        "dropped_turns": dropped_turns,
+        "bytes_truncated": bytes_saved,
+        "still_oversized": current_bytes > max_bytes,
+    }
 
 
 def extract_session_summary(jsonl_file):
@@ -1374,95 +1671,17 @@ try:
         file_size = os.path.getsize(jsonl_file)
         session_id = os.path.basename(jsonl_file).replace(".jsonl", "")
 
-        # ── Phase 1: Archive oversized sessions (>512KB) ──
-        if file_size > MAX_SESSION_BYTES:
-            os.makedirs(ARCHIVE_DIR, exist_ok=True)
-            archive_name = f"{session_id}-overflow-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
-            archive_path = os.path.join(ARCHIVE_DIR, archive_name)
-            shutil.copy2(jsonl_file, archive_path)
-
-            # Extract session context summary before removing the session
-            extract_session_summary(jsonl_file)
-
-            # Save archive metadata with memory compliance info
-            try:
-                line_count = 0
-                with open(jsonl_file) as f:
-                    for _ in f:
-                        line_count += 1
-                mem_size = os.path.getsize(MEMORY_MD) if os.path.exists(MEMORY_MD) else 0
-                mem_mtime = datetime.fromtimestamp(os.path.getmtime(MEMORY_MD), tz=timezone.utc).isoformat() if os.path.exists(MEMORY_MD) else None
-                flag_existed = os.path.exists(MEMORY_FLAG)
-                # Check if agent complied: MEMORY.md mtime > flag mtime
-                complied = False
-                if flag_existed and os.path.exists(MEMORY_MD):
-                    complied = os.path.getmtime(MEMORY_MD) > os.path.getmtime(MEMORY_FLAG)
-                meta = {
-                    "archive_reason": "size_exceeded",
-                    "archived_at": datetime.now(timezone.utc).isoformat(),
-                    "session_line_count": line_count,
-                    "session_size_bytes": file_size,
-                    "memory_md_size_bytes": mem_size,
-                    "memory_md_last_modified": mem_mtime,
-                    "active_tasks_exists": os.path.exists(ACTIVE_TASKS_MD),
-                    "memory_write_requested": flag_existed,
-                    "memory_write_complied": complied,
-                }
-                meta_path = os.path.join(ARCHIVE_DIR, f"{session_id}.meta.json")
-                with open(meta_path, "w") as f:
-                    json.dump(meta, f, indent=2)
-            except Exception:
-                pass
-
-            # If the session skipped the 400-512KB warning window (grew too fast),
-            # inject the urgent prompt into MEMORY.md anyway. The agent won't see it
-            # in the archived session, but it'll be there when the fresh session starts.
-            if not flag_existed:
-                inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
-                print(f"WARNING: Session {session_id} skipped memory warning window ({file_size} bytes, no prior flag). Injected memory prompt for next session.")
-
-            # PRE_ARCHIVE_SUMMARY_V1: force a structured summary into
-            # session-log.md + MEMORY.md BEFORE we destroy the session jsonl.
-            # CLAUDE.md Rule 22 in spirit: never destroy state without
-            # preserving recovery context.  Bounded by Haiku's 30s timeout
-            # so it can't hang the cron.
-            try:
-                _ensure_recent_summary_before_archive(jsonl_file, session_id)
-            except Exception as _se:
-                log_telemetry("PRE_ARCHIVE_SUMMARY_V1: pre-size-archive call failed: " + str(_se))
-
-            _backup_session_file(jsonl_file)
-            os.remove(jsonl_file)
-            archived_sessions.append(session_id)
-
-            # Remove from sessions.json so gateway starts fresh
-            try:
-                with open(SESSIONS_JSON) as f:
-                    sj = json.load(f)
-                for key in list(sj.keys()):
-                    if sj[key].get("sessionId") == session_id:
-                        del sj[key]
-                with open(SESSIONS_JSON, "w") as f:
-                    json.dump(sj, f, indent=2)
-            except Exception:
-                pass
-
-            # Clean up flags and injected sections
-            for flag in [MEMORY_FLAG, STALE_FLAG]:
-                try:
-                    if os.path.exists(flag):
-                        os.remove(flag)
-                except Exception:
-                    pass
-            # Only remove the urgent section if the flag existed (normal flow).
-            # If the session skipped the warning window, we just injected it above
-            # and want it to persist for the next session.
-            if flag_existed:
-                remove_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END)
-            remove_memory_section(MEMORY_MD, MEM_STALE_START, MEM_STALE_END)
-            continue
+        # ── Phase 1 REMOVED on 2026-05-07 ──
+        # Was: destructive archive on file_size > MAX_SESSION_BYTES.
+        # Now: oversized sessions fall through to Phase 3 (strip thinking +
+        # truncate tool results + strip images) and Phase 3c/3d below
+        # (Layer 3 extract-large-tool-results-to-cache + Layer 1 in-place
+        # compaction). The session is COMPACTED, not nuked. See CLAUDE.md
+        # Rule 22 + the 2026-05-06 vm-729 (Notboredclaw) post-mortem and
+        # the 2026-05-07 four-layer reliability fix.
 
         # Track largest active session for Layer 2 staleness check
+        # (oversized sessions are still active under the compaction model)
         if file_size > largest_active_session:
             largest_active_session = file_size
 
@@ -1609,6 +1828,67 @@ try:
             if img_count > 0:
                 total_images_stripped += img_count
                 modified = True
+
+            # ── Phase 3c [Layer 3: memory pointer pattern] ──
+            # Extract tool_result blocks larger than LARGE_TOOL_RESULT_BYTES
+            # to ~/.openclaw/workspace/tool-cache/<sha>.txt and replace
+            # inline content with a short reference. The agent can re-read
+            # via cat or the Read tool. Stops large outputs (browser
+            # screenshots, polymarket dumps, hyperliquid orderbooks) from
+            # stuffing the active context window.
+            cleaned_lines, ext_count, _ext_bytes_saved = _extract_large_tool_results_to_cache(cleaned_lines)
+            if ext_count > 0:
+                modified = True
+                print(f"LAYER3_EXTRACTED: {session_id} — {ext_count} large tool_result(s) ({_ext_bytes_saved} bytes saved) → {TOOL_CACHE_DIR}/")
+
+            # ── Phase 3d [Layer 1+4: in-place compaction with summary persistence] ──
+            # Replaces the legacy destructive archive path. If the session is
+            # STILL oversized after Phase 3a/3b/3c strips, compact in place:
+            #   - Persist a Haiku-generated summary to MEMORY.md + session-log.md
+            #     so the agent has cross-session memory of dropped content
+            #   - Backup the current jsonl for forensics
+            #   - Inject memory-write urgent prompt as fast-growth safety net
+            #   - Run compact_session_in_place_lines (preserves first user msg
+            #     + last 5 turn pairs, drops oldest, never splits tool_use pairs)
+            # The session continues — no archive, no os.remove, no session.ended.
+            post_strip_bytes = sum(len(l) for l in cleaned_lines) + len(cleaned_lines)
+            if post_strip_bytes > MAX_SESSION_BYTES:
+                # Layer 4: persist summary to MEMORY.md / session-log.md
+                # The function name says "before_archive" but we're calling it
+                # before COMPACTION (a non-destructive variant). The internal
+                # logic — Haiku summary → MEMORY.md / session-log.md — is what
+                # we want regardless of what happens to the jsonl after.
+                try:
+                    _ensure_recent_summary_before_archive(jsonl_file, session_id)
+                except Exception as _se:
+                    log_telemetry("compact_in_place: pre-summary call failed: " + str(_se))
+
+                # Forensic backup before any destructive op (Rule 22 spirit)
+                _backup_session_file(jsonl_file)
+
+                # Inject memory-write urgent prompt as safety net for sessions
+                # that grew so fast they skipped the 160KB warning window
+                if not os.path.exists(MEMORY_FLAG):
+                    inject_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END, MEM_URGENT_CONTENT)
+                    try:
+                        with open(MEMORY_FLAG, "w") as _mf: _mf.write(str(time.time()))
+                    except Exception: pass
+
+                # Layer 1: in-place compaction
+                _compact_result = compact_session_in_place_lines(
+                    cleaned_lines, max_bytes=MAX_SESSION_BYTES, min_turn_pairs=5)
+                cleaned_lines = _compact_result["lines"]
+                if _compact_result["dropped_turns"] > 0 or _compact_result["bytes_truncated"] > 0:
+                    modified = True
+                print(
+                    "SESSION COMPACTED: " + session_id +
+                    " — initial=" + str(_compact_result["initial_bytes"]) +
+                    " final=" + str(_compact_result["final_bytes"]) + " bytes;" +
+                    " phases=" + (",".join(_compact_result["phases_applied"]) or "none") + ";" +
+                    " dropped_turns=" + str(_compact_result["dropped_turns"]) + ";" +
+                    " bytes_truncated=" + str(_compact_result["bytes_truncated"]) + ";" +
+                    " still_oversized=" + str(_compact_result["still_oversized"])
+                )
 
             if modified:
                 tmp = jsonl_file + ".tmp"
