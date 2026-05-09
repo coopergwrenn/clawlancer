@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { X, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -123,25 +124,26 @@ export default function AgentbookHatBanner() {
             }}
           >
             <div className="flex items-start gap-3">
-              {/* Hat in a soft gold halo */}
+              {/* Hat product image — corduroy "AI HUMAN" cap.
+                  Wrapped in a black rounded container so the hat (photographed
+                  on white) reads cleanly against the mini app's dark theme.
+                  Subtle gold ring inset preserves the warm celebration palette
+                  the gold halo previously provided. */}
               <div
-                className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden"
-                aria-hidden="true"
+                className="shrink-0 h-10 w-10 rounded-full overflow-hidden"
                 style={{
-                  background:
-                    "radial-gradient(circle at 35% 30%, rgba(251,191,36,0.55), rgba(245,158,11,0.25) 55%, rgba(180,120,30,0.45) 100%)",
+                  background: "#000",
                   boxShadow:
-                    "0 2px 10px rgba(245,158,11,0.30), inset 0 1px 2px rgba(255,255,255,0.20)",
+                    "inset 0 0 0 1px rgba(245,158,11,0.45), 0 2px 10px rgba(245,158,11,0.18)",
                 }}
               >
-                <div
-                  className="absolute inset-0 rounded-full"
-                  style={{
-                    background:
-                      "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)",
-                  }}
+                <Image
+                  src="/agentbook-hat.png"
+                  alt="AI HUMAN hat"
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-cover"
                 />
-                <span className="relative z-10 text-lg leading-none">🎩</span>
               </div>
 
               <div className="flex-1 min-w-0">

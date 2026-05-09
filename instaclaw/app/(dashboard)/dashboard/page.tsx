@@ -402,6 +402,11 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* AgentBook hat-claim promo — first thing under the page header, above
+          all other cards. Second-visit gated, dismissible. Returns null on
+          first paint when not eligible so it doesn't add empty whitespace. */}
+      <AgentbookHatBanner />
+
       {/* Welcome card (first visit only) */}
       {!welcomeDismissed && vmStatus?.status === "assigned" && (
         <div
@@ -531,9 +536,6 @@ export default function DashboardPage() {
       <div data-tour="dash-verify">
         <WorldIDBanner />
       </div>
-
-      {/* AgentBook hat-claim promo banner — second-visit gated, dismissible */}
-      <AgentbookHatBanner />
 
       {/* Bankr wallet card — shows if agent has a provisioned wallet */}
       {vm && (

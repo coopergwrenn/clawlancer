@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -94,34 +95,37 @@ export function AgentbookHatBanner() {
           }}
           style={{ overflow: "hidden" }}
         >
+          {/* Use the .glass utility class so this banner inherits the EXACT
+              dashboard glass styling — same gradient bg, same multi-layer
+              shadow, same blur(2px) — that the Welcome card and WorldIDBanner
+              already use. Hand-rolling inline styles previously caused a
+              visible mismatch (banner read as a different component). The
+              [data-theme="dashboard"] override on .glass in globals.css:148
+              is what makes this match. */}
           <div
-            className="rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
-            style={{
-              background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-              // Bumped from 2px → 8px for genuine frosted-glass feel.
-              // Visibility-checked: still subtle enough to read text on top
-              // and not muddy whatever is behind, but the eye registers it
-              // as glass instead of a translucent solid card.
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              boxShadow: `
-                rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-              `,
-            }}
+            className="glass rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+            style={{ border: "1px solid var(--border)" }}
           >
-            {/* Hat emoji icon — keeps the bundle small and renders crisp on every device */}
+            {/* Hat product image. Source: corduroy "AI 🤝 HUMAN" cap photo
+                cropped via object-cover into the rounded container. White
+                source background plays well on the dashboard's light theme;
+                no manual mask needed. */}
             <div
-              className="shrink-0 flex items-center justify-center text-2xl sm:text-xl leading-none w-10 h-10 sm:w-8 sm:h-8 rounded-full"
-              aria-hidden="true"
+              className="shrink-0 w-10 h-10 sm:w-9 sm:h-9 rounded-full overflow-hidden"
               style={{
-                background: "rgba(245,158,11,0.12)",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25)",
+                background: "#000",
+                boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
               }}
             >
-              🎩
+              <Image
+                src="/agentbook-hat.png"
+                alt="AI HUMAN hat"
+                width={40}
+                height={40}
+                className="w-full h-full object-cover"
+                priority={false}
+                unoptimized={false}
+              />
             </div>
 
             <div className="flex-1 min-w-0">
