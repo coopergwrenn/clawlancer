@@ -80,18 +80,30 @@ export function AgentbookHatBanner() {
     <AnimatePresence initial={false}>
       {visible && (
         <motion.div
-          initial={{ opacity: 0, y: -8, height: 0 }}
+          // Asymmetric enter/exit: spring-y for that physical settled feel,
+          // ease-out opacity/height on enter, ease-in on exit. The height
+          // animation is what makes content below glide up smoothly when
+          // the banner dismisses — no layout jump.
+          initial={{ opacity: 0, y: -24, height: 0 }}
           animate={{ opacity: 1, y: 0, height: "auto" }}
-          exit={{ opacity: 0, y: -8, height: 0 }}
-          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+          exit={{ opacity: 0, y: -16, height: 0 }}
+          transition={{
+            opacity: { duration: 0.28, ease: [0.4, 0, 0.2, 1] },
+            height: { duration: 0.34, ease: [0.4, 0, 0.2, 1] },
+            y: { type: "spring", stiffness: 320, damping: 28, mass: 0.9 },
+          }}
           style={{ overflow: "hidden" }}
         >
           <div
             className="rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
             style={{
               background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-              backdropFilter: "blur(2px)",
-              WebkitBackdropFilter: "blur(2px)",
+              // Bumped from 2px → 8px for genuine frosted-glass feel.
+              // Visibility-checked: still subtle enough to read text on top
+              // and not muddy whatever is behind, but the eye registers it
+              // as glass instead of a translucent solid card.
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
               boxShadow: `
                 rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
                 rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
@@ -139,7 +151,7 @@ export function AgentbookHatBanner() {
               </Link>
               <button
                 onClick={handleDismiss}
-                className="shrink-0 p-1.5 rounded cursor-pointer transition-colors hover:bg-black/5"
+                className="shrink-0 p-1.5 rounded cursor-pointer transition-all hover:bg-black/5 active:scale-95"
                 style={{ color: "#6b6b6b" }}
                 aria-label="Dismiss"
               >
