@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { auditVMConfig } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
+import { verifyManifestFreshness } from "@/lib/manifest-integrity";
 import { sendAdminAlertEmail } from "@/lib/email";
 import * as crypto from "crypto";
 
@@ -118,6 +119,60 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skipped: "lock_held" });
   }
 
+  // 2b. Manifest integrity gate (D.2-A, 2026-05-09).
+  //
+  // Vercel's @vercel/nft trace cache has shipped stale `vm-manifest.ts`
+  // to this route across multiple deploys (5e710334, 16aa97c9, e30c6a78).
+  // The pre-v90 incident (20 VMs stuck at cv=91 with old configSettings
+  // on disk) is the most expensive instance documented. Reactive
+  // touch-route comments are not enough — a bundle that loads stale
+  // VM_MANIFEST will sail through the per-step verify-after-set
+  // because every key it checks was in the OLD shape too.
+  //
+  // Verify here, before any cv mutation: fetch the live vm-manifest.ts
+  // from main on GitHub (outside the bundle, can't be cached by nft),
+  // hash (version + configSettings), compare to runtime. Mismatch =
+  // bundle is stale = REFUSE to bump cv this cycle. Release lock and
+  // exit; next deploy will rebuild the bundle and the next cron tick
+  // will pass the integrity check.
+  //
+  // GitHub outage / parse error / network timeout = degrade to old
+  // behavior (allow cv bump). Better than halting the entire reconcile
+  // pipeline on a transient GitHub blip.
+  const integrity = await verifyManifestFreshness(
+    VM_MANIFEST.version,
+    VM_MANIFEST.configSettings,
+  );
+  if (integrity.ok && !integrity.fresh) {
+    logger.error("reconcile-fleet: STALE BUNDLE — refusing to bump cv this cycle", {
+      route: "cron/reconcile-fleet",
+      runtime_version: integrity.runtime_version,
+      remote_version: integrity.remote_version,
+      runtime_sha: integrity.runtime_sha,
+      remote_sha: integrity.remote_sha,
+      action: "REFUSE_CV_BUMP_REASON_STALE_BUNDLE",
+    });
+    await releaseCronLock(CRON_NAME);
+    return NextResponse.json({
+      halted: "stale_bundle",
+      runtime_version: integrity.runtime_version,
+      remote_version: integrity.remote_version,
+      runtime_sha: integrity.runtime_sha,
+      remote_sha: integrity.remote_sha,
+      action_required: "Vercel has cached a stale vm-manifest.ts. Force a redeploy (touch route.ts comment + push) and verify the next cron tick reports fresh: true.",
+    }, { status: 503 });
+  }
+  if (!integrity.ok) {
+    // Couldn't verify — degrade to old behavior (allow cv bump). Log
+    // a warning so monitoring can flag prolonged github_unreachable
+    // states (those would mask staleness silently).
+    logger.warn("reconcile-fleet: manifest integrity check unverifiable — proceeding with caution", {
+      route: "cron/reconcile-fleet",
+      reason: integrity.reason,
+      detail: integrity.detail,
+    });
+  }
+
   const startMs = Date.now();
   let candidates = 0;
   let audited = 0;
@@ -137,23 +192,46 @@ export async function GET(req: NextRequest) {
     //   - status="assigned" (the only VMs that benefit from reconciliation;
     //     ready pool VMs are handled by the snapshot itself)
     //   - config_version < VM_MANIFEST.version (the staleness signal)
-    //   - health_status IN ('healthy','suspended','hibernating') — was just
-    //     'healthy' until 2026-04-28. The narrow filter silently excluded 86
-    //     VMs from EVER being reconciled (suspended/hibernating users on
-    //     stale code with no path to current). Now we audit them too;
-    //     non-healthy VMs get skipGatewayRestart so we don't accidentally
-    //     un-suspend them. Config + files still land; they pick up on the
-    //     next gateway start (reactivation flow).
+    //   - health_status='healthy' — see HISTORY note below.
     //   - gateway_url IS NOT NULL (skip VMs that never finished provisioning)
     //
     // Order: oldest config_version first so v55 VMs (most drifted) get
     // priority over v57 VMs (only 1 version behind).
+    //
+    // ── HISTORY: eligibility filter ──
+    // 2026-04-28: widened from eq('healthy') → in('healthy','suspended','hibernating')
+    //   so suspended/hibernating users would have current config when they
+    //   came back. Each suspended VM ran with skipGatewayRestart=true so the
+    //   reconcile didn't accidentally un-suspend them.
+    //
+    // 2026-05-09: REVERTED to eq('healthy'). The widened filter caused fleet
+    //   throughput to collapse from nominal 60 VMs/hr to ~0.4 VMs/hr.
+    //   Diagnosis: 45 long-dormant suspended/hibernating VMs at cv=74-80
+    //   (last_health_check 2-28 days old, many SSH-degraded a la vm-726)
+    //   were head-of-line blocking the 149 healthy stale VMs behind them.
+    //   The cron's oldest-cv-first ordering re-picked the same broken cohort
+    //   every tick, burned the full 300s Vercel budget, and made zero
+    //   forward progress.
+    //
+    //   Why removing them is safe: suspended VMs serve no user traffic, so
+    //   there's no time pressure to keep their config current. When the user
+    //   pays again, wakeIfHibernating (lib/wake-vm.ts) flips health_status
+    //   to 'healthy' and the VM re-enters eligibility on the next tick.
+    //   Oldest-cv-first ordering puts the just-woken VM at the head of the
+    //   queue (it's the most stale by definition), so reconcile happens
+    //   within 1-2 ticks (3-6 min) of wake. Acceptable staleness window vs.
+    //   making wake synchronous-reconcile (which would 30-90s the Stripe
+    //   webhook and breach the 10s timeout).
+    //
+    //   skipGatewayRestart logic at the loop site is preserved (defensive —
+    //   /api/admin/reconcile-vm can still be invoked manually against
+    //   suspended VMs, which is the only remaining caller of that path).
     const { data: staleVms, error: queryErr } = await supabase
       .from("instaclaw_vms")
       .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, tier, api_mode, user_timezone, strict_hold_streak, partner")
       .eq("status", "assigned")
       .eq("provider", "linode")
-      .in("health_status", ["healthy", "suspended", "hibernating"])
+      .eq("health_status", "healthy")
       .lt("config_version", VM_MANIFEST.version)
       .not("gateway_url", "is", null)
       .order("config_version", { ascending: true, nullsFirst: true })
