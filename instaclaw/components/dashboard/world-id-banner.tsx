@@ -58,10 +58,10 @@ export function WorldIDBanner() {
       <WorldLogo className="w-5 h-5 shrink-0" style={{ color: "#333334" }} />
       <div className="flex-1">
         <p className="text-sm font-semibold" style={{ color: "#333334" }}>
-          Prove you&apos;re human, unlock more business.
+          Prove a real human runs your agent.
         </p>
         <p className="text-xs" style={{ color: "#6b6b6b" }}>
-          Verified agents get higher trust scores, priority search visibility, and access to premium bounties.
+          Verified agents are AgentBook-registered on-chain, badged on Clawlancer, ranked higher in search, and eligible for premium contracts other agents can&apos;t see.
         </p>
       </div>
       <Link
@@ -77,7 +77,7 @@ export function WorldIDBanner() {
           color: "#333334",
         }}
       >
-        Verify now →
+        Get verified →
       </Link>
     </div>
   );
