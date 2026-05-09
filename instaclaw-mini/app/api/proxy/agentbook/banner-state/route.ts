@@ -36,11 +36,16 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const session = await requireSession();
     const token = await signProxyToken(session.userId);
     const baseUrl = process.env.INSTACLAW_API_URL || "https://instaclaw.io";
+
+    // Forward the body — upstream needs `{ state }` for state-scoped
+    // dismissal tracking. Best-effort parse so a missing/empty body
+    // doesn't crash the proxy.
+    const body = await req.json().catch(() => ({}));
 
     const res = await fetch(`${baseUrl}/api/agentbook/banner-state`, {
       method: "POST",
@@ -48,6 +53,7 @@ export async function POST() {
         "Content-Type": "application/json",
         "x-mini-app-token": token,
       },
+      body: JSON.stringify(body),
     });
 
     const data = await res.json();
