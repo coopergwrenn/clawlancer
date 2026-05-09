@@ -54,6 +54,24 @@
  * P0 alert criteria:
  *   - Successful GitHub fetch + parseable both sides + SHA mismatch.
  *     This is a confirmed bundle-staleness signal — page immediately.
+ *
+ * Dynamic-value keys (e.g., `String(BOOTSTRAP_MAX_CHARS)`):
+ *   The parser regex only matches `"key": "value"` literal pairs. Lines
+ *   like `"agents.defaults.bootstrapMaxChars": String(BOOTSTRAP_MAX_CHARS),`
+ *   evaluate to a string at runtime but appear as a non-quoted expression
+ *   in the source. If we naively hashed the runtime's computed value
+ *   while the parser skipped the line entirely, the SHAs would never
+ *   match and the integrity check would halt the cron on every tick (a
+ *   guaranteed false positive). Fix: parseRemoteManifest also returns
+ *   `dynamicKeys` (keys whose RHS isn't a quoted literal), and
+ *   verifyManifestFreshness filters BOTH the runtime and parsed
+ *   configSettings down to the same key subset before hashing.
+ *
+ *   Trade-off: drift in dynamic-value keys (e.g., a change to
+ *   BOOTSTRAP_MAX_CHARS) is NOT caught by the integrity check. Acceptable
+ *   because the alternative is the cron permanently 503-ing on every
+ *   tick. If a dynamic-value key turns out to be load-bearing for stale-
+ *   bundle detection, convert it to a quoted literal in the source.
  */
 import { createHash } from "crypto";
 
@@ -103,13 +121,16 @@ export function computeManifestSha(version: number, configSettings: Record<strin
  * gets `github_parse_err` — at which point the manifest-integrity
  * check should be revisited alongside the refactor.
  */
-function parseRemoteManifest(src: string): { version: number; configSettings: Record<string, string> } | null {
+function parseRemoteManifest(src: string): {
+  version: number;
+  configSettings: Record<string, string>;
+  dynamicKeys: string[];
+} | null {
   const versionMatch = src.match(/version:\s*(\d+)/);
   if (!versionMatch) return null;
   const version = parseInt(versionMatch[1], 10);
   // Extract the configSettings object literal. Match from
   // `configSettings: {` to the matching closing `}` followed by `,`.
-  // We use a non-greedy match with a lookbehind anchor.
   const csStart = src.indexOf("configSettings:");
   if (csStart < 0) return null;
   const openBraceIdx = src.indexOf("{", csStart);
@@ -128,21 +149,27 @@ function parseRemoteManifest(src: string): { version: number; configSettings: Re
   if (closeBraceIdx < 0) return null;
   const csBody = src.slice(openBraceIdx + 1, closeBraceIdx);
   // Extract "key": "value" pairs. Skip lines starting with // (comments).
+  // Lines that match the key-pattern but NOT a quoted-string value (e.g.,
+  // `"key": String(VAR),` or `"key": SOME_CONSTANT,`) are recorded in
+  // dynamicKeys so the verifier can filter them out of BOTH the runtime
+  // and parsed sides before hashing — see file-level docblock.
   const settings: Record<string, string> = {};
+  const dynamicKeys: string[] = [];
   const lines = csBody.split("\n");
   for (const ln of lines) {
     const trimmed = ln.trim();
     if (trimmed.startsWith("//") || trimmed.length === 0) continue;
-    // Match: "key.path": "value", with optional trailing comma + comment
-    // Also handle: "key": String(VAR), or "key": SOME_CONSTANT, — we treat
-    // the right-hand side as the literal value if it's a quoted string,
-    // otherwise we fall back to the raw token (best effort — only quoted
-    // string values fully match; Cooper's manifest uses quoted strings
-    // throughout the compaction block).
     const kvMatch = trimmed.match(/^"([^"]+)":\s*"([^"]*)"/);
-    if (kvMatch) settings[kvMatch[1]] = kvMatch[2];
+    if (kvMatch) {
+      settings[kvMatch[1]] = kvMatch[2];
+      continue;
+    }
+    // Line starts with a quoted key but the RHS isn't a quoted literal.
+    // Capture the key for the dynamicKeys exclusion list.
+    const keyOnly = trimmed.match(/^"([^"]+)":/);
+    if (keyOnly) dynamicKeys.push(keyOnly[1]);
   }
-  return { version, configSettings: settings };
+  return { version, configSettings: settings, dynamicKeys };
 }
 
 /**
@@ -160,8 +187,8 @@ export async function verifyManifestFreshness(
   const now = Date.now();
   if (memoCache && now - memoCache.ts < CACHE_TTL_MS) return memoCache.v;
 
-  const runtimeSha = computeManifestSha(runtimeVersion, runtimeConfigSettings);
-
+  // Runtime SHA is computed AFTER the parser returns, because we need
+  // parsed.dynamicKeys to filter both sides to the same key subset.
   let res: Response;
   try {
     res = await fetch(GITHUB_RAW_URL, {
@@ -218,17 +245,27 @@ export async function verifyManifestFreshness(
     return verdict;
   }
 
+  // Filter both sides to exclude dynamic-value keys (those the parser
+  // could not extract because the RHS isn't a quoted string literal).
+  // The runtime side has the evaluated value; the parsed side has nothing.
+  // Hashing the union would always mismatch — see file-level docblock.
+  const dynamicKeySet = new Set(parsed.dynamicKeys);
+  const filteredRuntime: Record<string, string> = {};
+  for (const [k, v] of Object.entries(runtimeConfigSettings)) {
+    if (!dynamicKeySet.has(k)) filteredRuntime[k] = v;
+  }
+  const filteredRuntimeSha = computeManifestSha(runtimeVersion, filteredRuntime);
   const remoteSha = computeManifestSha(parsed.version, parsed.configSettings);
-  const fresh = remoteSha === runtimeSha;
+  const fresh = remoteSha === filteredRuntimeSha;
   const verdict: ManifestIntegrityVerdict = fresh
     ? {
         ok: true, fresh: true, reason: "verified",
-        runtime_version: runtimeVersion, runtime_sha: runtimeSha, remote_sha: remoteSha,
+        runtime_version: runtimeVersion, runtime_sha: filteredRuntimeSha, remote_sha: remoteSha,
       }
     : {
         ok: true, fresh: false, reason: "stale_bundle",
         runtime_version: runtimeVersion, remote_version: parsed.version,
-        runtime_sha: runtimeSha, remote_sha: remoteSha,
+        runtime_sha: filteredRuntimeSha, remote_sha: remoteSha,
       };
   memoCache = { v: verdict, ts: now };
   return verdict;
