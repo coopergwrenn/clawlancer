@@ -1,0 +1,47 @@
+#!/usr/bin/env sh
+# Pre-commit hook: when vm-manifest.ts is staged, automatically refresh
+# the timestamped touch comment in the reconcile-fleet route to invalidate
+# Vercel's @vercel/nft trace cache for that bundle.
+#
+# Background: Vercel's nft trace cache silently serves stale vm-manifest.ts
+# imports to bundled cron routes across deploys. The manual touch-comment
+# habit (commits 5e710334, 16aa97c9) catches this reactively, but only
+# when the developer remembers. This hook mechanizes the habit.
+#
+# This is layer 2 of the defense; layer 3 is lib/manifest-integrity.ts
+# (runtime hash compare against GitHub raw). Both together = belt + braces.
+#
+# Sister design note: we ONLY touch route.ts when vm-manifest.ts is in the
+# staged diff. Touching unconditionally would create churn on unrelated
+# commits. The shape `git diff --cached --name-only` returns staged paths
+# relative to repo root.
+
+# Detect staged changes to vm-manifest.ts
+if git diff --cached --name-only | grep -q "instaclaw/lib/vm-manifest.ts"; then
+  ROUTE_FILE="instaclaw/app/api/cron/reconcile-fleet/route.ts"
+  if [ ! -f "$ROUTE_FILE" ]; then
+    echo "[pre-commit] WARN: $ROUTE_FILE not found — skipping nft cache-bust touch"
+    exit 0
+  fi
+
+  TS=$(date -u +"%Y-%m-%d %H:%M UTC")
+  COMMENT="// nft cache-bust auto-touch (vm-manifest.ts changed): $TS"
+
+  # Append the comment near the top of the route file's constants block,
+  # right after the existing CONFIG_AUDIT_BATCH_SIZE declaration. We use
+  # `sed -i` (BSD sed on macOS needs an empty extension arg) to insert
+  # the comment AFTER the matching line.
+  if grep -q "^const CONFIG_AUDIT_BATCH_SIZE" "$ROUTE_FILE"; then
+    if [ "$(uname)" = "Darwin" ]; then
+      sed -i '' "/^const CONFIG_AUDIT_BATCH_SIZE/a\\
+$COMMENT
+" "$ROUTE_FILE"
+    else
+      sed -i "/^const CONFIG_AUDIT_BATCH_SIZE/a\\$COMMENT" "$ROUTE_FILE"
+    fi
+    git add "$ROUTE_FILE"
+    echo "[pre-commit] vm-manifest.ts changed → auto-touched $ROUTE_FILE for nft cache-bust"
+  else
+    echo "[pre-commit] WARN: CONFIG_AUDIT_BATCH_SIZE anchor not found in $ROUTE_FILE — skipping cache-bust (manual touch recommended)"
+  fi
+fi
