@@ -57,6 +57,20 @@ const LOCK_TTL_SECONDS = 360; // > maxDuration with 60s headroom
 // them and protective regardless.
 const CONFIG_AUDIT_BATCH_SIZE = 3;
 
+// Per-VM hard timeout. A clean reconcile is 30-60s; a stale-cohort
+// reconcile is 60-120s. Anything past 120s is almost certainly a slow
+// SSH connection, hung command, or unrecoverable VM. Without this cap,
+// a single hung VM at the head of the batch can eat the entire 300s
+// Vercel budget, leaving the other 2 batch slots unprocessed.
+//
+// Implementation: Promise.race against a setTimeout reject. The
+// in-flight SSH commands continue executing on the VM side after the
+// timeout — they just stop being awaited by us. The reconciler is
+// designed to be idempotent and the cv bump only happens on full
+// success, so an aborted mid-flight reconcile leaves the VM at its
+// prior cv and the next cron tick retries naturally.
+const PER_VM_TIMEOUT_MS = 120_000;
+
 /**
  * Strict-mode allowlist. Comma-separated VM UUIDs. Any VM whose id is in
  * this set is reconciled in strict mode for this cron cycle:
@@ -314,11 +328,24 @@ export async function GET(req: NextRequest) {
         // start (reactivation flow runs auditVMConfig again, this time with
         // skipGatewayRestart=false, so the gateway gets the latest).
         const skipGatewayRestart = vm.health_status !== "healthy";
-        const auditResult = await auditVMConfig(vm, {
-          strict,
-          canary: canaryEnabled,
-          skipGatewayRestart,
-        });
+        // Per-VM hard timeout (PER_VM_TIMEOUT_MS, currently 120s). One slow
+        // VM can otherwise eat the full 300s Vercel budget and starve the
+        // other 2 batch slots. The thrown timeout error falls into the catch
+        // block below → errored++, no cv bump, next cron cycle retries.
+        const auditResult = await Promise.race([
+          auditVMConfig(vm, { strict, canary: canaryEnabled, skipGatewayRestart }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `per-VM reconcile timeout after ${PER_VM_TIMEOUT_MS / 1000}s`,
+                  ),
+                ),
+              PER_VM_TIMEOUT_MS,
+            ),
+          ),
+        ]);
         audited++;
         if (strict) {
           strictProbes++;
