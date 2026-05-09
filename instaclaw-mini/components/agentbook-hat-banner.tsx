@@ -147,7 +147,16 @@ export default function AgentbookHatBanner() {
                   height={96}
                   unoptimized
                   className="object-contain"
-                  style={{ width: "78%", height: "78%" }}
+                  style={{
+                    width: "78%",
+                    height: "78%",
+                    // Drops the source PNG's white background by multiplying
+                    // its color against the container bg. White × bg = bg
+                    // (effectively transparent); the cap's dark cord and
+                    // white embroidery stay sharp because they're not pure
+                    // white. Cheaper than re-exporting the PNG with alpha.
+                    mixBlendMode: "multiply",
+                  }}
                 />
               </div>
 
