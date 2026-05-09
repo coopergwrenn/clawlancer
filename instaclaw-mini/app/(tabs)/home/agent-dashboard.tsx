@@ -16,6 +16,7 @@ import {
 import GoogleConnectCard from "@/components/google-connect-card";
 import GooglePersonalizationModal from "@/components/google-personalization-modal";
 import AgentBookCard from "@/components/agentbook-card";
+import AgentbookHatBanner from "@/components/agentbook-hat-banner";
 import AgentBookOnboardModal from "@/components/agentbook-onboard-modal";
 import BankrTokenizeCard from "@/components/bankr-tokenize-card";
 import type { SubscriptionInfo } from "@/lib/supabase";
@@ -581,8 +582,14 @@ export default function AgentDashboard({
         </button>
       </div>
 
+      {/* ── AgentBook hat-claim promo (second-visit gated, dismissible) ── */}
+      {/* Anchor id used by the banner's "Claim my hat" CTA to scroll into view. */}
+      <AgentbookHatBanner />
+
       {/* ── AgentBook Registration (before Google so both visible on first load) ── */}
-      <AgentBookCard />
+      <div id="agentbook-card">
+        <AgentBookCard />
+      </div>
 
       {/* ── Google Connection Status ── */}
       {gmailConnected ? (

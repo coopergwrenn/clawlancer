@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
+import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
 import { AgentWalletFundingCard } from "@/components/dashboard/agent-wallet-funding-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
@@ -530,6 +531,9 @@ export default function DashboardPage() {
       <div data-tour="dash-verify">
         <WorldIDBanner />
       </div>
+
+      {/* AgentBook hat-claim promo banner — second-visit gated, dismissible */}
+      <AgentbookHatBanner />
 
       {/* Bankr wallet card — shows if agent has a provisioned wallet */}
       {vm && (
