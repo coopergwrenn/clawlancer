@@ -34,6 +34,26 @@ const LOCK_TTL_SECONDS = 360; // > maxDuration with 60s headroom
 // config — local builds picked up the change immediately, but every Vercel
 // deploy was restoring the old route.js.nft.json. Touch comment is harmless
 // and load-bearing; do not remove without re-deploying first.
+//
+// Cache-bust touch 2026-05-07 19:45 UTC: re-bust to force a fresh nft trace
+// after the v90 four-layer reliability fix (commit 7ac0d370) added 7 new
+// agents.defaults.compaction.* keys to lib/vm-manifest.ts:configSettings
+// (mode, maxActiveTranscriptBytes, recentTurnsPreserve, qualityGuard.enabled,
+// qualityGuard.maxRetries, notifyUser, truncateAfterCompaction). Verified on
+// vm-648 (the first VM to reconcile to cv=91 post-deploy): strip-thinking.py
+// had all 4 new Layer 1+3 sentinels (def compact_session_in_place_lines /
+// SESSION COMPACTED: / def _extract_large_tool_results_to_cache /
+// LAYER3_EXTRACTED:) but openclaw.json compaction block was the OLD shape
+// (only reserveTokensFloor + memoryFlush). The reconciler bundle on Vercel
+// was running pre-v90 vm-manifest.ts because Vercel's nft trace was cached
+// from before the v90 deploy. Pre-flight test on vm-512 had already
+// confirmed all 7 keys are schema-accepted (EXIT:0 each), so this is purely
+// a build-cache problem, not a config-validity problem. Same precedent as
+// the 2026-05-05 touch above. Once Vercel rebuilds with this comment, the
+// next reconcile cycle will pick up the new keys for any VM at cv<91.
+// Already-at-v91 VMs (vm-648, vm-043) won't auto-receive Layer 2 until the
+// next manifest bump — Layer 1 (the critical nuke-prevention fix) is on
+// them and protective regardless.
 const CONFIG_AUDIT_BATCH_SIZE = 3;
 
 /**
