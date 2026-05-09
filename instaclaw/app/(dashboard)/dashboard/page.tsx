@@ -19,6 +19,7 @@ import {
   EyeOff,
   Copy,
   Check,
+  ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
@@ -103,7 +104,12 @@ export default function DashboardPage() {
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
   const [showCreditPacks, setShowCreditPacks] = useState(false);
   const [creditsPurchased, setCreditsPurchased] = useState(false);
-  const [welcomeDismissed, setWelcomeDismissed] = useState(true);
+  // Welcome card is permanent (per Cooper: users can never fully dismiss it).
+  // Collapse state persists in localStorage. Default = expanded (false).
+  // Initial state is `true` to avoid a flash of expanded content on first
+  // paint before the localStorage useEffect can read the saved value;
+  // the effect below corrects to `false` if no saved state exists.
+  const [welcomeCollapsed, setWelcomeCollapsed] = useState(true);
   const [togglingAgdp, setTogglingAgdp] = useState(false);
   const [agdpConfirm, setAgdpConfirm] = useState<"enable" | "disable" | null>(null);
   const [showAgdpSetup, setShowAgdpSetup] = useState(false);
@@ -169,10 +175,24 @@ export default function DashboardPage() {
     }
   }, [usage]);
 
-  // Show welcome card on first visit
+  // Hydrate welcome-card collapse state from localStorage. Default state
+  // is expanded (false). The legacy "instaclaw_welcome_dismissed" key
+  // (which used to permanently hide the card) is intentionally ignored
+  // now that the card is non-dismissable — users who previously dismissed
+  // will see the card again on next load, in collapsed state to avoid
+  // re-pitching them with content they already opted away from.
   useEffect(() => {
-    if (!localStorage.getItem("instaclaw_welcome_dismissed")) {
-      setWelcomeDismissed(false);
+    const saved = localStorage.getItem("instaclaw_welcome_collapsed");
+    if (saved === "1") {
+      setWelcomeCollapsed(true);
+    } else if (saved === "0") {
+      setWelcomeCollapsed(false);
+    } else if (localStorage.getItem("instaclaw_welcome_dismissed")) {
+      // Legacy migration: previously-dismissed users → start collapsed
+      setWelcomeCollapsed(true);
+    } else {
+      // First-ever visit (no saved state) → expanded
+      setWelcomeCollapsed(false);
     }
   }, []);
 
@@ -309,9 +329,16 @@ export default function DashboardPage() {
     }
   }
 
-  function dismissWelcome() {
-    setWelcomeDismissed(true);
-    localStorage.setItem("instaclaw_welcome_dismissed", "1");
+  function toggleWelcomeCollapse() {
+    setWelcomeCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("instaclaw_welcome_collapsed", next ? "1" : "0");
+      } catch {
+        // Storage disabled — collapse state will be ephemeral this session.
+      }
+      return next;
+    });
   }
 
   async function handleToggleAgdp(enabled: boolean) {
@@ -404,28 +431,54 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Welcome card (first visit only) */}
-      {!welcomeDismissed && vmStatus?.status === "assigned" && (
+      {/* Welcome card — permanent (no X dismiss). Title always visible;
+          body collapses/expands via chevron toggle. Persists to
+          localStorage("instaclaw_welcome_collapsed"). Default = expanded. */}
+      {vmStatus?.status === "assigned" && (
         <div
           className="glass rounded-xl p-6 relative"
           style={{ border: "1px solid var(--border)" }}
         >
           <button
-            onClick={dismissWelcome}
-            className="absolute top-4 right-4 w-6 h-6 flex items-center justify-center rounded-full cursor-pointer"
-            style={{ color: "var(--muted)", background: "rgba(0,0,0,0.04)" }}
+            onClick={toggleWelcomeCollapse}
+            className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full cursor-pointer transition-colors hover:bg-black/[0.06]"
+            style={{ color: "var(--muted)" }}
+            aria-label={welcomeCollapsed ? "Expand welcome card" : "Collapse welcome card"}
+            aria-expanded={!welcomeCollapsed}
           >
-            <span className="text-sm leading-none">&times;</span>
+            <motion.div
+              animate={{ rotate: welcomeCollapsed ? 0 : 180 }}
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <ChevronDown className="w-4 h-4" />
+            </motion.div>
           </button>
-          <h2 className="text-lg font-semibold mb-2">Welcome to InstaClaw!</h2>
-          <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
-            Your AI agent is live on a dedicated server. Here&apos;s what to know:
-          </p>
-          <div className="space-y-2 text-sm" style={{ color: "var(--muted)" }}>
-            <p><strong style={{ color: "var(--foreground)" }}>Daily units</strong>: Your plan includes a daily unit allowance that resets at midnight UTC. Haiku costs 1 unit, Sonnet 4, Opus 19. Background heartbeat checks have their own separate budget and won&apos;t eat into your daily units.</p>
-            <p><strong style={{ color: "var(--foreground)" }}>Switch models anytime</strong>: Just tell your bot &quot;use Sonnet&quot; or &quot;switch to Opus&quot; in chat.</p>
-            <p><strong style={{ color: "var(--foreground)" }}>Credit packs</strong>: Need more after your daily limit? Buy credits below, they kick in instantly.</p>
-          </div>
+          <h2 className="text-lg font-semibold">Welcome to InstaClaw!</h2>
+          <motion.div
+            initial={false}
+            animate={{
+              height: welcomeCollapsed ? 0 : "auto",
+              opacity: welcomeCollapsed ? 0 : 1,
+            }}
+            transition={{
+              height: { duration: 0.30, ease: [0.4, 0, 0.2, 1] },
+              opacity: { duration: 0.20, ease: [0.4, 0, 0.2, 1] },
+            }}
+            style={{ overflow: "hidden" }}
+            aria-hidden={welcomeCollapsed}
+          >
+            {/* Top spacer recreates the previous mb-2 below the title */}
+            <div style={{ height: 8 }} />
+            <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+              Your AI agent is live on a dedicated server. Here&apos;s what to know:
+            </p>
+            <div className="space-y-2 text-sm" style={{ color: "var(--muted)" }}>
+              <p><strong style={{ color: "var(--foreground)" }}>Daily units</strong>: Your plan includes a daily unit allowance that resets at midnight UTC. Haiku costs 1 unit, Sonnet 4, Opus 19. Background heartbeat checks have their own separate budget and won&apos;t eat into your daily units.</p>
+              <p><strong style={{ color: "var(--foreground)" }}>Switch models anytime</strong>: Just tell your bot &quot;use Sonnet&quot; or &quot;switch to Opus&quot; in chat.</p>
+              <p><strong style={{ color: "var(--foreground)" }}>Credit packs</strong>: Need more after your daily limit? Buy credits below, they kick in instantly.</p>
+            </div>
+          </motion.div>
         </div>
       )}
 

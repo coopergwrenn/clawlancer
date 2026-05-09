@@ -2,18 +2,30 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
 import { WorldLogo } from "@/components/icons/world-logo";
 
 interface WorldIDStatus {
   verified: boolean;
-  banner_dismissed: boolean;
 }
 
+/**
+ * "Prove you're human" verification nudge.
+ *
+ * Visibility:
+ *   - Shows when the user is NOT verified (status.verified === false).
+ *   - Hides automatically once verification completes.
+ *   - Has NO user-facing dismiss affordance — verification is the only
+ *     path to make it disappear (per Cooper's call: this is a permanent
+ *     nudge, not a dismissible promo, so users don't accidentally
+ *     opt out of higher trust scores / premium bounty access).
+ *
+ * The /api/auth/world-id/dismiss-banner endpoint and the
+ * world_id_banner_dismissed_at column are now unused but kept in place
+ * for backward compat — no migration needed for this UX change.
+ */
 export function WorldIDBanner() {
   const appId = process.env.NEXT_PUBLIC_WORLD_APP_ID;
   const [status, setStatus] = useState<WorldIDStatus | null>(null);
-  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     if (!appId) return;
@@ -23,21 +35,10 @@ export function WorldIDBanner() {
       .catch(() => {});
   }, [appId]);
 
-  // Hide if: env var not set, verified, banner dismissed, or locally dismissed
+  // Hide if: env var not set, status not loaded yet, or already verified.
   if (!appId) return null;
   if (!status) return null;
   if (status.verified) return null;
-  if (status.banner_dismissed) return null;
-  if (dismissed) return null;
-
-  async function handleDismiss() {
-    setDismissed(true);
-    try {
-      await fetch("/api/auth/world-id/dismiss-banner", { method: "POST" });
-    } catch {
-      // Silently handle — already hidden locally
-    }
-  }
 
   return (
     <div
@@ -78,14 +79,6 @@ export function WorldIDBanner() {
       >
         Verify now →
       </Link>
-      <button
-        onClick={handleDismiss}
-        className="shrink-0 p-1 rounded cursor-pointer transition-colors"
-        style={{ color: "#6b6b6b" }}
-        aria-label="Dismiss"
-      >
-        <X className="w-4 h-4" />
-      </button>
     </div>
   );
 }
