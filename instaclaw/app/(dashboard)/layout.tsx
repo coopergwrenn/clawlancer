@@ -26,6 +26,7 @@ import {
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
 import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
+import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 
 // Primary items always visible on mobile
 const primaryNav = [
@@ -319,6 +320,14 @@ export default function DashboardLayout({
           </div>
         </div>
       </nav>
+
+      {/* Site-wide AgentBook hat-claim notification strip — sits between
+          nav and main so it appears above the page heading on every
+          dashboard route. Returns null when not eligible (registered,
+          dismissed within 30d, or first visit) so it adds no whitespace
+          when not shown. Visit gating + dismissal persist via
+          localStorage + DB column. */}
+      <AgentbookHatBanner />
 
       {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-12 sm:py-16">{children}</main>

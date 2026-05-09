@@ -22,7 +22,9 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
-import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
+// AgentbookHatBanner moved to (dashboard)/layout.tsx so it renders as a
+// site-wide notification strip above the page heading on every dashboard
+// route. See commit message for the design rationale.
 import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
 import { AgentWalletFundingCard } from "@/components/dashboard/agent-wallet-funding-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
@@ -401,11 +403,6 @@ export default function DashboardPage() {
           Manage your OpenClaw instance.
         </p>
       </div>
-
-      {/* AgentBook hat-claim promo — first thing under the page header, above
-          all other cards. Second-visit gated, dismissible. Returns null on
-          first paint when not eligible so it doesn't add empty whitespace. */}
-      <AgentbookHatBanner />
 
       {/* Welcome card (first visit only) */}
       {!welcomeDismissed && vmStatus?.status === "assigned" && (
