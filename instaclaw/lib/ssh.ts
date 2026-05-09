@@ -3848,6 +3848,26 @@ export function buildOpenClawConfig(
             enabled: true,
             softThresholdTokens: 8000,
           },
+          // v90 (2026-05-07): four-layer session-overflow reliability fix.
+          // These 7 keys MUST be included in the static config blob so
+          // freshly-provisioned VMs land with the correct compaction
+          // behavior at first boot. Without them, configureOpenClaw()
+          // sets config_version = current manifest version, putting the
+          // VM at cv=N from provision time — but the actual on-disk
+          // openclaw.json carries only the pre-v90 compaction shape.
+          // The reconciler's lt(config_version, N) filter then excludes
+          // the VM forever (lying-DB pattern, same root cause as the
+          // 2026-05-09 v91 cohort recovery). Mirror VM_MANIFEST.configSettings
+          // values exactly. Reconciler enforces these too as defense in depth.
+          mode: "safeguard",
+          maxActiveTranscriptBytes: 150000,
+          recentTurnsPreserve: 10,
+          qualityGuard: {
+            enabled: true,
+            maxRetries: 2,
+          },
+          notifyUser: true,
+          truncateAfterCompaction: true,
         },
         memorySearch: {
           enabled: true,
