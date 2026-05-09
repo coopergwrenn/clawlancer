@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface BannerState {
@@ -18,21 +17,21 @@ const MIN_VISITS_BEFORE_SHOW = 2;
 /**
  * AgentBook hat-claim notification strip.
  *
- * Site-wide notification bar pattern (think GitHub "you have unread
- * notifications" or Stripe "your account needs attention"). Mounts in
- * the dashboard layout between <nav> and <main> so it sits at the very
- * top of the page, above the page heading. Full-width, slim height,
- * subtle amber tint to read as a notification rather than a card.
+ * Style matches the landing-page NotificationBar exactly
+ * (components/landing/notification-bar.tsx + .notification-bar in
+ * globals.css:258) — same translucent off-white bg with backdrop-blur,
+ * same 1px var(--border) bottom rule, same outlined-pill CTA, same
+ * dismiss-x affordance, same sizing + spacing. Only differences:
+ *   - Adds a small inline hat thumbnail on the left (with mix-blend-mode
+ *     multiply to drop the source PNG's white background against the
+ *     bar's translucent bg)
+ *   - Visibility-gated by server-side state (registered? dismissed
+ *     within 30d?) plus client-side second-visit gate
+ *   - Dismissal persists to instaclaw_users.agentbook_banner_dismissed_at
+ *     so it stays dismissed across the web dashboard AND the mini app
  *
- * Visibility gates (ALL must hold):
- *   1. Server says shouldShow=true (user not registered AND not
- *      dismissed within 30 days)
- *   2. Local visit count >= 2 (don't pitch on first-ever load)
- *
- * Cross-surface dismissal: dismissing on the web dashboard or the World
- * mini app dismisses both, via the shared
- * instaclaw_users.agentbook_banner_dismissed_at column hit by both
- * surfaces' clients.
+ * Mounted in (dashboard)/layout.tsx between <nav> and <main> so it
+ * appears at the top of every dashboard route, above the page heading.
  */
 export function AgentbookHatBanner() {
   const [state, setState] = useState<BannerState | null>(null);
@@ -89,85 +88,72 @@ export function AgentbookHatBanner() {
           style={{ overflow: "hidden" }}
           className="w-full"
         >
+          {/* notification-bar class = the exact bg + backdrop-blur the
+              landing strip uses (globals.css:258). border-bottom mirrors
+              the inline style on the landing component. */}
           <div
-            className="w-full"
-            style={{
-              // Soft amber tint — visible as "different from the page bg"
-              // without screaming. Tuned so it pairs with the dashboard's
-              // off-white page background.
-              background: "linear-gradient(180deg, rgba(254, 243, 199, 0.65), rgba(254, 243, 199, 0.40))",
-              borderBottom: "1px solid rgba(245, 158, 11, 0.22)",
-            }}
+            className="notification-bar flex items-center justify-center gap-4 px-4 py-3 text-sm"
+            style={{ borderBottom: "1px solid var(--border)" }}
           >
-            <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-2.5 sm:gap-3">
-              {/* Small inline hat — 28px circle, white-bg-removed via blend */}
-              <div
-                className="shrink-0 w-7 h-7 rounded-full overflow-hidden flex items-center justify-center"
+            {/* Inline hat thumbnail. Tight 22px circle with translucent
+                white-frosted bg; mix-blend-mode drops the PNG's white bg. */}
+            <div
+              className="shrink-0 w-[22px] h-[22px] rounded-full overflow-hidden flex items-center justify-center"
+              style={{
+                background: "rgba(255,255,255,0.55)",
+                boxShadow: "inset 0 0 0 1px var(--border)",
+              }}
+            >
+              <Image
+                src="/agentbook-hat.png"
+                alt="AI HUMAN hat"
+                width={56}
+                height={56}
+                unoptimized
+                className="object-contain"
                 style={{
-                  background: "rgba(255,255,255,0.7)",
-                  boxShadow: "inset 0 0 0 1px rgba(146, 64, 14, 0.10)",
+                  width: "82%",
+                  height: "82%",
+                  mixBlendMode: "multiply",
                 }}
-              >
-                <Image
-                  src="/agentbook-hat.png"
-                  alt="AI HUMAN hat"
-                  width={56}
-                  height={56}
-                  unoptimized
-                  className="object-contain"
-                  style={{
-                    width: "82%",
-                    height: "82%",
-                    // Drops the source PNG's white background by multiplying
-                    // its color against the container bg — white × bg = bg
-                    // (transparent), the dark cap stays sharp.
-                    mixBlendMode: "multiply",
-                  }}
-                />
-              </div>
-
-              {/* Text — inline. Secondary copy hides on narrow viewports
-                  to keep everything on one line at 380px. */}
-              <p
-                className="text-xs sm:text-sm flex-1 min-w-0 leading-tight"
-                style={{ color: "#3f2e10" }}
-              >
-                <span className="font-semibold">
-                  Free $100 hat — only 500 made.
-                </span>
-                <span
-                  className="hidden sm:inline"
-                  style={{ color: "#73561c" }}
-                >
-                  {" "}
-                  Your agent can claim one for you.
-                </span>
-              </p>
-
-              {/* CTA — solid amber pill. Compact label on mobile to stay
-                  on one line at 380px. */}
-              <Link
-                href="/settings#human-verification"
-                className="shrink-0 text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-md whitespace-nowrap transition-all active:scale-95 hover:opacity-90"
-                style={{
-                  background: "#92400e",
-                  color: "#fff",
-                  boxShadow: "0 1px 2px rgba(146, 64, 14, 0.25)",
-                }}
-              >
-                <span className="sm:hidden">Register →</span>
-                <span className="hidden sm:inline">Register in AgentBook →</span>
-              </Link>
-
-              <button
-                onClick={handleDismiss}
-                className="shrink-0 p-1 rounded transition-all hover:bg-black/5 active:scale-90"
-                style={{ color: "#78716c" }}
-                aria-label="Dismiss"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              />
             </div>
+
+            <p style={{ color: "var(--foreground)" }}>
+              Your agent can claim you a free $100 hat. Only 500 ever made.
+            </p>
+
+            <Link
+              href="/settings#human-verification"
+              className="shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-snappy hover:opacity-80 cursor-pointer"
+              style={{
+                border: "1px solid var(--foreground)",
+                color: "var(--foreground)",
+              }}
+            >
+              Register in AgentBook
+            </Link>
+
+            <button
+              onClick={handleDismiss}
+              className="shrink-0 ml-2 p-1 rounded-full hover:opacity-60 transition-snappy cursor-pointer"
+              aria-label="Dismiss"
+              style={{ color: "var(--foreground)" }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
           </div>
         </motion.div>
       )}
