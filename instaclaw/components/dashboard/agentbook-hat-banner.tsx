@@ -93,7 +93,18 @@ export function AgentbookHatBanner() {
             height: { duration: 0.34, ease: [0.4, 0, 0.2, 1] },
             y: { type: "spring", stiffness: 320, damping: 28, mass: 0.9 },
           }}
-          style={{ overflow: "hidden" }}
+          style={{
+            overflow: "hidden",
+            // CRITICAL — the inner .glass card's drop-shadow extends ~6px
+            // below it (rgba(0,0,0,0.1) 0px 2px 4px). overflow:hidden on
+            // this wrapper (required for the height collapse animation)
+            // was clipping that shadow, making the banner look flat /
+            // borderless next to the Welcome card which renders the full
+            // shadow. Adding equal padding-bottom + negative margin gives
+            // the shadow render room without changing layout spacing.
+            paddingBottom: "6px",
+            marginBottom: "-6px",
+          }}
         >
           {/* Use the .glass utility class so this banner inherits the EXACT
               dashboard glass styling — same gradient bg, same multi-layer
@@ -106,25 +117,32 @@ export function AgentbookHatBanner() {
             className="glass rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
             style={{ border: "1px solid var(--border)" }}
           >
-            {/* Hat product image. Source: corduroy "AI 🤝 HUMAN" cap photo
-                cropped via object-cover into the rounded container. White
-                source background plays well on the dashboard's light theme;
-                no manual mask needed. */}
+            {/* Hat product thumbnail.
+                Container: 56px circle with a soft off-white background +
+                subtle inner border so the hat photo (which has a white bg
+                in the source) sits inside a defined "frame" — like a
+                product tile.
+                Image: object-contain at ~75% of container so the hat is
+                fully visible, centered, with breathing room on all sides.
+                Rendered at 96px (vs 40-56px display size) to give Retina
+                + browser-downscale plenty of resolution to work with.
+                unoptimized=true bypasses next/image's webp re-encode that
+                was washing out the cap detail at small sizes. */}
             <div
-              className="shrink-0 w-10 h-10 sm:w-9 sm:h-9 rounded-full overflow-hidden"
+              className="shrink-0 w-14 h-14 sm:w-12 sm:h-12 rounded-full overflow-hidden flex items-center justify-center"
               style={{
-                background: "#000",
-                boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
+                background: "#f4f4f5",
+                boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
               }}
             >
               <Image
                 src="/agentbook-hat.png"
                 alt="AI HUMAN hat"
-                width={40}
-                height={40}
-                className="w-full h-full object-cover"
-                priority={false}
-                unoptimized={false}
+                width={96}
+                height={96}
+                unoptimized
+                className="object-contain"
+                style={{ width: "78%", height: "78%" }}
               />
             </div>
 

@@ -124,25 +124,30 @@ export default function AgentbookHatBanner() {
             }}
           >
             <div className="flex items-start gap-3">
-              {/* Hat product image — corduroy "AI HUMAN" cap.
-                  Wrapped in a black rounded container so the hat (photographed
-                  on white) reads cleanly against the mini app's dark theme.
-                  Subtle gold ring inset preserves the warm celebration palette
-                  the gold halo previously provided. */}
+              {/* Hat product thumbnail.
+                  Light off-white background frames the cap photo (which has
+                  a white source bg) cleanly. Gold ring inset + outer glow
+                  preserve the warm celebration palette from the previous
+                  gold halo. object-contain at 78% of container for visible
+                  breathing room. width/height=96 + unoptimized prevents the
+                  next/image webp re-encode that was making the cap blurry
+                  at small render sizes. */}
               <div
-                className="shrink-0 h-10 w-10 rounded-full overflow-hidden"
+                className="shrink-0 h-12 w-12 rounded-full overflow-hidden flex items-center justify-center"
                 style={{
-                  background: "#000",
+                  background: "#f4f4f5",
                   boxShadow:
-                    "inset 0 0 0 1px rgba(245,158,11,0.45), 0 2px 10px rgba(245,158,11,0.18)",
+                    "inset 0 0 0 1px rgba(245,158,11,0.55), 0 2px 12px rgba(245,158,11,0.22)",
                 }}
               >
                 <Image
                   src="/agentbook-hat.png"
                   alt="AI HUMAN hat"
-                  width={40}
-                  height={40}
-                  className="w-full h-full object-cover"
+                  width={96}
+                  height={96}
+                  unoptimized
+                  className="object-contain"
+                  style={{ width: "78%", height: "78%" }}
                 />
               </div>
 
