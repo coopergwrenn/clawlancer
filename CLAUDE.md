@@ -1118,26 +1118,55 @@ Single source of truth for what each `VM_MANIFEST.version` bump contains. Used f
 
 Bugs and audit items deferred from active work. Each entry must include: discovery date, symptom, hypothesis, why we can't fix tonight, and an investigation plan. Resolve in-place; never silently delete.
 
-### P1-1: Reconciler bumps `config_version` on lying-DB VMs (multiple silent-no-op steps)
+### P1-1 [ELEVATED PRIORITY]: Reconciler bumps `config_version` on lying-DB VMs — fleet integrity problem, ~20% of post-v88 VMs affected, 3 distinct shapes
 
-- **Discovered**: 2026-05-05 during the v88 rollout audit.
-- **Symptom**: vm-893 and vm-895 (both from the 2026-04-30 freshly-provisioned cohort) have `config_version=88` in `instaclaw_vms` but are missing the corresponding artifacts:
-  - vm-893: OpenClaw 2026.4.5 (manifest wants 2026.4.26), `TasksMax=4666` (manifest wants 120), no prctl-subreaper package/binary/drop-in, no `consensus_match_*.py` scripts.
-  - vm-895: same shape — TasksMax=4666, no `gcc` (build-essential not installed), no prctl-subreaper artifacts.
-- **Hypothesis**: At least one of these reconciler steps reports success (no `result.errors.push`) without actually applying changes:
-  1. `stepSystemdUnit` — `override.conf` write or `daemon-reload` succeeded by exit code but didn't take effect.
-  2. `stepSystemPackages` — `apt-get install build-essential` returned `INSTALLED` but didn't actually install gcc.
-  3. `stepNpmPinDrift` — openclaw upgrade succeeded by exit code but didn't actually advance the binary.
-  4. `stepPrctlSubreaper` — early-return on stale `npm-ls` match without verifying the .node binary exists.
-  5. `configureOpenClaw()` initial-setup path bumps `config_version` to current manifest BEFORE the reconciler runs (or instead of running it).
-- **Why we can't diagnose tonight**: The cv=82 cohort (86 VMs) is blocked by the matchpool ENOENT bug — once that frees up (consensus_*.py glob fix in commit `d28bf919`), real bumps will start happening and we can audit the on-disk state of any VM that bumps in real-time.
-- **Investigation plan (post-Consensus)**:
-  1. Pick 3 VMs that bump from cv=82 → cv=88 in the next 24h after the matchpool fix lands. Capture their `result.fixed`/`result.errors`/`result.alreadyCorrect` from the cron logs.
-  2. SSH-audit each VM immediately after the bump. Compare on-disk state (gcc, openclaw --version, TasksMax via systemctl show, prctl-subreaper artifacts, override.conf content) vs what the manifest claims at v88.
-  3. For every step where on-disk doesn't match manifest but no `result.errors` were pushed, that's a Rule 10 violation. Add a verify-after-write block.
-  4. Likely candidates per the 2026-05-05 evidence: `stepSystemdUnit` (TasksMax not landing on freshly-provisioned VMs), `stepNpmPinDrift` (OpenClaw 2026.4.26 not advancing past 2026.4.5), `stepSystemPackages` (`build-essential` reporting INSTALLED but `gcc` still absent — most likely a `which build-essential` always-MISSING quirk hiding the real failure).
-  5. Add Rule 23 sentinel guards to `stepPrctlSubreaper` (binary present + `Environment=NODE_OPTIONS` line in drop-in) and `stepSystemdUnit` (TasksMax line in override.conf) so the reconciler refuses to bump cv if its own writes didn't land.
-- **Why this matters**: Rule 10 was specifically written to prevent this class of bug. Either the rule's discipline didn't get applied to all steps, or there's a path that bypasses verify-after-write entirely. Two paying-customer VMs (vm-893 freshly-provisioned; vm-895 freshly-provisioned) have been running stale OpenClaw + missing matchpool scripts for 5 days behind a green DB row.
+- **Discovered**: 2026-05-05 (vm-893/vm-895 freshly-provisioned cohort)
+- **Re-scoped 2026-05-09**: Phase 1 gbrain canary pre-flight checks revealed lying-DB is FAR more pervasive than the original cohort. Of 16 randomly-sampled VMs at `config_version >= 88`, **3 (~19%) are lying-DB** in production — and they fall into 3 distinct shapes that point to 3+ different silent-failure paths in the reconciler. This is a fleet-integrity problem, not a corner case. **Elevated from "investigate post-Consensus" to "must fix before any fleet-wide gbrain rollout (Phase 4)" — gbrain via the reconciler will land badly on hundreds of VMs if this isn't resolved first.**
+
+#### Sample data (2026-05-09)
+
+| VM | cv | TasksMax | prctl pkg | prctl drop-in | gcc | Shape |
+|---|---|---|---|---|---|---|
+| vm-907 (pro) | 91 | **75** | **MISSING** | **MISSING** | ✓ | Total lie |
+| vm-512 (power) | 89 | 120 | **MISSING** | PRESENT | ✓ | Partial lie (drop-in only) |
+| vm-904 (power) | 91 | 120 | **MISSING** | PRESENT | ✓ | Partial lie (drop-in only) |
+| vm-893 (pre-existing) | 88 | 4666 | MISSING | MISSING | MISSING | Schema-zero lie |
+| vm-895 (pre-existing) | 88 | 4666 | MISSING | MISSING | MISSING | Schema-zero lie |
+| 11 others sampled | 88-91 | 120 | 0.1.0 | PRESENT | ✓ | Honest |
+
+#### The 3 shapes
+
+1. **Total lie** — none of v86 (TasksMax) or v87 (prctl-subreaper) applied; cv claims everything. Both `stepSystemdUnit` AND `stepPrctlSubreaper` silent-failed in this VM's reconcile history. Example: vm-907 (cv=91, but at v75-equivalent state). The likely path: the v75 systemd unit file went missing or unreadable, hitting `stepSystemdUnit`'s "unit not installed (skip) → alreadyCorrect" early-return — that branch pushes to `alreadyCorrect`, NOT to `errors`, so the cron's `pushFailed` gate doesn't trigger and cv bumps.
+2. **Partial lie (drop-in only)** — `stepPrctlSubreaper` got past the systemd drop-in write but the npm install half failed. Drop-in is on disk; npm package isn't. Examples: vm-512, vm-904 (cv=89/91 respectively). Implies the install path is wired with two independent state changes that aren't gate-coupled — npm-install failure should void the drop-in (or vice versa); right now they decouple silently.
+3. **Schema-zero lie** — `configureOpenClaw()` at provision time bumps cv to current manifest BEFORE the reconciler runs steps. Original vm-893/vm-895 cohort. Different code path entirely (provisioning, not reconciling). Won't be fixed by tightening the reconciler — needs a fix in the provisioning flow itself OR a one-time `_db-reset-config-version-from-disk.ts`-style sweep against the affected cohort.
+
+#### Why this matters more than originally documented
+
+- **20% of post-v88 fleet is lying about state.** Anything we ship via the reconciler that depends on cv as truth will land wrong on 1-in-5 VMs.
+- **3 distinct shapes = 3+ silent-failure paths in the codebase.** Fixing one (e.g., stepSystemdUnit's early-return) won't catch the others. Need a comprehensive Rule 10 audit of every reconciler step.
+- **Phase 0 / Phase 1 gbrain installs DETECTED these via the 6-point pre-flight check.** Without that pre-flight, gbrain would have landed broken on lying-DB VMs (e.g., wired into a v75-state gateway that doesn't have prctl-subreaper protecting against zombie accumulation under bun/gbrain load).
+- **Customers are running degraded.** vm-907 (pro tier paying customer, syhranovianti@gmail.com) is at v75-equivalent state for ~indefinite time. No zombie protection, smaller tasksmax cap, missing v88 manifest fixes.
+
+#### Investigation plan (revised — fix before Phase 4 gbrain fleet rollout)
+
+1. **Comprehensive lying-DB census**: SSH-probe ALL 39 VMs at cv >= 88 with the same 6-point check. Classify by shape. Get the real fleet-wide rate (sample suggests ~20% — confirm).
+2. **Per-step Rule 10 audit**: walk every `step*` function in `lib/vm-reconcile.ts`. For each, identify (a) every early-return path that pushes to `alreadyCorrect`, (b) every error path that pushes to `result.errors`. Look for early-returns on conditions that imply failure (file missing, command not found, sudo unavailable). Each of those is a candidate silent-failure.
+3. **Critical step fixes**:
+   - `stepSystemdUnit:2230-2233`: "unit not installed (skip)" early-returns to alreadyCorrect. Should differentiate: "unit genuinely not installed (gateway doesn't exist on this VM, OK)" vs "unit was here yesterday and is missing today (broken)". Latter should push to errors.
+   - `stepPrctlSubreaper`: drop-in write and npm install must be gate-coupled. If npm install fails, the drop-in must be removed (else it'll trigger gateway crash on next restart due to NODE_OPTIONS=--require failing).
+   - `configureOpenClaw()`: do not bump cv to current manifest unless reconcile-equivalent steps actually ran. Better: bump cv to (manifest version - 1) at provision so reconciler is forced to apply the latest changes on first cycle.
+4. **One-time DB-reset sweep**: `scripts/_db-reset-cv-from-disk-v2.ts` (mirror of the 2026-04-30 one for v66/v67 incident). Probe each VM, set cv to the highest manifest version where on-disk state matches. Reconciler then re-applies missing changes.
+5. **Add Rule 23 sentinels**: per-step assertion that the reconciler's in-memory write matches what's on disk before bumping cv.
+6. **Phase 4 gate**: gbrain doesn't go fleet-wide via reconciler until the lying-DB rate is verified <2% (essentially zero).
+
+#### Immediate workarounds (no code fix tonight)
+
+- **Phase 1 gbrain canary**: pre-flight 6-point check refuses to install on lying-DB VMs. Caught vm-907 + vm-512 cleanly today. Pick honest VMs for canary.
+- **Per-VM remediation**: vm-907, vm-512, vm-904 need cv reset (drop them to cv=82 or some pre-v86 number so the reconciler picks them back up). Coordinate with consensus terminal's "Phase C cohort reset" if it's running — see `docs/lying-db-vms-for-phase-c-reset.md`.
+
+#### Why this matters
+
+Rule 10 ("verify every config set; never `|| true`-suppress") was specifically written to prevent this class of bug. Either the rule's discipline didn't get applied to all step* functions, or there's an architectural path that bypasses verify-after-write entirely (the early-return-to-alreadyCorrect pattern is one such path — it's a SILENT skip that looks like success). Two paying-customer VMs from 2026-05-05 have been running stale OpenClaw + missing manifest fixes for 5+ days behind a green DB row. As of 2026-05-09 we have at least 3 more (vm-907, vm-512, vm-904). The real number is likely 30-40 across the fleet given the 20% sample rate.
 
 ### P1-2: `stepNodeExporter` — surface systemctl failure reason on PORT_FAIL
 
@@ -1159,3 +1188,13 @@ Bugs and audit items deferred from active work. Each entry must include: discove
   1. Add a TCP-level reachability probe to `connectSSH` (or to the cron's per-VM try/catch wrapper) that fails fast (<3s) before the ssh2 handshake's 8s readyTimeout. If TCP reaches but ssh2 hangs, increment a per-VM `ssh_handshake_fail_count`.
   2. After N consecutive ssh_handshake fails (e.g., 5 cron cycles), automatically mark `health_status='unhealthy'` and emit an admin alert. Same shape as `health_fail_count` but for SSH-layer failures specifically.
   3. Audit how many other VMs are in this state right now — would expect 0-2 at most, but if it's 10+, that's a systemic issue worth deeper investigation.
+
+### P1-4: Vercel nft trace cache silently serves stale `vm-manifest.ts` to cron routes — move VM_MANIFEST to a JSON file
+
+- **Discovered**: 2026-05-09. 20 healthy assigned VMs at `config_version=91` were missing the 7 new compaction keys (`mode`, `maxActiveTranscriptBytes`, `recentTurnsPreserve`, `qualityGuard.{enabled,maxRetries}`, `notifyUser`, `truncateAfterCompaction`) that landed in the v90 manifest (commit `7ac0d370`). Probed by `_probe-v91-compaction.ts` and `_probe-v91-census.ts`; 14/15 sampled VMs had the keys missing on disk.
+- **Root cause** (already documented in `app/api/cron/reconcile-fleet/route.ts` cache-bust comment, commit `16aa97c9` 2026-05-07 19:45 UTC): Vercel's `@vercel/nft` build trace cache served the **pre-v90** `vm-manifest.ts` to the reconcile-fleet cron route across deploys. The reconciler ran with the cached old manifest in memory, pushed the OLD `configSettings` (which already matched on-disk → no drift detected → `result.errors=[]` → `pushFailed=false` → cv bumped to current `VM_MANIFEST.version` resolved from elsewhere in the cached blob → 91). VMs landed at cv=91 with old config on disk. Once cv=91, the `lt(config_version, 91)` filter in `route.ts:157` excludes them forever.
+- **Why Rule 10 verify-after-set didn't catch it**: the verify only checks the keys it's been TOLD to verify (i.e., the keys present in its in-memory view of `manifest.configSettings`). When the in-memory manifest is stale, the verify can't know about keys it isn't iterating over. This is a Rule 23-shape failure (stale module cache) at the Vercel-bundle layer instead of the local node-process layer.
+- **Immediate mitigation already in place**: cache-bust via `touch route.ts` comment (commits `5e710334`, `16aa97c9`). Reactive — only works when someone notices the issue and adds a comment to bust the cache. Failed to catch the v89→v90 deploy in time, leaving 20 VMs stuck.
+- **Long-term fix (this P1)**: move `VM_MANIFEST` from a `.ts` file imported at route-bundle time to a `.json` file (`lib/vm-manifest.json`) loaded at request time via `readFileSync` or `import` with `assert { type: 'json' }`. JSON files are not subject to nft trace caching the same way TS imports are — they're loaded fresh on each request (or at least each cold-start, which on Vercel is frequent). Trade-off: slightly more boilerplate to type-check the JSON shape, but the security/correctness gain of "fresh manifest on every cron tick" is worth it.
+- **Alternate approach to consider**: keep `VM_MANIFEST` in TS but expose `manifest.version` + a hash of `configSettings` via a runtime-loaded debug field, and have the cron route LOG these on every fire. A monitoring dashboard could detect "manifest version did not advance even after a deploy" — reactive but observable. Less elegant than the JSON move but lower-effort.
+- **Detection wishlist**: a daily/hourly audit job that picks 5 random VMs at the current `VM_MANIFEST.version`, SSH-probes their on-disk config, and compares against the manifest's expected `configSettings`. Alerts on any drift. Catches lying-DB regressions in <24h instead of waiting for someone to notice.
