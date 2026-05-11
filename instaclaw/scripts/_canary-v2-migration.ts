@@ -63,6 +63,7 @@ import {
   TOOLS_V2_MARKER,
   IDENTITY_V2_MARKER,
 } from "../lib/workspace-templates-v2";
+import { tryAcquireCronLock, releaseCronLock } from "../lib/cron-lock";
 import {
   SOUL_STUB_EDGE_MARKER,
   SOUL_STUB_CONSENSUS_MARKER,
@@ -115,7 +116,7 @@ async function prompt(question: string): Promise<string> {
   });
 }
 
-async function main() {
+async function main(): Promise<number> {
   console.log(`══ Canary V2 SOUL.md migration: ${vmName} ══`);
   console.log(`   manifest v${VM_MANIFEST.version}, gating via RECONCILE_SOUL_MIGRATION_*\n`);
 
@@ -128,10 +129,10 @@ async function main() {
     .single();
   if (vmErr || !vm) {
     console.error(`FATAL: VM '${vmName}' not found in instaclaw_vms: ${vmErr?.message ?? "no row"}`);
-    process.exit(2);
+    return 2;
   }
   console.log(`  id:              ${vm.id}`);
-  console.log(`  ip:              ${vm.ipv4_address}`);
+  console.log(`  ip:              ${vm.ip_address}`);
   console.log(`  config_version:  ${vm.config_version}`);
   console.log(`  health_status:   ${vm.health_status}`);
   console.log(`  partner:         ${vm.partner ?? "null"}`);
@@ -142,22 +143,49 @@ async function main() {
     console.log(`\n  ⚠ VM is not healthy (${vm.health_status}). Migration safe but probes may fail.`);
   }
 
-  // ── 1. Pre-check: SSH + disk + on-disk state ──
-  console.log("\n── 1. Pre-check: SSH connectivity + disk + on-disk state ──");
-  const ssh = new NodeSSH();
+  // ── 0.5. Acquire reconcile-fleet cron lock (CLAUDE.md Rule 8) ──
+  // Prevents racing the Vercel cron, which is eligible to process this VM
+  // (cv=${vm.config_version} < manifest v${VM_MANIFEST.version}). If the cron
+  // picked this VM while the canary runs, both would mutate the same workspace
+  // concurrently — SHA-verified atomic writes survive per-step, but inter-step
+  // ordering between two reconciles is undefined.
+  console.log("\n── 0.5. Acquire reconcile-fleet cron lock ──");
+  let lockAcquired = false;
   try {
-    await ssh.connect({
-      host: vm.ipv4_address,
-      username: "openclaw",
-      privateKey: sshKey,
-      readyTimeout: 12_000,
-    });
-    ok("SSH connected");
+    lockAcquired = await tryAcquireCronLock(
+      "reconcile-fleet",
+      900, // 15 min TTL — canary should finish in ~3-5 min; safety net for stuck lock
+      `manual-canary-${vmName}`,
+    );
   } catch (e) {
-    bad(`SSH connect failed: ${(e as Error).message}`);
-    console.error("FATAL: cannot proceed without SSH");
-    process.exit(2);
+    console.error(`FATAL: tryAcquireCronLock errored: ${(e as Error).message}`);
+    return 2;
   }
+  if (!lockAcquired) {
+    console.error("FATAL: reconcile-fleet cron lock already held.");
+    console.error("  Vercel cron may be mid-tick, or another manual canary/rollout is running.");
+    console.error("  Wait for the lock to release and retry. Inspect instaclaw_cron_locks if persistent.");
+    return 2;
+  }
+  console.log("  ✓ cron lock acquired (15 min TTL)");
+
+  try {
+    // ── 1. Pre-check: SSH + disk + on-disk state ──
+    console.log("\n── 1. Pre-check: SSH connectivity + disk + on-disk state ──");
+    const ssh = new NodeSSH();
+    try {
+      await ssh.connect({
+        host: vm.ip_address,
+        username: "openclaw",
+        privateKey: sshKey,
+        readyTimeout: 12_000,
+      });
+      ok("SSH connected");
+    } catch (e) {
+      bad(`SSH connect failed: ${(e as Error).message}`);
+      console.error("FATAL: cannot proceed without SSH");
+      return 2;
+    }
 
   // Gateway active?
   const gwActive = await ssh.execCommand(
@@ -232,13 +260,13 @@ async function main() {
 
   if (dryMigrationErrors.length > 0) {
     bad("dry-run surfaced errors — STOP, investigate before live run");
-    process.exit(2);
+    return 2;
   }
 
   if (dryRunOnly) {
     console.log("\n── dry-run only requested. Exiting. ──");
     console.log(`\n══ Summary: ${passCount} pass / ${failCount} fail ══`);
-    process.exit(failCount > 0 ? 2 : 0);
+    return failCount > 0 ? 2 : 0;
   }
 
   // ── 3. Confirm before live run ──
@@ -247,17 +275,17 @@ async function main() {
   );
   if (!wouldMigrate && dryMigrationCorrect.some((s) => s.includes("all 4 files at V2"))) {
     console.log("\n  ~ VM is already at V2. Nothing to migrate. Exiting clean.");
-    process.exit(0);
+    return 0;
   }
   if (!wouldMigrate) {
     bad("dry-run reported neither errors nor migration intent — unexpected state");
-    process.exit(2);
+    return 2;
   }
 
   const ans = await prompt(`\nProceed with LIVE V2 migration on ${vmName}? [yes/no] `);
   if (ans !== "yes" && ans !== "y") {
     console.log("Aborted by user.");
-    process.exit(1);
+    return 1;
   }
 
   // ── 4. LIVE RUN ──
@@ -290,7 +318,7 @@ async function main() {
   console.log("\n── 5. Post-conditions: V2 markers + sizes + partner stubs ──");
   const ssh2 = new NodeSSH();
   await ssh2.connect({
-    host: vm.ipv4_address,
+    host: vm.ip_address,
     username: "openclaw",
     privateKey: sshKey,
     readyTimeout: 12_000,
@@ -406,13 +434,21 @@ async function main() {
   console.log(`\n══ Summary: ${passCount} pass / ${failCount} fail ══`);
   if (failCount > 0) {
     console.log("\n❌ Canary FAILED. Consider _rollback-v2-from-tar.ts for this VM.");
-    process.exit(2);
+    return 2;
   }
   console.log("\n✅ Canary PASSED. Soak before proceeding to fleet rollout.");
-  process.exit(0);
+  return 0;
+  } finally {
+    if (lockAcquired) {
+      await releaseCronLock("reconcile-fleet").catch(() => {});
+      console.log("  ✓ cron lock released");
+    }
+  }
 }
 
-main().catch((e) => {
-  console.error("FATAL:", e);
-  process.exit(1);
-});
+main()
+  .then((code) => process.exit(code))
+  .catch((e) => {
+    console.error("FATAL:", e);
+    process.exit(1);
+  });

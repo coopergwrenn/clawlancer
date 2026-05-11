@@ -115,7 +115,7 @@ async function prompt(q: string): Promise<string> {
 type VmRow = {
   id: string;
   name: string;
-  ipv4_address: string;
+  ip_address: string;
   partner: string | null;
   health_status: string;
 };
@@ -128,7 +128,7 @@ async function rollbackOne(vm: VmRow): Promise<{ ok: boolean; messages: string[]
   const ssh = new NodeSSH();
   try {
     await ssh.connect({
-      host: vm.ipv4_address,
+      host: vm.ip_address,
       username: "openclaw",
       privateKey: sshKey,
       readyTimeout: 12_000,
@@ -283,7 +283,7 @@ async function main() {
     // pull all healthy assigned VMs and let rollbackOne short-circuit on V1 VMs.
     const { data } = await sb
       .from("instaclaw_vms")
-      .select("id,name,ipv4_address,partner,health_status")
+      .select("id,name,ip_address,partner,health_status")
       .eq("health_status", "healthy")
       .not("assigned_to", "is", null)
       .order("name");
@@ -292,7 +292,7 @@ async function main() {
   } else {
     const { data } = await sb
       .from("instaclaw_vms")
-      .select("id,name,ipv4_address,partner,health_status")
+      .select("id,name,ip_address,partner,health_status")
       .in("name", explicitVms);
     vms = (data ?? []) as never;
     console.log(`  cohort: ${vms.length}/${explicitVms.length} VMs resolved`);
@@ -320,7 +320,7 @@ async function main() {
   const failures: string[] = [];
 
   for (const vm of vms) {
-    console.log(`\n── ${vm.name} (${vm.ipv4_address}) partner=${vm.partner ?? "null"} ──`);
+    console.log(`\n── ${vm.name} (${vm.ip_address}) partner=${vm.partner ?? "null"} ──`);
     const start = Date.now();
     let res;
     try {
