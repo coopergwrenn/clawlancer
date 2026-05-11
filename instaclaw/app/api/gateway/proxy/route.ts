@@ -534,43 +534,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // --- Ping detection: "ping" messages are health checks, not real user messages ---
-    // They should ALWAYS route as heartbeats (MiniMax, 0.2 cost) regardless of
-    // timing fields. This prevents runaway ping loops from burning user daily limits.
-    let isPingMessage = false;
-    if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
-      const msgs = parsedBody.messages as Array<{ role?: string; content?: unknown }>;
-      const lastUserMsg = msgs.filter((m) => m.role === "user").pop();
-      if (lastUserMsg) {
-        const text = typeof lastUserMsg.content === "string"
-          ? lastUserMsg.content
-          : Array.isArray(lastUserMsg.content)
-            ? (lastUserMsg.content as Array<{ type?: string; text?: string }>).map((b) => b.text || "").join(" ")
-            : "";
-        isPingMessage = text.trim().toLowerCase() === "ping";
-      }
-    }
-
-    // Strict canary bypass (header set by vm-reconcile's stepCanaryProbe)
-    // hard-overrides heartbeat classification so the canary hits the real
-    // Anthropic user-chat path, not the MiniMax heartbeat shortcut. See the
-    // rationale in the bypass-detection block above.
-    const isHeartbeat = (strictCanaryBypass || matchPipelineBypass)
-      ? false
-      : !!(heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage);
-
-    // --- Detect manual user message (for cron circuit breaker) ---
-    // A "manual message" is a real user-initiated chat message:
-    //   - NOT a heartbeat, tool_continuation, virtuals, or ping
-    //   - Has substantive content (> 20 chars)
-    // Used to determine if the user is actively chatting (vs only crons running).
-    let isManualMessage = false;
-    if (!isHeartbeat && !isToolContinuation && !isVirtuals && !isPingMessage) {
+    // --- Extract last user-text once (used by isHeartbeatFrame, isPingMessage, isManualMessage) ---
+    let lastUserText = "";
+    {
       if (parsedBody?.messages && Array.isArray(parsedBody.messages)) {
         const msgs = parsedBody.messages as Array<{ role?: string; content?: unknown }>;
         const lastUserMsg = msgs.filter((m) => m.role === "user").pop();
         if (lastUserMsg) {
-          const text = typeof lastUserMsg.content === "string"
+          lastUserText = typeof lastUserMsg.content === "string"
             ? lastUserMsg.content
             : Array.isArray(lastUserMsg.content)
               ? (lastUserMsg.content as Array<{ type?: string; text?: string }>)
@@ -578,10 +549,52 @@ export async function POST(req: NextRequest) {
                   .map((b) => b.text || "")
                   .join(" ")
               : "";
-          isManualMessage = text.trim().length > 20;
         }
       }
     }
+
+    // --- Detect heartbeat-frame content ---
+    // Same patterns as heartbeatByContent (lines ~506-519) but always computed.
+    // Used to exclude legitimate heartbeats from isManualMessage so we don't
+    // accidentally route them to Sonnet and 20x their cost.
+    const sysPromptForFrame = typeof parsedBody?.system === "string" ? parsedBody.system : "";
+    const isHeartbeatFrame =
+      sysPromptForFrame.includes("HEARTBEAT") ||
+      sysPromptForFrame.includes("proactive wake-up") ||
+      sysPromptForFrame.includes("You are a heartbeat") ||
+      lastUserText.includes("HEARTBEAT.md") ||
+      lastUserText.includes("OpenClaw runtime context for the immediately preceding");
+
+    // --- Ping detection: "ping" messages are health checks, not real user messages ---
+    // They should ALWAYS route as heartbeats (MiniMax, 0.2 cost) regardless of
+    // timing fields. This prevents runaway ping loops from burning user daily limits.
+    const isPingMessage = lastUserText.trim().toLowerCase() === "ping";
+
+    // --- Detect manual user message (real user-typed input) ---
+    // Used BOTH for the cron circuit breaker AND (Bug B fix) to short-circuit
+    // heartbeat classification: a real user message must NEVER be silently
+    // downgraded to MiniMax. >20 chars + not a heartbeat frame + not a ping +
+    // not a tool continuation + not a virtuals call.
+    const isManualMessage =
+      !isHeartbeatFrame &&
+      !isToolContinuation &&
+      !isPingMessage &&
+      !isVirtuals &&
+      lastUserText.trim().length > 20;
+
+    // --- Compute isHeartbeat — real user messages short-circuit ---
+    // Strict canary + match-pipeline bypasses also force isHeartbeat=false
+    // (see bypass-detection blocks above). Bug B fix adds isManualMessage to
+    // the bypass list: when the agent's user is actually typing, respect the
+    // agent's chosen model. The heartbeat→MiniMax swap at line ~588 only fires
+    // for genuine platform-initiated heartbeats.
+    const baseHeartbeat = !!(
+      heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage
+    );
+    const isHeartbeat =
+      (strictCanaryBypass || matchPipelineBypass || isManualMessage)
+        ? false
+        : baseHeartbeat;
 
     // --- Heartbeat model override: always use minimax-m2.5 for background tasks ---
     // Users shouldn't burn Sonnet/Opus credits on heartbeat check-ins.
@@ -590,6 +603,30 @@ export async function POST(req: NextRequest) {
       if (parsedBody) {
         parsedBody.model = "minimax-m2.5";
       }
+    }
+
+    // --- Bug A fix: advance heartbeat_next_at UNCONDITIONALLY before upstream ---
+    // The post-success block below (was lines ~1564-1589) only fires after a 2xx
+    // upstream response. When upstream errors (MiniMax 1008, Anthropic outage,
+    // 5xx, timeout) the proxy early-returns before that block, leaving
+    // heartbeat_next_at stuck in the past. Every subsequent user message then
+    // satisfies heartbeatDue=true and routes to MiniMax — until something
+    // manually unsticks it (the May 11 outage was a fleet-wide instance of this).
+    // Moving the advance EARLY makes Bug A self-healing: even on upstream
+    // failure, next_at advances so the next user message routes correctly.
+    if (isHeartbeat && heartbeatDue) {
+      const intervalStr = vm.heartbeat_interval ?? "3h";
+      const hMatch = intervalStr.match(/^(\d+(?:\.\d+)?)h$/);
+      const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
+      supabase
+        .from("instaclaw_vms")
+        .update({
+          heartbeat_last_at: now.toISOString(),
+          heartbeat_next_at: new Date(now.getTime() + nextMs).toISOString(),
+          heartbeat_cycle_calls: 1,
+        })
+        .eq("id", vm.id)
+        .then(() => {});
     }
 
     // --- Per-cycle heartbeat cap (max 10 API calls per heartbeat cycle) ---
@@ -1548,32 +1585,19 @@ export async function POST(req: NextRequest) {
       .eq("id", vm.id)
       .then(() => {});
 
-    // Update heartbeat timing + cycle counter (fire-and-forget)
-    if (isHeartbeat) {
-      if (heartbeatDue) {
-        // New cycle: reset cycle counter to 1 (this call), update timing
-        const interval = vm.heartbeat_interval ?? "3h";
-        const hMatch = interval.match(/^(\d+(?:\.\d+)?)h$/);
-        const nextMs = hMatch ? parseFloat(hMatch[1]) * 3_600_000 : 10_800_000;
-        supabase
-          .from("instaclaw_vms")
-          .update({
-            heartbeat_last_at: now.toISOString(),
-            heartbeat_next_at: new Date(now.getTime() + nextMs).toISOString(),
-            heartbeat_cycle_calls: 1,
-          })
-          .eq("id", vm.id)
-          .then(() => {});
-      } else {
-        // Continuing cycle: increment cycle counter
-        supabase
-          .from("instaclaw_vms")
-          .update({
-            heartbeat_cycle_calls: (vm.heartbeat_cycle_calls ?? 0) + 1,
-          })
-          .eq("id", vm.id)
-          .then(() => {});
-      }
+    // Heartbeat cycle-call counter increment (continuing-cycle only).
+    // The heartbeatDue branch moved to BEFORE the upstream call (Bug A fix
+    // above) so heartbeat_next_at advances even on upstream failure. This
+    // post-success block only handles the continuing-cycle increment, which
+    // is fine to leave gated on success — it only affects cap enforcement.
+    if (isHeartbeat && !heartbeatDue) {
+      supabase
+        .from("instaclaw_vms")
+        .update({
+          heartbeat_cycle_calls: (vm.heartbeat_cycle_calls ?? 0) + 1,
+        })
+        .eq("id", vm.id)
+        .then(() => {});
     }
 
     // If streaming or no usage warning needed, pass through the response directly.
@@ -1590,6 +1614,8 @@ export async function POST(req: NextRequest) {
           "x-ic-count": String(currentCount),
           "x-ic-source": source ?? "null",
           "x-ic-allowed": String(limitResult?.allowed ?? "null"),
+          "x-ic-upstream-model": finalModel,
+          "x-ic-upstream-provider": isMinimax ? "minimax" : "anthropic",
         },
       });
     }
@@ -1609,6 +1635,10 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json(resBody, {
         status: finalProviderRes.status,
+        headers: {
+          "x-ic-upstream-model": finalModel,
+          "x-ic-upstream-provider": isMinimax ? "minimax" : "anthropic",
+        },
       });
     } catch {
       // If parsing fails, return original response without warning
@@ -1616,6 +1646,8 @@ export async function POST(req: NextRequest) {
         status: finalProviderRes.status,
         headers: {
           "content-type": finalProviderRes.headers.get("content-type") || "application/json",
+          "x-ic-upstream-model": finalModel,
+          "x-ic-upstream-provider": isMinimax ? "minimax" : "anthropic",
         },
       });
     }
