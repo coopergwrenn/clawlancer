@@ -375,16 +375,45 @@ This section will be automatically removed after you update MEMORY.md.
 """
 
 def _backup_session_file(path):
-    """Copy a session JSONL file to the backup dir before deletion.
+    """Copy a session JSONL file to the backup dir before destructive operation.
     Forensic evidence — kept for SESSION_BACKUP_RETENTION_DAYS days.
     Never crashes the cron — wrapped in try/except.
-    Added 2026-04-10 after losing audit trail on Not Bored Kid investigation."""
+    Added 2026-04-10 after losing audit trail on Not Bored Kid investigation.
+
+    2026-05-11 P1 fix: idempotency gate. Pre-fix, this function was called
+    from strip-thinking.py's per-tick loop on every session that hit a
+    quality issue (empty_responses / error_loop / oversized). A single
+    persistently-problematic session would generate 1440 backup files/day
+    (cron fires every minute). vm-512 census found 186K backup files in
+    7 days on a single VM — 56GB on a 79GB disk, eventually triggering
+    ENOSPC and killing the gateway with 'failed to acquire gateway lock'.
+
+    Idempotency rule: skip the new backup if a backup of the same source
+    file already exists in SESSION_BACKUP_DIR with mtime >= source mtime.
+    "We already have a snapshot of this version" — no point making another.
+    The forensic value is preserved (one backup per modification of the
+    source); the runaway is gone (no backup if source hasn't changed
+    since last backup).
+    """
     try:
         if not path or not path.endswith(".jsonl") or not os.path.exists(path):
             return
         os.makedirs(SESSION_BACKUP_DIR, exist_ok=True)
+        # Idempotency check: existing backups follow the pattern
+        # "<ts>-<basename>" so glob the basename suffix.
+        basename = os.path.basename(path)
+        try:
+            src_mtime = os.path.getmtime(path)
+            for existing in glob.glob(os.path.join(SESSION_BACKUP_DIR, f"*-{basename}")):
+                try:
+                    if os.path.getmtime(existing) >= src_mtime:
+                        return  # already have a backup of this version
+                except Exception:
+                    continue
+        except Exception:
+            pass  # fall through to backup if idempotency check failed
         ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        backup_name = f"{ts}-{os.path.basename(path)}"
+        backup_name = f"{ts}-{basename}"
         shutil.copy2(path, os.path.join(SESSION_BACKUP_DIR, backup_name))
     except Exception:
         pass
