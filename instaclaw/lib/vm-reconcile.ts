@@ -29,6 +29,9 @@ import {
   WORKSPACE_TOOLS_MD_V2,
   WORKSPACE_IDENTITY_MD_V2,
   SOUL_V2_MARKER,
+  AGENTS_V2_MARKER,
+  TOOLS_V2_MARKER,
+  IDENTITY_V2_MARKER,
 } from "./workspace-templates-v2";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
@@ -182,13 +185,15 @@ export async function reconcileVM(
 
     // ── Step 2a: SOUL.md V2 migration (gated by env var, default OFF) ──
     // Reads existing V1 SOUL.md, extracts customized Identity + Preferences,
-    // writes new V2 SOUL/AGENTS/TOOLS/IDENTITY templates with preserved
-    // customization. Idempotent via SOUL_V2_MARKER. PRD prd-soul-restructure.md.
+    // re-injects partner stubs from vm.partner, writes new V2 SOUL/AGENTS/
+    // TOOLS/IDENTITY templates. Idempotent on all 4 V2 markers (partial-state
+    // recovery on the back end). SHA-verified atomic writes via writeFileAtomic.
+    // PRD prd-soul-restructure.md + soul-md-trim-2026-05-11.md.
     // ENABLE: set RECONCILE_SOUL_MIGRATION_ENABLED=true (default false).
     // CANARY scope: set RECONCILE_SOUL_MIGRATION_VM_IDS=<id>,<id> to limit
     // migration to specific VMs (otherwise fleet-wide once ENABLED is true).
     currentStep = "soul-v2-migration";
-    await stepMigrateSoulV2(ssh, vm.id, result, dryRun);
+    await stepMigrateSoulV2(ssh, vm, result, dryRun);
 
     // ── Step 2b: Bootstrap safety ──
     currentStep = "bootstrap-consumed";
@@ -788,6 +793,24 @@ async function stepFiles(
   }
 }
 
+/**
+ * For a manifest entry's target path, return the V2 marker that, if present on
+ * disk, signals "this file is V2-managed — legacy append/insert rules MUST
+ * skip." Returns null for files not under V2 management.
+ *
+ * Covers all 4 V2 workspace files: SOUL.md, AGENTS.md, TOOLS.md, IDENTITY.md.
+ * Previously only SOUL.md was protected; the manifest's AGENTS.md philosophy
+ * append rule (vm-manifest.ts:1328-1333) would otherwise re-append legacy
+ * content onto V2 AGENTS.md every reconciler cycle, growing it back over time.
+ */
+function pickV2MarkerForPath(remotePath: string): string | null {
+  if (remotePath.includes("SOUL.md")) return SOUL_V2_MARKER;
+  if (remotePath.includes("AGENTS.md")) return AGENTS_V2_MARKER;
+  if (remotePath.includes("TOOLS.md")) return TOOLS_V2_MARKER;
+  if (remotePath.includes("IDENTITY.md")) return IDENTITY_V2_MARKER;
+  return null;
+}
+
 async function deployFileEntry(
   ssh: SSHConnection,
   vm: VMRecord,
@@ -912,13 +935,15 @@ async function deployFileEntry(
 
       // V2-marker skip: SOUL.md/AGENTS.md/TOOLS.md/IDENTITY.md that have been
       // migrated to V2 own their own content via lib/workspace-templates-v2.ts.
-      // Legacy append_if_marker_absent supplements (INTELLIGENCE_INTEGRATED,
-      // DEGENCLAW_AWARENESS, MEMORY_FILING_SYSTEM) must NOT re-append on top
-      // of V2 SOUL.md or they'd recreate the truncation problem the migration
-      // exists to fix. PRD prd-soul-restructure.md Phase 1.
-      if (remotePath.includes('SOUL.md')) {
+      // Legacy append rules (INTELLIGENCE_INTEGRATED, DEGENCLAW_AWARENESS,
+      // CONSENSUS_MATCHING_AWARENESS, MEMORY_FILING_SYSTEM, Problem-Solving
+      // Philosophy) must NOT re-append on top of V2 files or they'd recreate
+      // the bloat / truncation problem the migration exists to fix.
+      // PRD prd-soul-restructure.md + soul-md-trim-2026-05-11.md.
+      const v2SkipMarker = pickV2MarkerForPath(remotePath);
+      if (v2SkipMarker) {
         const v2Check = await ssh.execCommand(
-          `grep -qF "${SOUL_V2_MARKER}" ${remotePath} 2>/dev/null && echo V2 || echo V1`
+          `grep -qF "${v2SkipMarker}" ${remotePath} 2>/dev/null && echo V2 || echo V1`
         );
         if (v2Check.stdout.trim() === 'V2') {
           result.alreadyCorrect.push(`${fileName}: V2 — skipping legacy append (${marker})`);
@@ -972,9 +997,10 @@ async function deployFileEntry(
       }
 
       // V2-marker skip — same rationale as append_if_marker_absent above.
-      if (remotePath.includes('SOUL.md')) {
+      const v2SkipMarkerInsert = pickV2MarkerForPath(remotePath);
+      if (v2SkipMarkerInsert) {
         const v2Check = await ssh.execCommand(
-          `grep -qF "${SOUL_V2_MARKER}" ${remotePath} 2>/dev/null && echo V2 || echo V1`
+          `grep -qF "${v2SkipMarkerInsert}" ${remotePath} 2>/dev/null && echo V2 || echo V1`
         );
         if (v2Check.stdout.trim() === 'V2') {
           result.alreadyCorrect.push(`${fileName}: V2 — skipping legacy insert (${marker})`);
@@ -3636,21 +3662,60 @@ ${preservedBody.trim()}
 }
 
 /**
- * Atomically write `content` to `path` via tmp + rename. Uses base64 to avoid
- * shell escaping pitfalls. Returns true on success.
+ * Atomically write `content` to `path` via tmp + rename, verified with SHA256
+ * both pre-rename (on tmp) and post-rename (on final path).
+ *
+ * Why SHA twice:
+ *   (1) Post-write SHA on tmp catches base64-decode corruption or 0-byte writes
+ *       — without this, a malformed echo|base64 pipe can succeed via mv and
+ *       leave an empty SOUL.md on disk. Rule 10 verify-after-write.
+ *   (2) Post-rename SHA on final path catches mv-layer issues or FS weirdness.
+ *
+ * Tmp file is named with a unique suffix and removed by trap on any exit path,
+ * so partial-failure leaks are bounded.
+ *
+ * Returns:
+ *   { ok: true } on success.
+ *   { ok: false, error: string } on any failure (exit code or SHA mismatch).
  */
 async function writeFileAtomic(
   ssh: Awaited<ReturnType<typeof connectSSH>>,
   path: string,
   content: string,
-): Promise<boolean> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const tmp = `${path}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const b64 = Buffer.from(content, "utf-8").toString("base64");
-  // Single command: write tmp + rename. mv is atomic on same filesystem.
-  const r = await ssh.execCommand(
-    `echo '${b64}' | base64 -d > '${tmp}' && mv '${tmp}' '${path}'`
-  );
-  return r.code === 0;
+  const expectedSha = crypto
+    .createHash("sha256")
+    .update(content, "utf8")
+    .digest("hex");
+
+  // Shell script: write tmp, SHA-verify tmp, atomic rename, SHA-verify final.
+  // Each stage has its own exit code so the caller can report which check fired.
+  const script = [
+    `EXPECTED='${expectedSha}'`,
+    `TMP='${tmp}'`,
+    `DST='${path}'`,
+    `trap 'rm -f "$TMP" 2>/dev/null' EXIT`,
+    `if ! { echo '${b64}' | base64 -d > "$TMP"; }; then echo "B64_DECODE_FAILED" >&2; exit 2; fi`,
+    `SHA_TMP=$(sha256sum "$TMP" 2>/dev/null | awk '{print $1}')`,
+    `if [ "$SHA_TMP" != "$EXPECTED" ]; then echo "TMP_SHA_MISMATCH exp=$EXPECTED got=$SHA_TMP" >&2; exit 3; fi`,
+    `if ! mv "$TMP" "$DST"; then echo "MV_FAILED" >&2; exit 4; fi`,
+    `SHA_DST=$(sha256sum "$DST" 2>/dev/null | awk '{print $1}')`,
+    `if [ "$SHA_DST" != "$EXPECTED" ]; then echo "POST_RENAME_SHA_MISMATCH exp=$EXPECTED got=$SHA_DST" >&2; exit 5; fi`,
+    `echo OK`,
+  ].join("\n");
+
+  const r = await ssh.execCommand(script);
+  if (r.code !== 0 || !(r.stdout || "").trim().endsWith("OK")) {
+    const errSnippet =
+      (r.stderr || "").trim() || (r.stdout || "").trim() || "unknown";
+    return {
+      ok: false,
+      error: `writeFileAtomic ${path} exit=${r.code}: ${errSnippet.slice(0, 200)}`,
+    };
+  }
+  return { ok: true };
 }
 
 /**
@@ -3674,32 +3739,152 @@ async function writeFileAtomic(
  *   7. Write each via atomic tmp+rename.
  *   8. Log preservation outcome to result.fixed.
  */
+/**
+ * Inject partner SOUL.md stubs into V2 SOUL.md, sourced from the VM's partner
+ * field rather than from the V1 SOUL.md content. Position: above the
+ * OPENCLAW_CACHE_BOUNDARY marker (and the `---` separator that precedes it),
+ * placing the stubs in the stable-prefix region that Anthropic caches.
+ *
+ * Without this, a V2 migration on an edge_city or consensus_2026 VM drops the
+ * partner section (V2 template has none), and stepRewriteSoulPartnerSections
+ * on the next reconciler tick finds no `## Edge Esmeralda 2026` header to
+ * replace and treats it as "old-not-found" → no-op → partner awareness lost.
+ */
+function injectPartnerStubs(
+  soulV2: string,
+  partner: string | null | undefined,
+): string {
+  if (!partner) return soulV2;
+  const stubs: string[] = [];
+  // edge_city VMs get BOTH stubs (mirrors stepRewriteSoulPartnerSections
+  // line 3920: applyConsensus is also true for edge_city).
+  if (partner === "edge_city") {
+    stubs.push(SOUL_STUB_EDGE.trim(), SOUL_STUB_CONSENSUS.trim());
+  } else if (partner === "consensus_2026") {
+    stubs.push(SOUL_STUB_CONSENSUS.trim());
+  }
+  if (stubs.length === 0) return soulV2;
+
+  // Insert above the OPENCLAW_CACHE_BOUNDARY marker (and the '---' that
+  // precedes it). Falls back to end-of-file append if marker layout drifts.
+  const cacheMarker = "<!-- OPENCLAW_CACHE_BOUNDARY -->";
+  const markerIdx = soulV2.indexOf(cacheMarker);
+  if (markerIdx < 0) {
+    return soulV2.trimEnd() + "\n\n" + stubs.join("\n\n") + "\n";
+  }
+  const separatorIdx = soulV2.lastIndexOf("\n---\n", markerIdx);
+  const insertAt = separatorIdx >= 0 ? separatorIdx : markerIdx;
+  return (
+    soulV2.slice(0, insertAt) +
+    "\n\n" +
+    stubs.join("\n\n") +
+    soulV2.slice(insertAt)
+  );
+}
+
+/**
+ * Read up to N workspace files in a single SSH round-trip. Each file is
+ * encoded as base64 to avoid sentinel collisions with file content.
+ *
+ * Output format on the remote side:
+ *   PATH:<absolute_path>
+ *   B64:<base64_content_or_MISSING>
+ *
+ * Returns a map keyed by the absolute path. Missing files map to empty string.
+ */
+async function readWorkspaceFiles(
+  ssh: SSHConnection,
+  paths: string[],
+): Promise<Record<string, string>> {
+  const cmd = paths
+    .map(
+      (p) =>
+        `(echo "PATH:${p}"; if [ -f '${p}' ]; then echo "B64:$(base64 < '${p}' | tr -d '\\n')"; else echo "B64:MISSING"; fi)`,
+    )
+    .join("; ");
+  const r = await ssh.execCommand(cmd);
+  if (r.code !== 0) {
+    throw new Error(
+      `readWorkspaceFiles failed code=${r.code}: ${(r.stderr || "").slice(0, 200)}`,
+    );
+  }
+  const out: Record<string, string> = {};
+  // Initialize all requested paths so callers can safely lookup any path.
+  for (const p of paths) out[p] = "";
+  const lines = (r.stdout || "").split("\n");
+  let currentPath: string | null = null;
+  for (const line of lines) {
+    if (line.startsWith("PATH:")) {
+      currentPath = line.slice("PATH:".length);
+    } else if (line.startsWith("B64:") && currentPath !== null) {
+      const b64 = line.slice("B64:".length);
+      if (b64 && b64 !== "MISSING") {
+        try {
+          out[currentPath] = Buffer.from(b64, "base64").toString("utf8");
+        } catch {
+          out[currentPath] = "";
+        }
+      }
+      currentPath = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Step 2a: Migrate V1 SOUL.md → V2 SOUL.md + AGENTS.md + TOOLS.md + IDENTITY.md.
+ *
+ * Idempotent on ALL FOUR V2 markers (not just SOUL.md) — partial-state from
+ * a failed prior attempt is detected and recovered by writing the missing
+ * files only. This eliminates the "SOUL is V2 but AGENTS is V1" stuck state
+ * that Bug #2 (PRD soul-md-trim-2026-05-11.md) would otherwise produce.
+ *
+ * Write order: AGENTS → TOOLS → IDENTITY → SOUL. SOUL.md is written LAST so
+ * that any partial-write failure leaves V1 SOUL.md on disk, preserving the
+ * extraction source for the next tick's retry. This is byte-perfect-idempotent
+ * because re-extracting from the same V1 SOUL.md produces the same V2 output.
+ *
+ * Disk-space precheck: skip-with-error if /home/openclaw has <2GB free
+ * (avoids tar OOM on the vm-903/801/904 session-backups-bloat cohort).
+ *
+ * Tar backup: only runs on fresh migration (not partial-state recovery, where
+ * the tar already exists from the original attempt). Separates "already exists"
+ * from "tar failed" cleanly — the previous `|| echo SKIP_EXISTS` masked
+ * disk-full failures as success, allowing the migration to proceed with no
+ * recoverable backup.
+ *
+ * All writes use SHA-verified writeFileAtomic so 0-byte/corrupted writes are
+ * caught (previously the function returned true on any successful `mv`
+ * regardless of content integrity — Bug #3, Rule 10 violation).
+ *
+ * Gated: only runs when RECONCILE_SOUL_MIGRATION_ENABLED=true (default OFF).
+ * Whitelist (canary scoping): RECONCILE_SOUL_MIGRATION_VM_IDS=<id>,<id>,...
+ *
+ * Per CLAUDE.md Rule 22: trim, never nuke; tar backup before mutation.
+ * Per Rule 23: SHA-verified writes prevent stale-cache regressions.
+ * Per Rule 10: each write verifies the result via SHA; result.errors blocks
+ * config_version bump until the migration is clean.
+ */
 async function stepMigrateSoulV2(
   ssh: Awaited<ReturnType<typeof connectSSH>>,
-  vmId: string,
+  vm: VMRecord & { partner?: string | null },
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  // ── Kill switch (boolean) ──
-  // Must be explicitly "true" (lowercase) to enable. Default off.
+  // ── Kill switch ──
   if (process.env.RECONCILE_SOUL_MIGRATION_ENABLED !== "true") {
-    return; // silent no-op when gate is off
+    return;
   }
 
   // ── Per-VM whitelist (canary scoping) ──
-  // RECONCILE_SOUL_MIGRATION_VM_IDS=<uuid>,<uuid>,...
-  //   - If unset/empty: migration is FLEET-WIDE (every reconciler-eligible VM).
-  //   - If set: migration runs ONLY on listed vmIds. Other VMs no-op silently.
-  // Used for Phase 2 canary (one VM) and Phase 3 expansion (5 VMs) before
-  // dropping the whitelist for fleet rollout in Phase 4.
   const whitelistRaw = process.env.RECONCILE_SOUL_MIGRATION_VM_IDS;
   if (whitelistRaw && whitelistRaw.trim().length > 0) {
     const allowed = whitelistRaw
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (allowed.length > 0 && !allowed.includes(vmId)) {
-      return; // not on whitelist, silent no-op
+    if (allowed.length > 0 && !allowed.includes(vm.id)) {
+      return;
     }
   }
 
@@ -3711,128 +3896,252 @@ async function stepMigrateSoulV2(
   const agentsPath = `${workspaceDir}/AGENTS.md`;
   const tarPath = `${archiveDir}/workspace-pre-soul-v2-migration.tar.gz`;
 
-  // ── Step 1: Read current SOUL.md ──
-  const cur = await ssh.execCommand(`cat ${soulPath} 2>/dev/null`);
-  if (!cur.stdout || cur.stdout.trim().length === 0) {
-    // No SOUL.md exists — nothing to migrate. Fresh VMs will get V2 via a
-    // separate "create from V2 template" path (deferred to Phase 5 manifest cleanup).
-    result.alreadyCorrect.push("soul-v2-migration: no SOUL.md found, nothing to migrate");
+  // ── Step 1: Read all four files in one SSH round-trip ──
+  let cur: Record<string, string>;
+  try {
+    cur = await readWorkspaceFiles(ssh, [
+      soulPath,
+      identityPath,
+      toolsPath,
+      agentsPath,
+    ]);
+  } catch (e) {
+    result.errors.push(`soul-v2-migration: read workspace files: ${(e as Error).message}`);
     return;
   }
-  const oldSoul = cur.stdout;
+  const curSoul = cur[soulPath] ?? "";
+  const curIdentity = cur[identityPath] ?? "";
+  const curTools = cur[toolsPath] ?? "";
+  const curAgents = cur[agentsPath] ?? "";
 
-  // ── Step 2: Idempotent skip if already V2 ──
-  if (oldSoul.includes(SOUL_V2_MARKER)) {
-    result.alreadyCorrect.push("soul-v2-migration: SOUL.md already at V2");
+  // ── Step 2: V2-marker presence for all four files ──
+  const v2 = {
+    soul: curSoul.includes(SOUL_V2_MARKER),
+    identity: curIdentity.includes(IDENTITY_V2_MARKER),
+    tools: curTools.includes(TOOLS_V2_MARKER),
+    agents: curAgents.includes(AGENTS_V2_MARKER),
+  };
+
+  // ── Step 3: Full no-op when everything is V2 ──
+  if (v2.soul && v2.identity && v2.tools && v2.agents) {
+    result.alreadyCorrect.push("soul-v2-migration: all 4 files at V2");
     return;
   }
 
-  // ── Step 3: Tar workspace BEFORE any mutation (idempotent) ──
-  if (!dryRun) {
-    const tarResult = await ssh.execCommand(
-      `cd ${archiveDir} && [ ! -f workspace-pre-soul-v2-migration.tar.gz ] ` +
-      `&& tar -czf workspace-pre-soul-v2-migration.tar.gz workspace 2>&1 ` +
-      `|| echo SKIP_EXISTS`
+  // ── Step 4: Determine path ──
+  // Fresh migration: SOUL.md is V1 (or missing). Extract customizations from
+  // V1 SOUL.md, build all 4 V2 files, write all 4 (SOUL last).
+  //
+  // Partial-state recovery: SOUL.md is V2 but at least one of the other 3
+  // files is still V1 (a previous attempt's write failed partway). Write only
+  // the missing files. V1 SOUL.md is GONE in this case so the customization
+  // it held was already extracted-and-preserved in the prior attempt's V2 SOUL.
+  const isFreshMigration = !v2.soul && curSoul.length > 0;
+  const isPartialRecovery =
+    v2.soul && (!v2.identity || !v2.tools || !v2.agents);
+
+  if (!isFreshMigration && !isPartialRecovery) {
+    // SOUL.md missing AND no partial state to recover. Fresh VMs come up via
+    // configureOpenClaw() which writes V1 SOUL.md; if SOUL.md is missing here,
+    // something upstream is wrong (stepWorkspaceIntegrity should have created
+    // a baseline). Don't try to migrate from nothing.
+    result.alreadyCorrect.push(
+      "soul-v2-migration: no SOUL.md found, nothing to migrate",
     );
+    return;
+  }
+
+  // ── Step 5: Disk-space precheck (≥2GB free on /home/openclaw) ──
+  // Avoids tar OOM/disk-full on the vm-903/801/904 cohort with runaway
+  // session-backups bloat. Skip-with-error so config_version doesn't bump
+  // (Rule 10) and the VM gets surfaced for manual cleanup.
+  const dfCheck = await ssh.execCommand(
+    `df -k /home/openclaw 2>/dev/null | tail -1 | awk '{print $4}'`,
+  );
+  const availKb = parseInt((dfCheck.stdout || "0").trim(), 10) || 0;
+  const minFreeKb = 2 * 1024 * 1024; // 2 GB
+  if (availKb < minFreeKb) {
+    const availGb = (availKb / (1024 * 1024)).toFixed(2);
+    result.errors.push(
+      `soul-v2-migration: insufficient disk (${availGb} GB free, need ≥2 GB) — manual cleanup required`,
+    );
+    return;
+  }
+
+  // ── Step 6: Tar backup before mutation (fresh migration only) ──
+  // Partial-state recovery skips this — the tar was already created in the
+  // original attempt that failed mid-write.
+  if (isFreshMigration && !dryRun) {
+    const tarScript = [
+      `cd '${archiveDir}' || { echo "CD_FAILED"; exit 1; }`,
+      `if [ -f '${tarPath}' ]; then`,
+      `  SIZE=$(stat -c%s '${tarPath}' 2>/dev/null || stat -f%z '${tarPath}' 2>/dev/null || echo 0)`,
+      `  if [ "$SIZE" -gt 1024 ]; then echo "ALREADY_EXISTS size=$SIZE"; exit 0; fi`,
+      `  rm -f '${tarPath}'`,
+      `fi`,
+      `if ! tar -czf '${tarPath}' workspace 2>&1 >/dev/null; then echo "TAR_FAILED"; exit 2; fi`,
+      `NEW_SIZE=$(stat -c%s '${tarPath}' 2>/dev/null || stat -f%z '${tarPath}' 2>/dev/null || echo 0)`,
+      `if [ "$NEW_SIZE" -lt 1024 ]; then echo "TAR_TOO_SMALL size=$NEW_SIZE"; exit 3; fi`,
+      `echo "OK size=$NEW_SIZE"`,
+    ].join("\n");
+    const tarRes = await ssh.execCommand(tarScript, {
+      execOptions: { timeout: 60_000 },
+    });
+    const tarOut = (tarRes.stdout || "").trim();
     if (
-      !tarResult.stdout.includes("SKIP_EXISTS") &&
-      tarResult.code !== 0
+      tarRes.code !== 0 ||
+      !(tarOut.includes("OK ") || tarOut.includes("ALREADY_EXISTS"))
     ) {
       result.errors.push(
-        `soul-v2-migration: pre-migration tar failed: ${tarResult.stderr.slice(0, 100)}`
+        `soul-v2-migration: tar backup failed code=${tarRes.code}: ${(tarRes.stdout || tarRes.stderr || "").slice(0, 200)}`,
       );
       return;
     }
   }
 
-  // ── Step 4: Extract customization from old SOUL.md ──
-  const identityBody = extractMarkdownSection(oldSoul, "My Identity");
-  const prefsBody = extractMarkdownSection(oldSoul, "Learned Preferences");
+  // ── Step 7: Build the V2 file contents to write ──
+  type FileWrite = { path: string; content: string; name: string };
+  const writes: FileWrite[] = [];
 
-  const identityCustomized =
-    identityBody !== null && !isIdentityTemplateText(identityBody);
-  const prefsCustomized =
-    prefsBody !== null && !isPreferencesTemplateText(prefsBody);
+  // Track preservation for the post-write log entry.
+  const preservedNotes: string[] = [];
 
-  // ── Step 5: Build new V2 SOUL.md (with preserved Preferences if customized) ──
-  let newSoul = WORKSPACE_SOUL_MD_V2;
-  if (prefsCustomized && prefsBody) {
-    const customBullets = extractCustomPreferenceBullets(prefsBody);
-    if (customBullets.length > 0) {
-      newSoul = applyPreservedPreferences(newSoul, customBullets);
+  if (isFreshMigration) {
+    // Extract customizations from V1 SOUL.md (still on disk here).
+    const identityBody = extractMarkdownSection(curSoul, "My Identity");
+    const prefsBody = extractMarkdownSection(curSoul, "Learned Preferences");
+    const identityCustomized =
+      identityBody !== null && !isIdentityTemplateText(identityBody);
+    const prefsCustomized =
+      prefsBody !== null && !isPreferencesTemplateText(prefsBody);
+
+    // Build V2 SOUL.md: template → preserve Preferences if customized →
+    // inject partner stubs from vm.partner (the load-bearing Bug #1 fix).
+    let newSoul = WORKSPACE_SOUL_MD_V2;
+    if (prefsCustomized && prefsBody) {
+      const customBullets = extractCustomPreferenceBullets(prefsBody);
+      if (customBullets.length > 0) {
+        newSoul = applyPreservedPreferences(newSoul, customBullets);
+        preservedNotes.push("preferences");
+      }
+    }
+    if (vm.partner === "edge_city" || vm.partner === "consensus_2026") {
+      newSoul = injectPartnerStubs(newSoul, vm.partner);
+      preservedNotes.push(`partner=${vm.partner}`);
+    }
+
+    // Build V2 IDENTITY.md: template → preserve V1 SOUL "My Identity" body →
+    // also preserve any non-template content in the existing IDENTITY.md.
+    let newIdentity = WORKSPACE_IDENTITY_MD_V2;
+    if (identityCustomized && identityBody) {
+      newIdentity = appendPreservedIdentity(newIdentity, identityBody);
+      preservedNotes.push("identity-from-soul");
+    }
+    if (
+      curIdentity.length > 0 &&
+      !curIdentity.includes("Your identity develops naturally") &&
+      !curIdentity.includes("Fill this in") &&
+      !curIdentity.includes(IDENTITY_V2_MARKER)
+    ) {
+      newIdentity =
+        newIdentity.trimEnd() +
+        `\n\n## IDENTITY.md (preserved from previous version)\n\n_Your previous IDENTITY.md content is preserved below. Review and integrate into the fields above as desired._\n\n\`\`\`\n${curIdentity.trim()}\n\`\`\`\n`;
+      preservedNotes.push("existing-identity-md");
+    }
+
+    // Write order: AGENTS → TOOLS → IDENTITY → SOUL.
+    // Rationale: if any write fails mid-loop, leave V1 SOUL.md on disk so the
+    // next tick's retry can re-extract from the source of truth. Re-writing
+    // AGENTS/TOOLS/IDENTITY with identical content on retry is a SHA no-op
+    // via writeFileAtomic's verification.
+    writes.push({
+      path: agentsPath,
+      content: WORKSPACE_AGENTS_MD_V2,
+      name: "AGENTS.md",
+    });
+    writes.push({
+      path: toolsPath,
+      content: WORKSPACE_TOOLS_MD_V2,
+      name: "TOOLS.md",
+    });
+    writes.push({
+      path: identityPath,
+      content: newIdentity,
+      name: "IDENTITY.md",
+    });
+    writes.push({ path: soulPath, content: newSoul, name: "SOUL.md" });
+  } else {
+    // Partial-state recovery. SOUL.md is already V2 (preserves any prior
+    // customization from the original attempt). Write only the missing files.
+    if (!v2.agents) {
+      writes.push({
+        path: agentsPath,
+        content: WORKSPACE_AGENTS_MD_V2,
+        name: "AGENTS.md(recovery)",
+      });
+    }
+    if (!v2.tools) {
+      writes.push({
+        path: toolsPath,
+        content: WORKSPACE_TOOLS_MD_V2,
+        name: "TOOLS.md(recovery)",
+      });
+    }
+    if (!v2.identity) {
+      // V1 SOUL.md is already overwritten; can't re-extract its "My Identity"
+      // body. Preserve only what's in the on-disk IDENTITY.md (which may be
+      // V1 template, agent-edited, or empty).
+      let newIdentity = WORKSPACE_IDENTITY_MD_V2;
+      if (
+        curIdentity.length > 0 &&
+        !curIdentity.includes("Your identity develops naturally") &&
+        !curIdentity.includes("Fill this in") &&
+        !curIdentity.includes(IDENTITY_V2_MARKER)
+      ) {
+        newIdentity =
+          newIdentity.trimEnd() +
+          `\n\n## IDENTITY.md (preserved from previous version)\n\n_Your previous IDENTITY.md content is preserved below. Review and integrate into the fields above as desired._\n\n\`\`\`\n${curIdentity.trim()}\n\`\`\`\n`;
+        preservedNotes.push("existing-identity-md");
+      }
+      writes.push({
+        path: identityPath,
+        content: newIdentity,
+        name: "IDENTITY.md(recovery)",
+      });
     }
   }
 
-  // ── Step 6: Build new V2 IDENTITY.md (with preserved Identity if customized) ──
-  let newIdentity = WORKSPACE_IDENTITY_MD_V2;
-  if (identityCustomized && identityBody) {
-    newIdentity = appendPreservedIdentity(newIdentity, identityBody);
-  }
-
-  // Also check existing IDENTITY.md for non-template field values (separate from
-  // SOUL's "## My Identity" — agents may have filled in fields directly).
-  const existingIdentity = await ssh.execCommand(`cat ${identityPath} 2>/dev/null`);
-  if (
-    existingIdentity.stdout &&
-    existingIdentity.stdout.trim().length > 0 &&
-    !existingIdentity.stdout.includes("Your identity develops naturally") && // not V1 template
-    !existingIdentity.stdout.includes("Fill this in") && // not V1 template instruction
-    !existingIdentity.stdout.includes("INSTACLAW_IDENTITY_V2") // not already V2
-  ) {
-    // Existing IDENTITY.md has agent edits worth preserving
-    newIdentity = newIdentity.trimEnd() + `\n\n## IDENTITY.md (preserved from previous version)
-
-_Your previous IDENTITY.md content is preserved below. Review and integrate into the fields above as desired._
-
-\`\`\`
-${existingIdentity.stdout.trim()}
-\`\`\`
-`;
-  }
-
-  // ── Step 7: Atomic writes (or dry-run logging) ──
+  // ── Step 8: Dry-run output ──
+  const mode = isPartialRecovery ? "partial-recovery" : "fresh-migration";
   if (dryRun) {
-    const preservedNotes: string[] = [];
-    if (prefsCustomized) preservedNotes.push(`prefs (${(prefsBody ?? "").length}c)`);
-    if (identityCustomized) preservedNotes.push(`identity (${(identityBody ?? "").length}c)`);
+    const wouldWrite = writes.map((w) => w.name).join(",") || "none";
     result.fixed.push(
-      `[dry-run] soul-v2-migration: would write 4 files; preserved=${
-        preservedNotes.join(",") || "none"
-      }`
+      `[dry-run] soul-v2-migration (${mode}): would write ${wouldWrite}; preserved=${preservedNotes.join(",") || "none"}`,
     );
     return;
   }
 
-  const writes = [
-    { path: soulPath, content: newSoul, name: "SOUL.md" },
-    { path: identityPath, content: newIdentity, name: "IDENTITY.md" },
-    { path: toolsPath, content: WORKSPACE_TOOLS_MD_V2, name: "TOOLS.md" },
-    { path: agentsPath, content: WORKSPACE_AGENTS_MD_V2, name: "AGENTS.md" },
-  ];
-
+  // ── Step 9: Atomic writes (SHA-verified) ──
   for (const w of writes) {
-    const ok = await writeFileAtomic(ssh, w.path, w.content);
-    if (!ok) {
-      result.errors.push(`soul-v2-migration: ${w.name} atomic write failed`);
-      return; // bail to avoid partial state — tar backup is in place
+    const res = await writeFileAtomic(ssh, w.path, w.content);
+    if (res.ok === false) {
+      result.errors.push(
+        `soul-v2-migration: ${w.name} write failed: ${res.error}`,
+      );
+      return; // bail; tar backup is the recovery path
     }
   }
 
-  // ── Step 8: Log success ──
-  const preserved: string[] = [];
-  if (prefsCustomized) preserved.push("preferences");
-  if (identityCustomized) preserved.push("identity (from SOUL)");
-  if (existingIdentity.stdout && !existingIdentity.stdout.includes("INSTACLAW_IDENTITY_V2")) {
-    preserved.push("existing IDENTITY.md");
-  }
+  // ── Step 10: Log success ──
   result.fixed.push(
-    `soul-v2-migration: migrated SOUL/AGENTS/TOOLS/IDENTITY to V2 (preserved: ${
-      preserved.join(", ") || "none — pure template VM"
-    }); rollback at ${tarPath}`
+    `soul-v2-migration (${mode}): wrote ${writes.length} file${writes.length === 1 ? "" : "s"} (preserved: ${preservedNotes.join(", ") || "none — pure template"}); rollback at ${tarPath}`,
   );
   logger.info("SOUL V2 migration applied", {
     route: "vm-reconcile",
-    preserved,
+    vmId: vm.id,
+    mode,
+    preserved: preservedNotes,
+    filesWritten: writes.map((w) => w.name),
     tarPath,
   });
 }
