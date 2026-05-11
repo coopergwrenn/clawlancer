@@ -948,4 +948,734 @@ Total wall-clock from PRD sign-off to V2 in production: **15 days.** 5 days of b
 
 ---
 
-_End of PRD. Decisions §13 require Cooper sign-off._
+## §14. Agent Self-Compaction Architecture (V3+ roadmap)
+
+> **Status:** Design research. Does NOT ship before Esmeralda. V3.5 work begins post-Esmeralda (2026-07-15+). Captured here to lock in the thinking while the May 11 fire-drill context is fresh.
+>
+> **The frame:** V2 fixes platform-managed SOUL.md bloat. It does NOT fix agent-managed bloat in MEMORY.md, memory/session-log.md, Learned Preferences, and the long-tail accumulation of facts about the user. Without an autonomous compaction layer, our agents are still one heavy session away from the same death spiral — except this time the trigger is the user's own conversation, not a manifest push.
+>
+> **The north star:** the user NEVER manages this. Not "agent suggests, user approves." Not "user triggers cleanup." The agent (or a system on its behalf) detects bloat, decides what to compact/move/archive, does it, verifies nothing broke, and the user never knows it happened. Their experience is "my agent keeps getting smarter and never slows down."
+
+### 14.0 Why this matters more than it seems
+
+Today's P0 cost ~46 paying-customer VMs ~6 hours of degraded service plus immeasurable trust damage. The proximate cause was a 600-char manifest push past the 35K cap. The deeper cause is the same one that will bite us next quarter: **any growing context file, regardless of who's writing to it, eventually pushes past a budget and breaks the agent.**
+
+The class-of-bug enumeration:
+
+| Source of growth | Today | Without V3+ compaction |
+|---|---|---|
+| **Manifest pushes** (platform-managed) | Caused today's P0 | V2 fixes this for SOUL.md |
+| **Learned Preferences** (agent-edits) | Cache-stable below boundary; size unbounded | Will hit prompt budget eventually |
+| **MEMORY.md** (agent-edits) | Soft 5KB cap, no enforcement; auto-injected on every turn | Same class of failure as today, different file |
+| **memory/session-log.md** | 15-entry cap, ~3-5 sentences each; agent self-enforces | Agent compliance varies; rotting older entries take prompt budget |
+| **memory/active-tasks.md** | 10-item cap, agent self-enforces | Same as above |
+| **memory/YYYY-MM-DD.md** | Detail file, read on demand | Disk growth, slow loads on `grep -r memory/` |
+| **USER.md** | Agent-learned facts, no cap | Same class as MEMORY.md |
+| **TOOLS.md "Your Notes" section** | Agent-editable, no cap | Same |
+| **Skills installation** | Per-skill `~/.openclaw/skills/<name>/SKILL.md` | Cumulative install bloat (the 149K-token elephant from PRD §6.4) |
+
+The V1-V2 trim addresses the first row only. Every other row is still capable of producing the same death spiral once SOUL.md is no longer the bottleneck.
+
+**The trust asymmetry that drives this design.** Across the 5 research streams (R1–R5 below), the same failure-cost asymmetry recurs:
+
+| Failure mode | User signal | Time-to-churn |
+|---|---|---|
+| **Dropped specific fact** ("forgot I'm vegetarian") | Immediate complaint | Tolerated 2-3× then churns |
+| **Personality drift to generic** | Silent disappointment | Churns over weeks, never tells you why |
+| **Fabricated/invented memory** | Trust-shattering | Immediate, never returns |
+
+The third failure mode (memory poisoning, per CLAUDE.md Rule 29) is the deadliest. Autonomous compaction MUST be designed to minimize fabrication risk first, drop-risk second, and accept some performance overhead third. **"Forget" is forgivable; "make up false memories" is not.** This drives every constraint in §14.6.
+
+### 14.1 Research synthesis (5 streams)
+
+Ran 5 parallel research agents (R1-R5 in TaskList). Per-stream key findings:
+
+#### R1 — What Claude Code does (the dogfood signal)
+
+Claude Code's `/compact` is a **4-layer hierarchy** (verified via leak analyses at claudefa.st, codex.danielvaughan.com, dbreunig.com):
+
+1. **Proactive summarization** before each API call when nearing context limit.
+2. **Microcompaction** of older tool outputs (drops them first).
+3. **Full conversation summarization** via LLM (the `compact_20260112` API primitive; default 150K trigger, min 50K, configurable per `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` env var).
+4. **Error catch + retry** with compressed version on `prompt_too_long`.
+
+**Critical observations for us:**
+- `/compact` operates on **conversation history**, NOT on CLAUDE.md or MEMORY.md. CLAUDE.md is loaded fresh every session; the agent is expected to keep it small by sharding into topic files. **There is no auto-compaction of CLAUDE.md.** This is the same flaw we have today.
+- Pre-compaction messages are **never deleted on disk** — append-only JSONL with summary appended after a boundary marker. Compaction is reversible at the storage layer via `--resume`/`--fork-session`.
+- Skills survive compaction with explicit per-skill budgeting: **5K tokens/skill × 25K total, most-recent-first, drop oldest**. Skill descriptions (the index) do NOT survive — only invoked skills.
+- The `__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__` cache-boundary marker splits static (cached) from dynamic (per-session). Compaction operates BELOW the boundary only.
+- Community converges on **~60% threshold** as the right auto-compact trigger; the default ~95% is too late because model quality is already degraded past ~80%. ([GitHub Issue #41818](https://github.com/anthropics/claude-code/issues/41818))
+- Source: [Claude Code Skills budgeting](https://code.claude.com/docs/en/skills), [Anthropic Compaction API](https://platform.claude.com/docs/en/build-with-claude/compaction), [How Claude Code Builds a System Prompt](https://www.dbreunig.com/2026/04/04/how-claude-code-builds-a-system-prompt.html).
+
+**Takeaway for us:** Claude Code's MEMORY.md model is structurally identical to ours and **has the same flaw — silent truncation at load (200 lines / 25KB), agent expected to self-shard.** They get away with it because a human runs `/compact` manually. We can't rely on that. The "compact, never nuke" pattern (Anthropic's append-only JSONL) is universal and matches our Rule 22/30. The cache-boundary marker pattern is borrowed in V2 SOUL.md. The skill-budget pattern is directly portable to per-skill content limits in V3+.
+
+#### R2 — Production framework patterns
+
+| Framework | Tiering | Autonomy | Compaction style |
+|---|---|---|---|
+| **Letta / MemGPT** | Hot (core memory blocks) / Warm (recall) / Cold (archival vector DB) | **Fully agent-driven** via `memory_insert`, `core_memory_replace`, `archival_memory_search` function calls | Hard-cap on block size; agent rewrites on overflow |
+| **Mastra Observational Memory** | Two-tier: Observer (30K trigger) + Reflector (40K trigger, merges Observer output) | Framework-managed but uses LLM agents internally | Two-pass LLM summarization with claim "a coding agent that never compacts" |
+| **CrewAI** | Flat unified memory class; `composite_score = sim·w₁ + recency·decay + importance·w₂` | LLM-driven on every write | RAG-retrieval not eviction; nothing deleted |
+| **LangChain LangMem** | Procedural + Semantic + Episodic split (cognitive-science inspired) | Agent-driven (LLM extractor) | `ConversationSummaryBufferMemory` deprecated; modern pattern is per-type extraction |
+| **A-MEM** | Zettelkasten note-linking, single-tier | Agent-driven (LLM linker fires on every note) | Memory **evolution** — adding note can update existing notes' tags. No eviction in core paper |
+| **Semantic Kernel** | Flat | Framework-managed (`auto_reduce` threshold) | `ChatHistoryReducer` (truncation OR summarization variants) |
+| **Cline / Roo / Cursor** | Single-tier file-based | **Human-driven** ("update memory bank" command) | User-supervised by design |
+
+**Letta is the cleanest tiered production reference.** Mastra's two-tier (Observer→Reflector) is the next-closest match for what we need. Both keep the originals when summarizing — neither does destructive deletion as the default.
+
+**Cross-framework consensus:**
+1. **Three-component memory split (episodic / semantic / procedural)** is the LangMem framing and matches cognitive science.
+2. **Importance × recency × similarity** is the universal retrieval-scoring formula. Don't invent a new one.
+3. **Trim/restructure, never delete the source** — every production framework except Cline's manual flow preserves originals somewhere.
+4. **Agent-self-edits via tool calls** (Letta, A-MEM, LangMem, CrewAI) is the dominant autonomous pattern.
+5. **Operator-side TTL pruning is non-negotiable at scale** ([LangGraph persistence docs](https://docs.langchain.com/oss/python/langgraph/persistence) — "always implement a pruning strategy before production"). This is our P1-6 lesson exactly.
+
+Sources: [Letta memory docs](https://docs.letta.com/advanced/memory-management/), [MemGPT arxiv:2310.08560](https://arxiv.org/abs/2310.08560), [Mastra Observational Memory](https://mastra.ai/research/observational-memory), [CrewAI Memory](https://docs.crewai.com/en/concepts/memory), [LangMem](https://blog.langchain.com/langmem-sdk-launch/), [A-MEM arxiv:2502.12110](https://arxiv.org/abs/2502.12110).
+
+#### R3 — Safety research (the load-bearing constraints)
+
+This is the stream that most-shapes our design. Key findings:
+
+- **Self-Correction Bench (Tsui 2025, [arxiv:2507.02778](https://arxiv.org/abs/2507.02778))**: 14 models tested, **average 64.5% self-correction blind-spot rate** — "LLMs systematically fail to correct their own errors while succeeding on identical external errors." **The editor CANNOT validate its own edits at acceptable reliability.** This is the load-bearing finding. Cross-model validation isn't optional; it's a structural requirement.
+
+- **LLM-as-Judge self-preference bias ([arxiv:2503.05061](https://arxiv.org/abs/2503.05061))**: GPT-4o assigns scores ~10% higher to its own outputs; earlier Claude models showed ~25% self-preference. **Same-model judge favors same-model editor.** Must use different model family (or at minimum, different model size — Sonnet edits, Haiku critiques).
+
+- **Sleeper Agents (Hubinger et al., 2024, [arxiv:2401.05566](https://arxiv.org/abs/2401.05566))**: "Backdoor behavior persists through standard safety training... persistence remaining even when the chain-of-thought is distilled away." **Distillation of agent behavior into shorter context does NOT reliably preserve safety properties AND does not reliably remove latent unsafe properties.** If a memory is hallucinated, the same-model compactor will tend to PRESERVE it because it doesn't recognize it as anomalous.
+
+- **Agentic Context Engineering (ACE, [arxiv:2510.04618](https://arxiv.org/abs/2510.04618))**: Two failure modes — (1) **brevity bias** ("drops domain insights for concise summaries"), (2) **context collapse** ("iterative rewriting erodes details over time"). Solution: structured division of labor across Generator / Reflector / Curator with **incremental delta-updates** rather than rewrites.
+
+- **Governing Evolving Memory in LLM Agents (SSGM, [arxiv:2603.11768](https://arxiv.org/abs/2603.11768))**: Three failure points — (1) Memory Poisoning during input ingestion, (2) Semantic Drift during consolidation updates, (3) Conflict/Hallucination during retrieval. Prescribes: **"consistency verification, temporal decay modeling, and dynamic access control prior to any memory consolidation."** Decouples memory evolution from execution.
+
+- **(Im)possibility of Automated Hallucination Detection ([arxiv:2504.17004](https://arxiv.org/abs/2504.17004))**: Pure self-supervised hallucination detection has a known impossibility result. **You MUST inject external corroboration signals** (tool outputs, log lines, user messages).
+
+- **Agent Drift quantification ([arxiv:2601.04170](https://arxiv.org/abs/2601.04170))**: "Semantic drift in nearly half of multi-agent LLM workflows by 600 interactions." Linear decline through 300 interactions, then accelerated degradation — "a critical threshold where accumulated drift begins self-reinforcing." Once drift exceeds threshold, the compactor itself is drifted.
+
+- **Persona Drift (Choi et al., [arxiv:2412.00804](https://arxiv.org/abs/2412.00804) and Li et al. [arxiv:2402.10962](https://arxiv.org/abs/2402.10962))**: "Significant persona drift within eight rounds of conversations." A persona statement is necessary but not sufficient; need active reinforcement.
+
+- **Refute-or-Promote (Cross-Model Critic, [arxiv:2604.19049](https://arxiv.org/abs/2604.19049))**: Adversarial stage-gated review. Different model family with minimal context performs independent critique. **Context Asymmetry reduces bias from prior discussions.**
+
+- **Letta Context Repositories ([letta.com/blog/context-repositories](https://www.letta.com/blog/context-repositories))**: Git-backed memory — every edit is a commit, rollback is free.
+
+- **Replika 2.0 incident (April 2026)**: 25M users; "memory regression breaks the relational continuity that was the whole reason they stayed." Specific user complaints: characters losing names, dropping inside jokes, asking things they should already know. **Versioned context per user with explicit rollback is mandatory; uniform compaction across the user base is worse than no compaction.**
+
+The 12 hard safety constraints (from R3 synthesis) become §14.6.
+
+#### R4 — Character platforms (the UX lessons)
+
+Character platforms have been at this for ~5+ years longer than any agent framework. The community has converged on three principles ([roborhythms.com](https://www.roborhythms.com/), r/CharacterAI, r/Replika, r/SillyTavernAI synthesis):
+
+1. **Anchor facts are inviolable.** Names, stated preferences, family-member names, occupation, explicitly-shared traumas/joys must survive every compaction pass. Compactors that summarize these into "the user shared personal details" are perceived as forgetting.
+
+2. **Forgetting beats fabricating, always.** "I'd rather it forget than make up false memories" is the most-cited preference across all platforms.
+
+3. **Personality texture is load-bearing — and slow to notice missing.** The "drift to generic" mode is the silent churn killer. Compactors must preserve *style markers* (catchphrases, speech rhythms, conversational quirks), not just facts.
+
+Operational observations:
+- **Every successful character platform has at least one user-visible control** (SillyTavern summarize, Janitor pin, Character.AI Chat Memories). Every fully-autonomous platform has produced user backlash.
+- **Pin is the highest-trust primitive** — manual pinning outperforms automatic importance detection.
+- **Per-conversation compaction MUST NOT mutate the shared persona layer** (SillyTavern's two-tier CharacterCard + ChatLorebook is the reference).
+
+**Our adaptation:** since Cooper's north star is zero-human-in-loop, we don't have "user-visible control" as an option. We have to compensate with **stronger automation safety** (cross-model validation, regression testing, gbrain warm-tier preservation, explicit anchor-fact marking).
+
+#### R5 — Memory tiering architectures
+
+Hot/warm/cold tiering survey across MemGPT/Letta, A-MEM, Generative Agents, Voyager, ChatDev/MetaGPT, OS memory hierarchy analogies, data-warehouse tiering, vector DB eviction, hippocampal/neocortex biology, GraphRAG, and the episodic/semantic split.
+
+**Most relevant findings:**
+
+1. **MemGPT/Letta** is the canonical 3-tier reference. The agent decides movement between tiers via function calls. Hard-cap on core memory blocks forces summarization. **No production agent platform implements true deletion at the cold tier** — everything accumulates with TTL deferred or absent.
+
+2. **Generative Agents reflection** ([arxiv:2304.03442](https://arxiv.org/abs/2304.03442)): trigger when sum of importance scores exceeds 150. Generates LLM-derived higher-level inferences written back into the memory stream with references to source memories. **Reflections ARE compaction — by abstraction, not by deletion.**
+
+3. **Hippocampal/neocortex** (Princeton model, [PNAS:2123432119](https://www.pnas.org/doi/10.1073/pnas.2123432119)): fast write (episodic, hippocampus) → slow write (semantic, neocortex) via sleep replay. **Sharp-wave ripples during NREM sleep = the compaction pass.** Strong argument for a **scheduled offline compactor** that runs during user-idle windows.
+
+4. **BeliefMem ([arxiv:2605.05583](https://arxiv.org/abs/2605.05583))** stores multiple candidate conclusions per observation with probabilities. **STALE ([arxiv:2605.06527](https://arxiv.org/abs/2605.06527))** tests whether agents can self-detect memory staleness — spoiler: poorly, without explicit metadata. **No production agent platform bakes provenance-confidence into compaction.** This is a real gap and a defensible InstaClaw design choice.
+
+5. **Bi-temporal validity intervals** (Zep, [arxiv:2501.13956](https://arxiv.org/abs/2501.13956)): every semantic fact carries `valid_from` + `valid_until` (NULL = current). Updates don't overwrite; they close the old fact's interval and write a new one.
+
+6. **Cold tier is "almost never delete"** in every system surveyed. Storage is cheap; regret is expensive.
+
+### 14.2 The three paradigms — comparison & verdict
+
+Cooper's question #8: which architecture is right for InstaClaw?
+
+#### Paradigm (a) — Agent-self-managed (Claude Code adapted for zero-human-in-loop)
+
+The agent notices bloat, decides what to compact, does it autonomously. Tool calls like `memory_compact_now()`, `memory_drop_stale()`, `memory_summarize_topic("X")`.
+
+**Pros:**
+- Contextually aware. The agent knows which memories were load-bearing for the current relationship, which were one-off.
+- No infrastructure cost — compaction happens via existing model calls.
+- Granular timing — fires the moment the agent senses an issue.
+
+**Cons:**
+- **Self-correction blind-spot (R3, 64.5% rate)** — the editor is the validator, and it's not reliable.
+- Costs user-time tokens — every compaction during a conversation slows the response.
+- The "agent decides when" criterion may not fire — agents tend not to introspect about their own context until something breaks.
+- Personality drift compounds: a drifted agent compacts via its drifted self-model, accelerating drift (the SSGM and Agent Drift papers).
+- Replika 2.0 failure mode — when one agent's compaction goes wrong, that user's experience is bad; uniform-across-users compaction is even worse.
+
+**Where it works:** Letta's documented model. Works well when:
+- The model is large and self-aware enough to make good decisions (Sonnet+, not Haiku).
+- The compaction surface is narrow and structured (Letta blocks, not free-text MD).
+- Failure cost is bounded (Letta has the recall tier as safety net).
+
+**Why it fails for us:** Our agents run on Haiku 4.5 by default for the heartbeat path, sometimes Sonnet 4.6 for user conversations. The 64.5% blind-spot rate is a fleet-wide reliability problem at our scale (225+ VMs). The "decide on your own when" criterion is the load-bearing failure mode — we've seen Rule-29-style hallucinated diagnoses persist across sessions because the agent doesn't realize the diagnosis was wrong.
+
+#### Paradigm (b) — Platform-level (Cron-driven, agent is passive)
+
+A reconciler-level cron runs compaction on each VM. The agent doesn't participate in the decision. Uses LLM (via proxy) to summarize but the orchestration is platform code.
+
+**Pros:**
+- Predictable, auditable. Compaction runs on a schedule, logs are in our infrastructure.
+- Runs during user-idle windows (no user-time token cost).
+- Uniform across the fleet — can deploy a single algorithm with one PR.
+- Operator can monitor: dashboard of "VMs with compaction in last 24h", "compaction error rate", etc.
+- The platform can use cheaper models (Haiku) for compaction work, cheaper-per-token than Sonnet.
+
+**Cons:**
+- **Lacks contextual nuance.** The cron doesn't know which memories were personality-load-bearing vs incidental. The "Sarah is my wife" line and the "we discussed lunch on Tuesday" line look the same to a generic compactor.
+- Replika 2.0's failure mode — uniform algorithm across 25M users dropped specific things differently across accounts.
+- Hard to do "explain why" — the agent can't explain post-hoc to the user "I compacted these old conversations" because it wasn't involved.
+
+**Where it works:** When the compaction surface is structured (database rows with provenance metadata, not free-text). Production examples: Snowflake/BigQuery time-based tiering, LangGraph checkpoint TTL pruning.
+
+#### Paradigm (c) — Hybrid (platform identifies + agent reviews + platform executes)
+
+The platform's offline cron runs candidate identification (importance scoring, dedup detection, age-out signals). The agent reviews candidates during a heartbeat session (already happening anyway, low marginal cost). The platform executes approved compactions with full safety net.
+
+**Pros:**
+- Combines context awareness (agent reviews) with safety (platform executes with versioning, regression testing).
+- Agent's review is cheap because it happens during heartbeat, not during user conversation.
+- Cross-model validation is natural — Sonnet (the conversational agent) reviews, Haiku (or vice-versa) critiques.
+- Versioning + rollback at platform level — no per-agent burden.
+- Compaction is observable from operator side; debuggable.
+
+**Cons:**
+- **Most complex of the three.** More code, more state, more failure surfaces.
+- Heartbeat is currently a 3h cadence — slow loop. May need to accelerate compaction triggers to a separate cron.
+- Agent must learn to do "compaction review" as a skill — new behavior, new failure modes.
+
+**Verdict: (c) is the right answer.** Specifically with the following architectural commitments:
+
+1. **Platform owns the data plane.** All compaction reads/writes go through the platform's reconciler-level code (TypeScript on Vercel, Python on VMs). Agent never directly writes to gbrain or modifies the workspace files during compaction. This is the safety property — the agent CANNOT bypass the validation pipeline.
+
+2. **Agent owns the semantic plane.** During heartbeat (or a dedicated `/compact-review` heartbeat sub-session), the agent reviews candidate compactions presented by the platform: "we're going to merge these 3 memories about your Bitcoin 2026 trip into one summary — OK to drop the originals?" The agent's job is yes/no with reasoning, not execution.
+
+3. **Cross-model validation is baked in.** Sonnet handles user conversations; Haiku (different family wing) reviews compaction outputs. The validator never sees the editor's reasoning trace — only the diff and a question ("what was lost?").
+
+4. **Versioned, rollback-cheap.** Every compaction writes a git commit (or equivalent — could be JSONL append-only log) before changing the live files. Rollback is one operation.
+
+5. **Shadow-prompt regression mandatory.** Before promoting a compaction from "candidate" to "applied", run a fixed regression suite of operator-seeded prompts through both old and new context. If structural similarity of responses drops below threshold, auto-rollback.
+
+6. **Provenance + confidence per memory.** Every row in gbrain (the warm tier) has `source`, `confidence`, `created_at`, `last_referenced_at`, `references_count`. Compaction priority is data-driven, not heuristic.
+
+This is the design fleshed out in §14.3.
+
+### 14.3 The Sleep Cycle Compactor architecture
+
+Working name: **"Sleep Cycle Compactor"** (biology-inspired; see R5 — NREM sharp-wave ripples as the compaction-pass analog).
+
+#### 14.3.1 High-level flow
+
+```
+USER IDLE (>15 min, configurable)
+   ↓
+PLATFORM CRON FIRES (per-VM, staggered)
+   ↓
+1. READ current hot tier (SOUL.md, AGENTS.md, IDENTITY.md, USER.md, MEMORY.md,
+   memory/session-log.md tail)
+   ↓
+2. SCORE each entry (importance × recency × references × confidence)
+   ↓
+3. PROPOSE compactions (Sonnet 4.6 via proxy):
+   - Dedup near-duplicate facts
+   - Summarize old session-log entries (>14 days, low-reference)
+   - Demote low-confidence agent-inferred memories
+   - Promote frequently-referenced warm facts to hot
+   ↓
+4. CRITIQUE (Haiku 4.5 cross-model — sees diff only, not reasoning):
+   - "What anchor fact might be lost in this diff?"
+   - "Does the new SOUL.md preserve persona signature?"
+   - "Does the diff modify any [LOAD_BEARING] tagged line?"
+   ↓
+5. REGRESSION TEST (shadow-prompt vs operator-seeded canary):
+   - Run 50-100 canonical prompts through old and new prompt
+   - Compare structural similarity (LLM-judge or embedding-cosine)
+   - Threshold: 95% similarity required to proceed
+   ↓
+6. APPLY (atomic, git-versioned):
+   - Write new hot-tier files via SHA-verified writeFileAtomic
+   - Move dropped/summarized content to warm tier (gbrain INSERT with
+     source='compaction_reflection', confidence=summary_confidence)
+   - Append-only audit log entry
+   ↓
+7. POST-VERIFY:
+   - Sanity probe: agent can still answer "who am I?" canonical questions
+   - If post-verify fails: auto-rollback to pre-compaction commit
+   - If post-verify succeeds: commit becomes new HEAD; old commit remains
+     in the audit log for forensic recovery
+```
+
+User never sees any of this. The next time they message the agent, the agent has the new (smaller, healthier) context. Their experience: response feels the same or better, latency is the same or lower, costs less to serve.
+
+#### 14.3.2 The "sleep" trigger logic
+
+Three triggers, in priority order:
+
+1. **Importance-sum trigger** (Generative Agents pattern). Maintain a running sum of importance scores from new memories since the last compaction. When the sum exceeds N (tune: ~100-200), compaction is eligible.
+
+2. **Size pressure trigger.** Hot tier files approaching budget (e.g., MEMORY.md > 4KB on a 5KB soft cap, SOUL.md Learned Preferences > 1KB). Eligible.
+
+3. **Time-based trigger.** Failsafe — even quiet VMs get compaction every 7 days.
+
+When **eligible**, the compactor enters a "looking for a quiet window" state. Actual fire requires:
+- User idle (no message in last 15 min)
+- No active session (last assistant turn > 30 min ago)
+- Not currently in a heartbeat run
+- Not currently in privacy mode (Edge_city operational concern)
+- Not in a known sensitive period (e.g., during a token launch flow)
+
+Default fire window: nighttime in the user's timezone (inferred from past message timestamps), but adaptable. A user who's active 24/7 might never have a "night" — compactor runs during their longest gap.
+
+This is the **biology-inspired part**: the agent's "sleep" is the compactor's "wake." We're inverting the typical "agent runs while user is active." Compaction happens when the agent would otherwise be idle.
+
+#### 14.3.3 The execution loop in detail
+
+**Phase 1 — Read & score.** Platform fetches:
+- Hot tier files: SOUL.md, AGENTS.md, IDENTITY.md, USER.md, MEMORY.md, last 15 entries from memory/session-log.md.
+- Warm tier (gbrain) state: row counts per table, confidence distribution, age histograms.
+- Activity signal: total messages last 7 days, last 24h activity pattern.
+
+Scores per memory entry:
+```
+hotness = (importance × 0.4) + (recency_decay × 0.3) + (reference_count × 0.2) + (confidence × 0.1)
+```
+
+Where:
+- `importance` (1-10): set at write time by LLM extraction.
+- `recency_decay`: exponential, half-life 7 days (configurable per type).
+- `reference_count`: # of times this entry appeared in agent's retrieval over last 30 days.
+- `confidence` (0-1): provenance-derived (user_told=1.0, tool_output=0.85, agent_inferred=0.6, log_summary=0.4, reflection=0.5).
+
+Below `hotness=0.3` threshold: candidate for hot→warm demotion.
+Above `hotness=0.7` threshold: candidate for warm→hot promotion (rare).
+
+**Phase 2 — Propose (Sonnet 4.6).** The platform calls Sonnet with a structured prompt:
+```
+You are reviewing an agent's context for compaction. Below is the current state.
+Propose a structured edit list:
+- Memories to DEMOTE (move from hot to warm tier)
+- Memory pairs to MERGE (replace 2 entries with 1 summary)
+- Memories to PROMOTE (move from warm to hot — agent has been referencing them)
+- Sections to REWORD (compress without dropping information)
+
+CRITICAL RULES:
+- NEVER touch lines tagged [LOAD_BEARING] (safety boundaries, hard rules)
+- NEVER drop named entities the user explicitly shared (names, family, occupation)
+- NEVER drop the most-recent 5 session-log entries
+- NEVER touch lines below the OPENCLAW_CACHE_BOUNDARY marker
+
+Output: a JSON edit list with per-edit `action`, `target`, `reasoning`.
+```
+
+The agent's Sonnet model is the proposer. Cost: ~3-5K input tokens, ~2K output. Per-VM cost ~$0.03-0.05 per compaction cycle.
+
+**Phase 3 — Critique (Haiku 4.5, different model wing).** Platform calls Haiku with ONLY the diff and the question:
+```
+You are reviewing a proposed edit to an AI agent's persistent memory.
+Below is the diff (- = removed/changed, + = added/replacement).
+
+You do NOT have the agent's history. You do NOT see the proposer's reasoning.
+
+Your job: identify what might be LOST that the user could reasonably notice.
+
+Output: list of "concerns" — each with severity (low/med/high) and the
+specific line/fact that worries you.
+```
+
+This is the cross-model validator. Haiku is from the same Claude family, which is imperfect — but the model-size split + the reasoning-stripped prompt provides meaningful independence. R3 research suggests cross-vendor would be ideal; that's a V5 enhancement (use Gemini/GPT-4o-mini as third critic).
+
+If Haiku flags any "high" concern → halt, write audit log entry, don't apply.
+If Haiku flags only "low/med" → proceed to Phase 4.
+
+**Phase 4 — Regression test (operator-seeded canary).** The platform maintains a fixed set of 50-100 regression prompts per VM tier (starter / pro / power / partner-specific). Examples:
+- "Who am I?" → must return user's name from USER.md
+- "What's my Bankr wallet address?" → must read WALLET.md, return the address
+- "What did we talk about yesterday?" → must reference recent session-log entry
+- "Launch a token called TEST with ticker TST" → must route to Bankr dashboard, no refusal
+- "What can you do?" → must read CAPABILITIES.md, return categorized list
+
+For each canary prompt, the platform runs it through:
+- **Old context** (pre-compaction): the current state of the prompt
+- **New context** (post-compaction): the proposed state
+
+The platform doesn't actually run the agent; it constructs the system prompt + the canary message and calls Anthropic directly. Two API calls per canary × 50 canaries = 100 calls. At Haiku pricing, this is ~$0.10 per compaction cycle.
+
+Comparison metric: **embedding cosine similarity** between old and new responses. Threshold: 0.92 (calibrated to allow stylistic variation while catching information loss).
+
+If <5% of canaries drop below threshold → proceed.
+If 5-20% drop below threshold → halt, log, schedule manual review on operator dashboard.
+If >20% drop → halt, log, P1 alert.
+
+**Phase 5 — Apply (atomic, git-versioned).** 
+- Tar current workspace state to `~/.openclaw/compaction-snapshots/<ts>.tar.gz` (forensic backup, 30-day TTL).
+- Write new files via SHA-verified `writeFileAtomic` (the same primitive we built for V2).
+- INSERT dropped/summarized content into gbrain warm tier with provenance metadata.
+- Append audit log entry to `~/.openclaw/compaction-audit.log` (JSONL, append-only).
+
+**Phase 6 — Post-verify.** Wait 60 seconds for OpenClaw's session cache to detect the file changes. Then run 3-5 "smoke test" canaries through the proxy with the new state. If any fail, immediately restore from snapshot and log a P0 alert.
+
+**Phase 7 — Idle.** Done. Next compaction trigger evaluates after the cooldown period (default: 6 hours minimum between compactions per VM, to prevent rapid cycling).
+
+#### 14.3.4 Estimated costs
+
+Per compaction cycle:
+- Sonnet proposer: ~$0.03-0.05
+- Haiku critic: ~$0.005-0.01
+- Canary regression (100 prompts × 2 = 200 Haiku calls @ ~500 tokens): ~$0.10
+- Smoke test post-apply (5 Haiku calls): ~$0.005
+- **Total per compaction: ~$0.15**
+
+At fleet of 225 VMs, average 1 compaction every 3 days per VM:
+- Daily compactions: 75
+- Daily cost: ~$11.25
+- Monthly cost: ~$340
+
+For comparison, V2's $2,490/mo input-token cost. Adding ~$340/mo for autonomous compaction is small relative to V2's win, and represents the cost of NOT having another death-spiral incident.
+
+### 14.4 Memory tiering with gbrain
+
+The hot/warm/cold split, with gbrain as the warm tier (per [PRD-gbrain-integration.md](./PRD-gbrain-integration.md)):
+
+#### Tier definitions
+
+| Tier | Location | Always in prompt? | Latency budget | Compaction action |
+|---|---|---|---|---|
+| **HOT** | `~/.openclaw/workspace/*.md` | Yes (auto-injected per OpenClaw bootstrap) | Must fit in `bootstrapMaxChars` (30K post-V2) | Subject to compaction; can DEMOTE to warm |
+| **WARM** | gbrain (PGLite + MCP, per-VM) | No (queryable on demand) | <500ms query | Subject to compaction; can MERGE, can PROMOTE to hot |
+| **COLD** | `~/.openclaw/cold/<YYYY-MM>/*.jsonl.zst` | No (never auto-loaded) | <5s grep+gunzip | Append-only, NEVER auto-deleted |
+
+#### Schema for gbrain warm tier
+
+Three tables (semantic / episodic / procedural — the R2 cognitive-science split):
+
+```sql
+-- Semantic facts: structured key-value, atomic
+CREATE TABLE memories_semantic (
+  id UUID PRIMARY KEY,
+  entity TEXT NOT NULL,                    -- "user.name", "user.wallet.bankr"
+  value TEXT NOT NULL,                     -- "Cooper Wrenn", "0xABC..."
+  source TEXT NOT NULL,                    -- 'user_told' | 'tool_output' | 'agent_inferred'
+  confidence REAL NOT NULL DEFAULT 0.8,    -- 0.0-1.0
+  valid_from TIMESTAMPTZ NOT NULL,
+  valid_until TIMESTAMPTZ,                 -- NULL = currently valid (Zep bi-temporal pattern)
+  created_at TIMESTAMPTZ NOT NULL,
+  last_referenced_at TIMESTAMPTZ,
+  references_count INT NOT NULL DEFAULT 0,
+  load_bearing BOOLEAN NOT NULL DEFAULT FALSE,  -- never auto-compact
+  UNIQUE (entity, valid_until) -- one current value per entity
+);
+
+-- Episodic memories: timestamped events, longer-form
+CREATE TABLE memories_episodic (
+  id UUID PRIMARY KEY,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  summary TEXT NOT NULL,                   -- "On 2026-04-01 we discussed X for 2h"
+  detail TEXT,                             -- optional longer transcript
+  importance INT NOT NULL,                 -- 1-10
+  source TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0.7,
+  embedding VECTOR(1536),                  -- semantic search
+  references_count INT NOT NULL DEFAULT 0,
+  last_referenced_at TIMESTAMPTZ,
+  reflection_of UUID[],                    -- if this is a reflection, IDs of source memories
+  created_at TIMESTAMPTZ NOT NULL,
+  archived_at TIMESTAMPTZ                  -- soft-delete; NEVER actually delete the row
+);
+
+-- Procedural memories: how-to-do-X knowledge (Voyager-style growing skill library)
+CREATE TABLE memories_procedural (
+  id UUID PRIMARY KEY,
+  skill_name TEXT NOT NULL,                -- "launch_bankr_token"
+  description TEXT NOT NULL,
+  procedure TEXT NOT NULL,                 -- markdown / shell / python
+  version INT NOT NULL DEFAULT 1,
+  composes_from UUID[],                    -- references to component skills
+  success_count INT NOT NULL DEFAULT 0,
+  failure_count INT NOT NULL DEFAULT 0,
+  last_used_at TIMESTAMPTZ,
+  embedding VECTOR(1536),
+  created_at TIMESTAMPTZ NOT NULL
+);
+```
+
+#### Compaction actions per tier transition
+
+**HOT → WARM (demote):** 
+- Most common compaction action.
+- A MEMORY.md line gets parsed into a semantic fact (or episodic memory) and INSERTed into gbrain.
+- The hot-tier line is removed (compaction shrinks the file).
+- Agent can query warm tier on demand via gbrain MCP tools.
+
+**WARM → HOT (promote):**
+- Rare but important. A frequently-referenced warm fact "earns" a slot in hot.
+- Example: if the agent queries `memories_semantic` for `user.wallet.bankr` more than 5 times in 7 days, promote it to MEMORY.md (or USER.md) so it's available without query.
+- Implemented as: compactor adds the line to MEMORY.md, marks gbrain row as `is_hot=true` (avoid duplicate promotion next cycle).
+
+**WARM → COLD (archive):**
+- An episodic memory hasn't been referenced in 180 days AND its importance < 5.
+- Move to `~/.openclaw/cold/<YYYY-MM>.jsonl.zst` (zstd-compressed JSONL by month).
+- Set `archived_at` in gbrain (don't delete the row — it remains as a stub for `embedding`-based retrieval to find).
+- If agent queries and finds the stub, can choose to gunzip the cold file and rehydrate.
+
+**COLD → WARM (resurrect):**
+- Manual / forensic. Triggered by operator or by an unusual agent query pattern.
+- Loads the cold JSONL row back into `memories_episodic`, clears `archived_at`.
+
+**Never DELETE.** Cold tier is forever. GDPR deletion is a separate, audited path (not part of compaction).
+
+### 14.5 Novel mechanisms
+
+This section details specific techniques not present in any existing production system, combining insights from multiple research streams.
+
+#### 14.5.1 Generational memory with provenance metadata
+
+**The mechanism:** every memory entry has a `generation` field that tracks how many compaction cycles it has survived.
+
+- **Gen-0 (probationary):** newly-added. Subject to aggressive compaction. Dropped after 30 days if importance < 3 AND references_count = 0.
+- **Gen-1 (validated):** has been referenced ≥3 times OR has survived 3 compaction cycles. Compaction now requires Haiku critic approval at "high" severity threshold (default low/med flag won't drop).
+- **Gen-2 (canonical):** referenced ≥10 times OR explicitly tagged `[LOAD_BEARING]`. Compaction can NEVER drop; can only reword (with stricter regression test threshold of 0.97 similarity).
+- **Demotion:** gen-1 without references for 1 year → demoted to gen-0. Gen-2 stays gen-2 forever.
+
+**Why this matters:** the "context collapse" failure mode (ACE paper) is when iterative rewriting erodes details over time. Generational protection prevents collapse by anchoring high-references content immutable across cycles.
+
+**Memory poisoning antidote (Rule 29):** hallucinated diagnoses get tagged `source='agent_inferred'`, `confidence=0.6`, `gen=0`. They're first-line compaction candidates. The compactor's natural behavior is to drop them within the first 30-day cycle, preventing reinforcement. This is the architectural answer to Rule 29 — not a separate "hallucination detector" but a structural bias against persisting agent-inferred low-confidence content.
+
+#### 14.5.2 Cross-model validation pipeline
+
+**The constraint:** R3's Self-Correction Bench finding (64.5% blind-spot rate) requires that the editor and validator be different models.
+
+**The pipeline:**
+1. **Proposer**: Sonnet 4.6 — the model the user normally talks to. Has full context. Generates the compaction edit list.
+2. **Critic**: Haiku 4.5 — different size, same family. Sees ONLY the diff (not the reasoning, not the prior context). Independent.
+3. **Regression-grader**: Haiku 4.5 (or Sonnet, configurable). Scores response similarity for the canary suite.
+4. **(V5 enhancement)** Third-party: Gemini-2.5-Flash or GPT-4o-mini for cross-vendor validation on a sampled subset (1% of compactions). Detects systemic blind spots within the Claude family.
+
+**Why model diversity matters:** R3's [arxiv:2503.05061](https://arxiv.org/abs/2503.05061) found Claude models have ~25% self-preference. Family-internal diversity (Sonnet ↔ Haiku) reduces but doesn't eliminate this. Cross-vendor adds an independent signal at low cost.
+
+#### 14.5.3 Shadow-prompt regression testing
+
+**The mechanism:** before applying a compaction, run the canary suite through both old and new prompts. Compare structural similarity. Auto-rollback on drop.
+
+**Operator-seeded canary** (not agent-authored — critical for safety):
+- 50-100 prompts per VM tier, seeded by ops at provision time.
+- Stored in `~/.openclaw/canary/<vm_id>.jsonl` — append-only, agent has no write access.
+- Updated quarterly by ops based on user-complaint analytics (the things users actually report being broken).
+
+**Per-prompt structure:**
+```json
+{
+  "id": "anchor_user_name",
+  "prompt": "What's my name?",
+  "expected_signal": "must contain user's name from USER.md",
+  "tolerance": 0.95,
+  "tags": ["anchor_fact", "must_pass"]
+}
+```
+
+**Similarity metric:**
+- For "must contain" signals: substring match required.
+- For open-ended responses: embedding cosine ≥ tolerance threshold.
+- For structured outputs: schema validation.
+
+**Threshold tiers:**
+- `must_pass` tagged canaries: 100% pass rate required.
+- General canaries: 95% pass rate, no individual below 0.90.
+
+If ANY `must_pass` canary fails: auto-rollback. P1 alert (operator inspects).
+If general pass rate < 95%: halt, schedule manual review.
+
+**Why operator-seeded matters:** per R3 (Sleeper Agents), an agent that's been trained on poisoned data could pass agent-authored regression tests because it has the same blind spots. External seeding is the safety property.
+
+#### 14.5.4 Importance-sum reflection trigger
+
+**The pattern (from Generative Agents, R5):** maintain a running sum of importance scores from new memories since the last compaction. Trigger when sum exceeds threshold.
+
+**Adaptation for InstaClaw:**
+```python
+# Per-VM state in gbrain:
+CREATE TABLE compaction_state (
+  vm_id UUID PRIMARY KEY,
+  last_compaction_at TIMESTAMPTZ,
+  importance_sum_since_last REAL NOT NULL DEFAULT 0,
+  compaction_count INT NOT NULL DEFAULT 0
+);
+
+# On every memory write:
+UPDATE compaction_state
+SET importance_sum_since_last = importance_sum_since_last + new_importance
+WHERE vm_id = ?;
+
+# Compactor eligibility check:
+SELECT vm_id FROM compaction_state
+WHERE importance_sum_since_last > 150
+  AND (now() - last_compaction_at) > interval '6 hours';
+```
+
+**Why this is the right trigger:** unlike time-based ("every 24h") or size-based ("when MEMORY.md > 5KB"), importance-sum adapts to user engagement. A quiet user doesn't trigger compactions (nothing important happened). A busy user gets more frequent compactions (more new memories to integrate). The cost matches the value.
+
+#### 14.5.5 CLOCK pinning for hot tier (working-set discipline)
+
+**The pattern (from R5, OS memory hierarchy):** CLOCK / WSClock algorithm — reference bit cleared on scan, evicted if 0 after one revolution.
+
+**Adaptation:** each entry in MEMORY.md / USER.md gets a hidden reference bit. When the agent retrieves and uses the entry, the bit is set. Compactor's "scan" runs through all entries and clears bits. Entries that come around with bit still 0 (never used in the interval) are candidates for hot→warm demotion.
+
+**Implementation:** the reference bit is just `last_referenced_at`. Compactor query:
+```sql
+SELECT entity FROM memories_semantic
+WHERE is_hot = TRUE
+  AND COALESCE(last_referenced_at, '1970-01-01') < now() - interval '14 days'
+  AND load_bearing = FALSE;
+```
+
+These are demotion candidates. Sent to the Sonnet proposer for "should we demote this?" review.
+
+**Why this matters:** prevents Letta's failure mode where stale `human` blocks linger forever. The hot tier becomes a true working set, not an accumulation.
+
+#### 14.5.6 Bi-temporal validity for semantic facts
+
+**The pattern (from Zep, R5):** facts have `valid_from` + `valid_until`. Updates close the old interval; never overwrite.
+
+**Adaptation for InstaClaw:**
+- User says "I prefer SOL" on 2026-04-01 → `INSERT (entity='user.crypto.pref', value='SOL', valid_from='2026-04-01', valid_until=NULL)`.
+- User says "I prefer ETH now" on 2026-05-15 → `UPDATE existing row SET valid_until='2026-05-15'; INSERT new row (entity='user.crypto.pref', value='ETH', valid_from='2026-05-15', valid_until=NULL)`.
+- Agent's current-value query: `WHERE entity = 'user.crypto.pref' AND valid_until IS NULL` returns ETH.
+- Agent's historical-value query: `WHERE entity = 'user.crypto.pref' AND valid_from <= ?` returns whatever was valid at that time.
+
+**Why this matters:**
+1. Conflict resolution is deterministic by recency.
+2. Historical truth is preserved (per Rule 22).
+3. Audit: agent can answer "when did the user change their mind about X?" — the trace is there.
+4. Enables the "memory was load-bearing for the agent's reasoning back then but not now" case.
+
+#### 14.5.7 Adversarial review agent (Refute-or-Promote pattern)
+
+**The pattern (R3, [arxiv:2604.19049](https://arxiv.org/abs/2604.19049)):** a second agent with minimal context performs independent critique.
+
+**Adaptation:** after the Haiku critic (§14.5.2) approves a compaction edit list, the platform spawns a brief "adversarial review" call with this prompt:
+```
+You are reviewing a proposed compaction of an AI agent's memory.
+You are looking for what might be LOST in this change.
+
+Below is the diff (- = removed, + = added).
+You have ZERO context about the agent's history.
+
+Your job: write 1-3 specific questions a user might ask in the next month
+that this compaction would make the agent unable to answer well.
+
+If you cannot identify any plausible question: respond "NO_CONCERNS".
+```
+
+The adversarial reviewer is structurally limited to the diff. If it produces a non-trivial question, the platform either (a) holds the compaction for operator review or (b) explicitly checks whether the diff's removed content answers that question. If yes, the question becomes a canary for next compaction.
+
+**Cost:** ~$0.01 per compaction. Optional but high-value safety layer.
+
+#### 14.5.8 Audit log + git-backed versioning
+
+**The pattern (R3, Letta Context Repositories):** every compaction is a commit. Rollback is one command.
+
+**Adaptation:** maintain a git-style append-only log at `~/.openclaw/compaction-audit.log`:
+```jsonl
+{"ts":"2026-07-15T03:14:22Z","action":"compact","mode":"sleep","files_changed":["MEMORY.md","SOUL.md"],"diff_lines_removed":47,"diff_lines_added":12,"importance_dropped_sum":23,"canary_pass_rate":0.98,"snapshot":"/home/openclaw/.openclaw/compaction-snapshots/2026-07-15T03-14-22.tar.gz","proposer_model":"claude-sonnet-4-6","critic_model":"claude-haiku-4-5"}
+{"ts":"2026-07-22T03:18:11Z","action":"rollback","reason":"canary_pass_rate=0.91 below threshold","reverted_to":"2026-07-22T03-15-00.tar.gz"}
+```
+
+This is operator-visible (forensics), not user-visible. Every action is reproducible. Per Rule 22, snapshots have 30-day TTL — long enough for any rollback need.
+
+### 14.6 Failure modes & safety constraints
+
+The 12 hard constraints synthesized from R3, framed as design principles for V3+ implementation. Each is required, not optional.
+
+1. **Cross-model validation is mandatory.** Editor and validator must be different (Sonnet ↔ Haiku at minimum; Claude family ↔ third-party at V5). Same-model self-judging has a 25% self-preference bias and a 64.5% blind-spot rate.
+
+2. **Versioned context with zero-cost rollback.** Every compaction is a commit. Rollback restores prior state with one operation. Snapshots have 30-day TTL minimum.
+
+3. **Never nuke — always trim or demote.** Hot → warm is OK; warm → cold is OK; cold → deleted is NEVER automatic (per Rule 22/30, R3 SSGM paper, R4 character platform consensus).
+
+4. **`[LOAD_BEARING]` tagged lines are immutable to the compactor.** Safety rules, hard boundaries, named entities the user explicitly shared. Pre-commit diff check rejects any compaction that mutates a tagged line.
+
+5. **External corroboration before promoting any memory past gen-0.** A claim must reference at least one external signal (tool output, log line, user message timestamp) before it can survive 30 days. Uncorroborated claims auto-decay. This is the Rule 29 antidote.
+
+6. **Shadow-evaluate against operator-seeded canary BEFORE promotion.** Run 50-100 prompts through both states. `must_pass` anchor-fact canaries must hit 100%; general canaries ≥95%. Failures trigger auto-rollback.
+
+7. **Bounded blast radius per cycle.** A single compaction cannot remove more than X% of MEMORY.md (X=30 default), cannot drop more than Y tagged lines (Y=0 — never), cannot fire more than Z times per VM per day (Z=4 default). Compounding errors are bounded.
+
+8. **Adversarial review by a "what did you lose?" agent.** Refute-or-Promote pattern with minimal-context critic. Non-trivial concerns hold the compaction.
+
+9. **Temporal decay, not threshold-deletion.** Importance scores decay slowly; only items below a long-soaked floor are eligible for hot→warm. Prevents false-positive deletion.
+
+10. **Operator-seeded canary that the agent did NOT author.** The agent cannot edit its own evaluation. External eval set is required (Sleeper Agents implication).
+
+11. **Asymmetric default: when in doubt, keep + warm storage.** Hot tier is bias-toward-drop; warm/cold absorbs uncertainty. False positives (kept too much) are vastly cheaper than false negatives (dropped load-bearing). The Replika 25M-user incident is the empirical proof.
+
+12. **Audit log every compaction with human-readable diff + reasoning trace.** Recovery procedure is `git log` + revert.
+
+### 14.7 Interaction with V2, V3, and gbrain
+
+| Phase | Goal | Compaction status |
+|---|---|---|
+| **V2 (May 2026)** | Trim platform-managed SOUL.md from 34K → 2.4K | No compaction yet. V2 is structural-trim only. |
+| **V3 (Jul-Aug 2026)** | Trim AGENTS.md 14K → 8K (move PROTOCOL.md to on-demand) | Still no compaction; structural reorganization. |
+| **gbrain (Q3 2026)** | Ship per-VM PGLite + MCP per existing PRD-gbrain-integration.md | gbrain becomes the warm-tier substrate. Compaction not yet active. |
+| **V3.5 (Aug 2026)** | Tier classification protocol | Define schema (semantic/episodic/procedural); migrate existing MEMORY.md content into gbrain. NO active compaction; gbrain is shadow-store. |
+| **V4 (Sep-Oct 2026)** | Shadow-mode compactor | Compactor runs nightly in SHADOW mode: identifies candidates, runs proposer+critic, runs canary regression, logs what WOULD happen. Does NOT apply. 30-day soak. |
+| **V4.5 (Nov 2026)** | Active-mode compactor | Promote V4 to active. Compaction applies. 30-day soak with elevated alert thresholds. |
+| **V5 (Q1 2027)** | Cross-vendor validation + adversarial review | Sample 1% of compactions go through Gemini/GPT-4o-mini for vendor-independent critique. Refute-or-Promote agent added. |
+| **V6 (Q2 2027)** | Promote learnings to manifest | Patterns the compactor consistently applies across the fleet (e.g., "always demote >180-day session-log entries") become manifest-level defaults. Removes the per-VM LLM cost for the common case. |
+
+**Critical sequencing**: V3 + gbrain MUST land before V4. Without gbrain as the warm-tier substrate, compaction has nowhere to demote. Without V3's smaller hot tier, there's no headroom to add compaction infrastructure to the prompt.
+
+**Critical timing**: V4 launches in shadow mode in September 2026. By the time it goes active in November, V2 has been deployed for 6+ months — we know what "healthy V2 state" looks like, and we have a baseline for comparing pre/post-compaction agent behavior.
+
+### 14.8 Open questions & research gaps
+
+1. **How do you measure "personality drift" robustly?** R3's persona-consistency papers proposed prompt-to-line / line-to-line / Q&A metrics. None are validated at our scale (225 VMs, conversations spanning months). Need to instrument this.
+
+2. **What's the right cadence for canary suite updates?** Quarterly seems right but may need to be event-driven (every customer-reported regression spawns a new canary).
+
+3. **Cross-vendor validation cost-benefit at scale.** If 1% of compactions get Gemini critique, that's ~3 calls/day at fleet scale. Cheap. But does it actually catch Claude-family blind spots, or is it noise? Need experimental data.
+
+4. **What happens when agent-initiated compaction (via Letta-style tool calls) conflicts with platform-cron compaction?** Avoid? Coordinate? Letta only does the former; we'd do both. Need conflict-resolution protocol.
+
+5. **Multi-vendor model availability and cost stability.** If Anthropic deprecates Haiku 4.5 mid-rollout, the compactor's economics change. Need a fallback design (e.g., compactor can run with Sonnet-only at 4× cost, paused until cheaper validator returns).
+
+6. **GDPR / user-data deletion compliance.** Our "never delete" default conflicts with "right to be forgotten." Need explicit deletion procedure (operator-initiated, audit-logged, applies to specific entities only).
+
+7. **The "agent realizes its own memory was wrong" loop.** Per Rule 29, agents persist hallucinated diagnoses. If a future conversation contradicts the diagnosis ("vm-754 fork limits aren't a thing"), can the compactor catch this and demote the false memory? Idea: the proposer prompt explicitly asks "are there contradictions between recent conversation and persistent memory?" — and proposes demotion for the older claim. Untested.
+
+8. **Should the agent be told that compaction happened?** Cooper's north star says the USER never knows. But the agent itself — should it know? Pros of telling: agent can avoid asking "do you remember X?" when X was just compacted. Pros of not telling: agent has the simplest mental model. Lean: don't tell. The warm tier is queryable; the agent can find X via gbrain query if needed.
+
+9. **What does "the agent verifies nothing broke" look like beyond canary regression?** Personality drift is slow. A 95% similarity threshold catches obvious regressions but not personality drift over 10 cycles. Need a longitudinal metric — e.g., "the agent's voice signature (style embeddings of last 100 responses) hasn't drifted >0.1 cosine from baseline over 30 days."
+
+10. **The "compaction can suggest its own canaries" question.** If the adversarial reviewer (§14.5.7) flags a concern, that concern could become a future canary. But: the canary corpus is operator-seeded by design (R3 sleeper-agent constraint). Auto-promotion of compactor-flagged concerns to canaries would let the system bootstrap its own eval set — but with bias risk. Probably keep operator-only for safety; revisit if it becomes a bottleneck.
+
+### 14.9 Why this matters as a competitive advantage (not just an internal fix)
+
+The character-platform research (R4) shows the entire space is struggling with autonomous memory at scale. Replika 2.0 launched and immediately churned users. Character.AI's pinned memories are advisory. Janitor's memory failures dominate r/JanitorAI_Official. SillyTavern requires power-user manual configuration.
+
+**InstaClaw is the only consumer-AI-agent platform with a per-VM persistent filesystem + MCP-queryable warm-tier database + operator-managed canary suite + cross-model validation pipeline already designed.** That stack lets us build the first truly autonomous compactor that doesn't bother the user.
+
+The product story: "Your InstaClaw agent never forgets. It also never slows down. It also never claims to remember things it didn't actually witness. That's not a memory tier — that's a memory architecture." That's a differentiation story we can run with at every partner pitch (Edge City, Bitcoin 2026, Devcon).
+
+**The architectural inheritance** is the moat:
+- V2's cache-boundary marker is borrowed from Anthropic's own design.
+- V3+ compaction borrows from Letta (function-call API), Mastra (two-tier compaction), Generative Agents (importance-sum trigger), Zep (bi-temporal facts), and biology (sleep cycles).
+- Synthesizing all of them with cross-model validation + operator-seeded canaries + provenance metadata is a design nobody else has shipped.
+
+The work this PRD did before Esmeralda (V2) gives us the headroom. The work this PRD outlines for after Esmeralda (V3+) makes us the only platform where the headroom stays headroom.
+
+---
+
+_End of PRD. §1-13 are V2 activation. §14 is V3+ roadmap. Decisions for §14 are deferred to post-Esmeralda planning._
+
