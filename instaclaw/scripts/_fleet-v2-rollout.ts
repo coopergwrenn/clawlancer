@@ -223,8 +223,12 @@ async function migrateOne(
   vm: { id: string; name: string; ip_address: string; partner: string | null; assigned_to: string | null; health_status: string },
 ): Promise<{ outcome: Outcome; messages: string[]; elapsedMs: number }> {
   const start = Date.now();
-  // Whitelist this VM only — even if env var leaks, no other VM gets touched.
-  process.env.RECONCILE_SOUL_MIGRATION_VM_IDS = vm.id;
+  // NOTE: RECONCILE_SOUL_MIGRATION_VM_IDS is set ONCE in main() with all VM
+  // IDs joined by comma — must NOT be set per-VM here. With concurrency>1,
+  // per-VM env-var writes race; the last write wins for all in-flight
+  // reconciles, causing siblings whose ID isn't the "winner" to be silently
+  // skipped by stepMigrateSoulV2's whitelist check. Fixed by setting once
+  // upfront in main(); see comment near process.env in §3.
 
   let result;
   try {
@@ -314,14 +318,14 @@ async function main() {
     if (explicitVms && explicitVms.length > 0) {
       const { data } = await sb
         .from("instaclaw_vms")
-        .select("id,name,ip_address,partner,assigned_to,health_status,telegram_bot_username,config_version")
+        .select("*")
         .in("name", explicitVms);
       vms = (data ?? []) as never;
       console.log(`  explicit list: ${vms.length}/${explicitVms.length} VMs resolved`);
     } else {
       const { data } = await sb
         .from("instaclaw_vms")
-        .select("id,name,ip_address,partner,assigned_to,health_status,telegram_bot_username,config_version")
+        .select("*")
         .eq("health_status", "healthy")
         .not("assigned_to", "is", null)
         .not("telegram_bot_username", "is", null)
@@ -359,6 +363,14 @@ async function main() {
       console.log("  Nothing to do. Exiting.");
       process.exit(0);
     }
+
+    // §3 — Set RECONCILE_SOUL_MIGRATION_VM_IDS once with ALL VM IDs joined by
+    // comma. stepMigrateSoulV2's whitelist check uses `.includes(vm.id)` on
+    // the parsed list, so listing all of them allows each VM's reconcile to
+    // pass. Setting per-VM in migrateOne races with concurrency>1; setting
+    // once upfront eliminates the race.
+    process.env.RECONCILE_SOUL_MIGRATION_VM_IDS = vms.map((v) => v.id).join(",");
+    console.log(`  RECONCILE_SOUL_MIGRATION_VM_IDS=${vms.length} ids (whitelist-scoped to this cohort)`);
 
     // Confirm before live run
     if (!dryRun) {
