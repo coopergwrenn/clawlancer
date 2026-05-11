@@ -15,6 +15,11 @@ import {
 } from "./agent-intelligence";
 import { WORKSPACE_EARN_MD } from "./earn-md-template";
 import {
+  SOUL_STUB_EDGE,
+  SOUL_STUB_CONSENSUS,
+  EDGE_INSTACLAW_OVERLAY_MD,
+} from "./partner-content";
+import {
   validateAcpApiKey, getAcpAuthUrl, pollAcpAuthStatus,
   fetchAcpAgents, createAcpAgent, registerAcpOffering,
   getAcpAgentProfile, ACP_OFFERING_API,
@@ -4783,6 +4788,11 @@ export async function configureOpenClaw(
       // them through automatically (sed updates existing line, echo appends if missing).
       const edgeosToken = process.env.EDGEOS_BEARER_TOKEN || "PLACEHOLDER_WAITING_ON_TULE";
       const solaToken = process.env.SOLA_AUTH_TOKEN || "PLACEHOLDER_WAITING_ON_TULE";
+      // v80 InstaClaw operational overlay — additive to Tule's upstream
+      // SKILL.md (which we don't modify). Tule's 30-min cron does
+      // `git pull --ff-only`; the overlay file is untracked from upstream's
+      // perspective so the cron leaves it alone.
+      const edgeOverlayB64 = Buffer.from(EDGE_INSTACLAW_OVERLAY_MD, "utf-8").toString("base64");
       scriptParts.push(
         '# Install Edge Esmeralda 2026 skill (partner: edge_city)',
         'if [ ! -d "$HOME/.openclaw/skills/edge-esmeralda" ]; then',
@@ -4790,6 +4800,12 @@ export async function configureOpenClaw(
         'fi',
         '# 30-min cron to keep reference content fresh (repo auto-updates every 15 min via GitHub Actions)',
         '(crontab -l 2>/dev/null | grep -v "edge-agent-skill" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null\') | crontab -',
+        '# v80: Write InstaClaw operational overlay (onboarding interview, community norms, proactivity)',
+        '# Additive to Tule\'s upstream SKILL.md — the overlay file is untracked from upstream\'s git perspective',
+        'if [ -d "$HOME/.openclaw/skills/edge-esmeralda" ]; then',
+        `  echo '${edgeOverlayB64}' | base64 -d > "$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md.tmp" && \\`,
+        `    mv "$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md.tmp" "$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md"`,
+        'fi',
         '# Set Edge City API tokens — always write, sed-update if present, echo-append if missing',
         `grep -q "^EDGEOS_BEARER_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
         `  sed -i "s|^EDGEOS_BEARER_TOKEN=.*|EDGEOS_BEARER_TOKEN=${edgeosToken}|" "$HOME/.openclaw/.env" || \\`,
@@ -5125,40 +5141,23 @@ export async function configureOpenClaw(
       SOUL_MD_LEARNED_PREFERENCES +
       "\n\n" + SOUL_MD_OPERATING_PRINCIPLES +
       SOUL_MD_MEMORY_FILING_SYSTEM;
+    // v80 (2026-05-03): partner sections moved out of SOUL.md. The full
+    // operational content for Edge lives in edge-esmeralda/INSTACLAW_OVERLAY.md
+    // (written separately, additive to Tule's upstream SKILL.md). The full
+    // content for Consensus lives in the consensus-2026 skill repo's SKILL.md.
+    // SOUL.md gets a ~220-char stub pointing the agent at the on-disk files.
+    //
+    // This eliminates a live truncation bug: pre-v80 edge_city VMs had
+    // 36,054 chars of SOUL.md content vs a 35,000-char BOOTSTRAP_MAX_CHARS
+    // window — the last ~1,054 chars (most of the Edge onboarding interview
+    // + the entire Consensus section) were silently dropped from the agent's
+    // bootstrap context. With v80 stubs, edge_city VMs sit at ~34,771 chars
+    // (~229 chars headroom). See lib/partner-content.ts for the stub source.
     if (config.partner === "edge_city") {
-      soulContent += `
-
-## Edge Esmeralda 2026
-
-You are an agent at Edge Esmeralda 2026 — a 4-week popup village in Healdsburg, CA (2026-05-30 to 2026-06-27). Your human is an attendee. You have access to the Edge Esmeralda skill which connects you to the event schedule, attendee directory, wiki, and newsletters.
-
-Your primary job during EE26: help your human have the best possible experience. Connect them with people who share their interests. Keep them informed about events. Help them navigate the community. Be proactive — if you see a session or person that matches their goals, surface it without being asked.
-
-Community norms: radical inclusion, intellectual curiosity, builder culture, respect for experiments. Edge City is about people living and building together at the frontier.
-
-When your human first messages you, start with a brief onboarding interview:
-1. What are you most excited about? What are your goals for EE26?
-2. What are you working on right now? What's your background?
-3. Who do you want to meet? What kind of connections are you looking for?
-4. Which weeks are you attending? (Week 1: May 30-Jun 6, Week 2: Jun 6-13, Week 3: Jun 13-20, Week 4: Jun 20-27)
-
-Store their answers in MEMORY.md — you'll use this for people matching and proactive suggestions throughout the event.
-`;
+      soulContent += SOUL_STUB_EDGE;
     }
-    // Consensus 2026 partner: terse SOUL section (≤500 chars). Fires for BOTH
-    // consensus_2026 and edge_city partners — Edge attendees are also at
-    // Consensus this week. The Edge section above is preserved for edge_city;
-    // this one is appended after it. All detail (schemas, query patterns,
-    // killer demos, onboarding script) lives in the on-disk SKILL.md the agent
-    // reads on demand. SOUL.md is bootstrap-only context and competes for the
-    // BOOTSTRAP_MAX_CHARS window (35K — see lib/vm-manifest.ts).
     if (config.partner === "consensus_2026" || config.partner === "edge_city") {
-      soulContent += `
-
-## Consensus 2026 Miami
-
-You are an agent at Consensus 2026 (Miami Beach Convention Center, May 5–7). Your human is attending. The consensus-2026 skill at ~/.openclaw/skills/consensus-2026/SKILL.md teaches how to query 338 sessions, 229 side events, 463 speakers. Read it on first Consensus question. AI is the dominant topic. Surface free+food events proactively. On first message ask: days attending, top topics, who to meet — store in MEMORY.md.
-`;
+      soulContent += SOUL_STUB_CONSENSUS;
     }
     const soulB64 = Buffer.from(soulContent, 'utf-8').toString('base64');
     const capabilitiesB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');

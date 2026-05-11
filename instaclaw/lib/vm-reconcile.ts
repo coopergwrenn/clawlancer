@@ -15,6 +15,13 @@
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { getPrivacyBridgeScript } from "./privacy-bridge-script";
+import {
+  SOUL_STUB_EDGE,
+  SOUL_STUB_CONSENSUS,
+  SOUL_STUB_EDGE_MARKER,
+  SOUL_STUB_CONSENSUS_MARKER,
+  EDGE_INSTACLAW_OVERLAY_MD,
+} from "./partner-content";
 import * as crypto from "crypto";
 import {
   WORKSPACE_SOUL_MD_V2,
@@ -300,6 +307,25 @@ export async function reconcileVM(
     // hosting platform. Idempotent via INSTACLAW_PLATFORM_V1 marker.
     currentStep = "instaclaw-identity-patch";
     await stepInstaClawIdentityPatch(ssh, result, dryRun);
+
+    // ── Step 8f4: v92 SOUL.md partner-section rewrite (partner VMs only) ──
+    // Pre-v92 edge_city VMs had 36,054 chars of SOUL.md vs the 35,000-char
+    // BOOTSTRAP_MAX_CHARS ceiling — last 1,054 chars (Edge onboarding tail
+    // + entire Consensus section) silently truncated. v92 stubs partner
+    // sections to ~220 chars and moves the substantive content to per-skill
+    // files. This step rewrites SOUL.md on existing partner VMs (manifest
+    // files entries are append/insert and can't replace existing rows).
+    // Idempotent via SOUL_STUB_*_MARKER substrings.
+    currentStep = "v92-partner-stub-rewrite";
+    await stepRewriteSoulPartnerSections(ssh, vm, result, dryRun);
+
+    // ── Step 8f5: Edge skill InstaClaw overlay (edge_city VMs only) ──
+    // Writes ~/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md with
+    // onboarding interview + community norms + proactivity directive.
+    // Additive to Tule's upstream SKILL.md which we deliberately don't
+    // modify. SHA-verified; idempotent skip on match.
+    currentStep = "edge-overlay-deploy";
+    await stepDeployEdgeOverlay(ssh, vm, result, dryRun);
 
     // ── Step 8g–8m: Deploy heals ──
     // configureOpenClaw silently dropped these on a non-trivial fraction of
@@ -3857,4 +3883,308 @@ async function stepDeployPrivacyBridge(
 
   result.fixed.push("privacy-bridge.sh deployed");
   logger.info("privacy-bridge deployed", { route: "vm-reconcile", vmId: vm.id });
+}
+
+/**
+ * stepRewriteSoulPartnerSections — v92 surgical SOUL.md migration.
+ *
+ * Replaces the pre-v92 long Edge / Consensus sections in SOUL.md with the
+ * v92 stubs (defined in lib/partner-content.ts). Mirror of v67 routing
+ * patch shape: Python in-place edit, marker-based idempotency, tmp+rename
+ * atomic write, post-write verify, errors push to result.errors so the
+ * pushFailed gate refuses to bump config_version.
+ *
+ * Why this exists: manifest's file entries for SOUL.md are all
+ * append_if_marker_absent / insert_before_marker. None can REPLACE existing
+ * content. Pre-v92 SOUL.md on production edge_city VMs has the long sections
+ * that need to be rewritten in place. configureOpenClaw at fresh provision
+ * already uses the v92 stubs (lib/ssh.ts) — this step heals existing VMs.
+ *
+ * Backup: writes pre-rewrite SOUL.md to ~/.openclaw/backups/v92-<ts>/SOUL.md
+ * BEFORE any modification, per CLAUDE.md Rule 22.
+ */
+async function stepRewriteSoulPartnerSections(
+  ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Only run on partner-tagged VMs. Other VMs have no Edge/Consensus
+  // sections in their SOUL.md so the rewrite would be a no-op anyway,
+  // but we'd still pay the SSH round-trip cost. Short-circuit.
+  if (vm.partner !== "edge_city" && vm.partner !== "consensus_2026") {
+    return;
+  }
+
+  const applyEdge = vm.partner === "edge_city";
+  const applyConsensus = vm.partner === "edge_city" || vm.partner === "consensus_2026";
+
+  if (dryRun) {
+    result.fixed.push(
+      `[dry-run] v92 SOUL partner stub rewrite (apply_edge=${applyEdge} apply_consensus=${applyConsensus})`,
+    );
+    return;
+  }
+
+  // Python script: read SOUL.md, back up, replace section(s), atomic write,
+  // verify markers present, report status as JSON to stdout.
+  // Inline rather than via getTemplateContent to keep the Python self-
+  // contained — no external file deps, no template engine surprises.
+  const PATCH_PY = `import json, os, re, sys
+
+cfg = json.loads(sys.stdin.read())
+path = os.path.expanduser(cfg["soul_path"])
+
+def out(d):
+    print(json.dumps(d))
+    sys.exit(0)
+
+if not os.path.exists(path):
+    out({"status": "missing"})
+
+with open(path) as f:
+    content = f.read()
+original = content
+
+# Rule 22 backup BEFORE any modification.
+if cfg.get("backup_path"):
+    bp = os.path.expanduser(cfg["backup_path"])
+    os.makedirs(os.path.dirname(bp), exist_ok=True)
+    with open(bp, "w") as f:
+        f.write(original)
+
+def replace_section(text, old_header, new_section, new_marker):
+    """Replace a \`## old_header\` block with new_section.
+    Section = from "## old_header" through the next "## " heading or EOF.
+    Idempotent: if new_marker is already in text, no-op (already-patched).
+    """
+    if new_marker in text:
+        return text, "already-patched"
+    pat = re.compile(r'^## ' + re.escape(old_header) + r'\\s*$', re.MULTILINE)
+    m = pat.search(text)
+    if not m:
+        return text, "old-not-found"
+    start = m.start()
+    after = text[m.end():]
+    nxt = re.search(r'^## ', after, re.MULTILINE)
+    end = m.end() + nxt.start() if nxt else len(text)
+    return text[:start] + new_section + text[end:], "patched"
+
+edge_status = "skipped"
+if cfg["apply_edge"]:
+    content, edge_status = replace_section(
+        content, "Edge Esmeralda 2026",
+        cfg["edge_stub"], cfg["edge_marker"],
+    )
+
+cons_status = "skipped"
+if cfg["apply_consensus"]:
+    content, cons_status = replace_section(
+        content, "Consensus 2026 Miami",
+        cfg["consensus_stub"], cfg["consensus_marker"],
+    )
+
+# Atomic write only if changed.
+if content != original:
+    tmp = path + ".v92patch.tmp"
+    with open(tmp, "w") as f:
+        f.write(content)
+    os.rename(tmp, path)
+
+# Verify markers post-write (only for sections that were actually patched).
+with open(path) as f:
+    final = f.read()
+if cfg["apply_edge"] and edge_status == "patched" and cfg["edge_marker"] not in final:
+    out({"status": "verify-failed-edge", "edge": edge_status, "consensus": cons_status})
+if cfg["apply_consensus"] and cons_status == "patched" and cfg["consensus_marker"] not in final:
+    out({"status": "verify-failed-consensus", "edge": edge_status, "consensus": cons_status})
+
+out({
+    "status": "ok",
+    "edge": edge_status,
+    "consensus": cons_status,
+    "size_bytes": len(final),
+    "over_budget": len(final) > 35000,
+})
+`;
+
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  const cfg = JSON.stringify({
+    soul_path: "~/.openclaw/workspace/SOUL.md",
+    backup_path: `~/.openclaw/backups/v92-${ts}/SOUL.md`,
+    apply_edge: applyEdge,
+    apply_consensus: applyConsensus,
+    edge_stub: SOUL_STUB_EDGE,
+    consensus_stub: SOUL_STUB_CONSENSUS,
+    edge_marker: SOUL_STUB_EDGE_MARKER,
+    consensus_marker: SOUL_STUB_CONSENSUS_MARKER,
+  });
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    result.errors.push(
+      `v92-partner-stub-rewrite python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  // Parse the JSON status line (last non-empty line of stdout).
+  const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const lastLine = lines[lines.length - 1] ?? "";
+  let parsed: {
+    status?: string;
+    edge?: string;
+    consensus?: string;
+    size_bytes?: number;
+    over_budget?: boolean;
+  } = {};
+  try {
+    parsed = JSON.parse(lastLine);
+  } catch {
+    result.errors.push(
+      `v92-partner-stub-rewrite: could not parse python output: ${lastLine.slice(0, 200)}`,
+    );
+    return;
+  }
+
+  if (parsed.status === "missing") {
+    result.errors.push(
+      "v92-partner-stub-rewrite: SOUL.md missing — configureOpenClaw should have created it",
+    );
+    return;
+  }
+  if (parsed.status?.startsWith("verify-failed")) {
+    result.errors.push(
+      `v92-partner-stub-rewrite: ${parsed.status} (edge=${parsed.edge} consensus=${parsed.consensus})`,
+    );
+    return;
+  }
+  if (parsed.status !== "ok") {
+    result.errors.push(
+      `v92-partner-stub-rewrite: unexpected status=${parsed.status}`,
+    );
+    return;
+  }
+
+  // already-patched + already-patched = idempotent no-op
+  // old-not-found = customized SOUL or this VM somehow never had the sections;
+  // treat as alreadyCorrect (no-op) but log
+  const okStates = new Set(["patched", "already-patched", "old-not-found", "skipped"]);
+  const edge = parsed.edge ?? "?";
+  const consensus = parsed.consensus ?? "?";
+  if (!okStates.has(edge) || !okStates.has(consensus)) {
+    result.errors.push(`v92-partner-stub-rewrite: unexpected edge=${edge} consensus=${consensus}`);
+    return;
+  }
+
+  if (edge === "patched" || consensus === "patched") {
+    result.fixed.push(
+      `v92-partner-stub-rewrite (edge=${edge} consensus=${consensus} size=${parsed.size_bytes})`,
+    );
+    logger.info("v92 partner stub rewrite applied", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      edge,
+      consensus,
+      sizeBytes: parsed.size_bytes,
+      overBudget: parsed.over_budget,
+    });
+  } else {
+    result.alreadyCorrect.push(
+      `v92-partner-stub-rewrite (edge=${edge} consensus=${consensus} size=${parsed.size_bytes})`,
+    );
+  }
+
+  // Loud signal if we're still over budget — should never happen with v92
+  // stubs, but logging it makes the regression caught instantly.
+  if (parsed.over_budget) {
+    logger.warn("SOUL.md over BOOTSTRAP_MAX_CHARS after v92 patch", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      sizeBytes: parsed.size_bytes,
+    });
+  }
+}
+
+/**
+ * stepDeployEdgeOverlay — write INSTACLAW_OVERLAY.md to the cloned
+ * edge-esmeralda skill directory on edge_city VMs.
+ *
+ * Additive to Tule's upstream SKILL.md (we deliberately don't modify
+ * his content). Tule's 30-min cron does `git pull --ff-only`; the
+ * overlay file is untracked from upstream so the cron leaves it alone.
+ *
+ * SHA-verified deploy. Idempotent skip on match. Same shape as
+ * stepDeployPrivacyBridge.
+ */
+async function stepDeployEdgeOverlay(
+  ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  if (vm.partner !== "edge_city") return;
+
+  const remotePath = "/home/openclaw/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md";
+  const expectedSha = crypto
+    .createHash("sha256")
+    .update(EDGE_INSTACLAW_OVERLAY_MD)
+    .digest("hex");
+
+  // Pre-check: skill dir must exist. If not, the edge-esmeralda clone failed
+  // upstream — we'd push to errors so the gateway-restart gate refuses to
+  // declare the VM healthy.
+  const dirCheck = await ssh.execCommand(
+    `[ -d /home/openclaw/.openclaw/skills/edge-esmeralda ] && echo OK || echo MISSING`,
+  );
+  if ((dirCheck.stdout || "").trim() !== "OK") {
+    result.errors.push(
+      "edge-overlay-deploy: ~/.openclaw/skills/edge-esmeralda/ does not exist — skill clone may have failed",
+    );
+    return;
+  }
+
+  const existing = await ssh.execCommand(
+    `[ -f ${remotePath} ] && sha256sum ${remotePath} | awk '{print $1}' || echo MISSING`,
+  );
+  const onDiskSha = (existing.stdout || "").trim();
+
+  if (onDiskSha === expectedSha) {
+    result.alreadyCorrect.push("INSTACLAW_OVERLAY.md");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(
+      `[dry-run] would deploy INSTACLAW_OVERLAY.md (current=${onDiskSha.slice(0, 8)})`,
+    );
+    return;
+  }
+
+  const b64 = Buffer.from(EDGE_INSTACLAW_OVERLAY_MD, "utf-8").toString("base64");
+  const write = await ssh.execCommand(
+    `echo '${b64}' | base64 -d > ${remotePath}.tmp && mv ${remotePath}.tmp ${remotePath} && chmod 0644 ${remotePath}`,
+  );
+  if (write.code !== 0) {
+    result.errors.push(
+      `INSTACLAW_OVERLAY.md write failed: ${(write.stderr || write.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  // Verify (Rule 10): re-read sha and compare.
+  const verify = await ssh.execCommand(`sha256sum ${remotePath} | awk '{print $1}'`);
+  const verifySha = (verify.stdout || "").trim();
+  if (verifySha !== expectedSha) {
+    result.errors.push(
+      `INSTACLAW_OVERLAY.md verify mismatch: expected=${expectedSha.slice(0, 12)} got=${verifySha.slice(0, 12)}`,
+    );
+    return;
+  }
+
+  result.fixed.push("INSTACLAW_OVERLAY.md deployed");
+  logger.info("INSTACLAW_OVERLAY.md deployed", { route: "vm-reconcile", vmId: vm.id });
 }

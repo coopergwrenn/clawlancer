@@ -56,6 +56,7 @@ const LOCK_TTL_SECONDS = 360; // > maxDuration with 60s headroom
 // next manifest bump — Layer 1 (the critical nuke-prevention fix) is on
 // them and protective regardless.
 const CONFIG_AUDIT_BATCH_SIZE = 3;
+// nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-11 19:24 UTC
 
 // Per-VM hard timeout. A clean reconcile is 30-60s; a stale-cohort
 // reconcile is 60-120s. Anything past 120s is almost certainly a slow

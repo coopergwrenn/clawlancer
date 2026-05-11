@@ -995,8 +995,39 @@ export const VM_MANIFEST = {
    *  via scripts/_phase2-backfill-bankr-wallets.ts. New cron at
    *  /api/cron/provision-missing-bankr-wallets (every 30 min) catches
    *  any future regression. See docs/bankr-wallet-coverage-gap-2026-05-07.md.
+   *
+   * v92 (2026-05-03 design / target ship 2026-05-11): partner SOUL.md
+   *  sections moved out of bootstrap context. Pre-v92 edge_city VMs had
+   *  36,054 chars of SOUL.md content vs the 35,000-char BOOTSTRAP_MAX_CHARS
+   *  ceiling — the last ~1,054 chars (the Edge onboarding interview tail
+   *  plus the entire Consensus section) were silently truncated from the
+   *  agent's bootstrap context. Affected all 5 edge_city VMs live in
+   *  production. Fix:
+   *    1. Replace the ~1,286-char Edge section + ~451-char Consensus
+   *       section in SOUL.md with ~220-char stubs that point the agent at
+   *       on-disk skill files (read on demand, not at bootstrap). New
+   *       edge_city VM SOUL.md size: ~34,771 chars (~229 chars headroom).
+   *    2. Write a new `INSTACLAW_OVERLAY.md` alongside Tule's upstream
+   *       edge-esmeralda/SKILL.md — additive, untracked by upstream's
+   *       30-min cron pull. Holds the onboarding interview + community
+   *       norms + proactivity directive that used to live in SOUL.md.
+   *    3. New reconciler steps:
+   *       - stepRewriteSoulPartnerSections: surgical SOUL.md edit on
+   *         existing partner VMs (follows v67 routing-patch pattern —
+   *         marker-based idempotency, Python in-place replace via tmp+
+   *         rename, backup to ~/.openclaw/backups/v92-<ts>/SOUL.md,
+   *         verify-after-write, pushFailed gate on errors).
+   *       - stepDeployEdgeOverlay: writes INSTACLAW_OVERLAY.md to
+   *         edge_city VMs (sha-verified deploy, idempotent skip on match).
+   *    Source of truth: lib/partner-content.ts.
+   *    Audit: scripts/_audit-soul-md-size.ts.
+   *    P1 follow-up (post-Esmeralda): deep trim of WORKSPACE_SOUL_MD
+   *    (21K chars) + SOUL_MD_INTELLIGENCE_SUPPLEMENT (8.7K chars) which
+   *    are the real bootstrap-budget bloat. This v92 fix is the short-
+   *    term unblocker for Edge Esmeralda (May 30); the structural fix
+   *    is a separate larger surgery.
    */
-  version: 91,
+  version: 92,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
