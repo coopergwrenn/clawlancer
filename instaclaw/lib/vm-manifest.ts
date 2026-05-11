@@ -1029,8 +1029,39 @@ export const VM_MANIFEST = {
    *    are the real bootstrap-budget bloat. This v92 fix is the short-
    *    term unblocker for Edge Esmeralda (May 30); the structural fix
    *    is a separate larger surgery.
+   *
+   * v93 (2026-05-11): partner-stub APPEND branch. The v92 step's Python
+   *  treated `old-not-found` as a no-op (mirroring the v67 routing-patch
+   *  semantics where missing-old indicated user customization). For
+   *  partner sections that turns out to be wrong: partner sections are
+   *  auto-installed by configureOpenClaw and a missing section means the
+   *  VM was provisioned BEFORE the section existed in the template, or a
+   *  configure failure left it out. Either way we want to add it.
+   *
+   *  Canary on the 5 edge_city VMs (2026-05-11) found:
+   *    - vm-771, vm-859 — both partner sections present (size 37,467b) →
+   *      v92 patched works fine (3 edge VMs at this state including
+   *      vm-354 which canary-verified successfully).
+   *    - vm-050 — Edge section MISSING, Consensus present →
+   *      v92 patches only consensus, leaves vm-050 without Edge context.
+   *    - vm-777 — both sections MISSING →
+   *      v92 no-ops entirely.
+   *
+   *  v93 fix: replace_or_append_section() — when old header is absent,
+   *  append the stub at EOF (`text.rstrip() + new_section`). New status
+   *  value "appended" is treated identically to "patched" for cv-bump
+   *  purposes. Idempotency unchanged (marker check is still first).
+   *
+   *  Manifest bump forces reconciler to re-process all VMs at cv<93,
+   *  including vm-354 (currently at cv=92 from canary). vm-354 will
+   *  early-out at "already-patched" thanks to the marker. The other 4
+   *  edge VMs will hit either "patched" (sections present) or "appended"
+   *  (sections missing) — both deploy the stubs.
+   *
+   *  Budget read from VM_MANIFEST.configSettings now (was hardcoded 35K).
+   *  Tracks the emergency 35K→40K bump from commit 0f796218.
    */
-  version: 92,
+  version: 93,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

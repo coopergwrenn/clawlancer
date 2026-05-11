@@ -4262,22 +4262,38 @@ if cfg.get("backup_path"):
     with open(bp, "w") as f:
         f.write(original)
 
-def replace_section(text, old_header, new_section, new_marker):
-    """Replace a \`## old_header\` block with new_section.
-    Section = from "## old_header" through the next "## " heading or EOF.
-    Idempotent: if new_marker is already in text, no-op (already-patched).
+def replace_or_append_section(text, old_header, new_section, new_marker):
+    """Replace a \`## old_header\` block with new_section, OR append new_section
+    if no such block exists.
+
+    Section detection: from "## old_header" through the next "## " heading or
+    EOF. Idempotent: if new_marker is already in text, no-op (already-patched).
+
+    v93 (2026-05-11): when old_header is NOT present, APPEND new_section at
+    EOF. Partner sections are auto-installed by configureOpenClaw — if the
+    header is absent, it's because the VM was configured BEFORE the section
+    existed in the template, OR a configure failure left it out. Either way
+    we want to add the section. This differs from the v67 routing-patch
+    pattern, where old-not-found indicated user customization and we left
+    it alone.
     """
     if new_marker in text:
         return text, "already-patched"
     pat = re.compile(r'^## ' + re.escape(old_header) + r'\\s*$', re.MULTILINE)
     m = pat.search(text)
     if not m:
-        return text, "old-not-found"
+        # v93: append at EOF. The new_section already starts with "\\n\\n##" so
+        # spacing is preserved. Strip any trailing whitespace from text first
+        # to avoid double-blank-line drift across repeated migrations.
+        return text.rstrip() + new_section, "appended"
     start = m.start()
     after = text[m.end():]
     nxt = re.search(r'^## ', after, re.MULTILINE)
     end = m.end() + nxt.start() if nxt else len(text)
     return text[:start] + new_section + text[end:], "patched"
+
+# Backwards-compatible alias used by the call sites below.
+replace_section = replace_or_append_section
 
 edge_status = "skipped"
 if cfg["apply_edge"]:
@@ -4300,12 +4316,16 @@ if content != original:
         f.write(content)
     os.rename(tmp, path)
 
-# Verify markers post-write (only for sections that were actually patched).
+# Verify markers post-write — both "patched" and "appended" should leave
+# the marker in the final file. "already-patched" already had it (no write
+# performed). Only "skipped" doesn't check.
 with open(path) as f:
     final = f.read()
-if cfg["apply_edge"] and edge_status == "patched" and cfg["edge_marker"] not in final:
+edge_should_have_marker = cfg["apply_edge"] and edge_status in ("patched", "appended")
+cons_should_have_marker = cfg["apply_consensus"] and cons_status in ("patched", "appended")
+if edge_should_have_marker and cfg["edge_marker"] not in final:
     out({"status": "verify-failed-edge", "edge": edge_status, "consensus": cons_status})
-if cfg["apply_consensus"] and cons_status == "patched" and cfg["consensus_marker"] not in final:
+if cons_should_have_marker and cfg["consensus_marker"] not in final:
     out({"status": "verify-failed-consensus", "edge": edge_status, "consensus": cons_status})
 
 out({
@@ -4313,20 +4333,26 @@ out({
     "edge": edge_status,
     "consensus": cons_status,
     "size_bytes": len(final),
-    "over_budget": len(final) > 35000,
+    "over_budget": len(final) > cfg.get("budget", 40000),
 })
 `;
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  // Reads BOOTSTRAP_MAX_CHARS from manifest so the over-budget warning
+  // stays accurate after future budget bumps (emergency bumped 35K→40K
+  // on 2026-05-11 — see commit 0f796218).
   const cfg = JSON.stringify({
     soul_path: "~/.openclaw/workspace/SOUL.md",
-    backup_path: `~/.openclaw/backups/v92-${ts}/SOUL.md`,
+    backup_path: `~/.openclaw/backups/v93-${ts}/SOUL.md`,
     apply_edge: applyEdge,
     apply_consensus: applyConsensus,
     edge_stub: SOUL_STUB_EDGE,
     consensus_stub: SOUL_STUB_CONSENSUS,
     edge_marker: SOUL_STUB_EDGE_MARKER,
     consensus_marker: SOUL_STUB_CONSENSUS_MARKER,
+    budget: VM_MANIFEST.configSettings["agents.defaults.bootstrapMaxChars"]
+      ? parseInt(VM_MANIFEST.configSettings["agents.defaults.bootstrapMaxChars"] as string, 10)
+      : 40000,
   });
   const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
   const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
@@ -4378,10 +4404,15 @@ out({
     return;
   }
 
-  // already-patched + already-patched = idempotent no-op
-  // old-not-found = customized SOUL or this VM somehow never had the sections;
-  // treat as alreadyCorrect (no-op) but log
-  const okStates = new Set(["patched", "already-patched", "old-not-found", "skipped"]);
+  // Result-state semantics:
+  //   "already-patched" — marker present, no-op (idempotent)
+  //   "patched"         — old section found, replaced with stub
+  //   "appended"        — section was missing, stub appended at EOF (v93)
+  //   "old-not-found"   — should never appear with v93 logic (would only
+  //                       fire if the marker logic ever changes), kept as
+  //                       a safety state for forward compatibility
+  //   "skipped"         — gate didn't apply (e.g., apply_edge=False)
+  const okStates = new Set(["patched", "already-patched", "appended", "old-not-found", "skipped"]);
   const edge = parsed.edge ?? "?";
   const consensus = parsed.consensus ?? "?";
   if (!okStates.has(edge) || !okStates.has(consensus)) {
@@ -4389,7 +4420,8 @@ out({
     return;
   }
 
-  if (edge === "patched" || consensus === "patched") {
+  const didWork = ["patched", "appended"].includes(edge) || ["patched", "appended"].includes(consensus);
+  if (didWork) {
     result.fixed.push(
       `v92-partner-stub-rewrite (edge=${edge} consensus=${consensus} size=${parsed.size_bytes})`,
     );
