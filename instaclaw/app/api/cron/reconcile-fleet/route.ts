@@ -74,6 +74,16 @@ const CONFIG_AUDIT_BATCH_SIZE = 3;
 // prior cv and the next cron tick retries naturally.
 const PER_VM_TIMEOUT_MS = 120_000;
 
+// Auto-quarantine threshold: after K consecutive reconcile failures (cycles
+// where pushFailed gate held the cv bump), set reconcile_quarantined_at and
+// alert. The eligibility query above filters out quarantined VMs so they
+// stop consuming cron cycles. K=10 mirrors the watchdog_consecutive_failures
+// threshold (already proven). At /3min cron interval, K=10 means quarantine
+// fires after ~30 min of consistent failure — fast enough to surface broken
+// VMs, slow enough to absorb single transient errors. Operator manually
+// clears reconcile_quarantined_at to re-enable a VM after fixing root cause.
+const RECONCILE_QUARANTINE_THRESHOLD = 10;
+
 /**
  * Strict-mode allowlist. Comma-separated VM UUIDs. Any VM whose id is in
  * this set is reconciled in strict mode for this cron cycle:
@@ -245,12 +255,18 @@ export async function GET(req: NextRequest) {
     //   suspended VMs, which is the only remaining caller of that path).
     const { data: staleVms, error: queryErr } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, tier, api_mode, user_timezone, strict_hold_streak, partner")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures")
       .eq("status", "assigned")
       .eq("provider", "linode")
       .eq("health_status", "healthy")
       .lt("config_version", VM_MANIFEST.version)
       .not("gateway_url", "is", null)
+      // Auto-quarantined VMs (K=10 consecutive reconcile failures) are
+      // excluded so they stop wasting cron cycles. Operator clears the
+      // quarantine flag manually after fixing the root cause. See
+      // 20260511220000_reconcile_failure_tracking.sql + the
+      // RECONCILE_QUARANTINE_THRESHOLD constant below.
+      .is("reconcile_quarantined_at", null)
       .order("config_version", { ascending: true, nullsFirst: true })
       .limit(CONFIG_AUDIT_BATCH_SIZE);
 
@@ -441,15 +457,42 @@ export async function GET(req: NextRequest) {
             }),
           );
         } else if (pushFailed) {
-          // Push errors → hold config_version back, no streak bookkeeping.
-          // Surfaces as 'errored' in the response so the cron summary catches
-          // it. Next cycle re-evaluates; if errors clear, we'll bump.
+          // Push errors → hold config_version back. Surfaces as 'errored' in
+          // the response so the cron summary catches it. Next cycle
+          // re-evaluates; if errors clear, we'll bump.
+          //
+          // 2026-05-11 P1: persist failure history per VM. The pre-fix path
+          // logged warnings into Vercel cron logs that disappeared the
+          // moment the function returned. 53 paying customers hit this
+          // failure path for 33-86 days each with zero alerting because
+          // no DB record persisted across cycles. Now: increment a
+          // counter, capture the most recent error string, auto-quarantine
+          // at K=10 so persistent failures stop wasting cron cycles AND
+          // surface to operators via the alert + reconcile_quarantined_at
+          // dashboard column.
           errored++;
           errorDetails.push({
             vmId: vm.id,
             vmName: vm.name,
             error: `push: ${auditResult.errors.slice(0, 3).join("; ")}`,
           });
+          const newCounter = (vm.reconcile_consecutive_failures ?? 0) + 1;
+          const errSnippet = auditResult.errors.join("; ").slice(0, 500);
+          const nowIso = new Date().toISOString();
+          const shouldQuarantine = newCounter >= RECONCILE_QUARANTINE_THRESHOLD;
+          const update: Record<string, unknown> = {
+            reconcile_consecutive_failures: newCounter,
+            reconcile_last_failure_at: nowIso,
+            reconcile_last_error: errSnippet,
+          };
+          if ((vm.reconcile_consecutive_failures ?? 0) === 0) {
+            update.reconcile_first_failure_at = nowIso;
+          }
+          if (shouldQuarantine) {
+            update.reconcile_quarantined_at = nowIso;
+          }
+          await supabase.from("instaclaw_vms").update(update).eq("id", vm.id);
+
           logger.warn("reconcile-fleet: push errors — holding config_version", {
             route: "cron/reconcile-fleet",
             vmId: vm.id,
@@ -458,7 +501,23 @@ export async function GET(req: NextRequest) {
             manifestVersion: VM_MANIFEST.version,
             errors: auditResult.errors,
             healthStatus: vm.health_status,
+            reconcileConsecutiveFailures: newCounter,
+            quarantined: shouldQuarantine,
           });
+
+          // Alert dispatch — fire-and-forget. Two trigger points:
+          //   1. First fire (counter==1): "VM started failing" — early
+          //      warning so operators can investigate before quarantine
+          //   2. Quarantine fire (counter>=K): "VM auto-quarantined" — the
+          //      automatic "this VM needs hands-on attention" signal
+          // Dedup via instaclaw_admin_alert_log (existing table).
+          if (newCounter === 1 || shouldQuarantine) {
+            sendReconcileFailureAlert(supabase, vm, newCounter, shouldQuarantine, auditResult.errors).catch((e) =>
+              logger.error("reconcile-fleet: failure alert dispatch failed", {
+                route: "cron/reconcile-fleet", vmId: vm.id, error: String(e),
+              }),
+            );
+          }
         } else {
           if (strict) strictClean++;
 
@@ -473,6 +532,31 @@ export async function GET(req: NextRequest) {
               vmId: vm.id,
               vmName: vm.name,
               priorStreak: vm.strict_hold_streak,
+            });
+          }
+
+          // Reset reconcile-failure history on success. If the VM was
+          // quarantined, it stays quarantined until an operator manually
+          // clears reconcile_quarantined_at — successful reconcile alone
+          // doesn't auto-unquarantine because we want operators to
+          // explicitly acknowledge the recovery (and ensure they understood
+          // what was originally broken).
+          if ((vm.reconcile_consecutive_failures ?? 0) > 0) {
+            await supabase
+              .from("instaclaw_vms")
+              .update({
+                reconcile_consecutive_failures: 0,
+                reconcile_first_failure_at: null,
+                reconcile_last_error: null,
+                // NOTE: reconcile_quarantined_at NOT cleared here — operator
+                // action required after they understand what was failing.
+              })
+              .eq("id", vm.id);
+            logger.info("reconcile-fleet: reconcile_consecutive_failures reset to 0", {
+              route: "cron/reconcile-fleet",
+              vmId: vm.id,
+              vmName: vm.name,
+              priorCounter: vm.reconcile_consecutive_failures,
             });
           }
 
@@ -843,4 +927,83 @@ async function upsertDailyStats(
       last_probe_at: now.toISOString(),
     });
   }
+}
+
+/**
+ * Per-VM reconcile-failure alert. Two trigger points:
+ *   - first fire (counter==1): early warning that a VM started failing
+ *   - quarantine fire (counter>=K): VM auto-quarantined, needs operator
+ *
+ * Dedup via instaclaw_admin_alert_log. Alert key includes the trigger
+ * type so the two alert types deduplicate independently — a VM that
+ * already triggered the "first fire" alert can still trigger a
+ * "quarantine" alert when it crosses K.
+ *
+ * Never throws (caller fires-and-forgets) — alert delivery failures
+ * must NEVER interrupt the cron.
+ */
+async function sendReconcileFailureAlert(
+  supabase: SupabaseClient,
+  vm: { id: string; name: string | null; config_version: number | null; assigned_to?: string | null },
+  counter: number,
+  quarantined: boolean,
+  errors: string[],
+): Promise<void> {
+  const alertType = quarantined ? "quarantined" : "first-fire";
+  const alertKey = `reconcile_failure_${alertType}:${vm.id}`;
+
+  // Suppress if we've already sent this exact alert in the last 24h.
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count } = await supabase
+    .from("instaclaw_admin_alert_log")
+    .select("id", { count: "exact", head: true })
+    .eq("alert_key", alertKey)
+    .gte("sent_at", oneDayAgo);
+  if ((count ?? 0) > 0) {
+    logger.info("reconcile-fleet: failure alert suppressed (24h dedup)", {
+      route: "cron/reconcile-fleet", vmId: vm.id, alertKey,
+    });
+    return;
+  }
+
+  const subject = quarantined
+    ? `[InstaClaw] reconcile QUARANTINED — ${vm.name ?? vm.id.slice(0, 8)} (${counter} consecutive failures)`
+    : `[InstaClaw] reconcile failing — ${vm.name ?? vm.id.slice(0, 8)} (first fire)`;
+
+  const body = [
+    quarantined
+      ? `VM ${vm.name ?? vm.id} (${vm.id}) has been auto-quarantined from the reconcile-fleet cron after ${counter} consecutive failures.`
+      : `VM ${vm.name ?? vm.id} (${vm.id}) just started failing reconcile. Tracking for ${RECONCILE_QUARANTINE_THRESHOLD - counter} more failures before auto-quarantine.`,
+    "",
+    `cv:                  ${vm.config_version ?? 0}`,
+    `manifest:            v${VM_MANIFEST.version}`,
+    `consecutive failures: ${counter}`,
+    `assigned_to:         ${vm.assigned_to ?? "(none)"}`,
+    "",
+    `Recent errors (most recent reconcile cycle):`,
+    ...errors.slice(0, 5).map((e) => `  ${e.slice(0, 200)}`),
+    "",
+    quarantined ? "Operator action required:" : "If failures continue, this VM will auto-quarantine within ~30 min.",
+    quarantined ? "  1. Investigate root cause via reconcile_last_error column" : "  Watch reconcile_last_error column for the specific failing step.",
+    quarantined ? "  2. Fix the issue (often a step* function bug)" : "",
+    quarantined ? "  3. Manually clear: UPDATE instaclaw_vms SET reconcile_quarantined_at = NULL, reconcile_consecutive_failures = 0 WHERE id = '" + vm.id + "';" : "",
+    "",
+    "Dashboards:",
+    `  SELECT name, config_version, reconcile_consecutive_failures, reconcile_last_error FROM instaclaw_vms WHERE reconcile_consecutive_failures > 0 OR reconcile_quarantined_at IS NOT NULL ORDER BY reconcile_consecutive_failures DESC;`,
+  ].join("\n");
+
+  await supabase.from("instaclaw_admin_alert_log").insert({
+    alert_key: alertKey,
+    vm_count: 1,
+    details: `sent: ${subject}`,
+  });
+
+  await sendAdminAlertEmail(subject, body);
+  logger.info("reconcile-fleet: failure alert dispatched", {
+    route: "cron/reconcile-fleet",
+    vmId: vm.id,
+    alertKey,
+    counter,
+    quarantined,
+  });
 }
