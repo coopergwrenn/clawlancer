@@ -424,9 +424,12 @@ tail -500 "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
 // History: was 30000 in the snapshot baseline (still present at lib/ssh.ts:3509
 // for fresh provision until reconciler ticks). Raised to 35000 in v82+ to
 // reduce silent context truncation on fully-loaded VMs (SOUL.md grew to ~33K).
+// 2026-05-11 v92 EMERGENCY: bumped 35000 → 40000. SOUL.md exceeded 35K on
+// multiple production VMs; agents were death-spiraling on silent context
+// truncation. This is a bandaid — Edge City v92 + Trim V2 are the real fixes.
 // Per Rule 12: changing this value requires bumping VM_MANIFEST.version so
 // every VM reconciles to the new ceiling.
-export const BOOTSTRAP_MAX_CHARS = 35000;
+export const BOOTSTRAP_MAX_CHARS = 40000;
 
 // ── Skill integrity self-healing cron (Rule 24, item 4) ──
 // Hourly walk of git-cloned skills. Detects corrupted .git/ AND missing
