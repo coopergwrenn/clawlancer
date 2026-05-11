@@ -1635,13 +1635,45 @@ async function stepPrctlSubreaper(
   }
 
   // 4. Install or upgrade if needed.
+  //
+  // 2026-05-11 P1-1 fix: gate-coupling. The pre-fix version had a silent
+  // failure mode the 2026-05-11 census labeled PARTIAL_LIE_DROPIN: drop-in
+  // present, npm package missing. Root cause: stepNodeUpgrade (called
+  // BEFORE this step at line 217) can switch the active node version.
+  // Global packages installed on the OLD node version are not visible to
+  // the NEW one. So `installed` comes back empty here even though a prior
+  // run wrote the drop-in. If THIS run's `npm install -g` then fails for
+  // any reason, we used to error out and return — leaving the drop-in in
+  // place pointing at a NODE_PATH where the package is missing. Next
+  // gateway start tries `--require prctl-subreaper`, MODULE_NOT_FOUND,
+  // crash-loop.
+  //
+  // Fix: if install fails AND a drop-in is present (so we'd be leaving
+  // the system in a broken state), atomically roll back by removing the
+  // drop-in. The next reconcile cycle re-attempts both. The gateway
+  // continues running without prctl-subreaper protection in the meantime
+  // — which is the SAFE state (worse than having it; better than
+  // crash-looping with a broken --require).
+  async function rollbackDropInIfPresent(reason: string): Promise<void> {
+    if (!dropInOk) return; // nothing to roll back
+    await ssh.execCommand(`rm -f ${dropInPath}`).catch(() => { /* best-effort */ });
+    await ssh.execCommand(
+      `export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user daemon-reload 2>&1 || true`,
+    ).catch(() => { /* best-effort */ });
+    result.errors.push(
+      `stepPrctlSubreaper: rolled back orphaned drop-in (was pointing at NODE_PATH=${npmRoot} but package install failed: ${reason})`,
+    );
+  }
+
   if (installed !== target) {
     const install = await ssh.execCommand(
       `${NVM_PREAMBLE} && npm install -g prctl-subreaper@${PRCTL_SUBREAPER_PINNED_VERSION} 2>&1`,
       { execOptions: { timeout: 180_000 } },
     );
     if (install.code !== 0) {
-      result.errors.push(`stepPrctlSubreaper: npm install -g failed (exit=${install.code}): ${(install.stdout + install.stderr).slice(-400)}`);
+      const reason = `npm install -g failed (exit=${install.code}): ${(install.stdout + install.stderr).slice(-400)}`;
+      await rollbackDropInIfPresent(reason);
+      result.errors.push(`stepPrctlSubreaper: ${reason}`);
       return;
     }
 
@@ -1650,7 +1682,9 @@ async function stepPrctlSubreaper(
       `${NVM_PREAMBLE} && find ${npmRoot}/prctl-subreaper/build/Release -name '*.node' -type f 2>/dev/null | head -1`,
     );
     if (!verify.stdout.trim()) {
-      result.errors.push(`stepPrctlSubreaper: prctl_subreaper.node not found after install (build-essential or python3 missing? install output: ${(install.stdout || "").slice(-200)})`);
+      const reason = `prctl_subreaper.node not found after install (build-essential or python3 missing? install output: ${(install.stdout || "").slice(-200)})`;
+      await rollbackDropInIfPresent(reason);
+      result.errors.push(`stepPrctlSubreaper: ${reason}`);
       return;
     }
 
@@ -1661,7 +1695,9 @@ async function stepPrctlSubreaper(
     );
     const smokeOut = smoke.stdout.trim();
     if (!smokeOut.includes('"sup":true') || !smokeOut.includes('"running":true')) {
-      result.errors.push(`stepPrctlSubreaper: smoke test failed: ${smokeOut.slice(-300)}`);
+      const reason = `smoke test failed: ${smokeOut.slice(-300)}`;
+      await rollbackDropInIfPresent(reason);
+      result.errors.push(`stepPrctlSubreaper: ${reason}`);
       return;
     }
 
@@ -2234,10 +2270,23 @@ async function stepSystemdUnit(
   const overrideDir = "$HOME/.config/systemd/user/openclaw-gateway.service.d";
   const overridePath = `${overrideDir}/override.conf`;
 
-  // Check if unit file exists (gateway installed)
+  // 2026-05-11 P1-1 fix: was `result.alreadyCorrect.push("systemd unit: not
+  // installed (skip)"); return;` — but the unit file
+  // (~/.config/systemd/user/openclaw-gateway.service) is written by
+  // configureOpenClaw and ALWAYS exists on a healthy assigned VM. Missing =
+  // real defect (deleted manually, fs corruption, snapshot drift), NOT "no
+  // work needed." Reporting alreadyCorrect masked the failure and let cv
+  // bump on broken VMs (TOTAL_LIE shape). Now: missing unit pushes to
+  // result.errors so the route.ts pushFailed gate (route.ts:280) holds the
+  // cv bump.
   const check = await ssh.execCommand(`[ -f ${unitPath} ] && echo EXISTS || echo MISSING`);
-  if (check.stdout.trim() !== "EXISTS") {
-    result.alreadyCorrect.push("systemd unit: not installed (skip)");
+  const unitExists = check.stdout.trim() === "EXISTS";
+  if (!unitExists) {
+    result.errors.push(
+      `stepSystemdUnit: openclaw-gateway.service unit file missing at ${unitPath}. ` +
+      `This file is written by configureOpenClaw and should always be present on a healthy assigned VM. ` +
+      `Cannot apply systemd overrides without the parent unit. Investigate manually.`,
+    );
     return;
   }
 
@@ -2258,9 +2307,28 @@ async function stepSystemdUnit(
   }
   const expectedContent = lines.join("\n") + "\n";
 
-  // Check if override.conf already matches
+  // Check if override.conf already matches AND systemd has loaded it.
+  // The on-disk content matching alone is not sufficient: systemd uses the
+  // values that were daemon-reloaded into memory, NOT the on-disk file.
+  // A previous step could have written the file but failed daemon-reload
+  // (DBUS issue, stale session) — file says 120, runtime says 75. Worse:
+  // configureOpenClaw at provision wrote TasksMax=75 (lib/ssh.ts:6659 — old
+  // legacy value). If THIS step's drift detection only checks the on-disk
+  // file and finds it matches the manifest's expected content, we'd skip
+  // — but if systemd's runtime view still has 75, the VM is broken.
+  // Therefore: require BOTH on-disk content match AND systemctl runtime
+  // value match for the load-bearing key (TasksMax).
   const catResult = await ssh.execCommand(`cat ${overridePath} 2>/dev/null`);
-  if (catResult.stdout === expectedContent) {
+  const onDiskMatches = catResult.stdout === expectedContent;
+  const expectedTasksMax = (overrides as Record<string, string>).TasksMax;
+  let runtimeTasksMaxOk = true;
+  if (expectedTasksMax) {
+    const tmCheck = await ssh.execCommand(
+      `${DBUS_PREFIX} && systemctl --user show openclaw-gateway -p TasksMax --value 2>/dev/null`,
+    );
+    runtimeTasksMaxOk = tmCheck.stdout.trim() === expectedTasksMax;
+  }
+  if (onDiskMatches && runtimeTasksMaxOk) {
     result.alreadyCorrect.push("systemd override.conf: all settings correct");
     return;
   }
@@ -2285,6 +2353,38 @@ async function stepSystemdUnit(
   if (reloadResult.code !== 0) {
     result.errors.push(`systemd daemon-reload failed: ${reloadResult.stderr}`);
     return;
+  }
+
+  // Verify-after-write per Rule 10. Two independent checks:
+  //   (a) re-cat override.conf: confirms file content matches what we
+  //       intended to write (catches FS races, partial writes).
+  //   (b) systemctl show -p TasksMax --value: confirms systemd actually
+  //       loaded the new override into its runtime view (catches
+  //       daemon-reload silent no-ops, DBUS issues that returned exit=0
+  //       but didn't actually reload).
+  // Either failure pushes to result.errors → cv bump held by pushFailed
+  // gate (route.ts:280). The full TOTAL_LIE pattern from the 2026-05-11
+  // census (TasksMax=75 stuck despite cv claims) was caused by (b)
+  // failing silently. Both checks now make the failure observable.
+  const verifyContent = await ssh.execCommand(`cat ${overridePath} 2>/dev/null`);
+  if (verifyContent.stdout !== expectedContent) {
+    result.errors.push(
+      `stepSystemdUnit: verify-after-write FAILED — on-disk override.conf does not match expected content (got ${verifyContent.stdout.length} bytes, expected ${expectedContent.length})`,
+    );
+    return;
+  }
+  if (expectedTasksMax) {
+    const tmVerify = await ssh.execCommand(
+      `${DBUS_PREFIX} && systemctl --user show openclaw-gateway -p TasksMax --value 2>/dev/null`,
+    );
+    const actualTasksMax = tmVerify.stdout.trim();
+    if (actualTasksMax !== expectedTasksMax) {
+      result.errors.push(
+        `stepSystemdUnit: verify-after-write FAILED — file written but systemd runtime TasksMax=${actualTasksMax}, expected ${expectedTasksMax}. ` +
+        `daemon-reload likely silently no-op'd. Will retry next cycle.`,
+      );
+      return;
+    }
   }
 
   result.fixed.push(`systemd override.conf (${Object.keys(overrides).length} settings)`);

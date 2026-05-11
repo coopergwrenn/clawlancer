@@ -6964,7 +6964,23 @@ You are an agent at Consensus 2026 (Miami Beach Convention Center, May 5–7). Y
       last_health_check: new Date().toISOString(),
       ssh_fail_count: 0,
       health_fail_count: 0,
-      config_version: VM_MANIFEST.version,
+      // 2026-05-11 P1-1 fix: was `VM_MANIFEST.version`. configureOpenClaw runs
+      // its own pile of SSH steps (separate from the reconciler's step* funcs
+      // in lib/vm-reconcile.ts). If any of those steps silently failed, the cv
+      // bump still recorded the VM as fully reconciled to vN — producing the
+      // SCHEMA_ZERO_LIE shape (TasksMax=4666 with no override.conf) and
+      // setting up TOTAL_LIE (TasksMax=75 frozen because reconciler skipped
+      // the override-write step thinking it was already correct per cv).
+      //
+      // Setting cv=0 forces the reconcile-fleet cron to pick up every newly
+      // provisioned VM on its next tick (oldest-cv-first ordering puts them
+      // at the head of the queue) and re-run all step* functions. Most will
+      // hit `alreadyCorrect` (configureOpenClaw already landed them); the
+      // ones that silently failed will be re-attempted with the reconciler's
+      // (improved) verify-after-write discipline. Net cost: +1 reconcile
+      // cycle per provision (~30-60s, much less than the 5-min cron interval).
+      // Net win: SCHEMA_ZERO_LIE goes to zero by construction.
+      config_version: 0,
       last_gateway_restart: new Date().toISOString(),
       // Preserve old token for grace period during rotation (prevents 401s
       // if health cron resyncs before the gateway picks up the new token)
