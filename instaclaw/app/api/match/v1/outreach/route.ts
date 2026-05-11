@@ -305,6 +305,19 @@ export async function POST(req: NextRequest) {
   const top1Anchor = b.top1_anchor;
   const messagePreviewRaw = typeof b.message_preview === "string" ? b.message_preview : "";
 
+  // Optional score fields — denormalized onto the outcome row at insert
+  // so the dashboard / threshold-tuning queries don't need to join back
+  // through deliberations to find them. Defaults: null (legacy clients
+  // that don't pass these still work; the outcome row just has no scores).
+  const mutualScore = typeof b.mutual_score === "number" && Number.isFinite(b.mutual_score) ? b.mutual_score : null;
+  const deliberationScore = typeof b.deliberation_score === "number" && Number.isFinite(b.deliberation_score) ? b.deliberation_score : null;
+  const rrfScore = typeof b.rrf_score === "number" && Number.isFinite(b.rrf_score) ? b.rrf_score : null;
+  // Optional: which engine produced this match. Defaults to 'instaclaw' (current
+  // backend). When the Index Network adapter ships, the calling script passes
+  // 'index' here so outcomes are engine-attributable for A/B comparison.
+  const matchEngineRaw = typeof b.match_engine === "string" ? b.match_engine : "instaclaw";
+  const matchEngine = matchEngineRaw === "index" ? "index" : "instaclaw";
+
   if (!isUUID(targetUserId)) {
     return NextResponse.json({ error: "target_user_id must be UUID" }, { status: 400 });
   }
@@ -386,6 +399,7 @@ export async function POST(req: NextRequest) {
       top1_anchor: top1Anchor,
       message_preview: messagePreview,
       status: "pending",
+      match_engine: matchEngine,
     })
     .select("id")
     .single();
@@ -408,6 +422,39 @@ export async function POST(req: NextRequest) {
       });
     }
     return NextResponse.json({ error: "insert failed" }, { status: 503 });
+  }
+
+  // Insert the matchpool_outcomes row in 'proposed' state. This is the
+  // feedback-loop entry — Layer 3 produced a deliberation_score, the
+  // agent acted on it (proposed), and we'll mutate this row as later
+  // signals arrive (counterpart_response from v2 ACCEPT/DECLINE
+  // envelopes, meeting_actually_happened + rating_post_meeting from
+  // the post-meeting capture endpoint).
+  //
+  // Non-fatal: if outcome insert fails for any reason, we still return
+  // success to the caller — the existing v1 intro flow must not be
+  // broken by feedback-instrumentation issues. We log the error for
+  // observability instead.
+  const { error: outcomeErr } = await supabase
+    .from("matchpool_outcomes")
+    .insert({
+      outreach_log_id: inserted.id,
+      source_user_id: outboundUserId,
+      candidate_user_id: targetUserId,
+      match_engine: matchEngine,
+      mutual_score: mutualScore,
+      deliberation_score: deliberationScore,
+      rrf_score: rrfScore,
+      agent_action: "proposed",
+      // proposed_at auto-stamped by the trigger
+    });
+  if (outcomeErr) {
+    // Log only — don't break the intro send because the feedback row failed.
+    // The unique index on (source, candidate, outreach_log_id) will
+    // 23505-collide on retries, which is also fine (already recorded).
+    if ((outcomeErr as { code?: string }).code !== "23505") {
+      console.error("[outreach reserve] matchpool_outcomes insert failed:", outcomeErr);
+    }
   }
 
   return NextResponse.json({

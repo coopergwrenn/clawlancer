@@ -273,17 +273,21 @@ def main() -> int:
     # 4000 chars — Telegram cap) ensures parity with the live channel.
     preview = prose[:4000]
     log(f"reserve target={str(target_user_id)[:8]} anchor={top1_anchor[:24]}")
-    status, resp = post_json(
-        OUTREACH_URL,
-        {
-            "phase": "reserve",
-            "target_user_id": target_user_id,
-            "target_xmtp_address": target_xmtp,
-            "top1_anchor": top1_anchor,
-            "message_preview": preview,
-        },
-        token,
-    )
+    # Plumb the Layer 3 deliberation_score through to the reserve body so
+    # the matchpool_outcomes row gets the agent's prediction at insert
+    # time. Critical for post-event tuning: compare deliberation_score
+    # distribution for valuable (rating>=4) vs declined matches.
+    reserve_body = {
+        "phase": "reserve",
+        "target_user_id": target_user_id,
+        "target_xmtp_address": target_xmtp,
+        "top1_anchor": top1_anchor,
+        "message_preview": preview,
+    }
+    deliberation_score = payload.get("deliberation_score")
+    if isinstance(deliberation_score, (int, float)):
+        reserve_body["deliberation_score"] = float(deliberation_score)
+    status, resp = post_json(OUTREACH_URL, reserve_body, token)
     if status != 200 or not resp:
         print(json.dumps({**common_out, "ok": False, "status": "reserve_failed", "http_status": status}))
         return 0
