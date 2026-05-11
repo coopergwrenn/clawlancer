@@ -155,7 +155,7 @@ async function auditVm(
     // V2 markers + sizes
     const fileChecks: Array<{ file: string; marker: string; maxBytes: number }> = [
       { file: "SOUL.md", marker: SOUL_V2_MARKER, maxBytes: 6000 },
-      { file: "AGENTS.md", marker: AGENTS_V2_MARKER, maxBytes: 18000 },
+      { file: "AGENTS.md", marker: AGENTS_V2_MARKER, maxBytes: 20000 }, // V2 template = 18,933 bytes; +1067 buffer
       { file: "TOOLS.md", marker: TOOLS_V2_MARKER, maxBytes: 7000 },
       { file: "IDENTITY.md", marker: IDENTITY_V2_MARKER, maxBytes: 4000 },
     ];
@@ -220,7 +220,7 @@ async function auditVm(
 type Outcome = "migrated" | "already-v2" | "error" | "skip-disk" | "skip-other";
 
 async function migrateOne(
-  vm: { id: string; name: string; ipv4_address: string; partner: string | null; assigned_to: string | null; health_status: string },
+  vm: { id: string; name: string; ip_address: string; partner: string | null; assigned_to: string | null; health_status: string },
 ): Promise<{ outcome: Outcome; messages: string[]; elapsedMs: number }> {
   const start = Date.now();
   // Whitelist this VM only — even if env var leaks, no other VM gets touched.
@@ -304,7 +304,7 @@ async function main() {
     let vms: Array<{
       id: string;
       name: string;
-      ipv4_address: string;
+      ip_address: string;
       partner: string | null;
       assigned_to: string | null;
       health_status: string;
@@ -314,14 +314,14 @@ async function main() {
     if (explicitVms && explicitVms.length > 0) {
       const { data } = await sb
         .from("instaclaw_vms")
-        .select("id,name,ipv4_address,partner,assigned_to,health_status,telegram_bot_username,config_version")
+        .select("id,name,ip_address,partner,assigned_to,health_status,telegram_bot_username,config_version")
         .in("name", explicitVms);
       vms = (data ?? []) as never;
       console.log(`  explicit list: ${vms.length}/${explicitVms.length} VMs resolved`);
     } else {
       const { data } = await sb
         .from("instaclaw_vms")
-        .select("id,name,ipv4_address,partner,assigned_to,health_status,telegram_bot_username,config_version")
+        .select("id,name,ip_address,partner,assigned_to,health_status,telegram_bot_username,config_version")
         .eq("health_status", "healthy")
         .not("assigned_to", "is", null)
         .not("telegram_bot_username", "is", null)
@@ -331,7 +331,7 @@ async function main() {
     }
 
     // Filter out unreachable IPs
-    vms = vms.filter((v) => !!v.ipv4_address);
+    vms = vms.filter((v) => !!v.ip_address);
 
     if (priorityFirst) {
       console.log("  --priority-first: probing SOUL.md size on each VM (concurrency=3) …");
@@ -340,7 +340,7 @@ async function main() {
       for (let i = 0; i < vms.length; i += batchSize) {
         const batch = vms.slice(i, i + batchSize);
         const results = await Promise.all(
-          batch.map((v) => probeSoulSize(v.ipv4_address, v.name)),
+          batch.map((v) => probeSoulSize(v.ip_address, v.name)),
         );
         batch.forEach((v, idx) => sizes.set(v.id, results[idx]));
       }
@@ -432,7 +432,7 @@ async function main() {
       if (!dryRun && !skipProbe && migratedInWave.length > 0) {
         console.log(`\n  ── Audit gate: ${migratedInWave.length} migrated VMs ──`);
         const auditResults = await Promise.all(
-          migratedInWave.map((v) => auditVm(v.ipv4_address, v.name)),
+          migratedInWave.map((v) => auditVm(v.ip_address, v.name)),
         );
         let waveAuditFails = 0;
         migratedInWave.forEach((v, idx) => {

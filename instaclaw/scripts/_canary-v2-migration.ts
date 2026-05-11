@@ -326,7 +326,7 @@ async function main(): Promise<number> {
 
   const postChecks: Array<{ file: string; marker: string; maxBytes: number }> = [
     { file: "SOUL.md", marker: SOUL_V2_MARKER, maxBytes: 6000 }, // 2.4K + partner stubs ~3K headroom
-    { file: "AGENTS.md", marker: AGENTS_V2_MARKER, maxBytes: 18000 },
+    { file: "AGENTS.md", marker: AGENTS_V2_MARKER, maxBytes: 20000 }, // V2 template = 18,933 bytes; +1067 buffer
     { file: "TOOLS.md", marker: TOOLS_V2_MARKER, maxBytes: 7000 },
     { file: "IDENTITY.md", marker: IDENTITY_V2_MARKER, maxBytes: 4000 }, // 500c base + optional preserved identity append
   ];
