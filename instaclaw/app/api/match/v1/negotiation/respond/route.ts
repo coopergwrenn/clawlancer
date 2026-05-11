@@ -430,6 +430,38 @@ export async function POST(req: NextRequest) {
     }, { status: 503 });
   }
 
+  // Mirror the state transition onto matchpool_outcomes for funnel
+  // tracking. Map envelope_type to counterpart_response field:
+  //   accept  → counterpart_response='accepted'
+  //   decline → counterpart_response='declined'
+  //   counter → counterpart_response='countered'  (non-terminal but a real signal)
+  //   cancel  → leave null  (initiator pulled out; not a response)
+  //
+  // First-writer-wins via .is("counterpart_response", null) — a follow-up
+  // accept after a counter doesn't overwrite the 'countered' field. The
+  // outcome row's terminal state is captured via the subsequent ACCEPT
+  // update separately. This is intentional: we want to know if the
+  // first response was 'countered' even if it later resolved.
+  const counterpartFieldMap: Record<string, string | null> = {
+    accept: "accepted",
+    decline: "declined",
+    counter: "countered",
+    cancel: null,
+  };
+  const counterpartValue = counterpartFieldMap[envelopeType];
+  if (counterpartValue !== null && counterpartValue !== undefined) {
+    const { error: outcomeUpdErr } = await supabase
+      .from("matchpool_outcomes")
+      .update({ counterpart_response: counterpartValue })
+      .eq("negotiation_thread_id", threadId)
+      .is("counterpart_response", null);
+    // Log only on real errors; missing row is non-fatal (v1 thread or
+    // outcome insert failed at reserve time).
+    if (outcomeUpdErr && (outcomeUpdErr as { code?: string }).code !== undefined) {
+      console.error("[negotiation respond] matchpool_outcomes update failed:", outcomeUpdErr);
+    }
+  }
+
   // ─ Build envelope payload to return ─
   // The caller (gateway tool / mjs / sender pipeline) takes this
   // header + builds the wire format with NEGOTIATION_V2_MARKER.

@@ -384,6 +384,32 @@ export async function POST(req: NextRequest) {
     }, { status: 503 });
   }
 
+  // Write the matchpool_outcomes row in 'proposed' state. Mirror of v1
+  // outreach reserve — feedback-loop entry for the 3-layer pipeline.
+  // Non-fatal: if outcome insert fails for any reason, the v2 negotiation
+  // continues. Migration 20260511b ensures negotiation_thread_id column
+  // exists; if it doesn't (rolled-back migration state), the insert errors
+  // and we log + move on.
+  const { error: outcomeErr } = await supabase
+    .from("matchpool_outcomes")
+    .insert({
+      negotiation_thread_id: thread.id,
+      source_user_id: initiatorUserId,
+      candidate_user_id: targetUserId,
+      match_engine: "instaclaw",
+      deliberation_score: score,
+      agent_action: "proposed",
+      // proposed_at auto-stamped by the trigger.
+    });
+  if (outcomeErr) {
+    // 23505 = unique violation (retry with same negotiation_thread_id);
+    // legitimate no-op. Anything else: log only — v2 negotiation must
+    // not be blocked by feedback-instrumentation issues.
+    if ((outcomeErr as { code?: string }).code !== "23505") {
+      console.error("[negotiation reserve] matchpool_outcomes insert failed:", outcomeErr);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     allowed: true,
