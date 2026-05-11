@@ -1303,18 +1303,28 @@ export const VM_MANIFEST = {
       marker: "DEGENCLAW_AWARENESS",
     },
 
-    // --- Consensus 2026 matching awareness (v82) ---
-    // Tells the agent the matching pipeline exists, when to ask the
-    // consent question, and where to find the detail (consensus-2026
-    // SKILL.md §Intent Matching). Detail lives in the skill repo; this
-    // SOUL.md addition is just the always-loaded awareness pointer.
-    {
-      remotePath: "~/.openclaw/workspace/SOUL.md",
-      source: "inline",
-      content: "\\n<!-- CONSENSUS_MATCHING_AWARENESS_V1 -->\\n## Consensus 2026 Matching\\nYour VM runs a matching pipeline every 30 min on May 5-7 that picks the 1-3 most useful Consensus attendees for your user to meet. Default is hidden (they appear in nobody's matches). After their first matchpool_profile is created — check via `python3 ~/.openclaw/scripts/consensus_match_consent.py` — ASK ONCE whether to opt in. For \\\"show me my matches\\\" / \\\"find me my people,\\\" read consensus-2026 skill §Intent Matching, or link https://instaclaw.io/consensus/my-matches.\\n",
-      mode: "append_if_marker_absent",
-      marker: "CONSENSUS_MATCHING_AWARENESS",
-    },
+    // --- Consensus 2026 matching awareness (v82) — DISABLED 2026-05-11 v92 ---
+    // EMERGENCY: this 700-char SOUL.md append pushed 46 VMs past the 35K
+    // bootstrapMaxChars ceiling, causing context truncation + agent
+    // death-spiral. The CONTENT lives on disk in the consensus-2026 skill's
+    // SKILL.md (always-loaded via skills.limits.maxSkillsPromptChars), so
+    // this SOUL.md append is REDUNDANT — agents have access to the same
+    // information via the skill. The append is left in place on existing
+    // VMs (no auto-remove); a follow-up reconciler step will surgically
+    // remove the block. Disabling here stops the bleeding for new VMs and
+    // for VMs that hadn't received the append yet.
+    //
+    // Restore path: uncomment if a future deploy needs the awareness pointer
+    // BUT ONLY after SOUL.md ceiling is restructured (Trim V2) so a 700-char
+    // append doesn't trigger truncation. See docs/prd/soul-md-trim-2026-05-11.md.
+    //
+    // {
+    //   remotePath: "~/.openclaw/workspace/SOUL.md",
+    //   source: "inline",
+    //   content: "\\n<!-- CONSENSUS_MATCHING_AWARENESS_V1 -->\\n## Consensus 2026 Matching\\n…",
+    //   mode: "append_if_marker_absent",
+    //   marker: "CONSENSUS_MATCHING_AWARENESS",
+    // },
     {
       remotePath: "~/.openclaw/workspace/SOUL.md",
       source: "template",
