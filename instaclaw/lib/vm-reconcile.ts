@@ -14,6 +14,7 @@
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
+import { INSTALL_GBRAIN_SH, VERIFY_GBRAIN_MCP_PY } from "./gbrain-scripts-content";
 import { getPrivacyBridgeScript } from "./privacy-bridge-script";
 import {
   SOUL_STUB_EDGE,
@@ -77,6 +78,35 @@ const RESTART_REQUIRED_CONFIG_PREFIXES: string[] = [
 function keyRequiresGatewayRestart(key: string): boolean {
   return RESTART_REQUIRED_CONFIG_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
+
+// ── gbrain (Phase 4c) install pinning ──
+//
+// gbrain is Garry Tan's per-VM PGLite knowledge graph (stdio MCP server).
+// Phase 4c puts the install inside the reconciler — once GBRAIN_INSTALL_ENABLED
+// is flipped on in Vercel env, every allowlisted-partner VM that surfaces in
+// the reconcile-fleet candidate query gets gbrain installed.
+//
+// Why an env-var gate (default off) instead of "ship and let it run":
+// 1. Defense in depth — code can ship to main and reach production without
+//    the install firing on real edge_city VMs until Cooper explicitly
+//    enables it (no rollback-via-git needed if smoke catches something).
+// 2. Decouples deploy from rollout — Cooper can flip the env var when the
+//    GBRAIN_ANTHROPIC_API_KEY has fully propagated via stepEnvVarPush
+//    (~3.5h post-deploy, per PRD §6).
+// 3. The reconcile-fleet candidate query already includes edge_city VMs at
+//    cv<VM_MANIFEST.version. We do NOT bump VM_MANIFEST.version here —
+//    edge_city VMs are at cv=92 today (< current manifest), so they'll be
+//    naturally re-reconciled. New attendee VMs provision at cv=79 and lift
+//    through stepGbrain automatically.
+//
+// PRD: docs/prd/gbrain-fleet-rollout-2026-05-12.md §7 (stepGbrain design).
+const GBRAIN_PARTNER_ALLOWLIST: ReadonlySet<string> = new Set(["edge_city"]);
+const GBRAIN_PINNED_COMMIT = "2ea5b71";
+const GBRAIN_PINNED_VERSION = "0.28.1";
+// 240s leaves ~60s headroom under reconcile-fleet's Vercel maxDuration=300s
+// for the rest of reconcileVM. Normal install (bun already present): ~70s.
+// Cold install (bun not present): ~165s. Both fit comfortably.
+const GBRAIN_INSTALL_TIMEOUT_MS = 240_000;
 
 // ── Result types ──
 
@@ -227,6 +257,16 @@ export async function reconcileVM(
     // PRD-gbrain-fleet-rollout-2026-05-12.md §1 for design rationale.
     currentStep = "env-var-push";
     await stepEnvVarPush(ssh, result, dryRun);
+
+    // ── Step 1c: gbrain install (partner-gated, env-flag-gated) ──
+    // Phase 4c of gbrain fleet rollout. Auto-installs gbrain (PGLite KG +
+    // stdio MCP) on allowlisted-partner VMs ONCE the GBRAIN_INSTALL_ENABLED
+    // env var is flipped on in Vercel (default off — code can ship without
+    // firing). Cheap idempotency check makes the steady state ~2s per
+    // already-gbrained VM.
+    // PRD: docs/prd/gbrain-fleet-rollout-2026-05-12.md §7.
+    currentStep = "gbrain";
+    await stepGbrain(ssh, vm, result, dryRun, strict);
 
     // ── Step 2: Files ──
     currentStep = "files";
@@ -786,6 +826,194 @@ async function stepEnvVarPush(
       );
     }
   }
+}
+
+/**
+ * stepGbrain — install gbrain (PGLite knowledge graph + stdio MCP server) on
+ * partner-allowlisted VMs.
+ *
+ * Phase 4c of the gbrain fleet rollout. Auto-installs once
+ * GBRAIN_INSTALL_ENABLED=true is set in Vercel env. Until then, no-op.
+ *
+ * Per-VM behavior (when fully enabled):
+ *   1. Skip if vm.partner not in GBRAIN_PARTNER_ALLOWLIST (silent no-op).
+ *   2. Skip in strict mode (180s deadline can't accommodate ~70-165s install
+ *      — non-strict reconcile-fleet cron will pick it up next cycle).
+ *   3. Skip if GBRAIN_INSTALL_ENABLED env var is not "true" (silent no-op).
+ *   4. Cheap idempotency check via one SSH call: if `gbrain --version` matches
+ *      GBRAIN_PINNED_VERSION AND `openclaw mcp show gbrain` shows the binary
+ *      registered, push alreadyCorrect and return — no script upload, no
+ *      install execution.
+ *   5. Otherwise: upload install-gbrain.sh + verify-gbrain-mcp.py via stdin
+ *      (no fs.readFileSync — scripts are embedded as base64 in
+ *      lib/gbrain-scripts-content.ts to dodge Vercel-nft's silent-drop bug
+ *      that bit the matchpool team).
+ *   6. Run install-gbrain.sh with GBRAIN_INSTALL_TIMEOUT_MS hard cap.
+ *   7. Parse output:
+ *      - ALREADY_INSTALLED  → alreadyCorrect (Phase A's deeper idempotency
+ *        check caught it even though our cheap check didn't — e.g., bun PATH
+ *        not loaded in our SSH session)
+ *      - INSTALL_COMPLETE   → fixed (success — gbrain is wired)
+ *      - FATAL_<reason>     → errors (cv won't bump; next cycle retries)
+ *      - timeout / other    → errors with diagnostic snippet
+ *
+ * No gateway restart is needed — Phase G's `openclaw mcp set gbrain` registers
+ * via the mcp.servers.* namespace which is hot-reloadable (per
+ * RESTART_REQUIRED_CONFIG_PREFIXES comment block at the top of this file).
+ *
+ * Never throws — all paths fall through to result.errors or silent skip.
+ *
+ * Design doc: docs/prd/gbrain-fleet-rollout-2026-05-12.md §7
+ */
+async function stepGbrain(
+  ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  // ── Gate 1: partner allowlist ──
+  if (!vm.partner || !GBRAIN_PARTNER_ALLOWLIST.has(vm.partner)) return;
+
+  // ── Gate 2: strict mode timeout incompatibility ──
+  // Strict has a 180s deadline; gbrain install needs ~70-165s. Non-strict
+  // reconcile-fleet cron has the full 300s budget and will pick it up.
+  if (strict) return;
+
+  // ── Gate 3: feature flag (default off — Cooper enables via Vercel env when ready) ──
+  if (process.env.GBRAIN_INSTALL_ENABLED !== "true") return;
+
+  // ── Cheap idempotency check (single SSH call, ~2s) ──
+  // If gbrain version pinned AND MCP registered, skip upload+install entirely.
+  // This is the steady-state path for already-gbrained edge_city VMs.
+  const checkScript = [
+    'source ~/.nvm/nvm.sh 2>/dev/null',
+    'export PATH="$HOME/.bun/bin:$PATH"',
+    'V=$(gbrain --version 2>/dev/null | head -1 | grep -oE "[0-9]+\\.[0-9]+\\.[0-9]+" || echo missing)',
+    'M=$(openclaw mcp show gbrain 2>/dev/null | grep -c "/home/openclaw/.bun/bin/gbrain" || echo 0)',
+    'echo "GBRAIN_CHECK V=$V M=$M"',
+  ].join('; ');
+
+  const check = await ssh.execCommand(`bash -c '${checkScript.replace(/'/g, "'\\''")}'`);
+  const checkMatch = (check.stdout || '').match(/GBRAIN_CHECK V=(\S+) M=(\d+)/);
+  if (checkMatch && checkMatch[1] === GBRAIN_PINNED_VERSION && checkMatch[2] === "1") {
+    result.alreadyCorrect.push(`gbrain v${GBRAIN_PINNED_VERSION}`);
+    return;
+  }
+
+  // ── Dry-run path: report what we WOULD do, take no action ──
+  if (dryRun) {
+    const observedVersion = checkMatch?.[1] ?? "unknown";
+    const observedMcp = checkMatch?.[2] ?? "0";
+    result.fixed.push(
+      `[dry-run] gbrain install (current: version=${observedVersion} mcp=${observedMcp})`,
+    );
+    return;
+  }
+
+  // ── Upload install scripts via stdin (avoid local fs roundtrip) ──
+  try {
+    const upInstall = await ssh.execCommand(
+      "cat > /tmp/install-gbrain.sh && chmod +x /tmp/install-gbrain.sh",
+      { stdin: INSTALL_GBRAIN_SH },
+    );
+    if (upInstall.code !== 0) {
+      result.errors.push(
+        `stepGbrain: upload install-gbrain.sh failed (exit=${upInstall.code}) stderr=${(upInstall.stderr || '').slice(0, 200)}`,
+      );
+      return;
+    }
+
+    const upVerify = await ssh.execCommand(
+      "cat > /tmp/verify-gbrain-mcp.py && chmod +x /tmp/verify-gbrain-mcp.py",
+      { stdin: VERIFY_GBRAIN_MCP_PY },
+    );
+    if (upVerify.code !== 0) {
+      result.errors.push(
+        `stepGbrain: upload verify-gbrain-mcp.py failed (exit=${upVerify.code}) stderr=${(upVerify.stderr || '').slice(0, 200)}`,
+      );
+      return;
+    }
+  } catch (e: any) {
+    result.errors.push(`stepGbrain: upload threw ${String(e?.message ?? e).slice(0, 200)}`);
+    return;
+  }
+
+  // ── Run installer with hard timeout ──
+  // The `timeout` GNU coreutil sends SIGTERM at the limit. We pass it 5s
+  // shorter than our local timeout so the local-side execCommand still has
+  // time to read the final stdout/stderr before any local timeout fires.
+  const installTimeoutSec = Math.floor(GBRAIN_INSTALL_TIMEOUT_MS / 1000) - 5;
+  const installCmd =
+    `GBRAIN_PINNED_COMMIT=${GBRAIN_PINNED_COMMIT} ` +
+    `GBRAIN_PINNED_VERSION=${GBRAIN_PINNED_VERSION} ` +
+    `timeout ${installTimeoutSec} bash /tmp/install-gbrain.sh 2>&1`;
+
+  let res: { stdout?: string; stderr?: string; code?: number | null };
+  try {
+    res = await ssh.execCommand(installCmd, {
+      execOptions: { timeout: GBRAIN_INSTALL_TIMEOUT_MS },
+    } as any);
+  } catch (e: any) {
+    result.errors.push(`stepGbrain: install threw ${String(e?.message ?? e).slice(0, 200)}`);
+    return;
+  }
+
+  const stdout = (res.stdout || '').trim();
+  const stderr = (res.stderr || '').trim();
+
+  // ── Parse output (last-match wins for FATAL_; first-match for OK/COMPLETE) ──
+  const alreadyMatch = stdout.match(/^ALREADY_INSTALLED\s+(.+)$/m);
+  const completeMatch = stdout.match(/^INSTALL_COMPLETE/m);
+  const fatalMatches = Array.from(stdout.matchAll(/^FATAL_(\S+)(?:\s+(.+))?$/gm));
+  const lastFatal = fatalMatches.length > 0 ? fatalMatches[fatalMatches.length - 1] : null;
+
+  if (alreadyMatch) {
+    result.alreadyCorrect.push(`gbrain (phase A: ${alreadyMatch[1]})`);
+    logger.info('stepGbrain: already installed (Phase A detected)', {
+      route: 'stepGbrain',
+      vmId: vm.id,
+      detail: alreadyMatch[1],
+    });
+    return;
+  }
+
+  if (completeMatch) {
+    result.fixed.push(`gbrain v${GBRAIN_PINNED_VERSION} (installed + MCP wired + round-trip verified)`);
+    logger.info('stepGbrain: install complete', {
+      route: 'stepGbrain',
+      vmId: vm.id,
+      version: GBRAIN_PINNED_VERSION,
+      commit: GBRAIN_PINNED_COMMIT,
+    });
+    return;
+  }
+
+  if (lastFatal) {
+    const reason = lastFatal[1];
+    const detail = lastFatal[2] ?? '';
+    result.errors.push(`stepGbrain: ${reason}${detail ? ' ' + detail : ''}`);
+    logger.warn('stepGbrain: install failed', {
+      route: 'stepGbrain',
+      vmId: vm.id,
+      reason,
+      detail,
+      tail: stdout.slice(-500),
+    });
+    return;
+  }
+
+  result.errors.push(
+    `stepGbrain: no terminal output (timeout or unexpected exit). ` +
+    `exit=${res.code} stdout_tail=${stdout.slice(-200)} stderr_tail=${stderr.slice(-200)}`,
+  );
+  logger.warn('stepGbrain: no terminal output', {
+    route: 'stepGbrain',
+    vmId: vm.id,
+    exit: res.code,
+    stdoutLength: stdout.length,
+    stdoutTail: stdout.slice(-200),
+  });
 }
 
 async function stepConfigSettings(
