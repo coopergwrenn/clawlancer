@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/marketing/json-ld";
 import { EdgeCityClient } from "./edge-city-client";
+import { getEdgeUserState } from "./edge-user-state";
 
 export const metadata = createMetadata({
   title: "Agent Village · Edge Esmeralda 2026",
@@ -154,7 +155,27 @@ function SectionMarker({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function EdgePage() {
+export default async function EdgePage() {
+  // Resolve user state server-side so the right CTA renders on first paint.
+  // Three buckets: logged_out (claim CTA), in_progress (complete setup),
+  // live (open in Telegram). See app/edge/edge-user-state.ts for the
+  // detection logic — it mirrors the dashboard layout's data-driven routing
+  // per Rule 33 (VM state is the source of truth, not session.onboardingComplete).
+  const userState = await getEdgeUserState();
+
+  // Derive the header-bar CTA target + label from state. Header pill is the
+  // sticky escape hatch — it must always agree with what the body says to do.
+  const headerCta =
+    userState.kind === "live"
+      ? {
+          href: `https://t.me/${userState.botUsername}`,
+          label: "Open agent",
+          external: true,
+        }
+      : userState.kind === "in_progress"
+        ? { href: userState.resumePath, label: "Complete setup", external: false }
+        : { href: "#claim", label: "Claim agent", external: false };
+
   return (
     <>
       <JsonLd data={eventJsonLd} />
@@ -200,16 +221,31 @@ export default function EdgePage() {
             >
               May 30 – Jun 27, 2026
             </span>
-            <Link
-              href="#claim"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-[12px] uppercase tracking-[0.12em] font-medium transition-colors"
-              style={{
-                background: "var(--edge-olive)",
-                color: "#FFFFFF",
-              }}
-            >
-              Claim agent <span aria-hidden>→</span>
-            </Link>
+            {headerCta.external ? (
+              <a
+                href={headerCta.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-[12px] uppercase tracking-[0.12em] font-medium transition-colors"
+                style={{
+                  background: "var(--edge-olive)",
+                  color: "#FFFFFF",
+                }}
+              >
+                {headerCta.label} <span aria-hidden>→</span>
+              </a>
+            ) : (
+              <Link
+                href={headerCta.href}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-[12px] uppercase tracking-[0.12em] font-medium transition-colors"
+                style={{
+                  background: "var(--edge-olive)",
+                  color: "#FFFFFF",
+                }}
+              >
+                {headerCta.label} <span aria-hidden>→</span>
+              </Link>
+            )}
           </div>
         </div>
       </header>
@@ -257,13 +293,15 @@ export default function EdgePage() {
           </p>
 
           <div className="max-w-md">
-            <EdgeCityClient />
-            <p
-              className="text-[11px] uppercase tracking-[0.14em] mt-6"
-              style={{ color: "var(--edge-ink-soft)" }}
-            >
-              Free for verified ticket holders · Inference is sponsor-funded
-            </p>
+            <EdgeCityClient state={userState} />
+            {userState.kind !== "live" && (
+              <p
+                className="text-[11px] uppercase tracking-[0.14em] mt-6"
+                style={{ color: "var(--edge-ink-soft)" }}
+              >
+                Free for verified ticket holders · Inference is sponsor-funded
+              </p>
+            )}
           </div>
 
           {/* Floating-island anchor, bottom-right of hero (Edge City signature) */}
@@ -643,30 +681,37 @@ export default function EdgePage() {
         </div>
       </section>
 
-      {/* ── FINAL CTA ── */}
-      <section
-        id="claim"
-        className="relative z-10 px-4 sm:px-8 pb-32 sm:pb-40 pt-8"
-      >
-        <div className="max-w-4xl mx-auto text-center">
-          <h2
-            className="font-bold uppercase tracking-[-0.015em] leading-[0.95] text-[clamp(40px,7vw,96px)] mb-6"
-            style={{ color: "var(--edge-ink)" }}
-          >
-            Claim your agent.
-          </h2>
-          <p
-            className="text-[16px] sm:text-[18px] mb-10 leading-[1.55] max-w-[44ch] mx-auto"
-            style={{ color: "var(--edge-ink-soft)" }}
-          >
-            Verified ticket holders can claim now. Everyone else, get on the
-            list — we&apos;ll notify you the moment claim opens.
-          </p>
-          <div className="max-w-md mx-auto">
-            <EdgeCityClient />
+      {/* ── FINAL CTA ── Hidden entirely for live users — they don't need
+         a second "do this now" prompt when the hero already surfaced their
+         bot. Logged-out and in-progress users still see a closing CTA. */}
+      {userState.kind !== "live" && (
+        <section
+          id="claim"
+          className="relative z-10 px-4 sm:px-8 pb-32 sm:pb-40 pt-8"
+        >
+          <div className="max-w-4xl mx-auto text-center">
+            <h2
+              className="font-bold uppercase tracking-[-0.015em] leading-[0.95] text-[clamp(40px,7vw,96px)] mb-6"
+              style={{ color: "var(--edge-ink)" }}
+            >
+              {userState.kind === "in_progress"
+                ? "Complete your setup."
+                : "Claim your agent."}
+            </h2>
+            <p
+              className="text-[16px] sm:text-[18px] mb-10 leading-[1.55] max-w-[44ch] mx-auto"
+              style={{ color: "var(--edge-ink-soft)" }}
+            >
+              {userState.kind === "in_progress"
+                ? "Pick up where you left off — your agent is one step away."
+                : "Verified ticket holders can claim now. Everyone else, get on the list — we'll notify you the moment claim opens."}
+            </p>
+            <div className="max-w-md mx-auto">
+              <EdgeCityClient state={userState} />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── FOOTER ── */}
       <footer
