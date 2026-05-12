@@ -24,6 +24,8 @@
  */
 import { createMetadata } from "@/lib/seo";
 import { getSupabase } from "@/lib/supabase";
+import { runCalibration } from "@/lib/matchpool/calibration-fetch";
+import type { CalibrationResult } from "@/lib/matchpool/calibration";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 10;
@@ -335,6 +337,133 @@ function ActivityCard({ buckets }: { buckets: { hour: string; count: number }[] 
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Threshold tuning card — surfaces calibration recommendations as data
+// arrives. Pre-Edge state: "deferred until data arrives". Mid-Edge state:
+// "47 ratings, recommended threshold X with 95% CI". Post-Edge: a record
+// of how the pipeline self-tuned across the village.
+//
+// Reads from lib/matchpool/calibration-fetch. Same library the
+// scripts/_calibrate-thresholds.ts CLI uses. One Source of Truth.
+// ─────────────────────────────────────────────────────────────────────
+function TuningCard({ results }: { results: CalibrationResult[] }) {
+  if (!results.length) return null;
+  return (
+    <div className="rounded-xl border border-neutral-800 p-6 bg-neutral-950/50">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-xs uppercase tracking-wider text-neutral-500">Threshold tuning</h2>
+        <span className="text-xs text-neutral-600">
+          F<sub>0.5</sub> precision-weighted · 95% Wilson CI
+        </span>
+      </div>
+      <p className="text-xs text-neutral-600 mb-5 max-w-2xl">
+        The pipeline measures itself. When enough meetings are rated, it recommends
+        threshold shifts that improve precision. Below: per-predictor calibration over
+        all matchpool_outcomes labelled so far.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {results.map((r) => {
+          const recommended = r.recommended_threshold;
+          const change = recommended !== null
+            ? recommended > r.current_threshold
+              ? "raise"
+              : recommended < r.current_threshold
+                ? "lower"
+                : "hold"
+            : null;
+          const dataReady = r.n_total >= r.min_samples_for_recommendation;
+          const showRec = r.ready_to_recommend_change && recommended !== null;
+          return (
+            <div key={r.predictor} className="border border-neutral-900 rounded-lg p-4">
+              <div className="flex items-baseline justify-between mb-3">
+                <span className="text-sm text-neutral-300 font-mono">
+                  {r.predictor === "mutual_score" ? "mutual_score" : "deliberation_score"}
+                </span>
+                <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+                  {r.predictor === "mutual_score" ? "Layer 1" : "Layer 3"}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-4 mb-3">
+                <div>
+                  <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Current</div>
+                  <div className="text-2xl font-medium tabular-nums">{r.current_threshold.toFixed(2)}</div>
+                </div>
+                <span className="text-neutral-700 text-lg">→</span>
+                <div>
+                  <div className="text-[10px] text-neutral-500 uppercase tracking-wider">
+                    {showRec ? `Recommended` : `Pending`}
+                  </div>
+                  <div className="text-2xl font-medium tabular-nums">
+                    {showRec ? recommended!.toFixed(2) : "—"}
+                    {showRec && change === "raise" && (
+                      <span className="text-emerald-400 text-base ml-2">▲</span>
+                    )}
+                    {showRec && change === "lower" && (
+                      <span className="text-amber-400 text-base ml-2">▼</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-neutral-500 mb-2 leading-relaxed">
+                {r.status_message}
+              </div>
+              {dataReady && r.recommended_metrics && r.recommended_precision_ci && (
+                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-neutral-900 text-xs">
+                  <div>
+                    <div className="text-[10px] text-neutral-600 uppercase">Precision</div>
+                    <div className="text-neutral-300 tabular-nums">
+                      {(r.recommended_metrics.precision * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-neutral-600 uppercase">Recall</div>
+                    <div className="text-neutral-300 tabular-nums">
+                      {(r.recommended_metrics.recall * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-neutral-600 uppercase">95% CI</div>
+                    <div className="text-neutral-300 tabular-nums">
+                      {(r.recommended_precision_ci.lower * 100).toFixed(0)}–
+                      {(r.recommended_precision_ci.upper * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-baseline justify-between mt-3 text-[10px] text-neutral-600">
+                <span>
+                  Samples: {r.n_total} rated ({r.n_positive} valuable, {r.n_negative} declined)
+                </span>
+                <span>min {r.min_samples_for_recommendation}</span>
+              </div>
+              {/* Tiny sparkline: F-beta across threshold sweep */}
+              {dataReady && (
+                <div className="flex items-end gap-px h-6 mt-2">
+                  {r.sweep.map((m) => {
+                    const h = Number.isNaN(m.f_beta) ? 0 : m.f_beta;
+                    const isRec = r.recommended_metrics && m.threshold === r.recommended_metrics.threshold;
+                    const isCur = Math.abs(m.threshold - r.current_threshold) < 0.025;
+                    return (
+                      <div
+                        key={m.threshold}
+                        className={`flex-1 rounded-t-sm ${
+                          isRec ? "bg-emerald-400" : isCur ? "bg-neutral-400" : "bg-neutral-800"
+                        }`}
+                        style={{ height: `${Math.max(h * 100, 2)}%` }}
+                        title={`t=${m.threshold.toFixed(2)} F${0.5}=${Number.isNaN(m.f_beta) ? "—" : m.f_beta.toFixed(2)}`}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RecentFeed({ rows }: { rows: RecentRow[] }) {
   if (!rows.length) {
     return (
@@ -389,14 +518,26 @@ function RecentFeed({ rows }: { rows: RecentRow[] }) {
 // Page
 // ─────────────────────────────────────────────────────────────────────
 
+async function fetchTuningResults(): Promise<CalibrationResult[]> {
+  try {
+    const { results } = await runCalibration(getSupabase());
+    return results;
+  } catch {
+    // Calibration is non-essential — page should still render if this
+    // fails for any reason (DB hiccup, missing column on a fresh deploy).
+    return [];
+  }
+}
+
 export default async function PlazaPage() {
   // Fetch in parallel — partial failures don't block the page.
-  const [funnel, activeToday, recent, distribution, hourly] = await Promise.all([
+  const [funnel, activeToday, recent, distribution, hourly, tuning] = await Promise.all([
     fetchFunnel(),
     fetchActiveAgentsToday(),
     fetchRecentActivity(),
     fetchScoreDistribution(),
     fetchHourlyActivity(),
+    fetchTuningResults(),
   ]);
 
   return (
@@ -422,6 +563,11 @@ export default async function PlazaPage() {
         {/* FUNNEL — full width */}
         <section className="mb-6">
           <FunnelCard data={funnel} />
+        </section>
+
+        {/* THRESHOLD TUNING — full width, important data deserves real estate */}
+        <section className="mb-6">
+          <TuningCard results={tuning} />
         </section>
 
         {/* CALIBRATION + ACTIVITY — two columns */}
