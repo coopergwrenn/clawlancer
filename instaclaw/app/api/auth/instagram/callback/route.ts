@@ -170,6 +170,9 @@ export async function GET(req: NextRequest) {
       .from("instaclaw_vms")
       .select("id")
       .eq("assigned_to", session.user.id)
+      // Don't link the integration to a terminal VM (assigned_to can outlast
+      // a vm-lifecycle delete).
+      .not("status", "in", '("terminated","destroyed","failed")')
       .single();
 
     if (vm) {

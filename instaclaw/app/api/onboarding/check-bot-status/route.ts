@@ -18,6 +18,7 @@ export async function GET() {
     .from("instaclaw_vms")
     .select("id, telegram_bot_token, telegram_bot_username, telegram_chat_id, gateway_url, health_status")
     .eq("assigned_to", session.user.id)
+    .not("status", "in", '("terminated","destroyed","failed")')
     .single();
 
   if (!vm || !vm.telegram_bot_token) {

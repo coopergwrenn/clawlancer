@@ -25,13 +25,18 @@ export async function GET() {
 
     const supabase = getSupabase();
 
-    // Check if user has an assigned VM
+    // Check if user has an assigned VM. Exclude terminal rows — vm-lifecycle's
+    // delete pass leaves assigned_to set, so polling this endpoint after a
+    // termination would otherwise return the dead VM forever and the dashboard
+    // layout (per Rule 33) would keep routing the user to /deploying for a
+    // VM that no longer exists.
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select(
         "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled, bankr_wallet_id, bankr_evm_address, bankr_token_address, bankr_token_symbol, bankr_token_image_url, tokenization_platform"
       )
       .eq("assigned_to", session.user.id)
+      .not("status", "in", '("terminated","destroyed","failed")')
       .single();
 
     if (vm) {

@@ -103,7 +103,11 @@ export async function wakeIfHibernating(
           watchdog_first_failure_at: null,
           watchdog_quarantined_at: null,
         })
-        .eq("id", vm.id);
+        .eq("id", vm.id)
+        // Race guard: vm-lifecycle could have terminated this row between the
+        // candidate query at line 46 and now (startGateway can take several
+        // seconds). Atomic skip if terminal.
+        .not("status", "in", '("terminated","destroyed","failed")');
 
       if (updErr) {
         logger.error("wakeIfHibernating: DB update failed after start", { vmId: vm.id, userId, source, error: updErr.message });

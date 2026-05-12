@@ -448,7 +448,11 @@ export async function GET(req: NextRequest) {
       await supabase
         .from("instaclaw_vms")
         .update({ health_status: "suspended" })
-        .eq("id", vm.id);
+        .eq("id", vm.id)
+        // Race guard: this Pass 0 runs in the same cron as Pass 1 (which
+        // terminates), but a sibling cron could also flip the row. Atomic
+        // skip if it became terminal.
+        .not("status", "in", '("terminated","destroyed","failed")');
 
       hibernateToSuspend++;
       logger.info("VM transitioned from hibernating to suspended", {

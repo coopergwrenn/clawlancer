@@ -28,6 +28,7 @@ export async function GET() {
     .from("instaclaw_vms")
     .select("id, tier, credit_balance, user_timezone")
     .eq("assigned_to", session.user.id)
+    .not("status", "in", '("terminated","destroyed","failed")')
     .single();
 
   if (!vm) {

@@ -239,7 +239,12 @@ export async function GET(req: NextRequest) {
           watchdog_first_failure_at: null,
           watchdog_quarantined_at: null,
         })
-        .eq("id", vm.id);
+        .eq("id", vm.id)
+        // Race guard: vm-lifecycle could have terminated this row between
+        // the candidate query and now (startGateway is multi-second).
+        // Atomic skip if terminal — better to leave it terminal than to
+        // resurrect a row whose Linode is already deleted.
+        .not("status", "in", '("terminated","destroyed","failed")');
 
       if (updErr) {
         await writeAudit(supabase, {

@@ -94,15 +94,19 @@ async function handleTradingFee(event: BankrWebhookEvent) {
 
   const supabase = getSupabase();
 
-  // Look up VM by Bankr wallet ID
+  // Look up VM by Bankr wallet ID. Exclude terminal rows — bankr_wallet_id
+  // can persist on a terminated VM (vm-lifecycle doesn't strip it), so a
+  // trading-fee webhook for a wallet whose VM was destroyed would otherwise
+  // credit a dead row and the user would lose the credits.
   const { data: vm } = await supabase
     .from("instaclaw_vms")
     .select("id, assigned_to")
     .eq("bankr_wallet_id", wallet_id)
+    .not("status", "in", '("terminated","destroyed","failed")')
     .single();
 
   if (!vm) {
-    logger.warn("Bankr webhook: no VM found for wallet", { wallet_id });
+    logger.warn("Bankr webhook: no live VM found for wallet", { wallet_id });
     return NextResponse.json({ error: "Wallet not found" }, { status: 404 });
   }
 

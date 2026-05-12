@@ -83,11 +83,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to resolve conversation" }, { status: 500 });
   }
 
-  // Get VM info (model, system_prompt, gateway details)
+  // Get VM info (model, system_prompt, gateway details). Exclude terminal
+  // rows — sending chat to a deleted Linode wastes the SSE budget and
+  // confuses the user (they'd see a hung response).
   const { data: vm } = await supabase
     .from("instaclaw_vms")
     .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone, tier")
     .eq("assigned_to", session.user.id)
+    .not("status", "in", '("terminated","destroyed","failed")')
     .single();
 
   if (!vm) {

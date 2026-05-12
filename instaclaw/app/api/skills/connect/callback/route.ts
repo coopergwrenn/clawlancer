@@ -179,10 +179,14 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Get user's VM ──
+    // Exclude terminal rows — vm-lifecycle's delete pass leaves assigned_to
+    // set, so an OAuth callback after VM termination would otherwise try to
+    // write credentials to a dead Linode.
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("id, ip_address, ssh_port, ssh_user")
       .eq("assigned_to", session.user.id)
+      .not("status", "in", '("terminated","destroyed","failed")')
       .single();
 
     if (!vm) {

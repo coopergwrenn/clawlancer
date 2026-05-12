@@ -23,6 +23,7 @@ export async function GET() {
         "id, heartbeat_interval, heartbeat_last_at, heartbeat_next_at, heartbeat_credits_used_today, heartbeat_status, heartbeat_custom_schedule, status"
       )
       .eq("assigned_to", session.user.id)
+      .not("status", "in", '("terminated","destroyed","failed")')
       .single();
 
     if (!vm) {

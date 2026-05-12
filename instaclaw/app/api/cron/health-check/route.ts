@@ -275,7 +275,10 @@ export async function GET(req: NextRequest) {
         health_fail_count: 0,
         ssh_fail_count: 0,
       })
-      .in("id", healthyVmIdsResetCounters);
+      .in("id", healthyVmIdsResetCounters)
+      // Race guard: vm-lifecycle could have flipped any of these to terminal
+      // between the candidate query and this bulk UPDATE. Atomic skip if so.
+      .not("status", "in", '("terminated","destroyed","failed")');
     if (resetErr) {
       logger.warn("health-check pass0 bulk-reset UPDATE failed", {
         route: "cron/health-check",
@@ -461,7 +464,10 @@ export async function GET(req: NextRequest) {
           health_fail_count: 0,
         })
         .eq("id", vm.id)
-        .neq("health_status", "configure_failed");
+        .neq("health_status", "configure_failed")
+        // Race guard: refuse to resurrect a row that vm-lifecycle terminated
+        // between the candidate query and this UPDATE.
+        .not("status", "in", '("terminated","destroyed","failed")');
 
       // ── Telegram 409 conflict — log only, do NOT restart ──
       // 409 conflicts happen when Telegram's stale long-poll from a previous
@@ -701,7 +707,10 @@ else:
               last_health_check: new Date().toISOString(),
             })
             .eq("id", vm.id)
-            .neq("health_status", "configure_failed");
+            .neq("health_status", "configure_failed")
+            // Race guard: refuse to resurrect a row that became terminal
+            // between the candidate query and this UPDATE.
+            .not("status", "in", '("terminated","destroyed","failed")');
 
           // Correct the counters — this VM is actually healthy
           unhealthy--;
@@ -861,7 +870,10 @@ else:
                   health_fail_count: 0,
                   last_health_check: new Date().toISOString(),
                 }).eq("id", vm.id)
-                  .neq("health_status", "configure_failed");
+                  .neq("health_status", "configure_failed")
+                  // Race guard: refuse to resurrect a row that became terminal
+                  // between the candidate query and this UPDATE.
+                  .not("status", "in", '("terminated","destroyed","failed")');
                 autoRecovered++;
               } else {
                 recoveryResult = `STILL_UNHEALTHY_AFTER_${moduleOk ? "RESTART" : "REINSTALL"}`;
@@ -1414,7 +1426,10 @@ else:
                 suspended_at: new Date().toISOString(),
                 last_health_check: new Date().toISOString(),
               })
-              .eq("id", vm.id);
+              .eq("id", vm.id)
+              // Race guard: refuse to overwrite a terminal status with "suspended"
+              // if vm-lifecycle terminated the row between candidate and UPDATE.
+              .not("status", "in", '("terminated","destroyed","failed")');
 
             // Send suspension email
             const { data: user } = await supabase
@@ -1515,7 +1530,10 @@ else:
             suspended_at: new Date().toISOString(),
             last_health_check: new Date().toISOString(),
           })
-          .eq("id", vm.id);
+          .eq("id", vm.id)
+          // Race guard: refuse to overwrite a terminal status with "hibernating"
+          // if vm-lifecycle terminated the row between candidate and UPDATE.
+          .not("status", "in", '("terminated","destroyed","failed")');
 
         noSubSuspended++;
         logger.info("VM suspended — no active subscription", {
