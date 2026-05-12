@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
 
 export default function SignupPage() {
   return (
@@ -16,6 +17,8 @@ export default function SignupPage() {
 
 function SignupInner() {
   const searchParams = useSearchParams();
+  const partner = usePartnerCookie();
+  const isEdge = partner === "edge_city";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -80,13 +83,15 @@ function SignupInner() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
+      className="min-h-screen flex flex-col"
       style={{
         background: "#f8f7f4",
         color: "#333334",
       }}
     >
-      <div className="w-full max-w-md space-y-10">
+      <EdgePartnerBanner />
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md space-y-10">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center gap-2">
           <Image src="/logo.png" alt="Instaclaw" width={40} height={40} unoptimized style={{ imageRendering: "pixelated" }} />
@@ -98,16 +103,22 @@ function SignupInner() {
           </span>
         </Link>
 
-        {/* Heading */}
+        {/* Heading — copy + ink swap when arriving from /edge so the user
+            feels the same brand context they clicked "Claim your agent" on */}
         <div className="text-center space-y-3">
           <h1
             className="text-4xl sm:text-5xl font-normal tracking-[-1px]"
-            style={{ fontFamily: "var(--font-serif)" }}
+            style={{
+              fontFamily: "var(--font-serif)",
+              color: isEdge ? "#29311E" : "#333334",
+            }}
           >
-            Create your account
+            {isEdge ? "Claim your agent" : "Create your account"}
           </h1>
           <p className="text-base" style={{ color: "#6b6b6b" }}>
-            Deploy your personal AI agent in minutes.
+            {isEdge
+              ? "Free for verified Edge Esmeralda 2026 attendees."
+              : "Deploy your personal AI agent in minutes."}
           </p>
         </div>
 
@@ -223,6 +234,7 @@ function SignupInner() {
             Sign in
           </Link>
         </p>
+        </div>
       </div>
     </div>
   );
