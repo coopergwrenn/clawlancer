@@ -1,5 +1,5 @@
 /**
- * /edge-city/plaza — Live Activity Dashboard
+ * /edge/plaza — Live Activity Dashboard
  *
  * Public-anonymized funnel dashboard for the agent matching pipeline.
  * Reads matchpool_outcomes + matchpool_funnel_counts RPC. Refreshes
@@ -34,7 +34,7 @@ export const metadata = createMetadata({
   title: "Live · Agent Village Activity",
   description:
     "Live, anonymized funnel of agent-mediated introductions at Edge Esmeralda 2026. Proposed → responded → met → valuable.",
-  path: "/edge-city/plaza",
+  path: "/edge/plaza",
   ogTitle: "Live · Edge Esmeralda Plaza",
 });
 
