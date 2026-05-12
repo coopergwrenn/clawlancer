@@ -87,6 +87,14 @@ const dryRun = args.includes("--dry-run");
 const priorityFirst = args.includes("--priority-first");
 const skipProbe = args.includes("--skip-probe");
 const autoYes = args.includes("--yes");
+// --no-strict: drop the 180s strict deadline on reconcileVM. The migration
+// step's SHA-verified atomic writes (Rule 10) stay active — they're not
+// gated by the strict flag. Loosens per-key configSettings verify-after-set
+// for OTHER reconciler steps (Vercel cron re-verifies on next tick anyway).
+// Use for VMs at cv > 5 versions behind where stepFiles + stepConfigSettings
+// don't fit the 180s budget — first attempt invariably hits the deadline
+// at config-settings / files steps BEFORE migration runs.
+const noStrict = args.includes("--no-strict");
 const concurrency = Math.min(
   3,
   parseInt(args.find((a) => a.startsWith("--concurrency="))?.split("=")[1] ?? "3", 10),
@@ -234,7 +242,7 @@ async function migrateOne(
   try {
     result = await reconcileVM(vm as never, VM_MANIFEST, {
       dryRun,
-      strict: true,
+      strict: !noStrict, // --no-strict drops 180s deadline; SHA-verified V2 writes unaffected
       canary: false,
       skipGatewayRestart: false,
     });
@@ -280,6 +288,7 @@ async function main(): Promise<number> {
   console.log(`  waveSize:      ${waveSize}`);
   console.log(`  skipProbe:     ${skipProbe}`);
   console.log(`  maxVms:        ${maxVms || "unlimited"}`);
+  console.log(`  strict:        ${!noStrict} ${noStrict ? "(--no-strict: 180s deadline dropped; SHA-verified V2 writes unaffected)" : ""}`);
   console.log(`  manifest:      v${VM_MANIFEST.version}`);
 
   // ── 1. Acquire cron lock (Rule 8) ──
