@@ -2877,6 +2877,111 @@ async function stepGatewayRestart(
   // Fix 4: Set restart lock file to prevent storms
   await ssh.execCommand('touch /tmp/ic-restart.lock');
 
+  // ── Pre-restart config validate (Rule 5 + 2026-05-12 vm-059 incident) ──
+  //
+  // Before triggering systemctl restart, run `openclaw config validate` to
+  // catch schema rejections proactively. If validation fails with
+  // "Unrecognized keys" errors (Zod strict() reject), we surgically unset
+  // those keys via `openclaw config unset` and re-validate. Only then do we
+  // proceed with the restart.
+  //
+  // Why this exists:
+  //   2026-05-12 vm-059 (paying customer coastalstu@gmail.com): catch-up
+  //   applied the v95 manifest's `agents.defaults.compaction.*` keys via
+  //   stepConfigSettings. Each `openclaw config set` returned exit 0 and the
+  //   keys landed on disk. But when stepGatewayRestart triggered the actual
+  //   restart, OpenClaw's startup-time Zod schema validator rejected the
+  //   keys ("Unrecognized keys: maxActiveTranscriptBytes, truncateAfterCompaction").
+  //   systemd retried 10× → "Start request repeated too quickly" → permanent
+  //   gateway failure. Customer's agent was down for ~17 min until manual
+  //   recovery.
+  //
+  //   Other 85 VMs that processed the same keys at the same manifest
+  //   succeeded — likely a transient mid-restart binary/dist race during
+  //   npm-pin-drift. vm-059 happened to be parsed by the older binary at
+  //   exactly the wrong moment.
+  //
+  // What this catches: ANY schema-rejection class — not just compaction
+  // keys — that would otherwise cause a gateway crash-loop. Aligned with
+  // CLAUDE.md Rule 5 ("If gateway doesn't come back, REVERT the config
+  // change, restart with old config, report the failure").
+  //
+  // Failure mode: if validate cannot run (network/SSH transient), we log
+  // and proceed to restart anyway (degraded — same as old behavior).
+  const validateRes = await ssh.execCommand(
+    `${DBUS_PREFIX} && openclaw config validate 2>&1`,
+    { execOptions: { timeout: 15_000 } } as any,
+  );
+  const validateOut = (validateRes.stdout || '') + (validateRes.stderr || '');
+  const validateOk = validateRes.code === 0 && /Config valid:/i.test(validateOut);
+
+  if (!validateOk) {
+    // Parse "Unrecognized keys: 'X', 'Y'" patterns. Format observed in the
+    // vm-059 incident:
+    //   - agents.defaults.compaction: Unrecognized keys: "maxActiveTranscriptBytes", "truncateAfterCompaction"
+    // The regex captures the dotted-path prefix and the list of bad keys.
+    const reverted: string[] = [];
+    const unrecognized = validateOut.matchAll(
+      /^[ \t]*-?[ \t]*([\w][\w.]+):[ \t]*Unrecognized keys?:[ \t]*((?:"[\w.-]+"[ \t]*,?[ \t]*)+)/gm,
+    );
+    for (const m of unrecognized) {
+      const prefix = m[1].trim();
+      const keys: string[] = [];
+      const keyIter = m[2].matchAll(/"([\w.-]+)"/g);
+      for (const km of keyIter) keys.push(km[1]);
+      for (const k of keys) {
+        const full = `${prefix}.${k}`;
+        const unsetRes = await ssh.execCommand(
+          `${DBUS_PREFIX} && openclaw config unset ${full} 2>&1`,
+          { execOptions: { timeout: 10_000 } } as any,
+        );
+        if (unsetRes.code === 0) {
+          reverted.push(full);
+        } else {
+          logger.warn('stepGatewayRestart: unset failed', {
+            route: 'stepGatewayRestart', vmId: vm.id, key: full,
+            stderr: (unsetRes.stderr || '').slice(0, 200),
+          });
+        }
+      }
+    }
+
+    if (reverted.length > 0) {
+      // Re-validate after unsets. If still invalid, log loudly but proceed
+      // (the gateway will crash-loop and we surface the error below — same
+      // as old behavior).
+      const reValidate = await ssh.execCommand(
+        `${DBUS_PREFIX} && openclaw config validate 2>&1`,
+        { execOptions: { timeout: 15_000 } } as any,
+      );
+      const stillInvalid = reValidate.code !== 0 || !/Config valid:/i.test(reValidate.stdout || '');
+      result.fixed.push(
+        `config-validate: reverted ${reverted.length} schema-rejected keys (${reverted.slice(0, 3).join(', ')}${reverted.length > 3 ? '...' : ''})${stillInvalid ? ' [STILL INVALID after revert]' : ''}`,
+      );
+      logger.warn('stepGatewayRestart: config validate rejected keys', {
+        route: 'stepGatewayRestart', vmId: vm.id,
+        reverted,
+        stillInvalidAfterRevert: stillInvalid,
+        originalErrorTail: validateOut.slice(-500),
+      });
+    } else if (validateOut.trim().length > 0) {
+      // Validation failed but we couldn't parse any specific keys to revert.
+      // Could be a syntactic JSON error, missing required key, etc. Log
+      // and proceed — gateway will surface the same error on start.
+      logger.warn('stepGatewayRestart: config invalid but no parseable Unrecognized-keys section', {
+        route: 'stepGatewayRestart', vmId: vm.id,
+        outTail: validateOut.slice(-500),
+        exit: validateRes.code,
+      });
+      result.errors.push(
+        `config-validate failed pre-restart (exit=${validateRes.code}, no auto-revertable keys): ${validateOut.slice(-200).replace(/\s+/g, ' ').trim()}`,
+      );
+      // Don't push to errors twice if the restart also fails — gateway-restart
+      // is the canonical "errors" entry for this VM. This entry just gives
+      // operator a clearer breadcrumb at result-table time.
+    }
+  }
+
   // Restart with DBUS workaround (required for SSH sessions without a login shell)
   const restartResult = await ssh.execCommand(
     `${DBUS_PREFIX} && systemctl --user restart openclaw-gateway`
