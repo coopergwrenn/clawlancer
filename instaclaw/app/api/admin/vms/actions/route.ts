@@ -17,6 +17,15 @@ export async function POST(req: NextRequest) {
 
   switch (action) {
     case "destroy": {
+      // Tombstone-before-delete: mark the row terminal FIRST so a silent
+      // delete failure (RLS, FK constraint, network blip) still leaves the
+      // row excluded from health-only candidate queries. If the delete
+      // succeeds, the tombstone is moot; if it fails, the row is safely
+      // marked destroyed + unhealthy and the admin can retry.
+      await supabase
+        .from("instaclaw_vms")
+        .update({ status: "destroyed", health_status: "unhealthy" })
+        .eq("id", vmId);
       // Delete VM record (Hetzner deletion is separate)
       await supabase.from("instaclaw_vms").delete().eq("id", vmId);
       return NextResponse.json({ success: true });
@@ -32,6 +41,17 @@ export async function POST(req: NextRequest) {
 
       if (!reclaimVm) {
         return NextResponse.json({ error: "VM not found" }, { status: 404 });
+      }
+
+      // Refuse to reclaim a row that's already in a terminal state — the
+      // reclaim flow flips status back to "ready" which would resurrect the
+      // row into the pool. If the admin truly wants to recover a terminated
+      // VM, they need to reset the row state explicitly first.
+      if (["terminated", "destroyed", "failed"].includes(reclaimVm.status)) {
+        return NextResponse.json(
+          { error: `VM is in terminal state '${reclaimVm.status}' — cannot reclaim. Reset status manually first if recovery is intended.` },
+          { status: 409 }
+        );
       }
 
       if (reclaimVm.ip_address) {
@@ -137,6 +157,12 @@ export async function POST(req: NextRequest) {
       if (!resetVm) {
         return NextResponse.json({ error: "VM not found" }, { status: 404 });
       }
+      if (["terminated", "destroyed", "failed"].includes(resetVm.status)) {
+        return NextResponse.json(
+          { error: `VM is in terminal state '${resetVm.status}' — cannot reset agent.` },
+          { status: 409 }
+        );
+      }
 
       const resetResult = await resetAgentMemory(resetVm);
 
@@ -164,6 +190,12 @@ export async function POST(req: NextRequest) {
 
       if (!restartVm) {
         return NextResponse.json({ error: "VM not found" }, { status: 404 });
+      }
+      if (["terminated", "destroyed", "failed"].includes(restartVm.status)) {
+        return NextResponse.json(
+          { error: `VM is in terminal state '${restartVm.status}' — cannot restart gateway.` },
+          { status: 409 }
+        );
       }
 
       const restarted = await restartGateway(restartVm);

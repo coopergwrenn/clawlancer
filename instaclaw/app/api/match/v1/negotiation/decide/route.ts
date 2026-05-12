@@ -140,10 +140,13 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabase();
 
   // ─ Sender verification: known InstaClaw VM ─
+  // Exclude terminal rows so a terminated VM that still carries an
+  // xmtp_address can't impersonate a live sender.
   const { data: senderVms, error: vmErr } = await supabase
     .from("instaclaw_vms")
     .select("*")
-    .ilike("xmtp_address", senderXmtp);
+    .ilike("xmtp_address", senderXmtp)
+    .not("status", "in", '("terminated","destroyed","failed")');
   if (vmErr) {
     return NextResponse.json({ error: "vm lookup failed" }, { status: 503 });
   }

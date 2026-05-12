@@ -60,7 +60,11 @@ export async function GET(req: NextRequest) {
         suspended_at: new Date().toISOString(),
         last_health_check: new Date().toISOString(),
       })
-      .eq("id", vm.id);
+      .eq("id", vm.id)
+      // Defensive: refuse to hibernate a row already in a terminal state.
+      // All current callers select with status='assigned', but the guard
+      // protects any future caller from accidentally resurrecting a ghost.
+      .not("status", "in", '("terminated","destroyed","failed")');
 
     // Best-effort gateway stop — saves API costs immediately
     try {

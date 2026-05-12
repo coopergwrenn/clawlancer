@@ -23,6 +23,10 @@ export async function POST() {
       .from("instaclaw_vms")
       .select("*")
       .eq("assigned_to", session.user.id)
+      // Don't operate on a terminated row that still has assigned_to set
+      // (vm-lifecycle's main delete doesn't clear assigned_to). Otherwise the
+      // health="healthy" update below would resurrect a dead VM.
+      .not("status", "in", '("terminated","destroyed","failed")')
       .single();
 
     if (!vm || !vm.gateway_token) {

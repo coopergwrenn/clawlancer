@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
       .from("instaclaw_vms")
       .select("id, ip_address, ssh_port, ssh_user, health_status, last_health_check, gateway_token, api_mode")
       .eq("assigned_to", session.user.id)
+      // Don't resurrect a terminated row (which can still carry assigned_to —
+      // vm-lifecycle's delete pass doesn't clear it).
+      .not("status", "in", '("terminated","destroyed","failed")')
       .single();
 
     if (!vm) {

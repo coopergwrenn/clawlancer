@@ -434,7 +434,12 @@ async function processEvent(event: any) {
                 health_status: "unknown",
                 suspended_at: null,
                 last_health_check: new Date().toISOString(),
-              }).eq("id", vmDetail.id);
+              })
+                .eq("id", vmDetail.id)
+                // Guard against resurrecting a terminated row — vm-lifecycle's
+                // delete pass doesn't clear assigned_to, so a Stripe event for
+                // a user whose VM was just terminated could otherwise land here.
+                .not("status", "in", '("terminated","destroyed","failed")');
               logger.warn("Reactivation fell back to minimal restart-only path", {
                 route: "billing/webhook", userId, vmId: vmDetail.id,
               });
@@ -830,7 +835,10 @@ async function processEvent(event: any) {
                 suspended_at: new Date().toISOString(),
                 last_health_check: new Date().toISOString(),
               })
-              .eq("id", userVm.id);
+              .eq("id", userVm.id)
+              // Don't overwrite a terminal status with "suspended" if vm-lifecycle
+              // raced and got there first — terminated is the more authoritative state.
+              .not("status", "in", '("terminated","destroyed","failed")');
 
             logger.info("VM suspended on subscription cancel (data preserved 30 days)", {
               route: "billing/webhook",
@@ -973,7 +981,12 @@ async function processEvent(event: any) {
                     watchdog_consecutive_failures: 0,
                     watchdog_first_failure_at: null,
                     watchdog_quarantined_at: null,
-                  }).eq("id", fullVm.id);
+                  })
+                    .eq("id", fullVm.id)
+                    // Belt-and-suspenders: prevents reviving a ghost row whose
+                    // health_status was left at 'suspended'/'hibernating' but
+                    // whose status was flipped to terminal pre–2026-05-12 fix.
+                    .not("status", "in", '("terminated","destroyed","failed")');
 
                   logger.info("Reactivated VM on payment success", {
                     route: "billing/webhook", userId: sub.user_id, vmId: fullVm.id, priorState: vm.health_status,

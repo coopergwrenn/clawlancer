@@ -55,7 +55,8 @@ export async function POST(req: NextRequest) {
         const { data: vms, error } = await supabase
           .from("instaclaw_vms")
           .select("id, ip_address, ssh_port, ssh_user")
-          .not("assigned_to", "is", null);
+          .not("assigned_to", "is", null)
+          .not("status", "in", '("terminated","destroyed","failed")');
 
         if (error || !vms || vms.length === 0) {
           send({ step: "query_vms", status: "error", error: error?.message ?? "No assigned VMs found" });

@@ -93,10 +93,13 @@ export async function POST(req: NextRequest) {
 
   // 1. Resolve sender VM by xmtp_address. Use select("*") per Rule 19 —
   //    the surface is small and we benefit from total-column safety.
+  //    Exclude terminal rows so a terminated VM that still carries an
+  //    xmtp_address can't mis-identify a live sender.
   const { data: senderVms, error: vmErr } = await supabase
     .from("instaclaw_vms")
     .select("*")
-    .ilike("xmtp_address", senderXmtpLc);
+    .ilike("xmtp_address", senderXmtpLc)
+    .not("status", "in", '("terminated","destroyed","failed")');
   if (vmErr) {
     return NextResponse.json({ error: "vm lookup failed" }, { status: 503 });
   }
