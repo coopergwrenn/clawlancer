@@ -207,6 +207,22 @@ export async function GET(req: NextRequest) {
       httpPreCheckPassed++;
       sshAliveVms.push(vm);
 
+      // 2026-05-12 Rule 33/34 guard: configure_failed means "configureOpenClaw
+      // didn't finish writing per-user state" (telegram_bot_token, partner,
+      // onboarding_complete, etc.). A /health 200 only proves the gateway
+      // process is up; it says NOTHING about whether the user's actual
+      // feature set landed. Auto-flipping configure_failed → healthy here
+      // erases the configure-completeness signal that process-pending Pass 2
+      // and (dashboard)/layout.tsx redirect logic rely on. Only a successful
+      // configure call should clear configure_failed. Send these VMs to the
+      // touch-only bucket so last_health_check still reflects we checked,
+      // but health_status stays configure_failed.
+      if (vm.health_status === "configure_failed") {
+        healthyVmIdsTouchOnly.push(vm.id);
+        healthy++;
+        continue;
+      }
+
       // Bucket the VM for the post-loop bulk UPDATE. Same logic as before:
       // counter reset only when ANY of (health_fail_count, ssh_fail_count
       // were non-zero, or health_status drifted from "healthy").
@@ -432,7 +448,11 @@ export async function GET(req: NextRequest) {
       healthy++;
       healthyVmIds.add(vm.id);
 
-      // Reset fail count on success
+      // Reset fail count on success. Rule 33/34 guard: .neq filter so we don't
+      // auto-clear configure_failed — that flag is owned by the configure flow,
+      // not by gateway health. A configure_failed VM with a responsive gateway
+      // still has un-finished configure work (telegram_bot_username, partner,
+      // onboarding_complete) and needs a successful configure to advance state.
       await supabase
         .from("instaclaw_vms")
         .update({
@@ -440,7 +460,8 @@ export async function GET(req: NextRequest) {
           last_health_check: new Date().toISOString(),
           health_fail_count: 0,
         })
-        .eq("id", vm.id);
+        .eq("id", vm.id)
+        .neq("health_status", "configure_failed");
 
       // ── Telegram 409 conflict — log only, do NOT restart ──
       // 409 conflicts happen when Telegram's stale long-poll from a previous
@@ -669,7 +690,9 @@ else:
             failCount: newFailCount,
           });
 
-          // Reset fail count since the gateway is actually fine
+          // Reset fail count since the gateway is actually fine. Rule 33/34
+          // guard: .neq filter prevents auto-clearing configure_failed —
+          // only a successful configure should clear that signal.
           await supabase
             .from("instaclaw_vms")
             .update({
@@ -677,7 +700,8 @@ else:
               health_fail_count: 0,
               last_health_check: new Date().toISOString(),
             })
-            .eq("id", vm.id);
+            .eq("id", vm.id)
+            .neq("health_status", "configure_failed");
 
           // Correct the counters — this VM is actually healthy
           unhealthy--;
@@ -829,11 +853,15 @@ else:
 
               if (isHealthy) {
                 recoveryResult = moduleOk ? "GATEWAY_RESTARTED" : "MODULE_REINSTALLED_AND_HEALTHY";
+                // Rule 33/34 guard: even a successful restart doesn't clear
+                // configure_failed — that flag means "configureOpenClaw didn't
+                // finish writing per-user state," which a restart can't repair.
                 await supabase.from("instaclaw_vms").update({
                   health_status: "healthy",
                   health_fail_count: 0,
                   last_health_check: new Date().toISOString(),
-                }).eq("id", vm.id);
+                }).eq("id", vm.id)
+                  .neq("health_status", "configure_failed");
                 autoRecovered++;
               } else {
                 recoveryResult = `STILL_UNHEALTHY_AFTER_${moduleOk ? "RESTART" : "REINSTALL"}`;
@@ -2397,7 +2425,11 @@ else:
         });
 
         if (gwRes.ok) {
-          // Gateway is healthy — this was a false positive quarantine
+          // Gateway is healthy — this was a false positive quarantine.
+          // Rule 33/34 guard: don't un-quarantine a configure_failed VM via
+          // .neq filter — gateway responsiveness doesn't imply configure
+          // completed. Such a VM should stay quarantined until configure
+          // succeeds (process-pending Pass 2 will retry it).
           const newStatus = qvm.assigned_to ? "assigned" : "ready";
 
           await supabase
@@ -2409,7 +2441,8 @@ else:
               cloud_reboot_count: 0,
               last_health_check: new Date().toISOString(),
             })
-            .eq("id", qvm.id);
+            .eq("id", qvm.id)
+            .neq("health_status", "configure_failed");
 
           recovered++;
 
@@ -2566,11 +2599,14 @@ else:
             vmName: deadVm.name,
             userId,
           });
-          // Un-quarantine it
+          // Un-quarantine it. Rule 33/34 guard: don't auto-clear
+          // configure_failed — gateway recovery doesn't imply configure
+          // completed; only a successful configure should clear that flag.
           await supabase
             .from("instaclaw_vms")
             .update({ status: "assigned" as const, health_status: "healthy", ssh_fail_count: 0, last_health_check: new Date().toISOString() })
-            .eq("id", deadVm.id);
+            .eq("id", deadVm.id)
+            .neq("health_status", "configure_failed");
           recovered++;
           continue;
         }

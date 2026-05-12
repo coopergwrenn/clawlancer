@@ -297,6 +297,7 @@ export async function GET(req: NextRequest) {
     .from("instaclaw_vms")
     .select("id, assigned_to, configure_attempts")
     .not("assigned_to", "is", null)
+    .not("status", "in", '("terminated","destroyed","failed")')
     .is("gateway_url", null)
     .gt("configure_attempts", 0)
     .lt("configure_attempts", MAX_CONFIGURE_ATTEMPTS)
@@ -364,6 +365,9 @@ export async function GET(req: NextRequest) {
         status: "failed", health_status: "unhealthy",
         assigned_to: null, assigned_at: null,
         gateway_url: null, gateway_token: null, configure_lock_at: null,
+        // Rule 34: clear per-user channel state so the next assignee doesn't
+        // inherit the prior user's Telegram identity from the DB.
+        telegram_bot_token: null, telegram_bot_username: null, telegram_chat_id: null,
       }).eq("id", evm.id);
       await supabase.from("instaclaw_users").update({
         onboarding_complete: false, deployment_lock_at: null,

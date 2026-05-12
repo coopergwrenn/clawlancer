@@ -458,6 +458,14 @@ export async function POST(req: NextRequest) {
           assigned_at: null,
           gateway_url: null,
           gateway_token: null,
+          // Rule 34: clear per-user channel state so the next assignee doesn't
+          // inherit the prior user's Telegram bot token / username / chat_id.
+          // Without this, a released VM goes back to the ready pool with the
+          // prior user's identity in the DB, and the next user gets bound to
+          // someone else's bot until the next configure overwrites it.
+          telegram_bot_token: null,
+          telegram_bot_username: null,
+          telegram_chat_id: null,
         }).eq("id", vm.id);
         await supabase.from("instaclaw_users").update({
           deployment_lock_at: null,
@@ -858,6 +866,9 @@ export async function POST(req: NextRequest) {
               status: "failed", health_status: "configure_failed",
               assigned_to: null, assigned_at: null,
               configure_lock_at: null, gateway_url: null, gateway_token: null,
+              // Rule 34: clear per-user channel state so the next assignee
+              // doesn't inherit the prior user's Telegram identity from the DB.
+              telegram_bot_token: null, telegram_bot_username: null, telegram_chat_id: null,
             }).eq("id", failedVm.id);
             await sb.from("instaclaw_users").update({
               onboarding_complete: false, deployment_lock_at: null,
