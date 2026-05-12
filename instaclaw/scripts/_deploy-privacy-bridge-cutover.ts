@@ -35,10 +35,52 @@ import * as path from "path";
 import { createClient } from "@supabase/supabase-js";
 import { connectSSH } from "../lib/ssh";
 require("dotenv").config({ path: path.join(__dirname, "..", ".env.local") });
+// Per Rule 18: SSH_PRIVATE_KEY_B64 lives in .env.ssh-key, NOT .env.local.
+// Without this second load, connectSSH fails fast on every VM with "SSH_PRIVATE_KEY_B64 not set".
+require("dotenv").config({ path: path.join(__dirname, "..", ".env.ssh-key") });
 
 const BRIDGE_PATH = "/home/openclaw/.openclaw/scripts/privacy-bridge.sh";
 const COMMAND_DIRECTIVE = `command="${BRIDGE_PATH}",no-pty`;
 const VERIFY_CMD = "systemctl --user is-active openclaw-gateway";
+
+// Identifies the emergency-bypass SSH key, which MUST remain unwrapped to
+// provide an escape hatch if the bridge ever fails. Matched anywhere in the
+// key line (typically in the comment), case-insensitive, no word-boundary
+// requirement — we'd rather over-skip a non-bypass than under-skip a bypass.
+// Convention: deploy bypass keys with "bypass" in the comment, e.g.
+// `edge-city-privacy-bypass-2026-05-11`. See _backfill-bypass-key.ts which
+// deploys this key fleet-wide; that script is the pre-cutover gate.
+const BYPASS_PATTERN = /bypass/i;
+
+// Self-test on module load — guards the three live key-comment formats. Cheap
+// (runs once per invocation) and catches regex regressions before any SSH.
+{
+  const must = (cond: boolean, label: string) => {
+    if (!cond) {
+      console.error(`FATAL: BYPASS_PATTERN self-test failed: ${label}`);
+      process.exit(2);
+    }
+  };
+  must(
+    BYPASS_PATTERN.test("ssh-ed25519 AAAA edge-city-privacy-bypass-2026-05-11"),
+    "should match bypass key comment"
+  );
+  must(
+    !BYPASS_PATTERN.test("ssh-ed25519 AAAA instaclaw-deploy"),
+    "should NOT match instaclaw-deploy"
+  );
+  must(
+    !BYPASS_PATTERN.test("ssh-ed25519 AAAA instaclaw-deploy@vercel"),
+    "should NOT match instaclaw-deploy@vercel"
+  );
+}
+
+function extractComment(trimmed: string): string {
+  const m = trimmed.match(
+    /^(ssh-rsa|ssh-ed25519|ssh-dss|ecdsa-sha2-[a-z0-9-]+)\s+(\S+)\s*(.*)$/
+  );
+  return m ? (m[3] || "").trim() || "(no comment)" : "(unparseable)";
+}
 
 interface VmRow {
   id: string;
@@ -86,6 +128,8 @@ async function cutoverOne(vm: VmRow, dryRun: boolean): Promise<{ ok: boolean; ms
 
     const lines = (current.stdout || "").split("\n");
     let editedAny = false;
+    const wrapped: string[] = [];
+    const skippedBypass: string[] = [];
     const newLines = lines.map((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) return line;
@@ -93,7 +137,15 @@ async function cutoverOne(vm: VmRow, dryRun: boolean): Promise<{ ok: boolean; ms
       if (trimmed.startsWith("command=")) return line;
       // Heuristic: ssh-rsa / ssh-ed25519 / ecdsa-sha2-* keys at start of line
       if (/^(ssh-rsa|ssh-ed25519|ecdsa-sha2-)/.test(trimmed)) {
+        // The emergency-bypass key MUST stay unwrapped — wrapping every key
+        // would leave no escape hatch if the bridge ever broke. Bypass keys
+        // are conventionally commented with "bypass" anywhere in the line.
+        if (BYPASS_PATTERN.test(trimmed)) {
+          skippedBypass.push(extractComment(trimmed));
+          return line;
+        }
         editedAny = true;
+        wrapped.push(extractComment(trimmed));
         return `${COMMAND_DIRECTIVE} ${line}`;
       }
       return line;
@@ -103,8 +155,27 @@ async function cutoverOne(vm: VmRow, dryRun: boolean): Promise<{ ok: boolean; ms
       return { ok: true, msg: "already cutover (no plain key lines found)" };
     }
 
+    // ABORT GUARD: refuse to cut over if no bypass key was detected. The
+    // bypass is the only escape hatch if the bridge ever fails; running
+    // cutover without one wraps every key and would lock the operator out
+    // permanently on a bridge crash. Run scripts/_backfill-bypass-key.ts
+    // first to deploy a bypass key to every edge_city VM.
+    if (skippedBypass.length === 0) {
+      return {
+        ok: false,
+        msg: `ABORT: no bypass key detected on this VM. Wrapping all ${wrapped.length} key(s) would remove every escape hatch. Run _backfill-bypass-key.ts first.`,
+      };
+    }
+
     if (dryRun) {
-      return { ok: true, msg: `[dry-run] would prepend ${COMMAND_DIRECTIVE} to ${lines.filter((l) => /^(ssh-rsa|ssh-ed25519|ecdsa-sha2-)/.test(l.trim())).length} key line(s)` };
+      return {
+        ok: true,
+        msg: `[dry-run] would wrap ${wrapped.length} deploy key(s) [${wrapped.join(
+          ", "
+        )}] and SKIP ${skippedBypass.length} bypass key(s) [${skippedBypass.join(
+          ", "
+        )}]`,
+      };
     }
 
     const newContent = newLines.join("\n");
