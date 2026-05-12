@@ -1060,8 +1060,71 @@ export const VM_MANIFEST = {
    *
    *  Budget read from VM_MANIFEST.configSettings now (was hardcoded 35K).
    *  Tracks the emergency 35K→40K bump from commit 0f796218.
+   *
+   * v95 (2026-05-12): Agent acknowledgment UX — all three layers shipped.
+   *  Single bump from v93 (skips v94 which was a local-only working state
+   *  for L1+L2 that never landed; ships L1+L2+L3 together).
+   *
+   *  PRD: docs/prd/agent-acknowledgment-ux-2026-05-11.md (~2000 lines)
+   *
+   *  Originating bug: Cooper sent @edgecitybot "whats on the schedule rn
+   *  for edge city?" on 2026-05-11; bot replied 3 minutes later with an
+   *  excellent answer but ZERO visible feedback during the wait. Edge
+   *  Esmeralda (1000 attendees, 2026-05-30) would have churned that
+   *  experience at scale.
+   *
+   *  Three layers, independently rollback-able:
+   *
+   *    L1 (reactions + status emoji transitions): 4 messages.* config keys.
+   *      Telegram setMessageReaction lands 👀 on the user's inbound msg
+   *      within ~300ms; statusReactionController transitions through
+   *      phase emojis (👀 → 🤔 → 🔍 → ✍️ → ✅) as work progresses.
+   *
+   *    L2 (streaming preview): 5 channels.telegram.streaming.* config keys.
+   *      OpenClaw sends placeholder + edits as model streams. CRITICAL
+   *      pin: streaming.preview.toolProgress=false (v68 leak guard).
+   *
+   *    L3 (slow-warning watchdog): ack-watchdog.py cron at * * * * *.
+   *      Detects stalls >30s (sends "Thinking through this one — give me
+   *      ~30s.") and hard-fails >180s ("Hit my limit on this one —
+   *      taking too long. Mind retrying or rephrasing?"). Read-only on
+   *      session state (Rules 22, 30). Per-turn idempotent dedup.
+   *
+   *  Verified on vm-050 canary 2026-05-11/12:
+   *    L1: 👀 reaction lands within 1s on user message; status transitions
+   *        confirmed visually.
+   *    L2: 0 leak matches across v68/v94 patterns over 3hr post-test journal
+   *        audit (scripts/_audit-v94-leak-grep.ts).
+   *    L3: 30/30 parser unit tests pass (scripts/_test-ack-watchdog-parser.py),
+   *        correctly identifies real-session "served" state on live vm-050,
+   *        32KB→1MB tail bug caught and fixed during canary.
+   *
+   *  Hot-reload taxonomy (CLAUDE.md Rule 32 — corrected mid-canary):
+   *    - 5 channels.telegram.streaming.* keys: HOT-RELOAD (1-3s after set)
+   *    - 4 messages.* keys: DO NOT hot-reload (closure capture at
+   *      bot-msflwCEW.js:5473). Reconciler auto-restarts via
+   *      RESTART_REQUIRED_CONFIG_PREFIXES = ["messages."] (commit 320ecb25).
+   *
+   *  Fleet rollout: reconcile-fleet cron will pick up v95 manifest next
+   *  cycle. For each VM at cv<95:
+   *    1. stepConfigSettings pushes 9 keys → result.gatewayRestartNeeded
+   *       triggered by messages.* changes.
+   *    2. stepFiles deploys ack-watchdog.py with requiredSentinels guard.
+   *    3. cronJobs install adds the watchdog cron entry idempotently.
+   *    4. stepGatewayRestart fires (Rule-5 verified), loads messages.* keys.
+   *    5. cv → 95.
+   *
+   *  Tooling shipped alongside:
+   *    - scripts/ack-watchdog.py (source of truth, lib/ssh.ts embeds copy)
+   *    - scripts/_test-ack-watchdog-parser.py (30 unit tests)
+   *    - scripts/_canary-v94-ack-ux.ts (per-VM canary, defaults --restart)
+   *    - scripts/_audit-v94-leak-grep.ts (post-deploy regression check)
+   *
+   *  Rollback: each layer independently. L1 = revert 4 messages.* keys.
+   *  L2 = streaming.mode → "off" (same lever as v68). L3 = remove cron
+   *  entry from manifest, ack-watchdog.py stays inert on disk.
    */
-  version: 93,
+  version: 95,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1135,13 +1198,71 @@ export const VM_MANIFEST = {
     // v2026.2.17–2026.2.23 REJECTS the controlUi key entirely
     "channels.telegram.groupPolicy": "open",
     "channels.telegram.groups.*.requireMention": "false",
-    // v68: OpenClaw's default streaming mode "partial" surfaces tool-call
-    // blocks as separate Telegram messages — users see internals like
-    // "exec run python3 8999", "tool: exec", "http.server" instead of just
-    // the agent's final response. Confirmed fleet-wide (19/20 sampled VMs).
-    // "off" sends only the final assistant text. Trade-off: no typing-effect
-    // partial-stream UX. Reversible per-user.
-    "channels.telegram.streaming.mode": "off",
+    // ── v95 (2026-05-11): Agent acknowledgment UX — Layers 1 + 2 ──
+    //
+    // History: v68 set `streaming.mode = "off"` after a fleet-wide incident
+    // where users saw "exec run python3 8999", "tool: exec", "http.server"
+    // etc. in their Telegram chat. Root cause was `formatProgressAsMarkdownCode`
+    // at bot-msflwCEW.js:4397 — controlled by `streaming.preview.toolProgress`
+    // which DEFAULTS TO TRUE in channel-streaming-Dyvcfi-Z.js:166. We never
+    // had an explicit `toolProgress` setting, so it ran as default-true.
+    // With streaming.mode = "partial", that produced the visible leak.
+    //
+    // v95 fix: re-enable streaming.mode = "partial" (Layer 2 of the agent-
+    // acknowledgment UX from docs/prd/agent-acknowledgment-ux-2026-05-11.md)
+    // AND explicitly pin `toolProgress = false` to suppress the leak path.
+    // Verified against live 2026.4.26 source on vm-050: the only tool-
+    // rendering code path in the telegram extension is the toolProgress one;
+    // setting it false makes the code return early.
+    //
+    // Verified on vm-050 canary 2026-05-11:
+    //   ✓ L2 streaming preview functional
+    //   ✓ Tool-leak audit (instaclaw/scripts/_audit-v94-leak-grep.ts) over
+    //     3hr post-test window: 0 critical matches across v68/v94 patterns.
+    //
+    // Hot-reload taxonomy (CLAUDE.md Rule 32 — verified empirically):
+    //   5 channels.telegram.streaming.* keys DO hot-reload (1-3s after set)
+    //   4 messages.* keys do NOT hot-reload (closure capture at
+    //     bot-msflwCEW.js:5473) — REQUIRE full gateway restart to load.
+    //
+    // Reconciler picks up the messages.* restart requirement automatically
+    // via RESTART_REQUIRED_CONFIG_PREFIXES = ["messages."] in vm-reconcile.ts
+    // (commit 320ecb25). stepConfigSettings sets result.gatewayRestartNeeded
+    // when any messages.* key changes; the orchestrator's stepGatewayRestart
+    // (Step 9) restarts the gateway before config_version bumps.
+    //
+    // Rollback: revert streaming.mode → "off". Same lever as v68. Reversible
+    // in ~5 min via reconciler tick (streaming.mode hot-reloads).
+    "channels.telegram.streaming.mode": "partial",
+    // v95 (Layer 2 — CRITICAL — v68 leak guard): suppress tool-call rendering
+    // in the live preview message. Path: bot-msflwCEW.js:4388-4397 gated by
+    // resolveChannelStreamingPreviewToolProgress() which defaults to TRUE.
+    // Without this pin, the v68 incident recurs immediately.
+    "channels.telegram.streaming.preview.toolProgress": "false",
+    // v95 (Layer 2): first preview chunk fires after ~5 tokens of model
+    // output. Balances "fast first content" vs "incomplete sentence fragments".
+    "channels.telegram.streaming.preview.chunk.minChars": "30",
+    // v95 (Layer 2): cap each preview-edit chunk at 800 chars. With typical
+    // 200-word responses (~1300 chars), produces ~3-5 edits per turn — well
+    // under Telegram's empirical 1-edit-per-2-sec sustained rate-limit floor
+    // (Iris Reza's production data).
+    "channels.telegram.streaming.preview.chunk.maxChars": "800",
+    // v95 (Layer 2): prefer sentence boundaries for chunk breaks (smoother
+    // visual than mid-word splits).
+    "channels.telegram.streaming.preview.chunk.breakPreference": "sentence",
+    // ── v95 (Layer 1): reactions + status reaction transitions ─────────
+    // These 4 messages.* keys do NOT hot-reload (closure capture per
+    // CLAUDE.md Rule 32). Reconciler's stepGatewayRestart auto-fires when
+    // any messages.* key is changed (RESTART_REQUIRED_CONFIG_PREFIXES).
+    "messages.ackReactionScope": "all",
+    // The 👀 emoji on the user's inbound message via setMessageReaction API.
+    // Resolver: identity-CviweAtG.js:238. Renders in ~200-500ms. Silent.
+    "messages.ackReaction": "👀",
+    // Keep the reaction visible after the bot replies (permanent trace).
+    "messages.removeAckAfterReply": "false",
+    // Enable status reaction controller — transitions through phase emojis
+    // (👀 → 🤔 → 🔍 → ✍️ → ✅) as the agent moves through tool use.
+    "messages.statusReactions.enabled": "true",
     // v71: OpenClaw's default discovery.mdns.mode is "minimal" (per
     // runtime-schema-TpYHXgGk.js: `cfg.discovery?.mdns?.mode ?? "minimal"`).
     // Bonjour mDNS broadcast triggers a CIAO-library shutdown race when the
@@ -1460,6 +1581,35 @@ export const VM_MANIFEST = {
       ],
     },
     {
+      // v95 — Layer 3 of the Agent Acknowledgment UX.
+      // Cron-driven stall detector: emits Telegram slow-warning at 30s of
+      // user-visible silence, hard-fail at 180s. Read-only on OpenClaw
+      // session state (Rules 22, 30). Per-turn idempotent dedup via
+      // ~/.openclaw/agents/main/sessions/.ack-watchdog-state.json.
+      //
+      // Source of truth: instaclaw/scripts/ack-watchdog.py (unit-tested
+      // via instaclaw/scripts/_test-ack-watchdog-parser.py — 30/30 pass).
+      // Embedded copy: lib/ssh.ts ACK_WATCHDOG_SCRIPT (kept in sync).
+      //
+      // Rule 23 sentinels:
+      //   is_turn_stalled / ACK_WATCHDOG_SLOW_WARNING
+      //     The 2026-05-12 ship of all three ack-ux layers. is_turn_stalled
+      //     is the parser entry-point (walks trajectory tail from end,
+      //     finds last user message, checks for any assistant text after).
+      //     ACK_WATCHDOG_SLOW_WARNING is the load-bearing user-facing copy
+      //     constant (v1: "Thinking through this one — give me ~30s.").
+      remotePath: "~/.openclaw/scripts/ack-watchdog.py",
+      source: "template",
+      templateKey: "ACK_WATCHDOG_SCRIPT",
+      mode: "overwrite",
+      executable: true,
+      useSFTP: true,
+      requiredSentinels: [
+        "def is_turn_stalled",
+        "ACK_WATCHDOG_SLOW_WARNING",
+      ],
+    },
+    {
       remotePath: "~/.openclaw/scripts/auto-approve-pairing.py",
       source: "template",
       templateKey: "AUTO_APPROVE_PAIRING_SCRIPT",
@@ -1763,6 +1913,17 @@ export const VM_MANIFEST = {
       schedule: "*/15 * * * *",
       command: "python3 ~/.openclaw/scripts/consensus_intent_sync.py >> /tmp/consensus_intent_sync.log 2>&1",
       marker: "consensus_intent_sync.py",
+    },
+    // ── Agent Acknowledgment UX — Layer 3 (v95, 2026-05-12) ──
+    // Cron-driven stall detector. Runs every minute; reads sessions.json +
+    // trajectory tail, emits Telegram slow-warning at 30s of agent silence
+    // and hard-fail at 180s. Idempotent per-turn dedup. Output to
+    // ~/.openclaw/logs/ack-watchdog.log (only when state changes).
+    // PRD: docs/prd/agent-acknowledgment-ux-2026-05-11.md (§5.4, §6.2).
+    {
+      schedule: "* * * * *",
+      command: "python3 ~/.openclaw/scripts/ack-watchdog.py > /dev/null 2>&1",
+      marker: "ack-watchdog.py",
     },
   ] as ManifestCronJob[],
 
