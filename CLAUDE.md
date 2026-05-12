@@ -968,6 +968,71 @@ For any PR that adds a new `recordFailure(..., critical=true)` call: the PR must
 
 For any PR that adds a new state to `vm.health_status` or `user.onboarding_*`: the PR must update both `lib/billing-status.ts`-style classification helpers AND the dashboard layout's redirect logic to handle the new state. New states without routing logic become silent trap-state contributors.
 
+### 34. DB Has State the Disk Doesn't — Reconciler Must Verify Critical Per-VM State
+
+Per-VM state lives in two places: the Supabase `instaclaw_vms` row and on-disk files on the VM (`~/.openclaw/openclaw.json`, `~/.openclaw/.env`, `~/.openclaw/agents/main/agent/auth-profiles.json`, etc.). Any code path that writes ONE of those without atomically writing the other creates a drift that compounds silently until a user reports their bot is broken. The drift is invisible from any health check that doesn't directly compare the two — the gateway is `active`, `/health` returns 200, the VM looks fine — but a feature that the user paid for (Telegram bot, BYOK key, partner skill) silently fails.
+
+The atomic write inside `configureOpenClaw` was supposed to keep DB and disk in sync, but it had at least one well-understood failure mode: the gateway-startup rollback at `lib/ssh.ts:7236-7253`. The bash script copies `openclaw.json.last-known-good` over `openclaw.json` if the new gateway fails to start, but historically the route handler still proceeded to the DB write because `OPENCLAW_CONFIGURE_DONE` was printed regardless of rollback.
+
+#### The 2026-05-12 telegram-token-disk-missing incident
+
+The snapshot audit terminal found 8 VMs where `instaclaw_vms.telegram_bot_token` was set in the DB but the corresponding `channels.telegram.botToken` field in `~/.openclaw/openclaw.json` on the VM was absent. The agent ran but couldn't connect to Telegram — users reported their bots dead despite the dashboard showing the VM as healthy.
+
+Root cause: the gateway-startup rollback path in `configureOpenClaw`. When the new config triggered a gateway-start failure (any reason — slow systemd unit start, transient port-bind race, OOM during boot, corrupt nearby config field), the bash script copied the `openclaw.json.last-known-good` snapshot back into place. For a fresh VM, that snapshot is the `{"_placeholder": true, ...}` blob — no telegram channel block. The route handler ignored the `GATEWAY_ROLLBACK_TRIGGERED` signal in stdout and proceeded to write `telegram_bot_token` into the DB at `lib/ssh.ts:7567`. DB and disk diverged. The rollback path landed 2026-03-14 (commit `287cfed3`), so this bug-shape was reachable for 60 days.
+
+Same-PR fixes: (a) `configureOpenClaw` now throws on `GATEWAY_ROLLBACK_TRIGGERED` BEFORE the DB write, so the route handler's catch block marks the VM `configure_failed` and the retry machinery (process-pending Pass 2, Rule 33) re-attempts; (b) a new reconciler step `stepTelegramTokenVerify` (`lib/vm-reconcile.ts`, slotted after `stepConfigSettings`) re-syncs DB→disk every reconcile cycle so any pre-existing drift (or future drift from a path we haven't yet identified) heals within ~3 min.
+
+#### Critical per-VM fields that must agree between DB and disk
+
+| DB column | On-disk location | Source of truth |
+|---|---|---|
+| `telegram_bot_token` | `openclaw.json.channels.telegram.botToken` | DB |
+| `discord_bot_token` | `openclaw.json.channels.discord.botToken` | DB |
+| `gateway_token` | `openclaw.json.gateway.auth.token` + `.env GATEWAY_TOKEN` + `auth-profiles.json.profiles.anthropic:default.key` (all-inclusive) | DB |
+| `default_model` | `openclaw.json.agents.defaults.model.primary` | DB |
+| `api_mode` (BYOK vs all-inclusive) | `auth-profiles.json` key shape (Anthropic SK direct vs proxy token) | DB |
+| `partner` | `~/.openclaw/skills/<partner-skill>/` install presence + partner-gated env vars | DB |
+| `bankr_evm_address` | `.env BANKR_WALLET_ADDRESS` | DB |
+| `agentbook_wallet_address` | `~/.openclaw/wallet/agent.key` (private key file) — address derived | DB |
+| `channels_enabled` | `openclaw.json.plugins.entries.<channel>.enabled` | DB |
+
+#### Mandatory pattern
+
+Any field that exists in BOTH the DB and an on-disk config file MUST have a corresponding reconciler step that:
+
+1. Reads the on-disk value (cheap — one SSH execCommand).
+2. Compares against the DB value.
+3. If mismatched: writes the DB value to disk using a merge mechanism (`openclaw config set`, `sed -i` for `.env`, or targeted JSON edit). **Never full-file overwrite — Rule 23.**
+4. Verifies the write landed by re-reading from disk (Rule 10).
+5. Logs the fix to `result.fixed` (or `result.errors` on failure — so `pushFailed` gates the `config_version` bump per Rule 10).
+6. Idempotent: no-op when already in sync.
+7. Flags `gatewayRestartNeeded` if the field affects a runtime component that's not hot-reloadable (per Rule 32's known mapping).
+
+The reconciler runs every 3 min via Vercel cron, so drift heals within one cycle.
+
+`stepTelegramTokenVerify` is the reference implementation. Mirror it for each row in the table above.
+
+#### Banned patterns
+
+- A code path that writes to `instaclaw_vms` for a per-VM-state field (the columns above) WITHOUT a corresponding reconciler verify step. The expectation that "configureOpenClaw runs atomically so disk and DB always agree" was empirically wrong — the gateway-startup rollback path proved it. New columns must come with verify steps in the same PR.
+- Treating `OPENCLAW_CONFIGURE_DONE` as proof the new config landed on disk. It's printed even after rollback. Code that reads the script's stdout must also check for `GATEWAY_ROLLBACK_TRIGGERED` and treat it as failure (now enforced in `lib/ssh.ts` post-2026-05-12).
+- Using `cat >`, `echo >`, `tee`, or any other full-file overwrite of `openclaw.json` outside of `configureOpenClaw`'s controlled rebuild path. All other writers must use `openclaw config set` (merge) or `openclaw-config-merge`.
+- Reading `vm.<field>` from DB and treating it as ground truth without confirming the on-disk equivalent matches. For features that the user pays for to work end-to-end (Telegram delivery, BYOK key, partner skill), the DB only describes intent; disk describes reality.
+
+#### Required cleanup-on-detect
+
+When `stepTelegramTokenVerify` (or any DB↔disk verifier) detects a mismatch, the next iteration should log a structured `disk_db_mismatch` event (admin alert, Sentry breadcrumb, or onboarding event row) with the field name, both values' prefixes, and the VM ID. Tracking this in a single feed lets us measure incident frequency, validate that the reconciler is healing the population, and detect new drift sources.
+
+#### Detection rule
+
+For any new PR that adds a column to `instaclaw_vms` representing on-disk state, the PR description must answer:
+1. What's the on-disk path?
+2. Which reconciler step verifies the DB↔disk match?
+3. How is the "DB has the value but disk doesn't" bug detected and healed?
+4. Are any callers that write this column outside `configureOpenClaw`? If yes, do they also write the on-disk equivalent atomically?
+
+If the answers are not present in the PR diff or description, the PR is incomplete. The 2026-05-12 incident's 8 stuck users existed because three separate code paths (configure atomic write, configure rollback, route handler's vmUpdate) each looked locally correct, but composed into a state machine that could persistently lie.
+
 ---
 
 ## Linode-vs-DB Drift (Reality Checks)

@@ -7330,6 +7330,24 @@ export async function configureOpenClaw(
         rollbackRecovered: recovered,
         timeline,
       });
+      // 2026-05-12 Rule 34 fix: throw BEFORE the DB write at line 7567. The bash
+      // script restored openclaw.json.last-known-good (PRE-configure state, which
+      // for a fresh VM is the {"_placeholder":true} blob with NO telegram block).
+      // The DB write below would commit the new state (telegram_bot_token,
+      // gateway_token, default_model, etc.) creating a permanent disk↔DB drift
+      // that leaves the user's bot silently broken — exactly the failure mode
+      // that produced the 2026-05-12 "8 VMs with telegram_bot_token in DB but
+      // missing from openclaw.json" incident. Throwing here triggers the route
+      // handler's catch block (app/api/vm/configure/route.ts:759+) which marks
+      // the VM configure_failed + increments configure_attempts + releases the
+      // VM at MAX_CONFIGURE_ATTEMPTS so process-pending Pass 2 retries the
+      // configure on the next cycle.
+      throw new Error(
+        `GATEWAY_ROLLBACK_TRIGGERED: gateway failed to start with new config; ` +
+        `openclaw.json reverted to last-known-good. ` +
+        `Rollback ${recovered ? "recovered" : "FAILED to recover"} the gateway. ` +
+        `DB write aborted to maintain disk↔DB atomicity (Rule 34).`
+      );
     }
 
     // Check if gateway is actually alive (verified by localhost curl inside VM)

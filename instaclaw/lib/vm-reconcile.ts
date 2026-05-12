@@ -248,6 +248,12 @@ export async function reconcileVM(
     currentStep = "config-settings";
     await stepConfigSettings(ssh, manifest, result, dryRun, strict);
 
+    // ── Step 1a: Telegram token DB↔disk verify (Rule 34) ──
+    // Self-heals the disk↔DB drift produced by the configureOpenClaw
+    // gateway-rollback path. Cheap when in sync (one ssh read), idempotent.
+    currentStep = "telegram-token-verify";
+    await stepTelegramTokenVerify(ssh, vm, result, dryRun);
+
     // ── Step 1b: Platform-managed env vars (GBRAIN_ANTHROPIC_API_KEY, etc.) ──
     // Distributes secret keys from Vercel env → ~/.openclaw/.env on the VM.
     // Idempotent (no-op when already at desired value), in-place replace on
@@ -1659,6 +1665,152 @@ async function stepRemoveDuplicateSkills(
       result.alreadyCorrect.push(`no duplicate: ${dir}`);
     }
   }
+}
+
+/**
+ * Step 1a: Verify telegram_bot_token in DB matches openclaw.json on disk.
+ *
+ * Background — Rule 34 (DB has state the disk doesn't):
+ * configureOpenClaw's gateway-startup rollback path (lib/ssh.ts:7236-7253)
+ * historically restored openclaw.json.last-known-good when the gateway failed
+ * to start with new config, while the unconditional DB write that follows still
+ * committed the new telegram_bot_token. For fresh VMs, last-known-good is the
+ * {"_placeholder":true} blob with NO telegram channel — so the DB ended up
+ * claiming a token that the on-disk config didn't have. Eight users hit this
+ * shape between 2026-03-14 (rollback landed in commit 287cfed3) and 2026-05-12
+ * (this step + the configureOpenClaw rollback-throw fix landed). Symptom: bot
+ * silently dead despite agent appearing healthy.
+ *
+ * Same-PR fix in configureOpenClaw aborts the DB write on rollback so new
+ * occurrences shouldn't accrue. This step is the self-healing layer for VMs
+ * that drifted before the fix landed AND defense-in-depth against any future
+ * path that writes telegram_bot_token to DB without keeping disk in sync.
+ *
+ * Strategy:
+ *   1. If DB has no token, skip (telegram not configured).
+ *   2. Read channels.telegram.botToken from openclaw.json.
+ *   3. If matches DB value, no-op.
+ *   4. If mismatch, write ALL telegram channel fields via `openclaw config set`
+ *      — merge, NOT full-file overwrite (Rule 23). Using the same fields
+ *      configureOpenClaw writes (botToken, allowFrom, dmPolicy, groupPolicy,
+ *      streaming) means a fully-rolled-back-to-placeholder VM gets a complete
+ *      channel setup, not a lonely botToken in an otherwise-missing block.
+ *   5. Verify-after-set per Rule 10.
+ *   6. Flag gateway for restart — channels.* IS hot-reloadable per Rule 32,
+ *      but the gateway may already hold a stale Telegram session in memory,
+ *      so a restart is the conservative bet.
+ *
+ * DB is the source of truth (Rule 34). If disk has a token but DB doesn't,
+ * we DO NOT auto-clear the disk — that could be a legitimate manual state
+ * (admin debug, partner-VM bring-up) and clearing it is irreversible. Log
+ * only in that case.
+ */
+async function stepTelegramTokenVerify(
+  ssh: SSHConnection,
+  vm: VMRecord & { telegram_bot_token?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // DB has no token → telegram not configured for this VM
+  if (!vm.telegram_bot_token) {
+    result.alreadyCorrect.push("telegram-token: skipped (DB has no token)");
+    return;
+  }
+
+  // Defensive shell-arg validation. Telegram tokens are alphanumeric + colon +
+  // dash + underscore (per BotFather format e.g. "123456789:ABCdef-ghi_jkl").
+  // Reject anything else to prevent shell injection on the `openclaw config set`
+  // command below.
+  if (!/^[A-Za-z0-9:_-]+$/.test(vm.telegram_bot_token)) {
+    result.errors.push("telegram-token: DB value contains unexpected chars; refusing to write");
+    logger.error("[reconcile] telegram-token: DB value failed shell-arg validation", {
+      vmId: vm.id,
+      tokenLength: vm.telegram_bot_token.length,
+    });
+    return;
+  }
+
+  // Read on-disk token from openclaw.json
+  const probe = await ssh.execCommand(
+    `python3 -c "import json; d=json.load(open('/home/openclaw/.openclaw/openclaw.json')); print(d.get('channels',{}).get('telegram',{}).get('botToken',''))" 2>/dev/null || echo ""`
+  );
+  const diskToken = probe.stdout.trim();
+
+  if (diskToken === vm.telegram_bot_token) {
+    result.alreadyCorrect.push("telegram-token: db/disk match");
+    return;
+  }
+
+  // Mismatch detected. DB wins (Rule 34).
+  logger.warn("[reconcile] telegram-token: db/disk mismatch detected", {
+    vmId: vm.id,
+    dbTokenPrefix: vm.telegram_bot_token.slice(0, 10),
+    diskTokenPresent: !!diskToken,
+    diskTokenPrefix: diskToken ? diskToken.slice(0, 10) : null,
+    dryRun,
+  });
+
+  if (dryRun) {
+    result.fixed.push("[dry-run] telegram-token: would sync DB→disk");
+    return;
+  }
+
+  // Set ALL telegram channel fields. For a fully-rolled-back VM whose
+  // openclaw.json has no telegram block at all (placeholder shape), setting
+  // only botToken would leave the gateway with an incomplete channel that
+  // refuses to enable on restart. These values mirror buildOpenClawConfig
+  // (lib/ssh.ts:4441-4456) so the post-heal channel block matches what a
+  // fresh configureOpenClaw would have produced.
+  const cmds: Array<[string, string]> = [
+    ["botToken", `'${vm.telegram_bot_token}'`],
+    ["allowFrom", `'["*"]'`],
+    ["dmPolicy", `'open'`],
+    ["groupPolicy", `'open'`],
+    ["streaming", `'partial'`],
+  ];
+  for (const [key, val] of cmds) {
+    const cmd = `${NVM_PREAMBLE} && openclaw config set channels.telegram.${key} ${val}`;
+    const r = await ssh.execCommand(cmd);
+    if (r.code !== 0) {
+      const errMsg = (r.stderr || r.stdout || "").slice(0, 200);
+      result.errors.push(`telegram-token: openclaw config set ${key} failed (exit ${r.code}): ${errMsg}`);
+      logger.error("[reconcile] telegram-token: set failed", {
+        vmId: vm.id,
+        key,
+        exitCode: r.code,
+        stderr: errMsg,
+      });
+      return;
+    }
+  }
+
+  // Verify-after-set per Rule 10 — read disk back, confirm the token landed.
+  const verify = await ssh.execCommand(
+    `python3 -c "import json; d=json.load(open('/home/openclaw/.openclaw/openclaw.json')); print(d.get('channels',{}).get('telegram',{}).get('botToken',''))"`
+  );
+  const verifyToken = verify.stdout.trim();
+  if (verifyToken !== vm.telegram_bot_token) {
+    result.errors.push("telegram-token: verify-after-set failed (disk still mismatched)");
+    logger.error("[reconcile] telegram-token: verify-after-set failed", {
+      vmId: vm.id,
+      expectedPrefix: vm.telegram_bot_token.slice(0, 10),
+      actualPrefix: verifyToken ? verifyToken.slice(0, 10) : "(empty)",
+    });
+    return;
+  }
+
+  result.fixed.push("telegram-token: synced db→disk via openclaw config set");
+  logger.info("[reconcile] telegram-token: synced DB→disk", {
+    vmId: vm.id,
+    tokenPrefix: vm.telegram_bot_token.slice(0, 10),
+  });
+
+  // Flag for restart. channels.telegram.* is technically hot-reloadable per
+  // the Rule 32 verified mapping, but the gateway may be holding a stale
+  // Telegram long-poll connection in memory bound to the OLD/empty token,
+  // and that connection won't be reaped until the channel manager re-binds.
+  // Restart is the conservative bet.
+  result.gatewayRestartNeeded = true;
 }
 
 async function stepRemovePlaceholder(
