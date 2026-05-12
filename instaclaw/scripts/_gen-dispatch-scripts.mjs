@@ -69,6 +69,14 @@ const DISPATCH_SCRIPT_NAMES = [
   "gateway-watchdog.sh",
   "dispatch-connection-info.sh",
   "dispatch-remote-exec.sh",
+  // Previously deployed only by lib/vm-reconcile.ts:stepDispatchServer via
+  // its fs.readdirSync(scriptsDir) loop — NOT by lib/ssh.ts's explicit
+  // 19-name list. After the vm-reconcile companion fix, both paths share
+  // this single list. Including them here preserves the previous
+  // reconciler behavior (every .sh in scripts/ deploys to the VM).
+  "daily-digest.sh",
+  "desktop-thumbnail-cron.sh",
+  "digest-scheduler.sh",
 ];
 
 /**
