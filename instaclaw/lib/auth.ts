@@ -4,6 +4,7 @@ import { getSupabase } from "./supabase";
 import { sendWelcomeEmail } from "./email";
 import { logger } from "./logger";
 import { tagUserAsPartner } from "./partner-tag";
+import { linkEdgeAttendeeByEmail } from "./edge-attendees";
 import authConfig from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -59,6 +60,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               error: result.error,
               route: "auth/signIn",
             });
+          }
+          // Edge attendee linking — if the user is claiming under Edge and
+          // their email is in the verified-ticket-holders table, flip
+          // is_edge_attendee + stamp the attendees row. Non-blocking on
+          // failure; the ingest script's backfill is the safety net.
+          if (partnerCookie === "edge_city" && user.email) {
+            const edgeResult = await linkEdgeAttendeeByEmail(
+              supabase,
+              existing.id,
+              user.email
+            );
+            if (!edgeResult.ok) {
+              logger.warn("edge-attendee link failed on existing-user signIn (non-blocking)", {
+                userId: existing.id,
+                email: user.email,
+                error: edgeResult.error,
+                route: "auth/signIn",
+              });
+            }
           }
         }
         return true;
@@ -116,6 +136,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 route: "auth/signIn",
               });
             }
+            // Edge attendee linking — same shape as the existing-Google
+            // branch. Wallet-only mini-app users can still be Edge ticket
+            // holders if they signed up via World and are claiming via /edge.
+            if (partnerCookie === "edge_city" && user.email) {
+              const edgeResult = await linkEdgeAttendeeByEmail(
+                supabase,
+                walletUser.id,
+                user.email
+              );
+              if (!edgeResult.ok) {
+                logger.warn("edge-attendee link failed on wallet-user signIn (non-blocking)", {
+                  userId: walletUser.id,
+                  email: user.email,
+                  error: edgeResult.error,
+                  route: "auth/signIn",
+                });
+              }
+            }
           }
           return true;
         }
@@ -137,6 +175,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (error.code === "23505") return true;
         logger.error("Error creating user", { error: String(error), route: "auth/signIn" });
         return false;
+      }
+
+      // Edge attendee linking for newly-created users — same gate as the
+      // other two branches (partner=edge_city + email present). The
+      // ambassador block below has its own newUser lookup; we do our own
+      // to stay independent.
+      if (partnerCookie === "edge_city" && user.email) {
+        const { data: newUserForEdge } = await supabase
+          .from("instaclaw_users")
+          .select("id")
+          .eq("google_id", account.providerAccountId)
+          .single();
+        if (newUserForEdge) {
+          const edgeResult = await linkEdgeAttendeeByEmail(
+            supabase,
+            newUserForEdge.id,
+            user.email
+          );
+          if (!edgeResult.ok) {
+            logger.warn("edge-attendee link failed on new-user signIn (non-blocking)", {
+              userId: newUserForEdge.id,
+              email: user.email,
+              error: edgeResult.error,
+              route: "auth/signIn",
+            });
+          }
+        }
       }
 
       // Record signup in ambassador referrals table
