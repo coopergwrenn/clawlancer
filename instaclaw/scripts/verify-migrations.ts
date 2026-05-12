@@ -34,7 +34,29 @@ interface MigrationResult {
 
 // ── SQL Parsers ──
 
-function parseMigration(sql: string): ObjectCheck[] {
+// Strip SQL comments before regex parsing. Without this, prose like
+//   "-- All ADD COLUMN / CREATE TABLE are IF NOT EXISTS — re-runnable."
+// gets matched by the CREATE TABLE regex, extracting "are" as a phantom
+// table name (the IF NOT EXISTS prefix is optional + trailing whitespace
+// fails). Same for "Uses CREATE TABLE IF NOT EXISTS," — the comma after
+// EXISTS breaks the `\s+`, parser falls back to capturing "IF".
+//
+// Caught 2026-05-11: after the 20260506a verify-migrations.ts cherry-pick
+// added strict missing-table detection, two prose comments produced
+// build-blocking false positives "are" and "IF" on the
+// feat/matchpool-outcomes-ingest preview. Stripping comments fixes the
+// class of bug without changing the regex.
+function stripSqlComments(sql: string): string {
+  return sql
+    // Block comments /* ... */ (non-greedy, multi-line)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    // Line comments -- to end of line
+    .replace(/--[^\n]*/g, "");
+}
+
+function parseMigration(rawSql: string): ObjectCheck[] {
+  // Run parsers on comment-stripped SQL only.
+  const sql = stripSqlComments(rawSql);
   const checks: ObjectCheck[] = [];
   const seen = new Set<string>();
   let m;
