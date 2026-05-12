@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -24,12 +25,14 @@ export async function GET() {
   }
 
   const supabase = getSupabase();
-  const { data: vm } = await supabase
-    .from("instaclaw_vms")
-    .select("id, tier, credit_balance, user_timezone")
-    .eq("assigned_to", session.user.id)
-    .not("status", "in", '("terminated","destroyed","failed")')
-    .single();
+  const vm = await getUserVm<{
+    id: string;
+    tier: string | null;
+    credit_balance: number | null;
+    user_timezone: string | null;
+  }>(supabase, session.user.id, {
+    columns: "id, tier, credit_balance, user_timezone",
+  });
 
   if (!vm) {
     return NextResponse.json({

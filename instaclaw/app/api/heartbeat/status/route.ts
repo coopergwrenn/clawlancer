@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -17,14 +18,19 @@ export async function GET() {
 
     const supabase = getSupabase();
 
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select(
-        "id, heartbeat_interval, heartbeat_last_at, heartbeat_next_at, heartbeat_credits_used_today, heartbeat_status, heartbeat_custom_schedule, status"
-      )
-      .eq("assigned_to", session.user.id)
-      .not("status", "in", '("terminated","destroyed","failed")')
-      .single();
+    const vm = await getUserVm<{
+      id: string;
+      heartbeat_interval: string;
+      heartbeat_last_at: string | null;
+      heartbeat_next_at: string | null;
+      heartbeat_credits_used_today: number | null;
+      heartbeat_status: string | null;
+      heartbeat_custom_schedule: unknown;
+      status: string;
+    }>(supabase, session.user.id, {
+      columns:
+        "id, heartbeat_interval, heartbeat_last_at, heartbeat_next_at, heartbeat_credits_used_today, heartbeat_status, heartbeat_custom_schedule, status",
+    });
 
     if (!vm) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });

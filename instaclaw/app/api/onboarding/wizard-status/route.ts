@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -39,12 +40,15 @@ export async function GET() {
     .is("consumed_at", null)
     .single();
 
-  // Get VM info for bot username and chat_id
-  const { data: vm } = await supabase
-    .from("instaclaw_vms")
-    .select("telegram_bot_username, telegram_bot_token, telegram_chat_id")
-    .eq("assigned_to", session.user.id)
-    .single();
+  // Get VM info for bot username and chat_id. Terminal rows are filtered
+  // so a terminated VM doesn't keep the wizard locked into a stale state.
+  const vm = await getUserVm<{
+    telegram_bot_username: string | null;
+    telegram_bot_token: string | null;
+    telegram_chat_id: string | null;
+  }>(supabase, session.user.id, {
+    columns: "telegram_bot_username, telegram_bot_token, telegram_chat_id",
+  });
 
   // No VM assigned yet — don't show wizard (still in deploy flow)
   if (!vm) {

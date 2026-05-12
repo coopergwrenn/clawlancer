@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 import { discoverTelegramChatId } from "@/lib/telegram";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -14,12 +15,17 @@ export async function GET() {
 
   const supabase = getSupabase();
 
-  const { data: vm } = await supabase
-    .from("instaclaw_vms")
-    .select("id, telegram_bot_token, telegram_bot_username, telegram_chat_id, gateway_url, health_status")
-    .eq("assigned_to", session.user.id)
-    .not("status", "in", '("terminated","destroyed","failed")')
-    .single();
+  const vm = await getUserVm<{
+    id: string;
+    telegram_bot_token: string | null;
+    telegram_bot_username: string | null;
+    telegram_chat_id: string | null;
+    gateway_url: string | null;
+    health_status: string | null;
+  }>(supabase, session.user.id, {
+    columns:
+      "id, telegram_bot_token, telegram_bot_username, telegram_chat_id, gateway_url, health_status",
+  });
 
   if (!vm || !vm.telegram_bot_token) {
     return NextResponse.json({ connected: false, botUsername: null });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 import { isAgentRegistered, lookupHuman } from "@/lib/agentbook";
 import { logger } from "@/lib/logger";
 import type { Address } from "viem";
@@ -27,11 +28,13 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = getSupabase();
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select("id, agentbook_wallet_address, agentbook_registered")
-      .eq("assigned_to", userId)
-      .single();
+    const vm = await getUserVm<{
+      id: string;
+      agentbook_wallet_address: string | null;
+      agentbook_registered: boolean | null;
+    }>(supabase, userId, {
+      columns: "id, agentbook_wallet_address, agentbook_registered",
+    });
 
     if (!vm) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });

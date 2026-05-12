@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -24,12 +25,11 @@ export async function GET() {
       return NextResponse.json({ subscription: null });
     }
 
-    // Check if user has an assigned VM
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select("id")
-      .eq("assigned_to", session.user.id)
-      .single();
+    // Check if user has an assigned live VM. Terminal rows are excluded
+    // so the billing card doesn't claim "you have an agent" for a dead one.
+    const vm = await getUserVm<{ id: string }>(supabase, session.user.id, {
+      columns: "id",
+    });
 
     return NextResponse.json({
       subscription: {

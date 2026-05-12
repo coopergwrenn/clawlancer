@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -28,13 +29,12 @@ export async function GET() {
     }
 
     const supabase = getSupabase();
-    const { data: vm, error } = await supabase
-      .from("instaclaw_vms")
-      .select("credit_balance, updated_at")
-      .eq("assigned_to", session.user.id)
-      .single();
+    const vm = await getUserVm<{
+      credit_balance: number | null;
+      updated_at: string | null;
+    }>(supabase, session.user.id, { columns: "credit_balance, updated_at" });
 
-    if (error || !vm) {
+    if (!vm) {
       return NextResponse.json(
         { balance: 0, updated_at: new Date().toISOString() },
         { headers: NO_CACHE_HEADERS },

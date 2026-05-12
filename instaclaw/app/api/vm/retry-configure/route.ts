@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 import { logger } from "@/lib/logger";
 
 const MAX_CONFIGURE_ATTEMPTS = 3;
@@ -14,12 +15,16 @@ export async function POST() {
 
     const supabase = getSupabase();
 
-    // Get user's VM
-    const { data: vm } = await supabase
-      .from("instaclaw_vms")
-      .select("id, health_status, configure_attempts, gateway_url")
-      .eq("assigned_to", session.user.id)
-      .single();
+    // Get user's VM. Terminal rows are excluded — retry on a destroyed
+    // Linode would just burn through MAX_CONFIGURE_ATTEMPTS for nothing.
+    const vm = await getUserVm<{
+      id: string;
+      health_status: string | null;
+      configure_attempts: number | null;
+      gateway_url: string | null;
+    }>(supabase, session.user.id, {
+      columns: "id, health_status, configure_attempts, gateway_url",
+    });
 
     if (!vm) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });

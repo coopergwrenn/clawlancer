@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { getUserVm } from "@/lib/get-user-vm";
 import { logger } from "@/lib/logger";
 import { buildSystemPrompt } from "@/lib/system-prompt";
 import { isAnthropicModel } from "@/lib/models";
@@ -83,15 +84,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to resolve conversation" }, { status: 500 });
   }
 
-  // Get VM info (model, system_prompt, gateway details). Exclude terminal
-  // rows — sending chat to a deleted Linode wastes the SSE budget and
-  // confuses the user (they'd see a hung response).
-  const { data: vm } = await supabase
-    .from("instaclaw_vms")
-    .select("id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone, tier")
-    .eq("assigned_to", session.user.id)
-    .not("status", "in", '("terminated","destroyed","failed")')
-    .single();
+  // Get VM info (model, system_prompt, gateway details). getUserVm filters
+  // out terminal rows — sending chat to a deleted Linode wastes the SSE
+  // budget and confuses the user (they'd see a hung response).
+  const vm = await getUserVm<{
+    id: string;
+    default_model: string | null;
+    system_prompt: string | null;
+    gateway_url: string | null;
+    gateway_token: string | null;
+    health_status: string | null;
+    user_timezone: string | null;
+    tier: string | null;
+  }>(supabase, session.user.id, {
+    columns:
+      "id, default_model, system_prompt, gateway_url, gateway_token, health_status, user_timezone, tier",
+  });
 
   if (!vm) {
     return NextResponse.json(
