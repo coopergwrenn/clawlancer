@@ -218,6 +218,16 @@ export async function reconcileVM(
     currentStep = "config-settings";
     await stepConfigSettings(ssh, manifest, result, dryRun, strict);
 
+    // ── Step 1b: Platform-managed env vars (GBRAIN_ANTHROPIC_API_KEY, etc.) ──
+    // Distributes secret keys from Vercel env → ~/.openclaw/.env on the VM.
+    // Idempotent (no-op when already at desired value), in-place replace on
+    // rotation, backup-before-mutate with auto-rollback on verify failure.
+    // Required precondition for stepGbrain (Phase 4c) and any future feature
+    // that reads its API key from the per-VM .env. See
+    // PRD-gbrain-fleet-rollout-2026-05-12.md §1 for design rationale.
+    currentStep = "env-var-push";
+    await stepEnvVarPush(ssh, result, dryRun);
+
     // ── Step 2: Files ──
     currentStep = "files";
     await stepFiles(ssh, vm, manifest, result, dryRun);
@@ -604,6 +614,176 @@ async function stepWorkspaceIntegrity(
       });
     } else {
       result.errors.push(`workspace: failed to create ${fileName}: ${writeResult.stderr}`);
+    }
+  }
+}
+
+/**
+ * stepEnvVarPush — distribute platform-managed secret env vars (Vercel → ~/.openclaw/.env).
+ *
+ * Currently scoped to GBRAIN_ANTHROPIC_API_KEY (Anthropic project key for
+ * gbrain's expansion + chat models per the 2026-05-11 Path A decision).
+ * Future Phase 5/6 keys (e.g., third-party-SDK keys per partner) drop in
+ * via the SECRET_ENV_VAR_SOURCES array below.
+ *
+ * Behavior per VM, per reconcile cycle:
+ *   1. For each entry in SECRET_ENV_VAR_SOURCES, read the value from
+ *      process.env (populated by Vercel).
+ *   2. If the value is unset/short → silent skip with INFO log. NOT an error.
+ *      We do NOT block config_version on missing Vercel env (gives Cooper
+ *      headroom on key rotation; absence is alert-worthy only via the
+ *      gbrain-coverage cron, P2 follow-up).
+ *   3. SSH-read current value from ~/.openclaw/.env. If identical → no-op
+ *      (push to alreadyCorrect).
+ *   4. Otherwise: backup → replace-in-place (sed -i atomic) or append →
+ *      verify-after-write → on mismatch restore from backup + push to errors.
+ *   5. chmod 600 the .env file defensively.
+ *
+ * Secret-passing pattern (matters because this runs every reconcile cycle for
+ * every VM = thousands of times/day):
+ *   - NOT via SSH command argv (visible in remote `ps -ef`)
+ *   - NOT via SSH env (some PAM configs log env)
+ *   - VIA stdin to a single bash subprocess (only secret transit path)
+ *
+ * The KEY_NAME is passed via argv (not a secret — only the VALUE is secret).
+ *
+ * Output contract (one line in remote stdout):
+ *   STEPENV_OK action=no_op       → already at desired value
+ *   STEPENV_OK action=appended    → key was absent, now present
+ *   STEPENV_OK action=replaced    → key existed with different value, now updated
+ *   STEPENV_FAIL <reason>         → any failure; reconciler pushes to result.errors
+ *
+ * Empirically verified on vm-050 (2026-05-12): all 4 paths (no-op, append,
+ * re-apply, replace) pass via `scripts/_test-stepenvvarpush.ts`.
+ */
+interface SecretEnvVarSource {
+  /** Key name as it appears in process.env AND in ~/.openclaw/.env (same name on both sides). */
+  envKey: string;
+  /** Human-readable label for logs (e.g., "gbrain Anthropic project key"). */
+  label: string;
+}
+
+const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
+  { envKey: "GBRAIN_ANTHROPIC_API_KEY", label: "gbrain Anthropic project key" },
+];
+
+// Bash payload that does the write. Assembled as a string array so there's no
+// TS template-literal interpolation in the bash body (which contains $VAR
+// references that must be literal $ on the remote side).
+const ENV_VAR_PUSH_BASH: string = [
+  'set +e',
+  // Read the secret value from stdin. -r preserves backslashes; no IFS games.
+  'read -r KEY_VALUE < /dev/stdin',
+  '[ -z "$KEY_VALUE" ] && { echo "STEPENV_FAIL no_stdin_value"; exit 1; }',
+  '[ ${#KEY_VALUE} -lt 20 ] && { echo "STEPENV_FAIL short_value len=${#KEY_VALUE}"; exit 1; }',
+  '',
+  // KEY_NAME comes via positional $1 (not a secret — just the env var name).
+  'KEY_NAME="$1"',
+  '[ -z "$KEY_NAME" ] && { echo "STEPENV_FAIL no_key_name_arg"; exit 1; }',
+  '',
+  'ENV_FILE="$HOME/.openclaw/.env"',
+  'TS=$(date -u +%Y%m%dT%H%M%SZ)',
+  '',
+  '[ ! -f "$ENV_FILE" ] && { echo "STEPENV_FAIL no_env_file path=$ENV_FILE"; exit 2; }',
+  '',
+  // Read current value (everything after first =, strip surrounding double quotes)
+  'CURRENT=$(grep "^${KEY_NAME}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d \'"\')',
+  '',
+  // No-op path: already matches
+  'if [ "$CURRENT" = "$KEY_VALUE" ]; then',
+  '  echo "STEPENV_OK action=no_op"',
+  '  exit 0',
+  'fi',
+  '',
+  // Backup before any mutation. Recent backups kept for forensics.
+  'BACKUP="$ENV_FILE.bak.envpush.$TS"',
+  'cp "$ENV_FILE" "$BACKUP" || { echo "STEPENV_FAIL backup_failed"; exit 3; }',
+  '',
+  // Replace-in-place via sed -i (atomic on Linux), OR append.
+  // sed delimiter `#` is safe because sk-ant-api03-... and sk-proj-... keys
+  // don't contain `#`. `&` and `#` escaped in the value for sed safety.
+  'if [ -n "$CURRENT" ]; then',
+  '  ESCAPED=$(printf \'%s\' "$KEY_VALUE" | sed -e \'s/[&#]/\\\\&/g\')',
+  '  sed -i "s#^${KEY_NAME}=.*#${KEY_NAME}=\\"$ESCAPED\\"#" "$ENV_FILE"',
+  '  ACTION="replaced"',
+  'else',
+  // Ensure trailing newline first (defensive — append without \n would corrupt)
+  '  [ -n "$(tail -c 1 "$ENV_FILE")" ] && echo "" >> "$ENV_FILE"',
+  '  printf \'%s="%s"\\n\' "$KEY_NAME" "$KEY_VALUE" >> "$ENV_FILE"',
+  '  ACTION="appended"',
+  'fi',
+  '',
+  // Verify-after-write per Rule 10. Restore from backup on mismatch.
+  'NEW=$(grep "^${KEY_NAME}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d \'"\')',
+  'if [ "$NEW" != "$KEY_VALUE" ]; then',
+  '  cp "$BACKUP" "$ENV_FILE"',
+  '  echo "STEPENV_FAIL verify_after_set expected_len=${#KEY_VALUE} actual_len=${#NEW}"',
+  '  exit 4',
+  'fi',
+  '',
+  // Defensive: enforce mode 600. Should already be 600 from provisioning.
+  'chmod 600 "$ENV_FILE" 2>/dev/null || true',
+  '',
+  'echo "STEPENV_OK action=$ACTION"',
+  'exit 0',
+].join('\n');
+
+async function stepEnvVarPush(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  for (const { envKey, label } of SECRET_ENV_VAR_SOURCES) {
+    const value = process.env[envKey];
+    if (!value || value.length < 20) {
+      // Silent skip — don't block config_version. Logged so dashboards / the
+      // future gbrain-coverage cron (P2) can pick up on persistent absences.
+      logger.info("stepEnvVarPush: skipping (env var not set in Vercel)", {
+        envKey,
+        label,
+        value_len: value?.length ?? 0,
+      });
+      continue;
+    }
+
+    if (dryRun) {
+      result.fixed.push(`[dry-run] env.${envKey}`);
+      continue;
+    }
+
+    // Execute via `bash -c '<script>' _ '<envKey>'`:
+    //   - Script body is inlined as the bash -c argument (no key material —
+    //     it's the read/replace/verify logic, safe to expose).
+    //   - `_` is positional $0 (customary placeholder).
+    //   - envKey is positional $1 (script reads it as KEY_NAME).
+    //   - The secret VALUE is the only thing on stdin.
+    // Single-quote escaping: every `'` in the bash body becomes `'\''`.
+    const escapedScript = ENV_VAR_PUSH_BASH.replace(/'/g, "'\\''");
+    const res = await ssh.execCommand(
+      `bash -c '${escapedScript}' _ '${envKey}'`,
+      { stdin: value + '\n' },
+    );
+
+    const stdout = (res.stdout || '').trim();
+    const stderr = (res.stderr || '').trim();
+    const okMatch = stdout.match(/STEPENV_OK action=(\w+)/);
+    const failMatch = stdout.match(/STEPENV_FAIL (.+)/);
+
+    if (okMatch) {
+      const action = okMatch[1];
+      if (action === 'no_op') {
+        result.alreadyCorrect.push(`env.${envKey}`);
+      } else {
+        result.fixed.push(`env.${envKey} (${action})`);
+        logger.info('stepEnvVarPush: distributed', { envKey, action, label });
+      }
+    } else if (failMatch) {
+      result.errors.push(`stepEnvVarPush ${envKey}: ${failMatch[1]}`);
+    } else {
+      // Unexpected output — push to errors with snippet for forensics
+      result.errors.push(
+        `stepEnvVarPush ${envKey}: unexpected output exit=${res.code} stdout=${stdout.slice(0, 200)} stderr=${stderr.slice(0, 200)}`,
+      );
     }
   }
 }
