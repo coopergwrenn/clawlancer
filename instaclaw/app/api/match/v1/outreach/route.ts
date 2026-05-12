@@ -249,6 +249,15 @@ export async function POST(req: NextRequest) {
   if (phase === "ack") {
     const logId = b.log_id;
     const channel = typeof b.channel === "string" ? b.channel : null;
+    // Optional diagnostic: when channel='pending', the receiver agent
+    // can pass a free-text reason explaining WHY it fell back to file
+    // storage (e.g. "no_telegram_handle", "notify_user_sh_failed",
+    // "telegram_401"). Bounded to 200 chars by the DB constraint;
+    // truncated here defensively. The 2026-05-11 audit found 33% of
+    // intros landed in 'pending' — without this field we couldn't tell
+    // why. Producing this is the receiver's xmtp-agent.mjs job.
+    const pendingReasonRaw = typeof b.pending_reason === "string" ? b.pending_reason : null;
+    const pendingReason = pendingReasonRaw ? pendingReasonRaw.slice(0, 200) : null;
     if (!isUUID(logId)) return NextResponse.json({ error: "log_id must be UUID" }, { status: 400 });
     const ALLOWED_CHANNELS = ["telegram", "xmtp_user", "pending", "polled"] as const;
     if (!channel || !ALLOWED_CHANNELS.includes(channel as (typeof ALLOWED_CHANNELS)[number])) {
@@ -272,12 +281,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, already_acked: true });
     }
 
+    const ackUpdate: Record<string, unknown> = {
+      ack_received_at: new Date().toISOString(),
+      ack_channel: channel,
+    };
+    // Only store pending_reason when channel='pending' — irrelevant for
+    // the happy paths. Avoids polluting the column for non-pending rows.
+    if (channel === "pending" && pendingReason) {
+      ackUpdate.pending_reason = pendingReason;
+    }
+
     const { error: updErr } = await supabase
       .from("agent_outreach_log")
-      .update({
-        ack_received_at: new Date().toISOString(),
-        ack_channel: channel,
-      })
+      .update(ackUpdate)
       .eq("id", logId)
       // Race-tight: only update if still NULL (the partial-index
       // optimisation; second ACK becomes a no-op).

@@ -77,6 +77,11 @@ interface DeliberationEntry {
   conversation_topic: string | null;
   meeting_window: string | null;
   skip_reason: string | null;
+  // ISO-8601 timestamps from consensus_match_deliberate.py — bracket
+  // the Layer 3 LLM curl call. Per-batch (3 candidates share one call).
+  // Closes the Q2 "latency unmeasurable" gap from the 2026-05-11 audit.
+  deliberation_started_at: string | null;
+  deliberation_completed_at: string | null;
 }
 
 interface ResultsBody {
@@ -118,6 +123,15 @@ function validateBody(raw: unknown): ResultsBody | { error: string } {
     if (typeof d.rationale !== "string" || !d.rationale.trim()) {
       return { error: "rationale must be a non-empty string" };
     }
+    // Latency timestamps — optional, ISO-8601. The Python script sets
+    // these around the curl call; older scripts on rolled-back VMs will
+    // simply omit them and the columns stay NULL on the DB row.
+    const startedAt = typeof d.deliberation_started_at === "string" && d.deliberation_started_at
+      ? d.deliberation_started_at
+      : null;
+    const completedAt = typeof d.deliberation_completed_at === "string" && d.deliberation_completed_at
+      ? d.deliberation_completed_at
+      : null;
     cleaned.push({
       candidate_user_id: d.candidate_user_id,
       candidate_profile_version: d.candidate_profile_version,
@@ -132,6 +146,8 @@ function validateBody(raw: unknown): ResultsBody | { error: string } {
       skip_reason: typeof d.skip_reason === "string"
         ? d.skip_reason.slice(0, MAX_SKIP_REASON_CHARS) || null
         : null,
+      deliberation_started_at: startedAt,
+      deliberation_completed_at: completedAt,
     });
   }
 
@@ -201,6 +217,10 @@ export async function POST(req: NextRequest) {
     skip_reason: d.skip_reason,
     match_kind: body.match_kind,
     deliberated_at: now,
+    // Per-batch latency timestamps (3 candidates share an LLM call's
+    // wall-clock window). NULL when older script versions omit them.
+    deliberation_started_at: d.deliberation_started_at,
+    deliberation_completed_at: d.deliberation_completed_at,
   }));
 
   const { error: insertErr } = await supabase
