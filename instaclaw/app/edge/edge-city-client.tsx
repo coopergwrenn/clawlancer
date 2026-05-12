@@ -2,14 +2,116 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { EdgeUserState } from "./edge-user-state";
 
-export function EdgeCityClient() {
+interface EdgeCityClientProps {
+  /**
+   * Server-resolved user state. Three variants drive three CTA shapes:
+   *
+   *   logged_out  — claim CTA + email-notify fallback.
+   *   in_progress — single "Complete setup →" pill routing to wherever the
+   *                 user dropped off in the onboarding state machine.
+   *   live        — celebratory card with the bot username and a deep-link
+   *                 to Telegram.
+   *
+   * SSR resolves this so there's no flash of the wrong CTA on hydration —
+   * the user sees the right state on first paint.
+   */
+  state: EdgeUserState;
+}
+
+export function EdgeCityClient({ state }: EdgeCityClientProps) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState("");
+
+  // ── State C: live agent ── deep-link straight into Telegram.
+  if (state.kind === "live") {
+    const tmeUrl = `https://t.me/${state.botUsername}`;
+    return (
+      <div className="w-full">
+        <div
+          className="rounded-2xl p-6 sm:p-7"
+          style={{
+            background: "var(--edge-sage)",
+            border: "1px solid var(--edge-olive)",
+          }}
+        >
+          <p
+            className="text-[11px] uppercase tracking-[0.18em] inline-flex items-center gap-2 mb-3"
+            style={{ color: "var(--edge-olive)" }}
+          >
+            <span
+              aria-hidden
+              className="inline-block w-2 h-2 rounded-full"
+              style={{
+                background: "var(--edge-olive)",
+                animation: "edge-live-pulse 2.4s ease-in-out infinite",
+              }}
+            />
+            Your agent is live
+          </p>
+          <p
+            className="font-bold tracking-[-0.01em] text-[26px] sm:text-[32px] mb-4 break-all"
+            style={{ color: "var(--edge-ink)", fontVariantLigatures: "none" }}
+          >
+            @{state.botUsername}
+          </p>
+          <a
+            href={tmeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full px-6 py-4 rounded-full text-[13px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] inline-flex items-center justify-center gap-2"
+            style={{
+              background: "var(--edge-olive)",
+              color: "#FFFFFF",
+              letterSpacing: "0.12em",
+            }}
+          >
+            Open in Telegram <span aria-hidden>→</span>
+          </a>
+        </div>
+        <style jsx>{`
+          @keyframes edge-live-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ── State B: in-progress ── single pill back into the onboarding flow.
+  if (state.kind === "in_progress") {
+    return (
+      <div className="w-full">
+        <button
+          onClick={() => router.push(state.resumePath)}
+          className="w-full px-6 py-4 rounded-full text-[13px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] inline-flex items-center justify-center gap-2"
+          style={{
+            background: "var(--edge-olive)",
+            color: "#FFFFFF",
+            letterSpacing: "0.12em",
+          }}
+        >
+          Complete setup <span aria-hidden>→</span>
+        </button>
+        <p
+          className="text-[11px] uppercase tracking-[0.14em] mt-4"
+          style={{ color: "var(--edge-ink-soft)" }}
+        >
+          You started — pick up where you left off
+        </p>
+      </div>
+    );
+  }
+
+  // ── State A: logged out ── original claim CTA + notify-me fallback.
+  // The two interaction paths (claim now / notify-me) are preserved verbatim
+  // from the pre-state-aware version. Only logged-out users see them.
 
   async function handleClaim() {
     setClaiming(true);
