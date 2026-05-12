@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getSupabase } from "./supabase";
 import { sendWelcomeEmail } from "./email";
 import { logger } from "./logger";
+import { tagUserAsPartner } from "./partner-tag";
 import authConfig from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -12,6 +13,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (account?.provider !== "google") return false;
 
       const supabase = getSupabase();
+
+      // Read sign-up cookies once at the top. Both are used by:
+      //   - branch 1 (existing Google-linked user) — partnerCookie applies via helper
+      //   - branch 2 (wallet user linking Google) — partnerCookie applies via helper
+      //   - branch 3 (new user) — both written into the INSERT statement
+      // Centralizing the read prevents the dual-account bug Cooper traced
+      // 2026-04-30: prior to this fix the cookie was only read inside branch 3,
+      // so existing users got their cookie silently ignored on sign-in.
+      const cookieStore = await cookies();
+      const referralCode = cookieStore.get("instaclaw_referral_code")?.value ?? null;
+      const partnerCookie = cookieStore.get("instaclaw_partner")?.value ?? null;
 
       // Check if the user already exists
       const { data: existing, error: existingError } = await supabase
@@ -30,7 +42,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         });
       }
 
-      if (existing) return true;
+      if (existing) {
+        // Apply partner cookie if present — closes the dual-account hole.
+        // Until 2026-05-12 this branch returned without reading the cookie,
+        // so a user who clicked /edge claim while logged out, then signed
+        // back in with their existing Google account, ended up with no
+        // partner tag despite the cookie being set. tagUserAsPartner is
+        // idempotent + error-resilient: it never throws and never blocks
+        // sign-in even if the partner-tag write fails.
+        if (partnerCookie) {
+          const result = await tagUserAsPartner(supabase, existing.id, partnerCookie);
+          if (!result.ok) {
+            logger.warn("partner-tag failed on existing-user signIn (non-blocking)", {
+              userId: existing.id,
+              partnerCookie,
+              error: result.error,
+              route: "auth/signIn",
+            });
+          }
+        }
+        return true;
+      }
 
       // ── Account linking: check if a wallet-linked user exists with this email ──
       // Mini app users create accounts via World wallet with an email but no google_id.
@@ -69,16 +101,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               route: "auth/signIn",
             });
           }
+
+          // Apply partner cookie if present — closes the dual-account hole
+          // for wallet-only mini-app users coming through a partner portal.
+          // Runs even if linkErr occurred above (the user record still exists
+          // and should reflect the partner tag).
+          if (partnerCookie) {
+            const result = await tagUserAsPartner(supabase, walletUser.id, partnerCookie);
+            if (!result.ok) {
+              logger.warn("partner-tag failed on wallet-user signIn (non-blocking)", {
+                userId: walletUser.id,
+                partnerCookie,
+                error: result.error,
+                route: "auth/signIn",
+              });
+            }
+          }
           return true;
         }
       }
 
-      // New user — read optional ambassador referral code and partner tag from cookies
-      const cookieStore = await cookies();
-      const referralCode = cookieStore.get("instaclaw_referral_code")?.value ?? null;
-      const partnerCookie = cookieStore.get("instaclaw_partner")?.value ?? null;
-
-      // Create the user row
+      // Create the user row (new user — referralCode + partnerCookie were
+      // read at the top of this callback and are reused here)
       const { error } = await supabase.from("instaclaw_users").insert({
         email: userEmail,
         name: user.name,
