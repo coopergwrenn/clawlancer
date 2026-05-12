@@ -54,6 +54,38 @@ async function getFirewallId(label: string): Promise<number> {
   return fw.id;
 }
 
+/**
+ * Paginate /linode/instances and return every label that matches the pattern.
+ *
+ * Why this exists: orphan Linode instances (Linode-side present, DB-side
+ * missing) cause replenish-pool's name generator to pick a colliding number
+ * and 400 every cycle. See vm-925 (Linode id=97369836, no DB row) — created
+ * 2026-05-09, blocked the pool for 3 days. Mixing this list with DB names
+ * before getNextVmNumber() makes orphan collisions structurally impossible.
+ *
+ * Paginates up to 10 × 100 = 1000 instances (well above current fleet size).
+ * If the call fails, returns []; the caller falls back to DB-only naming
+ * (the pre-fix behavior, no regression).
+ */
+export async function listInstanceLabelsMatching(
+  pattern: RegExp
+): Promise<string[]> {
+  const labels: string[] = [];
+  for (let page = 1; page <= 10; page++) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await linodeFetch(
+      `/linode/instances?page=${page}&page_size=100`
+    );
+    for (const inst of data?.data ?? []) {
+      if (typeof inst.label === "string" && pattern.test(inst.label)) {
+        labels.push(inst.label);
+      }
+    }
+    if (!data?.data || data.data.length < 100) break;
+  }
+  return labels;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

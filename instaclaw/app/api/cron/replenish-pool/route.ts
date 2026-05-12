@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
+import { AlertCollector } from "@/lib/admin-alert";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
-import { linodeProvider } from "@/lib/providers/linode";
+import {
+  linodeProvider,
+  listInstanceLabelsMatching,
+} from "@/lib/providers/linode";
 import { getNextVmNumber, formatVmName } from "@/lib/providers/hetzner";
 import { checkDuplicateIP } from "@/lib/ssh";
 import {
@@ -157,10 +161,26 @@ export async function GET(req: NextRequest) {
     }
 
     // 10. Provision if decided
+    //     The AlertCollector groups per-VM provision failures across this
+    //     cron tick so the operator gets ONE digest email (+ a row in
+    //     instaclaw_admin_alert_log) instead of N silent fire-and-forget
+    //     emails — that was the 2026-05-12 visibility gap: vm-925 collision
+    //     fired the catch block 8x/tick × 288 ticks/day with zero alerts
+    //     landing in the dedup log because bare sendAdminAlertEmail() in a
+    //     fire-and-forget pattern doesn't write to the log table.
+    const alerts = new AlertCollector();
     let provisioned: ProvisionResult[] = [];
     if (decision.action === "provision") {
-      provisioned = await provisionVMs(decision.toProvision);
+      provisioned = await provisionVMs(decision.toProvision, alerts);
     }
+    // Flush the digest BEFORE returning (and before releaseCronLock — so
+    // alerts are visible whether the lock release succeeds or not).
+    await alerts.flush().catch((err) => {
+      logger.error("replenish-pool: alert flush failed", {
+        route: "cron/replenish-pool",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     return NextResponse.json({
       pool: state,
@@ -228,20 +248,53 @@ async function readPoolState(): Promise<PoolState> {
   };
 }
 
-async function provisionVMs(count: number): Promise<ProvisionResult[]> {
+async function provisionVMs(
+  count: number,
+  alerts: AlertCollector
+): Promise<ProvisionResult[]> {
   const supabase = getSupabase();
   const provisioned: ProvisionResult[] = [];
 
-  // Find the next available VM number
+  // Find the next available VM number.
+  //
+  // Universe = DB names ∪ Linode-side labels. Pre-2026-05-12 this was
+  // DB-only and an orphan Linode instance (live in Linode, missing from DB)
+  // would cause every cron tick to pick a colliding name and 400 on the
+  // Linode side. vm-925 (Linode id=97369836) blocked the pool for 3 days
+  // before we found it. Merging Linode labels here makes that class of
+  // collision structurally impossible.
   const { data: existingVms } = await supabase
     .from("instaclaw_vms")
     .select("name")
     .order("created_at", { ascending: false })
-    .limit(500);
-  const existingNames = (existingVms ?? []).map(
+    .limit(2000);
+  const dbNames = (existingVms ?? []).map(
     (v: { name: string | null }) => v.name
   );
-  const startNum = getNextVmNumber(existingNames);
+
+  let linodeLabels: string[] = [];
+  try {
+    linodeLabels = await listInstanceLabelsMatching(/^instaclaw-vm-\d+$/);
+  } catch (err) {
+    // Falling back to DB-only naming is the pre-fix behavior; the worst case
+    // is the original bug pattern, which is no worse than not fixing it.
+    logger.warn(
+      "replenish-pool: failed to list Linode labels; falling back to DB-only naming",
+      {
+        route: "cron/replenish-pool",
+        error: err instanceof Error ? err.message : String(err),
+      }
+    );
+    alerts.add(
+      "Replenish-Pool: Linode Label Listing Failed",
+      "n/a",
+      `Could not enumerate Linode-side labels for name-collision defense. ` +
+        `Falling back to DB-only naming for this tick. ` +
+        `Error: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  const allKnownNames = [...dbNames, ...linodeLabels];
+  const startNum = getNextVmNumber(allKnownNames);
 
   for (let i = 0; i < count; i++) {
     const vmName = formatVmName(startNum + i);
@@ -266,14 +319,14 @@ async function provisionVMs(count: number): Promise<ProvisionResult[]> {
           ip: created.ip,
           existingVms: desc,
         });
-        // Don't await — fire and forget alert
-        sendAdminAlertEmail(
+        alerts.add(
           "Replenish-Pool: Duplicate IP Blocked",
-          `Tried to insert ${vmName} with IP ${created.ip}, but it's already used by: ${desc}.\n\n` +
+          vmName,
+          `Tried to insert ${vmName} with IP ${created.ip}, but it's already used by: ${desc}.\n` +
             `The Linode was created but NOT inserted into the DB. Manual cleanup needed:\n` +
             `  - Linode ID: ${created.providerId}\n` +
             `  - IP: ${created.ip}`
-        ).catch(() => {});
+        );
         continue; // try the next VM
       }
 
@@ -298,14 +351,15 @@ async function provisionVMs(count: number): Promise<ProvisionResult[]> {
           vmName,
           error: insertError.message,
         });
-        sendAdminAlertEmail(
+        alerts.add(
           "Replenish-Pool: DB Insert Failed",
-          `Linode created ${vmName} but DB insert failed.\n\n` +
+          vmName,
+          `Linode created ${vmName} but DB insert failed.\n` +
             `Error: ${insertError.message}\n` +
             `Linode ID: ${created.providerId}\n` +
-            `IP: ${created.ip}\n\n` +
+            `IP: ${created.ip}\n` +
             `This is an orphan — manual cleanup needed.`
-        ).catch(() => {});
+        );
         // Abort batch to prevent cascading orphans
         break;
       }
@@ -328,18 +382,38 @@ async function provisionVMs(count: number): Promise<ProvisionResult[]> {
         await new Promise((r) => setTimeout(r, 500));
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       logger.error("replenish-pool: provision failed", {
         route: "cron/replenish-pool",
         vmName,
-        error: err instanceof Error ? err.message : String(err),
+        error: msg,
       });
-      sendAdminAlertEmail(
+      // Linode "Label must be unique among your linodes" — defensive
+      // continue path: no Linode side-effect occurred (label collision
+      // happens BEFORE provisioning), so there's no orphan risk. The
+      // upstream merge with Linode labels in the name generator should
+      // make this unreachable, but if a race creates a same-named instance
+      // between our list call and our create call, we don't want to abort
+      // the whole batch over a single name.
+      const isLabelCollision = /label must be unique/i.test(msg);
+      if (isLabelCollision) {
+        alerts.add(
+          "Replenish-Pool: Label Collision (continued)",
+          vmName,
+          `${vmName} already exists on Linode but not in our DB — orphan. ` +
+            `Skipped this name and continuing to the next.\n` +
+            `Error: ${msg.slice(0, 300)}`
+        );
+        continue;
+      }
+      alerts.add(
         "Replenish-Pool: Linode API Failure",
-        `Failed to provision ${vmName} via Linode API.\n\n` +
-          `Error: ${err instanceof Error ? err.message : String(err)}\n\n` +
+        vmName,
+        `Failed to provision ${vmName} via Linode API.\n` +
+          `Error: ${msg.slice(0, 400)}\n` +
           `Replenish-pool aborted this batch. Provisioned ${provisioned.length} of ${count} before failure.`
-      ).catch(() => {});
-      // Abort batch on first error to prevent cascade
+      );
+      // Abort batch on truly unknown errors to prevent cascade
       break;
     }
   }
