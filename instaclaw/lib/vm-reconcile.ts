@@ -39,6 +39,45 @@ import { TIER_DISPLAY_LIMITS } from "./credit-constants";
 import * as fs from "fs";
 import * as path from "path";
 
+// ── Config-key hot-reload classification ──
+//
+// OpenClaw 2026.4.26 hot-reloads SOME config namespaces in place but not others.
+// The signal is in the journal — when you `openclaw config set KEY VALUE`:
+//
+//   [reload] config change detected; evaluating reload (KEY, meta.lastTouchedAt)
+//   [reload] config hot reload applied (KEY)              ← only present for hot-reloadable keys
+//
+// Verified namespaces (from journal evidence + dist source dives, 2026-05-11):
+//
+//   Hot-reloadable (channel/process gets re-init'd, change takes effect live):
+//     - channels.*          (channel-restart hook)
+//     - mcp.servers.*       (subprocess respawn)
+//
+//   Restart-required (closure-captured at process init, in-memory state stale):
+//     - messages.*          (closure-captured in bot-msflwCEW.js:5473)
+//
+// The 2026-05-11 "reactions never fired" forensic confirmed messages.* is NOT
+// hot-reloadable: the journal showed `evaluating reload (messages.ackReactionScope)`
+// but NO matching `hot reload applied` line. The dist source captures
+// cfg.messages?.ackReactionScope into a const at channel init. Setting the key on
+// disk has zero runtime effect until the gateway restarts.
+//
+// This list is intentionally conservative. agents.defaults.*, session.*,
+// gateway.*, tools.* probably also need restart but we have not empirically
+// confirmed yet — add to RESTART_REQUIRED_CONFIG_PREFIXES once verified to
+// avoid false-positive restarts of healthy hot-reloadable changes.
+//
+// See docs/prd/agent-acknowledgment-ux-2026-05-11-forensic-handoff.md §3
+// for the full forensic + the journal signal pattern.
+
+const RESTART_REQUIRED_CONFIG_PREFIXES: string[] = [
+  "messages.",
+];
+
+function keyRequiresGatewayRestart(key: string): boolean {
+  return RESTART_REQUIRED_CONFIG_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
 // ── Result types ──
 
 export interface ReconcileResult {
@@ -648,6 +687,21 @@ async function stepConfigSettings(
       const actual = actualValues.get(key);
       if (actual === expected) {
         result.fixed.push(key);
+        // Guardrail 2: if the changed key is in a namespace OpenClaw can't
+        // hot-reload (messages.* per 2026-05-11 forensic), flag the
+        // gateway-restart-needed bit. The orchestrator's Step 9 picks this up
+        // and does a verified restart (Rule 5) before the cycle finishes —
+        // without this, the change lives on disk but the running process keeps
+        // the closure-captured stale value.
+        if (keyRequiresGatewayRestart(key)) {
+          result.gatewayRestartNeeded = true;
+          logger.info("stepConfigSettings: queued gateway restart for restart-required key", {
+            key,
+            value: expected,
+            namespace: key.split(".")[0],
+            reason: "non_hot_reloadable_config_key",
+          });
+        }
       } else {
         // Push to errors so reconcile-fleet route's `pushFailed` gate
         // refuses to bump config_version. Next cron cycle retries.
@@ -675,6 +729,18 @@ async function stepConfigSettings(
     const res = await ssh.execCommand(cmd, { execOptions: { timeout: 15000 } });
     if (res.code === 0) {
       result.fixed.push(key);
+      // Guardrail 2: same restart-required gate as the non-strict path above.
+      // Strict mode runs key-by-key and trusts exit codes; the namespace check
+      // is independent of which path landed us here.
+      if (keyRequiresGatewayRestart(key)) {
+        result.gatewayRestartNeeded = true;
+        logger.info("stepConfigSettings(strict): queued gateway restart for restart-required key", {
+          key,
+          value: val,
+          namespace: key.split(".")[0],
+          reason: "non_hot_reloadable_config_key",
+        });
+      }
     } else {
       const reason = (res.stderr || res.stdout || `exit ${res.code}`).slice(0, 300).trim();
       result.strictErrors.push(`${key}: ${reason}`);

@@ -807,6 +807,63 @@ Every feature ships with at least one test that exercises a realistic failure mo
 
 **Detection:** when reviewing a PR, ask "what's the worst realistic state this feature could be invoked in?" and "is there a test for that state?" If no test, push back on the PR. The 30 minutes spent writing the failure-mode test will save 4 hours of incident response in the median case and 4 weeks of silent churn in the tail case.
 
+### 32. `openclaw config set` exit-0 ≠ runtime applied — verify hot-reload landed
+
+Not every config namespace in OpenClaw 2026.4.26 supports hot-reload. The runtime emits two distinct log shapes after a `config set`:
+
+```
+[reload] config change detected; evaluating reload (KEY, meta.lastTouchedAt)  ← the change was SEEN
+[reload] config hot reload applied (KEY)                                        ← the change took EFFECT
+```
+
+**Only the second line proves the change is live.** If the second line is absent for your key, the running process is still using the value it captured at process init. The `openclaw config set` command will still exit 0 — disk state and runtime state are independent in this case.
+
+#### The 2026-05-11 "reactions never fired" incident
+
+Edge City terminal applied 9 config keys via canary to vm-050 — 5 in `channels.telegram.streaming.*` and 4 in `messages.*` (ackReactionScope, ackReaction, statusReactions.enabled, removeAckAfterReply). All 9 `openclaw config set` calls returned exit 0. On-disk verification passed. **No reaction emoji appeared on any of Cooper's test messages.** The forensic dive showed:
+
+1. The dist source at `extensions/telegram/bot-msflwCEW.js:5473` captures `cfg.messages?.ackReactionScope` into a `const` at telegram-channel-init time. Once captured, the value never re-reads.
+2. The journal showed `[reload] config change detected; evaluating reload (messages.ackReactionScope, ...)` for every messages.* set — but no matching `[reload] config hot reload applied (messages.ackReactionScope)` line.
+3. A full gateway restart (`systemctl --user restart openclaw-gateway`) re-ran the init code, picked up the new value, reactions fired on the next message.
+
+#### Verified hot-reload classification (OpenClaw 2026.4.26)
+
+| Namespace | Hot-reload? | Mechanism | Evidence (2026-05-11) |
+|---|---|---|---|
+| `channels.*` | **Yes** | Channel restart hook re-reads config | journal: `[gateway/channels] restarting telegram channel` then `[reload] config hot reload applied (channels.telegram.X)` |
+| `mcp.servers.*` | **Yes** | MCP subprocess respawn with new env | journal: `[reload] config hot reload applied (mcp.servers.gbrain.env.X)` |
+| `messages.*` | **NO — requires restart** | Closure-captured at channel init | journal: `evaluating reload` only, no `applied` line. Verified empirically on vm-050. |
+| `agents.defaults.*` | **Likely NO** (untested) | Closure-captured at agent init | not yet probed; add to RESTART_REQUIRED_CONFIG_PREFIXES in `lib/vm-reconcile.ts` once verified |
+| `gateway.*` | **Likely NO** (untested) | Most settings read during gateway startup | same — add to the list when verified |
+| `session.*` | **Likely NO** (untested) | Session manager init reads these | same |
+
+The conservative default in `lib/vm-reconcile.ts`'s `RESTART_REQUIRED_CONFIG_PREFIXES` is `messages.*` only (the one empirically verified). Other suspected-non-hot-reloadable namespaces are added by future incident learning — false-positive restarts of healthy hot-reloadable changes have their own cost (gateway downtime, fleet thrash).
+
+#### Mandatory pattern
+
+When `openclaw config set <key>` is run anywhere in the codebase or by an operator:
+
+1. **Reading the on-disk file is not sufficient verification.** `~/.openclaw/openclaw.json` will show the new value; the running process may not.
+2. **Look for the second journal line.** `journalctl --user -u openclaw-gateway | grep "hot reload applied"` and confirm your key appears.
+3. **If the second line is absent for your key, the gateway needs a full restart** (`systemctl --user restart openclaw-gateway`) followed by Rule 5 verification.
+4. **The reconciler automates this** via `stepConfigSettings` in `lib/vm-reconcile.ts`: after a successful set of any key matching `RESTART_REQUIRED_CONFIG_PREFIXES`, it sets `result.gatewayRestartNeeded=true`. The orchestrator's Step 9 picks this up and does a verified restart before the cycle finishes. **Adding a new key to the manifest in a non-hot-reload namespace MUST be paired with adding that namespace's prefix to RESTART_REQUIRED_CONFIG_PREFIXES** — otherwise the fleet rollout silently fails on every VM.
+
+#### Banned patterns
+
+- Trusting `openclaw config set` exit code as proof the change is live.
+- Trusting a verify-after-set pattern that only reads the file on disk — that catches set-failures but not hot-reload-failures.
+- Hot-shipping a config-change PRD with the assumption "all OpenClaw keys hot-reload." They don't.
+
+#### Detection rule
+
+PR review checklist when adding a key to `lib/vm-manifest.ts:configSettings`:
+
+1. What's the namespace prefix? (`messages.`, `channels.telegram.streaming.`, `agents.defaults.`, etc.)
+2. Is the prefix in `RESTART_REQUIRED_CONFIG_PREFIXES` or empirically known hot-reloadable?
+3. If unknown, the PR author runs a one-VM canary: apply the key, send a test message, grep journal for `hot reload applied (<key>)`. If absent → restart-required; add the prefix to the list in the same PR.
+
+This rule complements Rule 10 (verify-every-set discipline) — Rule 10 catches *disk write* failures; Rule 32 catches *runtime apply* failures. Both are required for a fleet-wide config rollout to be trustworthy.
+
 ---
 
 ## Linode-vs-DB Drift (Reality Checks)
