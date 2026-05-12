@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
 
 const TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
 
@@ -34,6 +35,42 @@ const glassInputStyle = {
   color: "#333334",
 } as const;
 
+/**
+ * Tier-1 color palette swap for partner-branded onboarding.
+ *
+ * When a user arrives from /edge (instaclaw_partner=edge_city cookie set),
+ * we swap the InstaClaw-orange accents for Edge olive on the high-visibility
+ * surfaces: active step orb, shimmer connector, primary CTA pill. Tier-2
+ * surfaces (glassSelectedStyle borders, the Verify button, the API-mode
+ * select cards) remain orange — they live deeper in the page and the user
+ * has already received enough partner context up top by then.
+ *
+ * Same shape, drop-in swap. No code branching beyond `accent = isEdge ? B : A`.
+ */
+const PALETTE_ORANGE = {
+  orb_bg:
+    "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
+  orb_glow: "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)",
+  connector:
+    "linear-gradient(90deg, rgba(220,103,67,0.15), rgba(220,103,67,0.5), #f0976e, #ffffff, #f0976e, rgba(220,103,67,0.5), rgba(220,103,67,0.15))",
+  cta_gradient:
+    "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+  cta_glow_shadow:
+    "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px, rgba(255, 255, 255, 0.08) 0px 0px 1.6px 4px inset",
+} as const;
+
+const PALETTE_OLIVE = {
+  orb_bg:
+    "radial-gradient(circle at 35% 30%, rgba(74,87,53,0.9), rgba(41,49,30,0.75) 50%, rgba(20,28,12,0.9) 100%)",
+  orb_glow: "radial-gradient(circle, rgba(41,49,30,0.5) 0%, transparent 70%)",
+  connector:
+    "linear-gradient(90deg, rgba(41,49,30,0.15), rgba(41,49,30,0.5), #5a6940, #E4F0D2, #5a6940, rgba(41,49,30,0.5), rgba(41,49,30,0.15))",
+  cta_gradient:
+    "linear-gradient(-75deg, #1f2618, #29311E, #3a4429, #29311E, #1f2618)",
+  cta_glow_shadow:
+    "rgba(255,255,255,0.15) 0px 2px 2px 0px inset, rgba(255, 255, 255, 0.2) 0px -1px 1px 0px inset, rgba(41,49,30,0.45) 0px 4px 16px 0px, rgba(255, 255, 255, 0.06) 0px 0px 1.6px 4px inset",
+} as const;
+
 const FAQ_ITEMS = [
   {
     q: "What is a Telegram bot?",
@@ -59,6 +96,9 @@ const FAQ_ITEMS = [
 
 export default function ConnectPage() {
   const router = useRouter();
+  const partner = usePartnerCookie();
+  const isEdge = partner === "edge_city";
+  const accent = isEdge ? PALETTE_OLIVE : PALETTE_ORANGE;
   const [botToken, setBotToken] = useState("");
   const [discordToken, setDiscordToken] = useState("");
   const [slackToken, setSlackToken] = useState("");
@@ -265,6 +305,7 @@ export default function ConnectPage() {
 
   return (
     <div className="min-h-screen" style={{ background: "#f8f7f4" }}>
+      <EdgePartnerBanner />
       {/* Step Indicator */}
       <div
         className="sticky top-0 z-10 py-4"
@@ -289,7 +330,7 @@ export default function ConnectPage() {
                     <span
                       className="relative flex items-center justify-center w-10 h-10 rounded-full overflow-hidden shrink-0"
                       style={{
-                        background: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
+                        background: accent.orb_bg,
                         boxShadow: `
                           inset 0 -2px 4px rgba(0,0,0,0.3),
                           inset 0 2px 4px rgba(255,255,255,0.5),
@@ -318,7 +359,7 @@ export default function ConnectPage() {
                       <span
                         className="absolute inset-[-3px] rounded-full"
                         style={{
-                          background: "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)",
+                          background: accent.orb_glow,
                           animation: "globe-glow 4s ease-in-out infinite",
                         }}
                       />
@@ -357,7 +398,7 @@ export default function ConnectPage() {
                       <div
                         className="h-full w-full"
                         style={{
-                          background: "linear-gradient(90deg, rgba(220,103,67,0.15), rgba(220,103,67,0.5), #f0976e, #ffffff, #f0976e, rgba(220,103,67,0.5), rgba(220,103,67,0.15))",
+                          background: accent.connector,
                           backgroundSize: "300% 100%",
                           animation: "step-shimmer 2s ease-in-out infinite",
                         }}
@@ -600,15 +641,10 @@ export default function ConnectPage() {
           disabled={saving || !selectedChannel || (selectedChannel === "telegram" && !verified)}
           className="w-full px-6 py-3.5 rounded-lg text-base font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           style={{
-            background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+            background: accent.cta_gradient,
             backdropFilter: "blur(2px)",
             WebkitBackdropFilter: "blur(2px)",
-            boxShadow: `
-              rgba(255,255,255,0.2) 0px 2px 2px 0px inset,
-              rgba(255, 255, 255, 0.3) 0px -1px 1px 0px inset,
-              rgba(220,103,67,0.35) 0px 4px 16px 0px,
-              rgba(255, 255, 255, 0.08) 0px 0px 1.6px 4px inset
-            `,
+            boxShadow: accent.cta_glow_shadow,
             color: "#ffffff",
           }}
         >
@@ -637,6 +673,28 @@ export default function ConnectPage() {
             </span>
           ) : "Continue to Plan Selection"}
         </button>
+
+        {/* Skip-Telegram escape hatch — only surfaced for partner-flow users.
+            For Edge attendees who don't want to set up Telegram at the venue
+            (or who already have a bot via a different platform), drop them
+            into the plan-selection step and they can wire Telegram later
+            from /dashboard. Routes to /plan today; once #2 (edge_attendees
+            table + is_edge_attendee column) ships, this should route to
+            /dashboard for verified attendees who already have a VM. */}
+        {isEdge && (
+          <button
+            type="button"
+            onClick={() => router.push("/plan")}
+            className="w-full mt-3 px-6 py-3 rounded-lg text-sm font-medium transition-colors"
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(41, 49, 30, 0.25)",
+              color: "#29311E",
+            }}
+          >
+            Skip Telegram for now →
+          </button>
+        )}
 
         {/* ── Advanced Settings ── */}
         <div className="mt-8">
