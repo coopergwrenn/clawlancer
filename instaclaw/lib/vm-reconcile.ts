@@ -2844,8 +2844,21 @@ async function stepSystemdUnit(
   // — but if systemd's runtime view still has 75, the VM is broken.
   // Therefore: require BOTH on-disk content match AND systemctl runtime
   // value match for the load-bearing key (TasksMax).
-  const catResult = await ssh.execCommand(`cat ${overridePath} 2>/dev/null`);
-  const onDiskMatches = catResult.stdout === expectedContent;
+  // Compare md5 hashes, not raw stdout. node-ssh's execCommand strips the
+  // trailing \n from stdout, so a byte-exact compare against expectedContent
+  // (which ends in \n at L2834) ALWAYS reads as drift on an on-disk-correct
+  // file. The hash is extracted via awk on the remote side, so it's robust
+  // to the strip. Empirically confirmed root cause of the cv=82 stuck cohort
+  // on 2026-05-12: 5-VM catch-up batch had 5/5 push-error reports because
+  // every reconcile succeeded on disk (wc -c = 691) but verify saw 690 and
+  // refused to bump cv (Rule 10 working as intended — wrong signal source).
+  // The same fix is applied to the post-write verify below.
+  const expectedMd5 = crypto.createHash("md5").update(expectedContent).digest("hex");
+  const driftCheck = await ssh.execCommand(
+    `[ -f ${overridePath} ] && md5sum ${overridePath} | awk '{print $1}' || echo MISSING`,
+  );
+  const onDiskMd5 = (driftCheck.stdout || "").trim();
+  const onDiskMatches = onDiskMd5 === expectedMd5;
   const expectedTasksMax = (overrides as Record<string, string>).TasksMax;
   let runtimeTasksMaxOk = true;
   if (expectedTasksMax) {
@@ -2892,10 +2905,15 @@ async function stepSystemdUnit(
   // gate (route.ts:280). The full TOTAL_LIE pattern from the 2026-05-11
   // census (TasksMax=75 stuck despite cv claims) was caused by (b)
   // failing silently. Both checks now make the failure observable.
-  const verifyContent = await ssh.execCommand(`cat ${overridePath} 2>/dev/null`);
-  if (verifyContent.stdout !== expectedContent) {
+  // md5 compare instead of byte-exact stdout — see L2847 comment for the
+  // node-ssh trailing-\n strip rationale. expectedMd5 is in scope from above.
+  const verifyMd5Result = await ssh.execCommand(
+    `md5sum ${overridePath} | awk '{print $1}'`,
+  );
+  const verifyMd5 = (verifyMd5Result.stdout || "").trim();
+  if (verifyMd5 !== expectedMd5) {
     result.errors.push(
-      `stepSystemdUnit: verify-after-write FAILED — on-disk override.conf does not match expected content (got ${verifyContent.stdout.length} bytes, expected ${expectedContent.length})`,
+      `stepSystemdUnit: verify-after-write FAILED — on-disk override.conf md5 (${verifyMd5.slice(0, 12)}) does not match expected (${expectedMd5.slice(0, 12)})`,
     );
     return;
   }
