@@ -272,7 +272,7 @@ async function migrateOne(
   return { outcome: "skip-other", messages, elapsedMs };
 }
 
-async function main() {
+async function main(): Promise<number> {
   console.log("══ Fleet V2 SOUL.md migration rollout ══");
   console.log(`  dryRun:        ${dryRun}`);
   console.log(`  priorityFirst: ${priorityFirst}`);
@@ -293,7 +293,7 @@ async function main() {
     if (!acquired) {
       console.error("FATAL: reconcile-fleet cron lock already held — aborting.");
       console.error("  Wait for the cron to finish or kill the lock manually if stale.");
-      process.exit(2);
+      return 2;
     }
     console.log("  ✓ cron lock acquired");
   } else {
@@ -361,7 +361,7 @@ async function main() {
 
     if (vms.length === 0) {
       console.log("  Nothing to do. Exiting.");
-      process.exit(0);
+      return 0;
     }
 
     // §3 — Set RECONCILE_SOUL_MIGRATION_VM_IDS once with ALL VM IDs joined by
@@ -377,7 +377,7 @@ async function main() {
       const ans = await prompt(`\nProceed with LIVE V2 migration on ${vms.length} VMs? [yes/no] `);
       if (ans !== "yes" && ans !== "y") {
         console.log("Aborted.");
-        process.exit(1);
+        return 1;
       }
     }
 
@@ -488,18 +488,20 @@ async function main() {
     }
 
     const allClean = tally.error + tally.auditFail + tally.skipDisk === 0;
-    process.exit(allClean ? 0 : 2);
+    return allClean ? 0 : 2;
   } finally {
     if (!dryRun) {
-      await releaseCronLock("reconcile-fleet");
+      await releaseCronLock("reconcile-fleet").catch(() => {});
       console.log("  ✓ cron lock released");
     }
   }
 }
 
-main().catch((e) => {
-  console.error("FATAL:", e);
-  // Try to release lock on crash
-  releaseCronLock("reconcile-fleet").catch(() => {});
-  process.exit(1);
-});
+main()
+  .then((code) => process.exit(code))
+  .catch((e) => {
+    console.error("FATAL:", e);
+    // Try to release lock on crash
+    releaseCronLock("reconcile-fleet").catch(() => {});
+    process.exit(1);
+  });
