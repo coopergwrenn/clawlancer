@@ -1,0 +1,139 @@
+<!doctype html>
+<!--
+  Source HTML for the /edge Open Graph share card.
+
+  Output:  public/edge/og-edge.png  (1200×630, ~445KB)
+  Used by: app/edge/page.tsx metadata via lib/seo.ts createMetadata({ ogImage })
+
+  Regenerate the PNG:
+    1. Open this file in Chrome / a Puppeteer instance at viewport 1200×630.
+    2. Screenshot at exactly 1200×630 (deviceScaleFactor=1 → 1200×630 PNG).
+    3. Save to instaclaw/public/edge/og-edge.png.
+
+    Asset paths are absolute file:// — UPDATE THEM for your machine before
+    re-rendering. The Inter font loads from Google Fonts; if your render
+    environment is offline, embed Inter via @font-face base64.
+
+  Composition (mirrors the /edge hero exactly):
+    - Top-left: Edge Esmeralda wordmark (~44px tall)
+    - Center-left ticker: ● MAY 30 – JUN 27, 2026  /  HEALDSBURG, CA
+    - Centerpiece: massive uppercase "AGENT VILLAGE." (Inter Black 132px)
+    - Bottom-left footer: A personal AI agent for every attendee · Powered by InstaClaw
+    - Right-side anchor: floating-island illustration bleeding off the right edge
+    - Background: bg-pattern.avif tiled at 100px, 0.55 opacity, multiply blend
+
+  Palette:
+    --edge-bg     #FAFAF7    (warm off-white)
+    --edge-ink    #0E0F0B    (near-black, warm)
+    --edge-soft   #5A5C53    (muted body)
+    --edge-olive  #29311E    (dark olive — accents, dot, date)
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OG · Edge Agent Village</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=block"
+      rel="stylesheet"
+    />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        width: 1200px;
+        height: 630px;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        background: #FAFAF7;
+        color: #0E0F0B;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: geometricPrecision;
+      }
+      .stage { position: relative; width: 1200px; height: 630px; overflow: hidden; }
+      .pattern {
+        position: absolute; inset: 0;
+        background-image: url('file:///Users/cooperwrenn/wild-west-bots/instaclaw/public/edge/bg-pattern.avif');
+        background-repeat: repeat;
+        background-size: 100px 100px;
+        opacity: 0.55;
+        mix-blend-mode: multiply;
+        pointer-events: none;
+      }
+      .wordmark {
+        position: absolute; top: 56px; left: 80px;
+        height: 44px; width: auto;
+      }
+      .ticker {
+        position: absolute; top: 248px; left: 80px;
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #29311E;
+        font-weight: 500;
+        display: flex; align-items: center; gap: 14px;
+      }
+      .ticker .dot { width: 8px; height: 8px; border-radius: 50%; background: #29311E; }
+      .ticker .sep { opacity: 0.35; font-weight: 400; }
+      .title {
+        position: absolute; top: 288px; left: 80px;
+        font-size: 132px;
+        font-weight: 800;
+        line-height: 0.92;
+        letter-spacing: -0.02em;
+        color: #0E0F0B;
+        text-transform: uppercase;
+        max-width: 700px;
+      }
+      .footer {
+        position: absolute; left: 80px; bottom: 56px;
+        font-size: 14px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #5A5C53;
+        font-weight: 500;
+      }
+      .footer .ink { color: #0E0F0B; }
+      .island {
+        position: absolute; right: -60px; bottom: -80px;
+        width: 580px; height: auto;
+        pointer-events: none; user-select: none;
+        opacity: 0.98;
+      }
+      .fade {
+        position: absolute; top: 0; right: 0; bottom: 0;
+        width: 220px;
+        pointer-events: none;
+        background: linear-gradient(to left, rgba(250, 250, 247, 0.18) 0%, rgba(250, 250, 247, 0) 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="pattern"></div>
+      <img
+        class="wordmark"
+        src="file:///Users/cooperwrenn/wild-west-bots/instaclaw/public/edge/edge-esmeralda-wordmark.svg"
+        alt="Edge Esmeralda"
+      />
+      <div class="ticker">
+        <span class="dot"></span>
+        <span>May 30 – Jun 27, 2026</span>
+        <span class="sep">/</span>
+        <span>Healdsburg, CA</span>
+      </div>
+      <h1 class="title">Agent<br />Village.</h1>
+      <div class="footer">
+        <span class="ink">A personal AI agent for every attendee</span>
+        <span class="sep" style="margin: 0 8px;">·</span>
+        Powered by InstaClaw
+      </div>
+      <img
+        class="island"
+        src="file:///Users/cooperwrenn/wild-west-bots/instaclaw/public/edge/floating-island.avif"
+        alt=""
+      />
+      <div class="fade"></div>
+    </div>
+  </body>
+</html>

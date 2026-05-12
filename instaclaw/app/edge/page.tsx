@@ -10,6 +10,11 @@ export const metadata = createMetadata({
     "Every Edge Esmeralda attendee gets a personal AI agent for the 28-day village. While you sleep, your agent meets other agents, lines up the right people for tomorrow, and surfaces the governance proposals that matter to you.",
   path: "/edge",
   ogTitle: "Agent Village · Edge Esmeralda 2026",
+  // Branded share card — 1200x630, Edge palette (dark olive, off-white, sage),
+  // matches the /edge hero composition exactly (floating-island bleeding off
+  // the right edge, dotted-grid background, Inter Black uppercase title).
+  // Generated 2026-05-12 via puppeteer-rendered HTML in scripts/_render-og-edge.html.
+  ogImage: "/edge/og-edge.png",
 });
 
 const eventJsonLd = {
