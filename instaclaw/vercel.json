@@ -102,6 +102,10 @@
       "schedule": "0 11 * * *"
     },
     {
+      "path": "/api/cron/research-export-sync",
+      "schedule": "0 0 * * *"
+    },
+    {
       "path": "/api/cron/heartbeat-staleness-sweep",
       "schedule": "*/30 * * * *"
     },

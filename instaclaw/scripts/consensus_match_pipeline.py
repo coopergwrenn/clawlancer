@@ -838,12 +838,23 @@ def maybe_send_agent_outreach(
         return {**target_enrich, "status": "skipped", "reason": "self_info_unresolved"}
 
     self_xmtp = read_self_xmtp_address()
+    # Layer 3 deliberation score (the agent's predicted match quality, 0-1).
+    # Plumbed through to the outreach reserve so it lands on the
+    # matchpool_outcomes row at insert time. Critical signal for
+    # tuning Layer 3 prompts post-Edge against actual outcomes.
+    deliberation_score_raw = top_delib.get("match_score")
+    deliberation_score = (
+        float(deliberation_score_raw)
+        if isinstance(deliberation_score_raw, (int, float))
+        else None
+    )
     payload = {
         "target_user_id": new_top1,
         "profile_version": profile_version,
         "rationale": strip_rationale_prefix(rationale_raw),
         "topic": top_delib.get("conversation_topic") or "",
         "window": top_delib.get("meeting_window") or "",
+        "deliberation_score": deliberation_score,
         "from_user_id": self_info.get("user_id"),
         "from_name": self_info.get("name"),
         "from_agent_name": self_info.get("agent_name"),
