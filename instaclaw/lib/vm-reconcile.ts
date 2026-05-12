@@ -2909,7 +2909,7 @@ async function stepGatewayRestart(
   // Failure mode: if validate cannot run (network/SSH transient), we log
   // and proceed to restart anyway (degraded — same as old behavior).
   const validateRes = await ssh.execCommand(
-    `${DBUS_PREFIX} && openclaw config validate 2>&1`,
+    `${NVM_PREAMBLE} && ${DBUS_PREFIX} && openclaw config validate 2>&1`,
     { execOptions: { timeout: 15_000 } } as any,
   );
   const validateOut = (validateRes.stdout || '') + (validateRes.stderr || '');
@@ -2932,7 +2932,7 @@ async function stepGatewayRestart(
       for (const k of keys) {
         const full = `${prefix}.${k}`;
         const unsetRes = await ssh.execCommand(
-          `${DBUS_PREFIX} && openclaw config unset ${full} 2>&1`,
+          `${NVM_PREAMBLE} && ${DBUS_PREFIX} && openclaw config unset ${full} 2>&1`,
           { execOptions: { timeout: 10_000 } } as any,
         );
         if (unsetRes.code === 0) {
@@ -2951,7 +2951,7 @@ async function stepGatewayRestart(
       // (the gateway will crash-loop and we surface the error below — same
       // as old behavior).
       const reValidate = await ssh.execCommand(
-        `${DBUS_PREFIX} && openclaw config validate 2>&1`,
+        `${NVM_PREAMBLE} && ${DBUS_PREFIX} && openclaw config validate 2>&1`,
         { execOptions: { timeout: 15_000 } } as any,
       );
       const stillInvalid = reValidate.code !== 0 || !/Config valid:/i.test(reValidate.stdout || '');
