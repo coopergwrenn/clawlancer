@@ -46,6 +46,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      // /edge-city was the original partner-portal URL. Renamed to /edge
+      // on 2026-05-12 for a cleaner brand fit. Permanent redirect preserves
+      // external links (sponsor emails, partner mailings, social shares)
+      // that pointed at the old URL.
+      { source: "/edge-city", destination: "/edge", permanent: true },
+      { source: "/edge-city/:path*", destination: "/edge/:path*", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {
