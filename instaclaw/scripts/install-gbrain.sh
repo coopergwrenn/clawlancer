@@ -8,13 +8,19 @@
 #   GBRAIN_PINNED_COMMIT=2ea5b71 GBRAIN_PINNED_VERSION=0.28.1 bash install-gbrain.sh
 #
 # Phases (each prints PHASE_X_START and PHASE_X_OK or FATAL_*):
-#   A  pre-flight (backup + idempotency)
+#   A  pre-flight (backup + idempotency + read OPENAI_API_KEY and GBRAIN_ANTHROPIC_API_KEY from .env)
 #   B  install Bun (with unzip prereq)
 #   C  clone + checkout pinned commit
 #   D  bun install + bun link
 #   E  gbrain init --pglite
 #   F  gbrain serve standalone probe
 #   G  wire MCP via openclaw mcp set (hot reload — no restart)
+#   H  put_page + query round-trip verification gate (real MCP behavior test)
+#
+# Co-deployed file requirement:
+#   verify-gbrain-mcp.py must be uploaded by the TS wrapper alongside this
+#   script, available at /tmp/verify-gbrain-mcp.py at exec time. Phase H aborts
+#   if it's missing — install-gbrain.sh refuses to silently skip the gate.
 #
 # Exit codes documented in the design doc §3.3.
 
@@ -49,11 +55,28 @@ tar -tzf "$TARBALL" > /dev/null 2>&1 || { echo "FATAL_BACKUP_CORRUPT"; exit 1; }
 # A2: openclaw.json backup
 cp "$HOME/.openclaw/openclaw.json" "/tmp/openclaw.json.bak.$TS"
 
-# A3: prereqs
+# A3: prereqs — openclaw + API keys
 which openclaw > /dev/null 2>&1 || { echo "FATAL_NO_OPENCLAW"; exit 2; }
+
+# OpenAI key — for text-embedding-3-large (1536-dim, matches PGLite schema).
 OPENAI_KEY=$(grep "^OPENAI_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"')
 KEY_LEN=$(printf "%s" "$OPENAI_KEY" | wc -c)
 [ "$KEY_LEN" -lt 20 ] && { echo "FATAL_NO_OPENAI_KEY"; exit 2; }
+
+# Anthropic key — for gbrain expansion (Haiku) + chat (Sonnet). Per Gary's
+# defaults in gbrain/src/core/ai/gateway.ts: DEFAULT_EXPANSION_MODEL =
+# 'anthropic:claude-haiku-4-5-20251001', DEFAULT_CHAT_MODEL =
+# 'anthropic:claude-sonnet-4-6-20250929'. Without this key, gbrain's
+# gateway.ts:304 silently disables expansion (returns the original query) —
+# search still works but at degraded quality.
+#
+# Stored under GBRAIN_ANTHROPIC_API_KEY (not ANTHROPIC_API_KEY) to avoid
+# collision with OpenClaw's auth-profiles.json field of the same name, which
+# is the per-VM gateway_token — NOT a real Anthropic key. We map this to
+# ANTHROPIC_API_KEY in the gbrain MCP env block below.
+ANTHROPIC_KEY=$(grep "^GBRAIN_ANTHROPIC_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"')
+A_KEY_LEN=$(printf "%s" "$ANTHROPIC_KEY" | wc -c)
+[ "$A_KEY_LEN" -lt 20 ] && { echo "FATAL_NO_ANTHROPIC_KEY"; exit 2; }
 
 # A4: idempotency — already correctly installed?
 EXISTING_VERSION=$(gbrain --version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
@@ -166,17 +189,34 @@ echo "PHASE_F_OK"
 # PHASE G: wire MCP via openclaw mcp set (hot reload — no restart)
 # ═════════════════════════════════════════════════════════════════════════════
 echo "PHASE_G_START"
+# Three intentional choices in this env block:
+#
+#   1. NO GBRAIN_EMBEDDING_DIMENSIONS. gbrain's PGLite schema hardcodes
+#      `vector(1536)` in `gbrain/src/schema.sql`. Setting this env var to
+#      anything OTHER than 1536 causes every `put_page` to fail with
+#      "expected 1536 dimensions, not N" (the vm-050 bug, 2026-05-11).
+#      Default (1536) matches schema. Omit the override entirely.
+#
+#   2. ANTHROPIC_API_KEY sourced from GBRAIN_ANTHROPIC_API_KEY on disk so
+#      gbrain (which uses @anthropic-ai/sdk) sees a real Anthropic key. This
+#      key is dedicated to gbrain — separate from the gateway proxy auth
+#      flow OpenClaw uses for the agent's main chat completions.
+#
+#   3. GBRAIN_ANTHROPIC_MAX_INFLIGHT=3 caps concurrency to bound traffic
+#      spikes during heavy graph ingestion. gbrain self-throttles at this
+#      ceiling — protects both us and Anthropic from runaway parallelism.
 GBRAIN_JSON_FILE="/tmp/gbrain-mcp-$TS.json"
-OPENAI_KEY="$OPENAI_KEY" python3 > "$GBRAIN_JSON_FILE" <<'PYEOF'
+OPENAI_KEY="$OPENAI_KEY" ANTHROPIC_KEY="$ANTHROPIC_KEY" python3 > "$GBRAIN_JSON_FILE" <<'PYEOF'
 import json, os
 print(json.dumps({
     "command": "/home/openclaw/.bun/bin/gbrain",
     "args": ["serve"],
     "env": {
         "OPENAI_API_KEY": os.environ["OPENAI_KEY"],
+        "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_KEY"],
         "GBRAIN_DATABASE_URL": "pglite:///home/openclaw/.gbrain/brain.pglite",
         "GBRAIN_EMBEDDING_MODEL": "openai:text-embedding-3-large",
-        "GBRAIN_EMBEDDING_DIMENSIONS": "1024",
+        "GBRAIN_ANTHROPIC_MAX_INFLIGHT": "3",
     },
 }))
 PYEOF
@@ -211,14 +251,76 @@ HEALTH=$(curl -s -m 3 -o /dev/null -w "%{http_code}" http://localhost:18789/heal
 echo "PHASE_G_OK health=$HEALTH"
 
 # ═════════════════════════════════════════════════════════════════════════════
+# PHASE H: put_page + query round-trip verification gate
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase F was just a "does the process start" probe. That catches "binary
+# missing" but NOT the runtime issues that actually shipped to production:
+#
+#   - GBRAIN_EMBEDDING_DIMENSIONS / schema dim mismatch (vm-050, 2026-05-11)
+#   - Missing OPENAI_API_KEY (embedding fails at put_page time)
+#   - PGLite write failure (disk full, permission, schema migration stalled)
+#   - MCP tool registration broken
+#
+# Phase H drives a real JSON-RPC put_page → query round-trip via gbrain's
+# canonical verification harness (verify-gbrain-mcp.py). It fails the install
+# if either tool errors or the put page isn't found by the subsequent query.
+#
+# Canonical source: instaclaw/scripts/verify-gbrain-mcp.py — uploaded by the
+# TS wrapper to /tmp/verify-gbrain-mcp.py. Read-only at this point in the
+# install. We copy to a TS-suffixed path so we don't fight other concurrent
+# installs (unlikely on a single VM but cheap defense).
+echo "PHASE_H_START"
+VERIFY_PY_SRC=""
+for candidate in "/tmp/verify-gbrain-mcp.py" "$(dirname "${BASH_SOURCE[0]}")/verify-gbrain-mcp.py"; do
+  if [ -s "$candidate" ]; then VERIFY_PY_SRC="$candidate"; break; fi
+done
+if [ -z "$VERIFY_PY_SRC" ]; then
+  echo "FATAL_VERIFY_PY_MISSING expected_at=/tmp/verify-gbrain-mcp.py"
+  echo "hint: ensure _install-gbrain-on-vm.ts SFTPs verify-gbrain-mcp.py alongside install-gbrain.sh"
+  openclaw mcp unset gbrain > /dev/null 2>&1
+  exit 14
+fi
+VERIFY_PY="/tmp/verify-gbrain-mcp-$TS.py"
+cp "$VERIFY_PY_SRC" "$VERIFY_PY"
+chmod +x "$VERIFY_PY"
+
+VERIFY_OUT=$(MARKER_TS="$TS" \
+  OPENAI_API_KEY="$OPENAI_KEY" \
+  ANTHROPIC_API_KEY="$ANTHROPIC_KEY" \
+  GBRAIN_DATABASE_URL="pglite://$HOME/.gbrain/brain.pglite" \
+  GBRAIN_EMBEDDING_MODEL="openai:text-embedding-3-large" \
+  timeout 180 python3 "$VERIFY_PY" 2>&1)
+VERIFY_RC=$?
+# Tail the verify output for forensic visibility (capped — full output may be
+# verbose if put_page is slow + retries chatter happens)
+echo "$VERIFY_OUT" | tail -12
+
+if [ "$VERIFY_RC" -ne 0 ]; then
+  echo "FATAL_VERIFY_GATE_FAILED rc=$VERIFY_RC"
+  openclaw mcp unset gbrain > /dev/null 2>&1
+  exit 14
+fi
+
+# Final RESULT_OK / RESULT_FAIL line — leading whitespace tolerated (the
+# helper writes it indented in some contexts)
+RESULT_LINE=$(echo "$VERIFY_OUT" | grep -oE 'RESULT_(OK|FAIL)[^\n]*' | head -1)
+if [ -z "$RESULT_LINE" ] || ! echo "$RESULT_LINE" | grep -q "^RESULT_OK"; then
+  echo "FATAL_VERIFY_NO_RESULT_OK line='$RESULT_LINE'"
+  openclaw mcp unset gbrain > /dev/null 2>&1
+  exit 14
+fi
+echo "PHASE_H_OK $RESULT_LINE"
+
+# ═════════════════════════════════════════════════════════════════════════════
 # DONE
 # ═════════════════════════════════════════════════════════════════════════════
 echo "INSTALL_COMPLETE"
 echo "  bun:      $(bun --version)"
 echo "  gbrain:   $(gbrain --version | head -1)"
 echo "  pglite:   $HOME/.gbrain/brain.pglite"
-echo "  mcp:      registered"
+echo "  mcp:      registered (anthropic-wired)"
 echo "  health:   $HEALTH"
+echo "  verify:   $RESULT_LINE"
 echo "  backup:   $TARBALL"
 echo "  cfg_bak:  /tmp/openclaw.json.bak.$TS"
 exit 0

@@ -166,15 +166,29 @@ curl -s -m 280 -X POST -H "Authorization: Bearer $GATEWAY_TOKEN" -H "Content-Typ
   }
   console.log(`  ✓ ${pre.details}\n`);
 
-  // ── 3. SFTP-upload install script ──
-  console.log("[3/6] SFTP-upload install-gbrain.sh…");
+  // ── 3. SFTP-upload install script + verification helper ──
+  // Two files must be present on the VM before exec:
+  //   • install-gbrain.sh — the installer body (uploaded to a TS-suffixed path
+  //     so concurrent install attempts don't collide).
+  //   • verify-gbrain-mcp.py — the canonical put_page/query verification
+  //     harness used by Phase H. install-gbrain.sh expects this at the
+  //     stable path /tmp/verify-gbrain-mcp.py (NOT TS-suffixed) so its
+  //     candidate-path resolver finds it first. If we forget to upload it,
+  //     Phase H fails fast with FATAL_VERIFY_PY_MISSING (which is a feature
+  //     — refuses to silently skip the gate).
+  console.log("[3/6] SFTP-upload install-gbrain.sh + verify-gbrain-mcp.py…");
   const scriptPath = path.resolve(__dirname, "install-gbrain.sh");
+  const verifyPyPath = path.resolve(__dirname, "verify-gbrain-mcp.py");
   const scriptContent = readFileSync(scriptPath, "utf-8");
+  const verifyPyContent = readFileSync(verifyPyPath, "utf-8");
   const ts = new Date().toISOString().replace(/[-:.]/g, "").replace("T", "T").slice(0, 15) + "Z";
   const remotePath = `/tmp/install-gbrain.${ts}.sh`;
+  const remoteVerifyPath = `/tmp/verify-gbrain-mcp.py`;
   await uploadFile(c, scriptContent, remotePath);
-  await exec(c, `chmod +x ${remotePath}`, 5_000);
-  console.log(`  ✓ uploaded to ${remotePath} (${scriptContent.length} bytes)\n`);
+  await uploadFile(c, verifyPyContent, remoteVerifyPath);
+  await exec(c, `chmod +x ${remotePath} ${remoteVerifyPath}`, 5_000);
+  console.log(`  ✓ install-gbrain.sh    → ${remotePath} (${scriptContent.length} bytes)`);
+  console.log(`  ✓ verify-gbrain-mcp.py → ${remoteVerifyPath} (${verifyPyContent.length} bytes)\n`);
 
   // ── 4. Execute with pinned env vars, capture output ──
   console.log("[4/6] Executing install script (timeout 600s)…");
@@ -185,7 +199,8 @@ curl -s -m 280 -X POST -H "Authorization: Bearer $GATEWAY_TOKEN" -H "Content-Typ
   console.log(`  exit_code=${result.code}  elapsed=${elapsed}s\n`);
 
   // Parse phase markers
-  const phasesOk = (result.stdout.match(/PHASE_[A-G]_OK/g) ?? []);
+  // Phases extended A-H (Phase H = put_page/query verification gate, added 2026-05-12)
+  const phasesOk = (result.stdout.match(/PHASE_[A-H]_OK/g) ?? []);
   const fatals = (result.stdout.match(/FATAL_[A-Z_]+/g) ?? []);
   const completed = result.stdout.includes("INSTALL_COMPLETE");
   const alreadyInstalled = result.stdout.includes("ALREADY_INSTALLED");
