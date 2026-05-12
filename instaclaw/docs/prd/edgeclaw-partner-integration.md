@@ -1210,15 +1210,17 @@ The system-mediated channel is the iOS-system-notification analogue: the OS can 
 
 **Open question (Q38):** Inbox file format — JSONL (working assumption above) vs. a more structured DB-backed queue. JSONL is simpler, works without DB access, matches the existing XMTP inbox pattern. Recommend ship as JSONL for v1.
 
-### 4.14 The Plaza — Live Activity Dashboard (v0) and 2D Visualization (v1) *(added 2026-05-01)*
+### 4.14 The Pixel-Art Healdsburg — Living Window into Edge Esmeralda *(spec rewritten 2026-05-12)*
 
-The 2026-05-01 sync surfaced a "plaza" concept — a visible layer on top of the chat-only UX. Cooper's original framing: a 2D Pokemon-like realm with agents walking around. After the deeper-thinking pass, **the v0 is a Live Activity Dashboard, not a game engine.** The 2D viz is a v1 aspiration.
+This is the single most visible artifact we will ship at Edge Esmeralda. Five hundred attendees will open it every day for twenty-eight days. It is what gets screenshotted, shared on Twitter, and remembered. If we do this right, it positions InstaClaw as the spiritual successor to Stanford's Smallville at twenty-times scale, in a real-world residential context — and Philip Rosedale, who has expressed direct interest, sees the answer to what comes after the metaverse failed.
 
-**Why the dashboard wins as v0.**
+The v0 — the public-anonymized funnel dashboard at `/edge/plaza` — is shipped, necessary, and not in question (§ 4.14.1). The v1 is the pixel-art Healdsburg map, which lives as a tab inside each attendee's Portal Embed (§ 4.21): a top-down sixteen-pixel Pokémon-Gen-2 / Earthbound / Stardew-Valley aesthetic recreation of the actual town the attendees are walking around in real life. Their agents are sprites on the map. Their agents only move when the database fires a real event. The world around the agents — trees, water, sky, sunlight, weather — animates by the natural laws of the place. Real Healdsburg sun, real season, real wind. Two layers, both honest.
 
-The product caveat from the meeting was *non-negotiable*: agents must move with real intent, not fake choreography. A 2D realm has constant pressure to fake motion — "agents need to look alive between events" — that pulls toward dishonesty. A dashboard has the opposite property: it can *only* render real activity, because activity is its source data.
+This section locks the v1 direction, specs the map, the motion, the technology, and the art pipeline; it identifies the small set of decisions still requiring Cooper to rule before art commissions can begin.
 
-**Dashboard concept (v0):**
+#### 4.14.1 v0 — Live Activity Dashboard *(shipped 2026-05-12)*
+
+The public-anonymized funnel dashboard at `instaclaw.io/edge/plaza`. Server-rendered Next.js + Tailwind, ten-second `revalidate`, dark off-neutral palette, no agent identity surfaced beyond `Agent #NNN` hashes. Reads `matchpool_outcomes` and the `matchpool_funnel_counts` RPC.
 
 ```
 ─── Edge Esmeralda ── Live Plaza ─────────────────────────────────
@@ -1226,11 +1228,11 @@ The product caveat from the meeting was *non-negotiable*: agents must move with 
 ⚡ Right now: 47 active conversations · 12 intros forming · 3 dinners forming
 
 Recent activity (last 60 min)
-   ▸ 9:42pm  Sarah's agent and Jamie's agent matched on "biotech founders"
+   ▸ 9:42pm  Agent #214 and Agent #931 matched on "biotech founders"
    ▸ 9:38pm  6-person group forming around "sunset hike tomorrow"
-   ▸ 9:31pm  Alex's agent surfaced governance proposal #7 to 23 humans
+   ▸ 9:31pm  Agent #042 surfaced governance proposal #7 to 23 humans
    ▸ 9:23pm  12 agents joined the "AI ethics" plaza topic
-   ▸ 9:18pm  Maya's agent declined an intro proposal (low score)
+   ▸ 9:18pm  Agent #514 declined an intro proposal (low score)
    ...
 
 Top topics this week
@@ -1242,16 +1244,966 @@ Top topics this week
 Tonight's overnight planning kicks off in 23 min.
 ```
 
-**Properties:**
-- **Real data, no choreography.** The dashboard queries the actual research export tables (`agent_signals`, `match_outcomes`, `governance_events`). Nothing rendered without a backing event.
-- **Naturally shareable.** People screenshot live counts; the experience travels.
-- **Implementable in days.** Server-rendered HTML + a 5-second polling refresh + Tailwind. Two days end-to-end.
-- **Anonymized public version.** Same dashboard with `agent_id` shown as "Agent #047" can be embedded on the Edge City public site so non-attendees feel the village happening.
-- **Doubles as a research instrument.** The dashboard *is* the live view of the data the researchers will analyze post-village. Vendrov gets a visualizer for free.
+**Properties (unchanged from original spec):**
+- Real data, no choreography. Reads research-export tables; nothing rendered without a backing event.
+- Naturally shareable. People screenshot live counts; the experience travels.
+- Implemented in days, shipped post-§5.2 merge on 2026-05-12.
+- Doubles as a research instrument — Vendrov gets the live view of the data he will analyze post-village.
 
-**v1 — 2D plaza (post-launch).** Pokemon-like 2D realm with agent avatars. Inherits the same data source — agents only "walk" when they actually negotiated something — so the no-fake-motion principle extends naturally. Philip Rosedale specifically expressed interest. Out of scope for May 30; revisit late June for a possible week-3-or-4 reveal as a wow moment.
+v0 is the *cheap-honest* version: it satisfies the Truth Invariant by being structurally incapable of fabricating motion. v1 below extends the same discipline into a spatial idiom that 500 attendees can recognize as the actual town they're sleeping in.
 
-**Open question (Q40):** Does the dashboard go live at edgecity.live as a public artifact (anonymized), or stay private to attendees? Recommend public-anonymized; it's a marketing artifact in addition to a product feature.
+#### 4.14.2 v1 — The Pixel-Art Village *(locked 2026-05-12 · target reveal: Week 3, on or before Wed 2026-06-17)*
+
+##### 4.14.2.1 The anchor scenario — the magic moment we are designing for
+
+Tan is on her third day at Edge Esmeralda. She is eating breakfast at Flying Goat Coffee on the southeast corner of Healdsburg Plaza, scrolling on her phone. She opens the Portal Embed and clicks the "Village" tab.
+
+The map loads. It is morning Healdsburg in pixel art — warm low-angle sun, the Canary Island date palms throwing long pixel shadows across Healdsburg Avenue, a single bird crossing the sky in three frames and gone. Tan sees her own agent: a small crab sprite, her Larry variant, particular shade of teal, standing at the residential row at the north edge of the map, where she actually slept last night at Hotel Trio.
+
+While she watches, her Larry walks south down the pixel-art Foss Creek Pathway — Serendipity Lane in the village's vernacular. It moves at a steady, deliberate pace, four sprite-lengths over five seconds, and stops at the plaza, two tiles from another crab sprite, charcoal-colored. The two sprites stand near each other for a beat. A small speech bubble appears above Tan's Larry: a quiet `☕`.
+
+Her phone buzzes. Telegram notification: *"I matched you with Sarah Chen — she's a robotics founder also working on solar storage, just finished her morning briefing at the Hub. She's free for coffee in 20 minutes and is here at Flying Goat. Want me to send her your handle?"*
+
+Tan looks up. There is a woman across the room she has not met yet. They make eye contact.
+
+That is the wow. The pixel-art map showed Tan exactly what was happening before the notification arrived — agent walking, agent approaching, agent gesturing. The motion was the prelude. The notification was the punchline. The match was real, the people were real, the conversation that follows is real. The pixels are a different sensory channel for facts the system is already producing, and the spatial channel arrives a half-second before the textual one.
+
+Everything in this spec serves that moment.
+
+##### 4.14.2.2 The Truth Invariant — non-negotiable
+
+**Every visual event on the map is the rendering of one specific row in our database.** Every agent's position is its agent's last known state. Every motion is the visible form of a single fact arriving.
+
+There is no idle wandering. There is no decorative pathfinding. There is no ambient agent behavior introduced to make the village "feel busy." When the database is quiet, the village is quiet. That is *correct*. The map renders what *is*, not what *could be*. A still plaza in the early morning before the day's first briefings have completed is true to the moment, and it is beautiful — because the visual idiom (Pokémon-Gen-2 pixel art) makes a still scene read as *peaceful dawn,* not *broken product.* This is the central creative insight of the v1 direction: the aesthetic carries the invariant. A still village in pixel art is a *Pokémon NPC town before the trainer arrives.* A still village in abstract sprite-dots is a dead canvas. Same data, opposite reading.
+
+The world around the agents — trees, river, sky, sunlight, weather — animates by its own natural laws. Trees sway because trees sway. The Russian River flows because the Russian River flows. The light follows the actual Pacific Time sun over actual Healdsburg. Weather happens when real weather data says it does. The world is alive because the world is alive; agents are still because nothing has happened to them. Two layers, both honest, both real, both rooted in their own truth.
+
+If we ever catch ourselves writing code that makes an agent move without a backing database event, we are building a different product. We are not. The discipline of this invariant is the entire product story. Lose it and we become gather.town with crab sprites. Hold it, and we become the first AI-agent visualization that earns the word *real.*
+
+This is the position we will defend in every design review, every "but what if we just..." conversation, every demo. The invariant is not a constraint we work around. It is the feature.
+
+##### 4.14.2.3 Visual direction — locked decisions
+
+The aesthetic register is **Pokémon Gold/Silver/Crystal × Earthbound × Stardew Valley**. Specifically:
+
+| Element | Locked decision | Reason |
+|---|---|---|
+| Camera | True top-down, orthographic 90°. Not isometric. | Isometric doubles sprite-rotation art cost. At 500 sprites the readability cost of perspective is real. Pokémon Crystal is the reference. |
+| Tile size | **16 × 16 pixels** | Pokémon Gen-2 standard. Smallest cleanly-readable size. Lets us fit recognizable Healdsburg downtown into a ~768 × 512 viewport. ConcernedApe stayed at 16 × 16 for Stardew for exactly this reason. |
+| Sprite size | **16 × 16 for agents**, with the user's own agent at **24 × 24 with a soft glow** to identify themselves | Cooper's own avatar must be findable in a sea of 500; the slight scale-up + halo is the gentlest signal that doesn't break the world's visual rules. |
+| Walk-cycle frames | 4 frames per direction × 4 directions = **16 frames per Larry color variant** | Pokémon Gen-3+ standard, also Stardew. Industry-canonical, well-understood by every pixel artist we might commission. |
+| Idle state | **Single-frame stance + 2-pixel breathing bob.** ±1 pixel from baseline (2 px peak-to-peak), 1.5 s period, sine-eased, random phase per agent (deterministic from `hash(instaclaw_users.id)` so the same person's agent breathes the same forever). Breath pauses for the duration of any locomotion tween and resumes on idle. **Q56 locked 2026-05-12.** | The empirical case: 500 perfectly motionless sprites read as cardboard regardless of how alive the world is around them. The breath is *presence,* not *locomotion* — sprites do not move from their tile, they shift one pixel vertically. Pokémon Gen-5 onward and Stardew Valley use exactly this. Cooper's ruling: "breath is not motion." The Truth Invariant remains intact: no walking without a database event. |
+| Movement | Pure four-direction (north/south/east/west). **No diagonals.** | Pokémon Gen-2 standard. Diagonals double sprite-frame count and complicate the y-sort. Movement on a grid feels more deliberate, which serves the spec. |
+| Color palette | ~32 colors total, locked palette file shipped to every artist. Warm pastel California: warm off-whites, sage greens, dusty olives, soft terracotta, golden grass, dark oak greens, pale-blue river. Reference: Cup Nooble's Sprout Lands palette as a starting point, tuned warmer toward Granola's recent rebrand off-white (#FAFAF7 base). | Constraint enforces visual coherence across all commissioned/AI-generated assets. Without a locked palette, the village becomes the colour-stew failure mode every multi-source pixel-art project hits. |
+| Animation speed | Walk: 9 fps (animationSpeed ~0.15 from a 60 fps ticker). Talk: 4 fps. Celebration: 12 fps. | Pokémon Gen-2 timings exactly. Slower walk than modern games — it preserves the deliberate, calm feel. |
+| Outline | One-pixel dark-olive outline on agent sprites; tileset retains author's outline conventions. | Distinguishes characters from tiles at a glance even at distance. |
+| UI chrome | None, inside the canvas. All HUD (time-of-day, day-of-village counter, "follow me" toggle) lives in the surrounding Portal Embed iframe shell, not on the canvas. | Pixel-art canvas stays uncluttered. Mixing pixel art with shadcn modern UI would feel cheap; keeping them spatially separate keeps both pure. |
+
+These are not negotiable as of 2026-05-12. Any deviation requires writing a new ADR.
+
+##### 4.14.2.4 The Healdsburg Map — recognizable, real
+
+The map is a top-down rendering of actual Healdsburg, scaled and stylized but geographically true. An attendee walking the real town must recognize the pixel map; an attendee zooming in on the pixel map must be able to say "I had breakfast there this morning."
+
+**Layout is programmatic. Zero manual tilemap editing.** Claude Code generates the Tiled JSON (`.tmj`) file directly in code — placing tiles, building footprints, paths, vineyard backdrops, lamp positions, water cycling tiles, agent home tiles, and the Serendipity Lane connector. Cooper reviews screenshots, gives feedback in natural language ("the Carnegie Library is too far north; move it one tile down and add the Neoclassical pediment"), Claude Code iterates. The map is data, not a hand-authored artifact. This is intentional: a hand-authored map gates the project on pixel-art editing time we don't have, and a programmatic map can be iterated in minutes — paths re-routed, landmarks repositioned, vineyard rows extended — without re-opening Tiled. The Tiled JSON ships under version control and is reviewable in diffs like any other code artifact.
+
+**Two clusters connected by Serendipity Lane.** This is the load-bearing organizational principle, learned from Edge's 2025 layout and confirmed for 2026 (sources cited end-of-section):
+
+```
+                  ╔════════════════════════════════════╗
+                  ║   HEALDSBURG (pixel art, top-down) ║
+                  ╠════════════════════════════════════╣
+                  ║                                    ║
+                  ║       ESMERALDA →  (15 min north)  ║
+                  ║       ↑↑↑                          ║
+                  ║   Vineyard hills (Dry Creek AVA)   ║
+                  ║   ─────────────────────────────    ║
+                  ║                                    ║
+                  ║         ┌─────────────┐            ║
+                  ║         │ HOTEL TRIO  │ ← North    ║
+                  ║         │ (Edge HQ)   │   cluster  ║
+                  ║         │ pool · lawn │            ║
+                  ║         └──────┬──────┘            ║
+                  ║                │                   ║
+                  ║         (Serendipity Lane —        ║
+                  ║          Foss Creek Pathway)       ║
+                  ║                │                   ║
+                  ║                │                   ║
+                  ║   Big John's   │                   ║
+                  ║   Market 🐔    │                   ║
+                  ║                │                   ║
+                  ║                │                   ║
+                  ║         ┌──────┴──────┐            ║
+                  ║         │ THE LOFT    │ (120 N St) ║
+                  ║         └─┬───────────┘            ║
+                  ║           │                        ║
+                  ║   ────────┼──────────  North St    ║
+                  ║           │                        ║
+                  ║   ┌──Raven─┐  ┌─SingleThread─┐     ║
+                  ║   │theater│  │ (Michelin 3⭐) │     ║
+                  ║   └───────┘  └──────────────┘      ║
+                  ║                                    ║
+                  ║   ────────────────────  Plaza St   ║
+                  ║          ┌──────────┐              ║
+                  ║   Hotel  │HEALDSBURG│ Carnegie     ║
+                  ║   ┌──┐  │  PLAZA   │ Library      ║
+                  ║   │HH│  │ (gazebo  │ ┌────┐       ║
+                  ║   └──┘  │  + palms │ │ 📚 │       ║
+                  ║   ┌──┐  │  + 🌲    │ └────┘       ║
+                  ║   │h2│  │ fountain)│              ║
+                  ║   └──┘  └──────────┘ Flying       ║
+                  ║   ┌──┐    Matheson    Goat ☕     ║
+                  ║   │Hg│ ──────────────  (Plaza)    ║
+                  ║   └──┘                            ║
+                  ║                                    ║
+                  ║   ── MAIN HUB ────                ║
+                  ║   401 Center St                   ║
+                  ║   (programming · coworking)       ║
+                  ║                                    ║
+                  ║   ────────────────── (south)      ║
+                  ║                                    ║
+                  ║         Russian River              ║
+                  ║         ~~~~~~~~~~~~~~~~           ║
+                  ║         🌉 Memorial Bridge          ║
+                  ║         Memorial Beach             ║
+                  ║                                    ║
+                  ║   Russian River Valley AVA hills   ║
+                  ║   (vineyards south)                ║
+                  ╚════════════════════════════════════╝
+
+           Three AVA backdrops on the map's edges:
+           • Alexander Valley (east) — vineyard rows climbing
+           • Dry Creek Valley (NW) — oak savanna + vines
+           • Russian River Valley (south) — riparian woodland
+```
+
+**Specific landmarks, all real (do NOT include The SHED — it's been closed since 2018; rendering it would be fake):**
+
+| Landmark | Real address | Pixel-art role |
+|---|---|---|
+| **Healdsburg Plaza** with copper-roofed gazebo, Sandborn marble fountain, Canary Island date palms, the hidden redwood | 100 Matheson St | The default idle position. Agents who have no recent activity and no scheduled events stand here. The signature silhouette of the village. |
+| **Hotel Trio** | 110 Dry Creek Rd (1 mile north of plaza) | The Edge HQ cluster. Where most attendees sleep. Northern anchor of Serendipity Lane. |
+| **Hotel Healdsburg / h2hotel / Harmon Guest House** | SW corner of plaza (Healdsburg Ave + Matheson) | The plaza-hotel cluster. The h2hotel's living roof is the only planted-roof tile on the map — distinctive. |
+| **The Loft (kids programming)** | 120 North St | Family-oriented programming venue. |
+| **Main Hub** | 401 Center St | The primary programming/coworking venue. Most "agent attended a talk" events render here. |
+| **SingleThread Restaurant + Inn** (3 Michelin stars) | 131 North St | Premium dinner venue. When agents go to evening events, this is one of the destinations. |
+| **Carnegie Library / Museum** | 221 Matheson St | The neoclassical landmark on the south side of the plaza. Visually distinct (columns, pediment). |
+| **Raven Performing Arts Theater** | 115 North St | The iconic vertical "RAVEN" marquee is a recognizable silhouette. Evening event venue. |
+| **Flying Goat Coffee — Plaza Cafe** | 300 Center St (SE corner of plaza) | The morning destination. Most agents start the day here. |
+| **Flying Goat Coffee — Roastery** | 419 Center St | The second Flying Goat. Locals call this one "Roastery Goat." Including both is a hat-tip locals will catch. |
+| **Costeaux French Bakery** | 417 Healdsburg Ave | Institutional breakfast spot since 1923. |
+| **Big John's Market** | 1345 Healdsburg Ave (north end) | Beloved local grocery. Render with a tiny rotisserie chicken pixel — attendees who do groceries here will love it. |
+| **The Matheson / Barndiva / Goodnight's / Dry Creek Kitchen / Baci** | Plaza-area restaurants | Dinner destinations. Goodnight's Western-themed steakhouse leans into the wine-country-but-also-Western vibe — small cowboy-hat detail on the sign. |
+| **Tasting rooms** (Siduri, Cartograph, Portalupi, Selby, Longboard, Williamson, Breathless) | Center Street + plaza vicinity | Afternoon programming and meeting spots. |
+| **Memorial Bridge** (steel truss) + **Memorial Beach** | Russian River, ~1 mile south | The river feature. The steel-truss bridge silhouette anchors the southern edge of the map. The seasonal-dam swim hole is a real quirk worth including as the warm-day backdrop. |
+| **Madrona Manor** | 1001 Westside Rd (1 mile west, off-map) | Render as an arrow at the western edge of the map: "← Madrona Manor (1 mi)". Off-map but acknowledged. |
+
+**The "Esmeralda →" pointer at the north edge.** A small road sign reading "Esmeralda → 15 min" pointing off the map's northern boundary. This is the permanent town being built outside Cloverdale; Edge Esmeralda 2026 is its living prototype. The sign is an easter egg attendees will recognize.
+
+**Architecture vocabulary** (relayed to artist as a style note): Italianate brick storefronts (dominant downtown vocabulary, late-1800s, 2-story, flat parapets, bracketed cornices), Victorian/Queen Anne on residential side streets, Craftsman bungalows in the residential row, the Carnegie Library as Neoclassical Revival (columns + pediment + cream stucco), and a single Streamline Moderne (the Anderson Medico-Dental at the NW corner of East + Matheson — a curving white concrete oddball that locals find charming).
+
+**Map orientation: Healdsburg Avenue as map vertical** (north-up). Matches every local tourist map; attendees orient instantly. The plaza's true compass-rotation (~45° from cardinal) is sacrificed for legibility — this is a stylized recreation, not a survey.
+
+**Sources for § 4.14.2.4:**
+- Edge Esmeralda 2026 venues: `edgepatagonia.sola.day/event/edge-esmeralda-2026/venues`
+- Edge Esmeralda 2025 village overview (Timour): `edgeesmeralda2025.substack.com/p/edge-esmeralda-2025-village-overview`
+- Devon Zuegel's 2025 "Serendipity Lane" map tweet: `x.com/devonzuegel/status/1774936677456187738`
+- Healdsburg Plaza photo references: `yelp.com/biz/healdsburg-plaza-healdsburg` (62 photos), `sonoma.com/blog/healdsburg-plaza-guide/`
+- The SHED closure (do not draw): `patch.com/california/healdsburg/iconic-healdsburg-shed-closing-shop`
+- Foss Creek Pathway: `ci.healdsburg.ca.us/370/Foss-Creek-Pathway-Plan`
+- Official Downtown Map PDF: `healdsburg.com/wp-content/uploads/2025/07/2024-Downtown-Map-Updated-Aug.-2024.pdf`
+- Hannah Clayborn historical plaza details: `hannahclaybornshistoryofhealdsburg.com/the-plaza.html`
+
+##### 4.14.2.5 The Venue Palette — Edge programming, mapped to attendee daily life
+
+Edge Esmeralda's 2026 program is **93% attendee-organized, 7% Edge-team-programmed.** This matters: we are not rendering thirty official venues. We are rendering the spaces where the day actually unfolds, and letting the data show us who is where.
+
+A typical day, with corresponding map tiles:
+
+| Hour (Pacific) | Activity | Map tile/area |
+|---|---|---|
+| 5:50 AM | Sunrise. Real Healdsburg sun rises. Tint overlay shifts warm rose. | World layer (no agent activity yet) |
+| 7:00–9:30 AM | Attendees wake. Some at Hotel Trio (north cluster), some at plaza hotels, many in shared rental houses scattered in residential row. Coffee at Flying Goat or Costeaux. Briefings completing on agents' VMs. | Residential row → Foss Creek Pathway → Flying Goat tiles. Agents shown moving from "home tile" to "briefing complete" position outside their owner's coffee destination. |
+| 9:30 AM–12:30 PM | Morning programming. Main Hub (401 Center), h2hotel Green Room, The Loft, ad-hoc plaza-edge gatherings. | Main Hub tile + programming tiles. Agents whose humans are at talks render at the appropriate venue tile. |
+| 12:30–2:00 PM | Lunch. Plaza benches under the palms (sit-down icon), plaza-edge cafes. | Plaza tiles + cafe tiles. |
+| 2:00–6:00 PM | Afternoon side conversations, workshops, tasting-room hangs. The Loft, Wellbeing Space, tasting rooms (Siduri, Cartograph, others). | Tasting-room row + Loft + Wellbeing tiles. |
+| 6:00–9:00 PM | Dinner. SingleThread (special occasion), The Matheson, Barndiva, Goodnight's, Dry Creek Kitchen, OR a house dinner at a shared rental. | Restaurant tiles + residential tiles. |
+| 9:00 PM–midnight | Evening socials. Hotel Trio lobby/pool (the larger gathering hub at night), plaza gazebo (Tuesdays in June: live music), Raven Theater events, plaza bars. | Hotel Trio cluster + plaza gazebo + Raven tiles. Lights come on in buildings (lamp-tile swap at dusk). |
+| Midnight–5:50 AM | Sleep. Agent at home tile, world quiet, stars overhead in the sky strip. | Residential + Hotel Trio tiles. |
+
+**Three named 2026 residencies get optional micro-affordances on the map** (a tiny `LJR` / `ZP` / `IF` indicator beside each agent's sprite belonging to that residency):
+- Long Journey Residency
+- Zee Prime Residency
+- Inflection Fellowship
+
+This is a quiet sigil, not a decoration. It tells residency-mates they're in the same group when they see each other on the map.
+
+**The four weekly programmatic themes** ([source](https://www.edgeesmeralda.com/about)) gently tint the map's UI accent (NOT the world's color palette, which is locked):
+
+| Week | Dates | Theme | UI accent |
+|---|---|---|---|
+| 1 | Jun 1–7 | Protocols for Flourishing (Health, Longevity, Bio, Neuro) | Sage |
+| 2 | Jun 8–14 | Intelligence and Autonomy (AI, Governance, Hard Tech, Privacy) | Olive |
+| 3 | Jun 15–21 | **Emergent Futures and World Building** (Art, Decentralized Tech, Creative AI, Spatial Computing) — **OUR REVEAL WINDOW** | Amber |
+| 4 | Jun 22–27 | Environments of Tomorrow (Urbanism, Energy, Climate, Food Systems) | Terracotta |
+
+The week-3 theme alignment is providential and worth leaning into: the map *is* a Spatial Computing + Creative AI artifact. Launch tweet writes itself.
+
+##### 4.14.2.6 Motion Catalog — every database event → visual action
+
+This is the load-bearing table of the spec. Every row maps a specific database event to a specific visual rendering. If an event is not on this table, it produces no motion. If a row has a visual rendering, it must trace back to a backing database fact. Both directions of the rule are enforced.
+
+| Database event | Visual rendering | Duration | Audio (off by default; if user enables) |
+|---|---|---|---|
+| `instaclaw_vms.health_status` transitions to `'healthy'` (agent comes online) | Sprite fades in at home tile (residential row or Hotel Trio depending on attendee's housing) | 2 s fade | soft chime |
+| `instaclaw_vms.health_status` transitions to `'hibernating'`, `'suspended'`, or offline | Sprite fades out at last position | 2 s fade | none |
+| `instaclaw_users.privacy_mode_until` set (privacy mode engaged) | Sprite shows a small "do-not-disturb" curtain icon hovering above; position frozen until cleared | indefinite | none |
+| New `matchpool_outcomes` row with `agent_action='proposed'` | Sender sprite walks toward receiver's current tile, stops two tiles away, faces receiver | 4–6 s walk | footstep clicks |
+| `negotiation_threads.state` transitions to `'proposed'` (turn-1 PROPOSE envelope created) | Speech bubble appears above sender's sprite directed at receiver: `💌` icon | 5 s | none |
+| `negotiation_messages` turn-2 envelope arrives with `envelope_type='accept'` | Both sprites turn to face each other; matching `✓` speech bubbles exchange | 3 s | tiny ding |
+| `negotiation_threads.state` transitions to `'accepted'` | Both sprites walk together (parallel) to the agreed meeting tile (cafe, bench, garden, restaurant — based on `accepted_window` parsing for venue match, or a default plaza-bench tile) | 6–10 s | none |
+| Meeting time arrives: current time matches the parsed `accepted_window` start | Both sprites are AT the venue tile; a quiet "talking" indicator (two small speech-bubble silhouettes) hovers between them | for parsed meeting duration (default 30 min if not specified) | none |
+| Meeting ends | Sprites walk apart toward respective home tiles | 4–6 s walk | none |
+| `negotiation_threads.state` transitions to `'declined'` | Sender's sprite turns away from receiver, walks back to its previous position | 4–6 s walk | softer footsteps |
+| `negotiation_threads.state` transitions to `'expired'` (24h timeout) | Sender's speech bubble fades; no other motion | 2 s | none |
+| `negotiation_threads.state` transitions to `'cancelled'` or `'cancelled_by_user'` | Both sprites stop in place if mid-walk; bubble vanishes | 1 s | none |
+| Pipeline cron fires (briefing time, per-VM staggered between 5:30–8:30 AM PT) | Sprite walks to a "thinking spot" — a small constellation of bench tiles along the Foss Creek Pathway, or the Russian River walk at Memorial Beach. Thought-bubble (`💭`) hovers. | 30 s walk + thinking state for duration of briefing (~30–90 s) | none |
+| Briefing completes | Sprite walks back to its current home or current activity position | 30 s | none |
+| User sends Telegram message to agent | Small `💬` notification ping above the sprite | 2 s | none |
+| Agent matches with 3+ people in one cycle | Brief sparkle/confetti above sprite (2 s max) | 2 s | optional celebratory chime |
+| `installed_skills` row appended for agent | Brief shimmer effect (glowing aura, 3 s) | 3 s | none |
+| Pulse-poll response submitted (1–10 mood) | Sprite shows colored mood indicator above (1=deep red → 10=warm green gradient) | 5 s | none |
+| Governance proposal opens (`governance_proposals` row created) | Cluster of sprites who have engaged with that proposal gather near a proposal marker (a small pixel-art ballot box or similar) on the plaza | persistent until proposal closes | none |
+| Vote cast | Sprite briefly raises a small hand-up animation | 1 s | none |
+| Frontier micropayment received (`frontier_transactions`) | Brief coin-stack animation above sprite | 2 s | tiny chime |
+| `MEMORY.md` snapshot updated (cron-archived) | Subtle "book closing" sprite above the agent for 2 s | 2 s | none |
+| Edge community-wide event (e.g., daily morning kickoff at 9 AM, governance plenary, sunset gathering) — driven by an `edge_calendar_events` table we provision | Agents whose humans have RSVP'd render at the event's tile | for event duration | none |
+| New attendee onboards mid-village | Sprite fades in at a "new arrival" position near the Hotel Trio entrance | 3 s | soft welcome chime |
+| Day's first agent action across the entire village | A single bird sprite crosses the sky in three frames, randomized arc | 4 s | none |
+
+If a desired visual moment isn't backed by a database event, the answer is to add the database event first. **The reverse engineering pressure is correct.** If a designer wants "agents wave to each other when their humans nod in person," then either we add a `proximity_wave` table fed by Bluetooth proximity sensing, or we don't render the wave. The Truth Invariant works because the cost of fake motion is real — it forces the data layer to keep up with the visual layer.
+
+##### 4.14.2.7 The Living World — ambient environmental motion (NOT agent-driven)
+
+The world animates by natural laws. This is the layer that makes the spec's central claim defensible: that 500 still agents in a village read as *paused community,* not *ghost town.* The empirical research on social presence is unambiguous — stillness reads as paused only when the surrounding context moves. Sources at end of section.
+
+**The six ambient layers, ranked by ROI** (build all six; this is the minimum to avoid the "ghost town" reading):
+
+1. **Time-of-day tint overlay (real Pacific Time).** A full-screen sprite with `blendMode: 'multiply'`, tinted from a real-clock-driven palette: dawn `#FFD8B8` → midday `#FFFFFF` → golden hour `#FFCB7A` → dusk `#FFB870` → night `#3050A0`. GSAP-tweens the tint across real-clock seconds, using `Intl.DateTimeFormat({timeZone:'America/Los_Angeles'})` for canonical local time. Real Healdsburg sunrise (~5:50 AM at start, ~5:46 AM at solstice) and sunset (~8:25–8:35 PM) anchor the curve. **Golden hour (7:30–8:35 PM PT) is THE Healdsburg light** and gets generous attention — long dark-olive shadows from the date palms, warm amber wash across the plaza.
+
+2. **Water tile cycling.** Russian River tiles cycle three frames at ~400 ms per frame. The seasonal-dam pool at Memorial Beach gets a slightly different cycle (still water with occasional ripple ring when wind blows). The plaza fountain gets two-frame cycling. *Pokémon Crystal water animation is the reference.*
+
+3. **Tree-sway tile cycling.** Two-frame cycling (canopy crown ±1 pixel) at randomized ~2 s period per tree. Stardew Valley's exact technique. Both the plaza Canary Island palms and the oak savanna in the surrounding hills participate.
+
+4. **Lamps lighting at dusk.** At sunset minus 30 min, lamp-post tiles swap to their lit variants (warm orange points of glow). The h2hotel's living roof gets a slightly different soft-green night-glow (subtle). Buildings windows light up similarly — global flag-driven tile swap, no per-building logic.
+
+5. **One bird, occasionally.** A single bird sprite (three-frame flap) GSAP-tweens across the sky in a random arc every 3–5 minutes during daylight hours, then destroys itself. **Exactly one bird, rarely.** Anything more becomes noise.
+
+6. **Particle weather, only when database says so.** If the optional `weather_outcomes` table (or NOAA-fed `village_weather` snapshot) reports rain at Healdsburg, the map shows particle rain via `@pixi/particle-emitter` in a `ParticleContainer`. If marine fog (June can have morning fog burning off by mid-morning), a soft white-translucent overlay drifts L→R. *No weather without backing data.* This preserves the invariant — even atmosphere is grounded.
+
+**The five-minute "village morning" sequence** the map should show without any agent activity:
+
+```
+5:30 AM — sky: deep indigo, sparse stars; all sprites still; one window glow
+          at Big John's Market (early shift). Russian River ripples slowly.
+5:50 AM — first rose tint at horizon; sky lightens. No agent activity yet
+          (briefings haven't fired).
+6:15 AM — sky pales; stars fade. Tree canopies start gentle sway. A first
+          bird crosses east-to-west.
+6:30 AM — first briefing crons fire on early-riser VMs. Random scatter of
+          sprites move to thinking spots along Foss Creek Pathway. Tan's
+          Larry stays still — she's not up yet.
+7:00 AM — peak briefing activity; ~80 of 500 sprites moving to/from thinking
+          spots. The most activity the village will see all morning.
+7:30 AM — most briefings complete. Agents drift back to wherever their
+          owner is — many to Flying Goat (the morning-coffee data shows up
+          here in week 1). Sun fully up. Tint overlay shifts to bright
+          midday white.
+```
+
+This sequence is generated entirely by real cron-firing events. Nothing fabricated. The pixel art shows the village waking up because the village *is* waking up.
+
+**The Pokémon Concession — locked 2026-05-12. Cooper's ruling: include the breath.**
+
+Game design research is unambiguous: 500 perfectly motionless sprites read as cardboard regardless of how alive the world is around them. Pokémon BW (2010) onward gives all NPC sprites a 2-pixel vertical bob; Stardew Valley does it for major characters. This is *presence,* not *locomotion,* and does not violate the Truth Invariant — breath is not motion. The phrase "breath is not motion" is now operative.
+
+**Implementation, exhaustively:**
+
+```ts
+// One global ticker advances breath time. Phase per sprite is deterministic
+// from the user_id hash, so the same person's agent breathes the same forever
+// (and across page reloads, and across iframe re-mounts — stable identity).
+const BREATH_PERIOD_MS = 1500;
+const BREATH_AMPLITUDE_PX = 1;       // ±1 px → 2 px peak-to-peak
+const BREATH_TICK_HZ = 30;           // 30 fps for breath is imperceptibly different from 60
+
+function breathPhase(userId: string): number {
+  // deterministic 0..2π from user_id
+  let h = 0;
+  for (const c of userId) h = (h * 31 + c.charCodeAt(0)) & 0x7fffffff;
+  return (h % 1000) / 1000 * Math.PI * 2;
+}
+
+// In the PixiJS scene setup
+const breathTicker = new PIXI.Ticker();
+breathTicker.maxFPS = BREATH_TICK_HZ;
+breathTicker.add(() => {
+  const t = performance.now();
+  for (const sprite of charLayer.children) {
+    if (sprite.locomotionActive) continue;   // GSAP owns y during locomotion
+    const phase = sprite.breathPhase;        // computed at sprite-create time
+    const y = sprite.baselineY + Math.sin((t / BREATH_PERIOD_MS) * 2 * Math.PI + phase) * BREATH_AMPLITUDE_PX;
+    sprite.y = y;
+  }
+});
+breathTicker.start();
+```
+
+**Handoff with locomotion:** when a GSAP locomotion tween starts on a sprite, the tween sets `sprite.locomotionActive = true` and writes directly to `sprite.y` for its duration. The breath ticker observes the flag and skips that sprite. On tween complete, the tween writes `sprite.baselineY = sprite.y` (the new tile position) and clears `locomotionActive = false`. The breath ticker resumes adding its sine offset from the new baseline. Clean, no glitches.
+
+**Performance:** at 500 sprites × 30 FPS × one sin + one add per tick, the cost is under 1% of an iframe's CPU budget. Mobile-safe. The breath ticker uses a separate `PIXI.Ticker` instance with its own `maxFPS = 30` rather than the main 60 FPS ticker, halving the per-frame work.
+
+**Why this matters:** the breath is the difference between *paused community* and *ghost town*. Empirically validated across every shipped pixel-art world (Pokémon, Stardew, Earthbound, Undertale). Excluding it would leave the spec's central claim — "still agents in a living world reads as alive" — empirically fragile. Cooper's ruling correctly resolves the tension.
+
+**Sources for § 4.14.2.7:**
+- "Breathing life into NPCs: psychological attribution" — Game Developer
+- "How NPCs make video game worlds feel real" — Mimic Gaming
+- "Making digital worlds feel alive" — Eric Buitron
+- Stardew Valley design analyses (kokutech, Deep Root Depths)
+- Pokémon BW onward idle-bob technique (Oripoke, PokéCommunity)
+- Negative space in game design (Wayline) — what *empty* environments fail to do
+
+##### 4.14.2.8 Real Healdsburg Time — sun, season, solstice
+
+The map's environmental cycle is anchored to actual Pacific Time at the actual latitude/longitude of Healdsburg, CA (38.61° N, 122.87° W). Specifics:
+
+**Sun curve (May 30 → June 27, 2026):**
+
+| Phase | Start of village | Solstice (Sun Jun 21) | End of village |
+|---|---|---|---|
+| Sunrise | 5:50 AM PDT | 5:46 AM PDT | 5:48 AM PDT |
+| Solar noon | 1:08 PM PDT | 1:13 PM PDT | 1:14 PM PDT |
+| Golden hour (start) | ~7:25 PM PDT | ~7:35 PM PDT | ~7:35 PM PDT |
+| Sunset | 8:25 PM PDT | 8:35 PM PDT | 8:34 PM PDT |
+| Astronomical dusk | 9:50 PM PDT | 10:00 PM PDT | 9:58 PM PDT |
+| Day length | 14h 35m | **14h 55m (longest)** | 14h 46m |
+
+**Summer solstice 2026 falls at 01:24 AM PDT on Sunday June 21** — during the village's reveal week. The map shows a small one-day special state for that day: a more saturated golden noon, a longer golden hour, and (if attendees zoom in) a tiny "☀ longest day" indicator near the sun sprite. The Esmeralda permanent town pointer at the north edge glows slightly that day. Nothing more — restraint matters.
+
+**Weather defaults** (June is dry season in Healdsburg, 80°F average high, 54°F average low, 0.1" rainfall, 84% sunny, occasional morning marine-layer fog burning off by mid-morning). Default map: bright sun, light breeze, no precipitation. The `village_weather` snapshot polls NOAA Sonoma County endpoint every 15 minutes; significant departures from "sunny" (light rain, fog, smoke from a regional wildfire) produce the corresponding visual overlay. No weather is fabricated.
+
+**The map renders golden hour as its dominant mood** when the time isn't otherwise dictated. This is THE Healdsburg light — the two hours before sunset when vineyards glow, oak crowns get dark backlit silhouettes, and the palms throw long shadows across Healdsburg Avenue. If Cooper opens the embed at 5 AM Pacific, he sees the indigo sky and the early-morning quiet; at 6 PM he sees the village in its most photogenic state. The default page-load tint applied to screenshots that get shared on Twitter is the golden-hour one. This is on purpose.
+
+##### 4.14.2.9 The Five Magic Moments
+
+Beyond the anchor scenario in § 4.14.2.1, five additional design moves elevate the map from "competent visualization" to "thing Rosedale tweets about." Build these into v1.
+
+**1. Notification synchrony.** When the map shows an agent's motion that culminates in a meeting being scheduled, the Telegram notification fires *at the moment the visual gesture completes,* not at the moment the database row commits. We delay the Telegram push by a calibrated amount (target: 200–500 ms before animation end) so the map "shows" the meeting being set up and the phone vibrates as the sprites settle into the cafe. *The map becomes the prelude. The notification becomes the punchline.* This is the wow.
+
+Technically: the `agent_outreach` post-acceptance pipeline already has a configurable delay before Telegram push; we add a "wait for visual" hook that defers by `(animation_duration - 400ms)` whenever the iframe is open. If the iframe is closed (the user isn't watching), the push fires immediately — no point in delaying.
+
+**2. Follow your sprite.** Click your own agent and the camera follows it. You can watch your Larry walk to a meeting, see other Larrys around, feel like you are in the village. Press Escape (or any "free camera" button) to return to overview mode. The first time an attendee follows their sprite is the moment they understand the map is about them.
+
+**3. Time-travel scrubber.** A discrete timeline below the map lets you scrub back through today's events. Drag the handle from "now" to "7 AM" and watch the morning play out in fast-forward. Pause at any moment to see who was where. Twelve hours of village activity is at most a few thousand events; we hold the trail in client memory and tween between snapshots.
+
+This serves two purposes: (a) attendees who slept late can catch up on what their agent did before they woke; (b) it makes the spatial-rendering of database events visceral — you can *see* the network forming.
+
+**4. The daily ritual — the synchronized briefing dawn.** At ~7 AM PT each morning, the village shows a beautiful, organic emergence: agents across all 500 attendee positions begin moving simultaneously to their thinking spots along Foss Creek Pathway, the Russian River, and the plaza benches. The map breathes for ten minutes as briefings fire. By 7:30 most have dispersed.
+
+This is real — it's just the cron-firing-stagger rendered spatially. Attendees who open the map at 7 AM will see something different from attendees who open it at 7 PM. Word will spread: "you have to see the village around 7." The shared daily ritual creates a reason to open the map at a specific hour, which is the gold standard for habit formation.
+
+**5. The shooting star for village milestones.** When the village crosses an aggregate threshold (10,000 matchpool outcomes village-wide, 1,000 confirmed meetings, the 100th in-person dinner reported, etc.), a single shooting star crosses the night sky over the map. Anyone who happens to be looking sees it. The list of "things that produce a shooting star" is short and pre-declared — it must remain meaningful. Five per month at most. The first time someone screenshots a shooting star and tweets it, the village gets a coherent identity moment.
+
+A sixth possibility worth considering but deferring: **mascot variant easter eggs.** If Philip Rosedale attends, his Larry could be wearing a tiny top hat. Other notable attendees similarly. Tasteful, opt-in only, and small — the Larry pixel-art operating system from `larry-canon` is already designed to support per-attendee variants. Defer to art-pipeline conversation.
+
+##### 4.14.2.10 Technical architecture
+
+**The rendering foundation is forked from AI Town.** [`a16z-infra/ai-town`](https://github.com/a16z-infra/ai-town) (MIT, 9.9k stars, 1.1k forks, last meaningful commit Feb 2025 — stable, maintenance-mode target) is the open-source reimplementation of Stanford's "Generative Agents" / Smallville (Park et al. 2023, [arXiv:2304.03442](https://arxiv.org/abs/2304.03442)). It ships a production-grade PixiJS rendering layer, sprite-and-character system, camera/viewport behavior, tilemap loader, and a clean React + TypeScript codebase. By forking, we are *literally* extending the open-source generative-agents codebase the AI-research community recognizes — and we are the **first known public fork to swap AI Town's data plane**: every prior fork has either changed character data, localized the prose, or swapped the LLM provider, but none has replaced the Convex backend. That contribution is itself a moment for Rosedale and the Stanford generative-agents team.
+
+**What we keep from AI Town, untouched** (~1,200 LOC, the visual core):
+
+| File | Role | Why we keep it |
+|---|---|---|
+| [`src/components/PixiStaticMap.tsx`](https://github.com/a16z-infra/ai-town/blob/main/src/components/PixiStaticMap.tsx) | Tilemap renderer (native PIXI, sprite-per-cell) | Battle-tested at ~3K cells; we extend its tileset metadata to load our Healdsburg map |
+| [`src/components/PixiViewport.tsx`](https://github.com/a16z-infra/ai-town/blob/main/src/components/PixiViewport.tsx) | Camera/scene management (thin wrapper over `pixi-viewport`) | All the pan/pinch/wheel/decelerate/clamp behavior we want, already configured |
+| [`src/components/Character.tsx`](https://github.com/a16z-infra/ai-town/blob/main/src/components/Character.tsx) | Sprite renderer (`AnimatedSprite` + direction lookup + speech-bubble overlay) | Direction-from-orientation logic, animated-sprite mounting, speech bubble compositing — all done |
+| [`src/components/PixiGame.tsx`](https://github.com/a16z-infra/ai-town/blob/main/src/components/PixiGame.tsx) | Root scene composition; iterates players, mounts `<Character>` per agent | Clean dispatch pattern; we replace its data source but keep the structure |
+
+**What we refactor** (~400 LOC, 5–7 files, surgical edits):
+
+| File | Change | Reason |
+|---|---|---|
+| `ConvexClientProvider.tsx` | Replace `ConvexReactClient` with `@supabase/supabase-js` client | We use Supabase; AI Town uses Convex |
+| `src/hooks/serverGame.ts` | Replace `useQuery(api.world.worldState)` + `gameDescriptions` with a Supabase Realtime subscription on `village:edge-esmeralda-2026` + one-shot REST `select` for static map data | This is the single seam between data layer and renderer |
+| `src/hooks/useHistoricalValue.ts` | Replace AI Town's 60 Hz binary-buffer playback with a simple per-update rAF lerp between current and target position | At 500 humans walking at human speeds we don't need 60 Hz historical replay; saves ~350 LOC and a binary protocol |
+| `src/hooks/useHistoricalTime.ts` | Port (server-time concept is generic, but trim the buffering machinery) | Keep the playback-clock concept without the historical-buffer complexity |
+| `src/hooks/sendInput.ts` | **Delete** | Public Spectator view is read-only; Authenticated view's interactions route through our existing Portal Embed APIs (per § 4.21), not Convex-style inputs |
+| `src/components/Player.tsx` | Replace one import + remove conversation/agent-thinking lookups (we render those from our own event state, not AI Town's simulated-agent model) | The `isMoving` / `isSpeaking` flags get rewired to our event reducer |
+| `data/characters.ts` | Replace with dynamic load from Supabase (each attendee's `instaclaw_users.id` → assigned Larry sprite atlas) | AI Town's 8-character static enum becomes 500 dynamic Larrys |
+
+**What we replace entirely:**
+
+- `convex/aiTown/` — the scripted-agent simulation engine. We have **real** agents driven by real Supabase events. We do not need a simulation.
+- `convex/schema.ts` — Convex schema. Replaced by our Supabase tables.
+- `data/gentle.js` (AI Town's village map) — replaced by our `_generate-healdsburg-map.ts` programmatic output.
+- All bundled pixel-art assets in `public/assets/` — Cape Bailey + hilau tile assets from OpenGameArt under per-asset licenses we'd otherwise need to audit. **Sidestepped by replacement with our purchased LimeZu + Cainos + Sprout Lands + PixelLab Larry sprites.** We keep only AI Town's MIT-licensed *code*; their bundled artwork stays in the upstream repo, not in our fork's `public/`.
+
+**Total refactor surface: ~400 LOC across 5–7 files, plus full art replacement.** Estimated effort: 3–5 engineer-weeks, well within the asset-sprint timeline (§ 4.14.2.11).
+
+---
+
+**Sprite identity at 500 attendees.** AI Town's atlas ships 8 visual variants (f1–f8); we need ~50–100 distinct identities for 500 attendees. Three options, ranked:
+
+1. **Generate ~50 PixelLab sprite atlases, hash-assign each attendee to one.** Simplest. Visual duplication acceptable for v1 (multiple attendees can share a sprite, identity is also conveyed by name on hover and the user's own sprite is haloed). Format matches AI Town: 32×32, 4 rows × 3 columns, 3-frame walk per direction. **Recommended for v1.**
+2. **Layer accessories at render time** (hair color, hat, shirt color) via additional `<AnimatedSprite>` children on the Character `<Container>` + PIXI color tints. Gives true per-attendee identity. Requires `Character.tsx` changes. **Defer to v1.1.**
+3. **Shader-based palette swap** via a fragment shader on each sprite. Maximum flexibility, biggest engineering cost. **Defer indefinitely.**
+
+The v1.1 commissioned Larry (per § 4.14.2.11) is ideal for option 2 — once we have a hand-polished master Larry with layered accessory slots, the per-attendee uniqueness becomes natural.
+
+---
+
+**HistoricalObject decision: drop the binary buffer, use rAF lerp.** AI Town quantizes per-tick agent positions into a delta-encoded binary `ArrayBuffer` of samples, replayed client-side at 60 Hz for smooth motion. The pattern is elegant for AI-driven NPCs that step rapidly. **Our case is different:** real humans walking at ~1 tile/second produce far fewer position updates, and motion happens only on database events. A per-update rAF lerp between current and target position (~30 lines of code) is sufficient and saves the 350-LOC port of `convex/engine/historicalObject.ts`. Confirmed in research: this is the recommended substitution.
+
+---
+
+**PixiJS version: stay on v7.** AI Town ships `pixi.js@^7.2.4` + `@pixi/react@^7.1.0`. PixiJS 8 has API breakage in `@pixi/react`. Upgrading is a separate phase; not in scope for v1. (My earlier draft of this section assumed v8 — corrected.)
+
+---
+
+**The realtime pipeline:**
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ DATA LAYER (Supabase Postgres + Realtime — existing)               │
+│                                                                    │
+│  matchpool_outcomes ──┐                                            │
+│  negotiation_threads ─┤  Postgres triggers call                    │
+│  negotiation_messages ┤  realtime.broadcast_changes() ON TWO       │
+│  instaclaw_vms       ─┤  CHANNELS:                                 │
+│  installed_skills    ─┤    'village:edge-esmeralda-2026'           │
+│  governance_proposals ┤      (private, full identity, attendees)    │
+│  pulse_poll_responses ┤    'village-public:edge-esmeralda-2026'    │
+│  edge_calendar_events ┤      (public, anonymized payload)          │
+│  village_weather (NEW)┘  Identity stripping happens INSIDE         │
+│                          the trigger function, before any payload  │
+│                          crosses the WebSocket boundary.           │
+│                          │                                         │
+│                          ▼                                         │
+│              Supabase Realtime (Broadcast)                         │
+│              Channel 'village:*' — RLS-gated to authenticated      │
+│                                    edge_city attendees             │
+│              Channel 'village-public:*' — public, anyone subscribes│
+│              Broadcast Replay: enabled (reconnect-recovery)        │
+│                          │                                         │
+└──────────────────────────┼─────────────────────────────────────────┘
+                           │ WebSocket
+                           ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ TWO BROWSER VIEWS, ONE SHARED FORK OF AI TOWN                      │
+│                                                                    │
+│  Authenticated (Village tab inside Portal Embed):                  │
+│    iframe at edgeclaw.instaclaw.io/village                         │
+│    Subscribes to 'village:*' (private)                             │
+│    Full identity, click-into-agent side-panels, "find yourself"    │
+│                                                                    │
+│  Public Spectator:                                                 │
+│    Page at instaclaw.io/edge/village                               │
+│    Subscribes to 'village-public:*' (public)                       │
+│    Agent #NNN only, hover-only metadata, "claim your agent" CTA    │
+│                                                                    │
+│  Both views share:                                                 │
+│    Web Worker — Supabase Realtime heartbeats                       │
+│    Event reducer → animation queue (per-agent FIFO)                │
+│    PixiJS v7 (from AI Town fork)                                   │
+│      ├─ pixi-viewport (camera)                                     │
+│      ├─ PixiStaticMap (native-PIXI tile sprites, AI Town's pattern)│
+│      ├─ Character layer (500 Larry variants, y-sortable)           │
+│      ├─ Breath ticker (30 FPS, deterministic phase per user_id)    │
+│      ├─ Tint overlay (real Pacific Time, multiply-blend)           │
+│      ├─ Animated overlay sprites (water, trees, lamps, bird)       │
+│      ├─ @pixi/particle-emitter (weather, only on DB event)         │
+│      └─ DOM overlay (speech bubbles, HUD, CTA on Spectator)        │
+│      │                                                             │
+│      ▼                                                             │
+│    GSAP PixiPlugin with overwrite:'auto' for locomotion tweens     │
+│      │                                                             │
+│      ▼                                                             │
+│    rAF lerp for per-update position interpolation                  │
+│      │                                                             │
+│      ▼                                                             │
+│    CullerPlugin (off-screen sprites: renderable=false)             │
+│      │                                                             │
+│      ▼                                                             │
+│    Canvas (WebGL renderer)                                         │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Realtime decisions, locked:**
+
+| Concern | Decision | Source |
+|---|---|---|
+| Postgres Changes vs Broadcast | **Broadcast-from-database.** Postgres Changes runs an RLS check per subscriber per event; with 500 subscribers it does not scale. Broadcast was built for "multiplayer game"-style workloads. | [Supabase blog: Realtime Broadcast from Database](https://supabase.com/blog/realtime-broadcast-from-database); [Realtime or ETL?](https://supabase.com/blog/realtime-or-etl-how-to-choose-the-right-tool) |
+| Trigger pattern | **Dual-channel triggers.** One trigger per source table, calling `realtime.broadcast_changes()` for both `village:<slug>` (private, full payload) and `village-public:<slug>` (public, anonymized payload — identity-stripping happens *inside* the trigger function, before any payload leaves the database). See § 4.14.2.14.3 for the SQL pattern. | [Subscribing to Database Changes docs](https://supabase.com/docs/guides/realtime/subscribing-to-database-changes) |
+| Auth — Authenticated view | Iframe receives short-lived JWT via postMessage from EdgeOS parent (per § 4.21.3); calls `sb.realtime.setAuth(jwt)` before `channel.subscribe()` | [setAuth reference](https://supabase.com/docs/reference/javascript/realtime-setauth) |
+| Auth — Public Spectator view | None. `village-public:*` channel is publicly readable via Supabase RLS policy on `realtime.messages`. | [Realtime Authorization](https://supabase.com/docs/guides/realtime/authorization) |
+| Reconnection / replay | **Broadcast Replay enabled on `village:*`.** Sprites mid-walk during a brief disconnect resume cleanly. The Public Spectator channel uses simpler reconnect (latest state from a one-shot REST query on connect). | [Broadcast Replay feature](https://supabase.com/features/realtime-broadcast-replay) |
+| Backgrounded tab heartbeats | `{params:{worker:true}}` — runs heartbeats on a Web Worker so backgrounded iframes don't drop. Applies to both views. | [Handling silent disconnections](https://supabase.com/docs/guides/troubleshooting/realtime-handling-silent-disconnections-in-backgrounded-applications-592794) |
+| Topic naming | `village:<popup-slug>` and `village-public:<popup-slug>` — multi-tenant ready (Eclipse, Token2049 reuse the pattern with their own slug). Generalizes CLAUDE.md Rule 9 partner pattern. | Internal — Rule 9 generalization |
+| Scale | 500 Authenticated subscribers + estimated 500–5,000 Public Spectator visitors at peak. Pro tier base; estimated $10–30/mo overage during the village. | [Realtime limits + pricing](https://supabase.com/docs/guides/realtime/limits) |
+
+**PixiJS decisions, inherited from AI Town fork + our additions:**
+
+| Component | Choice | Inherited or new |
+|---|---|---|
+| Renderer | **PixiJS v7.2.4 + @pixi/react v7.1.0** | Inherited (AI Town's stack; we stay aligned) |
+| Tilemap | **Native PIXI sprite-per-cell** via AI Town's `PixiStaticMap.tsx`, fed by our programmatically-generated `_generate-healdsburg-map.ts` output | Inherited renderer; new map data |
+| Tilemap loader | AI Town's JS-module format (`{tilesetpath, tiledim, bgtiles, objmap, animatedsprites}`) — our generator emits this format directly | Inherited format; new generator |
+| Camera | **`pixi-viewport` v5.0.1** with the exact `.drag().pinch().wheel().decelerate().clamp().clampZoom()` config from AI Town's `PixiViewport.tsx`, tweaked for our world dimensions | Inherited |
+| Sprite system | **AnimatedSprite** with 4-row × 3-column atlas, 32×32 frames, 3 frames per direction, no idle frame (sprite pauses on current frame when not moving) | Inherited from AI Town's `Character.tsx` |
+| Sprite identity | 50 PixelLab-generated atlases, attendee hash-assigned (option 1 above) | New |
+| Position playback | Per-update rAF lerp between current and target position (replaces AI Town's `useHistoricalValue` 60 Hz buffer) | Modified |
+| Locomotion tweening | **GSAP PixiPlugin** with `overwrite: 'auto'` for the Healdsburg-specific walk-on-event animations; replaces the rAF lerp for the specific case of "agent walks somewhere because an event fired" | New layer on top of inherited |
+| Breath ticker | Custom 30 FPS `PIXI.Ticker` adding ±1 px sine-eased y-offset per sprite, deterministic phase from `hash(user_id)` (per § 4.14.2.7 Q56 implementation) | New |
+| Tint overlay | Multiply-blend `Sprite`, GSAP-tweened against real Pacific Time clock | New |
+| Animated overlay sprites | Tile-cycling water + tree-sway + lamp-glow via AI Town's existing `animatedsprites` array machinery, fed new entries by our map generator | Inherited machinery; new entries |
+| Particles | **@pixi/particle-emitter** for weather (rain/fog), only when `village_weather` table has a backing row | New |
+| Z-order | y-sort: `sprite.zIndex = sprite.y` after each move; container `sortableChildren:true` | New (AI Town doesn't have y-sort; we add it for the building-occlusion semantics) |
+| Speech bubbles | DOM overlay positioned by `sprite.toGlobal()` per frame | New (AI Town uses in-PIXI `Text` + `Graphics`; we prefer DOM for accessibility + sharper text) |
+| Culling | AI Town's renderer already culls via `pixi-viewport`'s `cull` plugin; we keep it | Inherited |
+| Audio | Deferred. AI Town ships a background loop; we strip it. v1 silent. | Deferred |
+
+**Buildable code sketch — Larry walks on database event:**
+
+```ts
+// In our refactored serverGame.ts, replacing AI Town's useQuery flows.
+const channel = sb.channel('village:edge-esmeralda-2026', {
+  config: { private: true, broadcast: { ack: false, self: false } },
+});
+
+channel.on('broadcast', { event: 'INSERT' }, ({ payload }) => {
+  if (payload.table !== 'matchpool_outcomes') return;
+  if (payload.record.agent_action !== 'proposed') return;
+
+  const sender = larrys.get(payload.record.source_user_id);
+  const target = larrys.get(payload.record.candidate_user_id);
+  if (!sender || !target) return;  // out of viewport or unloaded — skip
+
+  // Pick a tile two squares from target along the line between them.
+  const stopTile = approachTile(sender.pos, target.pos, 2);
+  const distance = manhattan(sender.pos, stopTile);
+  const duration = distance / WALK_SPEED_TPS;
+
+  // Take ownership from the breath ticker for the duration of locomotion.
+  sender.locomotionActive = true;
+
+  // Snap to the right animation row (down/left/right/up) before tweening.
+  const direction = dirTo(sender.pos, stopTile);
+  sender.animatedSprite.textures = sender.atlas.animations[direction];
+  sender.animatedSprite.play();
+
+  gsap.to(sender, {
+    pixi: { x: stopTile.x * TILE_DIM, y: stopTile.y * TILE_DIM },
+    duration,
+    ease: 'none',
+    overwrite: 'auto',
+    onUpdate: () => { sender.zIndex = sender.y; },
+    onComplete: () => {
+      sender.animatedSprite.gotoAndStop(0);
+      sender.pos = stopTile;
+      sender.baselineY = sender.y;       // hand back to breath ticker
+      sender.locomotionActive = false;
+    },
+  });
+});
+
+await sb.realtime.setAuth(jwt);
+channel.subscribe();
+```
+
+Total new code on top of the fork: **~500 LOC across the realtime client (200), the event reducer (150), the breath ticker (50), the time-of-day tint (50), and the dual-channel anonymization triggers (50 SQL).** Plus the ~400 LOC of AI Town refactors above. The asset pipeline (§ 4.14.2.11) is the larger remaining investment.
+
+##### 4.14.2.11 Asset pipeline — fork AI Town, buy tilesets, AI-generate Larry; commission only at v1.1
+
+**The strategy (locked 2026-05-12).** Do not gate v1 on a commissioned artist. Fork the open-source codebase that already implements Smallville-quality pixel-art village rendering, drop commercial tilesets into it, generate Larry sprite variants via PixelLab.ai. **Total v1 cost: $125 with $25 buffer; $150 ceiling.** If v1 lands well, commission LimeZu or PixyMoon for custom Healdsburg-specific landmarks as v1.1 (post-Edge, $800–1500). Commission preserved as an explicit upgrade trajectory, not a v1 dependency.
+
+**The Smallville continuity is via the codebase, not via the artwork.** AI Town (`a16z-infra/ai-town`, MIT, the canonical open-source reimplementation of Stanford's "Generative Agents" paper — Park et al. 2023, [arXiv:2304.03442](https://arxiv.org/abs/2304.03442)) implements the rendering layer we need. Important correction surfaced by research 2026-05-12: AI Town's bundled pixel-art assets are **not** the Smallville commission. Per AI Town's README, its tile assets come from George Bailey + hilau on OpenGameArt and Mounir Tohami's itch.io GUI pack. The Smallville-paper-commissioned artists (PixyMoon, LimeZu, ぴぽ) were involved in the original Stanford research, not the AI Town reimplementation. By forking AI Town we inherit its *code lineage* — the PixiJS rendering, the historical-buffer pattern, the agent-on-tilemap architecture — and we are the first public fork to swap its data plane (per research: zero known forks have replaced Convex with another backend). The launch tweet writes itself: *"first known fork of AI Town with Convex swapped for Supabase, driving 500 real agents at a real residential village. The architecture Stanford's generative-agents paper pioneered, now running on real human attendees at Edge Esmeralda."* Joon Park, the Anthropic research community, and Rosedale-adjacent watchers recognize the codebase lineage instantly. We are not claiming the same *artists* as Smallville — we are claiming the same *architecture,* substantively extended.
+
+**The v1 buy list (Day 1 — Mon 2026-05-12):**
+
+| Item | URL | Cost | License | Use |
+|---|---|---|---|---|
+| Fork AI Town | `github.com/a16z-infra/ai-town` | $0 | MIT (verifying bundled-art license — pending research) | Rendering foundation: PixiJS tilemap rendering, sprite movement, scene management, camera. We keep the rendering layer; replace its Convex backend with our Supabase Broadcast pipeline; replace its scripted-AI loop with our 500 real Edge agents. |
+| LimeZu Serene Village Revamped | `limezu.itch.io/serenevillagerevamped` | $15 | Permissive commercial (pay ≥$1.50 grants commercial + modify rights; raw tileset not redistributable as standalone) | Primary village tileset. Warm Stardew-leaning, 16×16. LimeZu authored Smallville's interiors — same artist's range. |
+| LimeZu Modern Exteriors | `limezu.itch.io/modernexteriors` | $25 | Permissive commercial | Plaza-area downtown buildings: cafes, restaurants, hotels. Modern small-town vocabulary. |
+| Cainos Pixel Art Top Down Village | `cainos.itch.io/pixel-art-top-down-village` | $7 | Permissive commercial (credit appreciated, not required) | Vineyard backdrop tiles, oak savanna, secondary paths. Studio-Ghibli-warm. 32×32 — downscaled to 16×16 to match LimeZu where they coexist. |
+| Sprout Lands Premium | `cupnooble.itch.io/sprout-lands-asset-pack` | $10 (Premium tier) | Premium permits commercial; raw not redistributable | The palette anchor. Cup Nooble's pastel matches our warm-California target exactly. Use for vineyard rows, golden hills, Russian River banks. |
+| Aseprite | `aseprite.org` | $20 | Commercial-friendly EULA | Industry-standard pixel-art editor. For manual polish: back-view sprite drift from PixelLab, hand-tuning the gazebo copper roof color, etc. |
+| PixelLab.ai Artisan tier | `pixellab.ai` | $24/mo × 2 = $48 | Commercial license included with paid plans | Larry sprite generation. Only tool that auto-generates 4-direction walk cycles from a single reference. Subscribe May + June; cancel after the village ends. |
+| **Subtotal** | | **$77 one-time + $48 over 2 months = $125** | | |
+| **Buffer to $150 ceiling** | | $25 | | Reserved for: PixelLab credit overages, one additional itch.io pack if a specific tile is missing, or temporary upgrade to PixelLab Architect tier if batch generation needs higher quotas. |
+
+**License hygiene.** All purchased tilesets above are commercial-permissive after one-time payment. We cannot redistribute the raw tilesets as standalone assets; shipping them inside our compiled product is permitted by each vendor's stated terms. PixelLab Artisan-tier outputs carry full commercial rights. Aseprite outputs are ours unconditionally. The fork inherits AI Town's MIT *code* license. **Research 2026-05-12 confirmed: AI Town's bundled pixel-art assets are not Smallville-commissioned — they are sourced from OpenGameArt (George Bailey + hilau, plus Mounir Tohami's itch.io GUI elements), with per-asset license variability (some CC0, some CC-BY, some CC-BY-SA, some GPL). Rather than auditing each upstream asset individually, our plan is to ship the fork *without* AI Town's bundled `public/assets/` artwork — we replace it entirely with our purchased LimeZu + Cainos + Sprout Lands tilesets + PixelLab-generated Larry sprites.** This gives us a clean license story: only MIT-licensed code from AI Town, only commercial-permissive art from our vendors. Specifically excluded under all circumstances: LPC tilesets (CC-BY-SA / GPL), Universal LPC Spritesheet Generator outputs (same), Workadventure code (AGPL — read-only reference, never copy).
+
+**The asset sprint, Mon 2026-05-12 → Wed 2026-05-21 (10 days):**
+
+| Day | Date | Activity |
+|---|---|---|
+| **1** | Mon May 12 | Cooper approves $125 spend. Claude Code forks `a16z-infra/ai-town` locally, purchases all tilesets via itch.io, installs Aseprite, starts PixelLab Artisan subscription. Begin reading AI Town's frontend code in detail (per the deep-research agent's findings on its rendering layer / data-layer seam / sprite system). |
+| **2** | Tue May 13 | Strip AI Town's scripted-agent loop. Identify the seam between its Convex data layer and its PixiJS rendering layer. Begin `instaclaw/scripts/_generate-healdsburg-map.ts` — a TypeScript program that emits Tiled `.tmj` JSON deterministically from a high-level layout description (tile-ID constants from the tilesets + positional helpers + layer definitions + object-layer for agent home tiles). |
+| **3** | Wed May 14 | Emit first Tiled JSON for Healdsburg bones: two-cluster geography (Hotel Trio north, plaza south), Serendipity Lane connector path, plaza shape with diagonal cross-paths and gazebo placeholder, vineyard backdrops on east/west/north edges, Russian River along south. Render via the forked AI Town. **First screenshot to Cooper. Cooper reviews and gives feedback in natural language ("move the Carnegie Library one tile south; add the Streamline Moderne building at the NW corner; the Foss Creek path is too straight, give it a slight curve following the actual creek bed"). Claude Code edits the generator script, regenerates the `.tmj`, re-renders. Zero manual Tiled editing.** Iterate same-day. |
+| **4** | Thu May 15 | Iterate layout to Cooper-approved bones. Wire ambient world layers: time-of-day tint overlay (real Pacific Time, anchored to `Intl.DateTimeFormat({timeZone:'America/Los_Angeles'})`), animated water tiles (Russian River + plaza fountain + Memorial Beach swim hole), tree-sway cycling on date palms and oak crowns, lamp-tile swap at dusk, single-bird sprite generator with 3-5 minute random arc. |
+| **5** | Fri May 16 | Generate Larry sprites via PixelLab.ai using the `larry-canon/v1/larry.recipe.json` template (trigger token `qlryx`, palette derived from PixelLab outputs per Q59 ruling — back-port to canon afterward). Generate master Larry + 12 color variants × 4-direction walk + idle + talk + celebrate (16 frames per direction × 12 variants = ~192 frames). Hand-polish back-view drift in Aseprite — PixelLab's documented weak spot, ~2 hours per variant, parallelizable. |
+| **6** | Sat May 17 | Integrate sprite assets into the AI Town fork (drop them into its sprite-atlas pipeline; replace its NPC identities with hash-derived Larry variants from `instaclaw_users.id`). Implement the breath ticker per § 4.14.2.7's locked implementation spec (single global `PIXI.Ticker` at 30 FPS, deterministic phase per `hash(user_id)`, locomotion-handoff via `locomotionActive` flag). |
+| **7–9** | Sun May 18 – Tue May 20 | Wire all 23 motion-catalog events (§ 4.14.2.6) from Supabase Broadcast subscription → event reducer → per-agent animation queue → GSAP `pixi: {x,y}` tweens with `overwrite: 'auto'`. Test each event individually against a staging DB by triggering controlled state-machine transitions. Confirm the locomotion-breath handoff is glitch-free. Confirm Broadcast Replay catches reconnect events without stranding sprites mid-walk. |
+| **10** | Wed May 21 | End-to-end smoke test: a single script triggers every event type sequentially against staging; observe corresponding sprite motion. Perf soak at simulated 500 sprites — `CullerPlugin` enabled, off-screen sprites `renderable=false`, breath ticker active. **Phase 1 canary ready.** |
+
+**Why this strategy is the right call:**
+
+1. **No artist-availability bottleneck.** LimeZu's commission status was uncertain in research; PixyMoon's similarly. Forking is unblocking — the code is already there, MIT-licensed, downloadable today.
+2. **Cheaper *and* faster.** $125 vs $1500–2500; 10-day sprint vs 14-day-plus negotiation-then-delivery.
+3. **Smallville continuity is more substantive via the fork.** We are literally extending the open-source heritage, not visually echoing it. Joon Park's team recognizes their own codebase being extended in a real residential village.
+4. **Validates v1 before spending v1.1 dollars.** If the architecture and Truth Invariant don't land with attendees during the village, the right move is to learn from that — not to have pre-spent $2K on art that gets stale.
+5. **Visual quality bar is met by our purchased art alone.** AI Town's bundled artwork is stripped at fork time (license + aesthetic reasons); our LimeZu Serene Village + Modern Exteriors + Cainos + Sprout Lands tilesets + PixelLab-generated Larry variants are themselves a curated, warm-California-pastel set that clears the "Rosedale-screenshot-worthy" bar. The differentiator vs gather.town is the Truth Invariant, not pixel fidelity.
+6. **Programmatic layout is the right discipline for v1.** A hand-authored map would gate iteration on Cooper's pixel-art-editing time. A generator script can be iterated in minutes. Tiled JSON / AI Town's JS-module format ships under version control, reviewable as diffs.
+7. **We become the first public fork to swap AI Town's data plane.** Per research: zero existing forks have replaced Convex with another backend. This is a contribution-back-to-ecosystem moment in addition to our village deliverable; worth surfacing in the launch tweet as a community signal to Joon Park's team and the Stanford generative-agents authors.
+
+**v1.1 upgrade path — preserved, gated on v1 metrics (post-Edge retrospective, week of Jun 30):**
+
+If v1 has produced positive signals — Twitter share volume of map screenshots, qualitative attendee testimonials about the "I saw my agent walking before the notification" moment, Rosedale engagement, Edge organizer interest in extending to Lanna — we commission custom art for v1.1:
+
+| v1.1 commission | Artist target | Cost | Deliverable |
+|---|---|---|---|
+| Healdsburg-specific landmark tiles (6 hero tiles) | LimeZu (primary) or PixyMoon (backup) | $400–800 | Custom 16×16 tile pack: gazebo with copper roof, Sandborn marble fountain, h2hotel living roof, Carnegie Neoclassical columns + pediment, Raven Theater marquee, SingleThread restaurant facade. Replaces our generic equivalents tile-for-tile via the existing programmatic generator — one line of TypeScript per tile-ID swap. |
+| Master Larry sprite polish | Pedro Medeiros / saint11 or Thomas Feichtmeir / Cyangmou | $400–800 | Hand-animated master Larry with nuanced expressions (deadpan, contemplative, surprised, content) and refined walk cycle. PixelLab variants regenerated against this new master via a Scenario.gg LoRA trained on the artist's deliverables. |
+| **v1.1 subtotal** | | **$800–1600** | |
+| **v1.1 ceiling** | | **$1500–2500** | Includes a $500 buffer for negotiation flexibility and a possible chiptune audio commission (Q60) if v1 metrics warrant. |
+
+Lead time for artist commission: ~4 weeks. v1.1 ships against Edge Lanna timeline (September 2026) — a cleaner second-event reveal than rushing within Esmeralda. The same artist pipeline serves both partners.
+
+**The `larry-canon` integration (Q59 ruling applied).** Per Cooper's ruling, the v1 path proceeds with PixelLab-generated Larry sprites following the `larry-canon/v1/larry.recipe.json` template; the canon's null `larry.palette.json` is populated from the v1 PixelLab outputs and back-ported into canon afterward, with light retouching if Cooper's canonical eye spots drift. This is option B from the Q59 framing: proceed with artist interpretation, back-port to canon. Lower risk for larry-canon Phase 0 timeline; allows v1 to ship on its own schedule. The recipe's trigger token `qlryx`, pose slot, environment slot, and prop-clause are followed verbatim; the rubric (deadpan expression, tiny dot eyes, one claw slightly larger than the other, rounded square shell) is the acceptance gate for hand-polish work in Aseprite.
+
+
+
+##### 4.14.2.12 Performance budget
+
+500 sprites is well within PixiJS's comfort zone (47 FPS at 10K sprites on a 2017 MacBook in benchmarks). The real concerns are bundle weight, mobile battery, and the iframe's network overhead.
+
+| Concern | Budget | Mitigation |
+|---|---|---|
+| Plaza-route bundle size | ≤ 600 KB gzipped | Lazy-load the plaza route. Edgeclaw embed shell loads under 200 KB; village tab loads its own chunk. PixiJS v8 tree-shakes well. |
+| Asset payload | ≤ 800 KB (compressed PNG + JSON) | Texture atlas packs all Larry frames + tile graphics into 1–2 atlases. WebP fallback if size hits ceiling. |
+| Memory ceiling | ≤ 50 MB on mobile, ≤ 100 MB on desktop | Profile in Chrome DevTools. Use `ParticleContainer` for weather (10x cheaper than regular containers). Cull aggressively. |
+| Frame rate | 60 FPS desktop / 30 FPS mobile (target); 24 FPS mobile (acceptable floor) | CullerPlugin + 30 FPS fallback when no animations active. |
+| Battery on mobile | No measurable drain when tab is open but idle (no animations) | `pixi-viewport`'s built-in `pause()` when idle. Ticker-fps drop to 5 FPS on idle (just enough to handle a new event). Page Visibility API: full pause when tab hidden. IntersectionObserver: full pause when canvas off-screen. |
+| Initial load to first-meaningful-paint | < 2 s on 4G mobile | Lazy-load assets. Show village outline + tile-grid + still default-position sprites first; populate animation/event handlers second. |
+| Realtime traffic | < 1 message/sec average, ~5/sec at peak briefing time | Server-side throttle on the trigger if total village traffic exceeds 10 msg/sec; aggregate similar events. |
+| Cull threshold | Off-screen at zoom level 1.0 → renderable=false | CullerPlugin handles automatically; verify with empirical test at 500 agents on a low-end Android. |
+
+The expensive question is **mobile drawer rendering inside the iframe**. The Edge portal's mobile drawer collapses the sidebar; the embed gets near-full viewport width. At 360px width the map should still render legibly — agents become 8×8 dots, buildings simplify, the camera zooms out by default. We test specifically against iPhone 12 (the median Edge attendee's phone, statistically) and a low-end Android (Pixel 5a equivalent).
+
+##### 4.14.2.13 Production reality checks
+
+For each visual element, we document where the data comes from, what happens on day 1 (before any matches fire), what happens at scale, what happens on mobile, and what the fallback is if an asset fails to load.
+
+| Element | Data source | Day-1 behavior | At scale (500 agents) | Mobile (360–768px) | Missing-asset fallback |
+|---|---|---|---|---|---|
+| Agent sprite position | `agent_positions` (NEW table, written by the motion-reducer; persists last-known position across sessions) | Default to home tile derived from `instaclaw_users.housing_assignment` (NEW column populated at registration); if null, plaza center | 500 positions cached in client memory; only ~10–50 update per minute | Same; sprites become 8x8 dots at low zoom | Single-color square at correct tile |
+| Agent identity (Larry color) | Hash of `instaclaw_users.id` → palette index from `larry-canon/v1/larry.palette.json` (or fallback locked palette) | Color is stable per user from registration | Identical | Identical | Default Larry (teal) |
+| Agent motion | Real-time channel `village:edge-esmeralda-2026` (Supabase Broadcast) | No motion until first event fires; agents stand at home tiles. This IS the day-1 view, and it is correct. | 5–50 simultaneous motions at peak briefing (7 AM), 0–5 at quiet hours | Same; mobile may drop animation framerate to 30 FPS | If channel disconnected, sprites freeze at last position; reconnect via Broadcast Replay |
+| Tilemap (Healdsburg) | Static asset (Tiled JSON + texture atlas, served via Vercel edge) | Present from day 0 | Cached, static | Renders at 50% zoom by default | Plain `bg-edge-bg` color fill with sprites overlaid |
+| Time-of-day tint | Real Pacific Time clock | Updates every minute | Identical for all attendees globally | Identical | No tint (bright white) |
+| Trees/water/lamps ambient | Tile cycling driven by client-side timer | Loops from page-load | Identical | Reduce to half-rate on low-end devices | Static tiles |
+| Weather | `village_weather` table polled from NOAA every 15 min | Default sunny if no row | Single overlay sprite + ParticleContainer | Same; particles capped at 100 on mobile | No weather |
+| Speech bubbles | Per-event DOM overlay | None unless event fires | At most ~10 simultaneous bubbles | Bubble text scales down at 360px | Bubble background renders, text omitted |
+| Bird (occasional) | Random client-side timer | Renders ~every 3–5 min during daylight | Identical | Disable on low-end mobile to save battery | Skip |
+| Shooting star (milestones) | `village_milestones` table (NEW) | Triggered manually by admin script for genuine milestones | One star per milestone event | Same | Skip silently |
+| Solstice indicator | Real Pacific Time clock, hard-coded date (2026-06-21) | Only renders on the one day | Identical | Identical | Skip silently |
+
+**The day-1 view is not a degraded view. It's the correct view.** On the morning of May 30 before the first attendees have done anything, the map shows a quiet Healdsburg dawn with 500 still sprites at their home tiles, trees swaying, river flowing, sun rising over Alexander Valley to the east. That's a beautiful screenshot. It will get tweeted. The first attendees who claim their agents see them appear on the map within seconds. By the end of day 1 the map has visible activity at all the right tiles.
+
+There is no "loading…" state to apologize for, because there is nothing to load. The truth of the day-1 morning IS the design.
+
+##### 4.14.2.14 Two views — Authenticated (in the embed) + Public Spectator (`instaclaw.io/edge/village`)
+
+The pixel-art village ships as **two distinct views of the same map and the same data**, with different identity affordances, hosted on different domains, accessible to different audiences. Both share the same generator script, the same tilemap, the same Larry sprite library, the same motion catalog, the same real Healdsburg time-of-day. They differ in what they reveal about who is who, how interactive they are, and what they ask the viewer to do. **Q40 ruling 2026-05-12: ship both.**
+
+The **Authenticated view** is the *daily-use* artifact for the 500 attendees. It's where Tan finds her own Larry, watches her agent set up the coffee meeting, clicks on Sarah's sprite to read the side-panel profile, and uses the village as a window into her own social fabric for 28 days.
+
+The **Public Spectator view** is the *viral / marketing* artifact for everyone else. It's the URL Cooper tweets at Rosedale. It's the link Timour drops in Edge marketing. It's what gets screenshotted on Twitter when the village is on fire with 47 simultaneous matches. It is shareable, unauthenticated, lower-fidelity in identity (every agent is `Agent #NNN`), but identical in real-time data — the same Healdsburg, the same agent motion, the same Truth Invariant.
+
+The Public Spectator view is also the **upsell surface for InstaClaw beyond Edge Esmeralda.** A persistent "Want your own agent in a future village?" CTA in the corner converts spectators into waitlist signups for Edge Lanna (September 2026), Token2049, and future popup villages. The view is non-disruptive — a spectator can watch the village indefinitely without engaging the CTA — but the CTA is always present and softly pulsing.
+
+###### 4.14.2.14.1 Authenticated View — the Village tab inside the embed
+
+Mounted in the Portal Embed (§ 4.21) as a dedicated `Village` tab.
+
+| Property | Value |
+|---|---|
+| Hostname | `edgeclaw.instaclaw.io` (separate Vercel project; see § 4.21.2) |
+| Mount point | `/portal/edge-esmeralda-2026/edgeclaw/village` inside the EdgeOS citizen-portal iframe |
+| Audience | Attendee, identity-bearing |
+| Auth | postMessage JWT handshake + server-verify (per § 4.21.3); short-lived session cookie scoped to `.instaclaw.io`; World ID MiniKit fallback |
+| Identity surfaced | Real names of confirmed-meeting counterparts; `Agent #NNN` for not-yet-met matches; user's own Larry highlighted with a soft halo + 24 × 24 size for findability |
+| Interaction | Click another agent → side-panel (Mercury-style per § 4.21) with profile + Connect button; click own agent → camera follows (§ 4.14.2.9.2); time-travel scrubber accessible (§ 4.14.2.9.3) |
+| Realtime channel | `village:edge-esmeralda-2026` (Supabase Broadcast, private channel, RLS-gated to authenticated edge_city attendees) |
+| Default camera | Centered on user's own sprite, zoom 2.0× (~3 × 3 tile region visible) |
+| Default theme | Light off-white, Edge palette (`--edge-bg #FAFAF7`) |
+| Mobile | Responsive to portal sidebar collapse (256 ↔ 64 px); zooms out automatically at < 768 px container width |
+| Bundle weight | Lazy-loaded; not in the initial embed shell |
+
+The Authenticated view's hub-side promotion: inside the embed's main hub view (non-Village tab), a small "**The Village right now**" card surfaces with a 3-second-refresh count: *"47 agents active · 12 meetings in progress · 3 conversations starting."* Click → opens the Village tab. We expect ~70% of card clicks to lead to a full Village session.
+
+###### 4.14.2.14.2 Public Spectator View — `instaclaw.io/edge/village`
+
+Lives on the existing marketing app (`instaclaw.io`), as a sibling route to `/edge/plaza`. Public URL, no auth, no entry friction.
+
+| Property | Value |
+|---|---|
+| Hostname | `instaclaw.io/edge/village` — same Next.js app as `/edge/plaza`, deployed alongside |
+| Mount point | None — full-page surface |
+| Audience | Public — anyone with the URL |
+| Auth | None |
+| Identity surfaced | **Every agent is `Agent #NNN`**, where `NNN` is the last three digits of an HMAC-SHA-256 hash of `instaclaw_users.id` salted with `EDGE_CITY_RESEARCH_SALT` (the same salt as the Vendrov research-export pipeline — re-used so the public anonymization rotates with the research-export salt rotation 7 days post-village). No real names ever. |
+| Interaction | Pan + zoom + free-orbit camera. **No click-into-agent.** Hover shows minimal anonymous metadata — only the activity verb (`"in a meeting"`, `"thinking"`, `"at a talk"`) plus the `Agent #NNN` tag. Time-travel scrubber for the last 6 hours present. |
+| Realtime channel | `village-public:edge-esmeralda-2026` (Supabase Broadcast, public RLS — anyone can subscribe; payloads are anonymized at the Postgres trigger level *before* they ever leave the database) |
+| Default camera | Healdsburg Plaza centered, zoom 1.0× (full overview); auto-zoom-to-action if a notable event is happening |
+| Default theme | Same Edge palette + warm off-white |
+| Persistent CTA | Bottom-right corner: a small pixel-art card with a Larry sprite pulsing softly: *"👀 Want your own agent in the next village? Join the Edge Lanna waitlist →"* Links to `instaclaw.io/edge` (claim flow + waitlist signup). Visible always, never disrupts the canvas. |
+| Deep-link share URLs | `instaclaw.io/edge/village?focus=plaza` (default camera target), `instaclaw.io/edge/village?event=<event_id>` (deep-link to a specific recent event — camera centers on the event location and replays the last 30 seconds via the scrubber). The deep-link URLs are what get pasted into tweet replies. |
+| Mobile | Full-viewport; CTA stays bottom-right; pinch-zoom + pan only; no text input. |
+| OG meta | Custom Open Graph image rendered server-side from the current village state (anonymized) — a Twitter preview shows the village right now, not a static placeholder. Server-rendered at request time with a 60-second cache. |
+
+###### 4.14.2.14.3 Identity isolation — how the Public view is privacy-safe
+
+The Public view's `village-public:*` channel carries fundamentally different payloads from the Authenticated `village:*` channel. **The isolation is enforced at the Postgres trigger level — *before* any data crosses the WebSocket boundary** — so the public client cannot reverse-engineer identity even with a hostile network observer.
+
+The dual-trigger pattern:
+
+```sql
+-- On every INSERT to matchpool_outcomes, emit to BOTH channels:
+create or replace function emit_matchpool_outcome_dual()
+returns trigger language plpgsql security definer as $$
+begin
+  -- Private channel: full record, RLS-gated to authenticated attendees
+  perform realtime.broadcast_changes(
+    'village:edge-esmeralda-2026',
+    tg_op, tg_op, tg_table_name, tg_table_schema, new, old
+  );
+
+  -- Public channel: anonymized record, identity-bearing fields stripped
+  perform realtime.broadcast_changes(
+    'village-public:edge-esmeralda-2026',
+    tg_op, tg_op, tg_table_name, tg_table_schema,
+    jsonb_build_object(
+      'source_agent', hmac_anon_agent(new.source_user_id),
+      'candidate_agent', hmac_anon_agent(new.candidate_user_id),
+      'agent_action', new.agent_action,
+      'deliberation_score', new.deliberation_score,
+      'source_position', position_for_anon(new.source_user_id),
+      'candidate_position', position_for_anon(new.candidate_user_id)
+      -- topic, reason_text, accepted_window, telegram_handle, name — all stripped
+    ),
+    null
+  );
+  return null;
+end $$;
+```
+
+`hmac_anon_agent()` is the same anonymization function used by the existing Vendrov research-export pipeline (`lib/research-export/anonymize.ts` at the SQL layer) — HMAC-SHA-256 with `EDGE_CITY_RESEARCH_SALT`, truncated to the last 3 digits for the `Agent #NNN` display. The salt rotates 7 days post-village close per the existing privacy commitment in § 3.3 of the Vendrov pre-registration; after rotation, the anonymized agent IDs cease to be reversible by anyone, including InstaClaw operators.
+
+**What's stripped on the public channel:** raw `user_id`, `topic` text (could re-introduce as a coarse category enum in v1.1 if attendees consent), `reason_text` (LLM reasoning is identity-bearing for niche topics), `accepted_window` text (a specific cafe + time is identity-bearing in a 500-person village), `from_telegram_handle`, `from_name`, all email/wallet fields.
+
+**What's kept on the public channel:** anonymized agent identifier (`Agent #NNN`), coarse-tile position, activity verb, deliberation score (useful for the funnel sense; not identity-bearing).
+
+The public RLS policy on `realtime.messages` permits anyone to subscribe to the `village-public:*` topic but explicitly denies subscription to `village:*` without authenticated session.
+
+**Failure modes considered:**
+
+- *Spectator inferring identity from timing + position:* a sufficiently determined adversary watching the public channel could correlate agent positions with attendee social-media posts (*"I just sat down at Flying Goat"*) to re-identify. This is the same de-anonymization risk that exists in *any* spatial visualization of small-community data — including the Vendrov export. We accept it because (a) the attack is high-effort and low-yield, (b) attendees implicitly consent to this by being in a 500-person residential village where everyone watches everyone, (c) the Public view is gated to coarse-tile positions (no sub-tile precision) and stripped of identity-bearing metadata. The attendee onboarding flow surfaces this trade-off explicitly with an opt-out toggle ("Hide my agent from the public spectator view") that, when enabled, sets a `users.spectator_visible = false` flag — the trigger then skips emitting public-channel events for that user. Attendees keep agency.
+- *Channel mis-configuration ships full payload to public:* prevented by SQL-side stripping happening *inside* the trigger function, before any payload leaves the database. There is no client-side anonymization to misconfigure. The trigger is unit-tested with an assertion that the public payload contains zero raw-PII fields.
+- *Salt leak:* same risk as the existing Vendrov pipeline. Mitigated by Vault-stored salt + 7-day post-village rotation.
+
+###### 4.14.2.14.4 The launch dynamic
+
+Both views ship together at the Phase 5 reveal (Wed 2026-06-17). The launch tweet links the Public Spectator URL — `instaclaw.io/edge/village` — because that's the URL anyone can click. Attendees who follow the tweet land on the public view, see the village in motion, click the CTA (or follow the secondary "I'm an Edge Esmeralda attendee" link), authenticate, and arrive at their own Village tab inside their Portal Embed. The two views are designed to feed each other: spectator becomes attendee, attendee shares the spectator URL with friends, the loop runs.
+
+The Public Spectator view's role in the Edge marketing surface (Timour's preferred linking pattern) is the same as the public `/edge/plaza` v0 today — except it's spatial, alive, and tells a story. We expect Timour to make it the centerpiece of Edge's "live now" marketing for the duration of the village.
+
+##### 4.14.2.15 Phased rollout
+
+Two parallel workstreams converge at the Wed 2026-06-17 reveal: **Authenticated View** (Village tab inside the embed, used by attendees) and **Public Spectator View** (`instaclaw.io/edge/village`, the viral artifact). Dates locked.
+
+| Phase | Dates | Workstream | Scope |
+|---|---|---|---|
+| **Phase 0 — Foundation sprint** | Mon May 12 – Wed May 21 (10 days) | Both | Fork AI Town; buy tilesets; build programmatic Healdsburg map generator (`_generate-healdsburg-map.ts`); generate Larry sprites via PixelLab; implement breath ticker; wire all 23 motion-catalog events to Supabase Broadcast. See § 4.14.2.11 for the day-by-day asset sprint. |
+| **Phase 1 — Internal canary (Authenticated)** | Thu May 22 – Tue May 26 | Authenticated | Full village renders on Cooper's vm-050 + vm-780. Test all 23 motion events against a triggered staging DB. Validate Healdsburg-recognizable from screenshots. Cooper red-pen review of every visual element via natural-language feedback to the generator script. |
+| **Phase 2 — Authenticated staging integration** | Wed May 27 – Thu May 29 | Authenticated | Land Authenticated Village tab behind a feature flag inside the Portal Embed. Wire to staging Supabase Broadcast. Cross-test inside EdgeOS portal with Tule (per § 4.21.8). Mobile drawer rendering verified at 360–1366 px. Performance soak. |
+| **Phase 3 — Soft launch (Authenticated, hidden)** | Fri May 30 – Sun Jun 7 | Authenticated | **Edge Esmeralda starts.** Authenticated Village tab built but feature-flag-hidden; we focus team attention on briefing reliability + matchmaking + v2 negotiation. Internal team-only sees the Village tab. We monitor data flow, fix bugs, refine motion timings. Spectator view not yet built. |
+| **Phase 2.5 — Public Spectator implementation** | Mon Jun 2 – Sun Jun 8 (overlaps Phase 3 closing) | Public Spectator | Implement `instaclaw.io/edge/village` route on the existing `/edge` Next.js app. Wire `village-public:*` Supabase channel with anonymized-payload triggers (§ 4.14.2.14.3 dual-trigger pattern). Build "Claim your own agent" CTA. Build deep-link share URLs (`?focus=`, `?event=`). Custom OG meta-image renderer (60-s cached, anonymized snapshot). Mobile responsive. Privacy opt-out toggle (`users.spectator_visible = false`) on the attendee profile page. |
+| **Phase 4 — Partner-VM Authenticated tab visible** | Mon Jun 8 – Sun Jun 14 | Authenticated | Village tab visible to the 5 Edge partner VMs (already on v2 negotiation canary per § 4.21). They become the first attendees to see their own Larrys on the map. We solicit qualitative feedback in person (Cooper + Timour + Vendrov). Public Spectator implementation completes in parallel. |
+| **Phase 5 — Full reveal (BOTH VIEWS)** | **Wed Jun 17 (Week 3, Day 1)** | Both | Village tab visible to all 500 attendees inside the embed. `instaclaw.io/edge/village` goes public. **Launch tweet** links the Public Spectator URL (because anyone can click it). Tag Rosedale, Joon Park, Vendrov, the AI Town team, the Stanford generative-agents authors. Coordinated with Timour's Edge marketing push that week — Edge's social channels link the Spectator URL as the primary "what's happening at Edge right now" surface. |
+| **Phase 6 — Solstice special state** | **Sun Jun 21** | Both | Solstice-specific map state: longer golden hour, ☀ indicator over the plaza, Esmeralda pointer glow at the north edge. The longest-day-of-the-year moment falls in our reveal window. |
+| **Phase 7 — Refinement** | Mon Jun 22 – Fri Jun 27 | Both | Iterate based on Phase 5–6 qualitative feedback. Add follow-up modules (time-travel scrubber polish, side-panel agent profile depth) if engagement metrics justify. Tweak the Spectator CTA copy based on conversion data. |
+| **Phase 8 — Post-village retrospective + v1.1 decision** | Sun Jun 28 – Fri Jul 4 | Both | Decide: keep both views live as research artifact / future-event teaser, or fade out gracefully. Anonymized event-replay corpus released as publishable dataset (aligned with Vendrov post-village publication schedule). **v1.1 commission decision per § 4.14.2.11** — based on Twitter share volume, qualitative attendee testimonials, Rosedale engagement, Edge organizer interest in extending to Lanna. If positive, artist commission begins immediately; lead time ~4 weeks targets Edge Lanna timeline (September). |
+
+**The hard floor for the reveal is Wed Jun 17.** This is selected because:
+
+- Week 3's programmatic theme is *Emergent Futures and World Building* — the village map is itself a Spatial Computing + Creative AI artifact; the alignment is poetic and intentional.
+- The Sunday solstice (Jun 21) is the natural follow-up moment within the same week.
+- Week 1 (Jun 1–7) is too early; attendees are still onboarding and the data isn't dense enough to make the map visually interesting.
+- Week 2 (Jun 8–14) is the partner-VM canary window — too soon for a confident public reveal.
+- Week 4 risks attendees being saturated and the reveal getting lost.
+
+If we slip past Jun 17, the fallback target is Sun Jun 21 (the solstice). Slipping past Jun 21 materially reduces impact; consider deferring to Edge Lanna (September 2026) as a cleaner second-event reveal — which is also when v1.1 commissioned art would be ready and the Smallville-continuity narrative gets a second amplification cycle.
+
+**The two-workstream-converging-at-Phase-5 model** is intentional. The Authenticated view is built and tested first; it informs the Public Spectator's UX and the anonymization-trigger design. Both reach production together for the launch moment. This avoids the failure mode where the Spectator goes live without the Authenticated view being polished, or vice versa — both must launch together because the loop (spectator becomes attendee, attendee shares spectator URL) only works when both surfaces exist.
+
+##### 4.14.2.16 Open questions — rulings recorded 2026-05-12; remaining items below
+
+The major decisions are locked. Cooper's rulings on 2026-05-12 closed Q40, Q56, Q57, Q59, and the artist-commission gate (deferred to v1.1). The items still requiring rulings are smaller, mostly procedural or technical-detail.
+
+**🔒 Q40 — LOCKED 2026-05-12. Ship BOTH views.** Authenticated (in the embed) + Public Spectator (`instaclaw.io/edge/village`). Public Spectator is the viral / marketing artifact with a persistent "claim your own agent" CTA in the corner. Fully specced in § 4.14.2.14.
+
+**🔒 Q56 — LOCKED 2026-05-12. Include the breath.** 2-pixel bob, ±1 pixel from baseline, 1.5 s period, sine-eased, deterministic phase per `hash(instaclaw_users.id)`. Breath pauses during locomotion. Implementation in § 4.14.2.7. Cooper's framing: "breath is not motion."
+
+**🔒 Q57 — LOCKED 2026-05-12. Healdsburg Avenue vertical.** Map orientation matches every local tourist map; attendees orient by the main drag. The plaza's true 45° rotation is sacrificed for legibility — this is a stylized recreation, not a survey.
+
+**🔒 Q58 — LOCKED 2026-05-12 (implicit in § 4.14.2.3). 16 × 16 pixel tiles throughout.** LimeZu Serene Village (16 × 16) is primary; Cainos (32 × 32) tiles are downscaled to fit, used selectively for vineyard/oak-savanna backdrops where the larger scale doesn't clash.
+
+**🔒 Q59 — LOCKED 2026-05-12. Option B — proceed with PixelLab + back-port to larry-canon.** PixelLab.ai generates v1 Larry sprites based on the `larry-canon/v1/larry.recipe.json` template. The canon's null `larry.palette.json` is populated from PixelLab outputs and back-ported afterward, with light retouching. Lower risk for larry-canon Phase 0 timeline.
+
+**🔒 Artist commission — DEFERRED to v1.1 (locked 2026-05-12).** Do not gate v1 on a commissioned artist. v1 ships on the AI Town fork + PixelLab Larry + purchased tilesets ($150 ceiling). v1.1 commission gate is the post-Edge retrospective (week of Jun 30); see § 4.14.2.11 v1.1 upgrade path.
+
+---
+
+**Remaining open items, in order of urgency:**
+
+**Q60 — Audio for v1.** Chiptune ambient track + event-driven chimes (Pokémon-style ding when a match accepts) is aesthetically obvious but adds asset cost + UX questions (default on or off? mobile autoplay restrictions?). Recommendation: **defer to v1.1.** Ship v1 silent. Reconsider during post-village retrospective if metrics warrant.
+
+**Q61 — The fifth magic moment, shooting-star threshold list.** Proposed thresholds: 10,000 matchpool outcomes, 1,000 confirmed meetings, 100 publicly-reported "best connection" survey responses. Approximately 3–5 stars over 28 days at projected scale. Cooper to approve threshold list before Phase 5 reveal.
+
+**Q62 — Notification synchrony coordination layer.** The iframe needs to signal "I am open and watching" via a heartbeat to a `village_iframe_presence` table; the agent VMs' notification path needs to check that presence before deciding whether to delay the Telegram push. ~50 lines of code, not blocking. Confirm direction.
+
+**🔒 Q63 — LOCKED 2026-05-12. Sprite-identity Option 1.** Generate ~50 PixelLab atlases, hash-assign each attendee. ~10 attendees share each Larry color (acceptable visual duplication; identity also conveyed by name on hover and a halo on the user's own sprite). Option 2 (layered accessories) deferred to v1.1. Briefs PixelLab generation on Day 5 of asset sprint.
+
+**Q64 (deferred to Mon Jun 2 — Phase 2.5 start).** Public Spectator CTA copy and destination URL. Proposed copy: *"👀 Want your own agent in the next village? Join the Edge Lanna waitlist →"*. Destination URL likely a new `/edge/waitlist` page rather than the existing `/edge` claim flow, depending on how Edge Lanna marketing sequences. Cooper rules when waitlist page is ready.
+
+**🔒 Q65 — LOCKED 2026-05-12. Ship spectator opt-out toggle from day 1.** Attendees can set `instaclaw_users.spectator_visible = false` from the attendee profile page; the trigger-level flag suppresses public-channel events for that user. The Authenticated view always shows them to fellow attendees. The migration ships in Phase 0 of the asset sprint.
+
+**🔒 Q66 — LOCKED 2026-05-12. Drop the HistoricalObject binary buffer; use rAF lerp.** AI Town's 60 Hz position-sample binary protocol is replaced by per-update rAF interpolation between current and target position. Saves ~350 LOC. Applied Day 2 of asset sprint.
+
+**Q67 (NEW). v1.1 sprite-layering strategy.** When v1.1 commission lands a polished master Larry, do we layer accessories (option 2 from Q63) or generate hundreds of unique full-sprite variants via Scenario.gg LoRA? Defer decision to post-village retrospective. Both are technically viable.
+
+**Q68 (NEW). Tile-renderer migration.** Native PIXI sprite-per-cell is AI Town's pattern and fine at ~3K cells. If the Healdsburg map grows past ~10K tiles during iteration (possible if Cooper wants the vineyard hills more detailed), migrate to `@pixi/tilemap` for GPU batching. Defer; decision point at world-design time, not a v1-blocking question.
+
+**Q69 (NEW). Edge organizer-supplied schedule data.** Do we get a Tule-provided `edge_calendar_events` feed (real schedule data → real agent positions during talks/dinners), or do we hand-curate the village's event calendar in our own table? Needs a conversation with Tule. Recommendation: ask for a feed, but also build a fallback admin UI in case the feed doesn't materialize. Decision by Phase 2 entry (Wed May 27).
+
+**Q70 (NEW). Healdsburg Avenue orientation — true compass or stylized?** Locked Q57 says Healdsburg Avenue vertical. But the real Healdsburg Avenue runs roughly N-S compass; the plaza is on its east side rotated ~45° from true cardinal. Our stylized recreation keeps the avenue as the map's vertical axis but loses the plaza's true 45° rotation — this is correct, attendees orient by the main drag, but worth flagging as a deliberate choice (locals familiar with the actual compass rotation may notice). Cooper to acknowledge.
+
+##### 4.14.2.17 Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| AI Town fork's refactor surface (Convex → Supabase swap) is larger than the research estimate (~400 LOC across 5 files) | Medium | Medium | We are the first known public fork to attempt this swap. Reserve a 3-day slack in the asset sprint after Day 2 (when we strip the Convex agent loop). If the swap is messier than estimated, push Phase 1 canary from Thu May 22 → Fri May 23. |
+| AI Town's bundled OpenGameArt assets turn out to include a tile we want and would be expensive to replace | Low | Low | We strip AI Town's bundled artwork entirely at fork time and rely on our purchased tilesets. If a specific tile is missing post-strip, buy a one-off itch.io supplement (~$5-10, within the $25 buffer to $150 ceiling). |
+| HistoricalObject drop produces visibly choppy motion at peak event rates | Low | Medium | rAF lerp between current → target is mathematically sufficient at our update rate (~1 event/sec peak, not 60). If choppiness surfaces in Phase 1 canary, port AI Town's binary buffer pattern as a fallback (1-day work). |
+| Sprite-identity duplication noticed by attendees (Q63 option 1) | Medium | Low | We hash-assign 50 atlases across 500 attendees, so ~10 attendees share each. Identity is also conveyed by name on hover and the user's own halo. Acceptable for v1; v1.1 layering eliminates the duplication. |
+| Larry sprite consistency drift across PixelLab-generated color variants (back-view especially, per documented PixelLab weakness) | Medium | Low | Hand-polish all 12 reference variants in Aseprite (~2 hours each, parallelizable). v1.1 Scenario.gg LoRA training on the commissioned master Larry eliminates drift. |
+| Larry-canon Phase 0 slips, palette back-port delayed | High | Low | Q59 ruling: proceed with artist interpretation; back-port whenever canon Phase 0 lands. Map palette doesn't need to wait. |
+| Healdsburg map renders as "generic RPG town #47" | Low (mitigated by § 4.14.2.4 specificity) | High | Claude Code drives the generator from the locked landmark list + photo moodboard (15+ links) + the Devon Zuegel 2025 Edge village map. Cooper screenshot-reviews the bones on Day 3, with iteration in natural-language feedback. |
+| Real-Healdsburg-specific tiles (gazebo, h2hotel living roof, Carnegie columns) missing from purchased tilesets | High | Low | v1 ships with stylized stand-ins (a generic gazebo from Cainos, a generic plaza fountain from LimeZu). v1.1 commission lands the 6 hero custom landmarks. Attendees who notice the gap will be the same ones who care about pixel art; we can frame it as "v1.1 fidelity upgrade coming September." |
+| 500-sprite render performance on mobile drawer | Low | Medium | Phase 4 explicit perf test on iPhone 12 + Pixel 5a. Cull aggressively via `pixi-viewport`'s cull plugin (inherited from AI Town). Fallback: simplify sprites to colored circles at low zoom on mobile. |
+| Realtime channel auth (iframe + private channel) | Medium | High | Verify in Phase 1 canary; § 4.21.3 already specs the postMessage + JWT verify pattern; reuse here. World ID MiniKit fallback if postMessage handshake fails. |
+| Broadcast Replay disabled or fails on reconnect | Medium | Medium | Backup: client-side replay via REST query "events since last_seen_at." ~30 lines. The Public Spectator channel uses this simpler pattern by default since Broadcast Replay is overkill for read-only viewers. |
+| **Dual-channel trigger has a bug, ships full payload to public channel (PRIVACY)** | Low | **HIGH** | The most important risk in this section. Mitigation: SQL-side stripping happens *inside* the trigger function, before any payload crosses the WebSocket boundary. Unit-test the trigger with an assertion that the public payload contains zero raw-PII fields. Integration test: subscribe to the public channel from an unauthenticated client, fire test events with known PII in the source row, assert PII never appears in the received messages. CI runs this on every PR that touches the trigger SQL. **Privacy is the brand; one breach during the village kills the story.** |
+| Public Spectator de-anonymization attack via position + social-media correlation | Medium (high-effort attack, but possible) | Low (each individual re-id is hard to weaponize) | Documented in § 4.14.2.14.3. Mitigations: coarse-tile positions only (no sub-tile precision), identity-bearing metadata stripped, attendee opt-out toggle, 7-day post-village salt rotation makes anonymized IDs structurally non-reidentifiable thereafter. |
+| Notification synchrony (§ 4.14.2.9.1) introduces a regression in Telegram delivery latency | Low | Medium | Feature-flag the synchrony delay; can be disabled instantly. Verify in Phase 1 canary with vm-050 + vm-780. |
+| Solstice special state visually clashes with regular daytime | Low | Low | Render solstice in a preview mode before Jun 21 to confirm; restraint already specced. |
+| EdgeOS portal CSP blocks the embedded WebGL canvas | Low (next.config.ts has no CSP currently per § 4.21 substrate research) | High | Confirm with Tule in Phase 1 (already on the § 4.21.8 ask list); we control the embed's own CSP and can configure `frame-ancestors` correctly. |
+| Real-time channel WebSocket cost exceeds budget at 500 authenticated + 5000 public concurrent | Low | Low | Supabase pricing math estimates $10–30/mo over Pro tier for the spectator surge during the village. Absorbable. Plan B: throttle the trigger to coalesce similar events. Plan C: aggressive front-end caching for spectators (1-sec batch). |
+| Public Spectator view becomes a target for scraping / mirroring | Medium | Low | Rate-limit at the edge (Vercel Edge Config). Add a `noindex` meta if we want it to be social-only (probably want it indexable for organic Edge marketing reach — Cooper to confirm in Q64 follow-up). |
+| AI Town upstream changes mid-village (extremely unlikely given repo's maintenance-mode status, but possible) | Very Low | Low | We don't rebase from upstream during the village; we treat the fork as a frozen target. Any urgent upstream security fix gets cherry-picked, but the fork is otherwise stable. |
+
+##### 4.14.2.18 What's resolved, what remains
+
+**Resolved by Cooper's rulings 2026-05-12 (all six original load-bearing decisions):**
+
+| Decision | Ruling |
+|---|---|
+| Q56 — The Pokémon Concession | ✅ Include the breath. Spec'd in § 4.14.2.7 with full implementation. |
+| Q57 — Map orientation | ✅ Healdsburg Avenue vertical. |
+| Q59 — Larry-canon Phase 0 alignment | ✅ Option B — proceed with PixelLab + larry-canon recipe; back-port to canon afterward. |
+| Q40 — Public vs attendee-only | ✅ **Ship both views.** Authenticated + Public Spectator. Spec'd in § 4.14.2.14. |
+| Day-1 buy list (asset spend) | ✅ Approved at $150 ceiling. Sprint begins today. |
+| Artist commission | ✅ Deferred to v1.1 (post-village retrospective gate). v1 ships on fork + tilesets + PixelLab. |
+
+**Remaining items needing rulings this week (mostly procedural / technical-detail):**
+
+1. **Q63 — Sprite-identity strategy for v1** (Option 1: 50 PixelLab atlases hash-assigned, ~10 attendees share each Larry color; vs Option 2: layered accessories — defer to v1.1). Recommendation: option 1. **Needed by Fri May 16** (Day 5 of sprint, the day PixelLab generation runs).
+2. **Q64 — Public Spectator CTA copy and destination URL**. Proposed copy: *"👀 Want your own agent in the next village? Join the Edge Lanna waitlist →"*. Destination URL probably wants to be a new `/edge/waitlist` page rather than the existing `/edge` claim flow. **Needed by Mon Jun 2** (Phase 2.5 start).
+3. **Q65 — Public Spectator opt-out toggle for attendees**. Confirm: ship the `instaclaw_users.spectator_visible = false` toggle in the attendee profile page from Phase 5? Recommendation: yes — gives attendees agency. **Needed by Wed May 14** (so the migration ships in Phase 0 of the asset sprint).
+4. **Q66 — HistoricalObject drop confirmation**. Replace AI Town's 60 Hz binary-buffer position playback with rAF lerp. Saves ~350 LOC. Recommended by research. **Needed by Tue May 13** (Day 2 of sprint).
+5. **Q69 — Edge organizer-supplied schedule data**. Ask Tule for a real-schedule feed (`edge_calendar_events`) or hand-curate in our own table? Recommendation: ask for the feed, build a fallback admin UI. **Needed by Wed May 27** (Phase 2 entry, when we wire schedule-driven agent positions).
+
+**Deferred to post-village retrospective (Phase 8, week of Jun 30):**
+
+- Q60 — Audio for v1
+- Q61 — Shooting-star milestone threshold list (the proposed thresholds in § 4.14.2.9.5 are recommendations; final list lands closer to reveal)
+- Q67 — v1.1 sprite-layering strategy (Option 2 from Q63)
+- Q68 — Tile-renderer migration to `@pixi/tilemap` if map grows past ~10K tiles
+- v1.1 artist commission gate decision
+
+**Status as of 2026-05-12, end of day:**
+
+The asset sprint can begin tomorrow morning. Cooper's rulings unlocked Days 1–4 of the sprint with no procedural blockers. The five remaining open items are sequenced so each is asked-and-answered before the day that depends on it. Q66 (HistoricalObject drop) is the only item with a Tue May 13 deadline; the rest can ride later in the sprint without delaying any deliverable.
+
+**Sources cited throughout this section (consolidated for the reader):**
+
+- Edge Esmeralda 2026 venues: [edgepatagonia.sola.day/event/edge-esmeralda-2026/venues](https://edgepatagonia.sola.day/event/edge-esmeralda-2026/venues)
+- Edge Esmeralda 2026 themes: [edgeesmeralda.com/about](https://www.edgeesmeralda.com/about)
+- Edge Esmeralda 2025 village overview: [edgeesmeralda2025.substack.com/p/edge-esmeralda-2025-village-overview](https://edgeesmeralda2025.substack.com/p/edge-esmeralda-2025-village-overview)
+- Devon Zuegel's 2025 map tweet: [x.com/devonzuegel/status/1774936677456187738](https://x.com/devonzuegel/status/1774936677456187738)
+- Foss Creek Pathway: [ci.healdsburg.ca.us/370/Foss-Creek-Pathway-Plan](https://www.ci.healdsburg.ca.us/370/Foss-Creek-Pathway-Plan)
+- Healdsburg Plaza historical detail: [hannahclaybornshistoryofhealdsburg.com/the-plaza.html](https://www.hannahclaybornshistoryofhealdsburg.com/the-plaza.html)
+- Official Downtown Healdsburg PDF map: [healdsburg.com/wp-content/uploads/2025/07/2024-Downtown-Map-Updated-Aug.-2024.pdf](https://www.healdsburg.com/wp-content/uploads/2025/07/2024-Downtown-Map-Updated-Aug.-2024.pdf)
+- SHED closed since 2018 (DO NOT draw): [patch.com/california/healdsburg/iconic-healdsburg-shed-closing-shop](https://patch.com/california/healdsburg/iconic-healdsburg-shed-closing-shop)
+- Sunrise/sunset Healdsburg June 2026: [timeanddate.com/sun/@5356012?month=6](https://www.timeanddate.com/sun/@5356012?month=6)
+- Supabase Realtime Broadcast from Database: [supabase.com/blog/realtime-broadcast-from-database](https://supabase.com/blog/realtime-broadcast-from-database)
+- Supabase Broadcast docs: [supabase.com/docs/guides/realtime/broadcast](https://supabase.com/docs/guides/realtime/broadcast)
+- Supabase Realtime Authorization (RLS on private channels): [supabase.com/docs/guides/realtime/authorization](https://supabase.com/docs/guides/realtime/authorization)
+- Broadcast Replay feature: [supabase.com/features/realtime-broadcast-replay](https://supabase.com/features/realtime-broadcast-replay)
+- Web Worker heartbeats for backgrounded tabs: [supabase.com/docs/guides/troubleshooting/realtime-handling-silent-disconnections-in-backgrounded-applications-592794](https://supabase.com/docs/guides/troubleshooting/realtime-handling-silent-disconnections-in-backgrounded-applications-592794)
+- PixiJS v8 render layers + culling: [pixijs.com/8.x/guides/concepts/render-layers](https://pixijs.com/8.x/guides/concepts/render-layers)
+- GSAP PixiPlugin: [gsap.com/docs/v3/Plugins/PixiPlugin/](https://gsap.com/docs/v3/Plugins/PixiPlugin/)
+- @pixi/tilemap: [github.com/pixijs/tilemap](https://github.com/pixijs/tilemap)
+- pixi-tiledmap (Tiled loader): [github.com/riebel/pixi-tiledmap](https://github.com/riebel/pixi-tiledmap)
+- pixi-viewport (camera): [github.com/pixijs-userland/pixi-viewport](https://github.com/pixijs-userland/pixi-viewport)
+- @pixi/particle-emitter: [github.com/pixijs/particle-emitter](https://github.com/pixijs/particle-emitter)
+- AI Town (a16z-infra, MIT — Smallville reimplementation): [github.com/a16z-infra/ai-town](https://github.com/a16z-infra/ai-town)
+- Stanford Generative Agents paper: [arxiv.org/abs/2304.03442](https://arxiv.org/abs/2304.03442)
+- LimeZu (itch.io — Smallville interiors artist): [limezu.itch.io](https://limezu.itch.io/)
+- PixyMoon (itch.io — Smallville backgrounds artist): [pixymoon.itch.io](https://pixymoon.itch.io/)
+- Cup Nooble (Sprout Lands creator — California warm pastel match): [cupnooble.itch.io](https://cupnooble.itch.io/)
+- Cyangmou / Thomas Feichtmeir (tinyBuild art director — pro tier): [cyangmou.itch.io](https://cyangmou.itch.io/), [pixeljoint.com/p/32234.htm](https://pixeljoint.com/p/32234.htm)
+- Pedro Medeiros / saint11 (Celeste/TowerFall animator): [patreon.com/saint11](https://www.patreon.com/saint11)
+- Cainos Pixel Art Top Down Village: [cainos.itch.io/pixel-art-top-down-village](https://cainos.itch.io/pixel-art-top-down-village)
+- Kenney Tiny Town (CC0 prototype assets): [kenney.nl/assets/tiny-town](https://kenney.nl/assets/tiny-town)
+- PixelLab.ai (sprite-sheet generation): [pixellab.ai](https://www.pixellab.ai/)
+- Retro Diffusion (Astropulse pixel-art Stable Diffusion): [retrodiffusion.ai](https://retrodiffusion.ai/)
+- Scenario.gg (train a model on your style): [scenario.com](https://www.scenario.com/)
+- Aseprite (pixel-art editor): [aseprite.org](https://www.aseprite.org/)
+- Workadventure (AGPL — reference architecture only): [github.com/workadventure/workadventure](https://github.com/workadventure/workadventure)
+- Kaetram-Open (MPL 2.0 — tilemap parsing reference): [github.com/Kaetram/Kaetram-Open](https://github.com/Kaetram/Kaetram-Open)
+- ConcernedApe (Stardew) on pixel-art process: [mentalnerd.com/blog/getting-started-pixel-art-interview/](https://mentalnerd.com/blog/getting-started-pixel-art-interview/)
+- "Breathing life into NPCs": [gamedeveloper.com/design/breathing-life-into-non-player-characters-insights-from-psychological-attribution](https://www.gamedeveloper.com/design/breathing-life-into-non-player-characters-insights-from-psychological-attribution)
+- Wplace (pixel canvas on real geography, July 2025): [wplace.live](https://wplace.live/)
+- Townscaper (browser, procedural town): [oskarstalberg.com/Townscaper/](https://oskarstalberg.com/Townscaper/)
+- Tiny Glade (idle motion discipline reference): [pouncelight.games](https://pouncelight.games/)
+- larry-canon (this repo): `docs/prd/larry-mascot-operating-system.md`
+
+---
+
+End of § 4.14.
 
 ### 4.15 Plan B — Centralized Matching Fallback *(added 2026-05-01)*
 
@@ -1413,6 +2365,326 @@ Beyond the five pre-registered hypotheses (§ 4.10.1), there are creative combin
 Save **agent-to-agent micropayments** for week 3–4 reveal — the hardest to build, and shipping it mid-village is the most paper-worthy beat. Bankr wallets are already provisioned; the infrastructure is there.
 
 **Open question (Q45):** Final pick list — which 1–2 (or 3) ship for May 30? Owner: Cooper + Vendrov + Timour. Decision needed by May 13.
+
+### 4.21 Portal Embed — EdgeClaw inside the EdgeOS citizen-portal *(added 2026-05-12)*
+
+Timour's ask: the attendee's "agent hub" should live **inside** the Edge City Portal (the page Edge attendees see when they log in at `edgecity.simplefi.tech` → `/portal/edge-esmeralda-2026`), not as a standalone link out to InstaClaw. When an attendee clicks "EdgeClaw" in the portal sidebar, they see a personalized view of their agent without ever leaving Edge's domain.
+
+The portal is **`citizen-portal`** — the open-source frontend of EdgeOS, built and operated by SimpleFi (p2p-lanes), maintained by Tule (`@tulezao` / `tule@simplefi.tech`). Tech stack: Next.js 15.5.7 + React 19.1.2 + TypeScript + Tailwind + shadcn/ui + Radix + Geist font + Lucide icons + Framer Motion + `@worldcoin/minikit-js` for World ID sign-in. Light theme by default (`bg-neutral-100`). Backend is the separate `EdgeOS_API` repo (FastAPI / PostgreSQL / NocoDB). Source: [github.com/p2p-lanes/EdgeOS](https://github.com/p2p-lanes/EdgeOS), MIT-licensed.
+
+**The pattern is already established.** Cursive's "ZK Coupons" partner module ships today at `/portal/[popupSlug]/coupons/page.tsx` as a full-bleed `<iframe src="https://edge-city-coupons.onrender.com/">`. EdgeClaw mirrors that pattern: own-domain Next.js app, embedded full-bleed in a dedicated sidebar route. We don't reinvent — we reuse the precedent.
+
+**The strategic frame.** This embed is the **daily touchpoint** for 500 attendees over 28 days. It's the thing they click when they want to know "what has my agent been up to?". It is *not* the marketing page (that's our `/edge` at `instaclaw.io`, § 5.1) and *not* the research dashboard (that's `/edge/plaza`, § 4.14). It's the personalized control surface. Get this right and we get daily-active engagement, organic word-of-mouth in a residential setting, and the highest-quality data signal of the village. Get it wrong and attendees feel they have a Telegram bot — nothing more.
+
+#### 4.21.1 What the attendee sees
+
+When `tan@example.com` clicks "EdgeClaw" in the portal sidebar, the iframe loads our embed at `edgeclaw.instaclaw.io`. The view they see, MVP scope:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│  ●  edgecityagent — your agent is live                           │
+│  Last active 2 min ago · @edgecity_ravi_bot · privacy: standard  │
+│                                                                  │
+│  ┌─ TODAY ────────────────────────────────────────────────────┐  │
+│  │ This morning your agent looked at 14 attendees and surfaced │  │
+│  │ 3 people you might want to meet. 1 of them said yes.        │  │
+│  │                                                             │  │
+│  │ ↪ Open in Telegram                                          │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ PENDING ───────────────────────────────────────────────────┐  │
+│  │ Sarah Chen's agent proposed a meeting about biotech founders │  │
+│  │ Wed 3-5pm at Aria espresso bar                              │  │
+│  │ [ Accept ]  [ Counter ]  [ Decline ]   ↪ Reply in Telegram  │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ RECENT MATCHES ───────────────────────────────────────────┐  │
+│  │ Jamie Lin    ● 0.81  "AI governance researchers"  Tue 9:38pm│  │
+│  │ Alex Park    ● 0.74  "Mech interp"                Mon 8:42pm│  │
+│  │ Maya Reed    ● 0.66  "Synthetic bio + LLMs"      Mon 8:31pm│  │
+│  │ Devin Cho    ◌      "Climate finance"             — declined│  │
+│  │                                                             │  │
+│  │ See all 12 matches this week →                              │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ CONFIRMED MEETINGS ────────────────────────────────────────┐  │
+│  │ Wed 3pm     Sarah Chen   Aria espresso bar       ↪ Calendar │  │
+│  │ Fri 11am    Tanya Iyer   Attendee lounge         ↪ Calendar │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ WHO YOUR AGENT HAS MET ───────────────────────────────────┐  │
+│  │ ◯ ◯ ◯ ◯ ◯  17 agents · 3 confirmed in-person · 14 online    │  │
+│  │ Tap to see who and what you talked about →                  │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ THE VILLAGE RIGHT NOW ─────────────────────────────────────┐  │
+│  │ 47 conversations · 12 intros forming · 3 dinners forming    │  │
+│  │ See the public plaza →  (anonymized)                        │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  Privacy mode · Settings · ↪ Open in Telegram                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Modules and the rationale for each, in render order:
+
+| Module | Why it's first/last | Data |
+|---|---|---|
+| **Status header** (hero) | First glance answers "is my agent working" — the most common implicit question on every load. | `instaclaw_vms` (`health_status`, `last_health_check`, `telegram_bot_username`); privacy state |
+| **Today's briefing summary** | The story the agent has to tell about its work since last login. Higher than matches because it gives narrative shape — "your agent did 3 things this morning." | `matchpool_outcomes` filtered to last 24h + the briefing log JSON (cron-generated) |
+| **Pending actions** | Highest-leverage CTA on the page — a proposal awaiting reply is the user's most direct lever on their week. Surfaced even if zero. | `negotiation_threads` where state in (`proposed`, `countered`) and receiver = user; mirror in Telegram per § 4.21.5 redundancy |
+| **Recent matches** | The "list of people my agent surfaced," scored. Limit 4-5 entries; "See all" linkout. | `matchpool_outcomes` last 7 days, ranked by `deliberation_score` |
+| **Confirmed meetings** | The wins. What v2 negotiation actually delivered. Calendar export buttons. | `negotiation_threads` state=`accepted` |
+| **Who your agent has met** | The connections graph. v0 ships as a chip-list. v1 ships as a small force-directed graph (§ 4.21.10). | Aggregated from matches + meetings, de-duped per other-user |
+| **The village right now** | A peek at the public plaza so users feel the broader system around them. Anchors social proof inside their personal view. | `matchpool_funnel_counts` RPC — same data as `/edge/plaza` |
+| **Footer controls** | Privacy mode toggle, settings, deep-link back to Telegram. | `instaclaw_users.privacy_mode_until`, etc. |
+
+What's deliberately **not** in MVP, deferred to iteration:
+
+- A connections **graph** (force-directed, interactive). MVP ships chip-list; v0.2 ships graph (§ 4.21.10).
+- 2D plaza embedded inside the hub. § 4.14 v1 is a week 3-or-4 reveal, not Phase 1.
+- Inline "Reply" composer for negotiations. MVP punts to Telegram because that's the canonical channel; v0.2 may add inline if friction data justifies it.
+- Editable agent profile. Defer — § 5 portal already covers profile and the embed shouldn't fragment that surface.
+- Push notifications from inside the iframe. Telegram is the push channel; the embed is the canvas channel. Mixing is confusing.
+
+#### 4.21.2 Embed mechanics — host, route, sidebar entry
+
+**Our domain:** `edgeclaw.instaclaw.io` (new subdomain, separate Vercel project recommended — clean rollback path, separate from `instaclaw.io` cron/build pressures). Falls back to `instaclaw.io/edgeclaw/embed` if subdomain provisioning is delayed past May 25; one DNS record either way.
+
+**Edge route:** `/portal/edge-esmeralda-2026/edgeclaw` inside the citizen-portal. The page is a full-bleed iframe wrapping our embed, mirroring the Cursive coupons file at `src/app/portal/[popupSlug]/coupons/page.tsx`. Tule adds one file (~10 lines) plus one DB row.
+
+**Sidebar entry:** The portal's `ResourcesMenu` reads from a backend `Resource` model in EdgeOS_API. To make "EdgeClaw" appear in the sidebar, Tule (or his backoffice via NocoDB) creates one row: `{slug: "edgeclaw", label: "EdgeClaw", icon: <Lucide icon name>, status: "active", path: "/portal/edge-esmeralda-2026/edgeclaw", popup_slug: "edge-esmeralda-2026"}`. This is data, not code. Reversible by flipping `status` to `inactive`.
+
+**Layout dimensions.** Portal sidebar (shadcn `Sidebar` with `collapsible="icon"`):
+- Sidebar expanded: ~256px. Content area: viewport - 256px (commonly 1024-1366 px).
+- Sidebar collapsed (icon mode): ~64px. Content area: viewport - 64px.
+- Mobile drawer (`vaul`): sidebar swipes out; embed gets full viewport width.
+
+Our embed must render correctly at min 720px wide, ideally responsive down to 360px (mobile drawer collapse). We test in both states before shipping. Telegram is the mobile-first path so the embed's mobile budget is "legible but not gorgeous."
+
+**Theming.** EdgeOS is light by default (`bg-neutral-100`, Geist font). Our embed adopts the Edge brand palette already defined in `app/edge/layout.tsx`:
+
+| Token | Value | Usage |
+|---|---|---|
+| `--edge-bg` | `#FAFAF7` | Page background |
+| `--edge-ink` | `#0E0F0B` | Primary text |
+| `--edge-ink-soft` | `#5A5C53` | Secondary text |
+| `--edge-olive` | `#29311E` | Primary accent (CTAs, highlights) |
+| `--edge-olive-hover` | `#1B210F` | Hover state |
+| `--edge-sage` | `#E4F0D2` | Light hover surfaces, accept-confirm |
+| `--edge-line` | `rgba(14,15,11,0.10)` | Hairline borders |
+
+This is a **deliberate divergence** from our existing dark `/edge/plaza` design. The portal embed lives inside Edge's light surface; using our dark cards on warm-off-white would be visually jarring. We re-skin to Edge light, retain the same data shape.
+
+**Chrome.** None. The embed has zero `instaclaw.io` navigation, no logo header, no SiteFooter. The whole iframe is content; Edge's own sidebar and chrome surround it.
+
+#### 4.21.3 Authentication — three layers, with explicit fallbacks
+
+This is the load-bearing technical concern. The embed has no inherent way to know who is logged in to the portal unless EdgeOS tells it. Three patterns, in priority order:
+
+**Primary: postMessage JWT handshake** *(target — requires Tule to ship a small wrapper on the portal side)*
+
+1. EdgeOS iframe wrapper page (`/portal/{popupSlug}/edgeclaw/page.tsx`) reads the EdgeOS JWT from the user's cookie via `useGetTokenAuth()` (existing hook).
+2. Wrapper renders `<iframe id="edgeclaw" src="https://edgeclaw.instaclaw.io" />`.
+3. On iframe `load`, wrapper posts: `iframe.contentWindow.postMessage({type: "EDGEOS_AUTH", jwt: "..."}, "https://edgeclaw.instaclaw.io")`.
+4. Embed listens for `message` events from `https://edgecity.simplefi.tech` and `https://edgeesmeralda.simplefi.tech`, verifies origin, accepts the JWT.
+5. Embed POSTs `{ jwt }` to its own backend `/api/edgeclaw/session`, which calls `EdgeOS_API/citizens/verify` (server-to-server with the same JWT — see § 4.21.4 ask to Tule).
+6. EdgeOS_API responds `{email, popup_slug, citizen_id}`. Our backend issues a short-lived (15-min) signed session cookie scoped to `.instaclaw.io`.
+7. Embed renders.
+
+The JWT never lives in a URL. The handshake is async but completes in <500 ms typical.
+
+**Fallback: World ID re-auth inside the iframe** *(zero new dependency on Tule — uses libraries both sides already have)*
+
+Both EdgeOS and InstaClaw use `@worldcoin/minikit-js`. The embed can run its own World ID sign-in inside the iframe:
+
+1. Embed loads, detects no session cookie.
+2. Renders a "Continue with World ID" button.
+3. User signs (MiniKit, takes ~5 seconds).
+4. Embed verifies the World ID proof server-side and looks up the user by World address in our `instaclaw_users` table (`world_address` column already exists).
+5. Sets session cookie, renders.
+
+This is the **safe fallback** if Tule can't ship the postMessage wrapper by May 30. Slight UX friction (one tap on first load per session) but zero new partner work.
+
+**Failsafe: signed redirect from EdgeOS** *(if postMessage is technically blocked by a future browser policy or by Tule's deployment)*
+
+A signed URL parameter `?session=<JWT-signed-by-EdgeOS-secret>` exchanged for our session cookie on first load. Less clean (URL leakage risk if user shares the link, replay possible) but works as a last resort. We require Tule to sign with a key we share OOB. **Used only if both postMessage and World ID fail.** The signed token must be one-time-use, server-validated, and bound to the citizen_id; never include the EdgeOS JWT directly in the URL.
+
+**Rule: the embed never renders user data without confirming identity server-side.** The postMessage handshake is convenient, but the verification step (server-to-server with EdgeOS_API) is the trust boundary. A spoofed `postMessage` from an arbitrary origin must fail at server verification. Origin allow-list: `edgecity.simplefi.tech`, `edgeesmeralda.simplefi.tech`, and explicitly NO `*` wildcard.
+
+#### 4.21.4 Data sources
+
+Mapping from embed modules to backing tables/endpoints. Everything reads through new `/api/edgeclaw/*` routes on `edgeclaw.instaclaw.io` — no new database schema; we read existing tables.
+
+| Module | Endpoint | Source |
+|---|---|---|
+| Status header | `GET /api/edgeclaw/me/agent` | `instaclaw_vms` (`health_status`, `last_health_check`, `telegram_bot_username`); `instaclaw_users` (`privacy_mode_until`) |
+| Today's briefing summary | `GET /api/edgeclaw/me/today` | Aggregates `matchpool_outcomes` last 24h; if a briefing-log JSON is written by cron, reads that for the "story" prose |
+| Pending actions | `GET /api/edgeclaw/me/pending` | `negotiation_threads` where receiver = user AND state ∈ {`proposed`, `countered`}; `agent_outreach_log` legacy entries with `status='sent' AND ack_received_at IS NULL` |
+| Recent matches | `GET /api/edgeclaw/me/matches?since=7d` | `matchpool_outcomes` joined to display-friendly counterpart info; reuses anonymization-OFF path (we know the viewer) |
+| Confirmed meetings | `GET /api/edgeclaw/me/meetings` | `negotiation_threads` state=`accepted` with `accepted_window` parsed; ICS export endpoint reuses the same |
+| Who your agent has met | `GET /api/edgeclaw/me/connections` | Distinct counterparts across `matchpool_outcomes` ∪ `negotiation_messages` |
+| The village right now | `GET /api/edgeclaw/village/snapshot` | Reuses the existing `matchpool_funnel_counts` RPC — same data as `/edge/plaza` |
+| Telegram activity (post-MVP) | `GET /api/edgeclaw/me/telegram` | Reads from existing `notification-log.jsonl` aggregation OR new `telegram_message_counts` materialized view |
+
+All endpoints require the signed session cookie (§ 4.21.3) and gate by the resolved `citizen_id → instaclaw_users.id` mapping. No endpoint accepts an arbitrary `user_id` parameter.
+
+#### 4.21.5 Security model
+
+The embed exposes per-user data. The threat model is real: a leaked URL must not leak data; a malicious site iframing our embed must not exfiltrate tokens; an EdgeOS account compromise should be detectable.
+
+**CSP / X-Frame-Options.** The embed sets:
+
+```
+Content-Security-Policy: frame-ancestors https://edgecity.simplefi.tech https://edgeesmeralda.simplefi.tech https://*.edgecity.simplefi.tech
+```
+
+No `*`. No `X-Frame-Options: DENY` (which would block the entire embed pattern); CSP `frame-ancestors` is the modern equivalent. This stops any third-party site from iframing us.
+
+**postMessage origin check.** The embed validates `event.origin` against the same allow-list before reading the JWT. A `postMessage` from any other origin is silently dropped (no leaks via error messages).
+
+**Session cookie.** `HttpOnly`, `Secure`, `SameSite=None` (required because the cookie is read in a cross-site iframe context), 15-min expiry, signed with HS256 against an env-stored secret. Refresh-on-render so an attendee who keeps the tab open all day doesn't get logged out.
+
+**JWT verification.** The EdgeOS JWT goes through `EdgeOS_API/citizens/verify` on the server side (never in the browser). We trust EdgeOS_API as the IdP for the duration of the village. Verification is mandatory on every session-cookie issuance; never on read.
+
+**Audit log.** Every successful embed render writes one row to `instaclaw_edgeclaw_audit (id, instaclaw_user_id, edgeos_citizen_id, ip, user_agent, at)`. Surface in operator dashboard. Alerts on: same `citizen_id` from >3 IPs in 60 min (account compromise signal), volume spike (mass enumeration).
+
+**Privacy mode interaction.** If `instaclaw_users.privacy_mode_until > now()`, the embed renders an explicit privacy-mode card explaining what's hidden and offers a "Pause privacy mode for 30 min to see this hub" CTA. We do not silently bypass privacy mode in the embed.
+
+**Data minimization.** The embed never shows another attendee's data unless that attendee has matched with the viewer. We don't render the full plaza member list inside the embed; that's `/edge/plaza` territory (already anonymized).
+
+**Non-attendee gate.** If `EdgeOS_API/citizens/verify` returns success but the attendee's email is not in `instaclaw_users` (e.g., they have an EdgeOS account but never claimed an InstaClaw agent), the embed renders an "Activate your agent" CTA that hands off to the existing `/edge-city` claim flow. We do NOT render a partial view.
+
+#### 4.21.6 Relationship to `/edge/plaza`
+
+`/edge/plaza` (§ 4.14 v0, shipped today) is the **public, anonymized** village-wide funnel — accessible at `instaclaw.io/edge/plaza` to anyone with the URL. The portal embed is the **private, personalized** "your agent" hub — gated to the specific attendee.
+
+They share a substrate (`matchpool_outcomes`, `matchpool_funnel_counts` RPC, the calibration data) but they are **separate pages** with separate URL shapes, separate auth gates, and separate visual treatments (the public plaza is dark; the embed is Edge light).
+
+The embed **links to** `/edge/plaza` from its "the village right now" module — a peek at the global funnel for context. It does not embed `/edge/plaza` directly; doing so would mean serving public-anonymized aggregate data inside the personalized view, which is a UX inversion.
+
+**Could they converge later?** Yes, in v1+ if attendees ask for a "village mode" inside the embed. For May 30 they stay separate.
+
+#### 4.21.7 Relationship to § 4.14 plaza v1 (the 2D viz wow moment)
+
+The 2D plaza visualization specced in § 4.14 (Pokemon-like avatars on a canvas, agents only animating on real activity) is the natural week 3-or-4 reveal. The portal embed is its **container**.
+
+When the 2D viz ships, it lands as a new module inside the embed (or a `/portal/.../edgeclaw/plaza` sub-route) — *not* as a replacement for `/edge/plaza`. Three views co-exist:
+
+| Surface | Audience | Visual |
+|---|---|---|
+| `/edge/plaza` | Public, anonymized | Dark funnel dashboard (today's shipped v0) |
+| Embed "village right now" link | Attendee, identified | Same funnel dashboard, anchored from inside the hub |
+| Embed "live village" tab (post § 4.14 v1) | Attendee, identified | 2D canvas with avatars; "real motion only" invariant |
+
+The 2D viz inherits the embed's auth and session — no new auth surface. It inherits the embed's "real motion, not choreography" principle from § 4.14. The portal embed is therefore the **delivery vehicle** for the eventual 2D experience, not a competitor to it.
+
+This is also why the embed gets a separate Vercel project (§ 4.21.2): it lets us ship the heavier 2D canvas later without polluting `instaclaw.io`'s build envelope.
+
+#### 4.21.8 What we need from the Edge team
+
+Itemized, by owner and deadline.
+
+**From Tule (SimpleFi / EdgeOS engineering):**
+
+| Need | Why | Effort | Deadline |
+|---|---|---|---|
+| `Resource` row provisioning for `edgeclaw` slug in `popup_slug=edge-esmeralda-2026` | The sidebar entry that makes the embed discoverable | <10 min DB insert via NocoDB | May 22 (test); May 30 (live) |
+| Iframe wrapper page at `/portal/[popupSlug]/edgeclaw/page.tsx` | The mount point that loads our iframe | ~15 lines mirroring the coupons file | May 23 |
+| `postMessage` JWT handshake — wrapper posts `{type:"EDGEOS_AUTH", jwt}` on iframe load | The primary auth path (§ 4.21.3) | ~30 lines in the wrapper file | May 26 (canary), May 30 (live). If slips, World ID fallback ships in MVP. |
+| EdgeOS_API endpoint `POST /citizens/verify` accepting `{ jwt }` and returning `{citizen_id, email, popup_slug, status}` | Server-side verification of the JWT during our session-cookie issuance | New endpoint; ~50 lines FastAPI | May 26 |
+| Confirmation that `frame-ancestors edgecity.simplefi.tech` (and the EE26 subdomain) is acceptable from Edge side | We need to assert who can iframe us; no Edge policy should prevent this | Statement, no work | May 20 |
+| Branding QA pass on a staging build | Make sure the embed feels native to the portal | ~30 min review | May 26 |
+
+**From Timour (Edge City product):**
+
+| Need | Why | Effort | Deadline |
+|---|---|---|---|
+| Approval of the IA in § 4.21.1 | Modules + order match Edge's user expectations | Async review | May 20 |
+| Approval of the embed slug, label, and icon | What appears in the sidebar — branding decision | Async | May 22 |
+| Communication plan: how attendees learn the embed exists (welcome email mention? post-signup callout?) | Discovery is the gating factor for adoption | 1-2 paragraphs in welcome flow | May 26 |
+| Disclosure language for what we collect / show inside the embed | Privacy hygiene; aligns with existing portal privacy expectations | One paragraph; we draft, they approve | May 23 |
+| Confirmation that the embed is the **default** post-login surface for attendees with claimed agents (not buried behind a tab) | Discoverability — if it's hidden, daily active drops to single digits | Decision + sidebar ordering | May 26 |
+
+**From InstaClaw side (Cooper / engineering):**
+
+- All `/api/edgeclaw/*` endpoints, the embed Next.js app, deploy pipeline, CSP headers, session cookie machinery, audit log, World ID fallback, Vercel project provisioning, DNS for `edgeclaw.instaclaw.io`, staging build by May 23.
+
+#### 4.21.9 Phased rollout
+
+| Phase | Dates | Scope |
+|---|---|---|
+| **Phase 0 — internal canary** | May 15-19 | Embed builds on Vercel preview; CSP set; World ID fallback works against a test user; non-Edge iframing blocked. All `/api/edgeclaw/*` endpoints respond against staging DB. No Tule dependency. |
+| **Phase 1 — Tule wrapper canary** | May 20-26 | Tule lands the wrapper + verify endpoint; we test postMessage handshake against staging citizen-portal. Iterate. Branding QA. Five test users (Cooper + 4 partner VMs). |
+| **Phase 2 — MVP live** | May 27-30 | Production embed shipped at `edgeclaw.instaclaw.io`. Resource row activated in EE26 portal. World ID fallback retained. Hero/Today/Pending/Recent/Meetings/Connections/Village + footer. |
+| **Phase 3 — Week 1 polish** | Jun 1-6 | Connections graph (force-directed, mini). Telegram activity stats. Inline pending-action accept/counter/decline (gated on v2 negotiation maturity). Performance budget review. |
+| **Phase 4 — Mid-village iteration** | Jun 7-12 | A/B on module ordering based on real engagement data. Add "this week" summary card. Surface frontier marketplace if § 4.20 micropayments ship. |
+| **Phase 5 — 2D viz reveal** | Jun 15-22 | § 4.14 v1 lands as a tab/page inside the embed. Real-motion-only invariant. Wow moment. |
+| **Phase 6 — Post-village playbook** | Jul-Aug | Make the embed pattern reusable: parameterize popup_slug, abstract Edge-specific tokens, document the integration for Eclipse / Moo / next partner. § 9 reusability deliverable. |
+
+**Hard MVP cut-line for May 30 (drop anything not in this list if time is tight):**
+- Status header
+- Today's briefing summary (a single string; we generate it from the day's `matchpool_outcomes` aggregate)
+- Pending actions (v1 INTRO_V1 + v2 negotiation, both surfaces)
+- Recent matches (last 7 days)
+- Confirmed meetings (state=`accepted`)
+- "The village right now" link to `/edge/plaza`
+- Privacy mode controls
+- Open-in-Telegram CTA
+- World ID fallback auth (always available)
+
+#### 4.21.10 Future modules considered but deferred
+
+| Module | Why interesting | When |
+|---|---|---|
+| Connections graph (force-directed) | Visualizes who-met-whom across the village; partner-shareable | Phase 3 (Week 1) |
+| Inline pending-action composer | Reduces friction vs. Telegram fallback | Phase 3 if data shows >20% drop-off on "Reply in Telegram" |
+| Daily streak / contribution score | Gamification — "your agent surfaced 12 useful matches this week" | Phase 4 mid-village; needs careful framing to avoid feeling shallow |
+| Cross-event continuity preview | "Your agent met 3 people who will also be at Token2049" | Phase 6 post-village; depends on cross-event memory shipping |
+| MEMORY.md excerpt browser | Per § 4.20 "MEMORY.md as public resource" pick | Phase 4 if Cooper + Vendrov select it for the May 30 pick |
+| 2D plaza canvas | § 4.14 v1 | Phase 5 |
+| Frontier marketplace board | § 4.20 micropayments + listings | Phase 5 if § 4.20 micropayments ships |
+
+#### 4.21.11 Open questions
+
+**Q46.** Domain — `edgeclaw.instaclaw.io` (new subdomain, separate Vercel project) vs `instaclaw.io/edgeclaw/embed` (no new infra). Recommend subdomain for cleaner rollback, build isolation, and future 2D canvas weight. Owner: Cooper. Decision by May 17.
+
+**Q47.** Embed slug + label + sidebar icon — "EdgeClaw" feels right but it's also our partnership brand. Timour may prefer "Your Agent" / "AI Agent" / "Hub" / something neutral. Owner: Timour. Decision by May 22.
+
+**Q48.** postMessage handshake vs World ID re-auth — primary path commits Tule to wrapper work; fallback commits attendee to one tap on first session. Recommend: ship World ID fallback in MVP, layer postMessage on top of it as Tule's wrapper lands. Owner: Tule + Cooper. Decision by May 23.
+
+**Q49.** Telegram bot link format — direct `t.me/<bot>` deep link vs in-embed iframe of Telegram Web. Recommend deep link only (Telegram Web in iframe is unreliable; deep link respects user's existing client). Owner: Cooper. Decision by May 20.
+
+**Q50.** Anonymization inside the embed — when showing "who your agent has met," do we show real names (we know the viewer, so we *can*) or keep Agent #NNN style for consistency with `/edge/plaza`? Recommend real names for confirmed-meeting counterparts (the user already knows who that is) and Agent #NNN for not-yet-met matches (preserves the "see if you're interested before identity is revealed" dynamic). Owner: Cooper + Timour + Vendrov. Decision by May 24.
+
+**Q51.** Module ordering — is "Pending actions" really the right position 2, or does "Today's briefing summary" deserve hero placement? A/B in Phase 4 once we have data; for MVP recommend Pending second (a pending action is the user's most immediate lever). Owner: Cooper. Decision by May 22.
+
+**Q52.** Default-vs-buried question (§ 4.21.8 ask 5) — is EdgeClaw the post-login default for attendees with claimed agents, or just a sidebar entry? Recommend default for claimed agents, sidebar entry for unclaimed. Owner: Timour. Decision by May 26.
+
+**Q53.** Audit-log retention. The `instaclaw_edgeclaw_audit` table — how long do we retain? Recommend 90 days then anonymized aggregation, then drop the raw rows. Owner: Cooper + Vendrov (research ethics aware). Decision by May 24.
+
+**Q54.** What happens at end-of-village (Jun 27)? Does the embed go dormant, redirect to a "village ended" recap, or persist as a permanent attendee surface for future Edge events? Recommend persistence — the agent isn't going anywhere; the embed becomes the cross-event continuity surface (§ 4.21.10). Owner: Cooper + Timour. Decision by Jun 13.
+
+#### 4.21.12 Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| Tule's wrapper slips past May 26 | Medium | Low | World ID fallback ships in MVP regardless; postMessage is upgrade-path. |
+| Edge applies CSP `frame-ancestors` or X-Frame-Options that breaks the embed | Low (current `next.config.ts` is empty) | High | Confirm with Tule by May 20 (§ 4.21.8 ask 5). |
+| Attendees don't discover the embed exists | Medium | High | Welcome email mention (§ 4.21.8 ask 9 to Timour); Telegram bot's first-message could nudge to the embed. |
+| Mobile drawer rendering breaks | Medium | Medium | Manual test in Phase 1 against both mobile-Safari (iOS) and Chrome (Android) at portal drawer widths. |
+| Privacy mode interaction confuses users | Low | Medium | Explicit privacy-mode card with clear CTA per § 4.21.5; not silent bypass. |
+| Session cookie issues across cross-site iframe | Medium | High | `SameSite=None; Secure` + Safari/iOS ITP testing required in Phase 0. Fallback path: short-lived URL-fragment session token if cross-site cookie blocked. |
+| Embed renders before auth completes (race) | Medium | Low | Strict loading state — no data fetches until session cookie is set; "Loading your agent…" placeholder. |
+| Account-compromise via JWT replay | Low | High | Server-side JWT verification on every session issuance + 15-min cookie expiry + audit-log anomaly detection (§ 4.21.5). |
+| 2D viz performance kills the embed when it lands (Phase 5) | Medium (depends on viz tech choice) | Medium | Performance budget locked at 2D-viz PRD time; canvas-only, no DOM-per-agent; defer to v1.1 if needed. |
+
+#### 4.21.13 Summary commitment
+
+We will ship a personalized agent-hub iframe at `edgeclaw.instaclaw.io`, mounted in the EdgeOS citizen-portal sidebar at `/portal/edge-esmeralda-2026/edgeclaw`, with World ID re-auth as the launch-day path and Tule's postMessage handshake as the upgrade path. MVP IA: status, today's briefing, pending actions, recent matches, confirmed meetings, connections, village-snapshot link. Edge light palette. CSP-locked to Edge origins. Audit-logged. Privacy-mode aware. Ready for attendees on May 30; the 2D plaza viz lands inside it mid-village.
+
+This is the daily touchpoint for 500 attendees. Everything else we build for Edge funnels into it.
 
 ---
 
