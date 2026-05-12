@@ -864,6 +864,110 @@ PR review checklist when adding a key to `lib/vm-manifest.ts:configSettings`:
 
 This rule complements Rule 10 (verify-every-set discipline) — Rule 10 catches *disk write* failures; Rule 32 catches *runtime apply* failures. Both are required for a fleet-wide config rollout to be trustworthy.
 
+### 33. Onboarding Is a State Machine — Every Transition Must Be Atomic or Reentrant, and Never Trap the User
+
+The signup → first-message flow is a five-state finite state machine. Every transition either (a) is atomic — all writes land or none do — or (b) is fully reentrant — repeating it leaves the user in the same or a later state, never an earlier one. Violating either property creates a **trap state**: a configuration the user's session can reach but cannot escape via normal navigation. The dashboard layout's onboarding redirect makes any trap state into an infinite loop, because a trapped user landing on `/dashboard` gets bounced to `/connect`, where they re-execute the flow that put them in the trap state, forever.
+
+#### The 2026-05-12 stuck-onboarding incident
+
+Carter Cleveland signed up via `/edge-city`, the Edge City partner portal. He paid via Stripe, his subscription went active, a VM (`vm-917`) was assigned and configured, and his Telegram bot (`@EdgeFriendBot`) was wired up. Then he clicked anywhere on the dashboard and got bounced back to `/connect` showing "Your bot @EdgeFriendBot is ready! Continue to Plan Selection." Click Continue → flash of `/plan` → flash of `/deploying` → back on `/connect`. Forever. Timour Kosters (Edge City project lead) flagged the incident.
+
+Fleet audit that night found Carter was one of **eight users** in the identical trap state going back to 2026-05-09 ~17:00 UTC. Pattern: VM assigned, `health_status="healthy"`, `gateway_url` set, agentbook + bankr wallets provisioned, BUT `telegram_bot_username=NULL`, `partner=NULL`, `pending_users.consumed_at=NULL`, `users.onboarding_complete=false`. `buggynear@gmail.com` (vm-910) had **20+ consecutive `configure_started` events with zero `configure_completed`** over those two days, meaning configure had been called 20+ times and failed in the exact same way every time.
+
+The cause: `/api/vm/configure` runs `configureOpenClaw`, which atomically writes the critical fields (`gateway_url`, `gateway_token`, `health_status="healthy"`, `telegram_bot_token`) partway through its execution. After that atomic write, `configureOpenClaw` continues running other steps. Three of those steps are tagged `critical: true` in their `recordFailure(...)` calls — `dispatch_deploy` (`lib/ssh.ts:5278`), `browser_relay_deploy` (`lib/ssh.ts:5310`), `agentbook_wallet_generation` (`lib/ssh.ts:6950`). When any of them throws, the failure is collected into `result.partialFailures` and bubbled up to the route handler. The handler's critical-failure gate (`app/api/vm/configure/route.ts:408`) sees `critical=true` failures and returns 500 **before** running the supplemental update block that sets `telegram_bot_username`, `partner`, `onboarding_complete=true`, and consumes the `pending_users` row.
+
+So the VM looks healthy from any external check (the only one anyone runs is `/health` and a port probe), but four named pieces of database state that "fully onboarded" depends on never get written. The dashboard layout's redirect uses only `session.user.onboardingComplete`, so it doesn't see the working VM and sends the user to `/connect`. `/connect` hydrates from the un-consumed pending row, shows the bot as verified, offers "Continue to Plan Selection". `/plan` sees an active subscription and skips Stripe checkout (`api/billing/checkout` existingSub branch → returns `{url: /deploying}`). `/deploying` polls `/api/vm/status`, sees `gateway_url` set + `health_status="healthy"`, marks all five deploy steps "done", and after 1500ms does `window.location.href = "/dashboard"`. Back on `/dashboard`. Loop closed. No part of the loop emits any error to a log we read — every endpoint returns 200, every page renders normally.
+
+Before this fix, the critical-failure gate didn't update `health_status` or increment `configure_attempts`. So `process-pending`'s Pass 2 (`health_status="configure_failed"` AND `configure_attempts < MAX_CONFIGURE_ATTEMPTS`) didn't match these VMs, and Pass 2c (`configure_attempts >= MAX_CONFIGURE_ATTEMPTS`) didn't either. Nothing released the user from the trap. The cron rolled past them every 10 minutes for two days while Buggynear (and seven others) sat in the loop. Cooper found out from Timour on day 2.
+
+#### The onboarding state machine
+
+Five named states. Backward arrows are explicit — users can cancel and re-onboard.
+
+```
+ANONYMOUS ──[Google OAuth]──▶ CONNECTED ──[/api/onboarding/save]──▶ PENDING
+                              (instaclaw_users row)                 (pending_users row, no VM, no sub)
+                                                                     │
+                                                                     ▼ [Stripe checkout completes]
+                                                                  PAID_NO_VM
+                                                                (active sub, no VM)
+                                                                     │
+                                                                     ▼ [pool assignment in
+                                                                         process-pending / verify / webhook]
+                                                                  ASSIGNED_CONFIGURING
+                                                                 (VM assigned, configure in progress)
+                                                                     │
+                                                                     ▼ [configureOpenClaw atomic write +
+                                                                         supplemental update succeeds]
+                                                                  FULLY_ONBOARDED   ← terminal good state
+                                                                     │
+                                                                     ▼ [user cancels sub]
+                                                                  CANCELLED   (sub cancelled, VM frozen or released)
+                                                                     │
+                                                                     ▼ [user resubscribes]
+                                                                 (back to ASSIGNED_CONFIGURING
+                                                                  via thawVM or fresh assignment)
+```
+
+There are exactly two legitimate "user dwells here" states: `ANONYMOUS` (escapes via Google sign-in; middleware enforces) and `FULLY_ONBOARDED` (terminal good state). Every other state must be transient — a deterministic path forward (cron, webhook, user click) advances the user out within bounded time. **Anything else is a trap.**
+
+#### "Fully onboarded" is exactly five database conditions, all conjunctive
+
+A user is fully onboarded if and only if all five hold simultaneously:
+
+1. `instaclaw_users.onboarding_complete = true`
+2. `instaclaw_users.deployment_lock_at IS NULL`
+3. Exactly one `instaclaw_vms` row where `assigned_to = user.id` AND `gateway_url IS NOT NULL` AND `gateway_token IS NOT NULL` AND `telegram_bot_token IS NOT NULL` AND `telegram_bot_username IS NOT NULL` AND (`partner` matches `users.partner` if `users.partner IS NOT NULL`) AND `health_status NOT IN ('configure_failed', 'frozen')`
+4. Either an `instaclaw_subscriptions` row with `status IN ('active', 'trialing')` OR one of the alternative `isPaying` conditions in `lib/billing-status.ts` (`credit_balance > 0`, partner-tagged, all-inclusive tier, past_due within 7-day grace)
+5. `instaclaw_pending_users.consumed_at IS NOT NULL` OR the pending row doesn't exist
+
+Any user where (1)–(4) hold but `pending_users.consumed_at IS NULL` is in a soft-incomplete state — agent works but the funnel-completion check still treats them as in-progress. Any user where (3) is partial (gateway set but `telegram_bot_username` missing, or `partner` mismatched) is the **2026-05-12 trap state**: a healthy VM the system doesn't know is healthy because the supplemental writes never landed.
+
+When you add a new partner-gated skill, a new auto-installed integration, a new field that lives on `instaclaw_vms` and must agree with `instaclaw_users` (e.g., a Bankr-style per-user wallet), the answer to "is this written atomically with the rest of onboarding?" determines whether you're adding a new way to enter the trap state. If you can't say yes, you ARE adding one.
+
+#### The atomicity invariant
+
+`/api/vm/configure` writes three logically-distinct state changes:
+
+- **A**: `configureOpenClaw`'s atomic VM update (`gateway_url`, `health_status`, `telegram_bot_token`, `agentbook_wallet_address`, etc.) — written via a single PostgREST update inside `lib/ssh.ts`.
+- **B**: the supplemental update block (`telegram_bot_username`, `partner`, `user_timezone`, `configure_attempts: 0`, `configure_lock_at: null`) — written by the route handler after `configureOpenClaw` returns.
+- **C**: the onboarding-completion block (`instaclaw_users.onboarding_complete = true`, `deployment_lock_at: null`, `instaclaw_pending_users.consumed_at = now()`) — also written by the route handler.
+
+Before 2026-05-12, A → B → C could partially commit: A landed, then a critical-failure gate or a Vercel function-kill stopped execution before B and C. The VM looked healthy but funnel state was wrong, and there was no terminal "broken" state to trigger recovery.
+
+The fix shipped 2026-05-12:
+
+1. **The critical-failure gate now updates state instead of just returning 500.** Sets `health_status = "configure_failed"`, increments `configure_attempts`, and (if `>= MAX_CONFIGURE_ATTEMPTS`) releases the VM the same way the catch block does — so existing retry/release machinery in `process-pending` Pass 2 / 2c, the `/deploying` retry UI, and the alert email all fire as if the configure had thrown.
+2. **The dashboard layout no longer routes solely on `session.user.onboardingComplete`.** When `onboardingComplete === false` it now fetches `/api/vm/status` and routes data-drivenly: usable VM → stay on dashboard; `configure_failed` VM → `/deploying` (retry UI); still-configuring → `/deploying` (progress); no VM → `/connect` (genuine new-user path). This breaks the loop even when atomicity is somehow violated again.
+3. **The health-check cron now detects the trap state every cycle.** Any user with `onboarding_complete = false` AND a healthy VM (with `gateway_url`) for >15 minutes emits an admin alert (`Stuck-Onboarding Users [Rule 33]`). Cooper finds out within the cron interval, not when a partner emails him.
+4. **New `configure_partial_failure` onboarding event.** Visible in the funnel timeline so a future "stuck users" dashboard widget can detect this state without cross-referencing Vercel logs.
+
+The atomicity invariant going forward: every code path that writes any subset of {A, B, C} must either write the full subset transactionally, or push to `result.errors` and update `health_status="configure_failed"` so the retry machinery can re-execute the full path. Never leave a VM with A but not B+C and a `health_status` that isn't `"configure_failed"`.
+
+#### Banned patterns
+
+- A `return NextResponse.json({error}, {status: 500})` from any configure-path branch that doesn't first either (a) write `health_status = "configure_failed"` + increment `configure_attempts`, or (b) revert the partial state from `lib/ssh.ts`'s atomic write. The 2026-05-12 incident was precisely this — the critical-failure gate returned 500 with state still painted as "healthy".
+- Routing logic that uses ONLY `session.user.onboardingComplete` as the "is this user set up?" signal. The dashboard, the post-checkout redirect, and any future "is this user ready?" check must consult VM state, not just the user-level boolean. A user with `onboarding_complete=true` and no VM is also broken (different shape, same family — they paid, got marked complete, then their VM got released).
+- New onboarding code paths (partner portal, mini-app, credit-pack upgrade, etc.) that write fields onto `instaclaw_vms` outside the `configureOpenClaw` → supplemental-update flow. Every such write must also be reachable from the configure path so a retry can recover from any partial state.
+- Adding a new `critical: true` `recordFailure(...)` call in `lib/ssh.ts` without writing a failure-mode test that exercises the partial-state recovery (per Rule 31). The three existing critical steps had no such test, which is why the bug went undetected for two days.
+- "Pass N+1 will catch this" comments in cron code that don't actually have a passes-everything safety net. The 2026-05-12 incident's eight users matched ZERO of `process-pending`'s seven passes because each pass had a narrow precondition that excluded the healthy-VM-but-incomplete-onboarding shape.
+
+#### Required patterns
+
+1. **Every failure branch in the configure path must transition the VM to a recoverable state.** Either `configure_failed` (so `process-pending` Pass 2 retries) or release-and-reassign (Pass 2c equivalent). Never leave the VM as `healthy` after a failure.
+2. **Every redirect away from the dashboard must check the destination is reachable.** If you redirect to `/connect`, the user must be able to reach `/dashboard` from `/connect` without coming back to `/connect`. If you redirect to `/deploying`, the page must terminate (either to dashboard or to a clear error UI) in bounded time. Loop detection on the next mount is too late.
+3. **Stuck-state detection in a cron with admin alert.** Any state-machine implementation must have a cron that detects "users stuck in non-terminal state past a SLA" and alerts. The cron at `cron/health-check`'s `Stuck-Onboarding Users [Rule 33]` alert fires whenever a user is `onboarding_complete=false` with a healthy VM for >15 minutes. Mirror this pattern for any new state machine.
+4. **The fix for "user is stuck" must be a recovery script, not a manual SQL session.** The 2026-05-12 fix for Carter was a one-shot Node script with before/after state printed for verification. For new state-machine breakages, write the recovery script as part of the PR that adds the state machine. If you can't write it in advance, you don't yet understand the failure modes well enough to ship.
+5. **Three database writes that must agree are three opportunities for partial commit.** When a feature requires writes to more than one of {`instaclaw_users`, `instaclaw_vms`, `instaclaw_pending_users`, `instaclaw_subscriptions`}, the PR description must enumerate: (a) the order of writes, (b) what partial-commit states are reachable, (c) which one would be detected by the stuck-state cron.
+
+#### Detection rule
+
+For any PR that touches `app/api/vm/configure/route.ts`, `app/api/onboarding/*`, `app/(onboarding)/*`, `app/(dashboard)/layout.tsx`, the billing webhook, the partner-tag endpoint, or any cron under `app/api/cron/` that calls `/api/vm/configure`: the PR description must explicitly answer "if this code path partially commits its writes, which database state combinations become reachable, and which of them is a trap state?" If the answer isn't enumerated in the diff or the description, the PR is incomplete. The 2026-05-12 incident's eight users existed because three separate PRs touched configure or onboarding code without anyone tracing the partial-commit possibility — each PR was locally correct, but they composed into a trap state.
+
+For any PR that adds a new `recordFailure(..., critical=true)` call: the PR must also (a) add a failure-mode test that triggers that critical failure synthetically (per Rule 31), and (b) verify the user can recover via the existing retry/release machinery, OR add new recovery machinery in the same PR.
+
+For any PR that adds a new state to `vm.health_status` or `user.onboarding_*`: the PR must update both `lib/billing-status.ts`-style classification helpers AND the dashboard layout's redirect logic to handle the new state. New states without routing logic become silent trap-state contributors.
+
 ---
 
 ## Linode-vs-DB Drift (Reality Checks)

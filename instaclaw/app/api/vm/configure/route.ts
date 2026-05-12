@@ -407,15 +407,79 @@ export async function POST(req: NextRequest) {
     // are optional and the user can use the VM without them.
     const criticalFailures = result.partialFailures.filter((f) => f.critical);
     if (criticalFailures.length > 0) {
-      // Release configure_lock so retry is unblocked. This is the ONE supplemental
-      // write we still do — it's required for any retry to even start.
-      if (!lockError) {
-        await supabase
-          .from("instaclaw_vms")
-          .update({ configure_lock_at: null })
-          .eq("id", vm.id)
-          .eq("assigned_to", userId);
+      // 2026-05-12 fix: when the critical-failure gate fires, configureOpenClaw's
+      // atomic write has already painted the VM as "healthy" with a gateway_url.
+      // Before this fix the gate only released the configure_lock and returned 500
+      // — health_status stayed "healthy", configure_attempts stayed 0, and the
+      // supplemental update block was skipped. Net effect: VM looks fine from
+      // the outside, but telegram_bot_username, partner, and onboarding_complete
+      // were never written. Eight users hit this and got stuck in
+      // /dashboard → /connect → /plan → /deploying → /dashboard forever
+      // (process-pending's Pass 2 only retries health_status="configure_failed",
+      // so the cron never picked them up either).
+      //
+      // Now we mark the VM as configure_failed and increment configure_attempts
+      // so the existing retry+release machinery (process-pending Pass 2 / 2c,
+      // /deploying retry UI, MAX_CONFIGURE_ATTEMPTS release-and-reassign) all
+      // engage normally. See Rule 33.
+      const { data: failedVm } = await supabase
+        .from("instaclaw_vms")
+        .select("configure_attempts")
+        .eq("id", vm.id)
+        .eq("assigned_to", userId)
+        .single();
+      const newAttempts = (failedVm?.configure_attempts ?? 0) + 1;
+      const exhausted = newAttempts >= MAX_CONFIGURE_ATTEMPTS;
+
+      const update: Record<string, unknown> = {
+        health_status: "configure_failed",
+        configure_attempts: newAttempts,
+        last_health_check: new Date().toISOString(),
+      };
+      if (!lockError) update.configure_lock_at = null;
+      await supabase
+        .from("instaclaw_vms")
+        .update(update)
+        .eq("id", vm.id)
+        .eq("assigned_to", userId);
+
+      // If retries exhausted, release the VM so the user gets re-queued for
+      // a fresh assignment on the next process-pending cycle. Mirrors the
+      // catch-block release path at the bottom of this route.
+      if (exhausted) {
+        logger.error("Configure exhausted (critical failures) — releasing VM", {
+          route: "vm/configure", userId, vmId: vm.id,
+          criticalSteps: criticalFailures.map((f) => f.step),
+        });
+        await supabase.from("instaclaw_vms").update({
+          status: "failed",
+          assigned_to: null,
+          assigned_at: null,
+          gateway_url: null,
+          gateway_token: null,
+        }).eq("id", vm.id);
+        await supabase.from("instaclaw_users").update({
+          deployment_lock_at: null,
+        }).eq("id", userId);
+        await supabase.from("instaclaw_pending_users")
+          .update({ consumed_at: null })
+          .eq("user_id", userId);
       }
+
+      // Make the failure visible in the onboarding event timeline so a
+      // future "stuck users" admin dashboard can detect this state without
+      // having to cross-reference Vercel logs.
+      await logOnboardingEvent({
+        userId: userId!,
+        eventType: "configure_partial_failure",
+        vmId: vm.id,
+        metadata: {
+          attempt: newAttempts,
+          exhausted,
+          critical_steps: criticalFailures.map((f) => f.step),
+          critical_count: criticalFailures.length,
+        },
+      }).catch(() => {});
 
       logger.error("Configure blocked by critical deploy failures", {
         route: "vm/configure",
@@ -424,6 +488,8 @@ export async function POST(req: NextRequest) {
         criticalCount: criticalFailures.length,
         criticalSteps: criticalFailures.map((f) => f.step),
         allFailures: result.partialFailures,
+        newAttempts,
+        exhausted,
       });
 
       sendAdminAlertEmail(
@@ -431,8 +497,10 @@ export async function POST(req: NextRequest) {
         `VM ${vm.id} (user ${userId}) had ${criticalFailures.length} critical deploy failure(s) during configure.\n\n` +
           `Critical steps:\n${criticalFailures.map((f) => `  - ${f.step}: ${f.error}`).join("\n")}\n\n` +
           `All partial failures:\n${result.partialFailures.map((f) => `  - [${f.critical ? "CRITICAL" : "non-critical"}] ${f.step}: ${f.error}`).join("\n")}\n\n` +
-          `The user is NOT yet marked onboarding_complete; the next retry will re-run configure. ` +
-          `If retries keep hitting the same failure, investigate the underlying cause before bumping configure_attempts past MAX.`
+          `Attempt ${newAttempts}/${MAX_CONFIGURE_ATTEMPTS}. ` +
+          (exhausted
+            ? "EXHAUSTED — VM released, user queued for reassignment."
+            : `Will retry. VM now marked configure_failed for process-pending Pass 2.`)
       ).catch(() => {});
 
       return NextResponse.json(
@@ -440,6 +508,8 @@ export async function POST(req: NextRequest) {
           error: "Configuration completed with critical failures",
           partial_failures: result.partialFailures,
           critical_failures: criticalFailures,
+          attempt: newAttempts,
+          exhausted,
         },
         { status: 500 }
       );

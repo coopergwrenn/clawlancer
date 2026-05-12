@@ -43,6 +43,12 @@ export type OnboardingEventType =
   | "vm_assigned"
   | "configure_started"
   | "configure_completed"
+  // Fires when /api/vm/configure's critical-failure gate trips: configureOpenClaw
+  // wrote the atomic VM update but one or more critical=true partialFailures
+  // (e.g. dispatch_deploy, browser_relay_deploy) blocked the supplemental update.
+  // Visible in the funnel so we can detect "stuck onboarding" users without
+  // having to cross-reference Vercel logs. See Rule 33.
+  | "configure_partial_failure"
   | "xmtp_setup_completed"
   | "first_message_sent";
 

@@ -3108,6 +3108,65 @@ else:
   } catch { /* agentbook checks are non-critical */ }
 
   // ========================================================================
+  // Stuck-onboarding detection (2026-05-12, Rule 33)
+  // ----------------------------------------------------------------------
+  // The shape that hit eight users 2026-05-10 → 2026-05-12: VM is "healthy"
+  // (gateway_url + health_status="healthy" set by configureOpenClaw's
+  // atomic write) BUT onboarding_complete=false (supplemental update block
+  // was skipped by the critical-failure gate, or the function was killed
+  // between the two writes). Users in this state get redirect-looped
+  // /dashboard → /connect → /plan → /deploying → /dashboard.
+  //
+  // Cooper found out from Timour on day 2. This alert exists so we find
+  // out on cycle 1. Triggers an admin email per cycle when the count > 0.
+  // ========================================================================
+  try {
+    const stuckOnboardingMinAgeMs = 15 * 60 * 1000; // give configure 15 min to complete
+    const fifteenMinAgo = new Date(Date.now() - stuckOnboardingMinAgeMs).toISOString();
+
+    const { data: stuckOnboardingUsers } = await supabase
+      .from("instaclaw_users")
+      .select("id, email, partner, created_at")
+      .eq("onboarding_complete", false)
+      .lt("created_at", fifteenMinAgo);
+
+    const stuckRows: Array<{ email: string; vmId: string; assignedAt: string | null }> = [];
+    for (const u of stuckOnboardingUsers ?? []) {
+      const { data: v } = await supabase
+        .from("instaclaw_vms")
+        .select("id, health_status, gateway_url, assigned_at")
+        .eq("assigned_to", u.id);
+      const vm = v?.[0];
+      if (!vm) continue;
+      if (vm.health_status !== "healthy") continue;
+      if (!vm.gateway_url) continue;
+      stuckRows.push({ email: u.email ?? "(unknown)", vmId: vm.id, assignedAt: vm.assigned_at });
+    }
+
+    if (stuckRows.length > 0) {
+      logger.error("Stuck-onboarding loop detected (healthy VM + onboarding_complete=false)", {
+        route: "cron/health-check",
+        count: stuckRows.length,
+        emails: stuckRows.map((r) => r.email),
+      });
+      alerts.add(
+        "Stuck-Onboarding Users [Rule 33]",
+        `${stuckRows.length} user${stuckRows.length === 1 ? "" : "s"}`,
+        stuckRows
+          .slice(0, 20)
+          .map((r) => `  ${r.email}  vm=${r.vmId}  assigned=${r.assignedAt}`)
+          .join("\n") +
+          (stuckRows.length > 20 ? `\n  …and ${stuckRows.length - 20} more` : "")
+      );
+    }
+  } catch (stuckErr) {
+    logger.warn("Stuck-onboarding sweep failed (non-fatal)", {
+      route: "cron/health-check",
+      error: stuckErr instanceof Error ? stuckErr.message : String(stuckErr),
+    });
+  }
+
+  // ========================================================================
   // Auto-retry pass: Assigned VMs with NO gateway_url (configure failed/timed out)
   // These are users who paid but got stuck on "Your agent is being configured."
   // If assigned 10+ minutes ago with no gateway_url, re-run configure.

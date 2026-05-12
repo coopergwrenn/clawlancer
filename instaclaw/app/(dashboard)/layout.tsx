@@ -72,10 +72,63 @@ export default function DashboardLayout({
   const needsOnboarding =
     status !== "loading" && session?.user?.id && session.user.onboardingComplete === false;
 
+  // 2026-05-12: redirect target must be data-driven, not just based on
+  // onboarding_complete. `/api/vm/configure` can hit its critical-failure gate
+  // AFTER the atomic VM write but BEFORE the supplemental update that flips
+  // onboarding_complete=true. The user ends up with a healthy, usable VM and
+  // a stale onboarding_complete=false. Naively redirecting them to /connect
+  // creates an infinite loop: dashboard → connect → plan → deploying (sees
+  // healthy VM, redirects back) → dashboard. Eight users hit this between
+  // 2026-05-10 and 2026-05-12 — see Rule 33.
+  //
+  // Disambiguate by VM state:
+  //   - has usable VM (healthy + gateway_url) → stay on dashboard, let them in
+  //   - VM exists but configure_failed → /deploying (where they see retry UI)
+  //   - VM exists but still configuring (no gateway_url yet) → /deploying
+  //   - no VM at all → /connect (genuine new-user path)
   useEffect(() => {
-    if (needsOnboarding) {
-      router.replace("/connect");
-    }
+    if (!needsOnboarding) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/vm/status");
+        if (cancelled) return;
+        if (!res.ok) {
+          // 401/5xx — conservatively send to /connect, same as before
+          router.replace("/connect");
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        const vm = data?.vm;
+        const hasUsableVm =
+          data?.status === "assigned" &&
+          !!vm?.gatewayUrl &&
+          vm?.healthStatus !== "configure_failed";
+        if (hasUsableVm) {
+          // Working VM exists. Let them stay on the dashboard. The supplemental
+          // state (onboarding_complete, telegram_bot_username, partner) will be
+          // healed by the next successful configure or by manual remediation.
+          return;
+        }
+        if (data?.status === "assigned" && vm?.healthStatus === "configure_failed") {
+          router.replace("/deploying");
+          return;
+        }
+        if (data?.status === "assigned" && !vm?.gatewayUrl) {
+          // VM assigned, configure in progress
+          router.replace("/deploying");
+          return;
+        }
+        // No VM (pending/no_user) → onboarding flow
+        router.replace("/connect");
+      } catch {
+        if (!cancelled) router.replace("/connect");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [needsOnboarding, router]);
 
   // Close dropdown when clicking outside (suppressed when tour controls it)
