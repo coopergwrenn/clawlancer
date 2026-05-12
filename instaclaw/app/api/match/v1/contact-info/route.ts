@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
     .select("*")
     .in("assigned_to", safeIds)
     .eq("health_status", "healthy")
+    .not("status", "in", '("terminated","destroyed","failed")')
     .not("xmtp_address", "is", null);
 
   if (vmErr) {

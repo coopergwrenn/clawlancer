@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
     .from("instaclaw_vms")
     .select("id, name, ip_address, ssh_port, ssh_user, assigned_to, health_status")
     .not("assigned_to", "is", null)
-    .in("health_status", ["healthy", "degraded"]);
+    .in("health_status", ["healthy", "degraded"])
+    .not("status", "in", '("terminated","destroyed","failed")');
 
   if (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

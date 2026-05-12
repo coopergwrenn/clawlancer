@@ -261,6 +261,13 @@ export async function GET(req: NextRequest) {
       .eq("status", "assigned")
       .eq("provider", "linode")
       .eq("health_status", "healthy")
+      // Defense in depth: terminated/destroyed/failed VMs can never enter the
+      // reconcile pool, even if health_status got left at 'healthy' by a
+      // partial-write upstream (vm-lifecycle / cloud-init-poll). The
+      // .eq('status','assigned') filter above already excludes these states,
+      // but this explicit clause documents the protection and survives any
+      // future refactor that widens the status filter.
+      .not("status", "in", '("terminated","destroyed","failed")')
       .lt("config_version", VM_MANIFEST.version)
       .not("gateway_url", "is", null)
       // Auto-quarantined VMs (K=10 consecutive reconcile failures) are

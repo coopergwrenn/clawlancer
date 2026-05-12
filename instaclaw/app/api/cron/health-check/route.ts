@@ -1519,6 +1519,7 @@ else:
     .from("instaclaw_vms")
     .select("id, assigned_to, suspended_at, ip_address, ssh_port, ssh_user, name")
     .eq("health_status", "suspended")
+    .not("status", "in", '("terminated","destroyed","failed")')
     .not("suspended_at", "is", null)
     .not("assigned_to", "is", null);
 

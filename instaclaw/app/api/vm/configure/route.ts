@@ -453,6 +453,7 @@ export async function POST(req: NextRequest) {
         });
         await supabase.from("instaclaw_vms").update({
           status: "failed",
+          health_status: "unhealthy",
           assigned_to: null,
           assigned_at: null,
           gateway_url: null,

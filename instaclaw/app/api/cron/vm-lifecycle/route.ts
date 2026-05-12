@@ -424,6 +424,7 @@ export async function GET(req: NextRequest) {
       .from("instaclaw_vms")
       .select("id, name, assigned_to, suspended_at, credit_balance")
       .eq("health_status", "hibernating")
+      .not("status", "in", '("terminated","destroyed","failed")')
       .not("suspended_at", "is", null);
 
     for (const vm of hibernatingVms ?? []) {
@@ -673,6 +674,7 @@ export async function GET(req: NextRequest) {
       )
       .eq("health_status", "suspended")
       .eq("provider", "linode")
+      .not("status", "in", '("terminated","destroyed","failed")')
       .not("suspended_at", "is", null);
 
     if (suspendedVms?.length) {
@@ -866,10 +868,14 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // Step 3: Update DB
+        // Step 3: Update DB. health_status MUST move atomically with status —
+        // any candidate query that filters only on health_status will otherwise
+        // keep selecting this row (e.g. wake-paid-hibernating, vm-lifecycle's
+        // own suspended-cleanup pass below) and waste SSH budget on a Linode
+        // that no longer exists.
         await supabase
           .from("instaclaw_vms")
-          .update({ status: "terminated" })
+          .update({ status: "terminated", health_status: "unhealthy" })
           .eq("id", vm.id);
 
         // Step 4: Log
@@ -943,7 +949,7 @@ export async function GET(req: NextRequest) {
           await provider.deleteServer(vm.provider_server_id);
           await supabase
             .from("instaclaw_vms")
-            .update({ status: "terminated" })
+            .update({ status: "terminated", health_status: "unhealthy" })
             .eq("id", vm.id);
           report.pass2_pool_trimmed++;
           totalDeletions++;

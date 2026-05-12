@@ -78,6 +78,10 @@ export async function GET(req: NextRequest) {
       .select("*")
       .in("health_status", ["hibernating", "suspended"])
       .not("assigned_to", "is", null)
+      // Don't try to wake terminated/destroyed/failed rows — the Linode is
+      // gone and SSH/startGateway will burn the entire 300s function budget
+      // before timing out.
+      .not("status", "in", '("terminated","destroyed","failed")')
       .order("suspended_at", { ascending: true }) // wake longest-asleep first
       .limit(BATCH_SIZE);
 

@@ -138,6 +138,7 @@ export async function GET(req: NextRequest) {
     .from("instaclaw_vms")
     .select("id, name, assigned_to, telegram_bot_token, telegram_chat_id")
     .eq("health_status", "healthy")
+    .not("status", "in", '("terminated","destroyed","failed")')
     .not("assigned_to", "is", null)
     .not("telegram_chat_id", "is", null)
     .not("telegram_bot_token", "is", null)

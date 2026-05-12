@@ -47,7 +47,12 @@ export async function wakeIfHibernating(
     .from("instaclaw_vms")
     .select("*")
     .eq("assigned_to", userId)
-    .in("health_status", ["hibernating", "suspended"]);
+    .in("health_status", ["hibernating", "suspended"])
+    // Don't wake VMs whose row was flipped to a terminal state (lifecycle
+    // delete, cloud-init timeout, etc.). Without this filter a stale
+    // health_status='hibernating' on a terminated row would drive a
+    // doomed startGateway() against a deleted Linode.
+    .not("status", "in", '("terminated","destroyed","failed")');
 
   if (error) {
     logger.error("wakeIfHibernating: lookup failed", { userId, source, error: error.message });

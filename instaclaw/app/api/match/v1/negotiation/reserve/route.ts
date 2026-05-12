@@ -288,6 +288,7 @@ export async function POST(req: NextRequest) {
     .select("xmtp_address")
     .eq("assigned_to", targetUserId)
     .eq("health_status", "healthy")
+    .not("status", "in", '("terminated","destroyed","failed")')
     .not("xmtp_address", "is", null)
     .limit(1);
   if (vmErr) {

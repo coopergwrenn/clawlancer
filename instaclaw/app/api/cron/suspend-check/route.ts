@@ -209,6 +209,7 @@ export async function GET(req: NextRequest) {
       .from("instaclaw_vms")
       .select("assigned_to")
       .eq("health_status", "hibernating")
+      .not("status", "in", '("terminated","destroyed","failed")')
       .lt("suspended_at", threeDaysAgo)
       .gt("suspended_at", fourDaysAgo);
 

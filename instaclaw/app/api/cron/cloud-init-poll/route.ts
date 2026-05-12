@@ -60,10 +60,11 @@ export async function GET(req: NextRequest) {
         name: vm.name,
         ageMinutes: Math.round(age / 60_000),
       });
-      // Mark as failed so we stop polling
+      // Mark as failed so we stop polling. health_status flipped atomically
+      // so health-status-only candidate queries can't keep picking this row up.
       supabase
         .from("instaclaw_vms")
-        .update({ status: "failed" })
+        .update({ status: "failed", health_status: "unhealthy" })
         .eq("id", vm.id)
         .then(() => {});
       return false;

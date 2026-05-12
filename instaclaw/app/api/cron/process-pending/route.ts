@@ -230,6 +230,7 @@ export async function GET(req: NextRequest) {
     .from("instaclaw_vms")
     .select("assigned_to, configure_attempts, telegram_bot_username")
     .eq("health_status", "configure_failed")
+    .not("status", "in", '("terminated","destroyed","failed")')
     .lt("configure_attempts", MAX_CONFIGURE_ATTEMPTS)
     .not("assigned_to", "is", null)
     .limit(10);
@@ -346,6 +347,7 @@ export async function GET(req: NextRequest) {
     .from("instaclaw_vms")
     .select("id, assigned_to, configure_attempts")
     .eq("health_status", "configure_failed")
+    .not("status", "in", '("terminated","destroyed","failed")')
     .gte("configure_attempts", MAX_CONFIGURE_ATTEMPTS)
     .not("assigned_to", "is", null)
     .limit(5);
@@ -359,7 +361,8 @@ export async function GET(req: NextRequest) {
         configureAttempts: evm.configure_attempts,
       });
       await supabase.from("instaclaw_vms").update({
-        status: "failed", assigned_to: null, assigned_at: null,
+        status: "failed", health_status: "unhealthy",
+        assigned_to: null, assigned_at: null,
         gateway_url: null, gateway_token: null, configure_lock_at: null,
       }).eq("id", evm.id);
       await supabase.from("instaclaw_users").update({
@@ -384,6 +387,7 @@ export async function GET(req: NextRequest) {
     .from("instaclaw_vms")
     .select("id, assigned_to, assigned_at, telegram_bot_username")
     .not("assigned_to", "is", null)
+    .not("status", "in", '("terminated","destroyed","failed")')
     .eq("configure_attempts", 0)
     .in("health_status", ["unknown", "unhealthy"])
     .lt("assigned_at", tenMinutesAgo)
