@@ -43,17 +43,198 @@ export async function GET(req: NextRequest) {
   // Dry-run: GET /api/cron/process-pending?dryRun=1 — returns preview list,
   // no DB writes, no VM assignments.
   //
-  // Limit of 3 per cycle. Pass 1 already takes up to 10; Pass 0 running at 5
-  // too could drain the pool in one cycle (15 > POOL_TARGET=15). 3 keeps it
-  // additive without outpacing replenish. Backlog drains over multiple cycles.
+  // 2026-05-12 starvation + scale + fairness fix. Khomenko89 incident: she
+  // paid 2026-04-30, the pool was empty when her webhook fired, her pending
+  // row was deleted by Pass 4, Pass 0 should have recovered her. Instead
+  // .limit(3) with NO ORDER BY returned 3 random orphans, all "soft-incomplete"
+  // (paid + have VM + onboarding_complete=false because configureOpenClaw
+  // didn't finish writing supplemental state). The in-loop existingVm check
+  // skipped them, the loop exited, zero recoveries. The cron ran every 5 min
+  // for 12 days — 3,456 firings — and never picked her up.
+  //
+  // ── Architecture orientation ─────────────────────────────────────────
+  //
+  // The HAPPY PATH for ~95% of signups does NOT touch this cron:
+  //
+  //   user pays → Stripe webhook (billing/webhook:225 checkout.session.completed)
+  //     → assignVMWithSSHCheck (inline, lines 464-487 — SKIP LOCKED RPC)
+  //     → provisionBankrWallet (idempotent by user_id, line 492)
+  //     → fetch /api/vm/configure × 3 retries × 5s backoff (lines 503-548)
+  //     → user has a working Telegram bot in 60-180s
+  //
+  // This route is the BACKSTOP for the ~5% where the webhook path can't
+  // complete: pool drained at webhook time, transient Stripe-retry, configure
+  // throws in a way the inline retries can't recover, or — historically —
+  // Pass 4 deletes the pending row before Pass 1 sees it. Six passes layered
+  // for resilience:
+  //
+  //   Pass 0  — paid orphans, no VM yet (THIS block)
+  //   Pass 1  — pending_users rows, no VM yet
+  //   Pass 2  — health_status="configure_failed" + attempts<MAX (retry)
+  //   Pass 2b — gateway_url=null + attempts>0 (retry gateway-up)
+  //   Pass 2c — attempts>=MAX → release VM, requeue user
+  //   Pass 3  — assigned VMs with configure_attempts=0 + health=unknown
+  //   Pass 3b — assigned >5min with gateway_url=null (catch-all)
+  //   Pass 4  — clean up stale pending_users >10min with no VM
+  //   Pass 5  — purge consumed pending_users >24h
+  //
+  // ── Three Pass 0 fixes ───────────────────────────────────────────────
+  //
+  //   1. Pre-fetch user_ids that already have a VM and EXCLUDE at the query
+  //      level via .not("user_id","in",...). The limit budget now goes
+  //      entirely to true orphans, not soft-incompletes.
+  //   2. ORDER BY instaclaw_users(partner) DESC NULLS LAST, then created_at
+  //      ASC. Partners (edge_city, consensus_2026) jump the queue — they
+  //      signed up via partner portals with negotiated SLAs. Within a
+  //      partner tier, oldest waiters get served first (SLA fairness).
+  //   3. Dynamic batch sizing. limit raised from 3 → 30 (the upper cap; the
+  //      loop's `if (!vm) break` naturally throttles to pool_ready_count
+  //      when the pool drains). count:"exact" returns total row count
+  //      alongside the limit(30) slice so we can log queue depth for
+  //      backlog alerting without a second roundtrip. Intuition: the
+  //      effective batch size is min(queue_depth, pool_ready, 30).
+  //
+  // ── Scale ceilings (where the architecture breaks) ───────────────────
+  //
+  //   Steady state (~20 signups/day): webhook path. Pool stays at 15.
+  //   Busy day (10 signups in 5 min): all served by webhook path.
+  //   Burst (100 signups in 1 hour): webhook drains pool to 0, subsequent
+  //     signups fall back to Pass 0. With dynamic batching Pass 0 drains
+  //     backlog at pool_ready_per_cycle. replenish-pool's MAX_PER_RUN=10
+  //     caps refill at 96/hour. Demand=100/hour → balanced.
+  //   Viral (500 in 1 hour): replenish-pool can't keep up. POOL_TARGET=15
+  //     becomes the bottleneck. Pre-warm the pool before known events
+  //     (Edge Esmeralda 2026-05-30) or auto-scale POOL_TARGET by hour.
+  //     See "Scale follow-ups" below.
+  //
+  // ── Future: event-driven path (eliminate this cron's failure tail) ───
+  //
+  //   The 5-min cron cadence adds up-to-10-min p99 latency to the
+  //   webhook-failure cases. To shrink it:
+  //
+  //     1. Supabase pg_notify("orphan_paid_user", user_id) when:
+  //          (a) instaclaw_subscriptions.status transitions to
+  //              active/trialing AND instaclaw_users.onboarding_complete=
+  //              false AND no VM
+  //          (b) instaclaw_vms.health_status flips to "configure_failed"
+  //          (c) pending_users row inserted with no VM after 30s
+  //     2. Edge function subscribes via supabase-js realtime, picks up
+  //        each notification, calls the same recovery path Pass 0 uses
+  //        (assignVMWithSSHCheck + fetch /api/vm/configure).
+  //     3. Cron remains as the periodic reconciliation backstop for any
+  //        events the realtime path missed (defense in depth, current
+  //        role).
+  //
+  //   Latency target: paid user → working Telegram bot in <30s. Cron
+  //   becomes belt-and-suspenders. NOT built today — ORDER BY + dynamic
+  //   batch is sufficient for current scale.
+  //
+  // ── Scale follow-ups (track these for Edge Esmeralda 2026-05-30) ─────
+  //
+  //   F1. replenish-pool MAX_PER_RUN=10 is too low for sustained bursts.
+  //       Make it dynamic based on recent signup velocity.
+  //   F2. POOL_TARGET=15 is too low for known event days. Pre-warm or
+  //       auto-scale by hour-of-day (or by signup velocity).
+  //   F3. Event-driven recovery (above) once cron latency becomes the
+  //       dominant bottleneck (today it's MAX_PER_RUN, not cron lag).
+  //   F4. Stripe webhook can fail to fire (rare). Add a periodic
+  //       reconciliation against Stripe API as a second backstop.
   // -----------------------------------------------------------------
   {
-    const { data: orphans, error: orphanErr } = await supabase
+    // (1) Pre-fetch user_ids that already have a VM. These are NOT orphans —
+    // they're soft-incomplete users whose state is fixed elsewhere
+    // (reconciler stepTelegramTokenVerify syncs disk; manual support
+    // intervention fixes onboarding_complete=true). Excluding here prevents
+    // Pass 0's budget from getting wasted on rows the in-loop existingVm
+    // check would skip anyway.
+    const { data: assignedUsers } = await supabase
+      .from("instaclaw_vms")
+      .select("assigned_to")
+      .not("assigned_to", "is", null);
+    const assignedUserIds = Array.from(new Set(
+      (assignedUsers ?? [])
+        .map((r) => (r as { assigned_to: string | null }).assigned_to)
+        .filter((id): id is string => !!id),
+    ));
+
+    // (2) + (3) Build the query. count:"exact" returns total queue depth
+    // alongside the limit(30) slice so we can log a backlog signal without
+    // a second roundtrip. ORDER BY partner DESC NULLS LAST puts paying
+    // partners (edge_city, consensus_2026) ahead of non-partner users.
+    // Within each tier we order by sub.created_at ASC — oldest paying
+    // waiter served first.
+    const PASS0_MAX_BATCH = 30;
+    let orphansQuery = supabase
       .from("instaclaw_subscriptions")
-      .select("user_id, tier, status, instaclaw_users!inner(email, onboarding_complete)")
+      .select(
+        "user_id, tier, status, created_at, instaclaw_users!inner(email, onboarding_complete, partner)",
+        { count: "exact" },
+      )
       .in("status", ["active", "trialing"])
       .eq("instaclaw_users.onboarding_complete", false)
-      .limit(3);
+      // Partner priority — non-null partners first (edge_city, consensus_2026).
+      // PostgREST foreign-table column syntax: "table(column)".
+      .order("instaclaw_users(partner)", { ascending: false, nullsFirst: false })
+      // Fairness tiebreaker — oldest paying waiter served first.
+      .order("created_at", { ascending: true })
+      .limit(PASS0_MAX_BATCH);
+
+    if (assignedUserIds.length > 0) {
+      // PostgREST NOT IN. UUIDs don't need quoting. URL length scales with
+      // active-VM count; at ~250 VMs the IN list is ~9KB which fits under
+      // standard URL limits (PostgREST/Vercel ~16KB). Move to an RPC if
+      // this ever approaches the limit (~400 UUIDs).
+      orphansQuery = orphansQuery.not(
+        "user_id",
+        "in",
+        `(${assignedUserIds.join(",")})`,
+      );
+    }
+
+    // Snapshot pool readiness in parallel with the orphan fetch. This is
+    // purely observability — the actual throttling happens via the loop's
+    // "if (!vm) break" when assignVMWithSSHCheck returns null. Knowing
+    // pool_ready lets us log expected-assignments-this-cycle and surface
+    // "queue depth > pool" as a backlog signal for Edge-Esmeralda-class
+    // bursts where replenish-pool can't keep up.
+    const [{ data: orphans, count: orphanQueueDepth, error: orphanErr }, { count: poolReadyCount }] =
+      await Promise.all([
+        orphansQuery,
+        supabase
+          .from("instaclaw_vms")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "ready")
+          .eq("provider", "linode")
+          .eq("health_status", "healthy"),
+      ]);
+
+    const queueDepth = orphanQueueDepth ?? 0;
+    const poolReady = poolReadyCount ?? 0;
+    const expectedAssignments = Math.min(queueDepth, poolReady, PASS0_MAX_BATCH);
+
+    if (queueDepth > 0) {
+      logger.info("Pass 0: orphan batch", {
+        route: "cron/process-pending",
+        queueDepth,
+        poolReady,
+        batchFetched: orphans?.length ?? 0,
+        expectedAssignments,
+      });
+    }
+
+    if (queueDepth > poolReady) {
+      // Backlog: more true orphans than ready VMs. Replenish-pool needs to
+      // catch up. At 100+/hour bursts this is where MAX_PER_RUN=10 becomes
+      // the dominant bottleneck (see follow-up F1 above).
+      logger.warn("Pass 0: queue depth exceeds pool capacity — backlog forming", {
+        route: "cron/process-pending",
+        queueDepth,
+        poolReady,
+        cyclesToDrainAtCurrentReplenish: Math.ceil(
+          (queueDepth - poolReady) / 8, // replenish provisions ~8/cycle (5 min)
+        ),
+      });
+    }
 
     if (orphanErr) {
       logger.error("Pass 0: orphan query failed", {
@@ -63,8 +244,10 @@ export async function GET(req: NextRequest) {
     }
 
     for (const o of orphans ?? []) {
-      // Safety: onboarding_complete=false + active sub SHOULD imply no VM,
-      // but don't trust that invariant in a recovery path.
+      // Safety: the pre-fetch + NOT IN should keep VM-having users out of
+      // this loop, but races (a user gets assigned a VM between the
+      // pre-fetch and this iteration) are possible. Keep the explicit
+      // check as defense in depth.
       const { data: existingVm } = await supabase
         .from("instaclaw_vms")
         .select("id")
@@ -387,6 +570,13 @@ export async function GET(req: NextRequest) {
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   let autoConfigured = 0;
 
+  // 2026-05-12 fairness: ORDER BY assigned_at DESC so the most-recently-
+  // assigned VMs get configured first. Old "zombie" assignments (assigned
+  // long ago, never configured) tend to be terminated/cancelled users whose
+  // configure was never going to succeed anyway. Newly-paid customers
+  // shouldn't wait behind those zombies — without ORDER BY, the previous
+  // .limit(10) with no ordering could return a random mix that buried real
+  // customers behind dead VMs.
   const { data: orphanedVms } = await supabase
     .from("instaclaw_vms")
     .select("id, assigned_to, assigned_at, telegram_bot_username")
@@ -395,6 +585,7 @@ export async function GET(req: NextRequest) {
     .eq("configure_attempts", 0)
     .in("health_status", ["unknown", "unhealthy"])
     .lt("assigned_at", tenMinutesAgo)
+    .order("assigned_at", { ascending: false })
     .limit(10);
 
   if (orphanedVms?.length) {
