@@ -356,7 +356,13 @@ export async function GET(req: NextRequest) {
             if (dbRow) {
               await supabase
                 .from("instaclaw_vms")
-                .update({ status: "destroyed", health_status: "unhealthy" })
+                .update({
+                  status: "destroyed",
+                  health_status: "unhealthy",
+                  last_assigned_to: dbRow.assigned_to ?? null,
+                  assigned_to: null,
+                  assigned_at: null,
+                })
                 .eq("id", dbRow.id);
             }
           } catch (err) {
@@ -877,9 +883,21 @@ export async function GET(req: NextRequest) {
         // keep selecting this row (e.g. wake-paid-hibernating, vm-lifecycle's
         // own suspended-cleanup pass below) and waste SSH budget on a Linode
         // that no longer exists.
+        // Stamp last_assigned_to for history, then null assigned_to. The
+        // dangling-assigned_to-on-terminate pattern was the root cause of the
+        // entire ghost-row class fixed in 39d0e237/3914d05f/0d5499af/8ecf83d1.
+        // Clearing it here makes every .eq("assigned_to", userId) lookup
+        // naturally exclude terminated rows — defensive filters in candidate
+        // queries become belt-and-suspenders instead of load-bearing.
         await supabase
           .from("instaclaw_vms")
-          .update({ status: "terminated", health_status: "unhealthy" })
+          .update({
+            status: "terminated",
+            health_status: "unhealthy",
+            last_assigned_to: vm.assigned_to ?? null,
+            assigned_to: null,
+            assigned_at: null,
+          })
           .eq("id", vm.id);
 
         // Step 4: Log
@@ -953,7 +971,14 @@ export async function GET(req: NextRequest) {
           await provider.deleteServer(vm.provider_server_id);
           await supabase
             .from("instaclaw_vms")
-            .update({ status: "terminated", health_status: "unhealthy" })
+            .update({
+              status: "terminated",
+              health_status: "unhealthy",
+              // Pool VMs typically have assigned_to=null already, but defensive
+              // for the rare case where a half-assigned VM got trimmed.
+              assigned_to: null,
+              assigned_at: null,
+            })
             .eq("id", vm.id);
           report.pass2_pool_trimmed++;
           totalDeletions++;

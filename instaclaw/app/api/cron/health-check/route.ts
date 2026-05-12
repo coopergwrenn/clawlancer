@@ -1027,7 +1027,16 @@ else:
                 route: "cron/health-check", vmId: g.id, vmName: g.name, ip, linodeId: g.provider_server_id,
               });
               await supabase.from("instaclaw_vms")
-                .update({ status: "terminated", health_status: "unhealthy" })
+                .update({
+                  status: "terminated",
+                  health_status: "unhealthy",
+                  // Linode is confirmed gone (404). Not recoverable. Stamp
+                  // last_assigned_to for history then clear assigned_to so
+                  // .eq("assigned_to", userId) lookups naturally exclude this.
+                  last_assigned_to: g.assigned_to ?? null,
+                  assigned_to: null,
+                  assigned_at: null,
+                })
                 .eq("id", g.id);
               autoFixed = true;
             }

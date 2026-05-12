@@ -60,11 +60,18 @@ export async function GET(req: NextRequest) {
         name: vm.name,
         ageMinutes: Math.round(age / 60_000),
       });
-      // Mark as failed so we stop polling. health_status flipped atomically
-      // so health-status-only candidate queries can't keep picking this row up.
+      // Mark as failed so we stop polling. Provisioning timeouts are not
+      // recoverable — the Linode never came up. Clear assigned_to (typically
+      // null at this stage anyway) so any user that somehow got mapped to a
+      // never-booted VM falls back to the no-VM path on next lookup.
       supabase
         .from("instaclaw_vms")
-        .update({ status: "failed", health_status: "unhealthy" })
+        .update({
+          status: "failed",
+          health_status: "unhealthy",
+          assigned_to: null,
+          assigned_at: null,
+        })
         .eq("id", vm.id)
         .then(() => {});
       return false;
