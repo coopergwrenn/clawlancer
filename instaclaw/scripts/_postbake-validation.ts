@@ -129,6 +129,27 @@ async function assertAbsent(c: Client, name: string, severity: Severity, modes: 
   record(name, severity, modes, pass, pass ? "" : `${path} still present`);
 }
 
+// Parse `pkg@1.2.3` (or bare `1.2.3`) into [1, 2, 3]. Returns null on malformed.
+// Used by version-pin checks. Replaces the earlier per-pin regex approach
+// that miscounted >9-patch-version releases (e.g., 0.3.10 vs 0.3.1).
+function parseSemver(s: string): number[] | null {
+  if (!s) return null;
+  const m = s.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)];
+}
+// True iff `actual` >= `min`, component-wise. Both must parse cleanly.
+function semverGte(actual: string, min: string): boolean {
+  const a = parseSemver(actual);
+  const b = parseSemver(min);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
+  }
+  return true;
+}
+
 async function assertNoSecretsInFile(c: Client, name: string, severity: Severity, modes: Mode[], path: string, denyPatterns: string[]): Promise<void> {
   const r = await exec(c, `[ -f "${path}" ] && cat "${path}" || echo MISSING`);
   if (r.stdout === "MISSING\n") {
@@ -609,10 +630,12 @@ async function run() {
     // bankr SKILL.md present somewhere (multi-skill git-cloned repo)
     const bankrSkill = (await exec(c, `find ~/.openclaw/skills/bankr -maxdepth 3 -name SKILL.md 2>/dev/null | wc -l`)).stdout.trim();
     record("bankr skill has ≥1 SKILL.md", "P1", ["bake", "test"], parseInt(bankrSkill, 10) >= 1, `${bankrSkill} SKILL.md files`);
-    // @bankr/cli npm pin (v62 — 0.3.1 minimum)
+    // @bankr/cli npm pin (v62 — 0.3.1 minimum).
+    // semverGte handles >9-patch versions correctly; previous regex was
+    // brittle (would have falsely failed at 0.3.10+).
     const bankrCliV = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && npm ls -g --depth=0 @bankr/cli 2>/dev/null | grep -oE '@bankr/cli@[0-9]+\\.[0-9]+\\.[0-9]+'`)).stdout.trim();
     record("@bankr/cli pinned to 0.3.1+", "P1", ["bake", "test"],
-      /^@bankr\/cli@0\.(3\.[1-9]|[4-9]\.|[1-9][0-9])/.test(bankrCliV) || /^@bankr\/cli@(0\.[4-9]|[1-9])/.test(bankrCliV),
+      semverGte(bankrCliV, "0.3.1"),
       `installed=${bankrCliV || "<missing>"}`);
 
     // INSTACLAW_BANKR_PATCH_V1 marker in the bankr skill's SKILL.md (overlay applied)
@@ -694,10 +717,11 @@ async function run() {
         probe.code === 0 ? "" : probe.stderr.slice(-150));
     }
 
-    // 27g — @worldcoin/agentkit-cli pin (inventory §9)
+    // 27g — @worldcoin/agentkit-cli pin (inventory §9). Same semverGte fix
+    // as the bankr-CLI check above.
     const agentkitV = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && npm ls -g --depth=0 @worldcoin/agentkit-cli 2>/dev/null | grep -oE '@worldcoin/agentkit-cli@[0-9]+\\.[0-9]+\\.[0-9]+'`)).stdout.trim();
-    record("@worldcoin/agentkit-cli pinned to 0.1.3", "P1", ["bake", "test"],
-      /^@worldcoin\/agentkit-cli@0\.1\.3$/.test(agentkitV) || /^@worldcoin\/agentkit-cli@(0\.[2-9]|[1-9])/.test(agentkitV),
+    record("@worldcoin/agentkit-cli pinned to 0.1.3+", "P1", ["bake", "test"],
+      semverGte(agentkitV, "0.1.3"),
       `installed=${agentkitV || "<missing>"}`);
 
     // 27h — mcporter present (inventory §9)
