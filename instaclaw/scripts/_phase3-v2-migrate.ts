@@ -41,7 +41,9 @@ for (const f of [
 
 const EXPECTED_AGENTS_SHA = "0eb8d70beecd6182243345b4ea5eec8295b30a37e560137325eb8d7c3d5a4979";
 const COHORT = new Set([
-  "instaclaw-vm-075", // starter, no partner
+  // vm-075 dropped 2026-05-13 — became unhealthy overnight (gateway active but /health=000).
+  // Replaced with vm-310 (same tier/partner profile, healthy, V1, 54GB free, owner ari.keranen).
+  "instaclaw-vm-310", // starter, no partner (REPLACEMENT FOR vm-075)
   "instaclaw-vm-337", // pro, no partner
   "instaclaw-vm-073", // power, no partner
   "instaclaw-vm-917", // starter, edge_city
