@@ -134,6 +134,15 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Audit-log row (best-effort; logging failure does NOT roll back) ──
+  // audit_logged in the response reflects whether the INSERT actually
+  // succeeded, not just whether we attempted it. The 2026-05-13 chain
+  // test caught a bug here: when the decision='admin_override' CHECK
+  // constraint hadn't been migrated yet, the insert failed silently
+  // (logger.error wrote a Vercel log) but the response still claimed
+  // audit_logged=true (the old code set it based on `!!vmId` BEFORE the
+  // insert). Now it reflects real outcome.
+  let auditLogged = false;
+  let auditErrorMsg: string | undefined;
   if (vmId) {
     const { error: auditErr } = await supabase
       .from("instaclaw_operator_audit_log")
@@ -146,7 +155,9 @@ export async function POST(req: NextRequest) {
         reason: body.reason.trim(),
       });
     if (auditErr) {
-      // Non-fatal — the override itself succeeded. Log loudly.
+      // Non-fatal — the override itself succeeded. Log loudly + surface
+      // the error to the caller via the response so they know.
+      auditErrorMsg = auditErr.message;
       logger.error("admin/privacy-override: audit-log insert failed (override succeeded)", {
         userId: body.user_id,
         vmId,
@@ -154,6 +165,8 @@ export async function POST(req: NextRequest) {
         error: auditErr.message,
         route: "admin/privacy-override",
       });
+    } else {
+      auditLogged = true;
     }
   }
 
@@ -162,6 +175,7 @@ export async function POST(req: NextRequest) {
     userId: body.user_id,
     vmId,
     wasActive,
+    auditLogged,
     reason: body.reason.trim(),
     route: "admin/privacy-override",
   });
@@ -171,9 +185,12 @@ export async function POST(req: NextRequest) {
     user_id: body.user_id,
     privacy_was_active: wasActive,
     privacy_mode_until_now: null,
-    audit_logged: !!vmId,
-    note: vmId
-      ? "Bridge cache TTL is 30s; effect lands on next operator SSH within ~30s."
-      : "No VM assigned to user; audit-log row skipped (override still applied). Bridge effect is moot if there's no VM.",
+    audit_logged: auditLogged,
+    ...(auditErrorMsg ? { audit_error: auditErrorMsg } : {}),
+    note: !vmId
+      ? "No VM assigned to user; audit-log row skipped (override still applied). Bridge effect is moot if there's no VM."
+      : auditLogged
+        ? "Bridge cache TTL is 30s; effect lands on next operator SSH within ~30s."
+        : "Override applied + privacy_mode_until nulled, BUT audit-log INSERT failed (see audit_error). Bridge cache TTL is 30s.",
   });
 }
