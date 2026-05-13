@@ -21,6 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "fs";
 import { NodeSSH } from "node-ssh";
 import { reconcileVM } from "@/lib/vm-reconcile";
+import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 
 // Load env from both files (Rule 18)
@@ -127,7 +128,7 @@ async function main() {
     process.env.RECONCILE_SOUL_MIGRATION_VM_IDS = vm.id;
     log(`=== RUN reconcileVM(strict=false, dryRun=${dryRun}) ===`);
     const t0 = Date.now();
-    const result = await reconcileVM(vm as any, { dryRun, strict: false } as any);
+    const result = await reconcileVM(vm as any, VM_MANIFEST, { dryRun, strict: false });
     const elapsed = Math.round((Date.now() - t0) / 1000);
     log(`reconcile done in ${elapsed}s: fixed=${result.fixed.length} alreadyCorrect=${result.alreadyCorrect.length} errors=${result.errors.length}`);
     if (result.fixed.length > 0) log("  fixed items: " + result.fixed.map(f => f.slice(0, 90)).slice(0, 10).join(" | "));
