@@ -1,21 +1,21 @@
-# Changelog — generated 2026-05-12
+# Changelog — generated 2026-05-13
 
-Window: `2026-05-10` → `HEAD` (HEAD = `9434a2db`)
-Total commits: 48
+Window: `2026-05-10` → `HEAD` (HEAD = `afc05631`)
+Total commits: 95
 
-<!-- LAST_GENERATED_SHA: 9434a2db90aa66fc571ab6b210aae35dabc3f166 -->
+<!-- LAST_GENERATED_SHA: afc05631c3dfd18f24ddaba3438de1dd55250cf1 -->
 
 ## Summary
 
 - **Manifest version bumps:** 3
   - Range: v92 → v95
-- **Reconciler / manifest:** 16
-- **Infrastructure:** 22
+- **Reconciler / manifest:** 30
+- **Infrastructure:** 48
 - **Feature (user-facing):** 4
-- **Edge City partner:** 4
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 44
-- Merge commits: 3
+- **Edge City partner:** 7
+- **Docs / PRD only:** 6
+- AI-assisted commits (co-authored): 86
+- Merge commits: 4
 
 ## Manifest version timeline
 
@@ -58,6 +58,9 @@ feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
 - `bc34e307` 2026-05-12 — Merge branch 'feat/gbrain-stepGbrain-phase4c' [0 files] _(merge)_
 - `5341923e` 2026-05-12 — Merge feat/edge-signup-connect-branding-2026-05-12: brand /signup + /connect for Edge attendees [0 files] _(merge)_
 - `c2649f05` 2026-05-12 — Merge feat/edge-login-state-aware-2026-05-12: /edge responds to login state [0 files] _(merge)_
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `753470c9` 2026-05-12 — docs(changelog): full history 2026-03-01 → 2026-05-13 (1,336 commits) [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `452f24bf` 2026-05-13 — docs(cloud-init): on-demand-provisioning PRD + implementation map [2 files] _(multi: [edge, docs]; ai-assisted)_
 
 ## What changed under the hood
 
@@ -93,6 +96,13 @@ feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
 - `b1741db5` 2026-05-12 — feat(phase4c): stepGbrain reconciler step + build-time script embedding [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
 - `b4b1e97b` 2026-05-12 — fix(reconcile): stepSystemdUnit verify uses md5 hash compare (likely cv=82 unstick) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 - `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34) [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ed8ee6a1` 2026-05-12 — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11) [1 files] _(multi: [reconciler, docs])_
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system [8 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `5c79ef90` 2026-05-12 — feat(edge-privacy): airtight v0 — tightened bridge + admin kill switch + chattr +i lockdown [5 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
 - `0144181a` 2026-05-12 — feat(snapshot-bake): canonical fresh-nanode bake toolchain (cleanup + validation + runbook) [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
 - `1c44d5e9` 2026-05-12 — fix(onboarding): break post-checkout loop + recover from configure partial-failure (Rule 33) [5 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
 - `6671f651` 2026-05-12 — Merge branch 'feat/matchpool-outcomes-ingest' — §5.2 matching engine infrastructure [49 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
@@ -101,10 +111,47 @@ feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
 - `4a5fddec` 2026-05-12 — feat(edge): branded Open Graph share card for /edge [4 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
 - `273e1609` 2026-05-12 — fix(replenish-pool): orphan-collision defense + visible alerts [2 files] _(ai-assisted)_
 - `39d0e237` 2026-05-12 — fix(vm-status): atomic health_status on terminal flips + defense filter [13 files] _(ai-assisted)_
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed [3 files] _(ai-assisted)_
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit [11 files] _(ai-assisted)_
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling [13 files] _(ai-assisted)_
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift [1 files] _(ai-assisted)_
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper [11 files] _(ai-assisted)_
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows [3 files] _(ai-assisted)_
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `48ea0e8f` 2026-05-12 — Merge feat/privacy-cutover-bypass-skip: privacy cutover bypass-skip + abort guard + .env.ssh-key fix [0 files] _(merge)_
+- `da3e27eb` 2026-05-12 — fix(vm-lifecycle): split terminal-flip from last_assigned_to stamp to dodge FK atomicity [2 files]
+- `0acc7598` 2026-05-12 — feat(soul-md-v2): trim WORKSPACE_AGENTS_MD_V2 18,812→13,919 chars [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants [1 files] _(ai-assisted)_
+- `a3479493` 2026-05-12 — docs(skill-inventory): land skill deployment inventory for on-demand-provisioning PRD [1 files]
+- `eec2cf95` 2026-05-13 — fix(vm-lifecycle): null ip_address at status='failed' flip — kill IP-reuse resurrection [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `187b0331` 2026-05-13 — fix(manifest+ssh): publicnode.com canonical for POLYGON_RPC_URL; remove dead SOLA integration [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `5456afce` 2026-05-13 — fix(edge-privacy): one-shot bridge deploy — closes vm-354 lockout class [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `c4b84156` 2026-05-13 — feat(reconcile): stepExecStartAlignment — permanent guard against stale Node-path ExecStart [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c5eb8f23` 2026-05-13 — chore(ssh): export buildPersonalizedBootstrap, buildSystemPrompt, buildUserMd [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8c903f9a` 2026-05-13 — docs(CLAUDE.md): Fleet Health — Root Causes & Rules + new Rules 36-43 [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `b97cf09f` 2026-05-13 — docs(CLAUDE.md): cv=91 cohort root cause is strict-180s-deadline (Rule 44) [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `2ed3ebaf` 2026-05-13 — feat(scripts): _phase3-v2-migrate.ts — single-VM V2 canary runner [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `91aaa61b` 2026-05-13 — fix(_phase3-v2-migrate): three pre/post-flight robustness fixes [1 files] _(ai-assisted)_
+- `b2a7bf15` 2026-05-13 — fix(_phase3-v2-migrate): swap vm-075 → vm-310 in cohort [1 files] _(ai-assisted)_
+- `4aed0be4` 2026-05-13 — fix(catch-up): audit retries up to 120s for gateway health (no false halts) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `d31e7d0e` 2026-05-13 — fix(configure): channel-credential validator — extends Rule 33 gate (Rule 35) [1 files] _(ai-assisted)_
+- `c3efe3e3` 2026-05-13 — fix(vm-status): complete IP-reuse defense — relax NOT NULL, backfill, cover remaining sites [4 files]
+- `6b790ea7` 2026-05-13 — feat(bake): readiness audit 2026-05-13 + 46-check expansion to validation [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `bb7d9b0c` 2026-05-13 — fix(_phase3-v2-migrate): acquire cron lock BEFORE pre-flight (race fix) [1 files] _(ai-assisted)_
+- `81e3ea34` 2026-05-13 — fix(_phase3-v2-migrate): pass VM_MANIFEST as 2nd arg to reconcileVM [1 files] _(ai-assisted)_
+- `b5b24ebf` 2026-05-13 — feat(migration): cloud-init on-demand provisioning schema (Phase 1A Day 1-2) [1 files] _(ai-assisted)_
+- `42d66df3` 2026-05-13 — fix(edge-privacy): audit_logged truthiness + chain-test + SOLA cleanup scripts [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `f6753c64` 2026-05-13 — feat(bake): SNAPSHOT_BAKED cross-ref + audit follow-ups + telegram heal [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `5bd54d77` 2026-05-13 — feat(cloud-init): buildCloudInitUserdata bootstrap (Phase 1A Day 3) [1 files] _(ai-assisted)_
+- `2f74fe48` 2026-05-13 — fix(bake-validation): replace brittle version-pin regexes with semverGte [1 files] _(ai-assisted)_
+- `afc05631` 2026-05-13 — feat(cloud-init): enable RLS on cloud_init_outcomes + circuit_breakers [1 files] _(ai-assisted)_
+- `a34fdb89` 2026-05-13 — docs(cloud-init): v2 builder plan (bootstrap+fetch) + SNAPSHOT_BAKED inventory [2 files] _(ai-assisted)_
+- `f5efa320` 2026-05-13 — docs(cloud-init): plan v2 fixes — log truncation race, last-known-good removal, BEST_EFFORT explicit, §14 audit protocol [1 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (16)
+### Reconciler / manifest (30)
 
 - `1fb249d5` 2026-05-11 — fix(reconciler): root-cause fixes for 27% lying-DB rate [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 - `b6f949ac` 2026-05-11 — feat(soul-md): v92 partner-stub migration — fix live truncation bug on edge_city VMs [6 files] _(**MANIFEST v92**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
@@ -122,8 +169,22 @@ feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
 - `b1741db5` 2026-05-12 — feat(phase4c): stepGbrain reconciler step + build-time script embedding [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
 - `b4b1e97b` 2026-05-12 — fix(reconcile): stepSystemdUnit verify uses md5 hash compare (likely cv=82 unstick) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 - `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34) [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ed8ee6a1` 2026-05-12 — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11) [1 files] _(multi: [reconciler, docs])_
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system [8 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `5c79ef90` 2026-05-12 — feat(edge-privacy): airtight v0 — tightened bridge + admin kill switch + chattr +i lockdown [5 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `eec2cf95` 2026-05-13 — fix(vm-lifecycle): null ip_address at status='failed' flip — kill IP-reuse resurrection [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `187b0331` 2026-05-13 — fix(manifest+ssh): publicnode.com canonical for POLYGON_RPC_URL; remove dead SOLA integration [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `5456afce` 2026-05-13 — fix(edge-privacy): one-shot bridge deploy — closes vm-354 lockout class [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `c4b84156` 2026-05-13 — feat(reconcile): stepExecStartAlignment — permanent guard against stale Node-path ExecStart [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c5eb8f23` 2026-05-13 — chore(ssh): export buildPersonalizedBootstrap, buildSystemPrompt, buildUserMd [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8c903f9a` 2026-05-13 — docs(CLAUDE.md): Fleet Health — Root Causes & Rules + new Rules 36-43 [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `b97cf09f` 2026-05-13 — docs(CLAUDE.md): cv=91 cohort root cause is strict-180s-deadline (Rule 44) [1 files] _(multi: [reconciler, docs]; ai-assisted)_
 
-### Infrastructure (22)
+### Infrastructure (48)
 
 - `ddcee2e4` 2026-05-11 — chore(scripts): stuck-head triage + selective-flip helpers [5 files] _(ai-assisted)_
 - `035b3b11` 2026-05-11 — docs: lying-DB fleet census — 27% rate, 12 of 44 healthy cv≥88 VMs [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
@@ -147,6 +208,32 @@ feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
 - `4a5fddec` 2026-05-12 — feat(edge): branded Open Graph share card for /edge [4 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
 - `273e1609` 2026-05-12 — fix(replenish-pool): orphan-collision defense + visible alerts [2 files] _(ai-assisted)_
 - `39d0e237` 2026-05-12 — fix(vm-status): atomic health_status on terminal flips + defense filter [13 files] _(ai-assisted)_
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed [3 files] _(ai-assisted)_
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit [11 files] _(ai-assisted)_
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling [13 files] _(ai-assisted)_
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift [1 files] _(ai-assisted)_
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper [11 files] _(ai-assisted)_
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows [3 files] _(ai-assisted)_
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `48ea0e8f` 2026-05-12 — Merge feat/privacy-cutover-bypass-skip: privacy cutover bypass-skip + abort guard + .env.ssh-key fix [0 files] _(merge)_
+- `da3e27eb` 2026-05-12 — fix(vm-lifecycle): split terminal-flip from last_assigned_to stamp to dodge FK atomicity [2 files]
+- `0acc7598` 2026-05-12 — feat(soul-md-v2): trim WORKSPACE_AGENTS_MD_V2 18,812→13,919 chars [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `2ed3ebaf` 2026-05-13 — feat(scripts): _phase3-v2-migrate.ts — single-VM V2 canary runner [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `91aaa61b` 2026-05-13 — fix(_phase3-v2-migrate): three pre/post-flight robustness fixes [1 files] _(ai-assisted)_
+- `b2a7bf15` 2026-05-13 — fix(_phase3-v2-migrate): swap vm-075 → vm-310 in cohort [1 files] _(ai-assisted)_
+- `4aed0be4` 2026-05-13 — fix(catch-up): audit retries up to 120s for gateway health (no false halts) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `d31e7d0e` 2026-05-13 — fix(configure): channel-credential validator — extends Rule 33 gate (Rule 35) [1 files] _(ai-assisted)_
+- `c3efe3e3` 2026-05-13 — fix(vm-status): complete IP-reuse defense — relax NOT NULL, backfill, cover remaining sites [4 files]
+- `6b790ea7` 2026-05-13 — feat(bake): readiness audit 2026-05-13 + 46-check expansion to validation [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `bb7d9b0c` 2026-05-13 — fix(_phase3-v2-migrate): acquire cron lock BEFORE pre-flight (race fix) [1 files] _(ai-assisted)_
+- `81e3ea34` 2026-05-13 — fix(_phase3-v2-migrate): pass VM_MANIFEST as 2nd arg to reconcileVM [1 files] _(ai-assisted)_
+- `b5b24ebf` 2026-05-13 — feat(migration): cloud-init on-demand provisioning schema (Phase 1A Day 1-2) [1 files] _(ai-assisted)_
+- `42d66df3` 2026-05-13 — fix(edge-privacy): audit_logged truthiness + chain-test + SOLA cleanup scripts [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `f6753c64` 2026-05-13 — feat(bake): SNAPSHOT_BAKED cross-ref + audit follow-ups + telegram heal [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `5bd54d77` 2026-05-13 — feat(cloud-init): buildCloudInitUserdata bootstrap (Phase 1A Day 3) [1 files] _(ai-assisted)_
+- `2f74fe48` 2026-05-13 — fix(bake-validation): replace brittle version-pin regexes with semverGte [1 files] _(ai-assisted)_
+- `afc05631` 2026-05-13 — feat(cloud-init): enable RLS on cloud_init_outcomes + circuit_breakers [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (4)
 
@@ -155,19 +242,26 @@ feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
 - `ab48f58c` 2026-05-12 — feat(edge): brand /signup + /connect for Edge Esmeralda attendees [3 files] _(multi: [feature, edge]; ai-assisted)_
 - `1bf237a9` 2026-05-12 — feat(edge): /edge responds to login state [3 files] _(multi: [feature, edge]; ai-assisted)_
 
-### Edge City partner (4)
+### Edge City partner (7)
 
 - `1e572e98` 2026-05-11 — docs(soul-v2): §14 — Agent Self-Compaction Architecture (V3+ roadmap) [1 files] _(multi: [edge, docs]; ai-assisted)_
 - `bc34e307` 2026-05-12 — Merge branch 'feat/gbrain-stepGbrain-phase4c' [0 files] _(merge)_
 - `5341923e` 2026-05-12 — Merge feat/edge-signup-connect-branding-2026-05-12: brand /signup + /connect for Edge attendees [0 files] _(merge)_
 - `c2649f05` 2026-05-12 — Merge feat/edge-login-state-aware-2026-05-12: /edge responds to login state [0 files] _(merge)_
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `753470c9` 2026-05-12 — docs(changelog): full history 2026-03-01 → 2026-05-13 (1,336 commits) [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `452f24bf` 2026-05-13 — docs(cloud-init): on-demand-provisioning PRD + implementation map [2 files] _(multi: [edge, docs]; ai-assisted)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (6)
 
 - `0eeeebdb` 2026-05-11 — docs(lying-db-census): refresh 2026-05-11 with current fleet probe [1 files] _(ai-assisted)_
 - `56d3a2e3` 2026-05-11 — docs(consensus): expand Phase C reset list — 5 stragglers + vm-512 hand-fix log [1 files]
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants [1 files] _(ai-assisted)_
+- `a3479493` 2026-05-12 — docs(skill-inventory): land skill deployment inventory for on-demand-provisioning PRD [1 files]
+- `a34fdb89` 2026-05-13 — docs(cloud-init): v2 builder plan (bootstrap+fetch) + SNAPSHOT_BAKED inventory [2 files] _(ai-assisted)_
+- `f5efa320` 2026-05-13 — docs(cloud-init): plan v2 fixes — log truncation race, last-known-good removal, BEST_EFFORT explicit, §14 audit protocol [1 files] _(ai-assisted)_
 
-## Multi-category commits (30)
+## Multi-category commits (55)
 
 These touch more than one category root and are listed in every applicable section above.
 
@@ -201,8 +295,33 @@ These touch more than one category root and are listed in every applicable secti
 - `ab48f58c` 2026-05-12 — [feature, edge] — feat(edge): brand /signup + /connect for Edge Esmeralda attendees
 - `1bf237a9` 2026-05-12 — [feature, edge] — feat(edge): /edge responds to login state
 - `9434a2db` 2026-05-12 — [reconciler, infrastructure, docs] — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34)
+- `c4502681` 2026-05-12 — [edge, docs] — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec
+- `b3d58bc4` 2026-05-12 — [reconciler, infrastructure] — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling
+- `a527f867` 2026-05-12 — [infrastructure, edge] — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait)
+- `ef8258e6` 2026-05-12 — [reconciler, infrastructure] — fix(reconcile): validate-before-restart guards against schema-rejection crashes
+- `7f395209` 2026-05-12 — [reconciler, infrastructure] — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands
+- `3839d176` 2026-05-12 — [reconciler, infrastructure] — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4)
+- `da5b7d5c` 2026-05-12 — [infrastructure, edge] — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found
+- `ed8ee6a1` 2026-05-12 — [reconciler, docs] — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11)
+- `5f6d6a11` 2026-05-12 — [reconciler, edge, docs] — feat(changelog): automated changelog + X-post generator system
+- `5c79ef90` 2026-05-12 — [reconciler, infrastructure, edge] — feat(edge-privacy): airtight v0 — tightened bridge + admin kill switch + chattr +i lockdown
+- `753470c9` 2026-05-12 — [edge, docs] — docs(changelog): full history 2026-03-01 → 2026-05-13 (1,336 commits)
+- `0acc7598` 2026-05-12 — [infrastructure, docs] — feat(soul-md-v2): trim WORKSPACE_AGENTS_MD_V2 18,812→13,919 chars
+- `2ed3ebaf` 2026-05-13 — [infrastructure, edge] — feat(scripts): _phase3-v2-migrate.ts — single-VM V2 canary runner
+- `eec2cf95` 2026-05-13 — [reconciler, infrastructure] — fix(vm-lifecycle): null ip_address at status='failed' flip — kill IP-reuse resurrection
+- `187b0331` 2026-05-13 — [reconciler, infrastructure, edge] — fix(manifest+ssh): publicnode.com canonical for POLYGON_RPC_URL; remove dead SOLA integration
+- `452f24bf` 2026-05-13 — [edge, docs] — docs(cloud-init): on-demand-provisioning PRD + implementation map
+- `5456afce` 2026-05-13 — [reconciler, infrastructure, edge] — fix(edge-privacy): one-shot bridge deploy — closes vm-354 lockout class
+- `4aed0be4` 2026-05-13 — [infrastructure, edge] — fix(catch-up): audit retries up to 120s for gateway health (no false halts)
+- `c4b84156` 2026-05-13 — [reconciler, infrastructure] — feat(reconcile): stepExecStartAlignment — permanent guard against stale Node-path ExecStart
+- `6b790ea7` 2026-05-13 — [infrastructure, edge, docs] — feat(bake): readiness audit 2026-05-13 + 46-check expansion to validation
+- `42d66df3` 2026-05-13 — [infrastructure, edge] — fix(edge-privacy): audit_logged truthiness + chain-test + SOLA cleanup scripts
+- `f6753c64` 2026-05-13 — [infrastructure, docs] — feat(bake): SNAPSHOT_BAKED cross-ref + audit follow-ups + telegram heal
+- `c5eb8f23` 2026-05-13 — [reconciler, infrastructure] — chore(ssh): export buildPersonalizedBootstrap, buildSystemPrompt, buildUserMd
+- `8c903f9a` 2026-05-13 — [reconciler, edge, docs] — docs(CLAUDE.md): Fleet Health — Root Causes & Rules + new Rules 36-43
+- `b97cf09f` 2026-05-13 — [reconciler, docs] — docs(CLAUDE.md): cv=91 cohort root cause is strict-180s-deadline (Rule 44)
 
-## AI-assisted commits (44)
+## AI-assisted commits (86)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
@@ -250,6 +369,48 @@ Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look
 - `39d0e237` 2026-05-12 — fix(vm-status): atomic health_status on terminal flips + defense filter
 - `1bf237a9` 2026-05-12 — feat(edge): /edge responds to login state
 - `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34)
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait)
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4)
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants
+- `5c79ef90` 2026-05-12 — feat(edge-privacy): airtight v0 — tightened bridge + admin kill switch + chattr +i lockdown
+- `753470c9` 2026-05-12 — docs(changelog): full history 2026-03-01 → 2026-05-13 (1,336 commits)
+- `0acc7598` 2026-05-12 — feat(soul-md-v2): trim WORKSPACE_AGENTS_MD_V2 18,812→13,919 chars
+- `2ed3ebaf` 2026-05-13 — feat(scripts): _phase3-v2-migrate.ts — single-VM V2 canary runner
+- `91aaa61b` 2026-05-13 — fix(_phase3-v2-migrate): three pre/post-flight robustness fixes
+- `eec2cf95` 2026-05-13 — fix(vm-lifecycle): null ip_address at status='failed' flip — kill IP-reuse resurrection
+- `187b0331` 2026-05-13 — fix(manifest+ssh): publicnode.com canonical for POLYGON_RPC_URL; remove dead SOLA integration
+- `452f24bf` 2026-05-13 — docs(cloud-init): on-demand-provisioning PRD + implementation map
+- `5456afce` 2026-05-13 — fix(edge-privacy): one-shot bridge deploy — closes vm-354 lockout class
+- `b2a7bf15` 2026-05-13 — fix(_phase3-v2-migrate): swap vm-075 → vm-310 in cohort
+- `4aed0be4` 2026-05-13 — fix(catch-up): audit retries up to 120s for gateway health (no false halts)
+- `d31e7d0e` 2026-05-13 — fix(configure): channel-credential validator — extends Rule 33 gate (Rule 35)
+- `c4b84156` 2026-05-13 — feat(reconcile): stepExecStartAlignment — permanent guard against stale Node-path ExecStart
+- `6b790ea7` 2026-05-13 — feat(bake): readiness audit 2026-05-13 + 46-check expansion to validation
+- `a34fdb89` 2026-05-13 — docs(cloud-init): v2 builder plan (bootstrap+fetch) + SNAPSHOT_BAKED inventory
+- `bb7d9b0c` 2026-05-13 — fix(_phase3-v2-migrate): acquire cron lock BEFORE pre-flight (race fix)
+- `f5efa320` 2026-05-13 — docs(cloud-init): plan v2 fixes — log truncation race, last-known-good removal, BEST_EFFORT explicit, §14 audit protocol
+- `81e3ea34` 2026-05-13 — fix(_phase3-v2-migrate): pass VM_MANIFEST as 2nd arg to reconcileVM
+- `b5b24ebf` 2026-05-13 — feat(migration): cloud-init on-demand provisioning schema (Phase 1A Day 1-2)
+- `42d66df3` 2026-05-13 — fix(edge-privacy): audit_logged truthiness + chain-test + SOLA cleanup scripts
+- `f6753c64` 2026-05-13 — feat(bake): SNAPSHOT_BAKED cross-ref + audit follow-ups + telegram heal
+- `5bd54d77` 2026-05-13 — feat(cloud-init): buildCloudInitUserdata bootstrap (Phase 1A Day 3)
+- `c5eb8f23` 2026-05-13 — chore(ssh): export buildPersonalizedBootstrap, buildSystemPrompt, buildUserMd
+- `8c903f9a` 2026-05-13 — docs(CLAUDE.md): Fleet Health — Root Causes & Rules + new Rules 36-43
+- `2f74fe48` 2026-05-13 — fix(bake-validation): replace brittle version-pin regexes with semverGte
+- `b97cf09f` 2026-05-13 — docs(CLAUDE.md): cv=91 cohort root cause is strict-180s-deadline (Rule 44)
+- `afc05631` 2026-05-13 — feat(cloud-init): enable RLS on cloud_init_outcomes + circuit_breakers
 
 ## Appendix — every commit (chronological)
 
@@ -301,3 +462,50 @@ Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look
 - `1bf237a9` 2026-05-12 — feat(edge): /edge responds to login state [3 files] _(multi: [feature, edge]; ai-assisted)_
 - `c2649f05` 2026-05-12 — Merge feat/edge-login-state-aware-2026-05-12: /edge responds to login state [0 files] _(merge)_
 - `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34) [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed [3 files] _(ai-assisted)_
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit [11 files] _(ai-assisted)_
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling [13 files] _(ai-assisted)_
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift [1 files] _(ai-assisted)_
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper [11 files] _(ai-assisted)_
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows [3 files] _(ai-assisted)_
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `48ea0e8f` 2026-05-12 — Merge feat/privacy-cutover-bypass-skip: privacy cutover bypass-skip + abort guard + .env.ssh-key fix [0 files] _(merge)_
+- `ed8ee6a1` 2026-05-12 — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11) [1 files] _(multi: [reconciler, docs])_
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system [8 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants [1 files] _(ai-assisted)_
+- `da3e27eb` 2026-05-12 — fix(vm-lifecycle): split terminal-flip from last_assigned_to stamp to dodge FK atomicity [2 files]
+- `5c79ef90` 2026-05-12 — feat(edge-privacy): airtight v0 — tightened bridge + admin kill switch + chattr +i lockdown [5 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `753470c9` 2026-05-12 — docs(changelog): full history 2026-03-01 → 2026-05-13 (1,336 commits) [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `0acc7598` 2026-05-12 — feat(soul-md-v2): trim WORKSPACE_AGENTS_MD_V2 18,812→13,919 chars [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `a3479493` 2026-05-12 — docs(skill-inventory): land skill deployment inventory for on-demand-provisioning PRD [1 files]
+- `2ed3ebaf` 2026-05-13 — feat(scripts): _phase3-v2-migrate.ts — single-VM V2 canary runner [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `91aaa61b` 2026-05-13 — fix(_phase3-v2-migrate): three pre/post-flight robustness fixes [1 files] _(ai-assisted)_
+- `eec2cf95` 2026-05-13 — fix(vm-lifecycle): null ip_address at status='failed' flip — kill IP-reuse resurrection [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `187b0331` 2026-05-13 — fix(manifest+ssh): publicnode.com canonical for POLYGON_RPC_URL; remove dead SOLA integration [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `452f24bf` 2026-05-13 — docs(cloud-init): on-demand-provisioning PRD + implementation map [2 files] _(multi: [edge, docs]; ai-assisted)_
+- `5456afce` 2026-05-13 — fix(edge-privacy): one-shot bridge deploy — closes vm-354 lockout class [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `b2a7bf15` 2026-05-13 — fix(_phase3-v2-migrate): swap vm-075 → vm-310 in cohort [1 files] _(ai-assisted)_
+- `4aed0be4` 2026-05-13 — fix(catch-up): audit retries up to 120s for gateway health (no false halts) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `d31e7d0e` 2026-05-13 — fix(configure): channel-credential validator — extends Rule 33 gate (Rule 35) [1 files] _(ai-assisted)_
+- `c4b84156` 2026-05-13 — feat(reconcile): stepExecStartAlignment — permanent guard against stale Node-path ExecStart [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c3efe3e3` 2026-05-13 — fix(vm-status): complete IP-reuse defense — relax NOT NULL, backfill, cover remaining sites [4 files]
+- `6b790ea7` 2026-05-13 — feat(bake): readiness audit 2026-05-13 + 46-check expansion to validation [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `a34fdb89` 2026-05-13 — docs(cloud-init): v2 builder plan (bootstrap+fetch) + SNAPSHOT_BAKED inventory [2 files] _(ai-assisted)_
+- `bb7d9b0c` 2026-05-13 — fix(_phase3-v2-migrate): acquire cron lock BEFORE pre-flight (race fix) [1 files] _(ai-assisted)_
+- `f5efa320` 2026-05-13 — docs(cloud-init): plan v2 fixes — log truncation race, last-known-good removal, BEST_EFFORT explicit, §14 audit protocol [1 files] _(ai-assisted)_
+- `81e3ea34` 2026-05-13 — fix(_phase3-v2-migrate): pass VM_MANIFEST as 2nd arg to reconcileVM [1 files] _(ai-assisted)_
+- `b5b24ebf` 2026-05-13 — feat(migration): cloud-init on-demand provisioning schema (Phase 1A Day 1-2) [1 files] _(ai-assisted)_
+- `42d66df3` 2026-05-13 — fix(edge-privacy): audit_logged truthiness + chain-test + SOLA cleanup scripts [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `f6753c64` 2026-05-13 — feat(bake): SNAPSHOT_BAKED cross-ref + audit follow-ups + telegram heal [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `5bd54d77` 2026-05-13 — feat(cloud-init): buildCloudInitUserdata bootstrap (Phase 1A Day 3) [1 files] _(ai-assisted)_
+- `c5eb8f23` 2026-05-13 — chore(ssh): export buildPersonalizedBootstrap, buildSystemPrompt, buildUserMd [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8c903f9a` 2026-05-13 — docs(CLAUDE.md): Fleet Health — Root Causes & Rules + new Rules 36-43 [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `2f74fe48` 2026-05-13 — fix(bake-validation): replace brittle version-pin regexes with semverGte [1 files] _(ai-assisted)_
+- `b97cf09f` 2026-05-13 — docs(CLAUDE.md): cv=91 cohort root cause is strict-180s-deadline (Rule 44) [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `afc05631` 2026-05-13 — feat(cloud-init): enable RLS on cloud_init_outcomes + circuit_breakers [1 files] _(ai-assisted)_

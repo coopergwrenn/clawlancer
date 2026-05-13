@@ -1,0 +1,98 @@
+name: Auto-changelog
+
+# Why this exists
+# ----------------
+# `scripts/generate-changelog.ts` was shipped 2026-05-12 along with a local
+# `scripts/install-changelog-hook.sh` post-commit hook. The hook only fires
+# on the developer's machine that made the commit — which misses commits
+# from other Claude Code terminals running on Cooper's other repos AND
+# any commits pushed directly via the GitHub UI / merged PRs.
+#
+# The 2026-05-13 self-audit caught the result: 47 commits had landed on
+# `main` since the last generation, none of them in the changelog.
+#
+# This workflow fixes that: every push to main triggers a regeneration.
+# Catches every commit regardless of origin. The earlier hook + cron
+# wrappers (`scripts/changelog-append.sh`, `scripts/install-changelog-hook.sh`)
+# remain valid for local-dev convenience.
+
+on:
+  push:
+    branches: [main]
+    # Don't trigger on commits the workflow itself made (loop prevention).
+    paths-ignore:
+      - 'instaclaw/docs/changelog-running.md'
+      - 'instaclaw/docs/changelog-latest.md'
+      - 'instaclaw/docs/.changelog-append.log'
+  workflow_dispatch: {} # Manual trigger for backfills.
+
+# Belt-and-suspenders: bail early if the push that triggered this is itself
+# from `github-actions[bot]`. paths-ignore + this check together cover both
+# the file-content path and the actor path.
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # for git push back to main
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout main with full history
+        uses: actions/checkout@v4
+        with:
+          # Default token (GITHUB_TOKEN) is fine — repo Settings → Actions →
+          # General → "Workflow permissions" must be "Read and write" for
+          # the back-push to work. blog-publish.yml uses the same pattern.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Full history needed for `git log --since`.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install instaclaw deps
+        working-directory: instaclaw
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Regenerate changelog (--append-running)
+        working-directory: instaclaw
+        run: npx tsx scripts/generate-changelog.ts --append-running
+
+      - name: Commit + push if files changed
+        run: |
+          set -euo pipefail
+          # Only stage the two changelog files. If neither moved, skip.
+          if git diff --quiet -- \
+               instaclaw/docs/changelog-running.md \
+               instaclaw/docs/changelog-latest.md; then
+            echo "::notice::No changelog drift to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add instaclaw/docs/changelog-running.md instaclaw/docs/changelog-latest.md
+          # [skip ci] is redundant (paths-ignore handles the loop already),
+          # but explicit > implicit for anyone reading commit history.
+          git commit -m "chore(changelog): auto-update [skip ci]"
+          # Push to the branch that triggered this run.
+          git push origin HEAD:${GITHUB_REF#refs/heads/}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Auto-changelog run summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger: \`${{ github.event_name }}\` by \`${{ github.actor }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          # Show the last entry of changelog-running.md so the summary is
+          # actually useful in the Actions UI.
+          if [ -f instaclaw/docs/changelog-running.md ]; then
+            echo "Last appended section:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            awk '/^## /{section=$0;hits=NR} END{print section}' instaclaw/docs/changelog-running.md >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
