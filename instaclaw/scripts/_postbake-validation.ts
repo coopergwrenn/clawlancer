@@ -35,9 +35,17 @@ import { readFileSync } from "fs";
 import { Client } from "ssh2";
 
 // ── Env loading ──
+// Resolve relative to the script's location so this works from any
+// worktree or CI environment (was previously hardcoded to one path).
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+const __dirname_local = typeof __dirname !== "undefined"
+  ? __dirname
+  : dirname(fileURLToPath(import.meta.url));
+const repoInstaclaw = resolve(__dirname_local, "..");
 for (const f of [
-  "/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local",
-  "/Users/cooperwrenn/wild-west-bots/instaclaw/.env.ssh-key",
+  resolve(repoInstaclaw, ".env.local"),
+  resolve(repoInstaclaw, ".env.ssh-key"),
 ]) {
   try {
     const env = readFileSync(f, "utf-8");
@@ -190,10 +198,67 @@ async function run() {
     const prctlConfigOk = prctlDropIn.includes("--require prctl-subreaper") && prctlDropIn.includes(".nvm/versions/node");
     record("prctl-subreaper systemd drop-in present", "P0", ["bake", "test"], prctlConfigOk, "");
 
-    // ─── 3. systemd override (TasksMax, MemoryMax) ─────────────────────────
+    // ─── 3. systemd override (TasksMax, MemoryMax, ExecStartPre/Post) ──────
     const override = (await exec(c, `cat ~/.config/systemd/user/openclaw-gateway.service.d/override.conf 2>/dev/null`)).stdout;
     record("TasksMax=120 in override (v86)", "P0", ["bake", "test"], /TasksMax\s*=\s*120/.test(override), "");
     record("MemoryMax=3500M", "P1", ["bake", "test"], /MemoryMax\s*=\s*3500M/.test(override), "");
+    record("OOMScoreAdjust=500 in override", "P1", ["bake", "test"], /OOMScoreAdjust\s*=\s*500/.test(override), "");
+    record("KillMode=mixed in override", "P1", ["bake", "test"], /KillMode\s*=\s*mixed/.test(override), "");
+    record("RuntimeMaxSec=86400 (daily restart)", "P2", ["bake", "test"], /RuntimeMaxSec\s*=\s*86400/.test(override), "");
+    record("Environment=PARTNER_ID=INSTACLAW in override", "P2", ["bake", "test"], /PARTNER_ID=INSTACLAW/.test(override), "");
+    // Memory-snapshot integration (v73): ExecStartPre restore + ExecStopPost pre-stop.
+    // If missing, MEMORY.md is not preserved across gateway restarts — user-data loss.
+    record("override: ExecStartPre calls memory-snapshot.sh restore", "P0", ["bake", "test"],
+      /ExecStartPre.*memory-snapshot\.sh restore/.test(override), "");
+    record("override: ExecStopPost calls memory-snapshot.sh pre-stop", "P0", ["bake", "test"],
+      /ExecStopPost.*memory-snapshot\.sh pre-stop/.test(override), "");
+
+    // ─── 3b. Stale-Node-path check (Discovery 2026-05-13 — gbrain terminal)
+    // The prctl-subreaper.conf drop-in hardcodes NODE_PATH=${npmRoot} at write
+    // time. If Node is later upgraded, the path points at the OLD version's
+    // node_modules and the addon won't load. Verify it matches the CURRENT
+    // `npm root -g`. Same risk class for dispatch-server.service ExecStart
+    // and browser-relay-server.service.
+    const npmRootRT = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && npm root -g`)).stdout.trim();
+    const prctlPath = (prctlDropIn.match(/NODE_PATH="?([^"\n]+)"?/) || [])[1] || "";
+    record("prctl-subreaper.conf NODE_PATH matches current npm root -g", "P0", ["bake", "test"],
+      prctlPath.length > 0 && prctlPath === npmRootRT, `npm-root=${npmRootRT} drop-in=${prctlPath || "<unset>"}`);
+
+    // dispatch-server.service has a frozen NODE_BIN_PATH from when configureOpenClaw
+    // ran. Check the captured node version matches current.
+    const nodeVerRT = nodeV.replace(/^v/, "");
+    const dispatchUnit = (await exec(c, `cat ~/.config/systemd/user/dispatch-server.service 2>/dev/null`)).stdout;
+    const dispatchPathMatch = dispatchUnit.match(/nvm\/versions\/node\/v?([\d.]+)\/bin/);
+    if (dispatchPathMatch) {
+      record("dispatch-server.service Node-version path matches current Node", "P0", ["bake", "test"],
+        dispatchPathMatch[1] === nodeVerRT, `unit=v${dispatchPathMatch[1]} current=v${nodeVerRT}`);
+    } else {
+      // No version-pinned path found — could be dynamic. P2 informational.
+      record("dispatch-server.service unit present", "P2", ["bake", "test"], dispatchUnit.length > 50, "");
+    }
+
+    // ─── 3c. sshd OOM protection drop-in (per Rule 16 / map §9.8) ─────────
+    const sshdDropIn = (await exec(c, `sudo cat /etc/systemd/system/ssh.service.d/oom-protect.conf 2>/dev/null`)).stdout;
+    record("sshd oom-protect.conf has OOMScoreAdjust=-900", "P0", ["bake", "test"],
+      /OOMScoreAdjust\s*=\s*-900/.test(sshdDropIn), "");
+
+    // ─── 3d. gateway-watchdog.timer disabled (v69) ────────────────────────
+    const watchdogTimer = (await exec(c, `systemctl --user is-enabled gateway-watchdog.timer 2>&1`)).stdout.trim();
+    const watchdogOk = watchdogTimer === "disabled" || watchdogTimer.includes("Failed to get unit") || watchdogTimer === "masked";
+    record("gateway-watchdog.timer disabled (v69)", "P1", ["bake", "test"], watchdogOk, `is-enabled=${watchdogTimer}`);
+
+    // ─── 3e. System-level services (xvfb, x11vnc, websockify) ─────────────
+    for (const svc of ["xvfb.service", "x11vnc.service", "websockify.service"]) {
+      const present = (await exec(c, `test -f /etc/systemd/system/${svc} && echo Y || echo N`)).stdout.trim() === "Y";
+      record(`system unit /etc/systemd/system/${svc} present`, "P1", ["bake", "test"], present, "");
+    }
+    // In test mode, the user-level dispatch + browser-relay services should be active.
+    if (MODE === "test") {
+      for (const svc of ["dispatch-server", "browser-relay-server"]) {
+        const status = (await exec(c, `systemctl --user is-active ${svc}.service 2>&1`)).stdout.trim();
+        record(`${svc}.service active (test mode)`, "P0", ["test"], status === "active", `state=${status}`);
+      }
+    }
 
     // ─── 4. Workspace files (templates present, identity reset) ────────────
     const wsFiles = ["SOUL.md", "AGENTS.md", "CAPABILITIES.md", "IDENTITY.md", "MEMORY.md"];
@@ -210,6 +275,18 @@ async function run() {
     const identity = (await exec(c, `cat ~/.openclaw/workspace/IDENTITY.md 2>/dev/null`)).stdout;
     const isReset = !/Name:\s*[A-Z][a-zA-Z]+\s*\n/.test(identity) || /Configure on first/i.test(identity);
     record("IDENTITY.md reset (no named persona)", "P0", ["bake", "test"], isReset, isReset ? "" : "still contains a Name: line");
+
+    // SOUL.md has InstaClaw platform identity marker (v89 / map §13 step #24)
+    const soul = (await exec(c, `cat ~/.openclaw/workspace/SOUL.md 2>/dev/null`)).stdout;
+    record("SOUL.md contains INSTACLAW_PLATFORM_V1 marker (v89+)", "P1", ["bake", "test"],
+      /INSTACLAW_PLATFORM_V1/.test(soul), "");
+    // SOUL.md OPENCLAW_CACHE_BOUNDARY marker (v72 — load-bearing for 1000x cheaper edits)
+    record("SOUL.md contains OPENCLAW_CACHE_BOUNDARY marker (v72)", "P1", ["bake", "test"],
+      /OPENCLAW_CACHE_BOUNDARY/.test(soul), "");
+    // SOUL.md individual size — playbook hard-stop is "trim if >30K chars"
+    const soulBytes = parseInt((await exec(c, `wc -c < ~/.openclaw/workspace/SOUL.md 2>/dev/null`)).stdout.trim() || "0", 10);
+    record("SOUL.md size sane (≤35000 bytes — playbook warns above 30K)", "P1", ["bake", "test"],
+      soulBytes > 0 && soulBytes <= 35000, `${soulBytes} bytes`);
 
     // MEMORY.md is empty/template
     const memory = (await exec(c, `cat ~/.openclaw/workspace/MEMORY.md 2>/dev/null`)).stdout;
@@ -311,15 +388,42 @@ async function run() {
     const systemdBakCount = (await exec(c, `find ~/.config/systemd/user -name '*.predit-*' -o -name '*.bak' 2>/dev/null | wc -l`)).stdout.trim();
     record("no systemd drop-in *.predit-* or *.bak", "P1", ["bake"], systemdBakCount === "0", `${systemdBakCount} files`);
 
-    // ─── 13. Crontab — partner duplicates removed ──────────────────────────
+    // ─── 13. Crontab — full inventory per map §8 ──────────────────────────
+    // Source of truth: docs/cloud-init-implementation-map.md §8 (9 manifest
+    // crons + 1 universal git-pull + 1 SHM cleanup baked in snapshot).
     const cron = (await exec(c, `crontab -l 2>/dev/null`)).stdout;
     const edgeCount = (cron.match(/skills\/edge-esmeralda/g) || []).length;
     record("no edge-esmeralda cron entries", "P0", ["bake"], edgeCount === 0, `${edgeCount} entries`);
-    // canonical 7 crons (strip-thinking, auto-approve-pairing, vm-watchdog comment, push-heartbeat, silence-watchdog comment, SHM_CLEANUP, openclaw memory index)
-    const stripCron = /strip-thinking\.py/.test(cron);
-    const heartbeatCron = /push-heartbeat\.sh/.test(cron);
-    record("strip-thinking.py cron present", "P0", ["bake", "test"], stripCron, "");
-    record("push-heartbeat.sh cron present", "P1", ["bake", "test"], heartbeatCron, "");
+    const eclipseCount = (cron.match(/skills\/eclipse/g) || []).length;
+    record("no eclipse cron entries", "P0", ["bake"], eclipseCount === 0, `${eclipseCount} entries`);
+
+    // v76 prune — vm-watchdog and silence-watchdog MUST NOT be in cron
+    // (scripts present on disk, but no scheduler entries — CLAUDE.md note
+    // about v79 snapshot specifically flags this risk for new VMs).
+    const vmWatchdogInCron = / vm-watchdog\.py/.test(cron);
+    record("v76 prune: NO vm-watchdog.py in cron", "P0", ["bake", "test"], !vmWatchdogInCron,
+      vmWatchdogInCron ? "vm-watchdog.py STILL in cron (v76 prune missing)" : "");
+    const silenceWatchdogInCron = / silence-watchdog\.py/.test(cron);
+    record("v76 prune: NO silence-watchdog.py in cron", "P0", ["bake", "test"], !silenceWatchdogInCron,
+      silenceWatchdogInCron ? "silence-watchdog.py STILL in cron (v76 prune missing)" : "");
+
+    // Required cron markers per map §8.
+    const expectedCronMarkers: Array<{ pattern: RegExp; name: string; severity: Severity }> = [
+      { pattern: /strip-thinking\.py/, name: "strip-thinking.py", severity: "P0" },
+      { pattern: /ack-watchdog\.py/, name: "ack-watchdog.py (v95 Layer 3)", severity: "P0" },
+      { pattern: /skill-integrity-check\.sh/, name: "skill-integrity-check.sh (Rule 24)", severity: "P0" },
+      { pattern: /auto-approve-pairing\.py/, name: "auto-approve-pairing.py", severity: "P1" },
+      { pattern: /push-heartbeat\.sh/, name: "push-heartbeat.sh", severity: "P1" },
+      { pattern: /consensus_match_pipeline\.py/, name: "consensus_match_pipeline.py", severity: "P1" },
+      { pattern: /consensus_intent_sync\.py/, name: "consensus_intent_sync.py", severity: "P1" },
+      { pattern: /openclaw memory index/, name: "openclaw memory index", severity: "P1" },
+      { pattern: /workspace\/backups/, name: "workspace/backups cleanup", severity: "P2" },
+      { pattern: /consensus-2026.*git pull/, name: "consensus-2026 git pull (universal)", severity: "P1" },
+      { pattern: /SHM_CLEANUP/, name: "SHM_CLEANUP (snapshot-baked)", severity: "P2" },
+    ];
+    for (const m of expectedCronMarkers) {
+      record(`cron entry: ${m.name}`, m.severity, ["bake", "test"], m.pattern.test(cron), "");
+    }
 
     // ─── 14. Bash history wiped ────────────────────────────────────────────
     await assertAbsent(c, "bash_history wiped",       "P1", ["bake"], "$HOME/.bash_history");
@@ -342,20 +446,69 @@ async function run() {
     record("/tmp empty", "P1", ["bake"], tmpCount === "0" || tmpCount === "", `${tmpCount} entries`);
 
     // ─── 18. Manifest scripts present in canonical locations ───────────────
-    const expectScripts = [
-      "strip-thinking.py", "auto-approve-pairing.py", "vm-watchdog.py",
-      "silence-watchdog.py", "push-heartbeat.sh", "generate_workspace_index.sh",
-      "ack-watchdog.py", // v95 Layer 3
-      "consensus_match_pipeline.py", "consensus_intent_sync.py",
+    // Source of truth: docs/cloud-init-implementation-map.md §4 (17 scripts).
+    // Severity-mapped per the bake-readiness audit 2026-05-13.
+    const expectScripts: Array<{ name: string; severity: Severity }> = [
+      // P0 — bake fails outright if missing
+      { name: "strip-thinking.py", severity: "P0" },
+      { name: "ack-watchdog.py", severity: "P0" },               // v95 Layer 3
+      { name: "memory-snapshot.sh", severity: "P0" },            // used by gateway ExecStopPost/Pre — missing = silent memory loss
+      { name: "skill-integrity-check.sh", severity: "P0" },      // Rule 24 self-heal cron
+      // P1 — operational
+      { name: "auto-approve-pairing.py", severity: "P1" },
+      { name: "vm-watchdog.py", severity: "P1" },                // present-but-not-in-cron per v76
+      { name: "silence-watchdog.py", severity: "P1" },           // present-but-not-in-cron per v76
+      { name: "push-heartbeat.sh", severity: "P1" },
+      { name: "generate_workspace_index.sh", severity: "P1" },
+      { name: "consensus_match_pipeline.py", severity: "P1" },
+      { name: "consensus_match_rerank.py", severity: "P1" },
+      { name: "consensus_match_deliberate.py", severity: "P1" },
+      { name: "consensus_match_consent.py", severity: "P1" },
+      { name: "consensus_match_skill_toggle.py", severity: "P1" },
+      { name: "consensus_intent_sync.py", severity: "P1" },
+      { name: "consensus_intent_extract.py", severity: "P1" },
     ];
     for (const s of expectScripts) {
-      const exists = (await exec(c, `test -f ~/.openclaw/scripts/${s}`)).code === 0;
-      record(`scripts/${s} present`, s === "ack-watchdog.py" ? "P0" : "P1", ["bake", "test"], exists, "");
+      const exists = (await exec(c, `test -f ~/.openclaw/scripts/${s.name}`)).code === 0;
+      record(`scripts/${s.name} present`, s.severity, ["bake", "test"], exists, "");
     }
+    // privacy-bridge.sh is partner-gated (edge_city only) — absent on bake VM
+    await assertAbsent(c, "scripts/privacy-bridge.sh absent (bake is not edge_city)", "P2", ["bake"], "$HOME/.openclaw/scripts/privacy-bridge.sh");
 
-    // strip-thinking.py has Rule 23 sentinels
-    const stripSentinels = (await exec(c, `grep -c 'def trim_failed_turns\\|SESSION TRIMMED:' ~/.openclaw/scripts/strip-thinking.py 2>/dev/null`)).stdout.trim();
-    record("strip-thinking.py has Rule 23 sentinels (trim-not-nuke)", "P0", ["bake", "test"], parseInt(stripSentinels, 10) >= 2, `${stripSentinels}/2 sentinels`);
+    // browser-relay-server.js lives in ~/scripts/ NOT ~/.openclaw/scripts/
+    record("~/scripts/browser-relay-server.js present", "P0", ["bake", "test"],
+      (await exec(c, `test -f ~/scripts/browser-relay-server.js`)).code === 0, "");
+    // deliver_file.sh / notify_user.sh / token-price.py — workspace-level scripts
+    for (const s of ["deliver_file.sh", "notify_user.sh", "token-price.py"]) {
+      const exists = (await exec(c, `test -f ~/scripts/${s}`)).code === 0;
+      record(`~/scripts/${s} present`, "P1", ["bake", "test"], exists, "");
+    }
+    // dispatch-server.js + dispatch script count (Discovery #2 — inline pattern)
+    record("~/scripts/dispatch-server.js present", "P0", ["bake", "test"],
+      (await exec(c, `test -f ~/scripts/dispatch-server.js`)).code === 0, "");
+    const dispatchCount = parseInt((await exec(c, `ls ~/scripts/*.sh 2>/dev/null | wc -l`)).stdout.trim() || "0", 10);
+    record("dispatch .sh scripts in ~/scripts/ (expect ≥20)", "P1", ["bake", "test"], dispatchCount >= 20, `${dispatchCount} .sh files`);
+
+    // strip-thinking.py has Rule 23 sentinels — all 10 required
+    // (per docs/cloud-init-implementation-map.md §4). The bake-readiness
+    // audit 2026-05-13 identified that only 2 were being checked, which
+    // would silently miss a pre-v90 destructive-archive regression.
+    const RULE23_SENTINELS = [
+      "def trim_failed_turns",       // post-v85 trim path
+      "SESSION TRIMMED:",            // post-v85 log line
+      "def run_periodic_summary_hook", // periodic summary hook
+      "PERIODIC_SUMMARY_V1",         // periodic summary marker
+      "PRE_ARCHIVE_SUMMARY_V1",      // pre-archive summary marker
+      "PERIODIC_SUMMARY_V1_RESHRINK", // re-shrink-after-summary marker
+      "def compact_session_in_place_lines", // v90 Layer 1
+      "SESSION COMPACTED:",          // v90 Layer 1 log line
+      "def _extract_large_tool_results_to_cache", // v90 Layer 3
+      "LAYER3_EXTRACTED:",           // v90 Layer 3 log line
+    ];
+    for (const sent of RULE23_SENTINELS) {
+      const found = (await exec(c, `grep -c -F ${JSON.stringify(sent)} ~/.openclaw/scripts/strip-thinking.py 2>/dev/null`)).stdout.trim();
+      record(`strip-thinking.py contains '${sent}'`, "P0", ["bake", "test"], parseInt(found, 10) >= 1, `${found} matches`);
+    }
 
     // ─── 19. gbrain present (binary + MCP entry + env vars) ────────────────
     const bunVer = (await exec(c, `~/.bun/bin/bun --version 2>&1`)).stdout.trim();
@@ -392,27 +545,56 @@ async function run() {
       record("gateway stopped (bake mode)", "P1", ["bake"], okStates.includes(isActive), `state=${isActive}`);
     }
 
-    // ─── 21. Config keys (v95 manifest) ────────────────────────────────────
-    const expectKeys: Record<string, string> = {
-      "channels.telegram.streaming.mode": "partial",
-      "channels.telegram.streaming.preview.toolProgress": "false",
-      "channels.telegram.streaming.preview.chunk.minChars": "30",
-      "channels.telegram.streaming.preview.chunk.maxChars": "800",
-      "channels.telegram.streaming.preview.chunk.breakPreference": "sentence",
-      "messages.ackReactionScope": "all",
-      "messages.ackReaction": "👀",
-      "messages.removeAckAfterReply": "false",
-      "messages.statusReactions.enabled": "true",
-      "agents.defaults.timeoutSeconds": "300",
-      "agents.defaults.bootstrapMaxChars": "40000",
-      "agents.defaults.compaction.maxActiveTranscriptBytes": "150000",
-      "session.reset.mode": "idle",
-      "session.reset.idleMinutes": "10080",
-    };
-    for (const [k, want] of Object.entries(expectKeys)) {
-      const got = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && openclaw config get "${k}" 2>&1`)).stdout.trim();
+    // ─── 21. Config keys (v95 manifest — all 37 entries per map §6) ────────
+    // Source of truth: docs/cloud-init-implementation-map.md §6 and
+    // lib/vm-manifest.ts:1131-1352 (configSettings block).
+    // The pre-2026-05-13 version of this validation checked only 14 keys —
+    // bake-readiness audit identified 23 missing checks including 11 P0
+    // (without which fleet behavior silently breaks). All 37 below.
+    const expectKeys: Array<{ key: string; want: string; severity: Severity }> = [
+      // ── P0 — missing/wrong = silent fleet failure ────────────────────────
+      { key: "tools.exec.security", want: "full", severity: "P0" },                      // exec tool fails closed
+      { key: "tools.exec.ask", want: "off", severity: "P0" },                            // agent stalls waiting for approval
+      { key: "agents.defaults.sandbox.mode", want: "off", severity: "P0" },              // gateway needs Docker without this
+      { key: "gateway.http.endpoints.chatCompletions.enabled", want: "true", severity: "P0" }, // OpenAI-compat endpoint
+      { key: "discovery.mdns.mode", want: "off", severity: "P0" },                       // CIAO SIGTERM race (v71)
+      { key: "session.maintenance.mode", want: "enforce", severity: "P0" },              // session pruning hard, not warn
+      { key: "agents.defaults.heartbeat.every", want: "3h", severity: "P0" },            // heartbeat cadence
+      { key: "agents.defaults.heartbeat.session", want: "heartbeat", severity: "P0" },   // isolate heartbeats (v41)
+      { key: "agents.defaults.compaction.mode", want: "safeguard", severity: "P0" },     // compaction policy
+      { key: "agents.defaults.compaction.reserveTokensFloor", want: "35000", severity: "P0" },
+      { key: "commands.useAccessGroups", want: "false", severity: "P0" },                // agents callable without group gate
+      { key: "agents.defaults.timeoutSeconds", want: "300", severity: "P0" },            // v80
+      { key: "agents.defaults.bootstrapMaxChars", want: "40000", severity: "P0" },       // v92
+      { key: "agents.defaults.compaction.maxActiveTranscriptBytes", want: "150000", severity: "P0" }, // v90 Layer 1
+      { key: "channels.telegram.streaming.mode", want: "partial", severity: "P0" },      // v95
+      { key: "channels.telegram.streaming.preview.toolProgress", want: "false", severity: "P0" }, // v95 leak guard
+      { key: "channels.telegram.streaming.preview.chunk.minChars", want: "30", severity: "P0" },
+      { key: "channels.telegram.streaming.preview.chunk.maxChars", want: "800", severity: "P0" }, // v95 Layer 2
+      { key: "channels.telegram.streaming.preview.chunk.breakPreference", want: "sentence", severity: "P0" },
+      { key: "messages.ackReactionScope", want: "all", severity: "P0" },                 // v95 Layer 1
+      { key: "messages.ackReaction", want: "👀", severity: "P0" },
+      { key: "messages.removeAckAfterReply", want: "false", severity: "P0" },
+      { key: "messages.statusReactions.enabled", want: "true", severity: "P0" },
+      { key: "session.reset.mode", want: "idle", severity: "P0" },                       // v41 — prevents 4 AM wipe
+      { key: "session.reset.idleMinutes", want: "10080", severity: "P0" },               // 7-day idle
+      // ── P1 — operational correctness ─────────────────────────────────────
+      { key: "agents.defaults.compaction.memoryFlush.enabled", want: "true", severity: "P1" },
+      { key: "agents.defaults.compaction.memoryFlush.softThresholdTokens", want: "8000", severity: "P1" },
+      { key: "agents.defaults.compaction.recentTurnsPreserve", want: "10", severity: "P1" },
+      { key: "agents.defaults.compaction.qualityGuard.enabled", want: "true", severity: "P1" },
+      { key: "agents.defaults.compaction.qualityGuard.maxRetries", want: "2", severity: "P1" },
+      { key: "agents.defaults.compaction.notifyUser", want: "true", severity: "P1" },
+      { key: "agents.defaults.compaction.truncateAfterCompaction", want: "true", severity: "P1" },
+      { key: "agents.defaults.memorySearch.enabled", want: "true", severity: "P1" },
+      { key: "skills.limits.maxSkillsPromptChars", want: "500000", severity: "P1" },     // silent truncation if lower
+      { key: "commands.restart", want: "true", severity: "P1" },
+      { key: "channels.telegram.groupPolicy", want: "open", severity: "P1" },            // group chat usability
+    ];
+    for (const { key, want, severity } of expectKeys) {
+      const got = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && openclaw config get "${key}" 2>&1`)).stdout.trim();
       const pass = got === want;
-      record(`config ${k}=${want}`, "P0", ["bake", "test"], pass, pass ? "" : `got=${got}`);
+      record(`config ${key}=${want}`, severity, ["bake", "test"], pass, pass ? "" : `got=${got}`);
     }
 
     // ─── 22. Disk usage under image cap ────────────────────────────────────
@@ -427,6 +609,19 @@ async function run() {
     // bankr SKILL.md present somewhere (multi-skill git-cloned repo)
     const bankrSkill = (await exec(c, `find ~/.openclaw/skills/bankr -maxdepth 3 -name SKILL.md 2>/dev/null | wc -l`)).stdout.trim();
     record("bankr skill has ≥1 SKILL.md", "P1", ["bake", "test"], parseInt(bankrSkill, 10) >= 1, `${bankrSkill} SKILL.md files`);
+    // @bankr/cli npm pin (v62 — 0.3.1 minimum)
+    const bankrCliV = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && npm ls -g --depth=0 @bankr/cli 2>/dev/null | grep -oE '@bankr/cli@[0-9]+\\.[0-9]+\\.[0-9]+'`)).stdout.trim();
+    record("@bankr/cli pinned to 0.3.1+", "P1", ["bake", "test"],
+      /^@bankr\/cli@0\.(3\.[1-9]|[4-9]\.|[1-9][0-9])/.test(bankrCliV) || /^@bankr\/cli@(0\.[4-9]|[1-9])/.test(bankrCliV),
+      `installed=${bankrCliV || "<missing>"}`);
+
+    // INSTACLAW_BANKR_PATCH_V1 marker in the bankr skill's SKILL.md (overlay applied)
+    const bankrPatch = (await exec(c, `grep -c INSTACLAW_BANKR_PATCH_V1 ~/.openclaw/skills/bankr/bankr/SKILL.md 2>/dev/null || echo 0`)).stdout.trim();
+    record("bankr SKILL.md has INSTACLAW_BANKR_PATCH_V1 overlay", "P2", ["bake", "test"], parseInt(bankrPatch, 10) >= 1, "");
+
+    // Consensus skill — UNIVERSAL post-2026-05-04
+    const consensusPresent = (await exec(c, `test -d ~/.openclaw/skills/consensus-2026 && echo Y || echo N`)).stdout.trim() === "Y";
+    record("consensus-2026 skill cloned (universal)", "P1", ["bake", "test"], consensusPresent, "");
 
     // ─── 24. sudoers ───────────────────────────────────────────────────────
     const sudoers = (await exec(c, `sudo cat /etc/sudoers.d/openclaw 2>/dev/null`)).stdout;
