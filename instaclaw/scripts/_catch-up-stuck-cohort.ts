@@ -196,6 +196,27 @@ async function prompt(q: string): Promise<string> {
 }
 
 // ── Audit a VM post-reconcile: gateway active + /health=200 ──
+//
+// Retry loop up to 120s (12 × 10s) for both conditions to land in the
+// SAME iteration. Same pattern as stepGatewayRestart's existing 24×5s loop
+// in vm-reconcile.ts.
+//
+// Why: edge_city VMs load 8 plugins (acpx, bonjour, browser, device-pair,
+// memory-core, phone-control, talk-voice, telegram) and take ~90s to cold-
+// boot. The old single-shot audit checked immediately after reconcileVM's
+// own restart loop finished and saw the gateway in a transient state.
+// 2026-05-12 vm-923 (paying customer cwt45@cornell.edu) audit-failed via
+// this exact race — caught-up clean per reconcileVM, then audit saw
+// inactive 1s later because the new gateway was mid-cold-boot.
+// The wave-halt threshold (default 30%) then aborted the entire run on a
+// single false-positive.
+//
+// Pairing is load-bearing: a healthy gateway has BOTH is-active=active AND
+// /health=200. During cold boot, systemd transitions: inactive → activating →
+// active, while the HTTP server may not yet be bound. A "active + 000"
+// reading means systemd thinks the unit is running but the gateway hasn't
+// finished initializing. Both must match in the SAME iteration to confirm
+// the gateway is genuinely serving.
 async function auditVm(
   host: string,
 ): Promise<{ ok: boolean; reason?: string }> {
@@ -205,20 +226,42 @@ async function auditVm(
   } catch (e) {
     return { ok: false, reason: `ssh-connect: ${(e as Error).message.slice(0, 80)}` };
   }
+  const MAX_ATTEMPTS = 12;
+  const INTERVAL_MS = 10_000;
+  let lastGw = "(none)";
+  let lastHealth = "(none)";
   try {
-    const gw = await ssh.execCommand(
-      `systemctl --user is-active openclaw-gateway 2>/dev/null || echo inactive`,
-    );
-    if ((gw.stdout || "").trim() !== "active") {
-      return { ok: false, reason: `gateway-not-active: ${(gw.stdout || "").trim()}` };
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      // Combined check in ONE SSH round-trip to avoid sequential drift
+      // between gateway-state and health-port readings.
+      const combined = await ssh.execCommand(
+        `gw=$(systemctl --user is-active openclaw-gateway 2>/dev/null || echo inactive); ` +
+        `h=$(curl -sf -o /dev/null -w '%{http_code}' http://localhost:18789/health 2>/dev/null || echo 000); ` +
+        `echo "GW=$gw HEALTH=$h"`,
+      );
+      const out = (combined.stdout || "").trim();
+      const m = out.match(/GW=(\S+) HEALTH=(\S+)/);
+      if (!m) {
+        // Malformed output — log + treat as miss this iteration, retry
+        lastGw = "(parse-error)";
+        lastHealth = out.slice(0, 50);
+      } else {
+        lastGw = m[1];
+        lastHealth = m[2];
+        if (lastGw === "active" && lastHealth === "200") {
+          return { ok: true };
+        }
+      }
+      // Not healthy this iteration — wait + retry (unless this was the last attempt)
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, INTERVAL_MS));
+      }
     }
-    const h = await ssh.execCommand(
-      `curl -sf -o /dev/null -w '%{http_code}' http://localhost:18789/health 2>/dev/null || echo 000`,
-    );
-    if ((h.stdout || "").trim() !== "200") {
-      return { ok: false, reason: `health-not-200: ${h.stdout?.trim()}` };
-    }
-    return { ok: true };
+    // All attempts exhausted
+    return {
+      ok: false,
+      reason: `gateway-not-healthy-after-${(MAX_ATTEMPTS * INTERVAL_MS) / 1000}s: gw=${lastGw} /health=${lastHealth}`,
+    };
   } finally {
     ssh.dispose();
   }
@@ -239,11 +282,162 @@ interface VmResult {
   auditReason?: string;
 }
 
+// ── ExecStart pre-flight result type ──
+type PreflightResult =
+  | { ok: true; action: "aligned-already" | "rewrote"; details?: string }
+  | { ok: false; action: "skipped"; reason: string }
+  | { ok: false; action: "error"; reason: string };
+
+// Canonical openclaw-gateway.service ExecStart pattern (configureOpenClaw output).
+// If a VM's ExecStart deviates from this, we DON'T rewrite (would risk corrupting
+// a manually-edited unit). Safety invariant: SKIP > break.
+const CANONICAL_EXECSTART_RE =
+  /^ExecStart=\/home\/openclaw\/\.nvm\/versions\/node\/v\d+\.\d+\.\d+\/bin\/node \/home\/openclaw\/\.nvm\/versions\/node\/v\d+\.\d+\.\d+\/lib\/node_modules\/openclaw\/dist\/index\.js gateway --port 18789$/;
+
+const NVM_FOR_PREFLIGHT = 'source ~/.nvm/nvm.sh 2>/dev/null';
+const DBUS_FOR_PREFLIGHT = 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"';
+
+/**
+ * Pre-flight: rewrite the openclaw-gateway.service ExecStart line to point to
+ * the current Node version, ONLY IF every safety check passes.
+ *
+ * Why: 2026-05-12 incident — stepNodeUpgrade upgrades Node from v22.22.0 →
+ * v22.22.2 and installs openclaw at the new path, but the systemd unit's
+ * ExecStart still points to the OLD Node path which has openclaw 2026.4.5
+ * (without the new compaction-key schema). When stepGatewayRestart triggers,
+ * systemd loads the OLD binary which rejects the new keys → crash-loop.
+ * Affected 2 paying customers (coastalstu@gmail.com, agent@superpower.io).
+ *
+ * Safety invariant per Cooper: "fix only fires if (a) target Node path exists
+ * with installed openclaw AND (b) ExecStart pattern is recognized. otherwise
+ * SKIP. worst case = VM stays in current state."
+ *
+ * Does NOT restart the gateway — that's stepGatewayRestart's job. Only rewrites
+ * the unit file + daemon-reload + verifies systemd's runtime view picked it up.
+ *
+ * Returns:
+ *   { ok:true,  action:"aligned-already" } — no work needed, proceed
+ *   { ok:true,  action:"rewrote" }         — fix applied, proceed
+ *   { ok:false, action:"skipped" }         — safety guard, proceed without fix
+ *                                            (worst case = old behavior, no worse)
+ *   { ok:false, action:"error" }           — partial-state risk, DO NOT proceed
+ *                                            with reconcileVM (treat as exception)
+ */
+async function preflightFixExecStart(ip: string): Promise<PreflightResult> {
+  const ssh = new NodeSSH();
+  try {
+    await ssh.connect({ host: ip, port: 22, username: "openclaw", privateKey: sshKey, readyTimeout: 12_000 });
+
+    // ── 1. Current Node version on PATH ──
+    const curNodeRes = await ssh.execCommand(`${NVM_FOR_PREFLIGHT} && node --version`);
+    const curNode = (curNodeRes.stdout || "").trim();
+    if (!/^v\d+\.\d+\.\d+$/.test(curNode)) {
+      return { ok: false, action: "skipped", reason: `current node version not in expected format: '${curNode}'` };
+    }
+
+    // ── 2. Read current ExecStart line ──
+    const unitPath = "$HOME/.config/systemd/user/openclaw-gateway.service";
+    const esRes = await ssh.execCommand(`grep -E "^ExecStart=" ${unitPath} 2>/dev/null | head -1`);
+    const currentExecStart = (esRes.stdout || "").split("\n")[0];
+    if (!CANONICAL_EXECSTART_RE.test(currentExecStart)) {
+      return { ok: false, action: "skipped", reason: `ExecStart pattern not recognized (manual edit?)` };
+    }
+    const oldNodeMatch = currentExecStart.match(/\/node\/(v\d+\.\d+\.\d+)\//);
+    const oldNode = oldNodeMatch?.[1] ?? "?";
+
+    // ── 3. Idempotency — already aligned ──
+    if (oldNode === curNode) {
+      return { ok: true, action: "aligned-already", details: `${oldNode}` };
+    }
+
+    // ── 4. Target Node path exists + openclaw installed ──
+    const targetBin = `/home/openclaw/.nvm/versions/node/${curNode}/bin/node`;
+    const targetDist = `/home/openclaw/.nvm/versions/node/${curNode}/lib/node_modules/openclaw/dist/index.js`;
+    const checkRes = await ssh.execCommand(`test -x ${targetBin} && test -f ${targetDist} && echo OK || echo MISSING`);
+    if (!(checkRes.stdout || "").trim().endsWith("OK")) {
+      return { ok: false, action: "skipped", reason: `target ${curNode} bin or dist missing — npm install may not have completed` };
+    }
+
+    // ── 5. Target node binary returns clean version ──
+    const tvRes = await ssh.execCommand(`${targetBin} --version`);
+    const tv = (tvRes.stdout || "").trim();
+    if (tvRes.code !== 0 || tv !== curNode) {
+      return { ok: false, action: "skipped", reason: `target node binary reports '${tv}', expected '${curNode}'` };
+    }
+
+    // ── 6. No drop-in ExecStart override (would shadow our rewrite) ──
+    const dropinRes = await ssh.execCommand(`grep -lE "^ExecStart=" ~/.config/systemd/user/openclaw-gateway.service.d/*.conf 2>/dev/null | head -3`);
+    if ((dropinRes.stdout || "").trim()) {
+      return { ok: false, action: "skipped", reason: `drop-in ExecStart override present — rewrite would be shadowed` };
+    }
+
+    // ── 7. Atomic in-place rewrite via sed with timestamped .bak ──
+    const newExecStart = `ExecStart=/home/openclaw/.nvm/versions/node/${curNode}/bin/node /home/openclaw/.nvm/versions/node/${curNode}/lib/node_modules/openclaw/dist/index.js gateway --port 18789`;
+    const sedReplacement = newExecStart.replace(/\//g, "\\/");
+    const sedCmd = `sed -i.bak.execstart-fix-$(date -u +%Y%m%dT%H%M%SZ) -E 's|^ExecStart=/home/openclaw/\\.nvm/versions/node/v[0-9]+\\.[0-9]+\\.[0-9]+/bin/node /home/openclaw/\\.nvm/versions/node/v[0-9]+\\.[0-9]+\\.[0-9]+/lib/node_modules/openclaw/dist/index\\.js gateway --port 18789|${sedReplacement}|' ${unitPath}`;
+    const sedRes = await ssh.execCommand(sedCmd);
+    if (sedRes.code !== 0) {
+      return { ok: false, action: "error", reason: `sed rewrite failed (exit ${sedRes.code}): ${(sedRes.stderr || "").slice(0, 200)}` };
+    }
+
+    // ── 8. Verify rewrite landed on disk ──
+    const vRes = await ssh.execCommand(`grep -E "^ExecStart=" ${unitPath} | head -1`);
+    if ((vRes.stdout || "").split("\n")[0] !== newExecStart) {
+      return { ok: false, action: "error", reason: `post-sed verify mismatch — file may be partially written` };
+    }
+
+    // ── 9. daemon-reload (DBUS prefix required for SSH sessions) ──
+    const reloadRes = await ssh.execCommand(`${DBUS_FOR_PREFLIGHT} && systemctl --user daemon-reload`);
+    if (reloadRes.code !== 0) {
+      return { ok: false, action: "error", reason: `daemon-reload failed (exit ${reloadRes.code}): ${(reloadRes.stderr || "").slice(0, 200)}` };
+    }
+
+    // ── 10. Verify systemd runtime view ──
+    const showRes = await ssh.execCommand(`${DBUS_FOR_PREFLIGHT} && systemctl --user show openclaw-gateway -p ExecStart --value`);
+    if (!(showRes.stdout || "").includes(`/node/${curNode}/bin/node`) || !(showRes.stdout || "").includes(`/node/${curNode}/lib/node_modules/openclaw`)) {
+      return { ok: false, action: "error", reason: `systemd runtime ExecStart doesn't reflect rewrite` };
+    }
+
+    return { ok: true, action: "rewrote", details: `${oldNode} → ${curNode}` };
+  } catch (e: any) {
+    return { ok: false, action: "error", reason: `preflight threw: ${String(e?.message ?? e).slice(0, 200)}` };
+  } finally {
+    ssh.dispose();
+  }
+}
+
 async function catchUpOne(
-  vm: { id: string; name: string; config_version: number | null },
+  vm: { id: string; name: string; config_version: number | null; ip_address: string },
 ): Promise<VmResult> {
   const start = Date.now();
   const cvBefore = vm.config_version ?? 0;
+
+  // ── PRE-FLIGHT: rewrite stale ExecStart before any config changes ──
+  // Must run BEFORE reconcileVM so stepConfigSettings + stepGatewayRestart
+  // see a unit file pointing to the current Node binary.
+  const pre = await preflightFixExecStart(vm.ip_address);
+  if (pre.action === "rewrote") {
+    console.log(`  ${vm.name}: ExecStart pre-flight: rewrote ${pre.details}`);
+  } else if (pre.action === "skipped") {
+    // Safety guard — proceed with reconcileVM as-is. Worst case = old
+    // behavior (no worse than before this script existed). Logged.
+    console.log(`  ${vm.name}: ExecStart pre-flight: SKIP (${pre.reason})`);
+  } else if (pre.action === "error") {
+    // Partial-state risk — DO NOT proceed with reconcileVM, the unit file
+    // may be half-written or systemd runtime view is unknown.
+    return {
+      name: vm.name,
+      cv_before: cvBefore,
+      cv_after: null,
+      outcome: "exception",
+      elapsedMs: Date.now() - start,
+      fixedCount: 0,
+      alreadyCorrectCount: 0,
+      errorCount: 0,
+      errorSummary: `preflight ExecStart fix ERROR: ${pre.reason}`,
+    };
+  }
+  // "aligned-already" is silent (no work needed) — proceed normally.
 
   let result;
   try {
