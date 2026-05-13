@@ -250,6 +250,33 @@ export async function reconcileVM(
     currentStep = "workspace-integrity";
     await stepWorkspaceIntegrity(ssh, result, dryRun);
 
+    // ── Step 0d: ExecStart alignment ──
+    // Rewrite the systemd unit's ExecStart to point to the current Node
+    // version BEFORE any config keys are written. Without this, a stale
+    // ExecStart (left over from an earlier reconcile that upgraded Node but
+    // didn't update the unit file) causes systemctl restart to load the OLD
+    // openclaw binary, which rejects new-schema keys → crash-loop.
+    //
+    // 2026-05-12 incident: vm-059 (coastalstu) + vm-574 (agent@superpower.io)
+    // both broken because their systemd unit pinned to v22.22.0/v22.22.1 while
+    // `which openclaw` returned the v22.22.2 binary with the new schema.
+    // Each `openclaw config set` succeeded (writes via NEW binary), but
+    // stepGatewayRestart loaded the OLD binary which rejected the keys.
+    //
+    // This step must run BEFORE stepConfigSettings so that any subsequent
+    // gateway restart (whether triggered here or by hot-reload) uses the
+    // correct binary. Safety invariant: SKIP > break. If anything is
+    // uncertain (non-canonical unit, missing target, daemon-reload fails),
+    // we SKIP — the VM stays in current state, no worse than before.
+    //
+    // Known limitation: this catches cross-reconcile drift (ExecStart wasn't
+    // updated last time Node was upgraded). It does NOT catch intra-reconcile
+    // Node changes — stepNodeUpgrade later in this pass could install a NEW
+    // Node version and invalidate this alignment. Long-term fix: stepNodeUpgrade
+    // should also rewrite the unit. Tracked in CLAUDE.md follow-ups.
+    currentStep = "execstart-alignment";
+    await stepExecStartAlignment(ssh, result, dryRun);
+
     // ── Step 1: Config settings ──
     currentStep = "config-settings";
     await stepConfigSettings(ssh, manifest, result, dryRun, strict);
@@ -838,6 +865,215 @@ async function stepEnvVarPush(
       );
     }
   }
+}
+
+/**
+ * stepExecStartAlignment — keep the systemd unit's ExecStart pinned to the
+ * current Node version's openclaw binary path.
+ *
+ * THE BUG THIS PREVENTS (2026-05-12 incident, 2 paying customers broken):
+ *   stepNodeUpgrade installs a new Node version. stepNpmPinDrift installs
+ *   the new openclaw at the new path. But the systemd unit's ExecStart still
+ *   hardcodes the OLD Node path. Each `openclaw config set` runs the NEW
+ *   binary (via `which openclaw` on PATH) — those succeed. Then
+ *   stepGatewayRestart triggers `systemctl restart`, which loads ExecStart =
+ *   OLD Node binary = OLD openclaw. The OLD binary's Zod schema doesn't
+ *   recognize the new keys → "Unrecognized keys: ..." → exit 1 → systemd
+ *   crash-loop → "Start request repeated too quickly" → permanent failure.
+ *
+ *   `openclaw config validate` cannot detect this because it runs the NEW
+ *   binary (which accepts the keys). Two validators on the same host with
+ *   different schemas. Rule 2 vindicated.
+ *
+ * THE FIX (this step):
+ *   1. Read current Node version from `node --version` (NVM-sourced).
+ *   2. Read ExecStart line from the systemd unit file.
+ *   3. Compare Node versions embedded in the path.
+ *   4. If aligned → push alreadyCorrect, return (99% of ticks, 1 SSH call).
+ *   5. If misaligned → verify target Node has installed openclaw → atomic
+ *      sed -i.bak rewrite → daemon-reload → verify systemd runtime view.
+ *
+ * SAFETY INVARIANT: SKIP > break. If anything is uncertain (non-canonical
+ *   unit, missing target binary, daemon-reload fails), SKIP. The VM stays
+ *   in current state, no worse than before this step existed.
+ *
+ * FAILURE MODE HANDLING:
+ *   - No `node --version` (NVM unsourced) → SKIP no_current_node
+ *   - No ExecStart line in unit file → SKIP no_execstart
+ *   - Multiple `ExecStart=` lines (systemd reset semantics) → SKIP — refuse
+ *     to clever-edit
+ *   - Drop-in `.conf` has its own ExecStart → SKIP — rewrite would be
+ *     shadowed
+ *   - ExecStart doesn't match canonical pattern (manual edit) → SKIP — respect
+ *   - Target Node dir missing → SKIP — npm install hasn't completed
+ *   - Target dist/index.js missing → SKIP — openclaw not installed at new path
+ *   - Target binary returns wrong version → SKIP — corrupt install
+ *   - sed verify mismatch → ERROR (block cv bump) — partial file write
+ *   - daemon-reload fails → retry once + 2s; if still fails → ERROR
+ *   - systemd runtime view doesn't reflect rewrite → ERROR — daemon-reload
+ *     silently no-op'd
+ *
+ * KNOWN LIMITATION: catches cross-reconcile drift only. If stepNodeUpgrade
+ *   later in this same reconcile pass installs a NEWER Node version, the
+ *   ExecStart will be stale again. Long-term fix: stepNodeUpgrade should
+ *   itself rewrite the unit. For now, the next reconcile cycle catches it.
+ *
+ * PERFORMANCE: 1 SSH call in the 99% steady-state aligned case (combined
+ *   check is one bash invocation). 4 SSH calls on the rare rewrite path
+ *   (check, verify-target, rewrite, reload+verify).
+ *
+ * GATEWAY RESTART: when we rewrite, we set result.gatewayRestartNeeded=true
+ *   so the orchestrator's terminal stepGatewayRestart fires. That restart
+ *   picks up the new ExecStart and loads the NEW openclaw binary, which
+ *   accepts the new schema keys that stepConfigSettings will write.
+ */
+async function stepExecStartAlignment(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // POSIX-clean check script (avoids bashisms like `[[`). One round-trip.
+  // Output contract:
+  //   RESULT=aligned current=vX.Y.Z          → no action needed
+  //   RESULT=skip reason=<r> [details]       → safety skip, proceed without fix
+  //   RESULT=needs_fix old=vX.Y.Z current=vX.Y.Z → proceed to verify+rewrite
+  const checkScript = [
+    'source ~/.nvm/nvm.sh 2>/dev/null',
+    'UNIT="$HOME/.config/systemd/user/openclaw-gateway.service"',
+    'CUR=$(node --version 2>/dev/null)',
+    '[ -z "$CUR" ] && { echo "RESULT=skip reason=no_current_node"; exit 0; }',
+    '[ ! -f "$UNIT" ] && { echo "RESULT=skip reason=no_unit_file"; exit 0; }',
+    'ES_COUNT=$(grep -cE "^ExecStart=" "$UNIT" 2>/dev/null)',
+    '[ "$ES_COUNT" = "0" ] && { echo "RESULT=skip reason=no_execstart"; exit 0; }',
+    '[ "$ES_COUNT" != "1" ] && { echo "RESULT=skip reason=multiple_execstart_lines count=$ES_COUNT"; exit 0; }',
+    'DROPIN=$(ls "$HOME/.config/systemd/user/openclaw-gateway.service.d"/*.conf 2>/dev/null | xargs -I{} grep -lE "^ExecStart=" {} 2>/dev/null | head -1)',
+    '[ -n "$DROPIN" ] && { echo "RESULT=skip reason=dropin_override_present path=$DROPIN"; exit 0; }',
+    'ES=$(grep -E "^ExecStart=" "$UNIT" | head -1)',
+    'OLD=$(printf %s "$ES" | sed -n "s|.*/node/\\(v[0-9.]*\\)/.*|\\1|p")',
+    '[ -z "$OLD" ] && { echo "RESULT=skip reason=cant_extract_old_version"; exit 0; }',
+    // Canonical-pattern check: full line must match the expected configureOpenClaw template.
+    'EXPECTED="ExecStart=/home/openclaw/.nvm/versions/node/${OLD}/bin/node /home/openclaw/.nvm/versions/node/${OLD}/lib/node_modules/openclaw/dist/index.js gateway --port 18789"',
+    '[ "$ES" != "$EXPECTED" ] && { echo "RESULT=skip reason=non_canonical_format"; exit 0; }',
+    '[ "$OLD" = "$CUR" ] && { echo "RESULT=aligned current=$CUR"; exit 0; }',
+    'echo "RESULT=needs_fix old=$OLD current=$CUR"',
+  ].join('\n');
+
+  const escapedCheck = checkScript.replace(/'/g, "'\\''");
+  const checkRes = await ssh.execCommand(`bash -c '${escapedCheck}'`);
+  const checkOut = (checkRes.stdout || '').trim();
+
+  // Aligned (99% of ticks) — fast path, no log noise
+  const alignedMatch = checkOut.match(/^RESULT=aligned current=(v\S+)/m);
+  if (alignedMatch) {
+    result.alreadyCorrect.push(`execstart-alignment: ${alignedMatch[1]}`);
+    return;
+  }
+
+  // Skip (safety) — log breadcrumb, push to alreadyCorrect (don't block cv)
+  const skipMatch = checkOut.match(/^RESULT=skip reason=(\S+)(.*)$/m);
+  if (skipMatch) {
+    const reason = skipMatch[1];
+    const extra = (skipMatch[2] || '').trim();
+    logger.warn('stepExecStartAlignment: skip', { route: 'stepExecStartAlignment', reason, extra });
+    result.alreadyCorrect.push(`execstart-alignment: skipped (${reason})`);
+    return;
+  }
+
+  // Needs fix — extract versions
+  const fixMatch = checkOut.match(/^RESULT=needs_fix old=(v\S+) current=(v\S+)/m);
+  if (!fixMatch) {
+    // Unexpected output — treat as skip for safety
+    logger.warn('stepExecStartAlignment: unexpected check output', { route: 'stepExecStartAlignment', stdout: checkOut.slice(0, 300) });
+    result.alreadyCorrect.push('execstart-alignment: skipped (unexpected_check_output)');
+    return;
+  }
+  const oldVersion = fixMatch[1];
+  const currentVersion = fixMatch[2];
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] execstart-alignment: would rewrite ${oldVersion} → ${currentVersion}`);
+    return;
+  }
+
+  // ── Verify target ──
+  const verifyScript = [
+    'source ~/.nvm/nvm.sh 2>/dev/null',
+    `CUR="${currentVersion}"`,
+    'TARGET_BIN="/home/openclaw/.nvm/versions/node/$CUR/bin/node"',
+    'TARGET_DIST="/home/openclaw/.nvm/versions/node/$CUR/lib/node_modules/openclaw/dist/index.js"',
+    '[ ! -x "$TARGET_BIN" ] && { echo "VERIFY=fail reason=target_bin_missing path=$TARGET_BIN"; exit 0; }',
+    '[ ! -f "$TARGET_DIST" ] && { echo "VERIFY=fail reason=target_dist_missing path=$TARGET_DIST"; exit 0; }',
+    'GOT_VERSION=$($TARGET_BIN --version 2>/dev/null)',
+    '[ "$GOT_VERSION" != "$CUR" ] && { echo "VERIFY=fail reason=binary_version_mismatch got=$GOT_VERSION expected=$CUR"; exit 0; }',
+    'echo "VERIFY=ok"',
+  ].join('\n');
+  const verifyRes = await ssh.execCommand(`bash -c '${verifyScript.replace(/'/g, "'\\''")}'`);
+  const verifyOut = (verifyRes.stdout || '').trim();
+  if (!verifyOut.startsWith('VERIFY=ok')) {
+    const m = verifyOut.match(/VERIFY=fail reason=(\S+)(.*)$/m);
+    const reason = m?.[1] ?? 'unknown';
+    logger.warn('stepExecStartAlignment: target verify FAIL — skipping rewrite', {
+      route: 'stepExecStartAlignment', reason, detail: (m?.[2] || '').trim(), oldVersion, currentVersion,
+    });
+    result.alreadyCorrect.push(`execstart-alignment: skipped (target_verify_${reason})`);
+    return;
+  }
+
+  // ── Atomic rewrite via sed -i.bak ──
+  const newLine = `ExecStart=/home/openclaw/.nvm/versions/node/${currentVersion}/bin/node /home/openclaw/.nvm/versions/node/${currentVersion}/lib/node_modules/openclaw/dist/index.js gateway --port 18789`;
+  const newLineSedSafe = newLine.replace(/\//g, '\\/');
+  const rewriteScript = [
+    'set -e',
+    'UNIT="$HOME/.config/systemd/user/openclaw-gateway.service"',
+    'TS=$(date -u +%Y%m%dT%H%M%SZ)',
+    `sed -i.bak.execstart-fix-$TS -E 's|^ExecStart=/home/openclaw/\\.nvm/versions/node/v[0-9]+\\.[0-9]+\\.[0-9]+/bin/node /home/openclaw/\\.nvm/versions/node/v[0-9]+\\.[0-9]+\\.[0-9]+/lib/node_modules/openclaw/dist/index\\.js gateway --port 18789|${newLineSedSafe}|' "$UNIT"`,
+    `NEW=$(grep -E "^ExecStart=" "$UNIT" | head -1)`,
+    `EXPECTED='${newLine}'`,
+    `[ "$NEW" != "$EXPECTED" ] && { echo "REWRITE=fail reason=verify_mismatch got=$NEW"; exit 1; }`,
+    'echo "REWRITE=ok"',
+  ].join('\n');
+  const rewriteRes = await ssh.execCommand(`bash -c '${rewriteScript.replace(/'/g, "'\\''")}'`);
+  const rewriteOut = (rewriteRes.stdout || '').trim();
+  if (rewriteRes.code !== 0 || !rewriteOut.includes('REWRITE=ok')) {
+    const errMsg = `stepExecStartAlignment: rewrite FAILED (exit=${rewriteRes.code}) ${rewriteOut.slice(0, 200)} stderr=${(rewriteRes.stderr || '').slice(0, 200)}`;
+    logger.error('stepExecStartAlignment: rewrite failed', {
+      route: 'stepExecStartAlignment', exit: rewriteRes.code, stdout: rewriteOut, stderr: rewriteRes.stderr,
+    });
+    result.errors.push(errMsg);
+    return;
+  }
+
+  // ── daemon-reload with one retry, then verify systemd runtime view ──
+  const reloadScript = [
+    'export XDG_RUNTIME_DIR="/run/user/$(id -u)"',
+    'systemctl --user daemon-reload',
+    'RC=$?',
+    'if [ "$RC" -ne 0 ]; then sleep 2; systemctl --user daemon-reload; RC=$?; fi',
+    '[ "$RC" -ne 0 ] && { echo "RELOAD=fail rc=$RC"; exit 1; }',
+    `RUNTIME=$(systemctl --user show openclaw-gateway -p ExecStart --value)`,
+    `case "$RUNTIME" in *"/node/${currentVersion}/bin/node"*) echo "RELOAD=ok" ;; *) echo "RELOAD=fail reason=runtime_view_mismatch runtime=$(printf %s "$RUNTIME" | head -c 200)"; exit 1 ;; esac`,
+  ].join('\n');
+  const reloadRes = await ssh.execCommand(`bash -c '${reloadScript.replace(/'/g, "'\\''")}'`);
+  const reloadOut = (reloadRes.stdout || '').trim();
+  if (reloadRes.code !== 0 || !reloadOut.includes('RELOAD=ok')) {
+    const errMsg = `stepExecStartAlignment: daemon-reload FAILED (exit=${reloadRes.code}) ${reloadOut.slice(0, 200)} stderr=${(reloadRes.stderr || '').slice(0, 200)}`;
+    logger.error('stepExecStartAlignment: daemon-reload failed', {
+      route: 'stepExecStartAlignment', exit: reloadRes.code, stdout: reloadOut, stderr: reloadRes.stderr,
+    });
+    result.errors.push(errMsg);
+    return;
+  }
+
+  // ── Success ──
+  // Setting gatewayRestartNeeded ensures the orchestrator's terminal
+  // stepGatewayRestart fires. That restart uses the new ExecStart (post-
+  // reload), loads the NEW openclaw binary, and accepts the new-schema
+  // keys that stepConfigSettings is about to write.
+  result.fixed.push(`execstart-alignment: ${oldVersion} → ${currentVersion}`);
+  result.gatewayRestartNeeded = true;
+  logger.info('stepExecStartAlignment: rewrote', {
+    route: 'stepExecStartAlignment', oldVersion, currentVersion,
+  });
 }
 
 /**
