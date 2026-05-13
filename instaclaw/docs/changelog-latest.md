@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-13
 
-Window: `fa0f9a857d026bd552f3f6fd16a8ce1d8ed384da` → `HEAD` (HEAD = `e6ffe4b6`)
+Window: `e6ffe4b69f6ea299e07486b9b0de0b1f83fcc527` → `HEAD` (HEAD = `80ec702f`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: e6ffe4b69f6ea299e07486b9b0de0b1f83fcc527 -->
+<!-- LAST_GENERATED_SHA: 80ec702f9f9689b39e41baa92fc2a75e36961c5a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `e6ffe4b6` 2026-05-13 — feat(fleet-health): pg_cron hourly stuck-VM monitor [1 files] _(ai-assisted)_
-- `21bcdddb` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `80ec702f` 2026-05-13 — feat(cloud-init): tarball builder foundation + fleet-health notify-cron [6 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `7dba73f3` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `e6ffe4b6` 2026-05-13 — feat(fleet-health): pg_cron hourly stuck-VM monitor [1 files] _(ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `80ec702f` 2026-05-13 — feat(cloud-init): tarball builder foundation + fleet-health notify-cron [6 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `21bcdddb` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `7dba73f3` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `80ec702f` 2026-05-13 — [infrastructure, edge] — feat(cloud-init): tarball builder foundation + fleet-health notify-cron
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `e6ffe4b6` 2026-05-13 — feat(fleet-health): pg_cron hourly stuck-VM monitor
+- `80ec702f` 2026-05-13 — feat(cloud-init): tarball builder foundation + fleet-health notify-cron
 
 ## Appendix — every commit (chronological)
 
-- `21bcdddb` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
-- `e6ffe4b6` 2026-05-13 — feat(fleet-health): pg_cron hourly stuck-VM monitor [1 files] _(ai-assisted)_
+- `7dba73f3` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `80ec702f` 2026-05-13 — feat(cloud-init): tarball builder foundation + fleet-health notify-cron [6 files] _(multi: [infrastructure, edge]; ai-assisted)_
