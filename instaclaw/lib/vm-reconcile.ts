@@ -21,6 +21,7 @@ import {
   DISPATCH_SKILL_MD,
 } from "./dispatch-scripts";
 import { getPrivacyBridgeScript } from "./privacy-bridge-script";
+import { deployPrivacyBridge } from "./privacy-bridge-deploy";
 import {
   SOUL_STUB_EDGE,
   SOUL_STUB_CONSENSUS,
@@ -4904,100 +4905,99 @@ async function stepDeployPrivacyBridge(
 ): Promise<void> {
   if (vm.partner !== "edge_city") return;
 
-  const script = getPrivacyBridgeScript();
-  const remotePath = "/home/openclaw/.openclaw/scripts/privacy-bridge.sh";
-  const expectedSha = crypto.createHash("sha256").update(script).digest("hex");
-
-  const existing = await ssh.execCommand(
-    `[ -f ${remotePath} ] && sha256sum ${remotePath} | awk '{print $1}' || echo MISSING`,
-  );
-  const onDiskSha = (existing.stdout || "").trim();
-
-  // ── Lockdown sequence (chattr +i protection) ──
-  // The bridge file is chattr +i'd after deploy so a malicious agent
-  // cannot silently overwrite it. The bridge's own stage-1 self-integrity
-  // check requires the immutable flag to be set; if it isn't, the bridge
-  // panic-blocks all SSH (fail closed).
+  // ── ONE-SHOT bridge deploy ──
+  // The vm-354 lockout (2026-05-13) was caused by issuing the bridge
+  // update as SEPARATE ssh.execCommand calls. Each separate SSH session
+  // re-traverses the bridge wrapper (post-cutover) and the stage-1
+  // self-integrity check sees the briefly-unlocked state and
+  // panic-blocks every operator SSH thereafter.
+  //
+  // Fix: delegate to deployPrivacyBridge() which issues the whole
+  // sequence (backup → unlock → write tmp → SHA-verify tmp → atomic mv
+  // → chattr +i retry → rollback to OLD bridge on chattr failure) as
+  // ONE ssh.execCommand. The unlock-then-lock window still exists but
+  // is bounded to a single bash process — no other SSH session can
+  // race.
   //
   // Limitation (documented in privacy-bridge.sh threat model): the
-  // openclaw user has `(ALL) NOPASSWD: ALL` in sudoers so an agent CAN
-  // `sudo chattr -i` and defeat this. v0 ships as defense-in-depth + the
+  // openclaw user has (ALL) NOPASSWD: ALL in sudoers so an agent CAN
+  // `sudo chattr -i` and defeat this. v0 ships as defense-in-depth +
   // detectable sudo trail; v1 follow-up is restricted sudoers.
-  //
-  // Dance:
-  //   - if SHA matches: ensure +i is set (idempotent — no-op if already)
-  //   - if SHA differs: chattr -i, write, verify, chattr +i
 
-  if (onDiskSha === expectedSha) {
-    // SHA matched — bridge content is correct. Just make sure +i is set
-    // (idempotent; no-op if already). Best-effort: log on error but
-    // don't fail the reconcile, since the bridge content itself is fine.
-    if (!dryRun) {
-      const lock = await ssh.execCommand(`sudo -n chattr +i ${remotePath} 2>&1`);
-      if (lock.code !== 0) {
-        // Don't fail — bridge content is correct, lockdown is best-effort
-        logger.warn("privacy-bridge: lockdown set+i failed (non-blocking)", {
+  const script = getPrivacyBridgeScript();
+  const r = await deployPrivacyBridge(ssh, script, { dryRun });
+
+  switch (r.status) {
+    case "already_correct":
+      result.alreadyCorrect.push("privacy-bridge.sh");
+      return;
+
+    case "deployed":
+      if (dryRun) {
+        result.fixed.push(`[dry-run] would deploy privacy-bridge.sh + chattr +i`);
+      } else {
+        result.fixed.push(`privacy-bridge.sh deployed + chattr +i locked (sha=${r.finalSha?.slice(0, 12)})`);
+        logger.info("privacy-bridge deployed and locked", {
           route: "vm-reconcile",
           vmId: vm.id,
-          err: (lock.stderr || lock.stdout || "").slice(0, 200),
+          sha: r.finalSha,
         });
       }
-    }
-    result.alreadyCorrect.push("privacy-bridge.sh");
-    return;
-  }
+      return;
 
-  if (dryRun) {
-    result.fixed.push(`[dry-run] would chattr -i, deploy privacy-bridge.sh (current=${onDiskSha.slice(0, 8)}), chattr +i`);
-    return;
-  }
+    case "chattr_failed_rolled_back":
+      // Rollback succeeded — OLD bridge is back in place + chattr +i.
+      // Bridge content is stale but bridge IS functional. Next tick
+      // will retry the new deploy.
+      result.errors.push(
+        `privacy-bridge chattr +i failed during deploy; rolled back to old bridge (sha=${r.finalSha?.slice(0, 12)}). Will retry next tick.`
+      );
+      logger.error("privacy-bridge deploy chattr+i failed (rolled back)", {
+        route: "vm-reconcile",
+        vmId: vm.id,
+        oldSha: r.finalSha,
+        expectedSha: r.expectedSha,
+      });
+      return;
 
-  // Unlock the file before write (idempotent — no-op if not currently +i).
-  // We use `|| true` here because chattr -i can fail in two harmless ways:
-  // (1) the file is already not +i, (2) the file doesn't exist yet on
-  // first-ever deploy. Both are fine — the next mkdir/write handles them.
-  const unlock = await ssh.execCommand(`sudo -n chattr -i ${remotePath} 2>/dev/null || true`);
-  if (unlock.code !== 0) {
-    // The `|| true` shouldn't allow this to fire, but defensive.
-    logger.warn("privacy-bridge: unlock returned non-zero (continuing)", {
-      route: "vm-reconcile",
-      vmId: vm.id,
-      err: (unlock.stderr || "").slice(0, 200),
-    });
-  }
+    case "chattr_failed_no_backup":
+      // No backup existed (first deploy) AND chattr +i failed. Bridge
+      // is at canonical path with NEW content but NO +i. On a cutover
+      // VM this is LOCKOUT — operator must use bypass key to recover.
+      // On a non-cutover VM this is harmless (deploy keys still work).
+      result.errors.push(
+        `privacy-bridge chattr +i failed twice with no backup — bridge file unlocked. If this VM is cutover, bypass-key recovery is required.`
+      );
+      logger.error("privacy-bridge deploy chattr+i failed (NO BACKUP)", {
+        route: "vm-reconcile",
+        vmId: vm.id,
+        finalSha: r.finalSha,
+        finalAttrs: r.finalAttrs,
+      });
+      return;
 
-  const b64 = Buffer.from(script, "utf-8").toString("base64");
-  const write = await ssh.execCommand(
-    `mkdir -p /home/openclaw/.openclaw/scripts && echo '${b64}' | base64 -d > ${remotePath}.tmp && mv ${remotePath}.tmp ${remotePath} && chmod 0755 ${remotePath}`,
-  );
-  if (write.code !== 0) {
-    result.errors.push(`privacy-bridge write failed: ${(write.stderr || write.stdout).slice(0, 200)}`);
-    return;
-  }
+    case "sha_mismatch_pre_swap":
+      // Caught BEFORE the mv. Bridge is unchanged (still has old
+      // content); safe to retry next tick.
+      result.errors.push(
+        `privacy-bridge tmp SHA mismatch (caught pre-swap, bridge unchanged): expected=${r.expectedSha.slice(0, 12)} actual=${r.finalSha?.slice(0, 12) ?? "?"}`
+      );
+      return;
 
-  // Verify (Rule 10) — re-read sha and compare
-  const verify = await ssh.execCommand(`sha256sum ${remotePath} | awk '{print $1}'`);
-  const verifySha = (verify.stdout || "").trim();
-  if (verifySha !== expectedSha) {
-    result.errors.push(`privacy-bridge verify mismatch: expected=${expectedSha.slice(0, 12)} got=${verifySha.slice(0, 12)}`);
-    return;
-  }
+    case "mkdir_failed":
+    case "write_failed":
+    case "mv_failed":
+    case "chmod_failed":
+    case "unlock_failed":
+      // Pre-swap failures — bridge file unchanged.
+      result.errors.push(`privacy-bridge ${r.status}: ${r.error ?? "(no detail)"}`);
+      return;
 
-  // Lock the freshly-written file. Required for the bridge's stage-1
-  // self-integrity check to pass — without +i, the bridge panic-blocks
-  // every SSH session, locking the operator out. We MUST succeed here.
-  const lock = await ssh.execCommand(`sudo -n chattr +i ${remotePath} 2>&1`);
-  if (lock.code !== 0) {
-    result.errors.push(
-      `privacy-bridge lockdown chattr +i failed (bridge will panic-block!): ${(lock.stderr || lock.stdout || "").slice(0, 200)}`
-    );
-    // Don't try to revert — the write succeeded, content is correct.
-    // The next tick will retry the chattr if this failed transiently.
-    return;
+    default:
+      // exec_failed / unknown / paradox cases
+      result.errors.push(`privacy-bridge ${r.status}: ${r.error ?? "(no detail)"}`);
+      return;
   }
-
-  result.fixed.push("privacy-bridge.sh deployed + chattr +i locked");
-  logger.info("privacy-bridge deployed and locked", { route: "vm-reconcile", vmId: vm.id });
 }
 
 /**
