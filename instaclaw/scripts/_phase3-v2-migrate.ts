@@ -79,6 +79,21 @@ async function main() {
   if (v2Check.stdout.includes("INSTACLAW_SOUL_V2")) { log("SKIP: already V2"); ssh.dispose(); process.exit(0); }
   log("confirmed V1");
 
+  // FIX #1: Pre-flight inspect of existing AGENTS.md (could be user-created on V1)
+  const existingAgents = await ssh.execCommand("test -f ~/.openclaw/workspace/AGENTS.md && wc -c < ~/.openclaw/workspace/AGENTS.md || echo MISSING");
+  const existingAgentsSize = existingAgents.stdout.trim();
+  log(`existing AGENTS.md: ${existingAgentsSize}`);
+  if (existingAgentsSize !== "MISSING" && parseInt(existingAgentsSize, 10) > 0) {
+    log(`WARN: AGENTS.md (${existingAgentsSize} bytes) exists on V1 VM. V2 migration WILL overwrite it. Tar backup captures it; recovery requires manual extract from workspace-pre-soul-v2-migration.tar.gz.`);
+  }
+
+  // FIX #4 (documented): SOUL.md custom-section inspection
+  // stepMigrateSoulV2 only extracts `## My Identity` and `## Learned Preferences` from V1 SOUL.md.
+  // Other custom `## *` sections are NOT preserved in V2 SOUL.md (they survive in the tar backup).
+  // Warn if any non-template `## *` headers exist so the agent's customizations aren't silently lost.
+  const soulHeaders = await ssh.execCommand("grep -E '^## ' ~/.openclaw/workspace/SOUL.md 2>/dev/null | sort -u");
+  log(`SOUL.md ## headers: ${soulHeaders.stdout.replace(/\n/g, ' | ')}`);
+
   const freeRes = await ssh.execCommand("df -BG /home/openclaw | tail -1 | awk '{print $4}' | sed 's/G//'");
   const freeGb = parseInt(freeRes.stdout.trim(), 10);
   log(`free disk: ${freeGb}GB`);
@@ -110,9 +125,22 @@ async function main() {
     if (dryRun) { log("DRY RUN — skipping post-flight verify"); postOk = true; return; }
 
     // ── Post-flight verify ──
+    // FIX #3: retry SSH connect once before treating connection failure as a migration fail.
+    // A bare network blip during reconnect should not trigger rollback of a successful migration.
     log("=== POST-FLIGHT VERIFY ===");
     const ssh2 = new NodeSSH();
-    await ssh2.connect({ host: vm.ip_address, username: "openclaw", privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8"), readyTimeout: 15000 });
+    let ssh2Connected = false;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await ssh2.connect({ host: vm.ip_address, username: "openclaw", privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8"), readyTimeout: 15000 });
+        ssh2Connected = true;
+        break;
+      } catch (e: any) {
+        log(`post-flight SSH connect attempt ${attempt} failed: ${e.message}`);
+        if (attempt < 2) { await new Promise(r => setTimeout(r, 5000)); }
+      }
+    }
+    if (!ssh2Connected) throw new Error("post-flight SSH connect failed twice — cannot verify, rolling back as safety measure");
 
     // V2 markers on all 4 files
     const markerChecks: Record<string, string> = {};
@@ -129,9 +157,16 @@ async function main() {
     log(`AGENTS.md sha: ${agentsSha} ${agentsSha === EXPECTED_AGENTS_SHA ? "✓ trimmed" : "✗ MISMATCH"}`);
     if (agentsSha !== EXPECTED_AGENTS_SHA) throw new Error(`AGENTS sha mismatch (expected ${EXPECTED_AGENTS_SHA}, got ${agentsSha})`);
 
-    // Tar backup
-    const tar = await ssh2.execCommand("ls -la ~/.openclaw/workspace-pre-soul-v2-migration.tar.gz 2>&1 | head -1");
-    log(`tar backup: ${tar.stdout.trim()}`);
+    // FIX #2: verify tar backup exists AND has non-trivial size (>1KB).
+    // A zero-byte / corrupted tar would silently fail on rollback. Validate before declaring success.
+    const tarSize = (await ssh2.execCommand("stat -c '%s' ~/.openclaw/workspace-pre-soul-v2-migration.tar.gz 2>/dev/null || echo 0")).stdout.trim();
+    const tarBytes = parseInt(tarSize, 10);
+    log(`tar backup size: ${tarBytes} bytes`);
+    if (tarBytes < 1024) throw new Error(`tar backup too small (${tarBytes} bytes) — rollback would fail; treating as migration failure`);
+    // Additional sanity: tar file integrity
+    const tarTest = await ssh2.execCommand("tar tzf ~/.openclaw/workspace-pre-soul-v2-migration.tar.gz > /dev/null 2>&1; echo $?");
+    log(`tar integrity check: exit=${tarTest.stdout.trim()}`);
+    if (tarTest.stdout.trim() !== "0") throw new Error("tar backup is corrupt — rollback would fail");
 
     // Gateway health (Rule 5)
     let postGw = "", postHealth = "";
