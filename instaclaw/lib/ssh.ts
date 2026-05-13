@@ -4724,7 +4724,13 @@ export async function assignVMWithSSHCheck(
       });
       await supabase
         .from("instaclaw_vms")
-        .update({ status: "failed", health_status: "unhealthy", assigned_to: null, assigned_at: null })
+        .update({
+          status: "failed", health_status: "unhealthy",
+          assigned_to: null, assigned_at: null,
+          // Option B (defense-in-depth): null IP at failed-flip — see
+          // app/api/cron/health-check/route.ts:336 for rationale.
+          ip_address: null,
+        })
         .eq("id", vm.id);
       continue;
     }
@@ -4820,6 +4826,9 @@ export async function assignVMWithSSHCheck(
         health_status: "unhealthy",
         assigned_to: null,
         assigned_at: null,
+        // Option B (defense-in-depth): null IP at failed-flip — see
+        // app/api/cron/health-check/route.ts:336 for rationale.
+        ip_address: null,
       })
       .eq("id", vm.id);
   }

@@ -71,6 +71,10 @@ export async function GET(req: NextRequest) {
           health_status: "unhealthy",
           assigned_to: null,
           assigned_at: null,
+          // Option B (defense-in-depth): null IP at failed-flip so the
+          // health-check resurrection probe (route.ts:2602+) can never
+          // re-select this row when Linode reuses its IP for a different VM.
+          ip_address: null,
         })
         .eq("id", vm.id)
         .then(() => {});

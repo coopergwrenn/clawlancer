@@ -337,6 +337,15 @@ export async function GET(req: NextRequest) {
           health_status: "unhealthy",
           ssh_fail_count: newSshFailCount,
           last_health_check: new Date().toISOString(),
+          // Option B (defense-in-depth): null ip_address at failed-flip so the
+          // auto-migration resurrection probe at :2602 (which filters
+          // .not("ip_address", "is", null)) can never re-select this row.
+          // The IP at this point is either dead or about to be released back
+          // to Linode's pool — letting it sit in the DB is the precondition
+          // for the IP-reuse resurrection bug (a different live Linode getting
+          // this IP, responding 200 to our auth-less /health probe, and us
+          // resurrecting the dead row to point at someone else's machine).
+          ip_address: null,
         })
         .eq("id", vm.id);
 
@@ -2410,6 +2419,8 @@ else:
               status: "failed" as const,
               health_status: "unhealthy",
               ssh_fail_count: newCount,
+              // Option B (defense-in-depth): see comment at :336. Same rationale.
+              ip_address: null,
             })
             .eq("id", rvm.id);
 
