@@ -67,6 +67,10 @@ export async function POST(req: NextRequest) {
         .update({
           status: "failed" as const,
           health_status: "unhealthy",
+          // Per eec2cf95: null IP at failed-flip so health-check's recovery
+          // probe (route.ts:2419+) can never re-select this row after Linode
+          // reuses its IP for a different machine.
+          ip_address: null,
         })
         .eq("id", d.id);
     }

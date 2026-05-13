@@ -1,0 +1,29 @@
+-- Relax ip_address NOT NULL constraint on instaclaw_vms.
+--
+-- Background: commit eec2cf95 ("fix(vm-lifecycle): null ip_address at
+-- status='failed' flip — kill IP-reuse resurrection") added `ip_address: null`
+-- to every status='failed' flip site as a defense against the health-check
+-- recovery probe (route.ts:2419+) re-selecting a row whose Linode IP got
+-- reassigned to a different user.
+--
+-- Discovered during the IP-reuse-defense completion sweep on 2026-05-13:
+-- the column has a NOT NULL constraint, so every UPDATE that includes
+-- `ip_address: null` is being rejected by PostgreSQL atomically. The whole
+-- compound update rolls back — terminal status doesn't flip, assigned_to
+-- doesn't clear, the row stays "active" while the Linode is dead.
+--
+-- This is the same atomicity bug class that 892826f3's compound update hit
+-- with last_assigned_to (fixed in da3e27eb by splitting writes). For
+-- ip_address, the structural fix is to relax the NOT NULL constraint —
+-- a terminated VM legitimately has no IP, and the candidate queries
+-- (replenish-pool, reconcile-fleet, etc.) already filter terminal status
+-- so they won't read null-IP rows anyway.
+--
+-- Risk: any code path that reads ip_address from a terminal-status row
+-- without null-checking would NPE. Since terminal rows are filtered out
+-- of every "active VM" query, this should be safe. New code should always
+-- treat ip_address as nullable.
+--
+-- Idempotent (the DROP NOT NULL is a no-op if already nullable).
+
+ALTER TABLE instaclaw_vms ALTER COLUMN ip_address DROP NOT NULL;

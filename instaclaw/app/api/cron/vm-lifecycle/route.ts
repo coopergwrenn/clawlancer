@@ -366,6 +366,9 @@ export async function GET(req: NextRequest) {
                   health_status: "unhealthy",
                   assigned_to: null,
                   assigned_at: null,
+                  // Per eec2cf95: null IP at terminal flip — recovery probe
+                  // can never re-select this row after Linode reuses its IP.
+                  ip_address: null,
                 })
                 .eq("id", dbRow.id);
               if (dbRow.assigned_to) {
@@ -919,6 +922,10 @@ export async function GET(req: NextRequest) {
             health_status: "unhealthy",
             assigned_to: null,
             assigned_at: null,
+            // Per eec2cf95: null IP at terminal flip (the Linode was just
+            // deleted in Step 2; nulling here also disqualifies the row from
+            // any future recovery probe in case Linode reuses the IP).
+            ip_address: null,
           })
           .eq("id", vm.id);
         if (vm.assigned_to) {
@@ -1016,6 +1023,9 @@ export async function GET(req: NextRequest) {
               // for the rare case where a half-assigned VM got trimmed.
               assigned_to: null,
               assigned_at: null,
+              // Per eec2cf95: null IP at terminal flip (Linode was just
+              // deleted; nulling disqualifies the row from recovery probes).
+              ip_address: null,
             })
             .eq("id", vm.id);
           report.pass2_pool_trimmed++;

@@ -1045,6 +1045,10 @@ else:
                   health_status: "unhealthy",
                   assigned_to: null,
                   assigned_at: null,
+                  // Per eec2cf95: null IP at terminal flip so the recovery
+                  // probe (route.ts:2419+) can never re-select this row after
+                  // Linode reuses its IP for a different machine.
+                  ip_address: null,
                 })
                 .eq("id", g.id);
               if (g.assigned_to) {
