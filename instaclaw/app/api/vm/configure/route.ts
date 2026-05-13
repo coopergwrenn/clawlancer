@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { configureOpenClaw, migrateUserData, testProxyRoundTrip, setupTLSBackground, setupXMTP, auditVMConfig } from "@/lib/ssh";
+import { configureOpenClaw, connectSSH, migrateUserData, testProxyRoundTrip, setupTLSBackground, setupXMTP, auditVMConfig } from "@/lib/ssh";
 import { validateAdminKey, decryptApiKey } from "@/lib/security";
 import { decryptBankrKey } from "@/lib/bankr-encryption";
 import { logger } from "@/lib/logger";
@@ -386,6 +386,104 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Channel-credential validator (Rule 35 — extends Rule 33) ──
+    //
+    // Background: today's khomenko89 ghost-state incident (12-day wait). Pass 0
+    // orphan-recovery in process-pending called configure for a user whose
+    // pending_users row had been swept by Pass 4 before Pass 1 could assign.
+    // The configure ran end-to-end without errors — gateway came up, /health=200,
+    // skill_telegram silently "succeeded" because Pass 0 doesn't pass a
+    // telegram_bot_token (it derives defaults from the subscription, but the
+    // subscription has no bot to derive). Result: channels_enabled=["telegram"]
+    // on the row, channels.telegram.botToken="" on disk. No retry pass caught
+    // it: Pass 2 filters health_status="configure_failed" but health-check had
+    // flipped this VM to "healthy" the moment /health=200 returned; autoConfigure
+    // filters configure_attempts==0 but attempts hit 1; gatewayRetried filters
+    // gateway_url IS NULL but gateway_url was set. khomenko89 sat as a "ghost"
+    // for 12 days. Cooper saw "an agent that forgets you after one error is not
+    // an agent" — the moral equivalent is "an agent that's deployed but can't
+    // receive messages is not an agent either."
+    //
+    // The structural cause is that configureOpenClaw considers gateway-up =
+    // success, even when graded capabilities (channel credentials, partner
+    // overlays, etc.) silently fail. The Rule 33 gate added 2026-05-12 catches
+    // dispatch_deploy but not channel-credential gaps.
+    //
+    // This validator SSH-reads openclaw.json and verifies that every channel
+    // listed in `channels` has its credential field populated. Any missing
+    // credential is pushed to result.partialFailures with critical=true so the
+    // existing Rule 33 gate below converts the row to status='configure_failed',
+    // and the existing retry+release machinery (Pass 2 / 2c / MAX_CONFIGURE_
+    // ATTEMPTS release-and-reassign) engages normally.
+    //
+    // Credential map (extend when new channels are added):
+    //   telegram  → channels.telegram.botToken
+    //   discord   → channels.discord.botToken
+    //
+    // SSH failure inside the validator is non-fatal — we'd rather let configure
+    // complete on a transient probe error than falsely fail a healthy VM.
+    if (channels.length > 0) {
+      const channelCredentialKey: Record<string, string> = {
+        telegram: "botToken",
+        discord: "botToken",
+      };
+      try {
+        const validatorSsh = await connectSSH(vm);
+        try {
+          const probePy =
+            "import json,sys\n" +
+            "try: d=json.load(open('/home/openclaw/.openclaw/openclaw.json'))\n" +
+            "except Exception: print('{}'); sys.exit(0)\n" +
+            `wanted=${JSON.stringify(channels.map((ch) => [ch, channelCredentialKey[ch] ?? "botToken"]))}\n` +
+            "out={}\n" +
+            "for ch,field in wanted:\n" +
+            "  v=(d.get('channels',{}).get(ch,{}) or {}).get(field) or ''\n" +
+            "  out[ch]=bool(str(v).strip())\n" +
+            "print(json.dumps(out))";
+          const probe = await validatorSsh.execCommand(
+            `python3 -c ${JSON.stringify(probePy)}`,
+          );
+          let creds: Record<string, boolean> = {};
+          try {
+            creds = JSON.parse((probe.stdout || "").trim() || "{}");
+          } catch {
+            // Probe output unparseable — skip validation (don't fail configure
+            // on an unparseable probe; the SSH session was probably degraded).
+          }
+          for (const ch of channels) {
+            if (creds[ch] === false) {
+              const credField = channelCredentialKey[ch] ?? "botToken";
+              result.partialFailures.push({
+                step: `channel_${ch}_credential_missing`,
+                error:
+                  `channels.${ch}.${credField} is missing/empty on disk despite ` +
+                  `channels_enabled=[${ch}]. Most common cause: Pass 0 orphan-recovery ` +
+                  `path called configure without a bot token. Without this check the ` +
+                  `VM would be marked healthy and the user would never receive messages.`,
+                critical: true,
+              });
+              logger.error("Channel-credential validator: missing credential", {
+                route: "vm/configure",
+                vmId: vm.id,
+                userId,
+                channel: ch,
+                credentialField: credField,
+              });
+            }
+          }
+        } finally {
+          validatorSsh.dispose();
+        }
+      } catch (validatorErr) {
+        logger.warn("Channel-credential validator: SSH probe failed (non-fatal)", {
+          route: "vm/configure",
+          vmId: vm.id,
+          userId,
+          error: validatorErr instanceof Error ? validatorErr.message : String(validatorErr),
+        });
+      }
+    }
+
     // ── Critical-failure gate ──
     // configureOpenClaw collects every silent-catch failure into result.partialFailures
     // (each tagged critical: true | false). Before today (2026-04-28) those just got
@@ -466,6 +564,9 @@ export async function POST(req: NextRequest) {
           telegram_bot_token: null,
           telegram_bot_username: null,
           telegram_chat_id: null,
+          // Per eec2cf95: null IP at failed-flip so the row can never be
+          // selected by health-check's recovery probe after Linode IP reuse.
+          ip_address: null,
         }).eq("id", vm.id);
         await supabase.from("instaclaw_users").update({
           deployment_lock_at: null,
@@ -869,6 +970,9 @@ export async function POST(req: NextRequest) {
               // Rule 34: clear per-user channel state so the next assignee
               // doesn't inherit the prior user's Telegram identity from the DB.
               telegram_bot_token: null, telegram_bot_username: null, telegram_chat_id: null,
+              // Per eec2cf95: null IP at failed-flip so the row can never be
+              // selected by health-check's recovery probe after Linode IP reuse.
+              ip_address: null,
             }).eq("id", failedVm.id);
             await sb.from("instaclaw_users").update({
               onboarding_complete: false, deployment_lock_at: null,
