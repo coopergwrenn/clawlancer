@@ -1424,3 +1424,187 @@ Rule 10 ("verify every config set; never `|| true`-suppress") was specifically w
 - **Long-term fix (this P1)**: move `VM_MANIFEST` from a `.ts` file imported at route-bundle time to a `.json` file (`lib/vm-manifest.json`) loaded at request time via `readFileSync` or `import` with `assert { type: 'json' }`. JSON files are not subject to nft trace caching the same way TS imports are — they're loaded fresh on each request (or at least each cold-start, which on Vercel is frequent). Trade-off: slightly more boilerplate to type-check the JSON shape, but the security/correctness gain of "fresh manifest on every cron tick" is worth it.
 - **Alternate approach to consider**: keep `VM_MANIFEST` in TS but expose `manifest.version` + a hash of `configSettings` via a runtime-loaded debug field, and have the cron route LOG these on every fire. A monitoring dashboard could detect "manifest version did not advance even after a deploy" — reactive but observable. Less elegant than the JSON move but lower-effort.
 - **Detection wishlist**: a daily/hourly audit job that picks 5 random VMs at the current `VM_MANIFEST.version`, SSH-probes their on-disk config, and compares against the manifest's expected `configSettings`. Alerts on any drift. Catches lying-DB regressions in <24h instead of waiting for someone to notice.
+
+---
+
+## Fleet Health: Root Causes & Rules
+
+> Authored after the 2026-05-13 fleet-catch-up session. The catch-up moved 14 VMs to cv=95 cleanly but left ~46% of the fleet still behind. Investigation found that "stuck" is rarely a single bug — it's a small set of structural failures, each repeated across many VMs, that hold cv hostage forever. This section documents what's actually broken in the reconciler's ability to keep the fleet current, with exact code-path citations and rules for every recurrence path.
+
+### Definition of "fleet healthy"
+
+The fleet is **healthy** when:
+
+```
+count(instaclaw_vms WHERE health_status='healthy' AND status='assigned' AND config_version < VM_MANIFEST.version) == 0
+```
+
+That is: **every actively-serving VM (healthy + assigned, the population the user expects to work) is at the current manifest version.** Suspended and hibernating VMs are intentionally offline and self-resolve via reactivation; they don't count toward fleet health.
+
+When this number is non-zero, **at least one paying customer's VM is silently behind**. The reconciler's job is to drive this number to zero and keep it there.
+
+Acceptable error classes (do NOT block cv bump):
+- Optional monitoring sidecars (node_exporter)
+- Partner-skill installs that depend on missing per-VM credentials (private repos)
+- Sidecar service heal steps for non-customer-facing daemons
+
+Unacceptable error classes (MUST block cv bump):
+- Any failure that means the gateway will run with stale config on next restart
+- Any failure where on-disk state diverges from what the manifest specifies
+- Any data-integrity miss (config-set returned success but value didn't change)
+
+### Why ~46% of the fleet was behind after a "successful" catch-up
+
+The catch-up's filter selects `cv ≤ MANIFEST.version - minGap` with `minGap=5` by default — so VMs at cv 91-94 (close-but-not-current) are excluded. The catch-up was designed for the cv=82 stuck cohort; cv 91-94 were assumed to converge naturally via Vercel cron. They don't, because:
+
+1. The reconciler's pushFailed gate (route.ts:280) holds cv bump on ANY error
+2. Several deterministic failures recur on every cron tick: disk full, dead sidecars, missing credentials
+3. The cron has no escalation, no exponential backoff, no failure-mode classification
+
+So the same VMs keep failing the same step every 3 minutes forever. **Without operator intervention or a structural fix, they never converge.**
+
+### Root cause 1: ENOSPC swallowed as "config-set silent failure"
+
+**Evidence**: vm-788, vm-842, vm-043 (paying customers including ellingsonjoel@gmail.com, shelpinc@gmail.com). Disk at 100%. `openclaw config set agents.defaults.bootstrapMaxChars 40000` returns exit 1 with `ENOSPC: no space left on device`. The reconciler reports "config-set silent failure: bootstrapMaxChars expected=\"40000\" actual=\"35000\"" — losing the actual ENOSPC error entirely.
+
+**Code path**: `lib/vm-reconcile.ts:1327-1364`. The non-strict `stepConfigSettings`:
+```ts
+// Line 1327 — bulk run all sets, RETURN VALUE IGNORED:
+await ssh.execCommand(`${NVM_PREAMBLE} && ${fixCommands}`);
+
+// Line 1334 — verify each key by reading it:
+const verifyResult = await ssh.execCommand(`${NVM_PREAMBLE} && ${verifyCommands}`);
+
+// Line 1364 — when verify mismatches, report as "silent failure":
+result.errors.push(`config-set silent failure: ${key} expected=... actual=...`);
+```
+
+The actual stderr from the `openclaw config set` calls (which would have shown ENOSPC) is **discarded** by `ssh.execCommand` because we don't read `.stderr` and we don't check `.code`. Then verify-after-set sees the stale value and reports it as if it's a mystery — but the mystery is solved upstream.
+
+Also a related disk-leak issue: the `openclaw config set` flow uses atomic write via a `.tmp` file. On ENOSPC, the `.tmp` file is left behind (0 bytes). vm-788 has 40+ zero-byte `openclaw.json.NNNNNN.UUID.tmp` files accumulating since May 8.
+
+**RULE 36 (Reconciler must surface upstream errors, not invent downstream ones)**: when `stepConfigSettings` (or any verify-after-set step) detects a value mismatch, it MUST report the actual stderr/exit-code from the upstream WRITE operation. Push the ENOSPC, permission-denied, or schema-rejection error verbatim. "Silent failure" is a lie — these failures are always loud at the call site; we're just throwing the volume away. Per-key strict-mode path (`lib/vm-reconcile.ts:1370+`) already does this correctly; the non-strict path must do the same or call into the strict implementation.
+
+**RULE 37 (Disk-full is a customer-down condition; surface it loudly)**: any `ssh.execCommand` whose stderr contains `ENOSPC` or `No space left on device` MUST short-circuit the reconcile, push a P0 error with the full path that ran out, AND emit an admin alert. The customer's gateway is functional now but will die at the next config-mutating operation. We treat this as the highest priority.
+
+**RULE 38 (Atomic-write tmp files must self-clean on ENOSPC)**: any code that writes via `path.tmp + rename` (including openclaw config set) must `rm -f <path>.tmp` in an EXIT trap. Otherwise repeated ENOSPC retries accumulate zero-byte files indefinitely, eventually exhausting inodes even when bytes are freed. The 40+ tmp files on vm-788 are the proof. This is in openclaw itself, not our reconciler — file an upstream issue and add a periodic cleanup cron as defense-in-depth.
+
+### Root cause 2: gateway-watchdog FAILED holds cv across the cv=91 cohort
+
+**Evidence**: 3 of 4 randomly-probed cv=91 VMs (vm-046, vm-842, vm-043) show `systemctl --user is-active gateway-watchdog == failed`. The `stepGatewayWatchdogTimer` reconciler step (`lib/vm-reconcile.ts:477`, called as "heal-gateway-watchdog") tries to start the watchdog. When the service is permanently failed (unit broken, dependency missing, or whatever made it fail in the first place), the step pushes to `result.errors` every cycle, blocking cv bump.
+
+The watchdog is NOT customer-facing. It's a sidecar that detects gateway hangs. Its failure does not prevent the gateway from serving messages. But the reconciler treats it as critical.
+
+**Code path**: `lib/vm-reconcile.ts:477` (orchestrator call site), step body deeper. The step's error path pushes to `result.errors` unconditionally; the cron route's `pushFailed` gate then refuses to bump cv.
+
+**RULE 39 (Distinguish critical-step failures from optional-sidecar failures)**: every reconciler step must declare its **criticality class** when pushing to result. Two classes:
+- `result.errors` (critical) — only for failures that mean the gateway will be unhealthy or run with wrong state. cv bump holds.
+- `result.warnings` (optional) — for monitoring sidecars, optional skills, dependency-missing recoverable degradation. cv bump proceeds; warnings get surfaced separately.
+
+Steps that MUST be reclassified to warnings: stepGatewayWatchdogTimer, stepNodeExporter, optional-skill installs (edge-esmeralda when partner not edge_city, etc.), node_exporter port-did-not-open. None of these affect what the user sees when they message their agent.
+
+Steps that stay critical: stepConfigSettings, stepFiles (when target is SOUL.md/MEMORY.md/auth-profiles.json), stepAuthProfiles, stepGatewayRestart health verify, stepExecStartAlignment.
+
+### Root cause 3: Lying-DB-LOW — cv stuck while disk state is correct
+
+**Evidence**: vm-904 (paying) has v95 keys SET on disk (`messages.ackReaction=👀`, `channels.telegram.streaming.mode=partial`) but `config_version=91` in the DB. Some OTHER step's failure is holding cv hostage even though the user-facing config is correct.
+
+This is the inverse of the classic lying-DB pattern (Rule 23 was about lying-DB-HIGH: cv claims current but state is stale). Lying-DB-LOW: cv claims stale but state is actually current. From the user's perspective the VM works; from the DB the VM looks stuck.
+
+**Risk**: monitoring/dashboards that check cv distribution under-report fleet health. Operations spend cycles trying to "fix" VMs that don't need fixing.
+
+**RULE 40 (Reconciler must explain WHICH step is blocking cv bump)**: when a reconcile produces `result.errors` and the cron route holds cv bump, log a single structured line on EVERY tick listing the specific step name(s) that errored, with full error message. Format: `cv-bump-blocked vm_id=X cv=Y steps_failed=[stepX,stepY] errors=[<first 200 chars each>]`. Without this, operators can't tell why a VM is stuck — only that it is. The current `result.errors[]` is dumped only at end-of-reconcile via the route handler; needs to be searchable per-VM, per-step.
+
+### Root cause 4: VM provisioned with assigned_to but NULL gateway_token
+
+**Evidence**: vm-918 (khomenko89@gmail.com, paying). Created 2026-05-09. `status='assigned'`, `assigned_to` is set, `gateway_token = NULL`. cv=0 since creation. Cohort sweep confirms only 1 VM in this state, but it's a real paying customer whose agent has never worked.
+
+**Code path**: signup flow → `lib/ssh.ts:configureOpenClaw()` is supposed to generate gateway_token and update DB. If `configureOpenClaw()` fails OR if the assignment happens BEFORE configure completes, you get this state.
+
+**RULE 41 (assigned_to and gateway_token are atomic invariants)**: a VM with `status='assigned'` AND `assigned_to NOT NULL` MUST have `gateway_token NOT NULL`. Either both are set or neither. The assignment-and-configure operation must be atomic from the DB's perspective. Practically:
+- `configureOpenClaw` must complete BEFORE the DB row's status flips to 'assigned'
+- OR a periodic audit cron detects this state and either completes configure or unassigns
+
+Defense-in-depth: a DB constraint or trigger that enforces `(status='assigned' AND assigned_to IS NOT NULL) IMPLIES gateway_token IS NOT NULL`. Trip the trigger on the failed insert path.
+
+### Root cause 5: stepNodeExporter blocks cv on optional monitoring failure
+
+**Evidence**: vm-625 (paying). `node_exporter` service is `inactive (dead)`, port 9100 not listening, no journal entries (service has not run). Reconciler reports `node_exporter: port did not open ()` — empty parens because the install script outputs nothing on this failure mode.
+
+This is documented in CLAUDE.md as P1-2, but the broader principle applies: **node_exporter is a Prometheus metrics exporter. It has zero impact on customer experience. Holding cv bump because metrics are broken is wrong.** This same logic applies to other monitoring sidecars (heartbeat, watchdogs, etc.).
+
+**Code path**: `lib/vm-reconcile.ts` stepNodeExporter pushes a `PORT_FAIL` error to `result.errors` when port 9100 doesn't respond after `sleep 5`. Per Rule 39 above, this should be `result.warnings`.
+
+### Root cause 6: Skill-clone auth failure on private repos
+
+**Evidence**: vm-777 (paying edge_city). `git clone https://github.com/edge-city/edge-esmeralda-skill` returns `fatal: could not read Username for 'https://github.com'`. The edge-esmeralda repo is private; the VM has no github auth (no .netrc, no SSH deploy key in user's repo-auth, no PAT).
+
+Other edge_city VMs (vm-050, vm-354, etc.) have this skill installed — they were configured at a time when auth was available, or via tarball. vm-777 was tagged edge_city LATER and stepSkills' git-clone path can't authenticate.
+
+**Code path**: `lib/ssh.ts:installSkill()` or wherever `git clone` runs in stepSkills. No fallback for private-repo failure.
+
+**RULE 42 (Private-repo skill installs must have a fallback)**: any skill that lives in a private repo MUST be installed via either (a) a tarball bundled in the manifest, (b) a deploy-token stored as a VM env var, or (c) a fallback to a public mirror. Bare `git clone` with no auth is guaranteed to fail on private repos and is not a defensible install path. Until this is fixed, the edge-overlay step must be in the optional-warnings class (Rule 39), not the critical-errors class.
+
+### Root cause 7: Gateway cold-boot timing — 120s wait insufficient for 8-plugin VMs
+
+**Evidence**: vm-901 (paying dkatzg@gmail.com). reconcileVM completed all 55 fixes successfully, then stepGatewayRestart timed out waiting for /health=200 after 120s. The gateway actually came up shortly after the timeout — the audit ran later and saw it healthy. cv held due to the timeout error.
+
+Edge_city VMs load 8 plugins (acpx, bonjour, browser, device-pair, memory-core, phone-control, talk-voice, telegram). Cold boot can exceed 120s especially with memory-snapshot restore. The current `for (let attempt = 0; attempt < 24; attempt++)` loop in stepGatewayRestart caps at 24×5s=120s.
+
+**Code path**: `lib/vm-reconcile.ts:3260+` stepGatewayRestart's health-check loop.
+
+**RULE 43 (Health-check wait must scale with plugin count)**: stepGatewayRestart should query `~/.openclaw/openclaw.json` for the plugin count BEFORE the restart and adjust the wait budget. Suggested: `wait_seconds = max(120, 30 + plugin_count * 15)`. So 2 plugins = 120s (current), 8 plugins = 150s (would have caught vm-901). Alternative: poll until `[gateway] ready` appears in the journal, not just /health=200.
+
+### Systemic findings (answers to Cooper's questions)
+
+**Why doesn't Vercel cron keep the fleet 100% current?**
+1. Same VMs fail the same deterministic step every 3 min, indefinitely. No escalation.
+2. Optional-step failures (Rules 39, 42) erroneously hold cv bump on critical-path VMs.
+3. Strict-mode 180s deadline kills slow VMs before all steps complete; cv held with partial state.
+4. Vercel-nft cache (P1-4) can serve stale manifest version → cron processes against wrong target.
+5. Lying-DB-LOW (Root cause 3): VMs are actually current but the DB says they're not.
+
+**Is config_version reliable?**
+No. Multiple ways it lies:
+- Lying-DB-HIGH (Rule 23): cv reports current but disk state is stale. Caused by `result.fixed.push()` without verify-after-set.
+- Lying-DB-LOW (Root cause 3): cv reports stale but disk state is current. Caused by optional-step failures holding cv bump.
+- Stale-cache (P1-4): cron bumps cv to whatever its bundled-manifest version says, not the true current.
+
+The reliable signal is post-reconcile SSH probe of actual disk + service state. The current DB cv should be treated as "best-effort latest reconcile attempt result," NOT as truth about VM state.
+
+**Are suspended VMs masking failures?**
+Likely. The suspend-check cron marks VMs as suspended based on user inactivity or non-payment. But a crash-looping gateway looks identical to an inactive user from outside (no recent activity). Audit follow-up: scan `health_status='suspended'` VMs for high NRestarts pre-suspension. If many crash-looped before being suspended, the suspend-check cron is sweeping failures under the rug.
+
+**What is the retry/backoff behavior on step failure?**
+Implicit retry every 3 min via the next cron tick. No exponential backoff. No failure-mode classification. No quarantine on persistent failure. A VM that fails the same step 1000 times in a row gets touched 1000 times, generates 1000 alerts (when alerts exist at all), and nothing converges.
+
+### Structural fixes still needed (in priority order)
+
+Each of these is a P1 owned by the next engineer to touch this code area. Order is by blast radius × ease.
+
+1. **Implement Rule 39 step classification** — `result.errors` vs `result.warnings`. Reclassify stepNodeExporter, stepGatewayWatchdogTimer, optional-skill installs to warnings. ~30 LOC change in vm-reconcile.ts + route.ts. Single biggest unblock for the fleet.
+2. **Implement Rule 36 in stepConfigSettings non-strict path** — propagate stderr from bulk set, not just verify-mismatch. ~10 LOC. Surfaces ENOSPC and similar errors so operators can act.
+3. **Implement Rule 37 ENOSPC detection** — short-circuit + alert when any SSH command stderr contains "No space left". Defense-in-depth; one new helper function.
+4. **Implement Rule 40 cv-bump-blocked logging** — structured log line per VM per blocking step. Makes the fleet-health dashboard buildable.
+5. **Implement Rule 41 atomicity invariant** — DB trigger + audit cron for `assigned_to AND gateway_token` invariant.
+6. **Implement Rule 43 dynamic cold-boot wait** — query plugin count, scale the timeout.
+7. **Implement Rule 42 skill-install auth** — for private-repo skills, ship tarball in manifest. Affects edge_city onboarding.
+8. **Disk-fill prevention** — periodic cron to detect VMs above 90% disk, alert + clean. The 100%-disk VMs would have been caught hours/days earlier with monitoring.
+9. **Vercel-nft cache migration to JSON manifest** (P1-4 already tracked) — eliminates a class of stale-bundle bugs.
+
+### Health metric to track
+
+In the admin dashboard, surface:
+```
+fleet_health_actionable = count(health_status='healthy' AND status='assigned' AND cv < manifest.version)
+```
+
+Target: 0. Alert at any non-zero value persistent for >30 min.
+
+Companion metric:
+```
+fleet_stuck_root_cause = histogram by step-that-errored from the Rule 40 log line
+```
+
+Surfaces "stepGatewayWatchdogTimer is currently blocking 18 paying customers" instead of just "18 VMs stuck."
+
