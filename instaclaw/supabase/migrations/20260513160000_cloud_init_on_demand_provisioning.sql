@@ -154,4 +154,25 @@ COMMENT ON COLUMN instaclaw_circuit_breakers.respawn_paused_until IS
   'Optional auto-clear timestamp. If NULL when tripped, breaker stays tripped until manual reset. If NOT NULL, code may auto-clear when NOW() > respawn_paused_until.';
 
 
+-- ── Enable RLS on the new tables ────────────────────────────────────────
+--
+-- Both writers and readers are server-side (createUserVM, callback endpoint,
+-- lib/respawn-vm.ts), so they use SUPABASE_SERVICE_ROLE_KEY — which bypasses
+-- RLS. Enabling RLS with no policies = "deny by default" for anon and
+-- authenticated, which is correct: no browser/client code touches these
+-- tables. Without RLS, the anon key could read cloud_init_log_excerpt
+-- (leaking VM names + user IDs + setup failure tails via PostgREST) and
+-- the authenticated key could trip the respawn breaker, DoS'ing the
+-- provisioning rate limiter — both real attack surfaces.
+--
+-- Already applied in production on 2026-05-13 via Supabase SQL Editor's
+-- "Run and enable RLS" button. Duplicated into this migration file so
+-- future fresh-environment applies (preview branches, new dev DBs) match
+-- production state. ALTER ... ENABLE ROW LEVEL SECURITY is idempotent —
+-- re-runs on already-enabled tables are silent no-ops.
+
+ALTER TABLE instaclaw_cloud_init_outcomes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE instaclaw_circuit_breakers    ENABLE ROW LEVEL SECURITY;
+
+
 COMMIT;
