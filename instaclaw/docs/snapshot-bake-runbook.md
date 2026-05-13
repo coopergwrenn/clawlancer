@@ -67,6 +67,42 @@ ls scripts/_install-gbrain-on-vm.ts scripts/install-gbrain.sh
 ls scripts/_prebake-cleanup.sh scripts/_postbake-validation.ts
 ```
 
+### §0.5.1 — Repo + env-var alignment gates (per bake-readiness audit 2026-05-13)
+
+These prevent the most common operator-error class: baking against stale
+reconciler code or unintentionally pointing at the wrong source snapshot.
+
+```bash
+# Gate 1 — local HEAD matches origin/main, otherwise the reconcile in §2.2
+# runs against stale code. CLAUDE.md Rule 12 made this discipline mandatory
+# after the 2026-04-30 Vercel-vs-local incident.
+git fetch origin main --quiet
+HEAD_SHA=$(git rev-parse HEAD)
+MAIN_SHA=$(git rev-parse origin/main)
+if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
+  echo "ABORT: HEAD ($HEAD_SHA) != origin/main ($MAIN_SHA)"
+  echo "Run: git pull --ff-only origin main"
+  exit 1
+fi
+echo "✓ HEAD aligned with origin/main"
+
+# Gate 2 — LINODE_SNAPSHOT_ID env matches the source snapshot we expect
+# to bake FROM. Defends against an operator inadvertently running a bake
+# against a different baseline because their .env.local diverged.
+EXPECTED_SOURCE_SNAPSHOT="private/38575292"   # v79; bump per §0 of this runbook
+if [ "${LINODE_SNAPSHOT_ID:-unset}" != "$EXPECTED_SOURCE_SNAPSHOT" ]; then
+  echo "ABORT: LINODE_SNAPSHOT_ID=${LINODE_SNAPSHOT_ID:-unset}"
+  echo "       expected $EXPECTED_SOURCE_SNAPSHOT (the current production snapshot)"
+  echo "       check instaclaw/.env.local"
+  exit 1
+fi
+echo "✓ LINODE_SNAPSHOT_ID matches expected source"
+```
+
+If either gate fails, fix and re-run. **Do not bypass these — operator
+forgetfulness about which branch is "current" caused two v66/v67-era
+fleet drift incidents already.**
+
 Read the OpenClaw changelog from `OPENCLAW_PINNED_VERSION` in `lib/ssh.ts` (currently `2026.4.26`). If you're bumping past that for this bake, the §0 row above must change first AND the OpenClaw Upgrade Playbook in `CLAUDE.md` must be followed BEFORE this runbook. Don't bump both at the same time.
 
 ## §1 — Provision the bake VM
@@ -241,10 +277,36 @@ ls -la ~/.openclaw/workspace/ | head -20
 
 # Skills (should NOT have edge-esmeralda yet — partner-gated)
 ls ~/.openclaw/skills/
+
+# NODE_PATH alignment check (audit 2026-05-13, Discovery #1)
+# stepNodeUpgrade may have bumped the active Node version during reconcile.
+# If prctl-subreaper.conf still points at the OLD path, the next gateway
+# restart will MODULE_NOT_FOUND on --require prctl-subreaper. The reconciler's
+# stepExecStartAlignment (c4b84156, 2026-05-13) is the permanent guard; this
+# is the bake-time gate.
+NPM_ROOT=$(npm root -g)
+DROPIN_PATH=$(grep -oE 'NODE_PATH="[^"]+"' ~/.config/systemd/user/openclaw-gateway.service.d/prctl-subreaper.conf | sed 's/NODE_PATH="//;s/"$//')
+if [ "$NPM_ROOT" = "$DROPIN_PATH" ]; then
+  echo "✓ prctl-subreaper.conf NODE_PATH matches npm root -g ($NPM_ROOT)"
+else
+  echo "✗ NODE_PATH MISMATCH — drop-in=$DROPIN_PATH live=$NPM_ROOT — REBAKE FAIL"
+fi
+
+# Rule 32 — messages.* keys must be HOT-RELOADED, not just on disk.
+# The disk-write succeeds even when the running gateway closure-captured an
+# older value. journal showing "hot reload applied (messages.X)" is the only
+# proof the gateway is actually using the new value.
+journalctl --user -u openclaw-gateway --since "20 minutes ago" --no-pager \
+  | grep -E "hot reload applied \(messages\.(ackReactionScope|ackReaction|removeAckAfterReply|statusReactions)" \
+  | wc -l
+# Expect ≥4 (one per messages.* key written during reconcile). If 0, the
+# gateway needs a real restart before the bake captures runtime state.
 EOF
 ```
 
-**Gate**: `openclaw 2026.4.26`, `node v22.22.2`, `TasksMax=120`, `gcc` present, 9 ack-ux keys correct, `bootstrapMaxChars=40000`, no `edge-esmeralda` skill. If any fail → see §rollback.
+**Gate**: `openclaw 2026.4.26`, `node v22.22.2`, `TasksMax=120`, `gcc` present, 9 ack-ux keys correct, `bootstrapMaxChars=40000`, no `edge-esmeralda` skill, NODE_PATH alignment ✓, messages.* hot-reload journal lines ≥4. If any fail → see §rollback.
+
+The expanded `_postbake-validation.ts` (per audit 2026-05-13) automates this whole verify block at §5 — but running these spot checks BEFORE invoking the full validation gives you a fast fail signal if something obvious is wrong.
 
 ## §3 — Install gbrain (manual; not yet reconciler-managed)
 

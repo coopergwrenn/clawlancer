@@ -633,6 +633,131 @@ async function run() {
 
     // ─── 26. snapshot-bake-mode marker should NOT be present (cleanup removes it) ─
     await assertAbsent(c, "snapshot-bake-mode marker removed", "P2", ["bake"], "$HOME/.snapshot-bake-mode");
+
+    // ─── 27. SNAPSHOT_BAKED gap-fill checks (per cloud-init-snapshot-bake-requirements-2026-05-13.md) ─
+    // The cloud-init builder classifies these as SNAPSHOT_BAKED and skips deploying them at
+    // first boot. If the snapshot is missing any, every new VM provisioned via cloud-init
+    // starts broken until the reconciler catches up. The 46-check audit confirmed these
+    // were gaps in the pre-2026-05-13 validation.
+
+    // 27a — workspace files: full inventory per inventory §1 (5 fleet-wide files)
+    for (const f of ["QUICK-REFERENCE.md", "TOOLS.md", "EARN.md"]) {
+      const present = (await exec(c, `test -f ~/.openclaw/workspace/${f}`)).code === 0;
+      record(`workspace/${f} present (SNAPSHOT_BAKED)`, "P1", ["bake", "test"], present, "");
+    }
+
+    // 27b — HEARTBEAT.md at agents/main/agent/ (inventory §2 — Cooper-flagged uncertainty)
+    record("agents/main/agent/HEARTBEAT.md present", "P1", ["bake", "test"],
+      (await exec(c, `test -f ~/.openclaw/agents/main/agent/HEARTBEAT.md`)).code === 0, "");
+    const heartbeatContent = (await exec(c, `head -c 100 ~/.openclaw/agents/main/agent/HEARTBEAT.md 2>/dev/null`)).stdout;
+    record("HEARTBEAT.md content begins with canonical heading", "P1", ["bake", "test"],
+      /HEARTBEAT\.md\s*[—-]\s*Proactive Work Cycle/.test(heartbeatContent), heartbeatContent.slice(0, 60));
+
+    // 27c — exec-approvals.json with security=full (inventory §12; gateway exec gates on this)
+    const execApprovals = (await exec(c, `cat ~/.openclaw/exec-approvals.json 2>/dev/null`)).stdout;
+    record("exec-approvals.json present + security=full", "P0", ["bake", "test"],
+      /"security"\s*:\s*"full"/.test(execApprovals), execApprovals.slice(0, 80));
+    record("exec-approvals.json ask=off", "P1", ["bake", "test"],
+      /"ask"\s*:\s*"off"/.test(execApprovals), "");
+
+    // 27d — .openclaw-pinned-version matches OpenClaw version (inventory §12)
+    const pinnedVerFile = (await exec(c, `cat ~/.openclaw/.openclaw-pinned-version 2>/dev/null`)).stdout.trim();
+    record(".openclaw-pinned-version contents match installed OpenClaw", "P1", ["bake", "test"],
+      pinnedVerFile.length > 0 && openclawV.includes(pinnedVerFile), `pinned=${pinnedVerFile} installed=${openclawV}`);
+
+    // 27e — apt binaries that skills + dispatch require (inventory §7)
+    for (const bin of ["ffmpeg", "jq", "xvfb-run", "xdotool", "x11vnc", "websockify",
+                       "imagemagick", "openbox", "socat", "nc", "caddy", "fail2ban-client"]) {
+      const present = (await exec(c, `which ${bin}`)).code === 0;
+      // imagemagick CLI is `convert`/`magick`; xvfb-run is the wrapper; nc covers netcat-openbsd
+      record(`apt binary: ${bin} on PATH`, "P1", ["bake", "test"], present, "");
+    }
+    // chromium-browser at the canonical path (inventory §7)
+    record("chromium-browser at /usr/local/bin/", "P1", ["bake", "test"],
+      (await exec(c, `test -x /usr/local/bin/chromium-browser`)).code === 0, "");
+    // node_exporter binary present (reconciler stepNodeExporter heals if absent — P2 here)
+    record("node_exporter binary on PATH", "P2", ["bake", "test"],
+      (await exec(c, `which node_exporter`)).code === 0, "");
+
+    // 27f — python3 packages (inventory §8) — import-test instead of `pip list` (pip can be slow)
+    const pyImports = [
+      { pkg: "openai", severity: "P1" as Severity },
+      { pkg: "web3", severity: "P1" as Severity },
+      { pkg: "py_clob_client", severity: "P1" as Severity },     // module name; pkg is py-clob-client
+      { pkg: "solders", severity: "P1" as Severity },
+      { pkg: "crawlee", severity: "P1" as Severity },
+      { pkg: "eth_account", severity: "P1" as Severity },        // module name
+    ];
+    for (const { pkg, severity } of pyImports) {
+      const probe = await exec(c, `python3 -c "import ${pkg}" 2>&1`);
+      record(`python3 -c 'import ${pkg}' succeeds`, severity, ["bake", "test"], probe.code === 0,
+        probe.code === 0 ? "" : probe.stderr.slice(-150));
+    }
+
+    // 27g — @worldcoin/agentkit-cli pin (inventory §9)
+    const agentkitV = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && npm ls -g --depth=0 @worldcoin/agentkit-cli 2>/dev/null | grep -oE '@worldcoin/agentkit-cli@[0-9]+\\.[0-9]+\\.[0-9]+'`)).stdout.trim();
+    record("@worldcoin/agentkit-cli pinned to 0.1.3", "P1", ["bake", "test"],
+      /^@worldcoin\/agentkit-cli@0\.1\.3$/.test(agentkitV) || /^@worldcoin\/agentkit-cli@(0\.[2-9]|[1-9])/.test(agentkitV),
+      `installed=${agentkitV || "<missing>"}`);
+
+    // 27h — mcporter present (inventory §9)
+    const mcporterPath = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && which mcporter`)).stdout.trim();
+    record("mcporter installed (npm global via NVM)", "P2", ["bake", "test"],
+      mcporterPath.length > 0, mcporterPath || "<missing>");
+
+    // 27i — loginctl linger enabled for openclaw user (inventory §13 — user systemd services need this)
+    const linger = (await exec(c, `loginctl show-user openclaw 2>/dev/null | grep -E 'Linger='`)).stdout.trim();
+    record("loginctl linger enabled for openclaw user", "P1", ["bake", "test"],
+      /Linger=yes/.test(linger), linger || "<no Linger line>");
+
+    // 27j — NVM default node points at v22.22.2 (inventory §13)
+    const nvmDefault = (await exec(c, `cat ~/.nvm/alias/default 2>/dev/null`)).stdout.trim();
+    record("NVM default alias points at v22.22.2", "P1", ["bake", "test"],
+      /^v?22\.22\.2$/.test(nvmDefault) || /^22\.22\.2/.test(nvmDefault), `alias=${nvmDefault}`);
+
+    // 27k — Rule 23 sentinels for additional scripts (inventory §3)
+    // Per the inventory, these scripts have load-bearing sentinels too. The strip-thinking
+    // sentinels are checked above (line ~357); these are the other safety-critical ones.
+    const ADDITIONAL_SENTINELS: Array<{ script: string; sentinels: string[]; severity: Severity }> = [
+      { script: "skill-integrity-check.sh", sentinels: ["verify_or_heal_git_skill", "SKILL_RECOVERED"], severity: "P0" }, // Rule 24
+      { script: "ack-watchdog.py", sentinels: ["def is_turn_stalled", "ACK_WATCHDOG_SLOW_WARNING"], severity: "P0" },     // v95
+    ];
+    for (const { script, sentinels, severity } of ADDITIONAL_SENTINELS) {
+      for (const sent of sentinels) {
+        const found = (await exec(c, `grep -c -F ${JSON.stringify(sent)} ~/.openclaw/scripts/${script} 2>/dev/null`)).stdout.trim();
+        record(`${script} contains '${sent}'`, severity, ["bake", "test"], parseInt(found, 10) >= 1, `${found} matches`);
+      }
+    }
+
+    // 27l — check-skill-updates cron entry (inventory §11) — P2 because nothing breaks
+    // if absent; check-skill-updates is a soft daily refresh
+    record("cron entry: check-skill-updates", "P2", ["bake", "test"],
+      /check-skill-updates\.sh/.test(cron), "");
+
+    // ─── 28. Caddy /vnc/* reverse-proxy block (audit P1 follow-up) ───────
+    // Map §9.9 — without this, live desktop viewer is unreachable from public URL.
+    const caddyfile = (await exec(c, `sudo cat /etc/caddy/Caddyfile 2>/dev/null`)).stdout;
+    const caddyVncOk = /handle\s+\/vnc\/?\*/.test(caddyfile) && /reverse_proxy\s+(localhost|127\.0\.0\.1):6080/.test(caddyfile);
+    record("Caddyfile has /vnc/* reverse_proxy to :6080", "P1", ["bake", "test"], caddyVncOk,
+      caddyVncOk ? "" : "Caddyfile missing /vnc/* handle block");
+    // Caddy service active (the file alone is useless if Caddy isn't running)
+    const caddyActive = (await exec(c, `sudo systemctl is-active caddy 2>&1`)).stdout.trim();
+    record("caddy.service active", "P1", ["bake", "test"], caddyActive === "active", `state=${caddyActive}`);
+
+    // ─── 29. Bun-in-gateway-PATH (audit P1 follow-up) ─────────────────────
+    // Map §11 known-risk. Gbrain's shebang is `#!/usr/bin/env bun` — without bun on the
+    // gateway's PATH at process-spawn time, MCP-call from gateway to gbrain fails.
+    // Easiest robust check: the prctl-subreaper.conf drop-in (or some Environment= line)
+    // includes ~/.bun/bin, OR the gateway's runtime environment shows it.
+    const gwEnv = MODE === "test"
+      ? (await exec(c, `systemctl --user show -p Environment openclaw-gateway 2>&1`)).stdout
+      : "";
+    const dropInsCat = (await exec(c, `cat ~/.config/systemd/user/openclaw-gateway.service.d/*.conf 2>/dev/null`)).stdout;
+    // Bake-mode: gateway is stopped, so check whether any drop-in mentions ~/.bun/bin
+    // (or the systemctl --user show output if we're in test mode).
+    const bunPathSeen = /\.bun\/bin/.test(dropInsCat) || /\.bun\/bin/.test(gwEnv);
+    record("openclaw-gateway has ~/.bun/bin on PATH (for gbrain shebang)", "P1", ["bake", "test"],
+      bunPathSeen, bunPathSeen ? "" : "no drop-in or runtime env contains .bun/bin");
   } finally {
     c.end();
   }

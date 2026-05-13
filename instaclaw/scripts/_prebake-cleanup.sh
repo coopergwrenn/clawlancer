@@ -167,14 +167,26 @@ $QUIET || du -BM -d 1 / 2>/dev/null | sort -rn | head -8
 hdr "1. Stop services (gateway + crons + browser)"
 if $CONFIRM; then
   export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-  for svc in openclaw-gateway browser-relay-server dispatch-server x11vnc openbox \
+  # User-level services — `--user` is correct (run under the openclaw user's
+  # systemd-user instance).
+  for svc in openclaw-gateway browser-relay-server dispatch-server \
              acp-seller acp-serve session-migration; do
     systemctl --user stop "$svc.service" 2>/dev/null || true
+  done
+  # System-level services — installed at /etc/systemd/system/, need `sudo`.
+  # The 2026-05-13 bake-readiness audit caught the prior `systemctl --user
+  # stop x11vnc.service` here — silent no-op because x11vnc is system-scoped
+  # per cloud-init-snapshot-bake-requirements §10. openbox typically isn't
+  # a systemd unit (started from Xvfb session) so it's not in this list; the
+  # pkill below handles any stray process.
+  for svc in x11vnc websockify xvfb; do
+    sudo systemctl stop "$svc.service" 2>/dev/null || true
   done
   pkill -9 -f 'chrome.*remote-debugging-port' 2>/dev/null || true
   pkill -9 -f 'chromium' 2>/dev/null || true
   pkill -9 -f 'Xvfb' 2>/dev/null || true
   pkill -9 -f 'x11vnc' 2>/dev/null || true
+  pkill -9 -f 'openbox' 2>/dev/null || true
   pkill -9 -f 'gbrain' 2>/dev/null || true
   # Crontab handled in step 12 — leave intact for now so cleanup tools that
   # might rely on cron-installed binaries still resolve.

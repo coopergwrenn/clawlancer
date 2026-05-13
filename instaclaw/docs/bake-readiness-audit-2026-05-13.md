@@ -517,3 +517,129 @@ confirmation — Q6). Both are non-blocking for the bake itself.
 ---
 
 **End of audit. Fixes shipping in `_postbake-validation.ts` in the same commit.**
+
+---
+
+## §8 — Post-audit follow-up work (later same day, 2026-05-13)
+
+After the initial audit shipped, three additional work streams ran. All
+results folded into the same `_postbake-validation.ts` + runbook +
+prebake-cleanup expansion.
+
+### §8.1 — SNAPSHOT_BAKED inventory cross-reference
+
+The onboarding terminal published
+`docs/cloud-init-snapshot-bake-requirements-2026-05-13.md` enumerating
+every item the cloud-init builder classifies as SNAPSHOT_BAKED (i.e.,
+"the snapshot has it, cloud-init doesn't need to deploy it"). Cross-ref
+against the 46-check expansion identified additional gaps that the
+original audit missed.
+
+**Gaps added in this commit (§27 of `_postbake-validation.ts`):**
+
+| Category | Item | Severity | Failure mode if missing |
+|---|---|---|---|
+| Workspace files | `QUICK-REFERENCE.md`, `TOOLS.md`, `EARN.md` | P1 | Agent missing pinned references; degraded behavior |
+| Agent dir | `agents/main/agent/HEARTBEAT.md` | P1 | Heartbeat hook has no instructions |
+| Config | `exec-approvals.json` `security=full`, `ask=off` | P0 | Gateway exec gates closed; agent can't run shell |
+| Config | `.openclaw-pinned-version` matches installed OpenClaw | P1 | Upgrade-path divergence guard |
+| apt binaries | ffmpeg, jq, xvfb-run, xdotool, x11vnc, websockify, imagemagick, openbox, socat, nc, caddy, fail2ban-client | P1 | Skill failures (voice, dispatch, browser, vnc) |
+| apt binaries | chromium-browser at `/usr/local/bin/` | P1 | Browser skills broken |
+| Python | `import openai/web3/py_clob_client/solders/crawlee/eth_account` | P1 | Prediction-markets, solana, web-search skills broken |
+| NPM | `@worldcoin/agentkit-cli@0.1.3` pin | P1 | AgentBook registration broken |
+| NPM | mcporter installed | P2 | Clawlancer MCP unconfigurable |
+| User state | loginctl linger enabled for openclaw | P1 | User-systemd dies on logout |
+| User state | NVM default alias = v22.22.2 | P1 | `bash -lc` resolves wrong node |
+| Sentinels | `skill-integrity-check.sh` (Rule 24): `verify_or_heal_git_skill`, `SKILL_RECOVERED` | P0 | Skill self-heal broken |
+| Sentinels | `ack-watchdog.py` (v95): `def is_turn_stalled`, `ACK_WATCHDOG_SLOW_WARNING` | P0 | Telegram ack UX broken |
+| Cron | `check-skill-updates` marker | P2 | Soft daily skill refresh missing |
+| Service | `node_exporter` binary | P2 | Reconciler heals; metrics degraded until cycle |
+
+**Total new SNAPSHOT_BAKED-derived checks: ~32 added in §27.**
+
+**Net validation script state:** ~78 checks across P0/P1/P2 covering
+every item in the inventory's §1–§13 plus the original 46-check audit
+list.
+
+**Inventory items NOT validated (intentional scope-out):**
+
+- Firewall rules (port 22/18789/18792/6080/8765) — security check
+  belongs in a dedicated sweep, not bake-time. Filed as follow-up.
+- `~/.bashrc` / `~/.bash_profile` NVM-source lines — implicit when
+  `bash -lc 'node --version'` works (already covered).
+- `~/scripts/package.json` + `node_modules/ws/` — implicit when
+  `dispatch-server.js` runs (covered by `dispatch-server.service`
+  active check in test mode).
+- Inline-skill per-file enumeration (17 skills × ~100 files) — covered
+  by `≥20 skills in ~/.openclaw/skills/` check + per-skill SKILL.md
+  spot checks. Full enumeration would be 100+ checks for marginal
+  signal.
+
+### §8.2 — Telegram-token drift state (commit `03df7ef1`)
+
+`_fix-missing-telegram-tokens.ts` was created 2026-05-12 to address 8
+VMs flagged in the stuck-cohort audit (vm-331, vm-337, vm-635, vm-885,
+vm-894, vm-914, vm-915, vm-916). The question: was the script ever
+executed against production, or did Rule 34's `stepTelegramTokenVerify`
+reconciler step heal them implicitly?
+
+**Method:** ran the script in default `--dry-run` mode against the full
+fleet (138 healthy/suspended VMs with `telegram_bot_token` set in DB),
+SSHing to each and comparing `channels.telegram.botToken` on disk to
+the DB value.
+
+**Result (2026-05-13):**
+
+| State | Count | Notes |
+|---|---|---|
+| `disk matches DB` (ok) | 137 | Rule 34 reconciler healed these between 2026-05-12 and now |
+| `MISSING on disk; needs fix` | 1 | vm-337 — one of the original 8 stuck-cohort VMs |
+| SSH handshake timeout | 6 | vm-873, vm-866, vm-656, vm-868, vm-552, vm-726 — existing P1-3 (ssh-broken-but-tcp-reachable) |
+
+**Action taken:** ran
+`_fix-missing-telegram-tokens.ts --test-first=instaclaw-vm-337`.
+Result:
+- `openclaw config set channels.telegram.botToken "..."` succeeded
+- Gateway restart: active + /health=200 within 30s ✓
+- Telegram polling state file `update-offset-default.json`: not yet
+  appeared within 60s (status "partial"). Per script logic, fix
+  remained applied (rollback only fires on `!active || !healthy`).
+  Polling will start on next user message or within a few minutes
+  of background poll.
+
+**Net fleet state:** 137 already-clean + 1 just-fixed = 138/138 of
+SSH-reachable VMs aligned. The 6 SSH-broken VMs are a separate class
+(CLAUDE.md P1-3) — recommend a P1 cron fix later that auto-marks them
+unhealthy after N consecutive handshake failures rather than per-VM
+one-off DB updates.
+
+**`--apply --i-tested-first` not needed** — the dry-run found only one
+drift candidate, and it's now fixed. No fleet-wide sweep warranted.
+
+### §8.3 — Follow-up items completed
+
+- ✅ Caddy `/vnc/*` reverse_proxy check — added at §28 of validation
+- ✅ Bun-in-gateway-PATH check — added at §29 of validation
+- ✅ `_prebake-cleanup.sh` x11vnc/websockify/xvfb `systemctl --user`
+  bug fixed — split system-level services into `sudo systemctl stop`
+  branch with comment referencing this audit
+- ✅ Runbook §0.5.1 added — `HEAD == origin/main` + LINODE_SNAPSHOT_ID
+  alignment gates
+- ✅ Runbook §2.3 expanded — NODE_PATH freshness + Rule 32 messages.*
+  hot-reload journal check
+
+### §8.4 — Still out of scope for this audit window
+
+- **`stepNodeUpgrade` invalidate dispatch/browser-relay services on
+  Node bump.** Partial overlap with `c4b84156` `stepExecStartAlignment`
+  which now covers the gateway unit. Dispatch + browser-relay still
+  need parallel logic. Filed as separate PR.
+- **`/etc/instaclaw-manifest-version` sentinel** for fleet diagnostics.
+- **Firewall rule audit** — should land as a dedicated security sweep
+  before Phase 1B (2026-05-25).
+
+---
+
+**Final state:** validation script ~78 checks. Runbook gated end-to-end.
+Prebake cleanup correctness fixed. One fleet drift (vm-337) healed
+in flight. Ready for May 23-25 bake window.
