@@ -66,48 +66,59 @@ async function main() {
   if (error || !vm) { log(`Lookup failed: ${error?.message}`); process.exit(1); }
   log(`Found: ip=${vm.ip_address} cv=${vm.config_version} partner=${vm.partner} tier=${vm.tier} tg=${vm.telegram_bot_username} owner=${vm.assigned_to}`);
 
-  // ── Pre-flight via SSH ──
-  log("=== PRE-FLIGHT ===");
-  const ssh = new NodeSSH();
-  await ssh.connect({ host: vm.ip_address, username: "openclaw", privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8"), readyTimeout: 15000 });
-  const DBUS = "export XDG_RUNTIME_DIR=/run/user/$(id -u) && export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus";
-
-  const preGw = (await ssh.execCommand(`${DBUS} && systemctl --user is-active openclaw-gateway`)).stdout.trim();
-  const preHealth = (await ssh.execCommand("curl -sS -m 3 -o /dev/null -w '%{http_code}' http://localhost:18789/health")).stdout.trim();
-  log(`pre gateway=${preGw} health=${preHealth}`);
-  if (preGw !== "active" || preHealth !== "200") { log("FAIL: gateway not healthy"); ssh.dispose(); process.exit(1); }
-
-  const v2Check = await ssh.execCommand("grep -l INSTACLAW_SOUL_V2 ~/.openclaw/workspace/SOUL.md 2>/dev/null || echo NO_V2");
-  if (v2Check.stdout.includes("INSTACLAW_SOUL_V2")) { log("SKIP: already V2"); ssh.dispose(); process.exit(0); }
-  log("confirmed V1");
-
-  // FIX #1: Pre-flight inspect of existing AGENTS.md (could be user-created on V1)
-  const existingAgents = await ssh.execCommand("test -f ~/.openclaw/workspace/AGENTS.md && wc -c < ~/.openclaw/workspace/AGENTS.md || echo MISSING");
-  const existingAgentsSize = existingAgents.stdout.trim();
-  log(`existing AGENTS.md: ${existingAgentsSize}`);
-  if (existingAgentsSize !== "MISSING" && parseInt(existingAgentsSize, 10) > 0) {
-    log(`WARN: AGENTS.md (${existingAgentsSize} bytes) exists on V1 VM. V2 migration WILL overwrite it. Tar backup captures it; recovery requires manual extract from workspace-pre-soul-v2-migration.tar.gz.`);
-  }
-
-  // FIX #4 (documented): SOUL.md custom-section inspection
-  // stepMigrateSoulV2 only extracts `## My Identity` and `## Learned Preferences` from V1 SOUL.md.
-  // Other custom `## *` sections are NOT preserved in V2 SOUL.md (they survive in the tar backup).
-  // Warn if any non-template `## *` headers exist so the agent's customizations aren't silently lost.
-  const soulHeaders = await ssh.execCommand("grep -E '^## ' ~/.openclaw/workspace/SOUL.md 2>/dev/null | sort -u");
-  log(`SOUL.md ## headers: ${soulHeaders.stdout.replace(/\n/g, ' | ')}`);
-
-  const freeRes = await ssh.execCommand("df -BG /home/openclaw | tail -1 | awk '{print $4}' | sed 's/G//'");
-  const freeGb = parseInt(freeRes.stdout.trim(), 10);
-  log(`free disk: ${freeGb}GB`);
-  if (freeGb < 2) { log("FAIL: <2GB free disk"); ssh.dispose(); process.exit(1); }
-
-  ssh.dispose();
-
-  // ── Acquire cron lock ──
+  // ── Acquire cron lock FIRST ──
+  // Pre-flight takes ~2s; Vercel cron's gap window is <2s. If pre-flight runs before
+  // lock acquisition, by the time we try to grab the lock Vercel has it back.
+  // Acquiring first means pre-flight runs UNDER the lock — slightly higher cost
+  // (lock held while we abort on a bad pre-flight) but eliminates the race.
   log("=== ACQUIRE CRON LOCK ===");
   const acquired = await tryAcquireCronLock("reconcile-fleet", 30 * 60, `phase3-${vmArg}-${Date.now()}`);
   if (!acquired) { log("FAIL: cron lock held"); process.exit(1); }
   log("cron lock acquired (30min)");
+
+  // ── Pre-flight via SSH (lock now held — pre-flight failure must release) ──
+  let preflightOk = false;
+  try {
+    log("=== PRE-FLIGHT ===");
+    const ssh = new NodeSSH();
+    await ssh.connect({ host: vm.ip_address, username: "openclaw", privateKey: Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8"), readyTimeout: 15000 });
+    const DBUS = "export XDG_RUNTIME_DIR=/run/user/$(id -u) && export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus";
+
+    const preGw = (await ssh.execCommand(`${DBUS} && systemctl --user is-active openclaw-gateway`)).stdout.trim();
+    const preHealth = (await ssh.execCommand("curl -sS -m 3 -o /dev/null -w '%{http_code}' http://localhost:18789/health")).stdout.trim();
+    log(`pre gateway=${preGw} health=${preHealth}`);
+    if (preGw !== "active" || preHealth !== "200") { log("FAIL: gateway not healthy"); ssh.dispose(); throw new Error("preflight-gateway"); }
+
+    const v2Check = await ssh.execCommand("grep -l INSTACLAW_SOUL_V2 ~/.openclaw/workspace/SOUL.md 2>/dev/null || echo NO_V2");
+    if (v2Check.stdout.includes("INSTACLAW_SOUL_V2")) { log("SKIP: already V2"); ssh.dispose(); preflightOk = false; await releaseCronLock("reconcile-fleet"); process.exit(0); }
+    log("confirmed V1");
+
+    // Pre-flight inspect of existing AGENTS.md (could be user-created on V1)
+    const existingAgents = await ssh.execCommand("test -f ~/.openclaw/workspace/AGENTS.md && wc -c < ~/.openclaw/workspace/AGENTS.md || echo MISSING");
+    const existingAgentsSize = existingAgents.stdout.trim();
+    log(`existing AGENTS.md: ${existingAgentsSize}`);
+    if (existingAgentsSize !== "MISSING" && parseInt(existingAgentsSize, 10) > 0) {
+      log(`WARN: AGENTS.md (${existingAgentsSize} bytes) exists on V1 VM. V2 migration WILL overwrite it. Tar backup captures it; recovery requires manual extract from workspace-pre-soul-v2-migration.tar.gz.`);
+    }
+
+    // SOUL.md custom-section inspection. stepMigrateSoulV2 only extracts `## My Identity` and
+    // `## Learned Preferences`; other custom `## *` sections survive in the tar backup but
+    // are dropped from the running V2 SOUL.md.
+    const soulHeaders = await ssh.execCommand("grep -E '^## ' ~/.openclaw/workspace/SOUL.md 2>/dev/null | sort -u");
+    log(`SOUL.md ## headers: ${soulHeaders.stdout.replace(/\n/g, ' | ')}`);
+
+    const freeRes = await ssh.execCommand("df -BG /home/openclaw | tail -1 | awk '{print $4}' | sed 's/G//'");
+    const freeGb = parseInt(freeRes.stdout.trim(), 10);
+    log(`free disk: ${freeGb}GB`);
+    if (freeGb < 2) { log("FAIL: <2GB free disk"); ssh.dispose(); throw new Error("preflight-disk"); }
+
+    ssh.dispose();
+    preflightOk = true;
+  } catch (e: any) {
+    log(`Pre-flight aborted: ${e.message}`);
+    await releaseCronLock("reconcile-fleet");
+    process.exit(1);
+  }
 
   let postOk = false;
   try {
