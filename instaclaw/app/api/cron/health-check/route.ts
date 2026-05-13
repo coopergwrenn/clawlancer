@@ -1026,18 +1026,29 @@ else:
               logger.warn("Auto-fixing ghost VM (Linode deleted, DB record stale)", {
                 route: "cron/health-check", vmId: g.id, vmName: g.name, ip, linodeId: g.provider_server_id,
               });
+              // Split write: load-bearing terminal flip + clear assigned_to
+              // commits unconditionally; last_assigned_to stamp is best-effort
+              // (its FK targets auth.users; auth-deleted users would otherwise
+              // reject the compound update and leave assigned_to dangling).
               await supabase.from("instaclaw_vms")
                 .update({
                   status: "terminated",
                   health_status: "unhealthy",
-                  // Linode is confirmed gone (404). Not recoverable. Stamp
-                  // last_assigned_to for history then clear assigned_to so
-                  // .eq("assigned_to", userId) lookups naturally exclude this.
-                  last_assigned_to: g.assigned_to ?? null,
                   assigned_to: null,
                   assigned_at: null,
                 })
                 .eq("id", g.id);
+              if (g.assigned_to) {
+                const { error: stampErr } = await supabase.from("instaclaw_vms")
+                  .update({ last_assigned_to: g.assigned_to })
+                  .eq("id", g.id)
+                  .is("last_assigned_to", null);
+                if (stampErr && !stampErr.message.includes("last_assigned_to_fkey")) {
+                  logger.warn("health-check: ghost-fix last_assigned_to stamp failed (non-FK)", {
+                    route: "cron/health-check", vmId: g.id, error: stampErr.message,
+                  });
+                }
+              }
               autoFixed = true;
             }
           }

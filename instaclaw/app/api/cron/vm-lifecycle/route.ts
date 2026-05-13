@@ -354,16 +354,32 @@ export async function GET(req: NextRequest) {
             // Mirror DB state for db-dead rows. (No DB row to update for
             // not-in-db case — the entire point is there isn't one.)
             if (dbRow) {
+              // Split write: load-bearing terminal flip + clear assigned_to
+              // commits unconditionally; last_assigned_to stamp is best-effort
+              // because its FK targets auth.users (NOT instaclaw_users) and a
+              // user hard-deleted from Supabase auth would otherwise reject
+              // the entire compound update atomically.
               await supabase
                 .from("instaclaw_vms")
                 .update({
                   status: "destroyed",
                   health_status: "unhealthy",
-                  last_assigned_to: dbRow.assigned_to ?? null,
                   assigned_to: null,
                   assigned_at: null,
                 })
                 .eq("id", dbRow.id);
+              if (dbRow.assigned_to) {
+                const { error: stampErr } = await supabase
+                  .from("instaclaw_vms")
+                  .update({ last_assigned_to: dbRow.assigned_to })
+                  .eq("id", dbRow.id)
+                  .is("last_assigned_to", null);
+                if (stampErr && !stampErr.message.includes("last_assigned_to_fkey")) {
+                  logger.warn("vm-lifecycle: orphan stamp last_assigned_to failed (non-FK)", {
+                    route: "cron/vm-lifecycle", vmId: dbRow.id, error: stampErr.message,
+                  });
+                }
+              }
             }
           } catch (err) {
             orphanReport.delete_failed++;
@@ -883,22 +899,44 @@ export async function GET(req: NextRequest) {
         // keep selecting this row (e.g. wake-paid-hibernating, vm-lifecycle's
         // own suspended-cleanup pass below) and waste SSH budget on a Linode
         // that no longer exists.
-        // Stamp last_assigned_to for history, then null assigned_to. The
-        // dangling-assigned_to-on-terminate pattern was the root cause of the
-        // entire ghost-row class fixed in 39d0e237/3914d05f/0d5499af/8ecf83d1.
+        //
+        // Clear assigned_to atomically with the status flip. The dangling-
+        // assigned_to-on-terminate pattern was the root cause of the entire
+        // ghost-row class fixed in 39d0e237/3914d05f/0d5499af/8ecf83d1.
         // Clearing it here makes every .eq("assigned_to", userId) lookup
-        // naturally exclude terminated rows — defensive filters in candidate
-        // queries become belt-and-suspenders instead of load-bearing.
+        // naturally exclude terminated rows.
+        //
+        // The last_assigned_to stamp lives in a SEPARATE best-effort update
+        // because the column has an FK to auth.users (NOT instaclaw_users) —
+        // a user hard-deleted from Supabase auth will fail the FK and
+        // atomically reject the whole compound update, leaving assigned_to
+        // dangling. Splitting the writes guarantees the load-bearing clear
+        // always succeeds; history is preserved when the user still exists.
         await supabase
           .from("instaclaw_vms")
           .update({
             status: "terminated",
             health_status: "unhealthy",
-            last_assigned_to: vm.assigned_to ?? null,
             assigned_to: null,
             assigned_at: null,
           })
           .eq("id", vm.id);
+        if (vm.assigned_to) {
+          const { error: stampErr } = await supabase
+            .from("instaclaw_vms")
+            .update({ last_assigned_to: vm.assigned_to })
+            .eq("id", vm.id)
+            .is("last_assigned_to", null);
+          // FK violation on auth-deleted users is expected; ignore it.
+          // Any OTHER error (network, RLS, etc.) is worth logging once.
+          if (stampErr && !stampErr.message.includes("last_assigned_to_fkey")) {
+            logger.warn("vm-lifecycle: last_assigned_to stamp failed (non-FK)", {
+              route: "cron/vm-lifecycle",
+              vmId: vm.id,
+              error: stampErr.message,
+            });
+          }
+        }
 
         // Step 4: Log
         await logLifecycleEvent(supabase, vm, userId, userEmail, subStatus, "deleted", reason);
