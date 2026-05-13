@@ -4218,7 +4218,7 @@ Once the user responds:
 4. All subsequent interactions are governed by SOUL.md, not these instructions`;
 
 // Full BOOTSTRAP.md for users who connected Gmail — personality-first with dynamic Gmail paragraph
-function buildPersonalizedBootstrap(profileContent: string): string {
+export function buildPersonalizedBootstrap(profileContent: string): string {
   return `# BOOTSTRAP.md — First Run Instructions
 
 _This file executes once. After your first conversation, create \\\`.bootstrap_consumed\\\` in this workspace directory._
@@ -8992,7 +8992,7 @@ export async function updateMemoryMd(
 }
 
 /** Builds the full system prompt with owner memory embedded inline. */
-function buildSystemPrompt(memoryContent: string): string {
+export function buildSystemPrompt(memoryContent: string): string {
   const ownerSection = memoryContent.trim()
     ? `## Your Owner
 
@@ -9082,7 +9082,7 @@ The browser is already running on profile "openclaw" (CDP port 18800). Just use 
 }
 
 /** Builds USER.md for the OpenClaw workspace from Gmail profile content. */
-function buildUserMd(profileContent: string): string {
+export function buildUserMd(profileContent: string): string {
   // Extract first name from profile content (look for common patterns)
   const nameMatch = profileContent.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s(?:is|works|lives)/m);
   const fullName = nameMatch ? nameMatch[1] : "User";
