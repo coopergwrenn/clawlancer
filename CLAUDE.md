@@ -1489,7 +1489,19 @@ Also a related disk-leak issue: the `openclaw config set` flow uses atomic write
 
 **RULE 38 (Atomic-write tmp files must self-clean on ENOSPC)**: any code that writes via `path.tmp + rename` (including openclaw config set) must `rm -f <path>.tmp` in an EXIT trap. Otherwise repeated ENOSPC retries accumulate zero-byte files indefinitely, eventually exhausting inodes even when bytes are freed. The 40+ tmp files on vm-788 are the proof. This is in openclaw itself, not our reconciler — file an upstream issue and add a periodic cleanup cron as defense-in-depth.
 
-### Root cause 2: gateway-watchdog FAILED holds cv across the cv=91 cohort
+### Root cause 2-PRIMARY: Strict-mode 180s deadline kills cv=91 cohort reconciles
+
+**Evidence**: vm-046 (paying leighton.cusack@gmail.com), cv=91 for 14+ hours despite Vercel cron running every 3 minutes. Manual catch-up reconcile (`strict=false`) caught it up in **279s** — 0 errors, 37 fixes, 86 alreadyCorrect. Vercel cron uses `strict=true` (`app/api/cron/reconcile-fleet/route.ts`) with `STRICT_DEADLINE_MS = 180_000` at `lib/vm-reconcile.ts:224`. The reconcile dies at the deadline, cv held with `__STRICT_DEADLINE__` error.
+
+This is the **primary structural reason 18 healthy + assigned VMs are stuck at cv=91-94**: they legitimately take >180s to reconcile (lots of accumulated drift to apply), and the cron can't fit that into Vercel's 300s function-maxDuration budget at concurrency=3.
+
+**Code path**: `lib/vm-reconcile.ts:184` (`STRICT_DEADLINE_MS = 180_000`) + `lib/vm-reconcile.ts:463` (`Promise.race` with the deadline timer). Strict reconcile fails to bump cv when wall-clock exceeds 180s — even if the work was on track to complete.
+
+**RULE 44 (Strict deadline ≠ failure)**: when strict reconcile times out, the partial progress is REAL. Don't push `__STRICT_DEADLINE__` to `result.errors`. Either (a) split the manifest's work across multiple ticks (resume cursor in DB), or (b) cron route should treat timeout-with-no-other-errors as "in-progress" — bump cv to the highest version that's been verified, not block on the unfinished tail. The catch-up script's `strict=false` proves the work itself converges; the deadline is artificial.
+
+**Mitigation tonight**: catch-up script with `--min-gap=1` widens the cohort filter to cv ≤ 94, catches the entire cv-91-94 cohort. Already proven to work.
+
+### Root cause 2-SECONDARY: gateway-watchdog FAILED is a downstream symptom
 
 **Evidence**: 3 of 4 randomly-probed cv=91 VMs (vm-046, vm-842, vm-043) show `systemctl --user is-active gateway-watchdog == failed`. The `stepGatewayWatchdogTimer` reconciler step (`lib/vm-reconcile.ts:477`, called as "heal-gateway-watchdog") tries to start the watchdog. When the service is permanently failed (unit broken, dependency missing, or whatever made it fail in the first place), the step pushes to `result.errors` every cycle, blocking cv bump.
 
