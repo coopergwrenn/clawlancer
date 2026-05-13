@@ -117,9 +117,23 @@ rm -f /tmp/instaclaw-config.tar.gz
 # Hand off — setup.sh owns everything from here (gateway start, callback POST, sentinels).
 bash /tmp/instaclaw-config/setup.sh
 
+# setup.sh exited. Its tee subprocess for /var/log/instaclaw-setup.log has flushed.
+# Safe to truncate now (race-free) — file has no live writer.
+: > /var/log/instaclaw-setup.log 2>/dev/null || true
+
+# Truncate userdata-at-rest on the VM (no race — bootstrap has already been
+# loaded into memory by cloud-init; the on-disk file is just data now).
+for f in /var/lib/cloud/instances/*/user-data.txt; do
+  [ -f "$f" ] && : > "$f" 2>/dev/null || true
+done
+
 # setup.sh is responsible for /tmp/.instaclaw-ready or /tmp/.instaclaw-failed.
 # If it exits normally, cleanup the staging area.
 rm -rf /tmp/instaclaw-config
+
+# NOTE: /var/log/instaclaw-bootstrap.log NOT truncated here — this bootstrap
+# script's own tee subprocess is still alive, holding the fd. Truncating now
+# would race with tee's buffered output. Systemd log rotation handles it.
 ```
 
 **Size:** ~700 bytes including comments. Could be tightened to ~500 by removing comments, but ops debuggability is worth the bytes.
@@ -140,7 +154,6 @@ instaclaw-config/
 ├── home/openclaw/.openclaw/
 │   ├── openclaw.json                                 (per-user, mode 600)
 │   ├── .env                                          (per-user, mode 600)
-│   ├── openclaw.json.last-known-good                 (copy of openclaw.json)
 │   ├── workspace/
 │   │   ├── IDENTITY.md                               (per-user)
 │   │   ├── USER.md                                   (per-user)
@@ -177,30 +190,38 @@ set -euo pipefail
 exec > >(tee -a /var/log/instaclaw-setup.log) 2>&1
 trap 'EC=$?; echo "FATAL setup line $LINENO exit $EC"; touch /tmp/.instaclaw-failed; exit 1' ERR
 
-# §1.1: linger + sshd OOM (no NVM here either)
-loginctl enable-linger openclaw 2>/dev/null || true
-mkdir -p /etc/systemd/system/ssh.service.d/
-cat > /etc/systemd/system/ssh.service.d/oom-protect.conf << 'EOF'
+# §1.1 BEST_EFFORT: linger + sshd OOM drop-in (no NVM — runs as root)
+{
+  loginctl enable-linger openclaw 2>/dev/null
+  mkdir -p /etc/systemd/system/ssh.service.d/
+  cat > /etc/systemd/system/ssh.service.d/oom-protect.conf << 'EOF'
 [Service]
 OOMScoreAdjust=-900
 EOF
-systemctl daemon-reload || true
+  systemctl daemon-reload
+} || echo "[$(date -u +%FT%TZ)] WARN: step 1 (linger + sshd OOM) partial failure — reconciler/manual heal"
 
-# §1.2: mkdir defenses
-sudo -u openclaw mkdir -p ${ALL_OPENCLAW_DIRS} || true
+# §1.2 BEST_EFFORT: mkdir defenses
+{
+  sudo -u openclaw mkdir -p ${ALL_OPENCLAW_DIRS}
+} || echo "[$(date -u +%FT%TZ)] WARN: step 2 (mkdir defenses) failed — non-fatal"
 
-# §1.3: privacy wipe (per map §16)
-sudo -u openclaw bash -c '${PRIVACY_WIPE_BODY}' || true
-pkill -9 -f 'chrome.*remote-debugging-port' 2>/dev/null || true
+# §1.3 BEST_EFFORT: privacy wipe (per map §16)
+{
+  sudo -u openclaw bash -c '${PRIVACY_WIPE_BODY}'
+  pkill -9 -f 'chrome.*remote-debugging-port' 2>/dev/null || true
+} || echo "[$(date -u +%FT%TZ)] WARN: step 3 (privacy wipe) partial failure — non-fatal"
 
-# §1.4: stop any pre-existing gateway
-sudo -u openclaw bash -lc 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user stop openclaw-gateway 2>/dev/null || true' || true
-pkill -9 -f 'openclaw-gateway' 2>/dev/null || true
+# §1.4 BEST_EFFORT: stop any pre-existing gateway (snapshot may have started it via linger)
+{
+  sudo -u openclaw bash -lc 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user stop openclaw-gateway 2>/dev/null || true'
+  pkill -9 -f 'openclaw-gateway' 2>/dev/null || true
+  for _w in 1 2 3 4; do pgrep -f 'openclaw-gateway' >/dev/null 2>&1 || break; sleep 1; done
+} || echo "[$(date -u +%FT%TZ)] WARN: step 4 (stop gateway) — may still be running"
 
 # §1.5 CRITICAL: place static config files from tarball.
 {
   install -o openclaw -g openclaw -m 600 /tmp/instaclaw-config/home/openclaw/.openclaw/openclaw.json /home/openclaw/.openclaw/openclaw.json
-  install -o openclaw -g openclaw -m 600 /tmp/instaclaw-config/home/openclaw/.openclaw/openclaw.json.last-known-good /home/openclaw/.openclaw/openclaw.json.last-known-good
   install -o openclaw -g openclaw -m 600 /tmp/instaclaw-config/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json /home/openclaw/.openclaw/agents/main/agent/auth-profiles.json
 } || { echo "FATAL step 5"; rm -f /tmp/.instaclaw-ready; touch /tmp/.instaclaw-failed; exit 1; }
 
@@ -270,7 +291,9 @@ pkill -9 -f 'openclaw-gateway' 2>/dev/null || true
 } || echo "WARN step 16"
 
 # §1.31 BEST_EFFORT: daemon-reload
-sudo -u openclaw bash -lc 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload 2>/dev/null || true' || true
+{
+  sudo -u openclaw bash -lc 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload'
+} || echo "[$(date -u +%FT%TZ)] WARN: step 31 (daemon-reload) failed — non-fatal"
 
 # §1.32 CRITICAL: gateway start + verify within 60s
 {
@@ -299,12 +322,17 @@ sudo -u openclaw bash -lc 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl 
   sudo -u openclaw python3 /home/openclaw/.openclaw/scripts/auto-approve-pairing.py 2>/dev/null || true
 } || echo "WARN step 34 — pairing skipped"
 
-# §1.35 BEST_EFFORT: final verification
-GATEWAY_VERIFIED=false
-for _attempt in 1 2 3; do
-  sleep 3
-  if sudo -u openclaw curl -s -m 5 http://localhost:18789/health >/dev/null 2>&1; then GATEWAY_VERIFIED=true; echo "GATEWAY_VERIFIED"; break; fi
-done
+# §1.35 BEST_EFFORT: final verification (already healthy per step 32; this re-confirms)
+{
+  GATEWAY_VERIFIED=false
+  for _attempt in 1 2 3; do
+    sleep 3
+    if sudo -u openclaw curl -s -m 5 http://localhost:18789/health >/dev/null 2>&1; then
+      GATEWAY_VERIFIED=true; echo "GATEWAY_VERIFIED"; break
+    fi
+  done
+  [ "$GATEWAY_VERIFIED" = "true" ]
+} || echo "[$(date -u +%FT%TZ)] WARN: step 35 — gateway flapping after step 32 success; callback may still succeed"
 
 # §1.37 sentinels
 touch /tmp/.instaclaw-ready
@@ -326,10 +354,11 @@ echo "OPENCLAW_CONFIGURE_DONE"
   [ "$CALLBACK_OK" = "true" ]
 } || { echo "FATAL step 38 callback"; rm -f /tmp/.instaclaw-ready; touch /tmp/.instaclaw-failed; exit 1; }
 
-# §1.39 hygiene: truncate logs + bootstrap user-data
-: > /var/log/instaclaw-bootstrap.log 2>/dev/null || true
-: > /var/log/instaclaw-setup.log 2>/dev/null || true
-for f in /var/lib/cloud/instances/*/user-data.txt; do [ -f "$f" ] && : > "$f" 2>/dev/null || true; done
+# §1.39 hygiene — MOVED TO BOOTSTRAP per Cooper 2026-05-13.
+# Truncating /var/log/instaclaw-setup.log from inside setup.sh races with the
+# tee subprocess spawned at the top of setup.sh (file descriptor still open,
+# buffered writes flush after truncate → garbage). Bootstrap truncates after
+# setup.sh exits, when the tee subprocess has flushed.
 
 echo "[$(date -u +%FT%TZ)] setup complete"
 exit 0
@@ -622,10 +651,12 @@ SOUL_CONSENSUS_MARKER="${SOUL_STUB_CONSENSUS_MARKER}"
 
 Already in v1 plan. Atomic claim on callback_token + DB write of `health_status="healthy"` + `agentbook_wallet_address`. Sub-100 lines.
 
-### Phase 1A Day 13: failure-mode tests + size assertion test
+### Phase 1A Day 13: failure-mode tests + size assertion test + comparison script
 
+Two scripts:
+
+**`scripts/_test-cloud-init-tarball.ts`** — synthesized-params correctness test:
 ```typescript
-// scripts/_test-cloud-init-tarball.ts
 const params: CreateUserVMParams = synthesizeWorstCase();
 const stream = await buildCloudInitTarball(params);
 const buf = await streamToBuffer(stream);
@@ -638,6 +669,8 @@ assert(files["home/openclaw/.openclaw/openclaw.json"]);
 assert(files["setup.sh"].includes("OPENCLAW_CONFIGURE_DONE"));
 // ... 20+ assertions
 ```
+
+**`scripts/_compare-old-vs-new-path.ts`** — Phase 1B-2 deliverable, full spec in §14 below. SSH-based diff between a new-path VM and an old-path VM, classified report.
 
 ### Phase 1A Day 14: buffer day (Cooper's plan)
 
@@ -943,7 +976,165 @@ Each test takes ~10-15 minutes. Total ~45-60 minutes for full pre-flight. **Mand
 
 ---
 
-## §14. Cooper review checklist (v2)
+## §14. Phase 1B-2: deep side-by-side audit (mandatory pre-1C)
+
+Added 2026-05-13 per Cooper's directive. Phase 1B-1 (Cooper's self-test signup) verifies the new path produces *a* working VM. Phase 1B-2 verifies it produces a VM **byte-for-byte equivalent** to what the old path produces. Anything different is either explainable as per-user content or a bug. Bugs must be fixed before Phase 1C real-user traffic begins.
+
+### §14.1 The deliverable: `scripts/_compare-old-vs-new-path.ts`
+
+**Phase 1A Day 13 deliverable. Phase 1B-2 runtime.**
+
+Signature:
+```bash
+npx tsx scripts/_compare-old-vs-new-path.ts \
+  --new <new-vm-name> \
+  --old <old-vm-name> \
+  [--report path/to/output.md]
+```
+
+**Inputs:**
+- `--new`: name of a VM provisioned via cloud-init (e.g., `instaclaw-vm-a1b2c3d4`)
+- `--old`: name of a healthy VM provisioned via configureOpenClaw (e.g., `instaclaw-vm-050`)
+- Both should match on `tier` and `partner` (script verifies and warns if not)
+- `--report`: output markdown file path. Default: stdout.
+
+**Loads from .env.local + .env.ssh-key per CLAUDE.md Rule 18.** Read-only SSH operations on both VMs. No production-state changes.
+
+**Outputs:**
+- Structured markdown diff report (sections A through L below)
+- Exit code: `0` if no unexplainable divergences, `1` if any bugs found
+- Bug count + bug list in summary block at top
+
+**Estimated runtime:** 2-5 minutes (SSH+md5 on ~150 paths, 5 chat completion calls per VM).
+
+### §14.2 What gets compared (12 sections, A through L)
+
+For each, the script captures via SSH `execCommand` (read-only) and classifies divergences as **EXPECTED** (per-user whitelist) or **BUG** (should be byte-identical).
+
+**A. Configuration files — JSON-aware diff with per-user whitelisted keys**
+- `~/.openclaw/openclaw.json` — full JSON parse + recursive diff. Whitelisted as per-user: `gateway.auth.token`, `channels.telegram.botToken`, `channels.discord.botToken`. Everything else byte-match.
+- `~/.openclaw/agents/main/agent/auth-profiles.json` — Whitelisted: `profiles.anthropic:default.key` (gateway token or BYOK), `profiles.openai:default.key` (platform).
+- `~/.openclaw/exec-approvals.json` — exact match expected.
+- `~/.openclaw/.openclaw-pinned-version` — exact match.
+
+**B. Env file — line-by-line diff with per-user whitelist**
+- `~/.openclaw/.env` — Whitelisted: GATEWAY_TOKEN, BANKR_API_KEY, BANKR_WALLET_ADDRESS, BANKR_TOKEN_ADDRESS, BANKR_TOKEN_SYMBOL, WORLD_ID_NULLIFIER, WORLD_ID_LEVEL, AGENT_REGION. All other keys byte-match.
+
+**C. Workspace files — `~/.openclaw/workspace/`**
+- Always per-user (divergence EXPECTED): `MEMORY.md`, `USER.md`, `IDENTITY.md`, `WALLET.md`, `WORLD_ID.md`, `BOOTSTRAP.md` (if Gmail), `memory/session-log.md`, `memory/active-tasks.md`
+- Always byte-match (divergence is BUG): `CAPABILITIES.md`, `QUICK-REFERENCE.md`, `TOOLS.md` (template; agent edits OK on either side), `EARN.md` (template; agent edits OK), `AGENTS.md` (V2 only — present-or-absent must match)
+- `SOUL.md`: byte-match for the base portion; partner stubs (SOUL_STUB_EDGE, SOUL_STUB_CONSENSUS) must match if both VMs are same partner. Diff via marker-bracketed regions.
+
+**D. Agent dir — `~/.openclaw/agents/main/agent/`**
+- `HEARTBEAT.md` — byte-match expected (both should have from snapshot; if neither has, both are pending changelog terminal verification).
+- `system-prompt.md` — per-user EXPECTED divergence (Gmail-personalized).
+- `MEMORY.md` (mirror) — per-user EXPECTED.
+
+**E. Scripts — `~/.openclaw/scripts/`**
+Every file in this list must byte-match (snapshot delivers). Hash via `md5sum`:
+- strip-thinking.py, vm-watchdog.py, silence-watchdog.py, auto-approve-pairing.py, push-heartbeat.sh, skill-integrity-check.sh, ack-watchdog.py, memory-snapshot.sh, generate_workspace_index.sh
+- consensus_match_pipeline.py, consensus_match_rerank.py, consensus_match_deliberate.py, consensus_match_consent.py, consensus_match_skill_toggle.py
+- consensus_intent_sync.py, consensus_intent_extract.py
+- privacy-bridge.sh (if partner=edge_city on both)
+
+**F. Outer scripts — `~/scripts/`**
+Every file must byte-match:
+- deliver_file.sh, notify_user.sh, token-price.py
+- dispatch-server.js + the 22 dispatch scripts in `DISPATCH_SCRIPTS`
+- browser-relay-server.js
+- check-skill-updates.sh
+- All skill assets (tts-openai.sh, market-data.sh, competitive-intel.sh, ecommerce-ops.py, social-content.py, crawlee-scrape.py, setup-language-learning.sh, setup-sjinn-video.sh, setup-polymarket-wallet.sh, kalshi-*.py, polymarket-*.py, solana-*.py, agentbook-*.py/sh, higgsfield-*.py)
+- `package.json` (should be `{}` with ws dep)
+
+**G. Skill directories — `~/.openclaw/skills/`**
+- For each of the 18 inline skills: `SKILL.md` byte-match. References + assets sampled (full byte-match is too expensive for ~200 files; sample 3 per skill).
+- For 3 manifest-only skills (frontier, newsworthy, instagram-automation): SKILL.md byte-match.
+- For 3 git-cloned skills (bankr, edge-esmeralda, consensus-2026): same commit SHA expected (both pulled from same upstream within minutes of each other). If SHAs differ by 1-2 commits → WARN, not BUG (legitimate skill-pull cron drift).
+- For `bankr/bankr/SKILL.md`: must contain `INSTACLAW_BANKR_PATCH_V1` marker on both.
+- For `edge-esmeralda/INSTACLAW_OVERLAY.md` (if partner=edge_city): byte-match.
+
+**H. Crontab**
+`crontab -l` output, parsed line-by-line. Compare as a set (order-independent). All 10 manifest crons must be present on both. Marker-based equality (the cron text after the schedule prefix should match).
+
+**I. Systemd units**
+- `~/.config/systemd/user/openclaw-gateway.service`: byte-match
+- `~/.config/systemd/user/openclaw-gateway.service.d/override.conf`: byte-match (TasksMax=120, KillMode=mixed, ExecStartPre/Post, etc.)
+- `~/.config/systemd/user/openclaw-gateway.service.d/prctl-subreaper.conf`: byte-match
+- `~/.config/systemd/user/dispatch-server.service`: byte-match (NODE_VER substitution must match)
+- `~/.config/systemd/user/browser-relay-server.service`: byte-match
+- `/etc/systemd/system/xvfb.service`: byte-match
+- `/etc/systemd/system/x11vnc.service`: byte-match
+- `/etc/systemd/system/websockify.service`: byte-match
+- `/etc/systemd/system/ssh.service.d/oom-protect.conf`: byte-match
+
+**J. NPM globals — filtered to our packages**
+`bash -lc 'npm list -g 2>/dev/null'` on both, filter for: `openclaw`, `@bankr/cli`, `@worldcoin/agentkit-cli`, `prctl-subreaper`, `usecomputer`, `mcporter`. Versions must match.
+
+**K. Python packages — filtered**
+`pip3 list 2>/dev/null` on both, filter for: `openai`, `crawlee`, `web3`, `py-clob-client`, `eth-account`, `solders`, `base58`, `websockets`, `cryptography`. Versions must match (or warning if minor-version drift within same major).
+
+**L. Service health + agent behavior**
+- All 6 services `is-active`: openclaw-gateway, dispatch-server, browser-relay-server, xvfb, x11vnc, websockify
+- `GET http://<vm-ip>:18789/health` with each VM's `gateway_token` — response shape (key set + type-of-value) must match. Values themselves may differ (per-VM counters, timestamps).
+- **5 identical chat-completion prompts** via `POST http://<vm-ip>:18789/v1/chat/completions` (the OpenAI-compatible endpoint, enabled per `gateway.http.endpoints.chatCompletions.enabled: true`). For each prompt:
+  1. `"what is your name?"` — verifies IDENTITY.md routing
+  2. `"what skills do you have?"` — verifies skill loading
+  3. `"check my polygon balance"` — verifies prediction-markets skill / .env routing
+  4. `"what's the latest at consensus 2026 today?"` — verifies consensus skill
+  5. `"ping"` — minimal sanity check
+  - Compare: did both agents respond non-empty? Did both invoke the same skill (parse tool_use blocks if any)? Were response lengths within 2× of each other? Were latencies within 50% of each other?
+  - Behavioral divergence on any prompt = potential bug. Some divergence is expected (LLM non-determinism); script flags for human review.
+
+### §14.3 Output format
+
+```markdown
+# old-vs-new-path comparison: <new-vm> vs <old-vm>
+Generated: <ISO timestamp>
+Tier match: ✓ both=pro / Partner match: ✓ both=null
+
+## Summary
+- Total artifacts compared: 187
+- Byte-match: 178 ✓
+- Expected divergence (per-user): 8 ✓
+- BUGS: 1 ✗
+- **FAIL — fix bugs before Phase 1C**
+
+## Bugs (1)
+
+### BUG-1: ~/.openclaw/scripts/strip-thinking.py
+- Expected: byte-match (Rule 23 sentinels enforce content)
+- New-path hash: abc123...
+- Old-path hash: def456...
+- Diff: <unified diff snippet>
+- Likely cause: new path's tarball-generated content differs from snapshot's deployed content
+
+## Section A: Configuration files
+... per-file results ...
+
+## Section B-L: ...
+```
+
+Exit code 0 if BUGS=0, else 1.
+
+### §14.4 Exit criteria for Phase 1B-2
+
+All of:
+- [ ] Compare script runs end-to-end without throwing
+- [ ] Report's BUGS count = 0
+- [ ] Cooper personally walks the report and reviews each EXPECTED-divergence line for "is this actually OK?"
+- [ ] Any BUG found → fix in a Phase 1A patch PR → re-run Phase 1B-1 + 1B-2 from scratch
+
+**Only when all four hold:** Phase 1C (Edge City partner canary, 2026-05-28) begins.
+
+### §14.5 Why this matters
+
+Per Cooper's "byte-for-byte identical" standard. A bug in cloud-init that produces a subtle filesystem divergence (wrong permission, missing file, wrong env var, different SKILL.md content) means the new-path agent SILENTLY misbehaves on that feature. The user might not notice for weeks; we might not notice ever. The compare script catches these BEFORE they reach a real user.
+
+Investment cost: ~600-800 lines of TS for the script, ~30 min Cooper-review per canary run. ROI: every silent-divergence bug caught before paid customer traffic = saved support escalation + saved churn.
+
+---
+
+## §15. Cooper review checklist (v2)
 
 - [ ] Architecture pivot in §0 is the right call (vs. continuing to optimize v1 inline approach)
 - [ ] Function signatures in §1 match your intent
@@ -958,6 +1149,9 @@ Each test takes ~10-15 minutes. Total ~45-60 minutes for full pre-flight. **Mand
 - [ ] **Rollback plan in §13 — is the 6-layer model thorough enough?**
 - [ ] **Pre-flight rollback tests in §13.5 — sign off before Phase 1D?**
 - [ ] **Time-to-rollback SLA (§13.7): <5 min for Layer 3 acceptable as default?**
+- [ ] **§14 Phase 1B-2 audit protocol — does the compare script's 12-section diff cover every divergence class?**
+- [ ] **§14.4 exit criteria — BUGS=0 + Cooper review + re-run-on-any-bug acceptable as gate?**
+- [ ] **5 chat-completion prompts in §14.2 section L — right set, or substitute?**
 
 Specific decisions still needed from you:
 1. **Step 38 callback POST classification** — still CRITICAL (exit on fail = respawn) per your prior call. Confirm holds in v2.
