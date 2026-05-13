@@ -102,6 +102,10 @@
       "schedule": "0 11 * * *"
     },
     {
+      "path": "/api/cron/fleet-health-notify",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/research-export-sync",
       "schedule": "0 0 * * *"
     },
