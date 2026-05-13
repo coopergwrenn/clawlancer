@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-13
 
-Window: `afc05631c3dfd18f24ddaba3438de1dd55250cf1` → `HEAD` (HEAD = `a0763b87`)
-Total commits: 1
+Window: `a0763b870f147d90aef13099b6479db9e58047f0` → `HEAD` (HEAD = `fa0f9a85`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a0763b870f147d90aef13099b6479db9e58047f0 -->
+<!-- LAST_GENERATED_SHA: fa0f9a857d026bd552f3f6fd16a8ce1d8ed384da -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,7 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a0763b87` 2026-05-13 — feat(auto-changelog): GitHub Actions workflow + backfill 47-commit gap [4 files] _(ai-assisted)_
+- `fa0f9a85` 2026-05-13 — feat(rule-41): CHECK constraint — assigned VMs must have gateway_token [1 files] _(ai-assisted)_
+- `fdf4e751` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `fa0f9a85` 2026-05-13 — feat(rule-41): CHECK constraint — assigned VMs must have gateway_token [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -44,14 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a0763b87` 2026-05-13 — feat(auto-changelog): GitHub Actions workflow + backfill 47-commit gap [4 files] _(ai-assisted)_
+- `fdf4e751` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a0763b87` 2026-05-13 — feat(auto-changelog): GitHub Actions workflow + backfill 47-commit gap
+- `fa0f9a85` 2026-05-13 — feat(rule-41): CHECK constraint — assigned VMs must have gateway_token
 
 ## Appendix — every commit (chronological)
 
-- `a0763b87` 2026-05-13 — feat(auto-changelog): GitHub Actions workflow + backfill 47-commit gap [4 files] _(ai-assisted)_
+- `fdf4e751` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `fa0f9a85` 2026-05-13 — feat(rule-41): CHECK constraint — assigned VMs must have gateway_token [1 files] _(ai-assisted)_
