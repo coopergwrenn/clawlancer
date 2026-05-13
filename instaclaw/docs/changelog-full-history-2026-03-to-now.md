@@ -1,0 +1,6248 @@
+# Changelog — generated 2026-05-13
+
+Window: `2026-03-01` → `HEAD` (HEAD = `31457047`)
+Total commits: 1336
+
+<!-- LAST_GENERATED_SHA: 31457047ed94457361564a7d0737b6cbcad2e961 -->
+
+## Summary
+
+- **Manifest version bumps:** 64
+  - Range: v29 → v95
+- **Reconciler / manifest:** 284
+- **Infrastructure:** 481
+- **Feature (user-facing):** 460
+- **Edge City partner:** 16
+- **Docs / PRD only:** 95
+- AI-assisted commits (co-authored): 1245
+- Merge commits: 19
+
+## Manifest version timeline
+
+### v29 — 2026-03-11 — `10ac8402`
+
+feat(instaclaw): push-based VM heartbeat system
+
+> - POST /api/vm/heartbeat — gateway token auth, updates heartbeat_last_at
+> - push-heartbeat.sh deployed to all VMs via vm-manifest v29
+> - Hourly cron (0 * * * *) runs independently of user activity
+> - Fleet patch script with --dry-run/--canary/--all
+> - Fixes 'no activity = no heartbeat' design gap
+
+### v30 — 2026-03-13 — `170a6235`
+
+fix: deploy all 13 prediction-markets scripts + auto-heal missing scripts via reconciler
+
+> configureOpenClaw() was only deploying 7 of 13 prediction-markets scripts,
+> missing polymarket-setup-creds.py, polymarket-trade.py, polymarket-wallet.py,
+> polymarket-portfolio.py, polymarket-positions.py, and polymarket-verify.py.
+> This caused 32 VMs to have broken Polymarket trading (SKILL.md present but
+> scripts missing). Root cause: scripts were added to the repo and fleet-push
+> script but never added to configureOpenClaw().
+
+### v32 — 2026-03-19 — `a7a6298b`
+
+fix: session bloat — daily hygiene in strip-thinking.py + fleet-wide cleanup
+
+> Sessions.json index accumulated orphaned entries pointing to archived/deleted
+> sessions. OpenClaw loaded all entries into context on every message, filling
+> the context window with stale cron outputs instead of actual conversation.
+
+### v33 — 2026-03-19 — `5421f162`
+
+feat: Phase 1 — memory architecture overhaul (skill trim 24%, CAPABILITIES 59%, session handoff, heartbeat hygiene, file sharing, group chat memory fix, manifest v33)
+
+> Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### v34 — 2026-03-19 — `8ac2cc89`
+
+feat: File Delivery V1 — Telegram sendDocument + signed URLs + dashboard deep-linking + deliver_file.sh (manifest v34)
+
+> Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### v35 — 2026-03-19 — `1e93f413`
+
+feat: Phase 2 — enable memorySearch + memoryFlush fleet-wide, fix vm-384 migration (manifest v35)
+
+> Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### v36 — 2026-03-19 — `429f23e6`
+
+feat: File Delivery V2 — Supabase Storage, delivery history, CDN downloads (manifest v36)
+
+> Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### v37 — 2026-03-19 — `28eefb25`
+
+feat: fix P1 audit gaps — deploy SOUL.md supplement + HEARTBEAT.md consolidation + raise reserveTokensFloor to 35K (manifest v37)
+
+> Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### v38 — 2026-03-19 — `0081a012`
+
+fix: reconciler hardening — remove duplicate skills, strip _placeholder key, fix SSH key injection, use connectSSH(), expand billing webhook tier detection (manifest v38)
+
+> Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### v39 — 2026-03-22 — `ff5ff555`
+
+fix: strip user-sent base64 images from sessions + increase memory warn TTL + add strip-thinking telemetry (manifest v39)
+
+> Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### v40 — 2026-03-22 — `83c0452c`
+
+fix: IMAGE_KEEP_RECENT=0 — strip ALL base64 images from sessions (manifest v40)
+
+> v39 deployed IMAGE_KEEP_RECENT=2 but Ape Capital sessions have only 1 image
+> each, so 1 <= 2 meant nothing was stripped. Sessions stayed at 181K.
+> Setting to 0 strips ALL images. Also fixed Python [:-0] slice edge case.
+
+### v41 — 2026-03-23 — `d3e4bbf6`
+
+fix: disable daily 4AM session reset — switch to 7-day idle mode, isolate heartbeats, enforce session maintenance (manifest v41)
+
+> Root cause of #1 user complaint ("agent forgetting"): OpenClaw defaults to
+> session.reset.mode: "daily" with atHour: 4, silently wiping all conversation
+> history at 4 AM UTC every day. Agents start fresh with only MEMORY.md surviving.
+
+### v42 — 2026-03-23 — `b3e9fe53`
+
+fix: reconciler workspace integrity check — self-heal missing SOUL.md (v42)
+
+> The reconciler previously had no way to detect or fix missing workspace files
+> (SOUL.md, CAPABILITIES.md, MEMORY.md). If configureOpenClaw() partially failed,
+> append/insert steps would silently fail against nonexistent files.
+
+### v43 — 2026-03-24 — `9f0ed29e`
+
+fix: systemd ExecStartPre crash-loop — remove broken log rotation (v43)
+
+> The ExecStartPre log rotation used bash parameter expansion (${f%%.log})
+> which collides with systemd's %-specifier parsing, causing "Invalid
+> environment variable name" errors. Combined with mv getting filenames
+> starting with dashes ("invalid option -- '1'"), this crash-looped gateways
+> past the StartLimitBurst threshold, permanently stopping the service.
+
+### v44 — 2026-03-24 — `43a2f83b`
+
+feat: EARN.md — comprehensive earning playbook for all agents (v44)
+
+> Adds EARN.md to every agent's workspace covering all 13 earning channels:
+> Clawlancer bounties, Polymarket/Kalshi trading, Solana DeFi, digital
+> product sales, freelance services, video production, e-commerce ops,
+> financial analysis, competitive intelligence, email outreach, social
+> media, language teaching, and ambassador referrals.
+
+### v45 — 2026-03-24 — `52538305`
+
+feat: memory health dashboard + remove rotateOversizedSession (v45)
+
+> P3.1: /hq/memory-health dashboard — live SSH sampling of 15 VMs showing
+> MEMORY.md sizes, sessions.json health, daily_hygiene status, session file
+> counts, and workspace file presence (active-tasks.md, EARN.md).
+
+### v46 — 2026-03-25 — `06b36998`
+
+fix: block OpenClaw control UI — redirect root path to instaclaw.io/dashboard
+
+> XombieQueen accessed the raw control panel via her VM URL and deleted her
+> openclaw.json config. This adds a Caddy handle / block that serves an
+> instant meta-refresh redirect to instaclaw.io/dashboard while keeping all
+> API, health, and WebSocket paths proxied normally.
+
+### v47 — 2026-03-25 — `5df56627`
+
+fix: add "never go silent" operating principle to SOUL.md template
+
+> Agents going silent during long tool chains (browser auth, API calls,
+> trading) makes users think the bot crashed. New principle #3 instructs
+> agents to always send an acknowledgment before starting any operation
+> that may take >30 seconds. Manifest bumped to v47 for fleet rollout.
+
+### v48 — 2026-03-25 — `46315dfc`
+
+fix: add "never self-restart" operating principle to SOUL.md template
+
+> Agents were restarting their own gateway to fix browser timeouts, creating
+> a crash loop that killed Telegram connections and made them go silent
+> repeatedly. New principle #4 bans self-restart as a troubleshooting step.
+> Manifest bumped to v48 for fleet rollout.
+
+### v49 — 2026-03-29 — `5848b709`
+
+feat: DegenClaw skill — Virtuals $100K weekly perps trading competition
+
+> - SKILL.md: agent instructions with setup flow, trading commands, user checkpoints,
+>   autonomous mode opt-in, auto-reply safety guardrails, Hyperliquid API integration
+> - Strategy playbook: 5 templates (Tortoise/Scalp Surgeon/Funding Farmer/Sniper/Degen),
+>   pre-trade analysis protocol with direct Hyperliquid API queries, quantitative signals
+>   (OBI, CVD divergence, liquidation cascade prediction, funding rate timing),
+>   ATR-volatility position sizing, Kelly criterion, drawdown circuit breaker
+> - PRD: full spec with resolved questions, partner ID architecture, phased rollout plan
+> - vm-manifest v49: dgclaw extraSkillFiles, jq in systemPackages, SOUL.md awareness paragraph
+> - ssh.ts: dgclaw-skill clone in installAgdpSkill(), partner ID placeholder,
+>   fixed extraDirs to append (not replace), dgclaw cleanup in uninstall
+> - manifest.json: added dgclaw entry
+
+### v50 — 2026-03-30 — `2c66561f`
+
+feat: PARTNER_ID in gateway systemd — process.env verified (manifest v50)
+
+> Critical fix: .bashrc alone doesn't work for systemd services. Added
+> Environment=PARTNER_ID=INSTACLAW to the gateway systemd override so
+> ALL child processes (agent tools, npx acp, dgclaw.sh) inherit it.
+
+### v51 — 2026-03-30 — `3c4858f9`
+
+feat: universal silence watchdog — 60-second fallback guarantee (manifest v51)
+
+> The #1 reliability issue: agents go silent for many different reasons
+> (rate limits, tool failures, context overflow, frozen API, dead connection).
+> Previous fixes addressed individual causes. This fix catches ALL of them.
+
+### v52 — 2026-04-01 — `195db698`
+
+fix: Eliminate false unhealthy marks — HTTP-first health, restart grace, SSH debounce, lock file
+
+> Four fixes that eliminate ~90% of false unhealthy VM marks:
+
+### v53 — 2026-04-02 — `003b1107`
+
+fix: add tools.exec config to manifest v53 — restore exec access fleet-wide
+
+> Without tools.exec in openclaw.json, the gateway doesn't expose the
+> bash/exec tool to the agent. This caused HotTubLee's agent to report
+> "no exec access" after the v2026.4.1 upgrade wiped the implicit default.
+
+### v54 — 2026-04-03 — `69e6bce1`
+
+fix: stop silence watchdog restart storm — decouple fallback from restart
+
+> The silence watchdog was restarting the gateway every time a user message
+> went unanswered for 60s. When credits are exhausted, this creates a
+> restart storm (286 restarts/day on Kenobi's VM) because:
+> 1. User messages, agent can't respond (0 credits)
+> 2. Watchdog detects silence, sends fallback, restarts gateway
+> 3. Fresh session starts, still no credits, can't respond
+> 4. User messages again → repeat
+
+### v55 — 2026-04-05 — `b3214214`
+
+fix: add exec-approvals.json to manifest + configureOpenClaw (v55)
+
+> Without correct defaults in exec-approvals.json, the gateway's exec
+> approval daemon rejects commands even when tools.exec.security=full
+> in openclaw.json. 168/170 VMs had this issue — agents told users
+> "exec approvals not enabled" and hallucinated dashboard UI that
+> doesn't exist (discovered via Doug Rathell's ticket).
+
+### v56 — 2026-04-06 — `b73facbf`
+
+feat: cross-session memory — manifest v56, session-end hook, MEMORY.md auto-summaries
+
+> Confirmed working end-to-end on vm-050 via Telegram. Agents now remember
+> previous sessions automatically.
+
+### v57 — 2026-04-06 — `7db9b226`
+
+fix: session-end hook reads GATEWAY_TOKEN from .env file (cron doesn't source env)
+
+> The session-end hook in strip-thinking.py calls Haiku via the gateway proxy
+> using GATEWAY_TOKEN. But cron jobs don't source ~/.openclaw/.env, so
+> os.environ.get("GATEWAY_TOKEN") returns None. Added _get_gateway_token()
+> that falls back to reading the .env file directly.
+
+### v58 — 2026-04-10 — `61be338f`
+
+fix: vm-watchdog version-pin subprocess bug + manifest v58
+
+> The auto-revert job in vm-watchdog.py was silently failing on every VM:
+> subprocess.run(shell=True) invokes /bin/sh (dash on Debian), and NVM is
+> a bash function that won't load under dash — so `npm install` never ran.
+> The `| tail -1` pipeline also masked npm's exit code, so the cooldown
+> file got written every tick while the downgrade never happened.
+
+### v59 — 2026-04-21 — `e6ac015e`
+
+manifest v59: enable gateway.openai.chatCompletionsEnabled
+
+> Enables OpenClaw's OpenAI-compatible POST /v1/chat/completions endpoint
+> on the gateway (disabled by default per runtime schema). Without this,
+> Vercel's /api/chat/send (Command Center) gets 404 from the gateway and
+> falls back to direct Anthropic — no workspace files injected, no tools
+> available, no agent identity. Result: Command Center answers wallet/token
+> questions as if the agent doesn't exist (observed with edgecitybot).
+
+### v60 — 2026-04-21 — `9e783f92`
+
+manifest v60: install pinned @bankr/cli@0.2.15 during configureOpenClaw
+
+> Agent uses the CLI to run wallet ops natively from chat — `bankr fees
+> claim --yes`, transfers, balance checks. CLI reads BANKR_API_KEY from
+> ~/.openclaw/.env, which configureOpenClaw already deploys. Empirically
+> verified (tx 0x905c81bf…3d70 on Base) that partner-provisioned
+> `bk_usr_...` keys authenticate the CLI cleanly when the wallet is in
+> our prod org.
+
+### v61 — 2026-04-21 — `bfd36690`
+
+manifest v61: fix broken chat-completions config key
+
+> v59/v60 shipped `gateway.openai.chatCompletionsEnabled` which OpenClaw
+> 2026.4.5's runtime schema rejects with "Unrecognized key: openai". The
+> reconciler's config-set loop swallowed this with `2>/dev/null || true`
+> and advanced config_version anyway — so the DB showed 41 VMs on v60
+> while none of them had the endpoint flag actually set.
+
+### v62 — 2026-04-27 — `678c2263`
+
+feat(bankr): pin @bankr/cli@0.3.1 — direct claim API target
+
+> Bumps fleet from CLI 0.2.15 → 0.3.1 (npm, published 2026-04-22).
+> 0.3.x is expected to target POST /token-launches/:tokenAddress/fees/claim,
+> the new sponsored direct-claim endpoint. Prior 0.2.x targeted deprecated
+> paths (/user/doppler/claim, /clanker/claim) that emit Sunset headers.
+
+### v63 — 2026-04-27 — `0fa562d3`
+
+fix(silence-watchdog): only inspect telegram-origin sessions; manifest v63
+
+> The silence-watchdog cron picks "the latest session by mtime" and reads its
+> last user/assistant timestamps. On every VM, the heartbeat session lives
+> in the same sessions dir and stores 3-hour heartbeat pings as role:"user"
+> with content "Read HEARTBEAT.md if it exists...". Heartbeat replies are
+> tool calls, not text, so the watchdog sees a "user" message with no
+> visible-text assistant reply and fires FALLBACK_MSG into the user's
+> actual Telegram chat (chat_id is resolved separately from sessions.json).
+
+### v64 — 2026-04-28 — `65f79dae`
+
+feat(reconcile): Node 22.22.2 + OpenClaw 2026.4.26 pinned upgrade
+
+> Bumps the fleet pins for the OpenClaw v2026.4.5 → v2026.4.26 upgrade. v2026.4.26
+> has a packaging incompatibility with Node v22.22.0 (the v62/v63 snapshot
+> baseline) — install leaves dist/ with self-references to internal hashed
+> chunks that don't exist on disk; gateway crashes ERR_MODULE_NOT_FOUND on
+> startup. Validated on a throwaway nanode that v22.22.2 + 2026.4.26 = clean
+> install, no module errors, /health=200 in 6s, 5-min watch with 0 errors.
+
+### v65 — 2026-04-29 — `e85666d9`
+
+feat(reconcile): wire browser-relay-server into configureOpenClaw + manifest v65
+
+> Single-VM smoke (vm-860) confirmed: server starts on 18792, Caddy proxy
+> returns 200 on /relay/extension/status (was 502 fleet-wide before). Now
+> fleet-rolling via the reconciler.
+
+### v66 — 2026-04-29 — `83eff391`
+
+feat(bankr-skill): InstaClaw overlay — kill clanker subdir, drop Solana misroutes
+
+> Pre-launch audit found two P0 agent-side issues with the upstream Bankr
+> skill (BankrBot/skills) once it lands on a VM:
+
+### v67 — 2026-04-29 — `2229080d`
+
+chore(manifest): bump v66 → v67 — token-launch framing in upfront context
+
+> Triggers the reconciler to rewrite SOUL.md and CAPABILITIES.md across
+> the fleet so the v67 framing lands on existing VMs without waiting for
+> individual reconfigures. Both files use `>` (overwrite) in
+> configureOpenClaw, so reconciler picks up the template changes cleanly
+> on the next cron pass.
+
+### v68 — 2026-04-30 — `6679afe8`
+
+fix(fleet): manifest v68 — watchdog uptime guard + telegram streaming off
+
+> Two reliability fixes that affect every VM. Reconciler propagates v68 over
+> the next cycle.
+
+### v69 — 2026-04-30 — `d967db50`
+
+fix(fleet): manifest v69 — disable gateway watchdog timer fleet-wide
+
+> The watchdog has been actively harmful, killing working gateways in a tight
+> loop. v68's GW_AGE>600 guard only delayed the kill 10 min instead of fixing
+> the underlying bug.
+
+### v71 — 2026-04-30 — `5ff04ba5`
+
+fix(fleet): manifest v71 — disable mDNS by default + weekly backup prune
+
+> Two fleet-wide hardening fixes bundled as v71.
+
+### v72 — 2026-04-30 — `5d6c0d07`
+
+feat(soul): manifest v72 — SOUL.md cache boundary marker
+
+> Adds `<!-- OPENCLAW_CACHE_BOUNDARY -->` marker to WORKSPACE_SOUL_MD,
+> positioned after the static persona content (Core Truths, Hard
+> Boundaries, Vibe) and before the agent-editable Learned Preferences.
+
+### v73 — 2026-04-30 — `731d41ec`
+
+feat(memory): manifest v73 — MEMORY.md backup + auto-restore (Phase 1)
+
+> Phase 1 of the memory integrity layer (PRD: instaclaw/docs/prd/
+> memory-integrity-layer.md, branch prd-memory-integrity).
+
+### v74 — 2026-05-01 — `f2a8679a`
+
+fix(systemd): StartLimitAction=stop→none — invalid value broke fleet kill-loop protection
+
+> v73 manifest set `StartLimitAction=stop`, but `stop` is not a valid
+> systemd value. Valid values: none, reboot[-force/-immediate],
+> poweroff[-force/-immediate], exit[-force]. systemd silently logged
+> "Failed to parse StartLimitAction=, ignoring: stop" on every start
+> across the fleet (confirmed on vm-729 + vm-773 — both still in kill
+> loops 12-24 SIGTERMs/6h).
+
+### v75 — 2026-05-01 — `f8f23353`
+
+fix(systemd): v75 — split StartLimit* into [Unit] section (was silently dropped in [Service])
+
+> v74 fixed the VALUE bug (StartLimitAction=stop → none). v75 fixes the SECTION bug.
+
+### v76 — 2026-05-01 — `1a2fc677`
+
+fix(manifest): v76 — remove vm-watchdog + silence-watchdog from cron schedule
+
+> The 5-min stale-session-jsonl heuristic in vm-watchdog.py was actively
+> killing working agents that were just slow. Today's measurements:
+>   - p99 chat completion latency: 69s
+>   - Slow tail max: 182s
+>   - Tool-call cycles (browser navigate + screenshot + chat reply) routinely > 5min
+
+### v77 — 2026-05-01 — `2665ba31`
+
+feat(soul-v2): migrateExistingSoulMd reconciler step + manifest v77 + kill switch (default OFF)
+
+> PRD: instaclaw/docs/prd/prd-soul-restructure.md, Phase 1.
+> Turn F of the SOUL.md restructure rollout. NO BEHAVIOR CHANGE — the migration
+> step is gated behind RECONCILE_SOUL_MIGRATION_ENABLED=true (default off in
+> production env). The step is a silent no-op until Cooper sets the env var
+> on the canary (vm-733) for Phase 2.
+
+### v78 — 2026-05-02 — `cb52f1ec`
+
+feat(edge-privacy): components 5–9 — expire cron, audit log, SSH bridge, reconciler, cutover script
+
+> Completes Maximum Privacy Mode v0. Components 1–3 shipped in 0b164436;
+> this branch adds the back-end machinery the bridge needs and the bridge
+> itself. See PR description for full architecture.
+
+### v79 — 2026-05-02 — `fa1193a4`
+
+fix(edge-privacy): QA blockers in privacy bridge — newline injection, fail-open, openclaw backdoor
+
+> Three blocker bugs from QA review 2026-05-02 in lib/privacy-bridge.sh:
+
+### v80 — 2026-05-04 — `e285e68f`
+
+fix(memory): manifest v80 — periodic-summary hook unblocked when session shrinks
+
+> Bug: 2026-05-04 audit on 5 active VMs found 2/5 had run_periodic_summary_hook
+> silently blocked. Sentinels present, exit code 0, function returning early
+> forever. Diagnostic via scripts/_debug-periodic-summary-hook.ts:
+
+### v81 — 2026-05-04 — `51ef0cd4`
+
+feat(matchpool): v81 manifest — fleet wiring for matching pipeline
+
+> Bumps VM_MANIFEST.version 80 → 81. Reconciler will propagate to existing
+> VMs on next cycle. New VMs from the v79 snapshot pick this up via the
+> reconciler before serving (per CLAUDE.md Rule 8).
+
+### v82 — 2026-05-05 — `327888af`
+
+feat(matchpool): v82 SOUL.md awareness for matching engine
+
+> Bumps VM_MANIFEST.version 81 → 82.
+
+### v83 — 2026-05-05 — `259477ba`
+
+feat(matchpool): v83 — pipeline + intent_sync gate on skill state
+
+> Bumps VM_MANIFEST.version 82 → 83. Companion to the Path 1 skill
+> toggle commit (4b28f8f3).
+
+### v84 — 2026-05-05 — `5859048c`
+
+feat(matchpool): v84 — Path 2 §Organic Activation helper
+
+> Bumps VM_MANIFEST.version 83 → 84.
+
+### v85 — 2026-05-05 — `31396d5c`
+
+feat(skills): Rule 24 — install verification + self-healing + taxonomy
+
+> Codifies the failure mode that bricked vm-321 (frankyecash) and vm-729
+> (Notboredclaw) — both had `~/dgclaw-skill/` partial-install state (no
+> `.git/`, no `scripts/dgclaw.sh`) for weeks without alarm. The
+> existing `installAgdpSkill` had `git pull --ff-only 2>&1 || true` over
+> a corrupted dir, swallowed the failure, and reported success.
+
+### v86 — 2026-05-05 — `56f71126`
+
+fleet(v86): raise TasksMax 75 → 120 on openclaw-gateway cgroup
+
+> vm-724 incident root cause was per-cgroup TasksMax=75, not zombie
+> accumulation. Fleet diagnostic (n=50 healthy VMs, see
+> instaclaw/docs/zombie-classification-2026-05-05.json) confirms:
+
+### v87 — 2026-05-05 — `36c6b260`
+
+fleet(v87): integrate prctl-subreaper into openclaw-gateway
+
+> Adds stepPrctlSubreaper to vm-reconcile.ts (Step 8c2, between
+> stepSystemdUnit and stepSSHDProtection). Behavior:
+
+### v88 — 2026-05-05 — `faf8b8a8`
+
+fleet(v88): add build-essential to systemPackages — fixes v87 silent fail
+
+> stepPrctlSubreaper appeared to bump cv to 87 across multiple VMs (vm-780,
+> vm-899, vm-360) without actually installing the native addon. Forensics:
+
+### v89 — 2026-05-06 — `b6141af9`
+
+fix(soul-md): v89 — InstaClaw platform identity (fixes "I'm an OpenClaw agent")
+
+> Triggered by 2026-05-06 user complaint (HotTubLee) — agents identifying as
+> "OpenClaw agents" and describing InstaClaw as a third-party platform they
+> "don't have set up." The SOUL.md template's "## My Identity" section was a
+> near-empty placeholder ("identity develops naturally through conversation"),
+> so the agent had no foundational statement of platform identity. When asked
+> about InstaClaw features, it accurately reported the runtime layer it sees
+> (OpenClaw) and treated the platform layer (InstaClaw) as external.
+
+### v90 — 2026-05-07 — `7ac0d370`
+
+fix(session-overflow): v90 — four-layer session-overflow reliability fix
+
+> Triggered by 2026-05-06 vm-729 (Notboredclaw) outage: a >200KB jsonl was
+> archived + os.remove'd, leaving only metadata terminators (model.completed,
+> trace.artifacts, session.ended). The agent then sent an empty messages
+> array to Anthropic → 400 "messages: at least one message is required" →
+> in-memory FailoverManager cooldown → user saw "Something went wrong" on
+> every message. Per-session bug; every paying user with intense tool use
+> was at risk.
+
+### v91 — 2026-05-07 — `e30c6a78`
+
+fix(bankr): wallet coverage gap (Phases 1-5) + v91 SOUL.md Platform V2
+
+> Triggered by Doug Rathell (vm-725) reporting his agent refused to launch
+> a token. Diagnosis revealed a fleet-wide gap: 166 of 211 paying VMs
+> (79%) had no InstaClaw-provisioned Bankr wallet. Two structural causes:
+
+### v92 — 2026-05-11 — `b6f949ac`
+
+feat(soul-md): v92 partner-stub migration — fix live truncation bug on edge_city VMs
+
+> Pre-v92 edge_city VMs had 36,054 chars of SOUL.md content vs the 35,000-char
+> BOOTSTRAP_MAX_CHARS ceiling. The last ~1,054 chars (the Edge onboarding
+> interview tail + the entire Consensus section) were silently truncated from
+> the agent's bootstrap context. All 5 production edge_city VMs affected.
+
+### v93 — 2026-05-11 — `e436cf3a`
+
+feat(soul-md): v93 partner-stub APPEND branch + budget-aware over-budget check
+
+> The v92 step's Python treated `old-not-found` as a no-op (mirroring v67
+> routing-patch semantics where missing-old indicated user customization).
+> For partner sections this was wrong: partner sections are auto-installed
+> by configureOpenClaw, and a missing section means the VM was provisioned
+> BEFORE the section existed in the template, OR a configure failure left
+> it out. Either way we want to add it.
+
+### v95 — 2026-05-11 — `0712ba01`
+
+feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
+
+> Originating bug: 3 minutes of silence between Cooper's prompt and the
+> agent's eventual response at 9:07 PM 2026-05-11. Edge Esmeralda (1000
+> attendees, ships 2026-05-30) would have churned that experience at
+> scale. PRD: docs/prd/agent-acknowledgment-ux-2026-05-11.md (~2000 lines).
+
+## What changed for users
+
+- `28735b00` 2026-03-02 — chore: add IndexNow key verification file [1 files] _(ai-assisted)_
+- `0fa077c6` 2026-03-02 — refactor: switch X/Twitter Search from proxy to BYOK [3 files] _(multi: [feature, docs]; ai-assisted)_
+- `9920fa9f` 2026-03-02 — seo: add authoritative outbound links to all 23 blog posts [23 files] _(ai-assisted)_
+- `745dd209` 2026-03-02 — seo: GEO audit fixes — FAQ sync, llms.txt expansion, use-case links, about page [6 files] _(ai-assisted)_
+- `fa88771a` 2026-03-03 — ui: add Blog link to landing page navbar [1 files] _(ai-assisted)_
+- `24418a61` 2026-03-03 — ui: add Lenis smooth scroll to all marketing pages [1 files] _(ai-assisted)_
+- `8b0aace8` 2026-03-03 — feat: overhaul /use-cases page — 6 new use cases, vivid descriptions [1 files] _(ai-assisted)_
+- `16739680` 2026-03-03 — copy: update crypto use case to highlight multi-marketplace earning [1 files] _(ai-assisted)_
+- `04738568` 2026-03-03 — fix: show Dashboard instead of Sign Up in marketing header when logged in [1 files] _(ai-assisted)_
+- `ffe5bc61` 2026-03-04 — feat: comprehensive Polymarket + Kalshi setup UX on earn page [2 files] _(ai-assisted)_
+- `6afece12` 2026-03-06 — feat: add /billing/credit-packs page for media credit pack purchases [1 files] _(ai-assisted)_
+- `5a7f8043` 2026-03-06 — fix: skills toggle shows green when enabled, grey when disabled [1 files] _(ai-assisted)_
+- `9b62518e` 2026-03-06 — fix: skills toggle — green enabled state, glass UI, bounce animation [1 files] _(ai-assisted)_
+- `2bfca09c` 2026-03-07 — fix: restrict file browser — protect system files, show as locked [2 files] _(ai-assisted)_
+- `e1023847` 2026-03-07 — fix: skills grid overflow + gateway 409 conflict self-healing [1 files] _(ai-assisted)_
+- `d3ed887b` 2026-03-07 — fix: upgrade skill icons — official brand logos + Lucide icons [12 files] _(ai-assisted)_
+- `33c5c6ed` 2026-03-07 — fix: contain wallet panel inside skill card as collapsible accordion [1 files] _(ai-assisted)_
+- `45bf6308` 2026-03-07 — fix: fixed-height skill cards, wallet popover, shorter Solana description [1 files] _(ai-assisted)_
+- `4508b9e8` 2026-03-07 — fix: use 3D Polymarket app icon matching Kalshi style [1 files] _(ai-assisted)_
+- `48f8e196` 2026-03-07 — feat: glass UI filter section + Earn category on Skills page [1 files] _(ai-assisted)_
+- `4d9f22c9` 2026-03-07 — feat: glass UI for all buttons on Skills & Integrations page [1 files] _(ai-assisted)_
+- `93595e79` 2026-03-07 — fix: replace heavy dark pills with frosted glass UI [1 files] _(ai-assisted)_
+- `553ff184` 2026-03-07 — fix: add clean drop shadow to active category pills [1 files] _(ai-assisted)_
+- `30c46142` 2026-03-07 — fix: marketplace category pills now have animated layoutId transition [1 files] _(ai-assisted)_
+- `2711fa5a` 2026-03-07 — fix: soften active pill shadow from heavy to subtle [1 files] _(ai-assisted)_
+- `f84d4756` 2026-03-07 — fix: marketplace search bar now uses frosted glass UI [1 files] _(ai-assisted)_
+- `63f3fbcb` 2026-03-07 — fix: Submit a Skill button now uses dark frosted glass UI [1 files] _(ai-assisted)_
+- `29f14654` 2026-03-07 — fix: Submit a Skill button now truly translucent glass [1 files] _(ai-assisted)_
+- `fbe00923` 2026-03-07 — fix: Submit a Skill button dark glass with inner highlight [1 files] _(ai-assisted)_
+- `6cc459d7` 2026-03-07 — fix: add Clawlancer Bounties card to Marketplaces + green toggle style [1 files] _(ai-assisted)_
+- `97ee63de` 2026-03-07 — fix: use actual brand logos for Clawlancer and Virtuals marketplace cards [1 files] _(ai-assisted)_
+- `dd988bb7` 2026-03-07 — fix: remove em dashes from Marketplaces section copy [1 files] _(ai-assisted)_
+- `aa7a2e66` 2026-03-07 — fix: remove all em dashes from dashboard page user-visible text [1 files] _(ai-assisted)_
+- `b9ee9b7e` 2026-03-07 — fix: apply glass UI to model selector dropdown on dashboard [1 files] _(ai-assisted)_
+- `89ea25ae` 2026-03-07 — fix: show Telegram Bot Token input for all users, not just those with Telegram enabled [1 files] _(ai-assisted)_
+- `e85bce47` 2026-03-08 — feat: add /dashboard/credits page and GET /api/credits/media endpoint [2 files] _(ai-assisted)_
+- `06f4b067` 2026-03-08 — feat: add Credits link to dashboard overflow nav [1 files] _(ai-assisted)_
+- `4bdbfb59` 2026-03-08 — fix: redesign credits page for light theme — glass cards, icon badges, hover lift, structured packs [1 files] _(ai-assisted)_
+- `dd4e64d5` 2026-03-08 — fix: round usage numbers on dashboard to prevent floating point display [1 files] _(ai-assisted)_
+- `d232468d` 2026-03-09 — fix: show waitlist form by default on signup when ?ref= present + add "Referred by" column to HQ invites [3 files] _(ai-assisted)_
+- `eb4b4bde` 2026-03-11 — feat: World ID 4.0 migration + AgentBook dashboard registration flow [7 files] _(ai-assisted)_
+- `d0f5b13b` 2026-03-11 — fix: fetch rpContext for verified users + prevent status cache [1 files] _(ai-assisted)_
+- `bc9b9c5d` 2026-03-11 — fix: add onError + console logging to World ID widget for debugging [1 files] _(ai-assisted)_
+- `cbb0ce36` 2026-03-11 — fix: World ID 4.0 — strip RP_ID newline, dynamic import, fetch on click [5 files] _(ai-assisted)_
+- `c54b1f1f` 2026-03-11 — fix: force QR code on desktop for World ID widget [1 files] _(ai-assisted)_
+- `6e181b82` 2026-03-11 — debug: enable IDKIT_DEBUG and log rp_context on verify click [1 files] _(ai-assisted)_
+- `0aa8b8ff` 2026-03-11 — fix(instaclaw): show World ID widget error code prominently on screen [1 files] _(ai-assisted)_
+- `42b4e450` 2026-03-11 — fix(instaclaw): wrap QRCodeSVG dynamic import in default export [1 files] _(ai-assisted)_
+- `9edca75c` 2026-03-11 — fix(instaclaw): move polling useEffect above early returns (React #310) [1 files] _(ai-assisted)_
+- `eb2745bb` 2026-03-11 — fix(instaclaw): handle non-JSON responses from start-registration [1 files] _(ai-assisted)_
+- `975efc69` 2026-03-11 — fix(instaclaw): make AgentBook registration non-blocking (timeout fix) [3 files] _(ai-assisted)_
+- `138ab752` 2026-03-12 — fix: update all Sonnet 4.5 labels to Sonnet 4.6 across UI and API [9 files] _(ai-assisted)_
+- `2e7d90ec` 2026-03-13 — feat: add WAITLIST_MODE kill switch for instant landing page revert [3 files] _(ai-assisted)_
+- `5b9b3e51` 2026-03-13 — fix: optimize hero CTA buttons for mobile screen sizes [1 files] _(ai-assisted)_
+- `025df537` 2026-03-13 — fix: bump mobile hero button sizes for larger phones (Pro Max) [1 files] _(ai-assisted)_
+- `eff4a08a` 2026-03-13 — fix: smooth scroll on Learn More button via Lenis instead of jerky anchor jump [1 files] _(ai-assisted)_
+- `0168b23c` 2026-03-14 — feat: add support button to landing page nav and dashboard More dropdown [2 files] _(ai-assisted)_
+- `0109bde7` 2026-03-14 — fix: remove support button from landing page hero nav [1 files] _(ai-assisted)_
+- `fa985439` 2026-03-14 — fix: smooth scroll to Human Verification section from dashboard banner [3 files] _(ai-assisted)_
+- `65ead87f` 2026-03-14 — fix: poll for hash target element before scrolling on settings page [1 files] _(ai-assisted)_
+- `75a49864` 2026-03-14 — feat: add "don't leave this screen" note and contact support link to deploy page [1 files] _(ai-assisted)_
+- `0ec9a908` 2026-03-14 — feat: production-ready Chrome Extension Relay — protocol rewrite + dashboard UI [4 files] _(ai-assisted)_
+- `4fffdd25` 2026-03-16 — feat: add /notify email signup page with Discord CTA [4 files] _(ai-assisted)_
+- `05965f68` 2026-03-17 — fix: empty chat bubbles + model picker click-outside bug [1 files] _(ai-assisted)_
+- `7add293c` 2026-03-17 — fix: Polymarket dashboard panel can't read VM files [2 files] _(ai-assisted)_
+- `ac330c3a` 2026-03-17 — fix: log console.error on failed VM file fetches instead of silently returning null [2 files] _(ai-assisted)_
+- `437ddd3a` 2026-03-23 — style: glass morphism UI overhaul for World mini app [9 files] _(ai-assisted)_
+- `a1c299c5` 2026-03-23 — fix: critical mini app integration gaps — auth, deep links, middleware [14 files] _(ai-assisted)_
+- `70cd0f01` 2026-03-23 — fix: account portability — prevent duplicate accounts across platforms [10 files] _(ai-assisted)_
+- `0bb44c76` 2026-03-23 — fix: splash screen hang — MiniKit init race + fetch timeout [2 files] _(ai-assisted)_
+- `8e1d98a9` 2026-03-23 — fix: force past splash screen with 3s timeout + inline styles + debug logs [2 files] _(ai-assisted)_
+- `785d3baf` 2026-03-23 — style: onboarding redesign — light theme, Instrument Serif, no emojis [3 files] _(ai-assisted)_
+- `3a8033b0` 2026-03-23 — style: 'Claim your free' + size up 'AI agent' to match width [1 files] _(ai-assisted)_
+- `5286b11f` 2026-03-23 — feat: scrolling marquee use-case pills on onboarding screen [2 files] _(ai-assisted)_
+- `86c7a2cb` 2026-03-23 — style: match landing page glass pill style — white bg, multi-layer inset shadows [1 files] _(ai-assisted)_
+- `d0496f37` 2026-03-23 — style: full onboarding layout overhaul — native iOS app feel [1 files] _(ai-assisted)_
+- `2f8f569b` 2026-03-23 — style: pill-shaped CTA button, more bottom padding, horizontal breathing room [1 files] _(ai-assisted)_
+- `c3559864` 2026-03-23 — feat: replace app icon with live spots-open pill from landing page [2 files] _(ai-assisted)_
+- `734e94e2` 2026-03-23 — style: bump 'AI agent' to 60px to match 'Claim your free' width [1 files] _(ai-assisted)_
+- `328e9d29` 2026-03-23 — fix: spots pill not rendering — CORS blocked cross-origin fetch [2 files] _(ai-assisted)_
+- `db5c5b89` 2026-03-23 — style: larger hero title, bigger subtitle, shift content upward [1 files] _(ai-assisted)_
+- `c9c80227` 2026-03-23 — style: refine hero layout — upper-third placement, balanced title sizes [1 files] _(ai-assisted)_
+- `4c836973` 2026-03-23 — feat: scrolling testimonial cards fill gap between marquee and CTA [2 files] _(ai-assisted)_
+- `e2b38ec5` 2026-03-23 — feat: add pixel art avatars to testimonial cards [1 files] _(ai-assisted)_
+- `0634638e` 2026-03-23 — style: widen subtitle to 2 lines instead of 3 [1 files] _(ai-assisted)_
+- `df6ee56a` 2026-03-23 — copy: CTA → 'Claim my agent' [1 files] _(ai-assisted)_
+- `15b57089` 2026-03-23 — layout: center marquees between subtitle and CTA button [1 files] _(ai-assisted)_
+- `884c1e03` 2026-03-23 — fix: auth flow — cookie sameSite, SIWE fallback, detailed error logging [3 files] _(ai-assisted)_
+- `526f6ebd` 2026-03-23 — fix: serialize auth errors properly — show full text not [object Object] [2 files] _(ai-assisted)_
+- `8fb8265e` 2026-03-23 — fix: better Supabase error reporting for user creation failure (23502) [2 files] _(ai-assisted)_
+- `c9cf340d` 2026-03-23 — feat: collect email during World mini app onboarding [3 files] _(ai-assisted)_
+- `174c0d9b` 2026-03-23 — copy: explain why we collect email — connects agent across all platforms [1 files] _(ai-assisted)_
+- `32665c0f` 2026-03-23 — fix: verify-failed screen — fix all 3 buttons + add verify logging [1 files] _(ai-assisted)_
+- `f19c4253` 2026-03-24 — fix: action ID → 'verify-instaclaw-agent' (was 'instaclaw-verify-human') [2 files] _(ai-assisted)_
+- `75e42d59` 2026-03-24 — fix: email autofill attrs + remove em dash from subtitle [1 files] _(ai-assisted)_
+- `ef67311e` 2026-03-24 — debug: full logging on World ID verify — payload, response, app ID, action [1 files] _(ai-assisted)_
+- `6a169a74` 2026-03-24 — fix: handle max_verifications_reached as success + skip if already verified [3 files] _(ai-assisted)_
+- `dcbaa82f` 2026-03-24 — fix: delegation screen — realistic credits, orange button, $INSTACLAW option [2 files] _(ai-assisted)_
+- `48efad5b` 2026-03-24 — style: $INSTACLAW → disabled 'Coming Soon' with anticipation copy [1 files] _(ai-assisted)_
+- `7ef161eb` 2026-03-24 — fix: WLD delegation 5→20 WLD for 150 credits / ~3 days [3 files] _(ai-assisted)_
+- `c5efee1e` 2026-03-24 — debug: full error display on delegation flow [1 files] _(ai-assisted)_
+- `c1b4c89e` 2026-03-24 — fix: delegate/initiate — full error logging, manual token decimals, no minikit-js server import [1 files] _(ai-assisted)_
+- `6d4e53d4` 2026-03-25 — debug: show MiniKit.pay payload on screen before calling [1 files] _(ai-assisted)_
+- `24ef9ed1` 2026-03-25 — debug: two-step delegation — show payload, then confirm to fire MiniKit.pay [1 files] _(ai-assisted)_
+- `c5d5c8c6` 2026-03-25 — fix: trim newline from recipient address — was breaking MiniKit.pay [3 files] _(ai-assisted)_
+- `65d57f7d` 2026-03-25 — fix: delegation flow — retry polling, immediate credit grant, clean UI [2 files] _(ai-assisted)_
+- `e74fb9fb` 2026-03-25 — fix: WLD delegation 20→25 WLD everywhere [3 files] _(ai-assisted)_
+- `172205a8` 2026-03-25 — fix: home page crash when agent not yet provisioned [2 files] _(ai-assisted)_
+- `95e6035f` 2026-03-25 — feat: step-by-step provisioning progress UI (matches instaclaw.io) [2 files] _(ai-assisted)_
+- `fff1ea79` 2026-03-25 — fix: provisioning transitions after completion — no more stuck state [1 files] _(ai-assisted)_
+- `4ffe421b` 2026-03-25 — style: scale up provisioning screen for mobile — larger icons, text, spacing [1 files] _(ai-assisted)_
+- `3b8117cd` 2026-03-25 — fix: 'All systems go' no longer stuck — shows action buttons instead of auto-redirect loop [1 files] _(ai-assisted)_
+- `95b92d3e` 2026-03-25 — fix: wrap ALL server components in try/catch — prevent crash for World wallet users [4 files] _(ai-assisted)_
+- `fbf40d9e` 2026-03-25 — fix: credit grant uses direct update instead of RPC [1 files] _(ai-assisted)_
+- `3fda697e` 2026-03-25 — fix: remove instaclaw.io/dashboard links — keep users in mini app [3 files] _(ai-assisted)_
+- `eec5eee1` 2026-03-25 — feat: wallet-based auto-login — persist sessions across mini app opens [3 files] _(ai-assisted)_
+- `bf0ed131` 2026-03-25 — fix: break provisioning→dashboard loop + debug logging for getAgentStatus [2 files] _(ai-assisted)_
+- `4c1cb74d` 2026-03-25 — fix: column 'model' → 'default_model' — root cause of dashboard not loading [3 files] _(ai-assisted)_
+- `81527b45` 2026-03-25 — fix: World Chat → 'Coming soon — use Telegram for now' [1 files] _(ai-assisted)_
+- `79e19647` 2026-03-25 — feat: Phase 2.5 + 3 — autonomous mode, audit logging, dashboard, billing gate, docs [8 files] _(ai-assisted)_
+- `ac90bcc8` 2026-03-25 — fix: new user VM provisioning — assign from pool before configure [17 files] _(multi: [feature, docs]; ai-assisted)_
+- `c3550f73` 2026-03-25 — fix: P0+P1 launch blockers — 6 critical fixes for World mini app [4 files] _(ai-assisted)_
+- `b6ab37bf` 2026-03-25 — feat: Live Desktop Viewer — Phase 0+1 prototype [3 files] _(ai-assisted)_
+- `3b2862fa` 2026-03-25 — feat: XMTP fully working — gateway bridge + World Chat deep link [3 files] _(ai-assisted)_
+- `2152353b` 2026-03-25 — feat: in-app chat UI — talk to agent without leaving the mini app [2 files] _(ai-assisted)_
+- `247fe79c` 2026-03-26 — fix: connection stability + 13 UX improvements from Mucus live testing [6 files] _(multi: [feature, docs]; ai-assisted)_
+- `25aab9b3` 2026-03-26 — feat: test-deeplinks page — 9 World Chat deep link variations for Andy [1 files] _(ai-assisted)_
+- `29dd6cd7` 2026-03-26 — feat: Test Deep Links button on Settings tab [1 files] _(ai-assisted)_
+- `908578ac` 2026-03-26 — test: Chat button → MiniKit.chat() with agent XMTP address [1 files] _(ai-assisted)_
+- `9ceb6764` 2026-03-26 — feat: pairing codes + zero-friction dispatch onboarding (items 1-6) [7 files] _(ai-assisted)_
+- `091d253b` 2026-03-26 — feat: one-click "Connect Your Computer" button — zero terminal knowledge needed [2 files] _(ai-assisted)_
+- `3427b149` 2026-03-26 — feat: in-app chat as primary, World Chat grayed out (coming soon) [4 files] _(ai-assisted)_
+- `9eee81b1` 2026-03-26 — feat: agent dispatch onboarding in SOUL.md + live page dispatch section [1 files]
+- `fdcc3e1d` 2026-03-26 — feat: Command Center — full dashboard replica in World mini app [2 files] _(ai-assisted)_
+- `fdba0659` 2026-03-26 — fix: docs Quick Start — add one-click connect as primary path, pairing code as secondary [1 files]
+- `bb150ce4` 2026-03-26 — style: input bar matches instaclaw.io glass UI — + button, model picker, mic, send [1 files] _(ai-assisted)_
+- `cae5e7f6` 2026-03-26 — redesign: /live page — mission control dashboard for agent desktop [1 files] _(ai-assisted)_
+- `4b082a20` 2026-03-26 — fix: auto-login retries + 'Sign in' fallback for returning users [1 files] _(ai-assisted)_
+- `3b7dbd24` 2026-03-26 — fix: Remote Control header — shorten title to prevent wrapping, remove em dash from subtitle [1 files]
+- `4ccd7d7f` 2026-03-26 — fix: sign-in link moved inside CTA section — no more overlap [2 files] _(ai-assisted)_
+- `72ec5320` 2026-03-26 — style: replace Telegram footer with compact dismissable info pill at top [1 files] _(ai-assisted)_
+- `9363f913` 2026-03-26 — fix: remove em dash from info pill [1 files] _(ai-assisted)_
+- `3d7c079f` 2026-03-26 — fix: input bar — clean single border, no double-layer effect [1 files] _(ai-assisted)_
+- `d121fce6` 2026-03-26 — polish: /live page — 7 targeted fixes [1 files]
+- `fde4c4ae` 2026-03-26 — feat: personalized suggestion chips from instaclaw.io API [2 files] _(ai-assisted)_
+- `acfdf3a2` 2026-03-26 — fix: center empty states + remove em dash [1 files] _(ai-assisted)_
+- `d9c450a0` 2026-03-26 — feat: inline noVNC viewer — live desktop streams inside the /live page [5 files] _(ai-assisted)_
+- `c3836943` 2026-03-26 — feat: functional + menu, model picker, and voice input on Command Center [1 files] _(ai-assisted)_
+- `0e70045f` 2026-03-26 — fix: suggestions — proxy GET support + correct method call [3 files] _(ai-assisted)_
+- `b6e32f87` 2026-03-26 — fix: robust suggestion chips — better defaults + cache-first loading [1 files] _(ai-assisted)_
+- `f386d7e7` 2026-03-26 — feat: Google account connection for World mini app [13 files] _(ai-assisted)_
+- `14e0ee37` 2026-03-26 — feat: add Google disconnect button in mini app Settings [2 files] _(ai-assisted)_
+- `57e059b7` 2026-03-26 — fix: show "Google connected" badge on Home tab + trigger deploy [1 files] _(ai-assisted)_
+- `c0a0c5f7` 2026-03-26 — fix: reorder Home tab — Chat button above Google connect card [1 files] _(ai-assisted)_
+- `0e57fcb3` 2026-03-26 — fix: replace all WLD "stake/staking" language with "pay/credits" [3 files] _(ai-assisted)_
+- `cfdddf8a` 2026-03-26 — fix: Google connect button — glass styling + multicolor G icon [1 files] _(ai-assisted)_
+- `7b046c2c` 2026-03-26 — fix: Chat button — glass morphism styling while keeping orange [1 files] _(ai-assisted)_
+- `f401085e` 2026-03-26 — fix: atomic credit addition in WLD delegate/confirm (Phase 0) [3 files] _(multi: [feature, docs]; ai-assisted)_
+- `8a01dc61` 2026-03-26 — feat: P1 — live desktop thumbnail on dashboard home page [4 files] _(ai-assisted)_
+- `99331f3e` 2026-03-26 — feat: Phase 1 — subscription detection in mini app [6 files] _(ai-assisted)_
+- `6b3bcd1c` 2026-03-26 — polish: idle detection on desktop thumbnail — moon icon + 'Agent is dreaming' overlay [1 files]
+- `cc2d1654` 2026-03-26 — feat: P4 — shareable agent clips (client-side canvas recording) [2 files] _(ai-assisted)_
+- `05eda895` 2026-03-26 — feat: Phase 3 — dashboard access gate behind feature flag [1 files] _(ai-assisted)_
+- `d924250c` 2026-03-26 — fix: 3 bugs from comprehensive audit [3 files] _(ai-assisted)_
+- `af38ae4a` 2026-03-26 — fix: subscribers can still top up with WLD for overflow credits [2 files] _(ai-assisted)_
+- `bc5acdeb` 2026-03-26 — fix: Top up with WLD button — orange glass, not teal [1 files] _(ai-assisted)_
+- `264d9a28` 2026-03-26 — fix: add lightning icon to Top up with WLD button [1 files] _(ai-assisted)_
+- `a3aaf28a` 2026-03-26 — fix: live connection status polling, success state, animated transitions [2 files] _(ai-assisted)_
+- `1654e1ca` 2026-03-26 — feat: full Skills tab — category filters, toggle switches, dual auth [2 files] _(ai-assisted)_
+- `104e5af2` 2026-03-26 — feat: editable agent name on Home tab [4 files] _(ai-assisted)_
+- `177fec3c` 2026-03-26 — fix: skills data parsing — API returns { skills: { ... } } not flat [1 files] _(ai-assisted)_
+- `9a34bb16` 2026-03-26 — feat: skills page polish — green toggles, expand animation, loading spinner [1 files] _(ai-assisted)_
+- `10ce85f7` 2026-03-26 — fix: skills empty state — tab-aware text + vertically centered [1 files] _(ai-assisted)_
+- `82729c4f` 2026-03-26 — fix: center empty state in available space with min-height 50vh [1 files] _(ai-assisted)_
+- `87b7a9a3` 2026-03-27 — fix: gray out unconnected integrations with "Coming Soon" badge [1 files] _(ai-assisted)_
+- `1163f683` 2026-03-27 — fix: WLD top-up works directly from Settings — no page jump [1 files] _(ai-assisted)_
+- `89a12483` 2026-03-27 — feat: glass tab switcher with bouncy sliding pill indicator [1 files] _(ai-assisted)_
+- `694ad07a` 2026-03-27 — feat: smooth page transitions + glass tab bar with sliding pill [3 files] _(ai-assisted)_
+- `3c58565b` 2026-03-27 — fix: restore command center layout — pass flex height through transition [2 files] _(ai-assisted)_
+- `8cdb9b40` 2026-03-27 — fix: snappy page transitions — no exit delay, instant content swap [1 files] _(ai-assisted)_
+- `a72b218c` 2026-03-27 — fix: remove PageTransition wrapper + add instant loading skeletons [3 files] _(ai-assisted)_
+- `5b028a80` 2026-03-27 — feat: floating pill-shaped nav bar with sliding indicator [1 files] _(ai-assisted)_
+- `9c0ce28b` 2026-03-27 — fix: truly floating nav bar — transparent bg, content scrolls behind [2 files] _(ai-assisted)_
+- `dd62aae8` 2026-03-27 — fix: Skills + Chat pages — transparent bg for floating nav bar [2 files] _(ai-assisted)_
+- `0dfd27b8` 2026-03-27 — feat: full glass UI upgrade on Home tab [2 files] _(ai-assisted)_
+- `d225fcb9` 2026-03-27 — feat: full glass UI upgrade on Command Center page [1 files] _(ai-assisted)_
+- `f4c8cd50` 2026-03-27 — feat: 3D glass orb effect on Credits and Earnings icons [1 files] _(ai-assisted)_
+- `f94fe9eb` 2026-03-27 — fix: chat UX — auto-switch to Chat tab, glass bubbles, typing dots [2 files] _(ai-assisted)_
+- `9d80463b` 2026-03-27 — feat: streaming chat responses + toggles — matches web app [2 files] _(ai-assisted)_
+- `19b2625f` 2026-03-27 — fix: pin header + input, only messages scroll (iMessage pattern) [2 files] _(ai-assisted)_
+- `b3864dc4` 2026-03-27 — feat: fully functional Tasks tab — create, list, filter, poll [3 files] _(ai-assisted)_
+- `eb753e84` 2026-03-27 — fix: TCP keepalive on WebSocket — prevents relay disconnect after 2-3 min [4 files] _(ai-assisted)_
+- `fdbc1218` 2026-03-27 — feat: task cards match web app exactly — spinners, orbs, pills, status [1 files] _(ai-assisted)_
+- `7bb55b5b` 2026-03-27 — fix: suggestion chips always visible on Tasks tab [1 files] _(ai-assisted)_
+- `c5dcd010` 2026-03-27 — fix: task execution calls gateway directly — no instaclaw.io proxy [4 files] _(ai-assisted)_
+- `38b3f0ca` 2026-03-27 — fix: remove duplicate task cards — single placeholder, clean replace [1 files] _(ai-assisted)_
+- `78eaabc2` 2026-03-27 — feat: task card expand/collapse with result, actions — matches web app [1 files] _(ai-assisted)_
+- `b7147826` 2026-03-27 — feat: recurring task pills match web app — Running now, streak, frequency [1 files] _(ai-assisted)_
+- `abcdbb8c` 2026-03-27 — feat: Batch 1 — full task management matching web app [4 files] _(ai-assisted)_
+- `ded5a8ed` 2026-03-27 — fix: expanded task card no longer clips — buttons always visible [1 files] _(ai-assisted)_
+- `49e9c4ef` 2026-03-27 — fix: Edit button → Edit & re-run — edits prompt and re-executes [1 files] _(ai-assisted)_
+- `e0444775` 2026-03-27 — feat: Batch 2 — refine, delivery status, failed badge, toast, failures [2 files] _(ai-assisted)_
+- `983c39e4` 2026-03-27 — fix: match Claude/Anthropic brand orange across entire mini app [15 files] _(ai-assisted)_
+- `8d046b44` 2026-03-27 — fix: cleaner glass Chat button — more translucent, sharper depth [1 files] _(ai-assisted)_
+- `86cb9d51` 2026-03-27 — fix: replace all hardcoded dispatch versions with @latest [4 files] _(ai-assisted)_
+- `39a035e8` 2026-03-27 — feat: run history for recurring tasks — final 1:1 parity with web app [2 files] _(ai-assisted)_
+- `88cef868` 2026-03-27 — fix: 11 visual differences matched to web app — pixel parity [1 files] _(ai-assisted)_
+- `618b4ca8` 2026-03-27 — fix: add TASK_META suffix to task execution — enables tool orbs + recurring detection [3 files] _(ai-assisted)_
+- `9548895a` 2026-03-28 — docs: comprehensive rewrite of dispatch docs page [1 files] _(ai-assisted)_
+- `6b72c590` 2026-03-28 — docs: make autonomous mode prominent in Quick Start, example, and Modes [1 files] _(ai-assisted)_
+- `3a46120b` 2026-03-28 — feat: archive tasks instead of deleting — accessible from Settings [5 files] _(ai-assisted)_
+- `9ea54a75` 2026-03-28 — feat: render markdown in task results + chat bubbles [3 files] _(ai-assisted)_
+- `94c1c76e` 2026-03-28 — fix: scroll bug when switching Tasks/Chat sub-tabs [2 files] _(ai-assisted)_
+- `2306a3d8` 2026-03-28 — fix: header pinned — matches web app three-tier flex pattern [2 files] _(ai-assisted)_
+- `b260ea29` 2026-03-28 — fix: position:fixed chat page — breaks out of parent scroll entirely [1 files] _(ai-assisted)_
+- `3f7f1c6b` 2026-03-28 — fix: disable parent scroll-area on chat page via CSS override [1 files] _(ai-assisted)_
+- `ae955e33` 2026-03-28 — feat: multi-conversation chat — sidebar, DB persistence, 1:1 with web app [7 files] _(ai-assisted)_
+- `5a4f86a6` 2026-03-28 — fix: recurring detection + better error messages [3 files] _(ai-assisted)_
+- `55902194` 2026-03-28 — fix: hourly frequency detection for "whenever" + "real-time" keywords [1 files] _(ai-assisted)_
+- `f51205af` 2026-03-28 — fix: chat sidebar matches web app exactly + conversation switching fixed [2 files] _(ai-assisted)_
+- `6b8b5358` 2026-03-28 — fix: distinct tool orb icons per tool type — matches web app [1 files] _(ai-assisted)_
+- `d6310afb` 2026-03-30 — feat: Google OAuth pairing flow, personalization modal, AgentBook registration, glass UI fixes [22 files] _(ai-assisted)_
+- `47595eca` 2026-03-30 — feat: World ID propagation parity — VM, marketplace, proof storage [2 files] _(ai-assisted)_
+- `56ebef61` 2026-03-30 — feat: add proxy route for World ID propagation [1 files] _(ai-assisted)_
+- `45ec330d` 2026-03-30 — feat: World ID "Sync to agent" button on Settings page [1 files] _(ai-assisted)_
+- `dd6ec2dc` 2026-03-30 — fix: hide AgentBook card when wallet not ready instead of showing error [1 files] _(ai-assisted)_
+- `3b373675` 2026-03-30 — fix: upgrade AgentBook register button to match glass UI standards [1 files] _(ai-assisted)_
+- `c58ae7a2` 2026-03-30 — fix: upgrade Sync to agent button to glass UI [1 files] _(ai-assisted)_
+- `fa715431` 2026-03-30 — fix: AgentBook bridge URL button — try window.open + href fallback [1 files] _(ai-assisted)_
+- `baf6793c` 2026-03-30 — fix: AgentBook verify button uses worldapp:// deep link for native flow [1 files] _(ai-assisted)_
+- `f1abad6a` 2026-03-30 — fix: AgentBook verify — use copy link approach (WebView can't open World ID natively) [1 files] _(ai-assisted)_
+- `6640c640` 2026-03-30 — feat: AgentBook one-tap registration via MiniKit native verify [2 files] _(ai-assisted)_
+- `a6a68c67` 2026-03-30 — fix: use existing verify-instaclaw-agent action for AgentBook registration [1 files] _(ai-assisted)_
+- `112c98e5` 2026-03-30 — fix: AgentBook relay — use AgentBook app_id, strip extra fields [1 files] _(ai-assisted)_
+- `492fada8` 2026-03-30 — fix: always checksum wallet addresses (EIP-55) before storing or sending to relay [2 files] _(ai-assisted)_
+- `c8e91fe1` 2026-03-30 — debug: show full relay error response for AgentBook registration [1 files] _(ai-assisted)_
+- `9ae251cc` 2026-03-30 — fix: AgentBook card — only show registered badge, hide registration flow [1 files] _(ai-assisted)_
+- `9651b3e2` 2026-03-30 — fix: send full proof object to AgentBook relay + re-enable registration UI [2 files] _(ai-assisted)_
+- `9ff797a0` 2026-03-30 — fix: hide AgentBook registration — relay rejects mini app addresses [1 files] _(ai-assisted)_
+- `65396e3a` 2026-03-30 — fix: AgentBook card shows badge only when registered [1 files] _(ai-assisted)_
+- `0c1bb91c` 2026-03-30 — fix: AgentBook check color green to match Google connected [1 files] _(ai-assisted)_
+- `9bdfc4ad` 2026-03-31 — fix: World ID always shows green check — sync happens during onboarding [1 files] _(ai-assisted)_
+- `ffe5c1a9` 2026-03-31 — fix: replace all window.open with window.location.href in mini app [2 files] _(ai-assisted)_
+- `aca7ed68` 2026-03-31 — feat: 3D glass orb icons on Settings page [1 files] _(ai-assisted)_
+- `8e965241` 2026-03-31 — fix: Settings orbs match Home page glass style [1 files] _(ai-assisted)_
+- `84c17a6d` 2026-03-31 — fix: Home page Google/AgentBook icons use glass orb style [2 files] _(ai-assisted)_
+- `53ccd601` 2026-03-31 — fix: Online badge uses clean glass UI pill [1 files] _(ai-assisted)_
+- `64ae064d` 2026-03-31 — fix: Chat tab scrolls behind glass blur toolbar like Tasks tab [1 files] _(ai-assisted)_
+- `90e13db7` 2026-03-31 — fix: Chat sidebar toggle stays sticky at top while scrolling [1 files] _(ai-assisted)_
+- `724f05cd` 2026-03-31 — fix: handleSend uses stale activeConvId after switching conversations [1 files] _(ai-assisted)_
+- `cfb810ec` 2026-03-31 — fix: Chat sidebar UI matches web app + mobile-friendly actions [1 files] _(ai-assisted)_
+- `e58565d0` 2026-03-31 — feat: Chat bubbles match web app — avatar, tails, timestamps, save [2 files] _(ai-assisted)_
+- `183bf0e6` 2026-03-31 — feat: Add reload button for personalized suggestion pills [1 files] _(ai-assisted)_
+- `ddaf3c3d` 2026-03-31 — fix: Web search and Deep research toggle pills use glass UI [1 files] _(ai-assisted)_
+- `738ffe94` 2026-03-31 — fix: Assistant bubble tails use solid color matching bubble background [1 files] _(ai-assisted)_
+- `cf2be665` 2026-03-31 — fix: Chat avatar orb uses smooth radial shine instead of choppy rect [1 files] _(ai-assisted)_
+- `e47b8f16` 2026-03-31 — feat: Typewriter thinking indicator with claw-themed phrases [1 files] _(ai-assisted)_
+- `09fcab2d` 2026-03-31 — fix: Replace thinking phrases on web app with claw-themed copy [1 files] _(ai-assisted)_
+- `6ea16d06` 2026-03-31 — fix: Clean up header/tab/chat section borders for seamless flow [1 files] _(ai-assisted)_
+- `6bf0aab8` 2026-03-31 — fix: Plus button matches web app — smaller, cleaner glass style [1 files] _(ai-assisted)_
+- `55e08feb` 2026-03-31 — fix: Tab bar border inset, chat header border edge-to-edge [1 files] _(ai-assisted)_
+- `e5d823b0` 2026-03-31 — fix: Chat header pinned to header section — no gap on scroll [1 files] _(ai-assisted)_
+- `1b896b0e` 2026-03-31 — fix: Center empty chat state vertically in available space [1 files] _(ai-assisted)_
+- `3ba31361` 2026-03-31 — fix: Chat sidebar uses fixed positioning — works at any scroll depth [1 files] _(ai-assisted)_
+- `3e7515fa` 2026-03-31 — fix: Chat sidebar rendered at top level — no more clipping [1 files] _(ai-assisted)_
+- `052312c9` 2026-03-31 — fix: Bottom nav bar has blur fade — content scrolls behind smoothly [1 files] _(ai-assisted)_
+- `78d749fe` 2026-03-31 — fix: Nav bar blur extends higher, border softer — no visible gap [1 files] _(ai-assisted)_
+- `927e6701` 2026-03-31 — fix: Tab bar blur only covers gap above nav, not the input area [1 files] _(ai-assisted)_
+- `f08556ae` 2026-03-31 — fix: Reduce tabs layout bottom padding to match nav bar height [1 files] _(ai-assisted)_
+- `4db6f4b9` 2026-03-31 — fix: Nav bar zone uses gradient fill — no more black gap [2 files] _(ai-assisted)_
+- `8ba85154` 2026-03-31 — fix: Nav bar uses same blur fade as Command Center toolbar [1 files] _(ai-assisted)_
+- `d505cf8d` 2026-03-31 — fix: Nav blur doesn't overlap input bar — reduced to -top-4 [1 files] _(ai-assisted)_
+- `d9e1ea3f` 2026-03-31 — fix: Chat sidebar uses clean glass UI — gradient bg, stronger blur [1 files] _(ai-assisted)_
+- `b9da1f9e` 2026-03-31 — feat: Library tab fetches and displays items matching web app [1 files] _(ai-assisted)_
+- `760769eb` 2026-03-31 — security(C1): Add on-chain amount verification to WLD payment [1 files] _(ai-assisted)_
+- `3c2342d9` 2026-03-31 — security(C9,H8): Trial abuse prevention + WLD pending payment UI [5 files] _(ai-assisted)_
+- `1b1151d1` 2026-03-31 — fix: Onboarding loop — verify 500 + provisioning auto-complete [3 files] _(ai-assisted)_
+- `57c7fe4c` 2026-03-31 — feat: World Chat button live in Command Center info banner [2 files] _(ai-assisted)_
+- `a9e26493` 2026-03-31 — feat: Add persistent World Chat button to chat header [1 files] _(ai-assisted)_
+- `f193d78f` 2026-03-31 — fix: World Chat button — add loading state, label, and error handling [1 files] _(ai-assisted)_
+- `6fd3d93f` 2026-03-31 — fix: World Chat opens instantly — fire-and-forget init-chat [1 files] _(ai-assisted)_
+- `cc6b8482` 2026-03-31 — chore: Remove debug "Test World Chat Deep Links" button from settings [1 files] _(ai-assisted)_
+- `b81beb9a` 2026-03-31 — fix: Sign Out button uses clean glass UI instead of red [1 files] _(ai-assisted)_
+- `e3f66f3f` 2026-03-31 — feat: Contact Support button on settings page [1 files] _(ai-assisted)_
+- `cc075bc1` 2026-03-31 — fix: Break redirect loop for unverified users with no agent [1 files] _(ai-assisted)_
+- `5d30f7f9` 2026-03-31 — fix: Show real provisioning UI after WLD payment, not fake "ready" [3 files] _(ai-assisted)_
+- `47d990b9` 2026-03-31 — fix: Separate VM assignment from configuration — bulletproof onboarding [4 files] _(ai-assisted)_
+- `038aee4c` 2026-03-31 — fix: ProvisioningStatus waits for agent HEALTHY, not just assigned [3 files] _(ai-assisted)_
+- `e230855b` 2026-03-31 — feat: Bulletproof mini app onboarding — matches web app flow [4 files] _(ai-assisted)_
+- `e38381aa` 2026-03-31 — fix: Add gateway_url to getAgentStatus select query [1 files] _(ai-assisted)_
+- `f6514a2c` 2026-03-31 — fix: Use model='openclaw' for gateway chat requests [1 files] _(ai-assisted)_
+- `afe67603` 2026-04-01 — security: Provision endpoint requires payment before VM assignment [1 files] _(ai-assisted)_
+- `6ff92799` 2026-04-01 — fix: Handle failed WLD payments — don't get stuck on provisioning [3 files] _(ai-assisted)_
+- `83565d5c` 2026-04-01 — fix: Trust MiniKit payment on onboarding path, strict gate on retry [1 files] _(ai-assisted)_
+- `a997db25` 2026-04-01 — fix: Show AgentBook card before Google card on dashboard [1 files] _(ai-assisted)_
+- `c4199976` 2026-04-01 — fix: Show AgentBook registration card for unregistered users [1 files] _(ai-assisted)_
+- `0cb5614b` 2026-04-01 — fix: AgentBook icon matches 3D glass orb style [1 files] _(ai-assisted)_
+- `840d97eb` 2026-04-02 — feat: Public $INSTACLAW tokenomics page at /token — flywheel, burn sources, math, comparison [2 files] _(ai-assisted)_
+- `16dc054e` 2026-04-02 — fix: Mention Virtuals Protocol alongside Bankr for agent tokenization burns [2 files] _(multi: [feature, docs]; ai-assisted)_
+- `16dbaf84` 2026-04-02 — fix: Add circulating supply (28.2%) to token details section [1 files] _(ai-assisted)_
+- `53cf3b5f` 2026-04-02 — fix: Make circulating supply (28.2%) prominent across tokenomics page [1 files] _(ai-assisted)_
+- `a2163cba` 2026-04-02 — fix: Rebrand token page from Base to Virtuals Protocol — matches primary liquidity pool [1 files] _(ai-assisted)_
+- `9a7279e2` 2026-04-02 — feat: Add multi-platform trading venues, liquidity expansion roadmap to tokenomics page [1 files] _(ai-assisted)_
+- `f8429211` 2026-04-02 — fix: Add LBank to trading venues, add '+ more exchanges' indicator [1 files] _(ai-assisted)_
+- `0c2f0200` 2026-04-02 — fix: Remove all em dashes from tokenomics page [1 files] _(ai-assisted)_
+- `20ed594c` 2026-04-02 — fix: Give flame icon an orb background in hero badge for better visibility [1 files] _(ai-assisted)_
+- `e1b899b3` 2026-04-02 — feat: Add organic flame flicker + glow animation to hero badge icon [2 files] _(ai-assisted)_
+- `9c0f1155` 2026-04-02 — fix: AgentBook register — match web app relay format exactly [1 files] _(ai-assisted)_
+- `eff6df29` 2026-04-02 — feat: add $100K Trading Competition card to /earn page [1 files] _(ai-assisted)_
+- `32b7a651` 2026-04-02 — feat: AgentBook registration via direct contract call (no relay) [2 files] _(ai-assisted)_
+- `8acb19ab` 2026-04-02 — feat: auto-enable VP from DegenClaw card — one-click join competition [1 files] _(ai-assisted)_
+- `0a4d568b` 2026-04-02 — feat: AgentBook card uses CLI bridge URL flow (matches web app) [1 files] _(ai-assisted)_
+- `a09fa334` 2026-04-02 — fix: Use location.href instead of window.open for bridge URL [1 files] _(ai-assisted)_
+- `97d5ec38` 2026-04-02 — fix: DegenClaw card shows 'Running' badge when VP is enabled [1 files] _(ai-assisted)_
+- `65c4f744` 2026-04-02 — fix: AgentBook CLI version pin + bridge URL regex mismatch [3 files] _(ai-assisted)_
+- `f9e8cbd6` 2026-04-02 — feat: maintenance gate for new signups + fix CSS import order [2 files] _(ai-assisted)_
+- `c746163a` 2026-04-02 — feat: AgentBook native transport — send verify directly to World App native layer [1 files] _(ai-assisted)_
+- `1a69d9c0` 2026-04-02 — fix: TypeScript error in AgentBook card — pass proof object directly [1 files] _(ai-assisted)_
+- `59304737` 2026-04-02 — experiment: AgentBook via MiniKit.verify() + direct contract call [2 files] _(ai-assisted)_
+- `98adae86` 2026-04-02 — fix: show full error detail from register-direct for diagnosis [1 files] _(ai-assisted)_
+- `7184485b` 2026-04-03 — feat: AgentBook via IDKit v4 native transport with per-request app_id [4 files] _(ai-assisted)_
+- `a7c53829` 2026-04-03 — fix: use WASM-based signRequest for correct rp_context signature [1 files] _(ai-assisted)_
+- `b8afb269` 2026-04-03 — Revert "fix: use WASM-based signRequest for correct rp_context signature" [1 files]
+- `7241d6d9` 2026-04-03 — fix: handle IDKit v4 result format + add debug logging [1 files] _(ai-assisted)_
+- `ca3359fd` 2026-04-03 — fix: send full IDKit result + show received keys for field mapping [2 files] _(ai-assisted)_
+- `0fa3dff9` 2026-04-03 — fix: extract proof from IDKit v4 responses[0] array [1 files] _(ai-assisted)_
+- `b5bc64d3` 2026-04-03 — fix: live desktop disconnect state race — show error + retry instead of silent reset [2 files] _(ai-assisted)_
+- `0e77dbee` 2026-04-03 — fix: show relay response detail in card error [1 files] _(ai-assisted)_
+- `814d35ec` 2026-04-03 — fix: use abi.encode (not encodePacked) for signal — match CLI exactly [1 files] _(ai-assisted)_
+- `73e1576f` 2026-04-03 — fix: Apply Jordan + Don feedback — remove projections (legal risk), add live burn tracker, fix plateau wording [1 files] _(ai-assisted)_
+- `e2e6117b` 2026-04-03 — feat: Add collapsible estimated projections with $1.24M number and legal disclaimer [1 files] _(ai-assisted)_
+- `043e88be` 2026-04-03 — fix: Replace burn tracker zeros with clean Coming May 2026 teaser state [1 files] _(ai-assisted)_
+- `101dfc0d` 2026-04-03 — fix: Rebuild flywheel with CSS orbit animation, proper node spacing, larger container [2 files] _(ai-assisted)_
+- `283b6e0c` 2026-04-03 — feat: Replace orbiting dot with flowing energy ring animation on flywheel [2 files] _(ai-assisted)_
+- `21369a50` 2026-04-03 — feat: Add comprehensive legal disclaimer to tokenomics page [1 files] _(ai-assisted)_
+- `655f7994` 2026-04-03 — feat: S-tier flywheel animation — conic gradient energy sweep with glow, fix label cutoff [1 files] _(ai-assisted)_
+- `0e01bfe7` 2026-04-03 — fix: Glass UI flywheel — contained layout, thinner energy sweep, no clipping [1 files] _(ai-assisted)_
+- `02ad30d3` 2026-04-03 — fix: Align flywheel ring, energy sweep, and glass cards to same center point, bolder animation [1 files] _(ai-assisted)_
+- `11705f88` 2026-04-03 — fix: True-center flywheel alignment — flex centering with 0x0 anchor point, all elements aligned [1 files] _(ai-assisted)_
+- `f2cfb29b` 2026-04-03 — fix: Revert flywheel to original simple version — dots + text, no glass cards [1 files] _(ai-assisted)_
+- `13553933` 2026-04-03 — fix: Separate dot positions (on ring) from label positions (pushed outward) for balanced flywheel [1 files] _(ai-assisted)_
+- `06db7239` 2026-04-03 — test: bridge URL via <a href> tag — Andy says should open drawer [1 files] _(ai-assisted)_
+- `c56c38b2` 2026-04-03 — test: trigger bridge URL via hidden iframe to keep user in mini app [1 files] _(ai-assisted)_
+- `459455e0` 2026-04-03 — fix: revert to <a href> for bridge URL — iframe doesn't trigger drawer [1 files] _(ai-assisted)_
+- `02ea12bf` 2026-04-03 — feat: Phase 2 AgentBook workaround — closeMiniapp + push notification [5 files] _(multi: [feature, docs]; ai-assisted)_
+- `b3ac63cf` 2026-04-03 — fix: Replace Jordan's analogies with actual InstaClaw use cases in Silent Engine section [1 files] _(ai-assisted)_
+- `f8252d32` 2026-04-03 — fix: Harder-hitting use cases — multi-agent orchestration, autonomous trading, always-on content [1 files] _(ai-assisted)_
+- `4b5af763` 2026-04-03 — fix: Match flywheel container height to SVG viewBox — dots now sit perfectly on ring [1 files] _(ai-assisted)_
+- `1008a9c4` 2026-04-03 — feat: Add 4th burn source — $INSTACLAW trading fee burns (10% of Virtuals trading fees) [1 files] _(ai-assisted)_
+- `efcba0b2` 2026-04-03 — fix: Add trading fees to flywheel diagram revenue step [1 files] _(ai-assisted)_
+- `0e1d39b7` 2026-04-03 — fix: BNB comma spacing, add Trading Loop to roadmap, add trading to closing quote [1 files] _(ai-assisted)_
+- `63251dad` 2026-04-03 — fix: Update burn stat to $120+ floor with stacking sources explanation [1 files] _(ai-assisted)_
+- `afa16b30` 2026-04-03 — fix: Change all burn source timelines to Coming Soon [1 files] _(ai-assisted)_
+- `071f2a63` 2026-04-03 — fix: Agent Economy Loop copy — emphasize one-click tokenization, auto fee routing, self-sustaining agents [1 files] _(ai-assisted)_
+- `ce06d5b7` 2026-04-03 — fix: Remove Bankr and Virtuals partner names from burn mechanism descriptions — save for separate announcement [1 files] _(ai-assisted)_
+- `fdce3a20` 2026-04-03 — fix: Silent Engine — add World Mini App, 17M+ verified humans, WLD grants as house money [1 files] _(ai-assisted)_
+- `85a18f35` 2026-04-03 — fix: Add 'and growing fast' to World verified humans count [1 files] _(ai-assisted)_
+- `49c06fb5` 2026-04-03 — fix: Ecosystem Tax copy — platform positioning, app store economics, compounding growth [1 files] _(ai-assisted)_
+- `0b98fa15` 2026-04-03 — fix: Ecosystem Tax — App Store for AI agents positioning, distribution power, network effects [1 files] _(ai-assisted)_
+- `f001f404` 2026-04-03 — fix: Ecosystem Tax copy — match thread style, clearer for normal consumers [1 files] _(ai-assisted)_
+- `ce93b456` 2026-04-03 — feat: Add contextual signup CTAs throughout tokenomics page [1 files] _(ai-assisted)_
+- `1e1ef16f` 2026-04-05 — chore: trigger instaclaw-mini redeploy with NEXT_PUBLIC_MAINTENANCE=true [1 files] _(ai-assisted)_
+- `4788826e` 2026-04-05 — feat: glass overlay maintenance gate with email capture [3 files] _(ai-assisted)_
+- `3869a48a` 2026-04-05 — chore: rebuild instaclaw-mini with NEXT_PUBLIC_MAINTENANCE baked in [1 files] _(ai-assisted)_
+- `bf949b21` 2026-04-07 — chore: force instaclaw-mini rebuild to bake in NEXT_PUBLIC_MAINTENANCE [1 files] _(ai-assisted)_
+- `ef868b64` 2026-04-07 — chore: rebuild instaclaw-mini after re-adding NEXT_PUBLIC_MAINTENANCE [1 files] _(ai-assisted)_
+- `24490590` 2026-04-07 — fix: 4 launch blockers — offline banner, credit errors, model selector, provision failure [3 files] _(ai-assisted)_
+- `c88e46b8` 2026-04-07 — chore: rebuild instaclaw-mini without maintenance gate [1 files] _(ai-assisted)_
+- `86c72424` 2026-04-07 — chore: force rebuild after NEXT_PUBLIC_MAINTENANCE deletion confirmed [1 files] _(ai-assisted)_
+- `16c93966` 2026-04-07 — fix: WLD subscription lifecycle — creation, expiry, and VM reactivation [1 files] _(ai-assisted)_
+- `9e58409f` 2026-04-07 — feat: AgentBook registration modal on first home page load [2 files] _(ai-assisted)_
+- `1de818cb` 2026-04-08 — fix: spots counter flickering + remove hardcoded 62 fallback [2 files] _(ai-assisted)_
+- `9880c119` 2026-04-08 — fix: responsive onboarding hero — fits all phone sizes without scrolling [1 files] _(ai-assisted)_
+- `d3ea73fe` 2026-04-08 — fix: responsive onboarding — proportional scaling for all phone sizes [1 files] _(ai-assisted)_
+- `40820215` 2026-04-08 — fix: proportional zoom scaling for all phone sizes [1 files] _(ai-assisted)_
+- `edce5567` 2026-04-08 — fix: transform scale approach — render at fixed Pro Max dimensions, scale to fit [2 files] _(ai-assisted)_
+- `44cadadb` 2026-04-08 — fix: center scaled content + clip overflow — no right-side scrollbar [1 files] _(ai-assisted)_
+- `644e8be4` 2026-04-08 — revert: restore original Pro Max layout — remove all scaling/zoom attempts [1 files] _(ai-assisted)_
+- `b4b1d53e` 2026-04-08 — fix: dvh-based responsive layout — industry standard approach [1 files] _(ai-assisted)_
+- `b190f6de` 2026-04-08 — fix: restore original Pro Max spacing — match reference screenshot exactly [1 files] _(ai-assisted)_
+- `fe387e56` 2026-04-08 — fix: verified users without payment stay on onboarding, not redirected to /home [1 files] _(ai-assisted)_
+- `0df9c3e9` 2026-04-08 — chore: force mini app rebuild to clear cached PROXY_SECRET [1 files]
+- `6df5e58a` 2026-04-08 — fix: closeMiniApp fires immediately — no setTimeout delay [1 files] _(ai-assisted)_
+- `1c0dabc2` 2026-04-08 — fix: revert closeMiniApp to 500ms delay — sync close kills navigation [1 files] _(ai-assisted)_
+- `2cd636d3` 2026-04-09 — fix: retry on 400 "agent busy" — handles heartbeat collisions [2 files] _(ai-assisted)_
+- `2a9cfb08` 2026-04-09 — fix: increase retry to 4 attempts with exponential backoff (5s, 10s, 15s) [2 files] _(ai-assisted)_
+- `dddfe941` 2026-04-09 — fix: task endpoints send model 'openclaw' not 'claude-sonnet-4-6' [4 files] _(ai-assisted)_
+- `0b4dcea4` 2026-04-09 — feat: Add /edge-city partner portal page [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `29613d58` 2026-04-09 — feat: Enable promotion code entry at Stripe checkout [1 files] _(ai-assisted)_
+- `9c9dd146` 2026-04-09 — feat: Add partner column to instaclaw_users and instaclaw_vms [1 files] _(ai-assisted)_
+- `a49a4404` 2026-04-09 — feat: Auto-apply Edge City partner coupon at checkout [1 files] _(ai-assisted)_
+- `2323db9b` 2026-04-10 — feat(mini): funnel non-Orb users into World Grow + remove dead branch [2 files] _(ai-assisted)_
+- `7efe161f` 2026-04-13 — fix: Tokenize button uses clean glass UI — inner glow, light refraction, subtle depth [1 files] _(ai-assisted)_
+- `88135433` 2026-04-13 — fix: Tokenize button — clean glass, no edge artifacts [1 files] _(ai-assisted)_
+- `1f86f276` 2026-04-13 — fix: Tokenize button glass — top-half shine, warm amber shadow, no edge artifacts [1 files] _(ai-assisted)_
+- `5db907bf` 2026-04-14 — feat: Bankr tokenization card in World mini app + mini app token auth on tokenize endpoint [4 files] _(ai-assisted)_
+- `1388b0f6` 2026-04-14 — TEMP: Celebration animation preview + token card redesign + devrel notes [7 files] _(multi: [feature, docs]; ai-assisted)_
+- `8c49f322` 2026-04-14 — fix: Remove temp test button from Bankr wallet card [1 files] _(ai-assisted)_
+- `c1c4ade2` 2026-04-14 — feat: Post-launch Share to X card + Copy link — viral growth loop [2 files] _(ai-assisted)_
+- `92af6132` 2026-04-14 — fix: Share to X audit fixes — timer cancel, mini app copy flow, null guard [2 files] _(ai-assisted)_
+- `192472c9` 2026-04-15 — feat: Auto-generate token PFP on form open — Apple-level anticipation UX [4 files] _(ai-assisted)_
+- `66aed50e` 2026-04-15 — fix: Token PFP preview uses rounded-xl not rounded-full — no more orb-in-a-circle [2 files] _(ai-assisted)_
+- `12492d74` 2026-04-15 — fix: Token PFP preview size — w-32 webapp, w-28 mini app, no border frame [2 files] _(ai-assisted)_
+- `d6a31ff2` 2026-04-20 — debug: log PFP generate request — raw body + client state [2 files] _(ai-assisted)_
+- `04e24146` 2026-04-20 — feat(bankr): Trade on Bankr + DexScreener chart for V4/Doppler tokens [1 files] _(ai-assisted)_
+- `671d8c58` 2026-04-20 — feat(bankr): HowToBuy disclosure on wallet card + share card [2 files] _(ai-assisted)_
+- `0ab56017` 2026-04-27 — feat(dashboard): gas funding guide card under BankrWalletCard [2 files] _(ai-assisted)_
+- `ddd1e4d0` 2026-04-28 — feat(browser-relay): restore install UI now that Chrome Web Store listing is live [1 files] _(ai-assisted)_
+- `bcbe6a39` 2026-04-28 — feat(browser-relay): beta disclaimer in dashboard + /browser-relay docs page [2 files] _(ai-assisted)_
+- `fc213aab` 2026-04-28 — fix(browser-relay): surface relay-backend outage as maintenance state [4 files] _(multi: [feature, docs]; ai-assisted)_
+- `46b1b709` 2026-04-29 — copy(bankr): final share-to-X tweet — self-funding flywheel framing [2 files] _(ai-assisted)_
+- `9e6a5263` 2026-04-29 — chore(browser-relay): drop maintenance banners — relay deployed fleet-wide [2 files] _(ai-assisted)_
+- `5c94624c` 2026-04-29 — feat(bankr-sync): on-demand sync in /api/vm/status fires celebration in <30s [3 files] _(ai-assisted)_
+- `8814a280` 2026-04-29 — fix(bankr-sync): lazy-init launchSuccess to avoid celebration flicker [1 files] _(ai-assisted)_
+- `92b89e1e` 2026-04-29 — fix(bankr-launch): tweet card preview, success-with-warning, phased status [2 files] _(ai-assisted)_
+- `f601f1a6` 2026-04-29 — feat(mini-app): wire Path B chat-launch celebration end-to-end [4 files] _(ai-assisted)_
+- `f695276a` 2026-04-29 — feat(edge-city): build out /edge-city portal landing page [3 files] _(multi: [feature, edge])_
+- `a324f115` 2026-04-29 — feat(edge-city): public /edge-city/sponsors page + portal sponsor strip [2 files] _(multi: [feature, edge])_
+- `b0de400c` 2026-04-29 — feat(bankr): #19 — pre-launch confirmation card [2 files] _(ai-assisted)_
+- `a10f89f1` 2026-04-29 — feat(bankr): #7 — "Free to launch" reassurance on form [2 files] _(ai-assisted)_
+- `d2b26d8b` 2026-04-29 — fix(bankr): swap #7 free-to-launch copy — long lives on confirmation [2 files] _(ai-assisted)_
+- `7f0d2465` 2026-04-29 — feat(bankr): #4 — auto-suggested token name from agent personality [3 files] _(ai-assisted)_
+- `7b026a37` 2026-04-29 — docs(prd): add Index Network matching layer + Vendrov research layer to EdgeClaw [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `38c540f7` 2026-04-29 — docs(prd): integrate Substack research overview — foundational research, methodology stack, hypothesis enrichment, coordinator agents [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `a25ae1ef` 2026-04-29 — docs(prd): integrate Granola meeting notes — ticket validation, managed updates, privacy modes, portal scope [1 files] _(multi: [edge, docs])_
+- `84aeb3a7` 2026-04-30 — feat(partner): tag existing users via /api/partner/tag — fix dual-account bug [3 files] _(multi: [feature, edge, docs])_
+- `e886aff9` 2026-04-30 — fix(bankr): P0 OG image render + P1 symbol caption literal text [3 files] _(ai-assisted)_
+- `f073eb22` 2026-04-30 — fix(bankr): OG card column gap — `0 0.4ch` → `0 8px` [1 files] _(ai-assisted)_
+- `089608b1` 2026-04-30 — fix(bankr): OG card — real logo, full address, fix word-merge spacing [1 files] _(ai-assisted)_
+- `4b654677` 2026-04-30 — fix(bankr): OG card uses inverted (white) logo for dark background [2 files] _(ai-assisted)_
+- `f7843f35` 2026-04-30 — fix(bankr): OG card typography matches production website fonts [1 files] _(ai-assisted)_
+- `017e93c6` 2026-04-30 — fix(bankr): OG card — Base + Bankr logos, copy + tagline tweaks [4 files] _(ai-assisted)_
+- `ab25c99a` 2026-04-30 — fix(bankr): Base logo — swap white→blue (the actual Base brand mark) [3 files] _(ai-assisted)_
+- `35e031e9` 2026-04-30 — fix(middleware): add /api/partner/tag to selfAuthAPIs allow-list [1 files]
+- `85613f7a` 2026-05-01 — feat(edge-privacy): components 1-3 — DB migration, toggle API, dashboard route [4 files] _(multi: [feature, edge])_
+- `3ccda655` 2026-05-01 — docs(prd): SOUL restructure — Phase 0/0.5/0.7 results, canary swap, simplified migration [1 files] _(multi: [edge, docs])_
+- `ad26b00b` 2026-05-01 — docs(prd): EdgeClaw architecture revision after 2026-05-01 working session [1 files] _(multi: [edge, docs])_
+- `db459276` 2026-05-02 — fix(bankr): OG card — render at 2x (2400x1260) for retina crispness [1 files] _(ai-assisted)_
+- `0b164436` 2026-05-02 — feat(edge-privacy): component 3 — internal check API for SSH bridge [2 files] _(ai-assisted)_
+- `611e84d4` 2026-05-04 — fix(consensus-ui): apply canonical glass UI across page + client [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `7db423ac` 2026-05-04 — feat(consensus): add founder-matching BETA section + UX polish [2 files] _(ai-assisted)_
+- `b45ff7d0` 2026-05-04 — feat(consensus): platform reframe — "the agent stays" [1 files] _(ai-assisted)_
+- `523735ab` 2026-05-04 — fix(consensus): kill em dashes + reframe matching for ALL roles [2 files] _(ai-assisted)_
+- `73aea3d3` 2026-05-04 — feat(consensus/matches): preview page for the intent-matching demo [1 files] _(ai-assisted)_
+- `be49f547` 2026-05-04 — fix(consensus/matches): remove all em dashes [1 files] _(ai-assisted)_
+- `8fde9dfb` 2026-05-04 — fix(consensus): finish 326/219/451 → 338/229/463 sweep on page + matches [2 files]
+- `1546122f` 2026-05-04 — fix(consensus): catch the last '219 events' instance [1 files]
+- `671d1cc1` 2026-05-04 — fix(ui): replace emojis with lucide SVG icons across dashboard surfaces [4 files] _(ai-assisted)_
+- `0ac49639` 2026-05-04 — fix(og-card): brand fallback when bankr_token_image_url is null [1 files] _(ai-assisted)_
+- `9844b926` 2026-05-04 — feat(bankr-card): glass Trade-on-Bankr CTA + pre-launch education [2 files] _(ai-assisted)_
+- `611deef9` 2026-05-04 — fix(bankr-card): orange Trade button + bottom padding + em-dash copy [2 files] _(ai-assisted)_
+- `2c5fd765` 2026-05-04 — fix(bankr-card): match Tokenize + Trade-on-Bankr to Buy Credits style [1 files] _(ai-assisted)_
+- `ee88dd46` 2026-05-04 — fix(bankr-card): post-launch container glass + brand-orange avatar [1 files] _(ai-assisted)_
+- `9fcc639f` 2026-05-04 — fix(dashboard): brand orange on WhyTokenize + HowToBuy circles [2 files] _(ai-assisted)_
+- `94e079d4` 2026-05-04 — fix(bankr-card): brand orange across full launch flow [1 files] _(ai-assisted)_
+- `f08b60b8` 2026-05-05 — fix(my-matches): strip em-dashes from copy + LLM rationale [1 files] _(ai-assisted)_
+- `a20d85b6` 2026-05-06 — fix(matchpool): partner-aware consent default for new profiles [1 files] _(ai-assisted)_
+- `e0898f67` 2026-05-09 — feat(agentbook): hat-claim promo banner — web dashboard + mini app [7 files] _(ai-assisted)_
+- `7481c171` 2026-05-09 — fix(agentbook-banner): production-quality animations + fixes from Cooper review [4 files] _(ai-assisted)_
+- `b615f81a` 2026-05-09 — fix(agentbook-banner): match dashboard glass + move to top + real hat image [5 files] _(ai-assisted)_
+- `395466ca` 2026-05-09 — fix(agentbook-banner): hat breathing room + sharpness + glass shadow [2 files] _(ai-assisted)_
+- `1c855ecb` 2026-05-09 — fix(agentbook-banner): mix-blend-mode multiply removes white hat bg [2 files] _(ai-assisted)_
+- `a20a86ed` 2026-05-09 — feat(agentbook-banner): redesign as site-wide notification strip [3 files] _(ai-assisted)_
+- `c09527c5` 2026-05-09 — fix(agentbook-banner): match landing-page NotificationBar style exactly [1 files] _(ai-assisted)_
+- `b496bee1` 2026-05-09 — fix(dashboard): Welcome card collapse-toggle + remove WorldID dismiss X [2 files] _(ai-assisted)_
+- `775b022d` 2026-05-09 — feat(agentbook-banner): state machine — verify/register/claim/sold-out [7 files] _(ai-assisted)_
+- `36a7e87d` 2026-05-09 — fix(world-id-banner): sharper copy + "Get verified →" CTA [3 files] _(ai-assisted)_
+- `1e572e98` 2026-05-11 — docs(soul-v2): §14 — Agent Self-Compaction Architecture (V3+ roadmap) [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `a8bb1bca` 2026-05-12 — feat(edge): rebrand /edge-city → /edge with Edge City visual language [11 files] _(multi: [feature, edge]; ai-assisted)_
+- `b27f94ee` 2026-05-12 — fix(edge): move plaza page to /edge/ to match post-rebrand routing [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `ab48f58c` 2026-05-12 — feat(edge): brand /signup + /connect for Edge Esmeralda attendees [3 files] _(multi: [feature, edge]; ai-assisted)_
+- `1bf237a9` 2026-05-12 — feat(edge): /edge responds to login state [3 files] _(multi: [feature, edge]; ai-assisted)_
+- `bc34e307` 2026-05-12 — Merge branch 'feat/gbrain-stepGbrain-phase4c' [0 files] _(merge)_
+- `5341923e` 2026-05-12 — Merge feat/edge-signup-connect-branding-2026-05-12: brand /signup + /connect for Edge attendees [0 files] _(merge)_
+- `c2649f05` 2026-05-12 — Merge feat/edge-login-state-aware-2026-05-12: /edge responds to login state [0 files] _(merge)_
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec [1 files] _(multi: [edge, docs]; ai-assisted)_
+
+## What changed under the hood
+
+- `fd7cec08` 2026-03-02 — feat: wire up X/Twitter Search skill using Brave Search site:x.com [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `1db28ff6` 2026-03-02 — fix: remove gateway.controlUi key rejected by OpenClaw 2026.2.17+ [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `902044a0` 2026-03-02 — fix: wire Virtuals aGDP Skills toggle to existing install/uninstall code, hide X/Twitter Search [2 files] _(ai-assisted)_
+- `b1f6a21d` 2026-03-02 — fix: restore X/Twitter Search skill to active status [1 files] _(ai-assisted)_
+- `784163df` 2026-03-02 — feat: complete SEO & GEO overhaul — 20+ new content pages, sitemap, structured data [31 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `3d664cd3` 2026-03-02 — chore: add Bing Webmaster Tools verification meta tag [1 files] _(ai-assisted)_
+- `754ee05b` 2026-03-02 — blog: publish 3 posts (ai-agent-telegram-bot, what-can-ai-agents-do, personal-ai-agent-vs-chatbot) [5 files] _(multi: [infrastructure, feature])_
+- `915599fe` 2026-03-02 — blog: publish 15 posts (ai-agent-video-creation, openclaw-hosting-cost, ai-agent-content-creation, best-ai-agent-platforms-2026, future-of-personal-ai, openclaw-api-guide, ai-agent-polymarket, openclaw-vs-autogpt, ai-agent-for-research, why-everyone-needs-ai-agent, openclaw-skills-guide, personal-ai-vs-business-ai, ai-agent-for-crypto, make-money-ai-agent, openclaw-security) [17 files] _(multi: [infrastructure, feature])_
+- `8c6739d2` 2026-03-02 — blog: publish 2 posts (openclaw-api-guide, ai-agent-video-creation) [4 files] _(multi: [infrastructure, feature])_
+- `ceaba54f` 2026-03-02 — blog: publish 18 SEO posts + blog pipeline scripts [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f946d202` 2026-03-02 — feat: add Linode provider support to open-spots.sh, default to Linode [1 files] _(ai-assisted)_
+- `2b7e51b8` 2026-03-03 — fix: version-aware controlUi handling + groups.* wildcard fix [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `951cdcbe` 2026-03-03 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.2 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f09be921` 2026-03-03 — fix: replace remaining hardcoded 2026.2.24 version references [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ec416210` 2026-03-03 — fix: add controlUi flag to buildOpenClawConfig and fix pkill bracket trick [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3a9b7468` 2026-03-03 — fix: open-spots.sh Linode provisioning — pass SSH public key string + add required root_pass [1 files] _(ai-assisted)_
+- `0f34f5a7` 2026-03-03 — fix: canary upgrade admin lookup — match actual DB email [1 files] _(ai-assisted)_
+- `f537de7e` 2026-03-03 — debug: add diagnostic logging to canary upgrade admin lookup [1 files] _(ai-assisted)_
+- `d00748e1` 2026-03-03 — fix: bump canary upgrade maxDuration from 120s to 300s [1 files] _(ai-assisted)_
+- `a6dbb786` 2026-03-03 — perf: parallelize fleet upgrade batches and version sweep [1 files] _(ai-assisted)_
+- `bb5c22f9` 2026-03-03 — feat: tool-use continuation credit discount (0.2x multiplier) [2 files] _(ai-assisted)_
+- `57229c0a` 2026-03-03 — fix: bump fleet upgrade maxDuration to 600s [1 files] _(ai-assisted)_
+- `35599983` 2026-03-03 — fix: bump fleet upgrade maxDuration to 900s (Vercel Pro max) [1 files] _(ai-assisted)_
+- `57310278` 2026-03-03 — fix: lower upgrade-fleet maxDuration to 800s (Vercel Pro limit) [1 files] _(ai-assisted)_
+- `52fb0dd3` 2026-03-03 — fix: add RPC fallback chain and balance check for Polymarket scripts [2 files] _(ai-assisted)_
+- `40dc19ef` 2026-03-03 — feat: add real Polymarket trade execution scripts and UX guardrails [7 files] _(ai-assisted)_
+- `0497f062` 2026-03-03 — fix: add USDC.e vs native USDC detection to Polymarket trade flow [2 files] _(ai-assisted)_
+- `2afabeeb` 2026-03-03 — fix: add hard rule to use setup-creds status for balance checks [1 files] _(ai-assisted)_
+- `1d815444` 2026-03-03 — fix: move Polymarket hard rules to top of SKILL.md [1 files] _(ai-assisted)_
+- `ff8238b7` 2026-03-03 — feat: add polymarket-wallet.py for ERC-20 transfers and USDC swaps [3 files] _(ai-assisted)_
+- `2121b0f6` 2026-03-04 — fix: Kalshi PSS salt length, deploy scripts in ssh.ts, safe symlink upgrade [31 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `ebdeadec` 2026-03-04 — fix: complete UX overhaul — onboarding flows, PEM delivery, browse script, funding guides, withdrawal guidance, balance checks, error handling [7 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3333b48f` 2026-03-04 — feat: session protection system — circuit breaker, auto-backup, watchdog growth detection [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f2346f6d` 2026-03-04 — fix: agent intelligence — force prediction market script usage, never improvise [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0d59fda2` 2026-03-04 — feat: Skill 15 — Solana DeFi Trading (Phase 1) [22 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `a5654386` 2026-03-04 — fix: FOK orders, precision, order verification, liquidity checks, anti-fabrication [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `37091ba0` 2026-03-04 — fix: provisioning pipeline gaps — session protection in configureOpenClaw, skill API defaults, toggle upserts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7e51ad30` 2026-03-04 — fix: add Brave search to all VMs regardless of billing mode [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `920ed8a6` 2026-03-04 — fix: correct Brave env var name, remove apiMode gating for ElevenLabs [9 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `49978b05` 2026-03-04 — fix: add POLYGON_RPC_URL to VM manifest, configure pipeline, reconciler, and fleet backfill [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0cad0b70` 2026-03-04 — fix: raise maxSkillsPromptChars from 200K to 350K — skills were being truncated [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4e671f4a` 2026-03-04 — fix: add proper --- YAML frontmatter to all custom skills — were invisible to OpenClaw parser [19 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3d9a8b56` 2026-03-04 — feat: add Quick Command Routing table to SOUL.md onboarding template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `fe1353f0` 2026-03-04 — fix: strip query params from Kalshi signing path per API spec [4 files] _(ai-assisted)_
+- `4ab70b61` 2026-03-04 — fix: switch CLOB proxy to transparent mode with UFW IP whitelist [1 files] _(ai-assisted)_
+- `da7ebcf0` 2026-03-04 — fix: fleet deploy stdin conflict — use fd3 for while-read loop [1 files] _(ai-assisted)_
+- `b4deb5db` 2026-03-05 — feat: polymarket-search.py — seamless market discovery script [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0893f797` 2026-03-05 — fix: FOK orders sweep orderbook with 2% default slippage for reliable fills [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `9e1e767f` 2026-03-05 — fix: restore maxSkillsPromptChars to 350000 — was reverted to 50000 [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1e0c95be` 2026-03-05 — fix: PERMANENT maxSkillsPromptChars=350000 — DO NOT REVERT — skills drop below this [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `89312e92` 2026-03-05 — feat: proxy failover, memory hygiene, env drift protection, search events endpoint, routing persistence [7 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0345ca88` 2026-03-05 — feat: set CLOB_PROXY_URL_BACKUP to London proxy (172.237.101.206) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `82b45df7` 2026-03-05 — fix: auto-retry on post-sell settlement delay instead of failing [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c9d5cb81` 2026-03-05 — fix: diagnose insufficient balance root cause + automated memory cleanup [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f170bf52` 2026-03-05 — fix: distinguish min order size from insufficient balance, auto-round up small orders [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `2a9c38c2` 2026-03-05 — fix: make ambassador detail modal scrollable so action buttons are reachable [1 files] _(ai-assisted)_
+- `6073ae9a` 2026-03-05 — fix: restore CLOB proxy, add resolver to nginx, add proxy health monitoring [1 files] _(ai-assisted)_
+- `4622dabb` 2026-03-05 — fix: CLOB API precision formatting for FOK orders [1 files] _(ai-assisted)_
+- `82868367` 2026-03-05 — feat: per-ambassador NFT badge images + V2 soulbound contract [9 files] _(ai-assisted)_
+- `5890412b` 2026-03-05 — feat: 7-day trial for promotional invite codes [1 files] _(ai-assisted)_
+- `47960dd0` 2026-03-05 — fix: add viem to instaclaw deps — was only in root, breaking Vercel builds [2 files] _(ai-assisted)_
+- `a3d4d517` 2026-03-06 — fix: prevent agents from improvising skills — add STOP guardrails to SKILL.md and CAPABILITIES.md [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `6efe5f39` 2026-03-06 — fix: prevent agents from building rogue Polymarket infrastructure — enforce official scripts only [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a5893653` 2026-03-06 — feat: add Higgsfield AI Video skill — BYOK video/image/audio via 200+ models (Muapi.ai) [20 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `20df4df1` 2026-03-06 — feat: Higgsfield AI Video — platform credits, Muapi proxy, media credit packs [15 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5d829e51` 2026-03-06 — fix: deploy INSTACLAW_MUAPI_PROXY in configureOpenClaw for new VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `89ee608f` 2026-03-06 — fix: Higgsfield toggle broken — ssh2 exec channels are isolated [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9dc2da66` 2026-03-06 — feat: Telegram image → Muapi CDN bridge for seamless I2V from chat [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8024769a` 2026-03-06 — fix: purge OpenClaw backup configs fleet-wide to prevent telegram token conflicts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d812bdac` 2026-03-06 — fix: add duplicate IP safety guard to all SSH operations + enable Higgsfield by default [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `40f05447` 2026-03-06 — fix: split installHiggsfieldSkill into batched SSH commands to avoid argument limit [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8dba7d98` 2026-03-06 — fix: allow tilde in assertSafeShellArg so file browser can read ~/.openclaw/workspace [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d74af301` 2026-03-06 — fix: privacy — wipe VM data between users, reset stale fields on assignment [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `af893429` 2026-03-06 — fix: P&L only counts MATCHED fills — LIVE/PENDING orders were inflating portfolio value [2 files] _(ai-assisted)_
+- `1de23a15` 2026-03-06 — fix: rename total_invested to total_buy_volume — was showing recycled capital as deposits [1 files] _(ai-assisted)_
+- `e49537f6` 2026-03-06 — fix: fleet-push-higgsfield — decode base64 SSH key, strip env quotes [1 files] _(ai-assisted)_
+- `692fcbff` 2026-03-06 — feat: telegram migration safety, ambassador NFT minting, email templates, polymarket fixes [9 files] _(ai-assisted)_
+- `93b8b3d4` 2026-03-06 — fix: add cleanup script for terminated VMs holding telegram tokens [1 files] _(ai-assisted)_
+- `f9215525` 2026-03-06 — fix: blank botToken in live config (not just disable telegram) when fixing dupes [1 files] _(ai-assisted)_
+- `34f5c2db` 2026-03-06 — fix: use CLOB API as primary source for condition_id market lookups [1 files] _(ai-assisted)_
+- `63a4ef32` 2026-03-06 — fix: cast duration/numeric params to int in all Higgsfield scripts, clean up proxy credit check [6 files] _(ai-assisted)_
+- `1e982fdd` 2026-03-06 — chore: trigger clean Vercel rebuild (stale tsbuildinfo referenced deleted fix-stijn.ts) [0 files] _(ai-assisted)_
+- `0f7d1610` 2026-03-06 — fix: Higgsfield V2 — rewrite all scripts with verified Muapi API patterns [9 files] _(ai-assisted)_
+- `889c596a` 2026-03-07 — fix: file browser — fix tilde expansion in readFile, add download + media preview [3 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d9d7df96` 2026-03-07 — fix: Virtuals "Start Accepting Jobs" broken — wrong serving detection + silent errors [2 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `7c223b3d` 2026-03-07 — fix: add token rotation grace period to prevent proxy 401s during resync [11 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0d66eb99` 2026-03-07 — fix: prevent proxy 401s from token rotation race in health cron [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `fe36cb56` 2026-03-07 — fix: add web3 to pip install in configureOpenClaw provisioning [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `005280a5` 2026-03-07 — fix: bust stale Vercel tsbuildinfo cache that references deleted fix-stijn.ts [1 files] _(ai-assisted)_
+- `b0e86577` 2026-03-07 — fix: replace icon system with simple-icons + Lucide React + real brand logos [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `c8ecb275` 2026-03-07 — fix: uniform skill card heights + Solana gradient logo [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `42fb49a8` 2026-03-07 — feat: orb-style skill icons matching marketplace aesthetic [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `469f0268` 2026-03-07 — feat: add Prediction Markets and Freelance skills from Earn page [2 files] _(ai-assisted)_
+- `850ee9aa` 2026-03-07 — fix: brand logos get neutral circle, generic skills keep gradient orbs [1 files] _(ai-assisted)_
+- `8cb21dab` 2026-03-07 — fix: brand logo images fill entire circle edge-to-edge [1 files] _(ai-assisted)_
+- `1507a867` 2026-03-07 — feat: inline brand logos in E-Commerce skill description [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `6acb0b89` 2026-03-07 — feat: inline brand logos for Prediction Markets and Freelance skills [1 files] _(ai-assisted)_
+- `ee28aa8f` 2026-03-07 — feat: add Kalshi green rounded-square brand mark inline [1 files] _(ai-assisted)_
+- `bffcf03b` 2026-03-07 — fix: replace eBay inline logo with colorful wordmark in dark circle [1 files] _(ai-assisted)_
+- `5c07e4b1` 2026-03-07 — fix: inline brand logos now use colored circle containers [1 files] _(ai-assisted)_
+- `9468a3e3` 2026-03-07 — feat: add Kalshi inline logo from official app icon [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `52177906` 2026-03-07 — fix: inline brand logos flow naturally in text like emoji [1 files] _(ai-assisted)_
+- `19f71073` 2026-03-07 — fix: inline brand logos use rounded-rect app icon shape, crisp rendering [1 files] _(ai-assisted)_
+- `665c9ead` 2026-03-07 — fix: center inline brand logos properly inside rounded-rect containers [1 files] _(ai-assisted)_
+- `bd7ad71f` 2026-03-07 — fix: crop inline logo viewBoxes so SVGs fill containers like Kalshi [1 files] _(ai-assisted)_
+- `4f1326fa` 2026-03-07 — fix: unify inline logo sizes — SVG and image containers now identical [1 files] _(ai-assisted)_
+- `aaeb91fc` 2026-03-07 — fix: use official Polymarket app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `2077ad6c` 2026-03-07 — fix: use 3D Shopify app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b4f1bba3` 2026-03-07 — fix: use eBay app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `e7d6ed44` 2026-03-07 — fix: use Gumroad app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `6f5a6884` 2026-03-07 — fix: use Fiverr app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `95869b1e` 2026-03-07 — fix: use Upwork app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0aa735a9` 2026-03-07 — fix: Google Workspace icon now uses official 4-color Google "G" [1 files] _(ai-assisted)_
+- `66291c1b` 2026-03-07 — fix: remove em dashes from skill descriptions [1 files] _(ai-assisted)_
+- `6cc54f2f` 2026-03-07 — fix: use official Trello and Slack brand logos on Skills page [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f18a6751` 2026-03-07 — fix: Trello and Slack icons now match other BrandShell icons [1 files] _(ai-assisted)_
+- `aae90897` 2026-03-07 — fix: Slack icon now uses official 4-color hash logo [1 files] _(ai-assisted)_
+- `10bcdcfd` 2026-03-07 — fix: stop health cron from restarting gateway on Telegram 409 conflicts [1 files] _(ai-assisted)_
+- `f55d574b` 2026-03-07 — chore: rename conflicting migration files to unblock supabase db push [6 files] _(ai-assisted)_
+- `69b9d3be` 2026-03-08 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.7 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7ff729f6` 2026-03-08 — feat: add Crawlee stealth scraping — anti-bot fallback for web scraping skill [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `023f7e59` 2026-03-08 — fix: add 4-layer heartbeat quota bug prevention [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8684f47d` 2026-03-08 — feat: add skill auto-update system — manifest.json + daily cron checker [2 files] _(ai-assisted)_
+- `116caafd` 2026-03-08 — fix: heartbeat detection fallback + per-call usage logging [2 files] _(ai-assisted)_
+- `fc209a7a` 2026-03-09 — fix: harden provisioning + crash-loop monitoring for openclaw module corruption [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9d1d7870` 2026-03-09 — fix: replace broken Polygon RPC endpoints in Polymarket scripts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c63a16ef` 2026-03-09 — chore: bump OpenClaw version pins from 2026.3.7 to 2026.3.8 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `880b1b6f` 2026-03-09 — fix: thorough openclaw module cleanup in configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3f32b2c3` 2026-03-09 — fix: add diagnostics to openclaw reinstall failure in configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c4fb9a9d` 2026-03-09 — fix: capture require() error in openclaw reinstall diagnostics [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6f0b78ca` 2026-03-09 — fix: use which openclaw instead of require() for module check [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b2c44510` 2026-03-09 — feat: /hq/dependencies page + P0 fixes (pin crawlee, bump viem) [8 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d049225d` 2026-03-09 — fix: add 24h dedup guard on "Your OpenClaw Instance is Ready!" email [1 files] _(ai-assisted)_
+- `39cee8eb` 2026-03-09 — feat: overhaul ambassador referral + waitlist flow with per-referral tracking [11 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `547780fc` 2026-03-09 — chore: redeploy to pick up HQ_PASSWORD env var [0 files]
+- `9663d76e` 2026-03-09 — feat: add self-healing auto-recovery for crash-looping gateways [1 files] _(ai-assisted)_
+- `3f290bb9` 2026-03-09 — fix: ambassador referral tracking bugs + admin referral management UI [6 files] _(ai-assisted)_
+- `a2e201f7` 2026-03-09 — fix: add duplicate IP guard to VM provisioning pipeline [1 files] _(ai-assisted)_
+- `f5bdad9d` 2026-03-09 — fix: correct OpenClaw + Anthropic API dependency check targets [1 files] _(ai-assisted)_
+- `44962e0f` 2026-03-09 — fix: permanent duplicate IP prevention across all provisioning paths [5 files] _(ai-assisted)_
+- `f66f00a5` 2026-03-09 — feat: /hq/dependencies auto-update — npm bump, fleet deploy, manual mark [4 files] _(ai-assisted)_
+- `cc936843` 2026-03-09 — fix: prevent duplicate dependency rows with UNIQUE constraint + ON CONFLICT [1 files] _(ai-assisted)_
+- `16b68553` 2026-03-09 — feat: auto-update OpenClaw dependency status after successful fleet upgrade [1 files] _(ai-assisted)_
+- `6477becd` 2026-03-09 — feat: add 10 skill/API dependencies to tracking table [1 files] _(ai-assisted)_
+- `9e113b5e` 2026-03-09 — feat: add 14 high-priority dependencies from codebase audit [1 files] _(ai-assisted)_
+- `b9788ac2` 2026-03-09 — fix: pin exact dependency versions from live fleet + fix NextAuth.js tracking [1 files] _(ai-assisted)_
+- `b54b9d45` 2026-03-09 — fix: set repo_url to dashboard/management links for all 40 dependencies [1 files] _(ai-assisted)_
+- `0bf44e0d` 2026-03-09 — fix: exclude skill-category deps from npm Update All Safe path [3 files] _(ai-assisted)_
+- `6f49727b` 2026-03-09 — feat: add Remotion Video skill card to /dashboard/skills [2 files] _(ai-assisted)_
+- `f412d719` 2026-03-09 — fix: skills audit — rename remotion-video slug, deactivate freelance-digital, add marketplace-earning [3 files] _(ai-assisted)_
+- `a4b7964f` 2026-03-09 — fix: use correct column name status='inactive' instead of is_active=false [1 files] _(ai-assisted)_
+- `ffde5845` 2026-03-09 — feat: Seedance 2.0 infinite-length extend — new tiers, chained extensions, credit weights [4 files] _(ai-assisted)_
+- `db942063` 2026-03-10 — fix: migrate workspace paths to ~/.openclaw/workspace/ to prevent LocalMediaAccessError [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `84ab994c` 2026-03-10 — fix: route "ping" messages as heartbeats to prevent credit drain [1 files] _(ai-assisted)_
+- `46d5b2f1` 2026-03-10 — update favicon to glossy 3D crab on dark background [2 files] _(ai-assisted)_
+- `fa286b7c` 2026-03-10 — docs: document neg_risk auto-handling, pin py-clob-client to v0.34.6 [3 files] _(ai-assisted)_
+- `8b8f184e` 2026-03-11 — fix: clawlancer two-sided marketplace UX + funded bounties + rollback safety [5 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e0643051` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — infrastructure hooks + fleet scripts [5 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `10ac8402` 2026-03-11 — feat(instaclaw): push-based VM heartbeat system [4 files] _(**MANIFEST v29**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `1bc1d64e` 2026-03-11 — fix(instaclaw): AgentBook audit fixes [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `bbddeb90` 2026-03-11 — fix(instaclaw): update model IDs — sonnet-4-5 → sonnet-4-6, fix OpenClaw model mapping [12 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `2a66e0a1` 2026-03-11 — feat(instaclaw): AgentBook registration via VM CLI + QR code flow [6 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `cea9176e` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — schema, libraries, API routes, skill [10 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `f987bffc` 2026-03-11 — fix(instaclaw): add /api/agentbook/lookup to middleware public routes [1 files] _(ai-assisted)_
+- `a7906a73` 2026-03-11 — merge: AgentBook Phase 1 — InstaClaw integration (WDP 71) [0 files] _(ai-assisted; merge)_
+- `f363e4e6` 2026-03-11 — fix: add Vercel ignored build step for monorepo [2 files] _(ai-assisted)_
+- `bb921ee6` 2026-03-11 — fix: correct instaclaw ignoreCommand working directory [1 files] _(ai-assisted)_
+- `37da5088` 2026-03-11 — chore: trigger redeploy with RP_ID + RP_SIGNING_KEY env vars [0 files] _(ai-assisted)_
+- `8bc62ebb` 2026-03-11 — fix(instaclaw): add error logging to sign-request endpoint for debugging [1 files] _(ai-assisted)_
+- `be69aba6` 2026-03-11 — fix(instaclaw): add diagnostic mode to sign-request for production debugging [1 files] _(ai-assisted)_
+- `e991a6ae` 2026-03-11 — fix(instaclaw): strip 0x prefix from RP_SIGNING_KEY before signRequest() [1 files] _(ai-assisted)_
+- `32fa80e9` 2026-03-11 — fix(instaclaw): strip trailing \n artifact from RP_SIGNING_KEY env var [1 files] _(ai-assisted)_
+- `cc35156b` 2026-03-11 — fix: add webpack WASM support for World ID 4.0 IDKit [1 files] _(ai-assisted)_
+- `6957af02` 2026-03-11 — fix(instaclaw): handle IDKit 4.x proof format in verify endpoint [1 files] _(ai-assisted)_
+- `5aa2a124` 2026-03-11 — fix(instaclaw): use correct column name agentbook_wallet_address [3 files] _(ai-assisted)_
+- `f83ed840` 2026-03-11 — fix(instaclaw): setsid detach for agentkit-cli + correct URL regex [2 files] _(ai-assisted)_
+- `b1a8ee59` 2026-03-11 — fix(instaclaw): AgentBook skill ACP conflict + auto-registration trigger [2 files] _(ai-assisted)_
+- `70492abf` 2026-03-11 — fix(instaclaw): remove Clawlancer dependency from AgentBook skill [5 files] _(ai-assisted)_
+- `eafb5310` 2026-03-11 — fix(instaclaw): fix agentbook-check.py argparse order (--json before subcommand) [2 files] _(ai-assisted)_
+- `5742213a` 2026-03-11 — fix(instaclaw): AgentBook registration flow — wait for human verification [2 files] _(ai-assisted)_
+- `4672fffe` 2026-03-11 — fix(instaclaw): remove --llms flag, use tee+background for CLI URL capture [2 files] _(ai-assisted)_
+- `cefc7352` 2026-03-12 — feat: session corruption auto-heal cron + health check detection [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `eac22bc9` 2026-03-12 — fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide [11 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `1afc8142` 2026-03-12 — Revert "fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide" [11 files] _(multi: [reconciler, infrastructure, feature])_
+- `0328421e` 2026-03-12 — fix: add missing websockets dep to solana-defi pip install [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `17788ebb` 2026-03-12 — feat: parallelize package installs in configureOpenClaw (~60s savings) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ca8ecd38` 2026-03-12 — fix: forward anthropic-beta header in proxy for adaptive thinking [1 files] _(ai-assisted)_
+- `2600a058` 2026-03-12 — debug: log exact thinking request/response payload for investigation [1 files] _(ai-assisted)_
+- `575b808b` 2026-03-12 — fix: resolve TS error in thinking debug logging (message_count type) [1 files] _(ai-assisted)_
+- `685d3775` 2026-03-12 — fix: normalize thinking string→object for Anthropic API in proxy [1 files] _(ai-assisted)_
+- `c5e04bbe` 2026-03-12 — fix: map adaptive→enabled+10k budget, inject interleaved-thinking beta [1 files] _(ai-assisted)_
+- `b699c012` 2026-03-12 — fix: handle thinking as object { type: "adaptive" } not just string [1 files] _(ai-assisted)_
+- `5ca66cd6` 2026-03-12 — fix: strip effort parameter, restore adaptive thinking type [1 files] _(ai-assisted)_
+- `cc3ca635` 2026-03-12 — fix: strip thinking for Haiku — only Sonnet 4.6/Opus support adaptive [1 files] _(ai-assisted)_
+- `a1bf472a` 2026-03-12 — docs: add critical comment block to thinking normalization code [1 files] _(ai-assisted)_
+- `cc648e85` 2026-03-12 — fix: change default model routing from Haiku to Sonnet with budget guard [1 files] _(ai-assisted)_
+- `11b91a1a` 2026-03-12 — fix: async video generation — add --submit-only flag, bump poll timeout to 8min [2 files] _(ai-assisted)_
+- `31f38853` 2026-03-12 — fix: make async video confirmation message mandatory in SKILL.md [1 files] _(ai-assisted)_
+- `170a6235` 2026-03-13 — fix: deploy all 13 prediction-markets scripts + auto-heal missing scripts via reconciler [3 files] _(**MANIFEST v30**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `d1d2ad5b` 2026-03-13 — fix: add browser failure recovery + "never go silent" rule for agents [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3d94095e` 2026-03-13 — fix: platform-wide silent death prevention — P0/P1/P2 fixes [19 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a25d8d89` 2026-03-13 — chore: redeploy with new Anthropic API key [0 files] _(ai-assisted)_
+- `54a42262` 2026-03-13 — chore: force redeploy with new Anthropic API key [1 files] _(ai-assisted)_
+- `1feb094d` 2026-03-13 — feat: billing cache prevention — intercept, auto-clear, and recover [3 files] _(ai-assisted)_
+- `14adefb8` 2026-03-13 — feat: drop the waitlist — frictionless one-click signup [15 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `967071bb` 2026-03-14 — chore: bump openclaw version pin from 2026.3.8 to 2026.3.13 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `07b73403` 2026-03-14 — fix: remove invalid browser.profiles.chrome that crashes gateway on new VMs [11 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `287cfed3` 2026-03-14 — feat: config safety guardrails — backup/rollback, validation, crash-loop detection [4 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `2e00d679` 2026-03-14 — feat: Dynamic SPA Handling Protocol — improves agent reliability on Instagram/LinkedIn/Facebook [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `299094bd` 2026-03-14 — chore: change support email from support@ to help@instaclaw.io [16 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `4c1fd2b4` 2026-03-15 — feat: InstaAgent — Instagram Graph API integration (Phase 1) [20 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `49bfd137` 2026-03-15 — fix: allow /api/webhooks/* through auth middleware [1 files] _(ai-assisted)_
+- `e7ac6b9e` 2026-03-15 — fix: use INSTAGRAM_APP_ID/SECRET for Instagram OAuth flow [2 files] _(ai-assisted)_
+- `43070509` 2026-03-16 — fix: add enable_fb_login=0 and force_authentication=1 to Instagram OAuth [1 files] _(ai-assisted)_
+- `d5d101fd` 2026-03-16 — fix: use META_APP_ID for Instagram OAuth client_id [2 files] _(ai-assisted)_
+- `f7ba9d46` 2026-03-16 — fix: switch to standalone Instagram Login flow (api.instagram.com) [2 files] _(ai-assisted)_
+- `3b9f8cdb` 2026-03-16 — fix: revert auth URL to www.instagram.com/oauth/authorize [1 files] _(ai-assisted)_
+- `dcdb2c3c` 2026-03-16 — fix: Instagram OAuth token parsing + run instagram migration [7 files] _(ai-assisted)_
+- `e32c176c` 2026-03-16 — feat: Instagram token API + auth helper for VM scripts [9 files] _(ai-assisted)_
+- `f64c77a0` 2026-03-16 — fix: allow VM access to /api/instagram/token via middleware bypass [2 files] _(ai-assisted)_
+- `880c7ee1` 2026-03-16 — feat: VM validation system — fleet health checks, auto-fix, dashboard [9 files] _(ai-assisted)_
+- `7a823bd6` 2026-03-16 — fix: add /api/vm/validate to middleware self-auth bypass [1 files] _(ai-assisted)_
+- `29d04359` 2026-03-16 — fix: validator DBUS false positive + cron check parsing [1 files] _(ai-assisted)_
+- `0531c61f` 2026-03-16 — feat: smart cron job guardrails with upsell moments [5 files] _(ai-assisted)_
+- `29f904e6` 2026-03-16 — fix: disable dead CLOB proxy fleet-wide, use direct clob.polymarket.com [2 files] _(ai-assisted)_
+- `0589cc0d` 2026-03-16 — fix: cron-guard critical bugs — atomic writes, file locking, Telegram dedup [4 files] _(ai-assisted)_
+- `386c498f` 2026-03-16 — feat: /api/vm/fix-infra endpoint for systemd override + swap fixes [2 files] _(ai-assisted)_
+- `d36b40ef` 2026-03-16 — fix: systemd override check uses individual key grep (multiline bug) [7 files] _(ai-assisted)_
+- `b602e21c` 2026-03-16 — fix: DBUS systemd-status is info-level pass when health+port OK [1 files] _(ai-assisted)_
+- `b1a08760` 2026-03-16 — feat: fleet-mode fix-infra + pip3/playwright fixes + DBUS severity [1 files] _(ai-assisted)_
+- `790a738f` 2026-03-16 — fix: add /api/notify to public API exclusions in middleware [1 files] _(ai-assisted)_
+- `a9a1eaf6` 2026-03-16 — feat: add "waitlist is over" email template and broadcast endpoint [2 files] _(ai-assisted)_
+- `58f171d6` 2026-03-16 — fix: polish waitlist-over email copy for higher conversion [2 files] _(ai-assisted)_
+- `33080f51` 2026-03-16 — fix: invert logo to white in dark mode email clients [1 files] _(ai-assisted)_
+- `79d5de80` 2026-03-16 — fix: remove logo image from email header for dark mode compatibility [1 files] _(ai-assisted)_
+- `ec88a7ff` 2026-03-16 — feat: add value prop + World partnership paragraph to waitlist email [1 files] _(ai-assisted)_
+- `0f2ac7f6` 2026-03-16 — fix: add no-KYC detail to World partnership copy in email [1 files] _(ai-assisted)_
+- `c210acdd` 2026-03-16 — fix: broaden capability examples in waitlist email copy [1 files] _(ai-assisted)_
+- `fe4501d1` 2026-03-16 — fix: move value prop paragraph below CTA button for above-fold visibility [2 files] _(ai-assisted)_
+- `0c48ec2c` 2026-03-16 — fix: remove all em dashes from email, fix Discord invite link [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `3fb54a7c` 2026-03-16 — fix: link World text to world.org in waitlist email [1 files] _(ai-assisted)_
+- `6f32aad2` 2026-03-16 — fix: remove "no credit card required" from email CTA [1 files] _(ai-assisted)_
+- `5df26a24` 2026-03-16 — fix: link email CTAs to homepage instead of /signup [1 files] _(ai-assisted)_
+- `f2ffbff4` 2026-03-16 — fix: add YAML frontmatter to instagram-automation SKILL.md [1 files] _(ai-assisted)_
+- `e19b8960` 2026-03-17 — fix: prevent VM configure race condition that leaks user data [7 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d2007e20` 2026-03-17 — fix: wipeVMForNextUser now removes ALL user data on VM recycle [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f7109f95` 2026-03-17 — fix: three-layer defense against web fetch session blowouts [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `eabbbc8d` 2026-03-17 — fix: escape newlines in STRIP_THINKING_SCRIPT Python template literal [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c0f40db2` 2026-03-17 — fix: escape all Python \n literals in STRIP_THINKING_SCRIPT template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a58b6417` 2026-03-17 — fix: remove broken Polygon RPCs from polymarket-trade.py fallback list [1 files] _(ai-assisted)_
+- `1fd389ee` 2026-03-17 — fix: remove hardcoded 0.99/0.01 slippage caps in polymarket-trade.py [1 files] _(ai-assisted)_
+- `824a74b9` 2026-03-17 — fix: audit-identity checks ~/.openclaw/workspace/ not ~/workspace/ [1 files] _(ai-assisted)_
+- `c406df70` 2026-03-17 — fix: prevent stuck deployments — 4 layered safety nets [4 files] _(ai-assisted)_
+- `ba3d26f5` 2026-03-17 — chore: add suspended_at migration for suspension flow hardening [1 files] _(ai-assisted)_
+- `a277c394` 2026-03-17 — fix: truncate oversized tool results at proxy to prevent context overflow [1 files] _(ai-assisted)_
+- `508e71ec` 2026-03-17 — fix: add pre-deploy migration verification to block deploys with missing DB objects [4 files] _(ai-assisted)_
+- `e4eb6866` 2026-03-18 — fix: raise bootstrapMaxChars to 30K, add WALLET.md template, monitor oversized memory [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d835ac13` 2026-03-18 — fix: add belt-and-suspenders haiku guard in configureOpenClaw + configure endpoint [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4c532da6` 2026-03-18 — fix: add memory hygiene instructions to SOUL.md template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4fdb1c27` 2026-03-18 — fix: onboarding reliability — auto-release broken VMs, validate OpenClaw before marking ready [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f372f90e` 2026-03-18 — fix: default all tiers to claude-sonnet-4-6 instead of haiku [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5fd5ff49` 2026-03-18 — fix: gracefully handle stale PostgREST schema cache for configure_lock_at [1 files] _(ai-assisted)_
+- `93ce51d9` 2026-03-18 — fix: raise circuit breaker thresholds — false trip blocking all pro/power users [1 files] _(ai-assisted)_
+- `df721b74` 2026-03-18 — feat: circuit breaker dashboard widget + 80% early warning alert [3 files] _(ai-assisted)_
+- `a7a6298b` 2026-03-19 — fix: session bloat — daily hygiene in strip-thinking.py + fleet-wide cleanup [4 files] _(**MANIFEST v32**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `43dde511` 2026-03-19 — feat: Phase 0 — memory architecture verification + bug fixes [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5421f162` 2026-03-19 — feat: Phase 1 — memory architecture overhaul (skill trim 24%, CAPABILITIES 59%, session handoff, heartbeat hygiene, file sharing, group chat memory fix, manifest v33) [16 files] _(**MANIFEST v33**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8ac2cc89` 2026-03-19 — feat: File Delivery V1 — Telegram sendDocument + signed URLs + dashboard deep-linking + deliver_file.sh (manifest v34) [7 files] _(**MANIFEST v34**; multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d9e4fb74` 2026-03-19 — fix: deliver_file.sh — read bot token from openclaw.json, chat_id from sessions.json, fix regex escape [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1e93f413` 2026-03-19 — feat: Phase 2 — enable memorySearch + memoryFlush fleet-wide, fix vm-384 migration (manifest v35) [2 files] _(**MANIFEST v35**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `429f23e6` 2026-03-19 — feat: File Delivery V2 — Supabase Storage, delivery history, CDN downloads (manifest v36) [7 files] _(**MANIFEST v36**; multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d6ec9405` 2026-03-19 — feat: task completion notifications — notify_user.sh + heartbeat Phase 0.5 + agent intelligence 1W (manifest v36) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `28eefb25` 2026-03-19 — feat: fix P1 audit gaps — deploy SOUL.md supplement + HEARTBEAT.md consolidation + raise reserveTokensFloor to 35K (manifest v37) [2 files] _(**MANIFEST v37**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `0081a012` 2026-03-19 — fix: reconciler hardening — remove duplicate skills, strip _placeholder key, fix SSH key injection, use connectSSH(), expand billing webhook tier detection (manifest v38) [13 files] _(**MANIFEST v38**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `31e7eeec` 2026-03-19 — fix: add /api/vm/files/delivered and /api/f to middleware self-auth exclusions [1 files] _(ai-assisted)_
+- `d64f480d` 2026-03-19 — docs: add file delivery + group chat architecture PRDs [2 files] _(ai-assisted)_
+- `deceef41` 2026-03-19 — docs: mark Phase 2 complete — memorySearch + memoryFlush deployed fleet-wide (v35) [1 files] _(ai-assisted)_
+- `9f8ed657` 2026-03-19 — feat: video refund mechanism + fix upsell link on limit hit + fix Higgsfield jobs.json status tracking [5 files] _(ai-assisted)_
+- `74d8ca02` 2026-03-20 — fix: correct SOUL.md supplement marker — 'Rule priority order' exists in base template, use 'INTELLIGENCE_INTEGRATED' instead (manifest v38) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e064bc3c` 2026-03-20 — docs: update PRD — Phase 1+2 fully complete after v38 audit fix, P2.4 deployed [1 files] _(ai-assisted)_
+- `ff5ff555` 2026-03-22 — fix: strip user-sent base64 images from sessions + increase memory warn TTL + add strip-thinking telemetry (manifest v39) [3 files] _(**MANIFEST v39**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `83c0452c` 2026-03-22 — fix: IMAGE_KEEP_RECENT=0 — strip ALL base64 images from sessions (manifest v40) [2 files] _(**MANIFEST v40**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `47b0297b` 2026-03-22 — feat: World mini app — full v1 scaffold with 3-tap onboarding [38 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `d3e4bbf6` 2026-03-23 — fix: disable daily 4AM session reset — switch to 7-day idle mode, isolate heartbeats, enforce session maintenance (manifest v41) [3 files] _(**MANIFEST v41**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `e1e8afac` 2026-03-23 — chore: bump OpenClaw version pins from 2026.3.13 to 2026.3.22 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b3e9fe53` 2026-03-23 — fix: reconciler workspace integrity check — self-heal missing SOUL.md (v42) [2 files] _(**MANIFEST v42**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `89b55506` 2026-03-23 — docs: add $INSTACLAW token staking to World mini app PRD [1 files] _(ai-assisted)_
+- `9f0ed29e` 2026-03-24 — fix: systemd ExecStartPre crash-loop — remove broken log rotation (v43) [1 files] _(**MANIFEST v43**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `43a2f83b` 2026-03-24 — feat: EARN.md — comprehensive earning playbook for all agents (v44) [3 files] _(**MANIFEST v44**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b5aba5c0` 2026-03-24 — feat: World ID Cloudflare prep — store full proof, deploy nullifier to VMs, .well-known/agent.json [5 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `52538305` 2026-03-24 — feat: memory health dashboard + remove rotateOversizedSession (v45) [7 files] _(**MANIFEST v45**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `9927e000` 2026-03-24 — fix: move .well-known/agent.json to API route + rewrite (Next.js doesn't serve dot-prefix dirs) [2 files]
+- `eca1e228` 2026-03-24 — fix: allow public access to /.well-known/agent.json (add to middleware allowlist) [1 files]
+- `b431fbea` 2026-03-24 — fix: remove turbopack.root parent dir — isolate instaclaw from instaclaw-mini [1 files] _(ai-assisted)_
+- `06b36998` 2026-03-25 — fix: block OpenClaw control UI — redirect root path to instaclaw.io/dashboard [4 files] _(**MANIFEST v46**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b6be918b` 2026-03-25 — feat: bake dispatch mode into configureOpenClaw() + update PRD with Phase 0/1 results [9 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5df56627` 2026-03-25 — fix: add "never go silent" operating principle to SOUL.md template [1 files] _(**MANIFEST v47**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `46315dfc` 2026-03-25 — fix: add "never self-restart" operating principle to SOUL.md template [1 files] _(**MANIFEST v48**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be8ac171` 2026-03-25 — fix: usecomputer binary chmod +x in configureOpenClaw (npm doesn't set execute bit) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `46f92940` 2026-03-25 — fix: supervisor TTY check + bake Phase 2 dispatch-server into configureOpenClaw [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8e30e3a7` 2026-03-25 — feat: Live Desktop Viewer — auth, takeover, configureOpenClaw, fleet-ready [5 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `d2d6fc5f` 2026-03-25 — feat: add diagnose, reset-config, restart-gateway to fix-infra endpoint [1 files] _(ai-assisted)_
+- `1e991106` 2026-03-25 — feat: add write-config, init-workspace, rebuild-ui fixes to fix-infra [1 files] _(ai-assisted)_
+- `9ac1751b` 2026-03-25 — fix: improve rebuild-ui to reinstall openclaw package for UI assets [1 files] _(ai-assisted)_
+- `6ef6f3ae` 2026-03-25 — feat: add push-soul-principles fix-infra endpoint for fleet-wide SOUL.md update [1 files] _(ai-assisted)_
+- `5d48ad6c` 2026-03-25 — chore: trigger Vercel redeploy for push-soul-principles endpoint [0 files] _(ai-assisted)_
+- `2efdfb1f` 2026-03-25 — chore: force Vercel rebuild for push-soul-principles endpoint [1 files] _(ai-assisted)_
+- `6423929a` 2026-03-25 — feat: Phase 2 — client-side dispatch relay prototype (agent controls user's computer) [19 files] _(ai-assisted)_
+- `4e3c0998` 2026-03-25 — fix: instagram skill frontmatter, maxSkillsPromptChars 500K, remove duplicate skills, placeholder cleanup in reconciler, 300ms fleet script sleep [1 files] _(ai-assisted)_
+- `b5a47ede` 2026-03-25 — fix: exclude instaclaw-mini from instaclaw tsconfig — was breaking Vercel builds [1 files] _(ai-assisted)_
+- `773d1139` 2026-03-25 — fix: dangerous action blocking in autonomous mode + redeploy audit-enabled dispatch-server [1 files] _(ai-assisted)_
+- `7710b161` 2026-03-25 — fix: exclude packages/ from Next.js TypeScript compilation (fixes Vercel build) [1 files]
+- `f8c420ff` 2026-03-25 — fix: swap Telegram as primary chat, World Chat as secondary [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `75903600` 2026-03-25 — chore: bump @instaclaw/dispatch to v0.3.0 (HMAC auth, coordMap, rate limiting) [1 files]
+- `add3d537` 2026-03-25 — fix: XMTP agent — getSenderAddress crash + message reception confirmed [1 files] _(ai-assisted)_
+- `cc11387b` 2026-03-25 — fix: remove base64 from screenshot stdout — was flooding agent context and hitting rate limits [2 files] _(ai-assisted)_
+- `466aefdd` 2026-03-25 — feat: dual-mode SKILL.md, npm publish @instaclaw/dispatch, macOS permission detection [4 files] _(ai-assisted)_
+- `0e77d1bd` 2026-03-25 — docs: mark all Dispatch Mode phases COMPLETE in PRD [1 files]
+- `b0c53f3e` 2026-03-25 — docs: Phase 2 Group Chat Agents + XMTP status + Mateo question in PRD [1 files] _(ai-assisted)_
+- `6b1dcc6f` 2026-03-25 — docs: PRD for Live Agent Desktop Viewer & Takeover Mode (noVNC) [1 files]
+- `606176bc` 2026-03-26 — fix: add Caddy /vnc/* proxy + iptables to configureOpenClaw (was missing for new VMs) [1 files] _(multi: [reconciler, infrastructure])_
+- `00a61e06` 2026-03-26 — fix: auto-repair broken systemd override.conf in configureOpenClaw (prevents gateway crash-loop) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `36f86292` 2026-03-26 — feat: dispatch v2 — action batching, screenshot optimization, copy-paste UX [14 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `2b79a988` 2026-03-26 — fix: macOS permissions flow, pairing code reuse, agent dispatch detection [5 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `9d659722` 2026-03-26 — fix: dispatch detection — remove mandatory status check, use try-first approach [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `27399733` 2026-03-26 — feat: P5 — daily agent digest via Telegram [2 files] _(ai-assisted)_
+- `055711d8` 2026-03-26 — feat: Phase 2 — upgrade flow with Google sign-in + account linking [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b279a5b4` 2026-03-26 — chore: add /docs/dispatch to sitemap PUBLIC_ROUTES [1 files] _(ai-assisted)_
+- `310e20ee` 2026-03-26 — feat: one-off admin endpoint for clean XMTP agent setup on vm-313 [1 files] _(ai-assisted)_
+- `dd34321c` 2026-03-26 — fix: add setup-xmtp-clean to self-auth API list in middleware [1 files] _(ai-assisted)_
+- `9dd51dc4` 2026-03-26 — fix: XMTP wallet key needs 0x prefix for agent-sdk [1 files] _(ai-assisted)_
+- `4d3db26b` 2026-03-26 — feat: admin endpoint to send XMTP message from agent to target address [2 files] _(ai-assisted)_
+- `e0188e39` 2026-03-26 — fix: write XMTP send script to ~/scripts/ so it finds node_modules [1 files] _(ai-assisted)_
+- `3ea3e49c` 2026-03-26 — fix: probe XMTP agent-sdk API surface, try multiple DM creation methods [1 files] _(ai-assisted)_
+- `8d4620b9` 2026-03-26 — fix: use agent.createDmWithAddress() — correct XMTP agent-sdk API [1 files] _(ai-assisted)_
+- `2996ecb2` 2026-03-26 — fix: stop XMTP service before sending (DB lock), restart after [1 files] _(ai-assisted)_
+- `dab18429` 2026-03-26 — feat: XMTP probe endpoint — find Cooper's real XMTP identity [2 files] _(ai-assisted)_
+- `376f5dfb` 2026-03-26 — fix: use createDmWithIdentifier with numeric enum + inbox ID fallback [1 files] _(ai-assisted)_
+- `b3c064b5` 2026-03-26 — fix: dispatch-status tier gate blocking all status checks [2 files] _(ai-assisted)_
+- `87b98707` 2026-03-26 — fix: dispatch status detection — use TCP check instead of broken Unix socket [2 files] _(ai-assisted)_
+- `e580e855` 2026-03-26 — docs: PRD for UX enhancements — viral & delightful computer control features [1 files]
+- `0c43a7f6` 2026-03-26 — docs: update UX PRD with Cooper's feedback — P2 natural sharing, P3 removed, P4 client-side recording [1 files]
+- `d31a6a73` 2026-03-27 — feat: agent suggests autonomous mode before multi-step dispatch tasks [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0ae2f848` 2026-03-27 — fix: agent must NEVER restart dispatch-server + systemd socket cleanup [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `92f60205` 2026-03-27 — feat: gateway watchdog — auto-restart hung gateways within 4 minutes [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `32e56533` 2026-03-27 — fix: prevent context overflow + task persistence across resets [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `29fb955c` 2026-03-27 — fix: shell-first enforcement, Spotlight fallback, message budget, connection info [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `f828147d` 2026-03-27 — feat: dispatch-remote-exec — run shell commands on user's Mac without Terminal [8 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `4007a065` 2026-03-27 — fix: watchdog prevents silent context overflow — auto-rotates at 500KB [1 files] _(ai-assisted)_
+- `cdf8da78` 2026-03-27 — fix: exec used require() in ESM module — ReferenceError: require is not defined [2 files] _(ai-assisted)_
+- `35068722` 2026-03-27 — fix: watchdog v3 — detects frozen gateway (typing but no response) [1 files] _(ai-assisted)_
+- `6c604aec` 2026-03-27 — fix: 90-second timeout on LLM API calls — prevents infinite hang on images [1 files] _(ai-assisted)_
+- `1ecc1391` 2026-03-27 — fix: watchdog v4 — detect dead Telegram connection (root cause of silence) [1 files] _(ai-assisted)_
+- `1138579f` 2026-03-27 — fix: add context budget limit — max 15 screenshots per task [1 files] _(ai-assisted)_
+- `c383b9c2` 2026-03-27 — fix: agent must type commands on USER'S computer, not run them on VM [1 files] _(ai-assisted)_
+- `13587d44` 2026-03-27 — fix: don't screenshot what user already showed + context overflow note [1 files] _(ai-assisted)_
+- `631661ed` 2026-03-27 — fix: macOS screenshot filenames have spaces — use find -exec mv [1 files] _(ai-assisted)_
+- `e09fbe02` 2026-03-28 — fix: NEVER Go Silent After Tool Failures — mandatory error reporting [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `576225e9` 2026-03-28 — fix: add image_generate parameter guidance + retrigger build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `99c5086e` 2026-03-28 — fix: watchdog v5 — check TIMESTAMP of last sendMessage, not just count [1 files] _(ai-assisted)_
+- `5848b709` 2026-03-29 — feat: DegenClaw skill — Virtuals $100K weekly perps trading competition [7 files] _(**MANIFEST v49**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `73f95890` 2026-03-29 — chore: update PRD to reflect completed deployment + add fleet scripts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `5d742c13` 2026-03-30 — feat: PARTNER_ID=INSTACLAW — Virtuals revenue share live [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `78fe2c89` 2026-03-30 — fix: PARTNER_ID audit fixes — uninstall cleanup + remove duplicate sed [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2c66561f` 2026-03-30 — feat: PARTNER_ID in gateway systemd — process.env verified (manifest v50) [4 files] _(**MANIFEST v50**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `3c4858f9` 2026-03-30 — feat: universal silence watchdog — 60-second fallback guarantee (manifest v51) [2 files] _(**MANIFEST v51**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `fc7c2dae` 2026-03-30 — fix: silence watchdog — use inline content instead of template registry (init order) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `35e93266` 2026-03-30 — feat: add DegenClaw to EARN.md — Virtuals $100K weekly trading competition [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bf74af13` 2026-03-30 — chore: fleet scripts for PARTNER_ID deployment + verification [2 files] _(ai-assisted)_
+- `cb4c32e6` 2026-03-30 — fix: whitelist agent-auth-url + agent-complete-auth in middleware [1 files] _(ai-assisted)_
+- `66a382a7` 2026-03-30 — fix: dgclaw skill audit — NOT triggers, edge cases, fee accuracy [2 files] _(ai-assisted)_
+- `bdf202ec` 2026-03-30 — fix: agent must use dynamic ?requestId= auth URL, never generic link [1 files] _(ai-assisted)_
+- `22dfc998` 2026-03-30 — feat: server-side ACP auth for agents — fixes timeout death loop [3 files] _(ai-assisted)_
+- `e57b1a38` 2026-03-30 — fix: extract GATEWAY_TOKEN from .env before curl — was expanding to empty string [1 files] _(ai-assisted)_
+- `89454cd1` 2026-03-30 — fix: always specify 'USDC on Base network' when mentioning funds [1 files] _(ai-assisted)_
+- `ad250d87` 2026-03-31 — fix: World ID propagation writes to MEMORY.md for durability [2 files] _(ai-assisted)_
+- `364bbd69` 2026-03-31 — feat: admin endpoint for World ID propagation (temp, for backfill) [1 files] _(ai-assisted)_
+- `9f0863fd` 2026-03-31 — fix: use CRON_SECRET for admin propagation auth [1 files] _(ai-assisted)_
+- `92f00ba8` 2026-03-31 — fix: add propagate-world-id to middleware allowlist [1 files] _(ai-assisted)_
+- `40fdee11` 2026-03-31 — feat: World ID self-healing in reconciler health check [1 files] _(ai-assisted)_
+- `c5a0deab` 2026-03-31 — security(C2,C4,C6): Subscription check, credit pre-check, unique constraint [3 files] _(ai-assisted)_
+- `93bfadb5` 2026-03-31 — security(C5): Atomic check-and-increment RPC eliminates race condition [1 files] _(ai-assisted)_
+- `ba5e3d1e` 2026-03-31 — security(C9 revised): Trial abuse detection without blocking first-time users [1 files] _(ai-assisted)_
+- `de693c8c` 2026-03-31 — security(C5): Gateway proxy uses atomic check-and-increment RPC [1 files] _(ai-assisted)_
+- `6572ee56` 2026-03-31 — feat: VM reclaim script + dedicated suspension cron [3 files] _(ai-assisted)_
+- `2d9d0bf1` 2026-03-31 — fix: XMTP setup endpoint accepts vmId parameter [1 files] _(ai-assisted)_
+- `bf9ad647` 2026-03-31 — fix: XMTP admin endpoints accept vmId + token refresh endpoint [2 files] _(ai-assisted)_
+- `2f21200f` 2026-03-31 — fix: xmtp-send body.vmId reference — was undefined [1 files] _(ai-assisted)_
+- `fb5612cd` 2026-03-31 — feat: World Chat init — agent messages user first to establish DM [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `4238869b` 2026-03-31 — fix: xmtp-send-to-user auto-installs @xmtp/agent-sdk if missing [1 files] _(ai-assisted)_
+- `65a097ac` 2026-03-31 — fix: Write XMTP send script to ~/scripts/ for ESM module resolution [1 files] _(ai-assisted)_
+- `cc6bf8c5` 2026-03-31 — fix: XMTP agent gateway port 3000 → 18789 [3 files] _(ai-assisted)_
+- `d84d5e06` 2026-03-31 — fix: XMTP agent maintains conversation history per DM [1 files] _(ai-assisted)_
+- `30a8091d` 2026-03-31 — feat: xmtp-refresh-token also updates agent script from GitHub [1 files] _(ai-assisted)_
+- `6c53bc1c` 2026-03-31 — feat: Persist XMTP conversation history to disk [1 files] _(ai-assisted)_
+- `c380b4a7` 2026-03-31 — fix: Auto-retry stuck VMs + provisioning retry button [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `011f19d5` 2026-04-01 — security: Full user data wipe in configureOpenClaw before new user setup [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7c123b06` 2026-04-01 — fix: configureOpenClaw sets config_version to VM_MANIFEST.version (51) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4d71c67b` 2026-04-01 — feat: Bankr partnership integration — wallet provisioning, tokenization, and trading fee credit loop [9 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `f058d5bb` 2026-04-01 — fix: Resolve Bankr vs Virtuals/ACP wallet conflicts — dual wallet identity, tokenization guard, usage instructions [6 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `1aaed5bc` 2026-04-01 — security: Privacy guard in configureOpenClaw — force-wipe leftover data [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `195db698` 2026-04-01 — fix: Eliminate false unhealthy marks — HTTP-first health, restart grace, SSH debounce, lock file [4 files] _(**MANIFEST v52**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b13a36ec` 2026-04-01 — security: Fourth privacy layer — pre-assignment wipe + idempotency fix [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7b475a92` 2026-04-01 — feat: Provision AgentBook wallet during configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `499b53a0` 2026-04-01 — fix: Config reconciler — batch 3→10, remove healthy-only filter [1 files] _(ai-assisted)_
+- `99785ff6` 2026-04-01 — fix: Post-ship audit cleanup — card order, window.open, extension placeholder, reclaim simplification [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `80d55353` 2026-04-01 — chore: Trigger Vercel redeploy — previous build failure was transient [0 files] _(ai-assisted)_
+- `61b7d9be` 2026-04-01 — feat: Batch restart endpoint for unhealthy VMs — /api/admin/restart-unhealthy [2 files] _(ai-assisted)_
+- `eabb2d2e` 2026-04-01 — docs: Linode/Akamai meeting prep — fleet audit, cost analysis, asks [1 files] _(ai-assisted)_
+- `39a530ea` 2026-04-01 — docs: Add root cause analysis and Linode-specific questions to meeting prep [1 files] _(ai-assisted)_
+- `12355411` 2026-04-01 — docs: $INSTACLAW tokenomics PRD — four-phase burn flywheel tied to real revenue [1 files] _(ai-assisted)_
+- `0bf4ddcf` 2026-04-02 — fix: Generate agent wallets locally with viem (not on VM) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3c33aecb` 2026-04-02 — fix: Bump OpenClaw version pins to v2026.4.1 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4964b087` 2026-04-02 — fix: set restart lock before gateway stop in upgradeOpenClaw() [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `003b1107` 2026-04-02 — fix: add tools.exec config to manifest v53 — restore exec access fleet-wide [1 files] _(**MANIFEST v53**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `d1bdedf9` 2026-04-02 — fix: Retry gateway restart every 3 cycles, not just once at count 3 [1 files] _(ai-assisted)_
+- `c9b06ecf` 2026-04-02 — fix: register-direct script .mjs → .cjs (Node 22 ESM compat) [1 files] _(ai-assisted)_
+- `364dd11e` 2026-04-02 — fix: run register-direct from ~/.openclaw so viem is in node_modules [1 files] _(ai-assisted)_
+- `76bdde02` 2026-04-02 — fix: set NODE_PATH to find viem in global agentkit-cli node_modules [1 files] _(ai-assisted)_
+- `ab07245d` 2026-04-02 — fix: register-direct uses gasless relay instead of direct contract call [1 files] _(ai-assisted)_
+- `d5b12367` 2026-04-02 — fix: show full relay response for diagnosis, handle manualRegistration [1 files] _(ai-assisted)_
+- `e17c6aac` 2026-04-02 — fix: switch to World Chain contract where relay sponsors gas [1 files] _(ai-assisted)_
+- `f134c7f7` 2026-04-02 — fix: BigInt literal 0n → BigInt(0) for ES2020 target [1 files] _(ai-assisted)_
+- `62d4f6c1` 2026-04-02 — fix: omit network field from relay request (match v0.1.8 CLI behavior) [1 files] _(ai-assisted)_
+- `be3c1302` 2026-04-02 — fix: proper ABI decoding of proof (match agentkit-cli normalizeProof) [1 files] _(ai-assisted)_
+- `cc4a8484` 2026-04-02 — fix: match CLI behavior — any 200 from relay = success [1 files] _(ai-assisted)_
+- `dfea5dd1` 2026-04-02 — fix: show HTTP status code in relay rejection error [1 files] _(ai-assisted)_
+- `2bc5744a` 2026-04-02 — docs: Public $INSTACLAW tokenomics page — condensed for website + CT [1 files] _(ai-assisted)_
+- `10cf92e1` 2026-04-02 — docs: VM Lifecycle Management PRD — automated deletion, pool scaling, cost optimization [1 files] _(ai-assisted)_
+- `69e6bce1` 2026-04-03 — fix: stop silence watchdog restart storm — decouple fallback from restart [2 files] _(**MANIFEST v54**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `8772a375` 2026-04-03 — fix: accept 'nullifier' field name from IDKit v4 (not nullifier_hash) [1 files] _(ai-assisted)_
+- `ce6682ca` 2026-04-03 — fix: switch CLI to v0.1.8 (World Chain) + check both chains [4 files] _(ai-assisted)_
+- `55a0c4e4` 2026-04-03 — fix: stop health cron email spam + add Stripe reconciliation cron [3 files] _(ai-assisted)_
+- `8c4cb0db` 2026-04-03 — fix: notification API deeplink format + accurate notified response [1 files] _(ai-assisted)_
+- `d1d1a61a` 2026-04-03 — fix: TypeScript error in stripe-reconcile cron (Map type inference) [1 files] _(ai-assisted)_
+- `86668c7f` 2026-04-03 — feat: VM lifecycle cron — auto-delete suspended VMs from Linode [3 files] _(ai-assisted)_
+- `ee849b9c` 2026-04-03 — feat: append return_to deeplink to bridge URL for auto-redirect back to mini app [1 files] _(ai-assisted)_
+- `b3214214` 2026-04-05 — fix: add exec-approvals.json to manifest + configureOpenClaw (v55) [2 files] _(**MANIFEST v55**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `73bbe165` 2026-04-05 — fix: make Linode primary provider + default to dedicated CPU (g6-dedicated-2) [2 files] _(ai-assisted)_
+- `5d3e5e98` 2026-04-05 — fix: remove Hetzner/DO from provisioning array — Linode only [1 files] _(ai-assisted)_
+- `f55964fa` 2026-04-05 — chore: redeploy instaclaw-mini with NEXT_PUBLIC_MAINTENANCE=true [0 files]
+- `d8868c4f` 2026-04-05 — feat: enable Anthropic prompt caching — estimated $7,714/mo savings [1 files] _(ai-assisted)_
+- `309d1c0a` 2026-04-05 — perf: health cron skips 0-credit VMs with no active subscription [1 files] _(ai-assisted)_
+- `4e10d340` 2026-04-05 — fix: suspend-check cron — batch queries, DB-first, 5min timeout [1 files] _(ai-assisted)_
+- `9d829ba2` 2026-04-05 — fix: Stripe webhook always writes current_period_end on sub updates + cancels [1 files] _(ai-assisted)_
+- `cb06b663` 2026-04-05 — fix: health cron skips suspended VMs — prevents un-suspending them [1 files] _(ai-assisted)_
+- `4fe4f18f` 2026-04-05 — temp: log system prompt size for API cost verification (REMOVE AFTER) [1 files]
+- `8129fc2b` 2026-04-05 — temp: remove system prompt size log (verified: 14,836 tokens, not 189K) [1 files]
+- `1066639a` 2026-04-05 — temp: detailed token analysis log (REMOVE AFTER 50 CALLS) [1 files]
+- `cd3a03fd` 2026-04-05 — fix: TS error in temp token analysis log [1 files]
+- `9f951ed2` 2026-04-05 — docs: comprehensive API cost optimization PRD with research findings [1 files] _(ai-assisted)_
+- `4c613767` 2026-04-05 — docs: fix PRD gaps — add 2.28B tokens stat, bankr anomaly, standardize threshold [1 files] _(ai-assisted)_
+- `87d8309d` 2026-04-05 — chore: remove legacy polymarket/ skill directory [11 files] _(ai-assisted)_
+- `b73facbf` 2026-04-06 — feat: cross-session memory — manifest v56, session-end hook, MEMORY.md auto-summaries [5 files] _(**MANIFEST v56**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `7db9b226` 2026-04-06 — fix: session-end hook reads GATEWAY_TOKEN from .env file (cron doesn't source env) [2 files] _(**MANIFEST v57**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `3f537f1c` 2026-04-06 — fix: fleet upgrade reliability — SSH timeouts, individual config settings, lock cleanup [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `dbe7f853` 2026-04-06 — fix: run openclaw doctor --fix before gateway restart during upgrades [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1f1bdf09` 2026-04-06 — feat: fleet upgrade now reconciles manifest files before upgrading binary [1 files] _(ai-assisted)_
+- `b49e33bb` 2026-04-06 — fix: version pin reminder only shows after fleet deploy, not after canary [1 files] _(ai-assisted)_
+- `ac124dcd` 2026-04-06 — docs: cross-session memory PRD + research findings, remove temp TOKEN_ANALYSIS log [3 files] _(ai-assisted)_
+- `57535f8a` 2026-04-06 — docs: cross-session memory PRD v3 — 9.5/10 implementation ready, bootstrap verified, Phase 3 Python spec, A/B plan [1 files] _(ai-assisted)_
+- `a276bcdf` 2026-04-06 — docs: add InstaClaw application answers reference [1 files] _(ai-assisted)_
+- `ab0f3030` 2026-04-06 — docs: remove em dashes from application answers [1 files] _(ai-assisted)_
+- `680ec3ab` 2026-04-06 — chore: update snapshot to private/38031667 (v56 + cross-session memory, 15/15 verified) [1 files] _(ai-assisted)_
+- `bddf7db7` 2026-04-06 — docs: comprehensive snapshot creation process in CLAUDE.md + infrastructure PRD [2 files] _(ai-assisted)_
+- `b3643d11` 2026-04-06 — docs: update API cost PRD with corrected numbers — system prompt is 14.8K tokens not 189K [1 files] _(ai-assisted)_
+- `fd67fb3c` 2026-04-07 — chore: update OpenClaw version pins to 2026.4.5 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `795a7861` 2026-04-07 — feat: automatic XMTP/World Chat setup during VM provisioning [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4a1afd22` 2026-04-07 — fix: WLD delegation users get subscription records — prevents false suspension [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `e08d9a3a` 2026-04-07 — fix: health cron suspension pass skips VMs with remaining credits [1 files] _(ai-assisted)_
+- `3c072774` 2026-04-07 — chore: update snapshot to private/38054012 (v57 + OpenClaw 2026.4.5, 15/15 verified) [1 files] _(ai-assisted)_
+- `68e9e4c3` 2026-04-08 — fix: install manifest cron jobs during configureOpenClaw() — P0 fix [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `858163ba` 2026-04-08 — fix: deploy script FILES in configureOpenClaw + audit ready pool VMs [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4b74e1e9` 2026-04-08 — chore: new snapshot private/38069990 (v57-all-crons) + fix vm-watchdog 300s lock [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `229fd5a8` 2026-04-08 — fix: periodic cron audit + expanded 15-point verification [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `0d73f05e` 2026-04-08 — feat: hibernation system for WLD users — warm sleeping UX, margin protection [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5a1478da` 2026-04-08 — chore: rebuild instaclaw with fixed MINI_APP_PROXY_SECRET (removed trailing \n) [0 files]
+- `0ff6cf80` 2026-04-08 — fix: WLD users get credits only — no fake subscriptions [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `cf49a997` 2026-04-08 — perf: reduce hibernate window from 14 to 7 days [1 files] _(ai-assisted)_
+- `33e82d3e` 2026-04-08 — chore: update snapshot to private/38069990 (v57-all-crons, 21/21 verified) [1 files] _(ai-assisted)_
+- `ef93d4ce` 2026-04-09 — fix: add sandbox.mode=off to manifest — prevent Docker requirement on VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5aa2dc37` 2026-04-09 — fix: memory index cron uses NVM instead of bare node path [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `cdcb78f2` 2026-04-09 — fix: lower session-end hook threshold + add functional health checks [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8a8b6005` 2026-04-09 — fix: WALLET.md wallet summary — agents know all 3 wallets and their distinct purposes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `88019316` 2026-04-09 — fix: lower session-end hook threshold from 2 to 1 [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c8fb25ce` 2026-04-09 — fix: Crystal clear wallet routing across all agent context files [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `93fcf856` 2026-04-09 — feat: OpenClaw version pinning — auto-revert unauthorized upgrades [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `af32f749` 2026-04-09 — feat: Install Edge City skill for partner=edge_city users [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `5014764a` 2026-04-09 — fix: add tier sync to health check — prevent upgrade tier mismatch [1 files] _(ai-assisted)_
+- `7eeac386` 2026-04-09 — feat: memory health scoring in health check + threshold=1 [1 files] _(ai-assisted)_
+- `21b5313f` 2026-04-09 — feat: Fleet push workspace endpoint — push updated wallet routing to all assigned VMs [2 files] _(ai-assisted)_
+- `276204f0` 2026-04-09 — feat: Fleet workspace verification endpoint — spot-check 10 random VMs [2 files] _(ai-assisted)_
+- `9857ba5e` 2026-04-09 — feat: VM fix endpoint — targeted fixes for individual VMs (list-crons, fix-soul-memory-filing) [2 files] _(ai-assisted)_
+- `72b3dfa3` 2026-04-09 — security: Encrypt Bankr API keys at rest with AES-256-GCM [3 files] _(ai-assisted)_
+- `dc63f2e2` 2026-04-09 — feat: Read partner cookie during signup and set on user record [1 files] _(ai-assisted)_
+- `4bf8ef43` 2026-04-09 — temp: Add admin endpoint to verify Edge City skill installation (delete after test) [1 files] _(multi: [infrastructure, edge])_
+- `a6cb94d3` 2026-04-09 — fix: Use validateAdminKey for verify-edge-skill endpoint [1 files] _(multi: [infrastructure, edge])_
+- `9d8ebd0a` 2026-04-09 — chore: force redeploy for verify-edge-skill endpoint [0 files]
+- `088ce478` 2026-04-09 — feat: Wire up Bankr wallet provisioning — every new agent gets a wallet at deploy [4 files] _(ai-assisted)_
+- `556206f5` 2026-04-09 — docs: update cross-session memory PRD with deployment status [1 files] _(ai-assisted)_
+- `3f09c612` 2026-04-09 — docs: Update Bankr devrel feedback — full day's integration progress [1 files] _(ai-assisted)_
+- `e84e5fe4` 2026-04-09 — docs: Clean up Bankr devrel notes — external-facing feedback only [1 files] _(ai-assisted)_
+- `f3fef0b0` 2026-04-09 — docs: Bankr devrel — first API test results, address casing finding, pre-provisioning idea [1 files] _(ai-assisted)_
+- `0e128a04` 2026-04-09 — docs: Bankr devrel — note encryption at rest for API keys [1 files] _(ai-assisted)_
+- `06685a42` 2026-04-09 — docs: Update PRD with Bankr-pattern skill install and XMTP layer [1 files] _(ai-assisted)_
+- `d1a06b90` 2026-04-10 — fix: Always write EDGEOS_BEARER_TOKEN and SOLA_AUTH_TOKEN to Edge VM .env [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `06a399be` 2026-04-10 — fix: watchdog version cooldown from 1h to 10min [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `57e83519` 2026-04-10 — feat: session backup + remove daily limit buffer [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `61be338f` 2026-04-10 — fix: vm-watchdog version-pin subprocess bug + manifest v58 [2 files] _(**MANIFEST v58**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `d732c26c` 2026-04-10 — fix: export missing SOUL.md sections — unbreak main build [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7815bae7` 2026-04-10 — fix: 3 pre-existing landmines surfaced by configureOpenClaw audit [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0d9e612d` 2026-04-10 — feat: replenish-pool cron — auto-provision VMs from snapshot [6 files] _(ai-assisted)_
+- `a4b81595` 2026-04-10 — chore: cleanup after replenish-pool deploy — remove pool-monitor + add Rule 8 [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `2baf6cdf` 2026-04-10 — feat(bankr): View on Bankr link + suspend wallet on VM reclaim [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0e5c4932` 2026-04-10 — fix(test): _test-configure-openclaw port + telegram token handling [1 files] _(ai-assisted)_
+- `f9f4b6bb` 2026-04-10 — feat(cron): dedicated reconcile-fleet cron — unstarves config audit [3 files] _(ai-assisted)_
+- `df9f3cc9` 2026-04-10 — feat: Wire up Bankr token launch API + draft webhook spec for Sinaver [3 files] _(ai-assisted)_
+- `96d9d594` 2026-04-10 — docs: Bankr devrel — log simulated launch test results, doc findings, pre-launch blockers [1 files] _(ai-assisted)_
+- `4a451ae0` 2026-04-10 — docs: Bankr devrel — log personal vs org wallet UX observation [1 files] _(ai-assisted)_
+- `94fbc487` 2026-04-10 — docs(CLAUDE): bump snapshot ID to private/38111101 (v58) [1 files] _(ai-assisted)_
+- `55ee33e9` 2026-04-13 — fix: move Brave apiKey to plugins.entries.brave (OpenClaw 2026.4.5+) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d67a4e37` 2026-04-13 — fix: auto-heal crash-looping gateways + alert on broken provisioning [4 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `4d8cb416` 2026-04-13 — fix: always update last_health_check when HTTP health passes [1 files] _(ai-assisted)_
+- `8c04ce2d` 2026-04-14 — security: Admin alert on CRITICAL Bankr token launch DB finalize failure [1 files] _(ai-assisted)_
+- `f30a788d` 2026-04-14 — feat: Admin email alert on successful token launches [1 files] _(ai-assisted)_
+- `08eedd5b` 2026-04-14 — feat: Token launch alerts to all 3 Cooper emails [2 files] _(ai-assisted)_
+- `a17b55bf` 2026-04-14 — CRITICAL fix: tokenize endpoint web app auth was broken — userId self-assignment [1 files] _(ai-assisted)_
+- `63622949` 2026-04-14 — fix: Auto-clear stale tokenization locks after 5 minutes [1 files] _(ai-assisted)_
+- `ba96945c` 2026-04-14 — feat: Auto-fill token metadata — description + websiteUrl on every launch [1 files] _(ai-assisted)_
+- `13c6825e` 2026-04-14 — feat: Token PFP — glass orb image generation + upload with consistent brand style [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `7e5fdba4` 2026-04-14 — security: Block all tokenization until prod Bankr org is ready [2 files] _(ai-assisted)_
+- `13bbfec0` 2026-04-15 — feat: Agent learns about its token — WALLET.md + MEMORY.md after launch [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a3c7bb0a` 2026-04-15 — fix: backfill agentbook_registered when on-chain registration detected [1 files] _(ai-assisted)_
+- `9bad6f72` 2026-04-15 — fix: Token PFP — DALL-E generates full 3D glass orb directly, no compositing [1 files] _(ai-assisted)_
+- `c6292ae2` 2026-04-15 — feat: Token PFP reads agent personality from SOUL.md + MEMORY.md via SSH [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0b987125` 2026-04-15 — feat: Hash-seeded unique pixel art PFPs — like GitHub identicons [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `7b229889` 2026-04-15 — docs: Bankr devrel — fee wallet auth UX confusion feedback [1 files] _(ai-assisted)_
+- `43dade2d` 2026-04-17 — feat: Procedural pixel art face PFPs — deterministic per agent [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `aa532e51` 2026-04-17 — feat: Face PFPs match landing page quality — hand-crafted templates + glass orb [1 files] _(ai-assisted)_
+- `ae0719f3` 2026-04-17 — feat: Layered 10×10 procedural face generator — 45M+ structural combos [3 files] _(ai-assisted)_
+- `2e90a38c` 2026-04-19 — fix: PFP generator polish — rare horns, teeth-smile mouth, safer scar [2 files] _(ai-assisted)_
+- `7d87c4ed` 2026-04-19 — Merge branch 'faces-layered-procedural' into main [0 files] _(ai-assisted; merge)_
+- `b3f5cf4e` 2026-04-19 — feat: 16×16 PFP generator with personality-locked character archetype [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0a5823b0` 2026-04-19 — Merge branch 'faces-16x16-personality-locked' into main [0 files] _(ai-assisted; merge)_
+- `efd7dd7d` 2026-04-19 — docs: Pillar 4 — Agent PFP NFT Collection (future milestone) [1 files] _(ai-assisted)_
+- `221a5082` 2026-04-20 — observability: diagnose Token PFP personality read path [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e5286b4d` 2026-04-20 — feat: full 9-layer CryptoPunks-style crab trait generator at 24×24 [3 files] _(ai-assisted)_
+- `6129ac1b` 2026-04-20 — Merge main (diagnostic logging patch) [0 files] _(merge)_
+- `f159fcc8` 2026-04-20 — feat: port 24×24 crab generator into production token-image-generator [1 files] _(ai-assisted)_
+- `fb125602` 2026-04-20 — Merge branch 'pfp-crab-pivot' into main [0 files] _(merge)_
+- `3fb43383` 2026-04-20 — feat: port Candidate 02 silhouette at 28×28 with 2-tone baked in [4 files] _(ai-assisted)_
+- `3f15249d` 2026-04-20 — feat: use Candidate 02 PNG as base + hue-tint for shell variety [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b777f7c7` 2026-04-20 — fix: restore glass-orb 3D background effect on hue-shift pipeline [1 files] _(ai-assisted)_
+- `42ae0a6f` 2026-04-20 — feat: HD trait overlays on Candidate 02 base — full 1/1 uniqueness [5 files] _(ai-assisted)_
+- `446b6a6a` 2026-04-20 — feat: HD meme-canon trait overlays — big, bold, recognizable [2 files] _(ai-assisted)_
+- `c4737d4a` 2026-04-20 — fix: accessories readable at dashboard preview size (~160px) [3 files] _(ai-assisted)_
+- `2c2c0576` 2026-04-20 — debug: instrument /api/bankr/tokenize with stage logs + outer try/catch [1 files] _(ai-assisted)_
+- `c491cd60` 2026-04-20 — debug: bump maxDuration to 60s + log Bankr fetch boundaries [1 files] _(ai-assisted)_
+- `e6ac015e` 2026-04-21 — manifest v59: enable gateway.openai.chatCompletionsEnabled [1 files] _(**MANIFEST v59**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9e783f92` 2026-04-21 — manifest v60: install pinned @bankr/cli@0.2.15 during configureOpenClaw [2 files] _(**MANIFEST v60**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `8fc9861d` 2026-04-21 — copy: TOOLS.md wallet/fees trigger + bankr-messages constant [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bfd36690` 2026-04-21 — manifest v61: fix broken chat-completions config key [1 files] _(**MANIFEST v61**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `8d7219c8` 2026-04-21 — refactor: extract provisionBankrWallet into lib/bankr-provision.ts [2 files] _(ai-assisted)_
+- `f3e47b5e` 2026-04-21 — fix: Vercel gateway callers use model=openclaw + x-openclaw-model [5 files] _(ai-assisted)_
+- `26efbdd8` 2026-04-21 — feat(cron): Pass 0 recovers orphaned paid users with no VM [1 files] _(ai-assisted)_
+- `bd1f6cc3` 2026-04-21 — chore(scripts): add reusable orphan recovery + Pass 0 preview [2 files] _(ai-assisted)_
+- `f4c8e55a` 2026-04-24 — feat(reconcile): Phase 2c — strict-mode fleet reconciliation [9 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `16bfa2be` 2026-04-26 — fix(configure): pre-create all ~/.openclaw subdirs before any writes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0e50d041` 2026-04-26 — debug(configure): expose underlying Postgres error in DB-write failure [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1822ea57` 2026-04-26 — fix(cron/health-check): per-VM deadline + cron lock to prevent batch-wide hangs [1 files] _(ai-assisted)_
+- `678c2263` 2026-04-27 — feat(bankr): pin @bankr/cli@0.3.1 — direct claim API target [3 files] _(**MANIFEST v62**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `28ac6187` 2026-04-27 — feat(xmtp): proactive first-message on VM provisioning (#2) [5 files] _(multi: [reconciler, infrastructure, docs])_
+- `21ac38b7` 2026-04-27 — fix(xmtp): always refresh xmtp-agent.mjs on configure (atomic) (#3) [1 files] _(multi: [reconciler, infrastructure])_
+- `821925cc` 2026-04-27 — feat(reconcile): auto-heal pinned npm globals (@bankr/cli + openclaw) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `56238ec4` 2026-04-27 — feat(xmtp): per-user greeting marker + script-refresh fallback alert (#4) [5 files] _(multi: [reconciler, infrastructure])_
+- `9801bdd0` 2026-04-27 — fix(reconcile): enforce agents.defaults.model.primary to prevent OpenAI default [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0fa562d3` 2026-04-27 — fix(silence-watchdog): only inspect telegram-origin sessions; manifest v63 [2 files] _(**MANIFEST v63**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f4fc7634` 2026-04-27 — scripts: post-outage ops toolkit (recovery + audit + fleet probes) [11 files] _(ai-assisted)_
+- `913fcfc6` 2026-04-27 — feat(vm-lifecycle): Phase 2 — orphan reconciliation pass + audit log [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `35a2e87d` 2026-04-27 — fix(gateway): intercept rate-limit + auth-failure errors before they leak to chat [1 files] _(ai-assisted)_
+- `697bcd72` 2026-04-27 — feat(vm-lifecycle): Phase 3 — freeze/thaw pattern (#5) [6 files] _(ai-assisted)_
+- `a6ae2087` 2026-04-27 — feat(analytics): onboarding events log + 7 emit sites (#5) [8 files] _(multi: [infrastructure, feature])_
+- `636139a9` 2026-04-27 — fix(vm-lifecycle): Phase 3 audit — 8 safety fixes (#6) [2 files] _(ai-assisted)_
+- `be3184ca` 2026-04-27 — feat(analytics): PostHog server-side parallel emit + greeting backfill script (#6) [7 files] _(multi: [infrastructure, feature])_
+- `4eacc619` 2026-04-27 — docs: bump LINODE_SNAPSHOT_ID to private/38458138 (v62) [1 files] _(ai-assisted)_
+- `91597aff` 2026-04-27 — docs(bankr): post-Sinaver claim API integration review checklist [1 files] _(ai-assisted)_
+- `396093f2` 2026-04-28 — fix(reconcile): 3 critical bugs that left users on stale code (#7) [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `16d8980f` 2026-04-28 — fix(xmtp): detect NVM node path dynamically in instaclaw-xmtp.service [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4fffb27f` 2026-04-28 — refactor(configureOpenClaw): collect partial_failures instead of swallowing [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e094ed53` 2026-04-28 — feat(reconcile): add 7 deploy heal steps + bump-without-push gating [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `65f79dae` 2026-04-28 — feat(reconcile): Node 22.22.2 + OpenClaw 2026.4.26 pinned upgrade [3 files] _(**MANIFEST v64**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9f3aff5b` 2026-04-28 — fix(reconcile): heal steps must not start services on suspended/hibernating VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `86e4bb25` 2026-04-28 — fix(reconcile): close strictErrors gate hole in stepNodeUpgrade + stepNpmPinDrift [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c2416e1c` 2026-04-28 — security: add X-Frame-Options + CSP frame-ancestors to instaclaw.io [1 files]
+- `98b07d21` 2026-04-28 — feat(configure): gate configure response on critical partialFailures [1 files] _(ai-assisted)_
+- `722f88de` 2026-04-28 — chore: trigger redeploy after preview auth env fix [0 files] _(ai-assisted)_
+- `6f7f44d3` 2026-04-28 — merge: origin/main into fix/heal-suspended-and-critical-gate [0 files] _(merge)_
+- `4c59f96e` 2026-04-28 — fix(webhook): prevent silent credit_pack RPC failures + add orphan recovery [1 files] _(ai-assisted)_
+- `813fba1c` 2026-04-28 — chore(ops): add permanent fleet audit + heal scripts [3 files] _(ai-assisted)_
+- `24b4b019` 2026-04-28 — fix(audit): use nvm default for node-version detection, not alphabetically-first [1 files] _(ai-assisted)_
+- `ba14ca33` 2026-04-28 — docs(ops): note suspended-VM gateway restart loop for follow-up [1 files] _(ai-assisted)_
+- `e85666d9` 2026-04-29 — feat(reconcile): wire browser-relay-server into configureOpenClaw + manifest v65 [3 files] _(**MANIFEST v65**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be95b11a` 2026-04-29 — fix(reconcile): npm cache clean before openclaw install + tighten ExecStart grep [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `83ca0b53` 2026-04-29 — fix(reconcile): Bug C — stop gateway before openclaw npm install [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d3d40a39` 2026-04-29 — fix(reconcile): Bug D + 60s gateway health timeout [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `83eff391` 2026-04-29 — feat(bankr-skill): InstaClaw overlay — kill clanker subdir, drop Solana misroutes [2 files] _(**MANIFEST v66**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef472917` 2026-04-29 — fix(reconcile): npm install timeout 180s→360s + on-disk verify [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9dfe894b` 2026-04-29 — fix(agent-context): scope token launches to Base in upfront-loaded surfaces [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f8fcc71d` 2026-04-29 — chore: export WORKSPACE_SOUL_MD for ad-hoc verification scripts [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2229080d` 2026-04-29 — chore(manifest): bump v66 → v67 — token-launch framing in upfront context [1 files] _(**MANIFEST v67**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f623cdec` 2026-04-29 — fix(reconcile): caddy no-op + npm install timeout 360s→600s [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b886c924` 2026-04-29 — fix(v67-routing): fleet patch + reconciler step + audit retry [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2d526591` 2026-04-29 — fix(reconcile): gateway health 60s→120s + dist/index.js verify [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `edf34e82` 2026-04-29 — fix(reconcile): auto-retry npm install on verify failure [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7a3cfa51` 2026-04-29 — fix(v67): bump agents.defaults.timeoutSeconds to 90s + watchdog FROZEN to 5min [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2df2c74e` 2026-04-29 — feat(bankr): #8 — agent answers "what's my token at?" via DexScreener [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f0b8ad45` 2026-04-29 — feat(browser-relay): add browser-relay-server.js to replace removed OpenClaw subsystem [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `57675e78` 2026-04-29 — fix(reconcile): include scripts/browser-relay-server/ in Next file tracing [1 files] _(ai-assisted)_
+- `c5f394c2` 2026-04-29 — chore(vercel): temporarily disable reconcile-fleet cron during v64/v65 fleet upgrade [1 files] _(ai-assisted)_
+- `6c043902` 2026-04-29 — fix(vercel): remove reconcile-fleet cron cleanly (was malformed in c5f394c) [1 files] _(ai-assisted)_
+- `17b78313` 2026-04-29 — revert(vercel): restore original cron config — broken schema blocked 3 deploys [1 files]
+- `f10f48d7` 2026-04-29 — feat(bankr-sync): shared helper to detect chat-driven token launches [1 files] _(ai-assisted)_
+- `51f3041d` 2026-04-29 — feat(bankr-sync): /api/cron/sync-bankr-launches background safety net [1 files] _(ai-assisted)_
+- `70d4ad5e` 2026-04-29 — feat(bankr-sync): schedule sync-bankr-launches every 5 min [1 files] _(ai-assisted)_
+- `6befba84` 2026-04-29 — test(bankr-sync): e2e regression script for syncBankrLaunchForVm [1 files] _(ai-assisted)_
+- `b4dc4863` 2026-04-29 — Merge feat/bankr-chat-launch-sync — Path B chat-driven launch sync [0 files] _(ai-assisted; merge)_
+- `b3cfdaae` 2026-04-29 — feat(bankr-skill): fleet patch script — apply overlay to live VMs now [2 files] _(ai-assisted)_
+- `22218c15` 2026-04-29 — fix(browser-relay): resolve node via NVM in standalone unit ExecStart [1 files] _(ai-assisted)_
+- `d9114898` 2026-04-29 — Merge fix/bankr-prelaunch-audit — pre-announcement P0/P1 fixes [0 files] _(ai-assisted; merge)_
+- `25e55e14` 2026-04-29 — feat(upgrade-fleet): wave-based concurrency=5 with audit gates [1 files] _(ai-assisted)_
+- `bf46ee3d` 2026-04-29 — fix(configure): guard against wipe-on-already-onboarded-user [1 files] _(ai-assisted)_
+- `4eb1987b` 2026-04-29 — Merge pull request #8 from coopergwrenn/fix/configure-guard-against-wipe [0 files] _(merge)_
+- `44e779a1` 2026-04-29 — fix(fleet-patch): don't bump config_version + add from-disk reset script [2 files] _(ai-assisted)_
+- `1e182c51` 2026-04-29 — fix(audit): retry 6×10s + same-iter active+health pairing [1 files] _(ai-assisted)_
+- `5e233b07` 2026-04-29 — feat(research-export): SQL migration for 5 EE26 research tables [1 files] _(ai-assisted)_
+- `efa42127` 2026-04-29 — feat(research-export): anonymization utilities — agent_id hash + PII regex sweep [2 files] _(ai-assisted)_
+- `50ff38c1` 2026-04-29 — feat(research-export): TypeScript schemas for source + export shapes [1 files] _(ai-assisted)_
+- `fab34510` 2026-04-29 — feat(research-export): Supabase extractors with date-range filtering + pagination [1 files] _(ai-assisted)_
+- `af41dc49` 2026-04-29 — feat(research-export): writers — CSV (zero-dep, default) + Parquet (optional) [2 files] _(ai-assisted)_
+- `997bf15a` 2026-04-29 — feat(research-export): pipeline orchestrator — extract → anonymize → write [2 files] _(ai-assisted)_
+- `eb55a6a6` 2026-04-29 — feat(research-export): CLI script + end-to-end integration test [2 files] _(ai-assisted)_
+- `9e88696c` 2026-04-29 — docs(research-export): operational README — quick start, privacy guarantees, runbook [1 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `fd42a1eb` 2026-04-29 — fix(research-export): unblock Vercel preview build [3 files] _(ai-assisted)_
+- `77c113f5` 2026-04-29 — feat(bankr): #9 — launch number ("You're #N to deploy autonomously") [9 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `788f6dcd` 2026-04-29 — feat(bankr): #6 — 5 randomized tweet templates with agent-name interpolation [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `30717999` 2026-04-29 — feat(bankr): #17 — World ID verified-human creator badge [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `bddb8123` 2026-04-29 — Merge pull request #9 from coopergwrenn/fix/v67-timeout-and-watchdog [0 files] _(merge)_
+- `d18d59a5` 2026-04-29 — fix(v67): bump watchdog FROZEN threshold further 5min → 10min [1 files] _(ai-assisted)_
+- `5d304b65` 2026-04-29 — Merge pull request #10 from coopergwrenn/fix/v67-watchdog-frozen-10min [0 files] _(merge)_
+- `8b44627b` 2026-04-29 — Merge pull request #11 from coopergwrenn/docs/fleet-upgrade-lessons [0 files] _(merge)_
+- `ba0a772e` 2026-04-29 — fix(bankr-tweet-templates): 4 fuzz-found edge-case bugs [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `ab77525d` 2026-04-29 — feat(bankr): #1 — agent autoposts to Telegram in its own voice on launch [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `e406ff5a` 2026-04-29 — chore(freeze): drop suspended-grace from 30d → 3d [1 files] _(ai-assisted)_
+- `0cac8984` 2026-04-29 — chore(cron): vm-lifecycle 6h → 1h to drain freeze backlog faster [1 files] _(ai-assisted)_
+- `2cca6379` 2026-04-29 — docs(edgeclaw): sponsor inference budget — one-page sponsor-facing breakdown [1 files] _(ai-assisted)_
+- `ff4b3dad` 2026-04-29 — docs(prd): Index Network ↔ InstaClaw signal schema spec — pre-sync proposal [1 files]
+- `a1f496d8` 2026-04-29 — docs: external-facing sponsor pitch for the EE26 Agent Village [1 files]
+- `d6487e88` 2026-04-29 — docs(claude-md): add Fleet Upgrade Lessons section [1 files] _(ai-assisted)_
+- `6679afe8` 2026-04-30 — fix(fleet): manifest v68 — watchdog uptime guard + telegram streaming off [2 files] _(**MANIFEST v68**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `c07accec` 2026-04-30 — fix(manifest): close v67 jsdoc properly so v68 history compiles [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d967db50` 2026-04-30 — fix(fleet): manifest v69 — disable gateway watchdog timer fleet-wide [3 files] _(**MANIFEST v69**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `bf053e9a` 2026-04-30 — fix(reconciler): verify config-set in non-strict path; ban silent \|\| true [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5ff04ba5` 2026-04-30 — fix(fleet): manifest v71 — disable mDNS by default + weekly backup prune [1 files] _(**MANIFEST v71**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `5d6c0d07` 2026-04-30 — feat(soul): manifest v72 — SOUL.md cache boundary marker [2 files] _(**MANIFEST v72**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `731d41ec` 2026-04-30 — feat(memory): manifest v73 — MEMORY.md backup + auto-restore (Phase 1) [2 files] _(**MANIFEST v73**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `62f43e46` 2026-04-30 — fix(partner): use res.cookies.set instead of next/headers cookies() [1 files]
+- `fc871b37` 2026-04-30 — feat(bankr): #5 — auto-generated launch card image (1200x630 OG) [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5a1db4c5` 2026-04-30 — feat(cron): expire pending WLD delegations after 6h (#12) [2 files] _(ai-assisted)_
+- `85bbc01f` 2026-04-30 — fix(cron): expire-pending update by predicate, not id list (#13) [1 files] _(ai-assisted)_
+- `ed93dccc` 2026-04-30 — feat(cron): background poller for unconfirmed WLD delegations (#14) [2 files] _(ai-assisted)_
+- `83155a1b` 2026-04-30 — docs(claude.md): expand OpenClaw Upgrade Playbook from v67 incident [1 files] _(ai-assisted)_
+- `0baa0575` 2026-04-30 — docs(prd): SOUL.md restructure — design doc, no implementation [1 files] _(ai-assisted)_
+- `27b24cc1` 2026-04-30 — docs(prd): SOUL.md restructure v2 — evidence-based rewrite [1 files] _(ai-assisted)_
+- `96500eb2` 2026-04-30 — chore: retire 3 empty World mini-app tables (#15) [2 files] _(ai-assisted)_
+- `f2a8679a` 2026-05-01 — fix(systemd): StartLimitAction=stop→none — invalid value broke fleet kill-loop protection [1 files] _(**MANIFEST v74**; multi: [reconciler, infrastructure])_
+- `f8f23353` 2026-05-01 — fix(systemd): v75 — split StartLimit* into [Unit] section (was silently dropped in [Service]) [3 files] _(**MANIFEST v75**; multi: [reconciler, infrastructure])_
+- `1a2fc677` 2026-05-01 — fix(manifest): v76 — remove vm-watchdog + silence-watchdog from cron schedule [1 files] _(**MANIFEST v76**; multi: [reconciler, infrastructure, edge])_
+- `4bb354cd` 2026-05-01 — feat(soul-v2): new workspace-templates-v2.ts with all 4 approved templates (no behavior change) [3 files] _(multi: [reconciler, infrastructure])_
+- `2665ba31` 2026-05-01 — feat(soul-v2): migrateExistingSoulMd reconciler step + manifest v77 + kill switch (default OFF) [2 files] _(**MANIFEST v77**; multi: [reconciler, infrastructure])_
+- `0fdbd037` 2026-05-01 — feat(soul-v2): add per-VM whitelist gate (RECONCILE_SOUL_MIGRATION_VM_IDS) [1 files] _(multi: [reconciler, infrastructure])_
+- `e764f30d` 2026-05-01 — fix(gateway/proxy): set maxDuration=300 on all proxy routes [4 files]
+- `4f3c88a9` 2026-05-01 — perf(gateway/proxy): in-memory cache for daily_usage SELECT (30s TTL) [1 files]
+- `ed545a3d` 2026-05-01 — perf(gateway/proxy): hot-path latency profile (sampled 5%) [1 files]
+- `1058c330` 2026-05-01 — fix(agents): kill switch for heartbeat-driven buy_listing + deliver [1 files]
+- `4e2fed9a` 2026-05-01 — chore(cron): add daily cleanup-feed cron + GET handler [2 files]
+- `f6049ab7` 2026-05-01 — fix(build): exclude instaclaw-mini, instaclaw-chrome-extension, contracts from wild-west-bots tsconfig [1 files]
+- `f70e732f` 2026-05-01 — chore(deploy): trigger wild-west-bots rebuild to land kill switch + cleanup cron [1 files]
+- `cfdcfa74` 2026-05-01 — fix(build): also exclude scripts/ from wild-west-bots tsconfig [1 files]
+- `e0e02ebc` 2026-05-01 — chore(deploy): trigger wild-west-bots rebuild for cfdcfa74 tsconfig fix [1 files]
+- `b1c4ef3c` 2026-05-01 — fix(soul-v2): correct bankr SKILL.md path; soften partner-gated edge-esmeralda refs [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `e66e8239` 2026-05-01 — docs(CLAUDE.md): add Rule 11 — every LLM route MUST set maxDuration=300 [1 files]
+- `14919655` 2026-05-01 — docs(claude.md): Rules 12 + 13 — Vercel-vs-local debugging order + middleware allow-list [1 files]
+- `cb52f1ec` 2026-05-02 — feat(edge-privacy): components 5–9 — expire cron, audit log, SSH bridge, reconciler, cutover script [13 files] _(**MANIFEST v78**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `1da128be` 2026-05-02 — fix(edge-privacy): lazy-load privacy-bridge.sh to survive Turbopack page-data collection [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `fa1193a4` 2026-05-02 — fix(edge-privacy): QA blockers in privacy bridge — newline injection, fail-open, openclaw backdoor [4 files] _(**MANIFEST v79**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `b3fa5297` 2026-05-02 — feat(consensus): partner skill for Consensus 2026 Miami (May 5–7) [5 files] _(multi: [reconciler, infrastructure, feature, edge, docs]; ai-assisted)_
+- `0fefd764` 2026-05-02 — feat(consensus): also install consensus skill for edge_city partners [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `a495680d` 2026-05-02 — fix(strip-thinking): trim trailing empty turns, never nuke active session [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `2dfcd609` 2026-05-02 — docs+scripts: P0 wake bug RCA + manual recovery scripts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `221c8be4` 2026-05-02 — fix: wake-from-hibernation paths + auth-cache clear + watchdog v2 [13 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `0523e5cf` 2026-05-02 — fix(health-check): verify gateway active after billing-cache restart (task #40) [1 files] _(ai-assisted)_
+- `f0db1dfc` 2026-05-02 — fix(watchdog,wake): QA fixes 1-4 — must-have before WATCHDOG_V2_MODE=active [4 files] _(ai-assisted)_
+- `e430426e` 2026-05-02 — fix(wake-vm): handle BOTH 'hibernating' AND 'suspended' states [1 files] _(ai-assisted)_
+- `6a34bd9a` 2026-05-02 — Merge: feat(consensus): partner skill for Consensus 2026 Miami [0 files] _(ai-assisted; merge)_
+- `fee5324d` 2026-05-02 — docs(rule-22): full incident history + fleet pusher for trim-not-nuke fix [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `ebe40d52` 2026-05-02 — docs(strategy): WLD pricing strategy + hibernation architecture [1 files] _(ai-assisted)_
+- `9883dd17` 2026-05-02 — docs(CLAUDE.md): add Rules 14-21 from this sprint's 9 internalized lessons [1 files] _(ai-assisted)_
+- `599b9a1c` 2026-05-03 — docs(CLAUDE.md): cut over to v79 snapshot private/38575292 [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `58e59e0e` 2026-05-03 — fix(reconcile): sentinel guard + race fix + Rule 23 [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `cb4d425a` 2026-05-03 — fix(memory): cross-session persistence layered fix (SOUL reorder + bootstrap bump + periodic summary) [7 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `18eed486` 2026-05-03 — fix(timeout): bump timeoutSeconds 90 → 300 — 3-min response on vm-780 forced this [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5a3ef83d` 2026-05-03 — chore: trigger redeploy to pick up LINODE_SNAPSHOT_ID=private/38575292 [0 files] _(ai-assisted)_
+- `bfb09037` 2026-05-03 — ops(memory-deploy): operational scripts + fleet bump infra [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `e285e68f` 2026-05-04 — fix(memory): manifest v80 — periodic-summary hook unblocked when session shrinks [16 files] _(**MANIFEST v80**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef6cecab` 2026-05-04 — fix(consensus): universal skill install + fleet backfill + free-trial copy [4 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+- `f209f0c6` 2026-05-04 — fix(consensus): update record counts to live data (326/219/451 → 338/229/463) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `51ef0cd4` 2026-05-04 — feat(matchpool): v81 manifest — fleet wiring for matching pipeline [6 files] _(**MANIFEST v81**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `77a178bf` 2026-05-04 — feat(matchpool): Telegram notification + ghost pool seed [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bab5e37f` 2026-05-04 — fix(gateway): heartbeat reclassification bypass for match pipeline (P1) [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0a96bc16` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKENIZE_ENABLED=true [0 files] _(ai-assisted)_
+- `6d6364b5` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKEN_LAUNCH_SIMULATE=true [0 files] _(ai-assisted)_
+- `a0f943c8` 2026-05-04 — feat(matchpool): migration + apply script for intent matching schema [2 files] _(ai-assisted)_
+- `0c34ef11` 2026-05-04 — feat(matchpool): component 2 — embedding helper (lib/match-embeddings.ts) [2 files] _(ai-assisted)_
+- `f5d19bb9` 2026-05-04 — feat(matchpool): component 3 — intent extraction on user VMs [2 files] _(ai-assisted)_
+- `0b6585fe` 2026-05-04 — feat(matchpool): component 4 — VM-side intent sync + bridge to platform [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `c9368e88` 2026-05-04 — feat(matchpool): component 5 — POST /api/match/v1/profile [3 files] _(ai-assisted)_
+- `c80b0f23` 2026-05-04 — fix(bankr/sync): env-gated kill-switch for Path B re-discovery [1 files] _(ai-assisted)_
+- `6556a641` 2026-05-04 — chore: re-trigger Vercel build for 9844b926 (glass Trade button + WhyTokenize) [0 files] _(ai-assisted)_
+- `93094391` 2026-05-04 — feat(matchpool): components 6-10 + hardening pass — full pipeline shipped [13 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5e91cb1a` 2026-05-04 — fix(bankr-card): plumb bankr_token_image_url through to avatar [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `8e140b50` 2026-05-04 — fix(bankr/sync): cron also honors DISABLE_BANKR_PATH_B_SYNC kill-switch [1 files] _(ai-assisted)_
+- `d099a5af` 2026-05-04 — fix(matchpool,bankr): canary v81 + Telegram sanitization + brand orange [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `d0a37af1` 2026-05-04 — test(matchpool): verification harness for heartbeat-bypass fix [1 files] _(ai-assisted)_
+- `0e7e502c` 2026-05-04 — docs(prd): consensus intent matching addendum — dual-embedding, reactive cascades, inferred intent, living feed [1 files]
+- `7b02fbcf` 2026-05-04 — docs(prd): consensus intent matching v2 — adds Layer 3 deliberation + XMTP intro negotiation as central moat [1 files]
+- `327888af` 2026-05-05 — feat(matchpool): v82 SOUL.md awareness for matching engine [2 files] _(**MANIFEST v82**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `259477ba` 2026-05-05 — feat(matchpool): v83 — pipeline + intent_sync gate on skill state [5 files] _(**MANIFEST v83**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `5859048c` 2026-05-05 — feat(matchpool): v84 — Path 2 §Organic Activation helper [4 files] _(**MANIFEST v84**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `31396d5c` 2026-05-05 — feat(skills): Rule 24 — install verification + self-healing + taxonomy [17 files] _(**MANIFEST v85**; multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `55bb97ea` 2026-05-05 — fix(skills): Rule 24 follow-ups — backup-before-rm + bootstrap const + vm-724/725 fixes [9 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `56f71126` 2026-05-05 — fleet(v86): raise TasksMax 75 → 120 on openclaw-gateway cgroup [1 files] _(**MANIFEST v86**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `36c6b260` 2026-05-05 — fleet(v87): integrate prctl-subreaper into openclaw-gateway [3 files] _(**MANIFEST v87**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `faf8b8a8` 2026-05-05 — fleet(v88): add build-essential to systemPackages — fixes v87 silent fail [1 files] _(**MANIFEST v88**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `39b77b23` 2026-05-05 — Merge fleet/v88-build-essential: add build-essential to systemPackages [0 files] _(multi: [reconciler, edge]; merge)_
+- `9beb74bf` 2026-05-05 — fix(reconcile-fleet): drop batch size 10 → 3 to fit under 300s timeout [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3f3443d2` 2026-05-05 — fix(reconcile): glob consensus_*.py for outputFileTracingIncludes [1 files] _(ai-assisted)_
+- `8de505e3` 2026-05-05 — docs(consensus): day-of runbook + PRD open-question lock-in [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c3b8cee9` 2026-05-05 — fix(reconcile): inline matchpool .py contents at build time [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `41a59874` 2026-05-05 — revert(bankr/sync): drop DISABLE_BANKR_PATH_B_SYNC cron kill-switch [1 files] _(ai-assisted)_
+- `ff82a847` 2026-05-05 — tools(fleet): controlled v82 rollout at concurrency=3 [1 files] _(ai-assisted)_
+- `4b28f8f3` 2026-05-05 — feat(matchpool): Path 1 — Skills-page toggle for Consensus 2026 [9 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `17b1a20d` 2026-05-05 — fix(watchdog): suppress probe_healthy writes + 48h retention cron [4 files] _(ai-assisted)_
+- `bd13d54f` 2026-05-05 — feat(skills): consensus-2026 brand-image orb icon [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `161615ab` 2026-05-05 — feat(xmtp): agent-to-agent intro DMs for Consensus 2026 matching [7 files] _(ai-assisted)_
+- `0c5c0f3a` 2026-05-05 — fix(xmtp): receiver chat_id from DB, dynamic gateway token, no fallback reply [3 files] _(ai-assisted)_
+- `7dd896ab` 2026-05-05 — fix(xmtp): XMTP-user fallback + pending-disk recovery + 20/24h limit [3 files] _(ai-assisted)_
+- `bc6b589f` 2026-05-05 — fix(match): contact-info include_self bypasses request-array gate [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `579cd2a8` 2026-05-05 — feat(xmtp): application-layer delivery guarantees + chat_id backfill [9 files] _(ai-assisted)_
+- `6fa814df` 2026-05-05 — canary(v87): vm-050 install + smoke test for prctl-subreaper [1 files] _(ai-assisted)_
+- `6af00d03` 2026-05-05 — chore: re-trigger Vercel build after migration 20260505c applied [0 files]
+- `be0a5be6` 2026-05-05 — chore: re-trigger Vercel build after migration 20260505c applied [0 files]
+- `bd0dee0e` 2026-05-05 — chore: nudge file to re-trigger Vercel build (migration applied) [1 files]
+- `3e9adc4f` 2026-05-05 — Merge fleet/v87-prctl-subreaper: TasksMax 75→120 + prctl-subreaper@0.1.0 [0 files] _(merge)_
+- `50764e71` 2026-05-05 — test(xmtp): edge-case suite — 12/12 with delivery hardening [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `2c49732a` 2026-05-05 — chore(consensus): bundle deploy artifacts + design PRDs [6 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `aabb783e` 2026-05-05 — docs(consensus): launch kit — tweet copy, screenshot guide, technical receipts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `49e51b64` 2026-05-05 — feat(consensus): kill-switch + 30-min health alert cron [4 files] _(ai-assisted)_
+- `55052829` 2026-05-05 — test(consensus): real production intro fired end-to-end (1.77s) [2 files] _(ai-assisted)_
+- `178e10dc` 2026-05-05 — fix(consensus): per-receiver intro cap (default 3/24h) — Timour spam fix [1 files] _(ai-assisted)_
+- `f4a908fb` 2026-05-05 — fix(consensus): intro CTA points to sender's personal Telegram, not their bot [4 files] _(ai-assisted)_
+- `c92a5e37` 2026-05-05 — feat(consensus): self-healing telegram_handle backfill via Telegram getChat [5 files] _(ai-assisted)_
+- `bbaac024` 2026-05-05 — chore: nudge migration file to re-trigger Vercel build (schema cache lag) [1 files]
+- `991aa29b` 2026-05-05 — chore(cron): reduce Supabase load — health-check 1m→2m, cloud-init-poll 2m→5m [1 files] _(ai-assisted)_
+- `1b36b078` 2026-05-05 — perf(health-check): batch Pass 0 timestamp UPDATEs (855 → 2 queries) [1 files] _(ai-assisted)_
+- `aa816e58` 2026-05-05 — feat(consensus): Draft C intro copy — match count + cap-controls footer [5 files] _(ai-assisted)_
+- `d28bf919` 2026-05-05 — fix(reconcile): broaden consensus glob to ./scripts/**/*.py [1 files] _(ai-assisted)_
+- `cb4d20c3` 2026-05-05 — fix(reconcile): use ./scripts/**/* — exact working glob shape [1 files]
+- `48c98a93` 2026-05-05 — fix(reconcile): add ./scripts/*.py for top-level matchpool files [1 files]
+- `af38a16c` 2026-05-05 — fix(consensus): sender-side match notification refresh [3 files] _(ai-assisted)_
+- `5e710334` 2026-05-05 — fix(reconcile-fleet): touch route.ts to bust Vercel's nft trace cache [1 files] _(ai-assisted)_
+- `57ee2ce6` 2026-05-05 — docs(v87): prctl-subreaper integration plan (blocked on npm publish) [1 files] _(ai-assisted)_
+- `dd144bde` 2026-05-05 — docs(gbrain): apply C1–C20 audit corrections to PRD body [1 files]
+- `6e0f7c17` 2026-05-05 — docs(prd): v2 agent negotiation — full spec [1 files] _(ai-assisted)_
+- `de4e62f4` 2026-05-05 — docs(changelog): v62 → v88 thread for X — copy-paste ready [1 files] _(ai-assisted)_
+- `572792b7` 2026-05-05 — docs(changelog): denser hook + prctl-subreaper@0.1.1 in tweet 11 [1 files] _(ai-assisted)_
+- `251e01fd` 2026-05-06 — fix(reconcile): caddy hostname regex needs multiline flag [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8ffc2970` 2026-05-06 — fix(reconcile): node_exporter post-restart sleep 2 → 5s [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b6141af9` 2026-05-06 — fix(soul-md): v89 — InstaClaw platform identity (fixes "I'm an OpenClaw agent") [7 files] _(**MANIFEST v89**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `af2b7ced` 2026-05-06 — docs(claude): P1-2 + P1-3 — node_exporter visibility, ssh-broken-tcp-reachable [1 files] _(ai-assisted)_
+- `7ac0d370` 2026-05-07 — fix(session-overflow): v90 — four-layer session-overflow reliability fix [3 files] _(**MANIFEST v90**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `e30c6a78` 2026-05-07 — fix(bankr): wallet coverage gap (Phases 1-5) + v91 SOUL.md Platform V2 [12 files] _(**MANIFEST v91**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `af98e780` 2026-05-07 — docs(prd-gbrain): apply 8 corrections from Phase 0 vm-050 canary [1 files] _(ai-assisted)_
+- `f0da920e` 2026-05-07 — docs(claude): Rules 25-31 — systemic lessons from 2026-05-06/07 incidents [1 files] _(ai-assisted)_
+- `16aa97c9` 2026-05-09 — fix(reconcile-fleet): touch route.ts to bust nft cache for v90 manifest [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5e949f0f` 2026-05-09 — fix(reconcile-fleet): drop suspended/hibernating from eligibility [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `07269ec2` 2026-05-09 — fix(ssh): add v90 compaction keys to buildOpenClawConfig static blob [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `55fce656` 2026-05-09 — fix(reconcile-fleet): per-VM 120s timeout via Promise.race [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3716bc43` 2026-05-09 — chore(scripts): one-shot to mark long-dormant VMs unhealthy [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `84775ac0` 2026-05-09 — feat(manifest-integrity): P1-4 nft-cache defense + dynamic-value handling [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f5122470` 2026-05-09 — fix(db): usage_log 14-day retention via pg_cron + BRIN index swap + monitoring [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `6a11e06e` 2026-05-09 — fix(reconcile-fleet): add missing lib/manifest-integrity.ts + pre-commit nft cache-bust [2 files] _(ai-assisted)_
+- `55d1fe5d` 2026-05-09 — feat(gbrain): Phase 1 install scripts (canary install + selection) [3 files] _(ai-assisted)_
+- `8f5f0d54` 2026-05-09 — docs(prd): gbrain Phase 1 design doc [1 files] _(ai-assisted)_
+- `4854398d` 2026-05-10 — docs(claude): elevate P1-1 — lying-DB is ~20% fleet-wide, 3 shapes, fleet-integrity issue [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `1fb249d5` 2026-05-11 — fix(reconciler): root-cause fixes for 27% lying-DB rate [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b6f949ac` 2026-05-11 — feat(soul-md): v92 partner-stub migration — fix live truncation bug on edge_city VMs [6 files] _(**MANIFEST v92**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `0f796218` 2026-05-11 — fix(manifest): EMERGENCY bandaid — bootstrapMaxChars 35000 → 40000 (v92) [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `bc1608ac` 2026-05-11 — fix(manifest): EMERGENCY disable CONSENSUS_MATCHING_AWARENESS_V1 SOUL.md append [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2750c10d` 2026-05-11 — chore(scripts): Phase 4 cv-reset for the 10 lying-DB VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `567f653b` 2026-05-11 — fix(strip-thinking): idempotency gate on session-backup creation [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c56efadf` 2026-05-11 — feat(soul-v2): bug-fix stepMigrateSoulV2 + canary/rollout/rollback scripts + PRD [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `e436cf3a` 2026-05-11 — feat(soul-md): v93 partner-stub APPEND branch + budget-aware over-budget check [4 files] _(**MANIFEST v93**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `320ecb25` 2026-05-11 — feat(reconciler+claude.md): hot-reload classification + auto-restart guardrail [2 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `47764527` 2026-05-11 — feat(reconcile): catch-up script for fleet stuck >N versions behind manifest [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `831533f4` 2026-05-11 — feat(phase4): gbrain fleet rollout design + stepEnvVarPush reconciler step [4 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `0712ba01` 2026-05-11 — feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX [8 files] _(**MANIFEST v95**; multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `21d9dd9b` 2026-05-11 — docs(prd): reconcile deadline structural fix — Vercel cron can't catch up multi-version drift [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `ddcee2e4` 2026-05-11 — chore(scripts): stuck-head triage + selective-flip helpers [5 files] _(ai-assisted)_
+- `035b3b11` 2026-05-11 — docs: lying-DB fleet census — 27% rate, 12 of 44 healthy cv≥88 VMs [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `50640a55` 2026-05-11 — feat(gbrain): Phase 1 uninstall scripts (mirror of install) [2 files] _(ai-assisted)_
+- `d4e3dae5` 2026-05-11 — chore(scripts): emergency fleet sweep + reprobe (2026-05-11) [3 files] _(ai-assisted)_
+- `36ea41e1` 2026-05-11 — chore(scripts): session-backups bloat probe + emergency purge [2 files] _(ai-assisted)_
+- `6db05d8e` 2026-05-11 — fix(gateway-proxy): stop silently downgrading real user messages to MiniMax [1 files] _(ai-assisted)_
+- `e2380e68` 2026-05-11 — feat(reconcile-fleet): persistent failure tracking + auto-quarantine + alerts [5 files] _(ai-assisted)_
+- `871a78c5` 2026-05-11 — fix(soul-v2): cron lock acquisition in canary script + ip_address column [2 files] _(ai-assisted)_
+- `90feea10` 2026-05-11 — fix(soul-v2): AGENTS.md threshold + ip_address column in fleet rollout [2 files] _(ai-assisted)_
+- `bd3f671e` 2026-05-11 — fix(soul-v2): fleet rollout whitelist race on concurrent migrateOne calls [1 files] _(ai-assisted)_
+- `ddb58683` 2026-05-11 — fix(soul-v2): fleet rollout process.exit() bypasses finally — leaks cron lock [1 files] _(ai-assisted)_
+- `437504db` 2026-05-11 — feat(soul-v2): --no-strict opt-in flag for fleet rollout [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `e7d927b3` 2026-05-11 — feat(gbrain+monitoring): install pipeline + forensic handoff + 3 ops crons [9 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `2b985da0` 2026-05-11 — feat(phase4): gbrain-coverage-check cron + edge_city readiness probe [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0eeeebdb` 2026-05-11 — docs(lying-db-census): refresh 2026-05-11 with current fleet probe [1 files] _(ai-assisted)_
+- `56d3a2e3` 2026-05-11 — docs(consensus): expand Phase C reset list — 5 stragglers + vm-512 hand-fix log [1 files]
+- `b1741db5` 2026-05-12 — feat(phase4c): stepGbrain reconciler step + build-time script embedding [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `b4b1e97b` 2026-05-12 — fix(reconcile): stepSystemdUnit verify uses md5 hash compare (likely cv=82 unstick) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34) [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ed8ee6a1` 2026-05-12 — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11) [1 files] _(multi: [reconciler, docs])_
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system [8 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `0144181a` 2026-05-12 — feat(snapshot-bake): canonical fresh-nanode bake toolchain (cleanup + validation + runbook) [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `1c44d5e9` 2026-05-12 — fix(onboarding): break post-checkout loop + recover from configure partial-failure (Rule 33) [5 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `6671f651` 2026-05-12 — Merge branch 'feat/matchpool-outcomes-ingest' — §5.2 matching engine infrastructure [49 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `03df7ef1` 2026-05-12 — feat(telegram): one-shot fix for VMs missing channels.telegram.botToken on disk [1 files] _(ai-assisted)_
+- `c944a3b0` 2026-05-12 — fix(auth): plug dual-account hole — partner cookie now applies to existing users [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `4a5fddec` 2026-05-12 — feat(edge): branded Open Graph share card for /edge [4 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `273e1609` 2026-05-12 — fix(replenish-pool): orphan-collision defense + visible alerts [2 files] _(ai-assisted)_
+- `39d0e237` 2026-05-12 — fix(vm-status): atomic health_status on terminal flips + defense filter [13 files] _(ai-assisted)_
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed [3 files] _(ai-assisted)_
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit [11 files] _(ai-assisted)_
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling [13 files] _(ai-assisted)_
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift [1 files] _(ai-assisted)_
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper [11 files] _(ai-assisted)_
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows [3 files] _(ai-assisted)_
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `48ea0e8f` 2026-05-12 — Merge feat/privacy-cutover-bypass-skip: privacy cutover bypass-skip + abort guard + .env.ssh-key fix [0 files] _(merge)_
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants [1 files] _(ai-assisted)_
+
+## By category
+
+### Reconciler / manifest (284)
+
+- `fd7cec08` 2026-03-02 — feat: wire up X/Twitter Search skill using Brave Search site:x.com [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `1db28ff6` 2026-03-02 — fix: remove gateway.controlUi key rejected by OpenClaw 2026.2.17+ [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2b7e51b8` 2026-03-03 — fix: version-aware controlUi handling + groups.* wildcard fix [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `951cdcbe` 2026-03-03 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.2 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f09be921` 2026-03-03 — fix: replace remaining hardcoded 2026.2.24 version references [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ec416210` 2026-03-03 — fix: add controlUi flag to buildOpenClawConfig and fix pkill bracket trick [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2121b0f6` 2026-03-04 — fix: Kalshi PSS salt length, deploy scripts in ssh.ts, safe symlink upgrade [31 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `ebdeadec` 2026-03-04 — fix: complete UX overhaul — onboarding flows, PEM delivery, browse script, funding guides, withdrawal guidance, balance checks, error handling [7 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3333b48f` 2026-03-04 — feat: session protection system — circuit breaker, auto-backup, watchdog growth detection [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f2346f6d` 2026-03-04 — fix: agent intelligence — force prediction market script usage, never improvise [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0d59fda2` 2026-03-04 — feat: Skill 15 — Solana DeFi Trading (Phase 1) [22 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `a5654386` 2026-03-04 — fix: FOK orders, precision, order verification, liquidity checks, anti-fabrication [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `37091ba0` 2026-03-04 — fix: provisioning pipeline gaps — session protection in configureOpenClaw, skill API defaults, toggle upserts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7e51ad30` 2026-03-04 — fix: add Brave search to all VMs regardless of billing mode [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `920ed8a6` 2026-03-04 — fix: correct Brave env var name, remove apiMode gating for ElevenLabs [9 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `49978b05` 2026-03-04 — fix: add POLYGON_RPC_URL to VM manifest, configure pipeline, reconciler, and fleet backfill [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0cad0b70` 2026-03-04 — fix: raise maxSkillsPromptChars from 200K to 350K — skills were being truncated [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4e671f4a` 2026-03-04 — fix: add proper --- YAML frontmatter to all custom skills — were invisible to OpenClaw parser [19 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3d9a8b56` 2026-03-04 — feat: add Quick Command Routing table to SOUL.md onboarding template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b4deb5db` 2026-03-05 — feat: polymarket-search.py — seamless market discovery script [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0893f797` 2026-03-05 — fix: FOK orders sweep orderbook with 2% default slippage for reliable fills [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `9e1e767f` 2026-03-05 — fix: restore maxSkillsPromptChars to 350000 — was reverted to 50000 [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1e0c95be` 2026-03-05 — fix: PERMANENT maxSkillsPromptChars=350000 — DO NOT REVERT — skills drop below this [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `89312e92` 2026-03-05 — feat: proxy failover, memory hygiene, env drift protection, search events endpoint, routing persistence [7 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0345ca88` 2026-03-05 — feat: set CLOB_PROXY_URL_BACKUP to London proxy (172.237.101.206) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `82b45df7` 2026-03-05 — fix: auto-retry on post-sell settlement delay instead of failing [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c9d5cb81` 2026-03-05 — fix: diagnose insufficient balance root cause + automated memory cleanup [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f170bf52` 2026-03-05 — fix: distinguish min order size from insufficient balance, auto-round up small orders [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a3d4d517` 2026-03-06 — fix: prevent agents from improvising skills — add STOP guardrails to SKILL.md and CAPABILITIES.md [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `6efe5f39` 2026-03-06 — fix: prevent agents from building rogue Polymarket infrastructure — enforce official scripts only [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a5893653` 2026-03-06 — feat: add Higgsfield AI Video skill — BYOK video/image/audio via 200+ models (Muapi.ai) [20 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `20df4df1` 2026-03-06 — feat: Higgsfield AI Video — platform credits, Muapi proxy, media credit packs [15 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5d829e51` 2026-03-06 — fix: deploy INSTACLAW_MUAPI_PROXY in configureOpenClaw for new VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `89ee608f` 2026-03-06 — fix: Higgsfield toggle broken — ssh2 exec channels are isolated [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9dc2da66` 2026-03-06 — feat: Telegram image → Muapi CDN bridge for seamless I2V from chat [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8024769a` 2026-03-06 — fix: purge OpenClaw backup configs fleet-wide to prevent telegram token conflicts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d812bdac` 2026-03-06 — fix: add duplicate IP safety guard to all SSH operations + enable Higgsfield by default [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `40f05447` 2026-03-06 — fix: split installHiggsfieldSkill into batched SSH commands to avoid argument limit [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8dba7d98` 2026-03-06 — fix: allow tilde in assertSafeShellArg so file browser can read ~/.openclaw/workspace [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d74af301` 2026-03-06 — fix: privacy — wipe VM data between users, reset stale fields on assignment [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `889c596a` 2026-03-07 — fix: file browser — fix tilde expansion in readFile, add download + media preview [3 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d9d7df96` 2026-03-07 — fix: Virtuals "Start Accepting Jobs" broken — wrong serving detection + silent errors [2 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `7c223b3d` 2026-03-07 — fix: add token rotation grace period to prevent proxy 401s during resync [11 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0d66eb99` 2026-03-07 — fix: prevent proxy 401s from token rotation race in health cron [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `fe36cb56` 2026-03-07 — fix: add web3 to pip install in configureOpenClaw provisioning [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `69b9d3be` 2026-03-08 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.7 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7ff729f6` 2026-03-08 — feat: add Crawlee stealth scraping — anti-bot fallback for web scraping skill [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `023f7e59` 2026-03-08 — fix: add 4-layer heartbeat quota bug prevention [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `fc209a7a` 2026-03-09 — fix: harden provisioning + crash-loop monitoring for openclaw module corruption [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9d1d7870` 2026-03-09 — fix: replace broken Polygon RPC endpoints in Polymarket scripts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c63a16ef` 2026-03-09 — chore: bump OpenClaw version pins from 2026.3.7 to 2026.3.8 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `880b1b6f` 2026-03-09 — fix: thorough openclaw module cleanup in configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3f32b2c3` 2026-03-09 — fix: add diagnostics to openclaw reinstall failure in configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c4fb9a9d` 2026-03-09 — fix: capture require() error in openclaw reinstall diagnostics [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6f0b78ca` 2026-03-09 — fix: use which openclaw instead of require() for module check [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b2c44510` 2026-03-09 — feat: /hq/dependencies page + P0 fixes (pin crawlee, bump viem) [8 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `db942063` 2026-03-10 — fix: migrate workspace paths to ~/.openclaw/workspace/ to prevent LocalMediaAccessError [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8b8f184e` 2026-03-11 — fix: clawlancer two-sided marketplace UX + funded bounties + rollback safety [5 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e0643051` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — infrastructure hooks + fleet scripts [5 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `10ac8402` 2026-03-11 — feat(instaclaw): push-based VM heartbeat system [4 files] _(**MANIFEST v29**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `1bc1d64e` 2026-03-11 — fix(instaclaw): AgentBook audit fixes [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `bbddeb90` 2026-03-11 — fix(instaclaw): update model IDs — sonnet-4-5 → sonnet-4-6, fix OpenClaw model mapping [12 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `2a66e0a1` 2026-03-11 — feat(instaclaw): AgentBook registration via VM CLI + QR code flow [6 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `cefc7352` 2026-03-12 — feat: session corruption auto-heal cron + health check detection [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `eac22bc9` 2026-03-12 — fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide [11 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `1afc8142` 2026-03-12 — Revert "fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide" [11 files] _(multi: [reconciler, infrastructure, feature])_
+- `0328421e` 2026-03-12 — fix: add missing websockets dep to solana-defi pip install [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `17788ebb` 2026-03-12 — feat: parallelize package installs in configureOpenClaw (~60s savings) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `170a6235` 2026-03-13 — fix: deploy all 13 prediction-markets scripts + auto-heal missing scripts via reconciler [3 files] _(**MANIFEST v30**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `d1d2ad5b` 2026-03-13 — fix: add browser failure recovery + "never go silent" rule for agents [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3d94095e` 2026-03-13 — fix: platform-wide silent death prevention — P0/P1/P2 fixes [19 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `967071bb` 2026-03-14 — chore: bump openclaw version pin from 2026.3.8 to 2026.3.13 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `07b73403` 2026-03-14 — fix: remove invalid browser.profiles.chrome that crashes gateway on new VMs [11 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `287cfed3` 2026-03-14 — feat: config safety guardrails — backup/rollback, validation, crash-loop detection [4 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `2e00d679` 2026-03-14 — feat: Dynamic SPA Handling Protocol — improves agent reliability on Instagram/LinkedIn/Facebook [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `e19b8960` 2026-03-17 — fix: prevent VM configure race condition that leaks user data [7 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d2007e20` 2026-03-17 — fix: wipeVMForNextUser now removes ALL user data on VM recycle [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f7109f95` 2026-03-17 — fix: three-layer defense against web fetch session blowouts [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `eabbbc8d` 2026-03-17 — fix: escape newlines in STRIP_THINKING_SCRIPT Python template literal [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c0f40db2` 2026-03-17 — fix: escape all Python \n literals in STRIP_THINKING_SCRIPT template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e4eb6866` 2026-03-18 — fix: raise bootstrapMaxChars to 30K, add WALLET.md template, monitor oversized memory [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d835ac13` 2026-03-18 — fix: add belt-and-suspenders haiku guard in configureOpenClaw + configure endpoint [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4c532da6` 2026-03-18 — fix: add memory hygiene instructions to SOUL.md template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4fdb1c27` 2026-03-18 — fix: onboarding reliability — auto-release broken VMs, validate OpenClaw before marking ready [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a7a6298b` 2026-03-19 — fix: session bloat — daily hygiene in strip-thinking.py + fleet-wide cleanup [4 files] _(**MANIFEST v32**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `43dde511` 2026-03-19 — feat: Phase 0 — memory architecture verification + bug fixes [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5421f162` 2026-03-19 — feat: Phase 1 — memory architecture overhaul (skill trim 24%, CAPABILITIES 59%, session handoff, heartbeat hygiene, file sharing, group chat memory fix, manifest v33) [16 files] _(**MANIFEST v33**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8ac2cc89` 2026-03-19 — feat: File Delivery V1 — Telegram sendDocument + signed URLs + dashboard deep-linking + deliver_file.sh (manifest v34) [7 files] _(**MANIFEST v34**; multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d9e4fb74` 2026-03-19 — fix: deliver_file.sh — read bot token from openclaw.json, chat_id from sessions.json, fix regex escape [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1e93f413` 2026-03-19 — feat: Phase 2 — enable memorySearch + memoryFlush fleet-wide, fix vm-384 migration (manifest v35) [2 files] _(**MANIFEST v35**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `429f23e6` 2026-03-19 — feat: File Delivery V2 — Supabase Storage, delivery history, CDN downloads (manifest v36) [7 files] _(**MANIFEST v36**; multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d6ec9405` 2026-03-19 — feat: task completion notifications — notify_user.sh + heartbeat Phase 0.5 + agent intelligence 1W (manifest v36) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `28eefb25` 2026-03-19 — feat: fix P1 audit gaps — deploy SOUL.md supplement + HEARTBEAT.md consolidation + raise reserveTokensFloor to 35K (manifest v37) [2 files] _(**MANIFEST v37**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `0081a012` 2026-03-19 — fix: reconciler hardening — remove duplicate skills, strip _placeholder key, fix SSH key injection, use connectSSH(), expand billing webhook tier detection (manifest v38) [13 files] _(**MANIFEST v38**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `74d8ca02` 2026-03-20 — fix: correct SOUL.md supplement marker — 'Rule priority order' exists in base template, use 'INTELLIGENCE_INTEGRATED' instead (manifest v38) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ff5ff555` 2026-03-22 — fix: strip user-sent base64 images from sessions + increase memory warn TTL + add strip-thinking telemetry (manifest v39) [3 files] _(**MANIFEST v39**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `83c0452c` 2026-03-22 — fix: IMAGE_KEEP_RECENT=0 — strip ALL base64 images from sessions (manifest v40) [2 files] _(**MANIFEST v40**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `d3e4bbf6` 2026-03-23 — fix: disable daily 4AM session reset — switch to 7-day idle mode, isolate heartbeats, enforce session maintenance (manifest v41) [3 files] _(**MANIFEST v41**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `e1e8afac` 2026-03-23 — chore: bump OpenClaw version pins from 2026.3.13 to 2026.3.22 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b3e9fe53` 2026-03-23 — fix: reconciler workspace integrity check — self-heal missing SOUL.md (v42) [2 files] _(**MANIFEST v42**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9f0ed29e` 2026-03-24 — fix: systemd ExecStartPre crash-loop — remove broken log rotation (v43) [1 files] _(**MANIFEST v43**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `43a2f83b` 2026-03-24 — feat: EARN.md — comprehensive earning playbook for all agents (v44) [3 files] _(**MANIFEST v44**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b5aba5c0` 2026-03-24 — feat: World ID Cloudflare prep — store full proof, deploy nullifier to VMs, .well-known/agent.json [5 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `52538305` 2026-03-24 — feat: memory health dashboard + remove rotateOversizedSession (v45) [7 files] _(**MANIFEST v45**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `06b36998` 2026-03-25 — fix: block OpenClaw control UI — redirect root path to instaclaw.io/dashboard [4 files] _(**MANIFEST v46**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b6be918b` 2026-03-25 — feat: bake dispatch mode into configureOpenClaw() + update PRD with Phase 0/1 results [9 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5df56627` 2026-03-25 — fix: add "never go silent" operating principle to SOUL.md template [1 files] _(**MANIFEST v47**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `46315dfc` 2026-03-25 — fix: add "never self-restart" operating principle to SOUL.md template [1 files] _(**MANIFEST v48**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be8ac171` 2026-03-25 — fix: usecomputer binary chmod +x in configureOpenClaw (npm doesn't set execute bit) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `46f92940` 2026-03-25 — fix: supervisor TTY check + bake Phase 2 dispatch-server into configureOpenClaw [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8e30e3a7` 2026-03-25 — feat: Live Desktop Viewer — auth, takeover, configureOpenClaw, fleet-ready [5 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `606176bc` 2026-03-26 — fix: add Caddy /vnc/* proxy + iptables to configureOpenClaw (was missing for new VMs) [1 files] _(multi: [reconciler, infrastructure])_
+- `00a61e06` 2026-03-26 — fix: auto-repair broken systemd override.conf in configureOpenClaw (prevents gateway crash-loop) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `36f86292` 2026-03-26 — feat: dispatch v2 — action batching, screenshot optimization, copy-paste UX [14 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `2b79a988` 2026-03-26 — fix: macOS permissions flow, pairing code reuse, agent dispatch detection [5 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `9d659722` 2026-03-26 — fix: dispatch detection — remove mandatory status check, use try-first approach [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d31a6a73` 2026-03-27 — feat: agent suggests autonomous mode before multi-step dispatch tasks [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0ae2f848` 2026-03-27 — fix: agent must NEVER restart dispatch-server + systemd socket cleanup [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `92f60205` 2026-03-27 — feat: gateway watchdog — auto-restart hung gateways within 4 minutes [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `32e56533` 2026-03-27 — fix: prevent context overflow + task persistence across resets [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `29fb955c` 2026-03-27 — fix: shell-first enforcement, Spotlight fallback, message budget, connection info [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `f828147d` 2026-03-27 — feat: dispatch-remote-exec — run shell commands on user's Mac without Terminal [8 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `e09fbe02` 2026-03-28 — fix: NEVER Go Silent After Tool Failures — mandatory error reporting [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `576225e9` 2026-03-28 — fix: add image_generate parameter guidance + retrigger build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5848b709` 2026-03-29 — feat: DegenClaw skill — Virtuals $100K weekly perps trading competition [7 files] _(**MANIFEST v49**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5d742c13` 2026-03-30 — feat: PARTNER_ID=INSTACLAW — Virtuals revenue share live [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `78fe2c89` 2026-03-30 — fix: PARTNER_ID audit fixes — uninstall cleanup + remove duplicate sed [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2c66561f` 2026-03-30 — feat: PARTNER_ID in gateway systemd — process.env verified (manifest v50) [4 files] _(**MANIFEST v50**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `3c4858f9` 2026-03-30 — feat: universal silence watchdog — 60-second fallback guarantee (manifest v51) [2 files] _(**MANIFEST v51**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `fc7c2dae` 2026-03-30 — fix: silence watchdog — use inline content instead of template registry (init order) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `35e93266` 2026-03-30 — feat: add DegenClaw to EARN.md — Virtuals $100K weekly trading competition [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `011f19d5` 2026-04-01 — security: Full user data wipe in configureOpenClaw before new user setup [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7c123b06` 2026-04-01 — fix: configureOpenClaw sets config_version to VM_MANIFEST.version (51) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4d71c67b` 2026-04-01 — feat: Bankr partnership integration — wallet provisioning, tokenization, and trading fee credit loop [9 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `f058d5bb` 2026-04-01 — fix: Resolve Bankr vs Virtuals/ACP wallet conflicts — dual wallet identity, tokenization guard, usage instructions [6 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `1aaed5bc` 2026-04-01 — security: Privacy guard in configureOpenClaw — force-wipe leftover data [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `195db698` 2026-04-01 — fix: Eliminate false unhealthy marks — HTTP-first health, restart grace, SSH debounce, lock file [4 files] _(**MANIFEST v52**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b13a36ec` 2026-04-01 — security: Fourth privacy layer — pre-assignment wipe + idempotency fix [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7b475a92` 2026-04-01 — feat: Provision AgentBook wallet during configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0bf4ddcf` 2026-04-02 — fix: Generate agent wallets locally with viem (not on VM) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3c33aecb` 2026-04-02 — fix: Bump OpenClaw version pins to v2026.4.1 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4964b087` 2026-04-02 — fix: set restart lock before gateway stop in upgradeOpenClaw() [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `003b1107` 2026-04-02 — fix: add tools.exec config to manifest v53 — restore exec access fleet-wide [1 files] _(**MANIFEST v53**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `69e6bce1` 2026-04-03 — fix: stop silence watchdog restart storm — decouple fallback from restart [2 files] _(**MANIFEST v54**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b3214214` 2026-04-05 — fix: add exec-approvals.json to manifest + configureOpenClaw (v55) [2 files] _(**MANIFEST v55**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b73facbf` 2026-04-06 — feat: cross-session memory — manifest v56, session-end hook, MEMORY.md auto-summaries [5 files] _(**MANIFEST v56**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `7db9b226` 2026-04-06 — fix: session-end hook reads GATEWAY_TOKEN from .env file (cron doesn't source env) [2 files] _(**MANIFEST v57**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `3f537f1c` 2026-04-06 — fix: fleet upgrade reliability — SSH timeouts, individual config settings, lock cleanup [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `dbe7f853` 2026-04-06 — fix: run openclaw doctor --fix before gateway restart during upgrades [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `fd67fb3c` 2026-04-07 — chore: update OpenClaw version pins to 2026.4.5 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `795a7861` 2026-04-07 — feat: automatic XMTP/World Chat setup during VM provisioning [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `68e9e4c3` 2026-04-08 — fix: install manifest cron jobs during configureOpenClaw() — P0 fix [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `858163ba` 2026-04-08 — fix: deploy script FILES in configureOpenClaw + audit ready pool VMs [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4b74e1e9` 2026-04-08 — chore: new snapshot private/38069990 (v57-all-crons) + fix vm-watchdog 300s lock [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `ef93d4ce` 2026-04-09 — fix: add sandbox.mode=off to manifest — prevent Docker requirement on VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5aa2dc37` 2026-04-09 — fix: memory index cron uses NVM instead of bare node path [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `cdcb78f2` 2026-04-09 — fix: lower session-end hook threshold + add functional health checks [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8a8b6005` 2026-04-09 — fix: WALLET.md wallet summary — agents know all 3 wallets and their distinct purposes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `88019316` 2026-04-09 — fix: lower session-end hook threshold from 2 to 1 [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c8fb25ce` 2026-04-09 — fix: Crystal clear wallet routing across all agent context files [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `93fcf856` 2026-04-09 — feat: OpenClaw version pinning — auto-revert unauthorized upgrades [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `af32f749` 2026-04-09 — feat: Install Edge City skill for partner=edge_city users [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `d1a06b90` 2026-04-10 — fix: Always write EDGEOS_BEARER_TOKEN and SOLA_AUTH_TOKEN to Edge VM .env [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `06a399be` 2026-04-10 — fix: watchdog version cooldown from 1h to 10min [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `57e83519` 2026-04-10 — feat: session backup + remove daily limit buffer [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `61be338f` 2026-04-10 — fix: vm-watchdog version-pin subprocess bug + manifest v58 [2 files] _(**MANIFEST v58**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `d732c26c` 2026-04-10 — fix: export missing SOUL.md sections — unbreak main build [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7815bae7` 2026-04-10 — fix: 3 pre-existing landmines surfaced by configureOpenClaw audit [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `55ee33e9` 2026-04-13 — fix: move Brave apiKey to plugins.entries.brave (OpenClaw 2026.4.5+) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d67a4e37` 2026-04-13 — fix: auto-heal crash-looping gateways + alert on broken provisioning [4 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `13bbfec0` 2026-04-15 — feat: Agent learns about its token — WALLET.md + MEMORY.md after launch [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `221a5082` 2026-04-20 — observability: diagnose Token PFP personality read path [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e6ac015e` 2026-04-21 — manifest v59: enable gateway.openai.chatCompletionsEnabled [1 files] _(**MANIFEST v59**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9e783f92` 2026-04-21 — manifest v60: install pinned @bankr/cli@0.2.15 during configureOpenClaw [2 files] _(**MANIFEST v60**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `8fc9861d` 2026-04-21 — copy: TOOLS.md wallet/fees trigger + bankr-messages constant [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bfd36690` 2026-04-21 — manifest v61: fix broken chat-completions config key [1 files] _(**MANIFEST v61**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f4c8e55a` 2026-04-24 — feat(reconcile): Phase 2c — strict-mode fleet reconciliation [9 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `16bfa2be` 2026-04-26 — fix(configure): pre-create all ~/.openclaw subdirs before any writes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0e50d041` 2026-04-26 — debug(configure): expose underlying Postgres error in DB-write failure [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `678c2263` 2026-04-27 — feat(bankr): pin @bankr/cli@0.3.1 — direct claim API target [3 files] _(**MANIFEST v62**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `28ac6187` 2026-04-27 — feat(xmtp): proactive first-message on VM provisioning (#2) [5 files] _(multi: [reconciler, infrastructure, docs])_
+- `21ac38b7` 2026-04-27 — fix(xmtp): always refresh xmtp-agent.mjs on configure (atomic) (#3) [1 files] _(multi: [reconciler, infrastructure])_
+- `821925cc` 2026-04-27 — feat(reconcile): auto-heal pinned npm globals (@bankr/cli + openclaw) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `56238ec4` 2026-04-27 — feat(xmtp): per-user greeting marker + script-refresh fallback alert (#4) [5 files] _(multi: [reconciler, infrastructure])_
+- `9801bdd0` 2026-04-27 — fix(reconcile): enforce agents.defaults.model.primary to prevent OpenAI default [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0fa562d3` 2026-04-27 — fix(silence-watchdog): only inspect telegram-origin sessions; manifest v63 [2 files] _(**MANIFEST v63**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `396093f2` 2026-04-28 — fix(reconcile): 3 critical bugs that left users on stale code (#7) [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `16d8980f` 2026-04-28 — fix(xmtp): detect NVM node path dynamically in instaclaw-xmtp.service [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4fffb27f` 2026-04-28 — refactor(configureOpenClaw): collect partial_failures instead of swallowing [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e094ed53` 2026-04-28 — feat(reconcile): add 7 deploy heal steps + bump-without-push gating [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `65f79dae` 2026-04-28 — feat(reconcile): Node 22.22.2 + OpenClaw 2026.4.26 pinned upgrade [3 files] _(**MANIFEST v64**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9f3aff5b` 2026-04-28 — fix(reconcile): heal steps must not start services on suspended/hibernating VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `86e4bb25` 2026-04-28 — fix(reconcile): close strictErrors gate hole in stepNodeUpgrade + stepNpmPinDrift [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e85666d9` 2026-04-29 — feat(reconcile): wire browser-relay-server into configureOpenClaw + manifest v65 [3 files] _(**MANIFEST v65**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be95b11a` 2026-04-29 — fix(reconcile): npm cache clean before openclaw install + tighten ExecStart grep [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `83ca0b53` 2026-04-29 — fix(reconcile): Bug C — stop gateway before openclaw npm install [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d3d40a39` 2026-04-29 — fix(reconcile): Bug D + 60s gateway health timeout [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `83eff391` 2026-04-29 — feat(bankr-skill): InstaClaw overlay — kill clanker subdir, drop Solana misroutes [2 files] _(**MANIFEST v66**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef472917` 2026-04-29 — fix(reconcile): npm install timeout 180s→360s + on-disk verify [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9dfe894b` 2026-04-29 — fix(agent-context): scope token launches to Base in upfront-loaded surfaces [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f8fcc71d` 2026-04-29 — chore: export WORKSPACE_SOUL_MD for ad-hoc verification scripts [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2229080d` 2026-04-29 — chore(manifest): bump v66 → v67 — token-launch framing in upfront context [1 files] _(**MANIFEST v67**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f623cdec` 2026-04-29 — fix(reconcile): caddy no-op + npm install timeout 360s→600s [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b886c924` 2026-04-29 — fix(v67-routing): fleet patch + reconciler step + audit retry [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2d526591` 2026-04-29 — fix(reconcile): gateway health 60s→120s + dist/index.js verify [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `edf34e82` 2026-04-29 — fix(reconcile): auto-retry npm install on verify failure [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7a3cfa51` 2026-04-29 — fix(v67): bump agents.defaults.timeoutSeconds to 90s + watchdog FROZEN to 5min [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2df2c74e` 2026-04-29 — feat(bankr): #8 — agent answers "what's my token at?" via DexScreener [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6679afe8` 2026-04-30 — fix(fleet): manifest v68 — watchdog uptime guard + telegram streaming off [2 files] _(**MANIFEST v68**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `c07accec` 2026-04-30 — fix(manifest): close v67 jsdoc properly so v68 history compiles [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d967db50` 2026-04-30 — fix(fleet): manifest v69 — disable gateway watchdog timer fleet-wide [3 files] _(**MANIFEST v69**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `bf053e9a` 2026-04-30 — fix(reconciler): verify config-set in non-strict path; ban silent \|\| true [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5ff04ba5` 2026-04-30 — fix(fleet): manifest v71 — disable mDNS by default + weekly backup prune [1 files] _(**MANIFEST v71**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `5d6c0d07` 2026-04-30 — feat(soul): manifest v72 — SOUL.md cache boundary marker [2 files] _(**MANIFEST v72**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `731d41ec` 2026-04-30 — feat(memory): manifest v73 — MEMORY.md backup + auto-restore (Phase 1) [2 files] _(**MANIFEST v73**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f2a8679a` 2026-05-01 — fix(systemd): StartLimitAction=stop→none — invalid value broke fleet kill-loop protection [1 files] _(**MANIFEST v74**; multi: [reconciler, infrastructure])_
+- `f8f23353` 2026-05-01 — fix(systemd): v75 — split StartLimit* into [Unit] section (was silently dropped in [Service]) [3 files] _(**MANIFEST v75**; multi: [reconciler, infrastructure])_
+- `1a2fc677` 2026-05-01 — fix(manifest): v76 — remove vm-watchdog + silence-watchdog from cron schedule [1 files] _(**MANIFEST v76**; multi: [reconciler, infrastructure, edge])_
+- `4bb354cd` 2026-05-01 — feat(soul-v2): new workspace-templates-v2.ts with all 4 approved templates (no behavior change) [3 files] _(multi: [reconciler, infrastructure])_
+- `2665ba31` 2026-05-01 — feat(soul-v2): migrateExistingSoulMd reconciler step + manifest v77 + kill switch (default OFF) [2 files] _(**MANIFEST v77**; multi: [reconciler, infrastructure])_
+- `0fdbd037` 2026-05-01 — feat(soul-v2): add per-VM whitelist gate (RECONCILE_SOUL_MIGRATION_VM_IDS) [1 files] _(multi: [reconciler, infrastructure])_
+- `cb52f1ec` 2026-05-02 — feat(edge-privacy): components 5–9 — expire cron, audit log, SSH bridge, reconciler, cutover script [13 files] _(**MANIFEST v78**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `1da128be` 2026-05-02 — fix(edge-privacy): lazy-load privacy-bridge.sh to survive Turbopack page-data collection [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `fa1193a4` 2026-05-02 — fix(edge-privacy): QA blockers in privacy bridge — newline injection, fail-open, openclaw backdoor [4 files] _(**MANIFEST v79**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `b3fa5297` 2026-05-02 — feat(consensus): partner skill for Consensus 2026 Miami (May 5–7) [5 files] _(multi: [reconciler, infrastructure, feature, edge, docs]; ai-assisted)_
+- `0fefd764` 2026-05-02 — feat(consensus): also install consensus skill for edge_city partners [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `a495680d` 2026-05-02 — fix(strip-thinking): trim trailing empty turns, never nuke active session [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `599b9a1c` 2026-05-03 — docs(CLAUDE.md): cut over to v79 snapshot private/38575292 [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `58e59e0e` 2026-05-03 — fix(reconcile): sentinel guard + race fix + Rule 23 [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `cb4d425a` 2026-05-03 — fix(memory): cross-session persistence layered fix (SOUL reorder + bootstrap bump + periodic summary) [7 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `18eed486` 2026-05-03 — fix(timeout): bump timeoutSeconds 90 → 300 — 3-min response on vm-780 forced this [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e285e68f` 2026-05-04 — fix(memory): manifest v80 — periodic-summary hook unblocked when session shrinks [16 files] _(**MANIFEST v80**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef6cecab` 2026-05-04 — fix(consensus): universal skill install + fleet backfill + free-trial copy [4 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+- `f209f0c6` 2026-05-04 — fix(consensus): update record counts to live data (326/219/451 → 338/229/463) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `51ef0cd4` 2026-05-04 — feat(matchpool): v81 manifest — fleet wiring for matching pipeline [6 files] _(**MANIFEST v81**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `77a178bf` 2026-05-04 — feat(matchpool): Telegram notification + ghost pool seed [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bab5e37f` 2026-05-04 — fix(gateway): heartbeat reclassification bypass for match pipeline (P1) [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `327888af` 2026-05-05 — feat(matchpool): v82 SOUL.md awareness for matching engine [2 files] _(**MANIFEST v82**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `259477ba` 2026-05-05 — feat(matchpool): v83 — pipeline + intent_sync gate on skill state [5 files] _(**MANIFEST v83**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `5859048c` 2026-05-05 — feat(matchpool): v84 — Path 2 §Organic Activation helper [4 files] _(**MANIFEST v84**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `31396d5c` 2026-05-05 — feat(skills): Rule 24 — install verification + self-healing + taxonomy [17 files] _(**MANIFEST v85**; multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `55bb97ea` 2026-05-05 — fix(skills): Rule 24 follow-ups — backup-before-rm + bootstrap const + vm-724/725 fixes [9 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `56f71126` 2026-05-05 — fleet(v86): raise TasksMax 75 → 120 on openclaw-gateway cgroup [1 files] _(**MANIFEST v86**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `36c6b260` 2026-05-05 — fleet(v87): integrate prctl-subreaper into openclaw-gateway [3 files] _(**MANIFEST v87**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `faf8b8a8` 2026-05-05 — fleet(v88): add build-essential to systemPackages — fixes v87 silent fail [1 files] _(**MANIFEST v88**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `39b77b23` 2026-05-05 — Merge fleet/v88-build-essential: add build-essential to systemPackages [0 files] _(multi: [reconciler, edge]; merge)_
+- `9beb74bf` 2026-05-05 — fix(reconcile-fleet): drop batch size 10 → 3 to fit under 300s timeout [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3f3443d2` 2026-05-05 — fix(reconcile): glob consensus_*.py for outputFileTracingIncludes [1 files] _(ai-assisted)_
+- `8de505e3` 2026-05-05 — docs(consensus): day-of runbook + PRD open-question lock-in [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c3b8cee9` 2026-05-05 — fix(reconcile): inline matchpool .py contents at build time [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `251e01fd` 2026-05-06 — fix(reconcile): caddy hostname regex needs multiline flag [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8ffc2970` 2026-05-06 — fix(reconcile): node_exporter post-restart sleep 2 → 5s [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b6141af9` 2026-05-06 — fix(soul-md): v89 — InstaClaw platform identity (fixes "I'm an OpenClaw agent") [7 files] _(**MANIFEST v89**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `7ac0d370` 2026-05-07 — fix(session-overflow): v90 — four-layer session-overflow reliability fix [3 files] _(**MANIFEST v90**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `e30c6a78` 2026-05-07 — fix(bankr): wallet coverage gap (Phases 1-5) + v91 SOUL.md Platform V2 [12 files] _(**MANIFEST v91**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `16aa97c9` 2026-05-09 — fix(reconcile-fleet): touch route.ts to bust nft cache for v90 manifest [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5e949f0f` 2026-05-09 — fix(reconcile-fleet): drop suspended/hibernating from eligibility [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `07269ec2` 2026-05-09 — fix(ssh): add v90 compaction keys to buildOpenClawConfig static blob [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `55fce656` 2026-05-09 — fix(reconcile-fleet): per-VM 120s timeout via Promise.race [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3716bc43` 2026-05-09 — chore(scripts): one-shot to mark long-dormant VMs unhealthy [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `84775ac0` 2026-05-09 — feat(manifest-integrity): P1-4 nft-cache defense + dynamic-value handling [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4854398d` 2026-05-10 — docs(claude): elevate P1-1 — lying-DB is ~20% fleet-wide, 3 shapes, fleet-integrity issue [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `1fb249d5` 2026-05-11 — fix(reconciler): root-cause fixes for 27% lying-DB rate [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b6f949ac` 2026-05-11 — feat(soul-md): v92 partner-stub migration — fix live truncation bug on edge_city VMs [6 files] _(**MANIFEST v92**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `0f796218` 2026-05-11 — fix(manifest): EMERGENCY bandaid — bootstrapMaxChars 35000 → 40000 (v92) [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `bc1608ac` 2026-05-11 — fix(manifest): EMERGENCY disable CONSENSUS_MATCHING_AWARENESS_V1 SOUL.md append [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2750c10d` 2026-05-11 — chore(scripts): Phase 4 cv-reset for the 10 lying-DB VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `567f653b` 2026-05-11 — fix(strip-thinking): idempotency gate on session-backup creation [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c56efadf` 2026-05-11 — feat(soul-v2): bug-fix stepMigrateSoulV2 + canary/rollout/rollback scripts + PRD [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `e436cf3a` 2026-05-11 — feat(soul-md): v93 partner-stub APPEND branch + budget-aware over-budget check [4 files] _(**MANIFEST v93**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `320ecb25` 2026-05-11 — feat(reconciler+claude.md): hot-reload classification + auto-restart guardrail [2 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `47764527` 2026-05-11 — feat(reconcile): catch-up script for fleet stuck >N versions behind manifest [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `831533f4` 2026-05-11 — feat(phase4): gbrain fleet rollout design + stepEnvVarPush reconciler step [4 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `0712ba01` 2026-05-11 — feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX [8 files] _(**MANIFEST v95**; multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `21d9dd9b` 2026-05-11 — docs(prd): reconcile deadline structural fix — Vercel cron can't catch up multi-version drift [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `b1741db5` 2026-05-12 — feat(phase4c): stepGbrain reconciler step + build-time script embedding [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `b4b1e97b` 2026-05-12 — fix(reconcile): stepSystemdUnit verify uses md5 hash compare (likely cv=82 unstick) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34) [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ed8ee6a1` 2026-05-12 — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11) [1 files] _(multi: [reconciler, docs])_
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system [8 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+
+### Infrastructure (481)
+
+- `902044a0` 2026-03-02 — fix: wire Virtuals aGDP Skills toggle to existing install/uninstall code, hide X/Twitter Search [2 files] _(ai-assisted)_
+- `b1f6a21d` 2026-03-02 — fix: restore X/Twitter Search skill to active status [1 files] _(ai-assisted)_
+- `784163df` 2026-03-02 — feat: complete SEO & GEO overhaul — 20+ new content pages, sitemap, structured data [31 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `3d664cd3` 2026-03-02 — chore: add Bing Webmaster Tools verification meta tag [1 files] _(ai-assisted)_
+- `754ee05b` 2026-03-02 — blog: publish 3 posts (ai-agent-telegram-bot, what-can-ai-agents-do, personal-ai-agent-vs-chatbot) [5 files] _(multi: [infrastructure, feature])_
+- `915599fe` 2026-03-02 — blog: publish 15 posts (ai-agent-video-creation, openclaw-hosting-cost, ai-agent-content-creation, best-ai-agent-platforms-2026, future-of-personal-ai, openclaw-api-guide, ai-agent-polymarket, openclaw-vs-autogpt, ai-agent-for-research, why-everyone-needs-ai-agent, openclaw-skills-guide, personal-ai-vs-business-ai, ai-agent-for-crypto, make-money-ai-agent, openclaw-security) [17 files] _(multi: [infrastructure, feature])_
+- `8c6739d2` 2026-03-02 — blog: publish 2 posts (openclaw-api-guide, ai-agent-video-creation) [4 files] _(multi: [infrastructure, feature])_
+- `ceaba54f` 2026-03-02 — blog: publish 18 SEO posts + blog pipeline scripts [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f946d202` 2026-03-02 — feat: add Linode provider support to open-spots.sh, default to Linode [1 files] _(ai-assisted)_
+- `3a9b7468` 2026-03-03 — fix: open-spots.sh Linode provisioning — pass SSH public key string + add required root_pass [1 files] _(ai-assisted)_
+- `0f34f5a7` 2026-03-03 — fix: canary upgrade admin lookup — match actual DB email [1 files] _(ai-assisted)_
+- `f537de7e` 2026-03-03 — debug: add diagnostic logging to canary upgrade admin lookup [1 files] _(ai-assisted)_
+- `d00748e1` 2026-03-03 — fix: bump canary upgrade maxDuration from 120s to 300s [1 files] _(ai-assisted)_
+- `a6dbb786` 2026-03-03 — perf: parallelize fleet upgrade batches and version sweep [1 files] _(ai-assisted)_
+- `bb5c22f9` 2026-03-03 — feat: tool-use continuation credit discount (0.2x multiplier) [2 files] _(ai-assisted)_
+- `57229c0a` 2026-03-03 — fix: bump fleet upgrade maxDuration to 600s [1 files] _(ai-assisted)_
+- `35599983` 2026-03-03 — fix: bump fleet upgrade maxDuration to 900s (Vercel Pro max) [1 files] _(ai-assisted)_
+- `57310278` 2026-03-03 — fix: lower upgrade-fleet maxDuration to 800s (Vercel Pro limit) [1 files] _(ai-assisted)_
+- `52fb0dd3` 2026-03-03 — fix: add RPC fallback chain and balance check for Polymarket scripts [2 files] _(ai-assisted)_
+- `fe1353f0` 2026-03-04 — fix: strip query params from Kalshi signing path per API spec [4 files] _(ai-assisted)_
+- `4ab70b61` 2026-03-04 — fix: switch CLOB proxy to transparent mode with UFW IP whitelist [1 files] _(ai-assisted)_
+- `da7ebcf0` 2026-03-04 — fix: fleet deploy stdin conflict — use fd3 for while-read loop [1 files] _(ai-assisted)_
+- `2a9c38c2` 2026-03-05 — fix: make ambassador detail modal scrollable so action buttons are reachable [1 files] _(ai-assisted)_
+- `6073ae9a` 2026-03-05 — fix: restore CLOB proxy, add resolver to nginx, add proxy health monitoring [1 files] _(ai-assisted)_
+- `4622dabb` 2026-03-05 — fix: CLOB API precision formatting for FOK orders [1 files] _(ai-assisted)_
+- `82868367` 2026-03-05 — feat: per-ambassador NFT badge images + V2 soulbound contract [9 files] _(ai-assisted)_
+- `5890412b` 2026-03-05 — feat: 7-day trial for promotional invite codes [1 files] _(ai-assisted)_
+- `47960dd0` 2026-03-05 — fix: add viem to instaclaw deps — was only in root, breaking Vercel builds [2 files] _(ai-assisted)_
+- `af893429` 2026-03-06 — fix: P&L only counts MATCHED fills — LIVE/PENDING orders were inflating portfolio value [2 files] _(ai-assisted)_
+- `1de23a15` 2026-03-06 — fix: rename total_invested to total_buy_volume — was showing recycled capital as deposits [1 files] _(ai-assisted)_
+- `e49537f6` 2026-03-06 — fix: fleet-push-higgsfield — decode base64 SSH key, strip env quotes [1 files] _(ai-assisted)_
+- `692fcbff` 2026-03-06 — feat: telegram migration safety, ambassador NFT minting, email templates, polymarket fixes [9 files] _(ai-assisted)_
+- `93b8b3d4` 2026-03-06 — fix: add cleanup script for terminated VMs holding telegram tokens [1 files] _(ai-assisted)_
+- `f9215525` 2026-03-06 — fix: blank botToken in live config (not just disable telegram) when fixing dupes [1 files] _(ai-assisted)_
+- `34f5c2db` 2026-03-06 — fix: use CLOB API as primary source for condition_id market lookups [1 files] _(ai-assisted)_
+- `63a4ef32` 2026-03-06 — fix: cast duration/numeric params to int in all Higgsfield scripts, clean up proxy credit check [6 files] _(ai-assisted)_
+- `1e982fdd` 2026-03-06 — chore: trigger clean Vercel rebuild (stale tsbuildinfo referenced deleted fix-stijn.ts) [0 files] _(ai-assisted)_
+- `005280a5` 2026-03-07 — fix: bust stale Vercel tsbuildinfo cache that references deleted fix-stijn.ts [1 files] _(ai-assisted)_
+- `b0e86577` 2026-03-07 — fix: replace icon system with simple-icons + Lucide React + real brand logos [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `c8ecb275` 2026-03-07 — fix: uniform skill card heights + Solana gradient logo [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `42fb49a8` 2026-03-07 — feat: orb-style skill icons matching marketplace aesthetic [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `469f0268` 2026-03-07 — feat: add Prediction Markets and Freelance skills from Earn page [2 files] _(ai-assisted)_
+- `850ee9aa` 2026-03-07 — fix: brand logos get neutral circle, generic skills keep gradient orbs [1 files] _(ai-assisted)_
+- `8cb21dab` 2026-03-07 — fix: brand logo images fill entire circle edge-to-edge [1 files] _(ai-assisted)_
+- `1507a867` 2026-03-07 — feat: inline brand logos in E-Commerce skill description [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `6acb0b89` 2026-03-07 — feat: inline brand logos for Prediction Markets and Freelance skills [1 files] _(ai-assisted)_
+- `ee28aa8f` 2026-03-07 — feat: add Kalshi green rounded-square brand mark inline [1 files] _(ai-assisted)_
+- `bffcf03b` 2026-03-07 — fix: replace eBay inline logo with colorful wordmark in dark circle [1 files] _(ai-assisted)_
+- `5c07e4b1` 2026-03-07 — fix: inline brand logos now use colored circle containers [1 files] _(ai-assisted)_
+- `9468a3e3` 2026-03-07 — feat: add Kalshi inline logo from official app icon [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `52177906` 2026-03-07 — fix: inline brand logos flow naturally in text like emoji [1 files] _(ai-assisted)_
+- `19f71073` 2026-03-07 — fix: inline brand logos use rounded-rect app icon shape, crisp rendering [1 files] _(ai-assisted)_
+- `665c9ead` 2026-03-07 — fix: center inline brand logos properly inside rounded-rect containers [1 files] _(ai-assisted)_
+- `bd7ad71f` 2026-03-07 — fix: crop inline logo viewBoxes so SVGs fill containers like Kalshi [1 files] _(ai-assisted)_
+- `4f1326fa` 2026-03-07 — fix: unify inline logo sizes — SVG and image containers now identical [1 files] _(ai-assisted)_
+- `aaeb91fc` 2026-03-07 — fix: use official Polymarket app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `2077ad6c` 2026-03-07 — fix: use 3D Shopify app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b4f1bba3` 2026-03-07 — fix: use eBay app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `e7d6ed44` 2026-03-07 — fix: use Gumroad app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `6f5a6884` 2026-03-07 — fix: use Fiverr app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `95869b1e` 2026-03-07 — fix: use Upwork app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0aa735a9` 2026-03-07 — fix: Google Workspace icon now uses official 4-color Google "G" [1 files] _(ai-assisted)_
+- `66291c1b` 2026-03-07 — fix: remove em dashes from skill descriptions [1 files] _(ai-assisted)_
+- `6cc54f2f` 2026-03-07 — fix: use official Trello and Slack brand logos on Skills page [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f18a6751` 2026-03-07 — fix: Trello and Slack icons now match other BrandShell icons [1 files] _(ai-assisted)_
+- `aae90897` 2026-03-07 — fix: Slack icon now uses official 4-color hash logo [1 files] _(ai-assisted)_
+- `10bcdcfd` 2026-03-07 — fix: stop health cron from restarting gateway on Telegram 409 conflicts [1 files] _(ai-assisted)_
+- `f55d574b` 2026-03-07 — chore: rename conflicting migration files to unblock supabase db push [6 files] _(ai-assisted)_
+- `8684f47d` 2026-03-08 — feat: add skill auto-update system — manifest.json + daily cron checker [2 files] _(ai-assisted)_
+- `116caafd` 2026-03-08 — fix: heartbeat detection fallback + per-call usage logging [2 files] _(ai-assisted)_
+- `d049225d` 2026-03-09 — fix: add 24h dedup guard on "Your OpenClaw Instance is Ready!" email [1 files] _(ai-assisted)_
+- `39cee8eb` 2026-03-09 — feat: overhaul ambassador referral + waitlist flow with per-referral tracking [11 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `547780fc` 2026-03-09 — chore: redeploy to pick up HQ_PASSWORD env var [0 files]
+- `9663d76e` 2026-03-09 — feat: add self-healing auto-recovery for crash-looping gateways [1 files] _(ai-assisted)_
+- `3f290bb9` 2026-03-09 — fix: ambassador referral tracking bugs + admin referral management UI [6 files] _(ai-assisted)_
+- `a2e201f7` 2026-03-09 — fix: add duplicate IP guard to VM provisioning pipeline [1 files] _(ai-assisted)_
+- `f5bdad9d` 2026-03-09 — fix: correct OpenClaw + Anthropic API dependency check targets [1 files] _(ai-assisted)_
+- `44962e0f` 2026-03-09 — fix: permanent duplicate IP prevention across all provisioning paths [5 files] _(ai-assisted)_
+- `f66f00a5` 2026-03-09 — feat: /hq/dependencies auto-update — npm bump, fleet deploy, manual mark [4 files] _(ai-assisted)_
+- `cc936843` 2026-03-09 — fix: prevent duplicate dependency rows with UNIQUE constraint + ON CONFLICT [1 files] _(ai-assisted)_
+- `16b68553` 2026-03-09 — feat: auto-update OpenClaw dependency status after successful fleet upgrade [1 files] _(ai-assisted)_
+- `6477becd` 2026-03-09 — feat: add 10 skill/API dependencies to tracking table [1 files] _(ai-assisted)_
+- `9e113b5e` 2026-03-09 — feat: add 14 high-priority dependencies from codebase audit [1 files] _(ai-assisted)_
+- `b9788ac2` 2026-03-09 — fix: pin exact dependency versions from live fleet + fix NextAuth.js tracking [1 files] _(ai-assisted)_
+- `b54b9d45` 2026-03-09 — fix: set repo_url to dashboard/management links for all 40 dependencies [1 files] _(ai-assisted)_
+- `0bf44e0d` 2026-03-09 — fix: exclude skill-category deps from npm Update All Safe path [3 files] _(ai-assisted)_
+- `6f49727b` 2026-03-09 — feat: add Remotion Video skill card to /dashboard/skills [2 files] _(ai-assisted)_
+- `f412d719` 2026-03-09 — fix: skills audit — rename remotion-video slug, deactivate freelance-digital, add marketplace-earning [3 files] _(ai-assisted)_
+- `a4b7964f` 2026-03-09 — fix: use correct column name status='inactive' instead of is_active=false [1 files] _(ai-assisted)_
+- `84ab994c` 2026-03-10 — fix: route "ping" messages as heartbeats to prevent credit drain [1 files] _(ai-assisted)_
+- `46d5b2f1` 2026-03-10 — update favicon to glossy 3D crab on dark background [2 files] _(ai-assisted)_
+- `cea9176e` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — schema, libraries, API routes, skill [10 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `f987bffc` 2026-03-11 — fix(instaclaw): add /api/agentbook/lookup to middleware public routes [1 files] _(ai-assisted)_
+- `a7906a73` 2026-03-11 — merge: AgentBook Phase 1 — InstaClaw integration (WDP 71) [0 files] _(ai-assisted; merge)_
+- `f363e4e6` 2026-03-11 — fix: add Vercel ignored build step for monorepo [2 files] _(ai-assisted)_
+- `bb921ee6` 2026-03-11 — fix: correct instaclaw ignoreCommand working directory [1 files] _(ai-assisted)_
+- `37da5088` 2026-03-11 — chore: trigger redeploy with RP_ID + RP_SIGNING_KEY env vars [0 files] _(ai-assisted)_
+- `8bc62ebb` 2026-03-11 — fix(instaclaw): add error logging to sign-request endpoint for debugging [1 files] _(ai-assisted)_
+- `be69aba6` 2026-03-11 — fix(instaclaw): add diagnostic mode to sign-request for production debugging [1 files] _(ai-assisted)_
+- `e991a6ae` 2026-03-11 — fix(instaclaw): strip 0x prefix from RP_SIGNING_KEY before signRequest() [1 files] _(ai-assisted)_
+- `32fa80e9` 2026-03-11 — fix(instaclaw): strip trailing \n artifact from RP_SIGNING_KEY env var [1 files] _(ai-assisted)_
+- `cc35156b` 2026-03-11 — fix: add webpack WASM support for World ID 4.0 IDKit [1 files] _(ai-assisted)_
+- `6957af02` 2026-03-11 — fix(instaclaw): handle IDKit 4.x proof format in verify endpoint [1 files] _(ai-assisted)_
+- `5aa2a124` 2026-03-11 — fix(instaclaw): use correct column name agentbook_wallet_address [3 files] _(ai-assisted)_
+- `f83ed840` 2026-03-11 — fix(instaclaw): setsid detach for agentkit-cli + correct URL regex [2 files] _(ai-assisted)_
+- `ca8ecd38` 2026-03-12 — fix: forward anthropic-beta header in proxy for adaptive thinking [1 files] _(ai-assisted)_
+- `2600a058` 2026-03-12 — debug: log exact thinking request/response payload for investigation [1 files] _(ai-assisted)_
+- `575b808b` 2026-03-12 — fix: resolve TS error in thinking debug logging (message_count type) [1 files] _(ai-assisted)_
+- `685d3775` 2026-03-12 — fix: normalize thinking string→object for Anthropic API in proxy [1 files] _(ai-assisted)_
+- `c5e04bbe` 2026-03-12 — fix: map adaptive→enabled+10k budget, inject interleaved-thinking beta [1 files] _(ai-assisted)_
+- `b699c012` 2026-03-12 — fix: handle thinking as object { type: "adaptive" } not just string [1 files] _(ai-assisted)_
+- `5ca66cd6` 2026-03-12 — fix: strip effort parameter, restore adaptive thinking type [1 files] _(ai-assisted)_
+- `cc3ca635` 2026-03-12 — fix: strip thinking for Haiku — only Sonnet 4.6/Opus support adaptive [1 files] _(ai-assisted)_
+- `a1bf472a` 2026-03-12 — docs: add critical comment block to thinking normalization code [1 files] _(ai-assisted)_
+- `cc648e85` 2026-03-12 — fix: change default model routing from Haiku to Sonnet with budget guard [1 files] _(ai-assisted)_
+- `a25d8d89` 2026-03-13 — chore: redeploy with new Anthropic API key [0 files] _(ai-assisted)_
+- `54a42262` 2026-03-13 — chore: force redeploy with new Anthropic API key [1 files] _(ai-assisted)_
+- `1feb094d` 2026-03-13 — feat: billing cache prevention — intercept, auto-clear, and recover [3 files] _(ai-assisted)_
+- `14adefb8` 2026-03-13 — feat: drop the waitlist — frictionless one-click signup [15 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `299094bd` 2026-03-14 — chore: change support email from support@ to help@instaclaw.io [16 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `4c1fd2b4` 2026-03-15 — feat: InstaAgent — Instagram Graph API integration (Phase 1) [20 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `49bfd137` 2026-03-15 — fix: allow /api/webhooks/* through auth middleware [1 files] _(ai-assisted)_
+- `e7ac6b9e` 2026-03-15 — fix: use INSTAGRAM_APP_ID/SECRET for Instagram OAuth flow [2 files] _(ai-assisted)_
+- `43070509` 2026-03-16 — fix: add enable_fb_login=0 and force_authentication=1 to Instagram OAuth [1 files] _(ai-assisted)_
+- `d5d101fd` 2026-03-16 — fix: use META_APP_ID for Instagram OAuth client_id [2 files] _(ai-assisted)_
+- `f7ba9d46` 2026-03-16 — fix: switch to standalone Instagram Login flow (api.instagram.com) [2 files] _(ai-assisted)_
+- `3b9f8cdb` 2026-03-16 — fix: revert auth URL to www.instagram.com/oauth/authorize [1 files] _(ai-assisted)_
+- `dcdb2c3c` 2026-03-16 — fix: Instagram OAuth token parsing + run instagram migration [7 files] _(ai-assisted)_
+- `e32c176c` 2026-03-16 — feat: Instagram token API + auth helper for VM scripts [9 files] _(ai-assisted)_
+- `f64c77a0` 2026-03-16 — fix: allow VM access to /api/instagram/token via middleware bypass [2 files] _(ai-assisted)_
+- `880c7ee1` 2026-03-16 — feat: VM validation system — fleet health checks, auto-fix, dashboard [9 files] _(ai-assisted)_
+- `7a823bd6` 2026-03-16 — fix: add /api/vm/validate to middleware self-auth bypass [1 files] _(ai-assisted)_
+- `29d04359` 2026-03-16 — fix: validator DBUS false positive + cron check parsing [1 files] _(ai-assisted)_
+- `0531c61f` 2026-03-16 — feat: smart cron job guardrails with upsell moments [5 files] _(ai-assisted)_
+- `29f904e6` 2026-03-16 — fix: disable dead CLOB proxy fleet-wide, use direct clob.polymarket.com [2 files] _(ai-assisted)_
+- `0589cc0d` 2026-03-16 — fix: cron-guard critical bugs — atomic writes, file locking, Telegram dedup [4 files] _(ai-assisted)_
+- `386c498f` 2026-03-16 — feat: /api/vm/fix-infra endpoint for systemd override + swap fixes [2 files] _(ai-assisted)_
+- `d36b40ef` 2026-03-16 — fix: systemd override check uses individual key grep (multiline bug) [7 files] _(ai-assisted)_
+- `b602e21c` 2026-03-16 — fix: DBUS systemd-status is info-level pass when health+port OK [1 files] _(ai-assisted)_
+- `b1a08760` 2026-03-16 — feat: fleet-mode fix-infra + pip3/playwright fixes + DBUS severity [1 files] _(ai-assisted)_
+- `790a738f` 2026-03-16 — fix: add /api/notify to public API exclusions in middleware [1 files] _(ai-assisted)_
+- `a9a1eaf6` 2026-03-16 — feat: add "waitlist is over" email template and broadcast endpoint [2 files] _(ai-assisted)_
+- `58f171d6` 2026-03-16 — fix: polish waitlist-over email copy for higher conversion [2 files] _(ai-assisted)_
+- `33080f51` 2026-03-16 — fix: invert logo to white in dark mode email clients [1 files] _(ai-assisted)_
+- `79d5de80` 2026-03-16 — fix: remove logo image from email header for dark mode compatibility [1 files] _(ai-assisted)_
+- `ec88a7ff` 2026-03-16 — feat: add value prop + World partnership paragraph to waitlist email [1 files] _(ai-assisted)_
+- `0f2ac7f6` 2026-03-16 — fix: add no-KYC detail to World partnership copy in email [1 files] _(ai-assisted)_
+- `c210acdd` 2026-03-16 — fix: broaden capability examples in waitlist email copy [1 files] _(ai-assisted)_
+- `fe4501d1` 2026-03-16 — fix: move value prop paragraph below CTA button for above-fold visibility [2 files] _(ai-assisted)_
+- `0c48ec2c` 2026-03-16 — fix: remove all em dashes from email, fix Discord invite link [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `3fb54a7c` 2026-03-16 — fix: link World text to world.org in waitlist email [1 files] _(ai-assisted)_
+- `6f32aad2` 2026-03-16 — fix: remove "no credit card required" from email CTA [1 files] _(ai-assisted)_
+- `5df26a24` 2026-03-16 — fix: link email CTAs to homepage instead of /signup [1 files] _(ai-assisted)_
+- `a58b6417` 2026-03-17 — fix: remove broken Polygon RPCs from polymarket-trade.py fallback list [1 files] _(ai-assisted)_
+- `1fd389ee` 2026-03-17 — fix: remove hardcoded 0.99/0.01 slippage caps in polymarket-trade.py [1 files] _(ai-assisted)_
+- `824a74b9` 2026-03-17 — fix: audit-identity checks ~/.openclaw/workspace/ not ~/workspace/ [1 files] _(ai-assisted)_
+- `c406df70` 2026-03-17 — fix: prevent stuck deployments — 4 layered safety nets [4 files] _(ai-assisted)_
+- `ba3d26f5` 2026-03-17 — chore: add suspended_at migration for suspension flow hardening [1 files] _(ai-assisted)_
+- `a277c394` 2026-03-17 — fix: truncate oversized tool results at proxy to prevent context overflow [1 files] _(ai-assisted)_
+- `508e71ec` 2026-03-17 — fix: add pre-deploy migration verification to block deploys with missing DB objects [4 files] _(ai-assisted)_
+- `f372f90e` 2026-03-18 — fix: default all tiers to claude-sonnet-4-6 instead of haiku [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5fd5ff49` 2026-03-18 — fix: gracefully handle stale PostgREST schema cache for configure_lock_at [1 files] _(ai-assisted)_
+- `93ce51d9` 2026-03-18 — fix: raise circuit breaker thresholds — false trip blocking all pro/power users [1 files] _(ai-assisted)_
+- `df721b74` 2026-03-18 — feat: circuit breaker dashboard widget + 80% early warning alert [3 files] _(ai-assisted)_
+- `31e7eeec` 2026-03-19 — fix: add /api/vm/files/delivered and /api/f to middleware self-auth exclusions [1 files] _(ai-assisted)_
+- `47b0297b` 2026-03-22 — feat: World mini app — full v1 scaffold with 3-tap onboarding [38 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `9927e000` 2026-03-24 — fix: move .well-known/agent.json to API route + rewrite (Next.js doesn't serve dot-prefix dirs) [2 files]
+- `eca1e228` 2026-03-24 — fix: allow public access to /.well-known/agent.json (add to middleware allowlist) [1 files]
+- `b431fbea` 2026-03-24 — fix: remove turbopack.root parent dir — isolate instaclaw from instaclaw-mini [1 files] _(ai-assisted)_
+- `d2d6fc5f` 2026-03-25 — feat: add diagnose, reset-config, restart-gateway to fix-infra endpoint [1 files] _(ai-assisted)_
+- `1e991106` 2026-03-25 — feat: add write-config, init-workspace, rebuild-ui fixes to fix-infra [1 files] _(ai-assisted)_
+- `9ac1751b` 2026-03-25 — fix: improve rebuild-ui to reinstall openclaw package for UI assets [1 files] _(ai-assisted)_
+- `6ef6f3ae` 2026-03-25 — feat: add push-soul-principles fix-infra endpoint for fleet-wide SOUL.md update [1 files] _(ai-assisted)_
+- `5d48ad6c` 2026-03-25 — chore: trigger Vercel redeploy for push-soul-principles endpoint [0 files] _(ai-assisted)_
+- `2efdfb1f` 2026-03-25 — chore: force Vercel rebuild for push-soul-principles endpoint [1 files] _(ai-assisted)_
+- `6423929a` 2026-03-25 — feat: Phase 2 — client-side dispatch relay prototype (agent controls user's computer) [19 files] _(ai-assisted)_
+- `4e3c0998` 2026-03-25 — fix: instagram skill frontmatter, maxSkillsPromptChars 500K, remove duplicate skills, placeholder cleanup in reconciler, 300ms fleet script sleep [1 files] _(ai-assisted)_
+- `b5a47ede` 2026-03-25 — fix: exclude instaclaw-mini from instaclaw tsconfig — was breaking Vercel builds [1 files] _(ai-assisted)_
+- `773d1139` 2026-03-25 — fix: dangerous action blocking in autonomous mode + redeploy audit-enabled dispatch-server [1 files] _(ai-assisted)_
+- `7710b161` 2026-03-25 — fix: exclude packages/ from Next.js TypeScript compilation (fixes Vercel build) [1 files]
+- `f8c420ff` 2026-03-25 — fix: swap Telegram as primary chat, World Chat as secondary [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `75903600` 2026-03-25 — chore: bump @instaclaw/dispatch to v0.3.0 (HMAC auth, coordMap, rate limiting) [1 files]
+- `add3d537` 2026-03-25 — fix: XMTP agent — getSenderAddress crash + message reception confirmed [1 files] _(ai-assisted)_
+- `cc11387b` 2026-03-25 — fix: remove base64 from screenshot stdout — was flooding agent context and hitting rate limits [2 files] _(ai-assisted)_
+- `27399733` 2026-03-26 — feat: P5 — daily agent digest via Telegram [2 files] _(ai-assisted)_
+- `055711d8` 2026-03-26 — feat: Phase 2 — upgrade flow with Google sign-in + account linking [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b279a5b4` 2026-03-26 — chore: add /docs/dispatch to sitemap PUBLIC_ROUTES [1 files] _(ai-assisted)_
+- `310e20ee` 2026-03-26 — feat: one-off admin endpoint for clean XMTP agent setup on vm-313 [1 files] _(ai-assisted)_
+- `dd34321c` 2026-03-26 — fix: add setup-xmtp-clean to self-auth API list in middleware [1 files] _(ai-assisted)_
+- `9dd51dc4` 2026-03-26 — fix: XMTP wallet key needs 0x prefix for agent-sdk [1 files] _(ai-assisted)_
+- `4d3db26b` 2026-03-26 — feat: admin endpoint to send XMTP message from agent to target address [2 files] _(ai-assisted)_
+- `e0188e39` 2026-03-26 — fix: write XMTP send script to ~/scripts/ so it finds node_modules [1 files] _(ai-assisted)_
+- `3ea3e49c` 2026-03-26 — fix: probe XMTP agent-sdk API surface, try multiple DM creation methods [1 files] _(ai-assisted)_
+- `8d4620b9` 2026-03-26 — fix: use agent.createDmWithAddress() — correct XMTP agent-sdk API [1 files] _(ai-assisted)_
+- `2996ecb2` 2026-03-26 — fix: stop XMTP service before sending (DB lock), restart after [1 files] _(ai-assisted)_
+- `dab18429` 2026-03-26 — feat: XMTP probe endpoint — find Cooper's real XMTP identity [2 files] _(ai-assisted)_
+- `376f5dfb` 2026-03-26 — fix: use createDmWithIdentifier with numeric enum + inbox ID fallback [1 files] _(ai-assisted)_
+- `b3c064b5` 2026-03-26 — fix: dispatch-status tier gate blocking all status checks [2 files] _(ai-assisted)_
+- `87b98707` 2026-03-26 — fix: dispatch status detection — use TCP check instead of broken Unix socket [2 files] _(ai-assisted)_
+- `4007a065` 2026-03-27 — fix: watchdog prevents silent context overflow — auto-rotates at 500KB [1 files] _(ai-assisted)_
+- `cdf8da78` 2026-03-27 — fix: exec used require() in ESM module — ReferenceError: require is not defined [2 files] _(ai-assisted)_
+- `35068722` 2026-03-27 — fix: watchdog v3 — detects frozen gateway (typing but no response) [1 files] _(ai-assisted)_
+- `6c604aec` 2026-03-27 — fix: 90-second timeout on LLM API calls — prevents infinite hang on images [1 files] _(ai-assisted)_
+- `1ecc1391` 2026-03-27 — fix: watchdog v4 — detect dead Telegram connection (root cause of silence) [1 files] _(ai-assisted)_
+- `99c5086e` 2026-03-28 — fix: watchdog v5 — check TIMESTAMP of last sendMessage, not just count [1 files] _(ai-assisted)_
+- `73f95890` 2026-03-29 — chore: update PRD to reflect completed deployment + add fleet scripts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `bf74af13` 2026-03-30 — chore: fleet scripts for PARTNER_ID deployment + verification [2 files] _(ai-assisted)_
+- `cb4c32e6` 2026-03-30 — fix: whitelist agent-auth-url + agent-complete-auth in middleware [1 files] _(ai-assisted)_
+- `ad250d87` 2026-03-31 — fix: World ID propagation writes to MEMORY.md for durability [2 files] _(ai-assisted)_
+- `364bbd69` 2026-03-31 — feat: admin endpoint for World ID propagation (temp, for backfill) [1 files] _(ai-assisted)_
+- `9f0863fd` 2026-03-31 — fix: use CRON_SECRET for admin propagation auth [1 files] _(ai-assisted)_
+- `92f00ba8` 2026-03-31 — fix: add propagate-world-id to middleware allowlist [1 files] _(ai-assisted)_
+- `40fdee11` 2026-03-31 — feat: World ID self-healing in reconciler health check [1 files] _(ai-assisted)_
+- `c5a0deab` 2026-03-31 — security(C2,C4,C6): Subscription check, credit pre-check, unique constraint [3 files] _(ai-assisted)_
+- `93bfadb5` 2026-03-31 — security(C5): Atomic check-and-increment RPC eliminates race condition [1 files] _(ai-assisted)_
+- `ba5e3d1e` 2026-03-31 — security(C9 revised): Trial abuse detection without blocking first-time users [1 files] _(ai-assisted)_
+- `de693c8c` 2026-03-31 — security(C5): Gateway proxy uses atomic check-and-increment RPC [1 files] _(ai-assisted)_
+- `6572ee56` 2026-03-31 — feat: VM reclaim script + dedicated suspension cron [3 files] _(ai-assisted)_
+- `2d9d0bf1` 2026-03-31 — fix: XMTP setup endpoint accepts vmId parameter [1 files] _(ai-assisted)_
+- `bf9ad647` 2026-03-31 — fix: XMTP admin endpoints accept vmId + token refresh endpoint [2 files] _(ai-assisted)_
+- `2f21200f` 2026-03-31 — fix: xmtp-send body.vmId reference — was undefined [1 files] _(ai-assisted)_
+- `fb5612cd` 2026-03-31 — feat: World Chat init — agent messages user first to establish DM [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `4238869b` 2026-03-31 — fix: xmtp-send-to-user auto-installs @xmtp/agent-sdk if missing [1 files] _(ai-assisted)_
+- `65a097ac` 2026-03-31 — fix: Write XMTP send script to ~/scripts/ for ESM module resolution [1 files] _(ai-assisted)_
+- `cc6bf8c5` 2026-03-31 — fix: XMTP agent gateway port 3000 → 18789 [3 files] _(ai-assisted)_
+- `d84d5e06` 2026-03-31 — fix: XMTP agent maintains conversation history per DM [1 files] _(ai-assisted)_
+- `30a8091d` 2026-03-31 — feat: xmtp-refresh-token also updates agent script from GitHub [1 files] _(ai-assisted)_
+- `6c53bc1c` 2026-03-31 — feat: Persist XMTP conversation history to disk [1 files] _(ai-assisted)_
+- `c380b4a7` 2026-03-31 — fix: Auto-retry stuck VMs + provisioning retry button [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `499b53a0` 2026-04-01 — fix: Config reconciler — batch 3→10, remove healthy-only filter [1 files] _(ai-assisted)_
+- `99785ff6` 2026-04-01 — fix: Post-ship audit cleanup — card order, window.open, extension placeholder, reclaim simplification [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `80d55353` 2026-04-01 — chore: Trigger Vercel redeploy — previous build failure was transient [0 files] _(ai-assisted)_
+- `61b7d9be` 2026-04-01 — feat: Batch restart endpoint for unhealthy VMs — /api/admin/restart-unhealthy [2 files] _(ai-assisted)_
+- `d1bdedf9` 2026-04-02 — fix: Retry gateway restart every 3 cycles, not just once at count 3 [1 files] _(ai-assisted)_
+- `c9b06ecf` 2026-04-02 — fix: register-direct script .mjs → .cjs (Node 22 ESM compat) [1 files] _(ai-assisted)_
+- `364dd11e` 2026-04-02 — fix: run register-direct from ~/.openclaw so viem is in node_modules [1 files] _(ai-assisted)_
+- `76bdde02` 2026-04-02 — fix: set NODE_PATH to find viem in global agentkit-cli node_modules [1 files] _(ai-assisted)_
+- `ab07245d` 2026-04-02 — fix: register-direct uses gasless relay instead of direct contract call [1 files] _(ai-assisted)_
+- `d5b12367` 2026-04-02 — fix: show full relay response for diagnosis, handle manualRegistration [1 files] _(ai-assisted)_
+- `e17c6aac` 2026-04-02 — fix: switch to World Chain contract where relay sponsors gas [1 files] _(ai-assisted)_
+- `f134c7f7` 2026-04-02 — fix: BigInt literal 0n → BigInt(0) for ES2020 target [1 files] _(ai-assisted)_
+- `62d4f6c1` 2026-04-02 — fix: omit network field from relay request (match v0.1.8 CLI behavior) [1 files] _(ai-assisted)_
+- `be3c1302` 2026-04-02 — fix: proper ABI decoding of proof (match agentkit-cli normalizeProof) [1 files] _(ai-assisted)_
+- `cc4a8484` 2026-04-02 — fix: match CLI behavior — any 200 from relay = success [1 files] _(ai-assisted)_
+- `dfea5dd1` 2026-04-02 — fix: show HTTP status code in relay rejection error [1 files] _(ai-assisted)_
+- `8772a375` 2026-04-03 — fix: accept 'nullifier' field name from IDKit v4 (not nullifier_hash) [1 files] _(ai-assisted)_
+- `ce6682ca` 2026-04-03 — fix: switch CLI to v0.1.8 (World Chain) + check both chains [4 files] _(ai-assisted)_
+- `55a0c4e4` 2026-04-03 — fix: stop health cron email spam + add Stripe reconciliation cron [3 files] _(ai-assisted)_
+- `8c4cb0db` 2026-04-03 — fix: notification API deeplink format + accurate notified response [1 files] _(ai-assisted)_
+- `d1d1a61a` 2026-04-03 — fix: TypeScript error in stripe-reconcile cron (Map type inference) [1 files] _(ai-assisted)_
+- `86668c7f` 2026-04-03 — feat: VM lifecycle cron — auto-delete suspended VMs from Linode [3 files] _(ai-assisted)_
+- `ee849b9c` 2026-04-03 — feat: append return_to deeplink to bridge URL for auto-redirect back to mini app [1 files] _(ai-assisted)_
+- `73bbe165` 2026-04-05 — fix: make Linode primary provider + default to dedicated CPU (g6-dedicated-2) [2 files] _(ai-assisted)_
+- `5d3e5e98` 2026-04-05 — fix: remove Hetzner/DO from provisioning array — Linode only [1 files] _(ai-assisted)_
+- `f55964fa` 2026-04-05 — chore: redeploy instaclaw-mini with NEXT_PUBLIC_MAINTENANCE=true [0 files]
+- `d8868c4f` 2026-04-05 — feat: enable Anthropic prompt caching — estimated $7,714/mo savings [1 files] _(ai-assisted)_
+- `309d1c0a` 2026-04-05 — perf: health cron skips 0-credit VMs with no active subscription [1 files] _(ai-assisted)_
+- `4e10d340` 2026-04-05 — fix: suspend-check cron — batch queries, DB-first, 5min timeout [1 files] _(ai-assisted)_
+- `9d829ba2` 2026-04-05 — fix: Stripe webhook always writes current_period_end on sub updates + cancels [1 files] _(ai-assisted)_
+- `cb06b663` 2026-04-05 — fix: health cron skips suspended VMs — prevents un-suspending them [1 files] _(ai-assisted)_
+- `4fe4f18f` 2026-04-05 — temp: log system prompt size for API cost verification (REMOVE AFTER) [1 files]
+- `8129fc2b` 2026-04-05 — temp: remove system prompt size log (verified: 14,836 tokens, not 189K) [1 files]
+- `1066639a` 2026-04-05 — temp: detailed token analysis log (REMOVE AFTER 50 CALLS) [1 files]
+- `cd3a03fd` 2026-04-05 — fix: TS error in temp token analysis log [1 files]
+- `1f1bdf09` 2026-04-06 — feat: fleet upgrade now reconciles manifest files before upgrading binary [1 files] _(ai-assisted)_
+- `b49e33bb` 2026-04-06 — fix: version pin reminder only shows after fleet deploy, not after canary [1 files] _(ai-assisted)_
+- `4a1afd22` 2026-04-07 — fix: WLD delegation users get subscription records — prevents false suspension [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `e08d9a3a` 2026-04-07 — fix: health cron suspension pass skips VMs with remaining credits [1 files] _(ai-assisted)_
+- `229fd5a8` 2026-04-08 — fix: periodic cron audit + expanded 15-point verification [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `0d73f05e` 2026-04-08 — feat: hibernation system for WLD users — warm sleeping UX, margin protection [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5a1478da` 2026-04-08 — chore: rebuild instaclaw with fixed MINI_APP_PROXY_SECRET (removed trailing \n) [0 files]
+- `0ff6cf80` 2026-04-08 — fix: WLD users get credits only — no fake subscriptions [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `cf49a997` 2026-04-08 — perf: reduce hibernate window from 14 to 7 days [1 files] _(ai-assisted)_
+- `5014764a` 2026-04-09 — fix: add tier sync to health check — prevent upgrade tier mismatch [1 files] _(ai-assisted)_
+- `7eeac386` 2026-04-09 — feat: memory health scoring in health check + threshold=1 [1 files] _(ai-assisted)_
+- `21b5313f` 2026-04-09 — feat: Fleet push workspace endpoint — push updated wallet routing to all assigned VMs [2 files] _(ai-assisted)_
+- `276204f0` 2026-04-09 — feat: Fleet workspace verification endpoint — spot-check 10 random VMs [2 files] _(ai-assisted)_
+- `9857ba5e` 2026-04-09 — feat: VM fix endpoint — targeted fixes for individual VMs (list-crons, fix-soul-memory-filing) [2 files] _(ai-assisted)_
+- `72b3dfa3` 2026-04-09 — security: Encrypt Bankr API keys at rest with AES-256-GCM [3 files] _(ai-assisted)_
+- `dc63f2e2` 2026-04-09 — feat: Read partner cookie during signup and set on user record [1 files] _(ai-assisted)_
+- `4bf8ef43` 2026-04-09 — temp: Add admin endpoint to verify Edge City skill installation (delete after test) [1 files] _(multi: [infrastructure, edge])_
+- `a6cb94d3` 2026-04-09 — fix: Use validateAdminKey for verify-edge-skill endpoint [1 files] _(multi: [infrastructure, edge])_
+- `9d8ebd0a` 2026-04-09 — chore: force redeploy for verify-edge-skill endpoint [0 files]
+- `0d9e612d` 2026-04-10 — feat: replenish-pool cron — auto-provision VMs from snapshot [6 files] _(ai-assisted)_
+- `a4b81595` 2026-04-10 — chore: cleanup after replenish-pool deploy — remove pool-monitor + add Rule 8 [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `2baf6cdf` 2026-04-10 — feat(bankr): View on Bankr link + suspend wallet on VM reclaim [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0e5c4932` 2026-04-10 — fix(test): _test-configure-openclaw port + telegram token handling [1 files] _(ai-assisted)_
+- `f9f4b6bb` 2026-04-10 — feat(cron): dedicated reconcile-fleet cron — unstarves config audit [3 files] _(ai-assisted)_
+- `4d8cb416` 2026-04-13 — fix: always update last_health_check when HTTP health passes [1 files] _(ai-assisted)_
+- `8c04ce2d` 2026-04-14 — security: Admin alert on CRITICAL Bankr token launch DB finalize failure [1 files] _(ai-assisted)_
+- `f30a788d` 2026-04-14 — feat: Admin email alert on successful token launches [1 files] _(ai-assisted)_
+- `08eedd5b` 2026-04-14 — feat: Token launch alerts to all 3 Cooper emails [2 files] _(ai-assisted)_
+- `a17b55bf` 2026-04-14 — CRITICAL fix: tokenize endpoint web app auth was broken — userId self-assignment [1 files] _(ai-assisted)_
+- `63622949` 2026-04-14 — fix: Auto-clear stale tokenization locks after 5 minutes [1 files] _(ai-assisted)_
+- `ba96945c` 2026-04-14 — feat: Auto-fill token metadata — description + websiteUrl on every launch [1 files] _(ai-assisted)_
+- `13c6825e` 2026-04-14 — feat: Token PFP — glass orb image generation + upload with consistent brand style [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `7e5fdba4` 2026-04-14 — security: Block all tokenization until prod Bankr org is ready [2 files] _(ai-assisted)_
+- `a3c7bb0a` 2026-04-15 — fix: backfill agentbook_registered when on-chain registration detected [1 files] _(ai-assisted)_
+- `9bad6f72` 2026-04-15 — fix: Token PFP — DALL-E generates full 3D glass orb directly, no compositing [1 files] _(ai-assisted)_
+- `c6292ae2` 2026-04-15 — feat: Token PFP reads agent personality from SOUL.md + MEMORY.md via SSH [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0b987125` 2026-04-15 — feat: Hash-seeded unique pixel art PFPs — like GitHub identicons [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `43dade2d` 2026-04-17 — feat: Procedural pixel art face PFPs — deterministic per agent [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `aa532e51` 2026-04-17 — feat: Face PFPs match landing page quality — hand-crafted templates + glass orb [1 files] _(ai-assisted)_
+- `ae0719f3` 2026-04-17 — feat: Layered 10×10 procedural face generator — 45M+ structural combos [3 files] _(ai-assisted)_
+- `2e90a38c` 2026-04-19 — fix: PFP generator polish — rare horns, teeth-smile mouth, safer scar [2 files] _(ai-assisted)_
+- `7d87c4ed` 2026-04-19 — Merge branch 'faces-layered-procedural' into main [0 files] _(ai-assisted; merge)_
+- `b3f5cf4e` 2026-04-19 — feat: 16×16 PFP generator with personality-locked character archetype [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0a5823b0` 2026-04-19 — Merge branch 'faces-16x16-personality-locked' into main [0 files] _(ai-assisted; merge)_
+- `e5286b4d` 2026-04-20 — feat: full 9-layer CryptoPunks-style crab trait generator at 24×24 [3 files] _(ai-assisted)_
+- `6129ac1b` 2026-04-20 — Merge main (diagnostic logging patch) [0 files] _(merge)_
+- `f159fcc8` 2026-04-20 — feat: port 24×24 crab generator into production token-image-generator [1 files] _(ai-assisted)_
+- `fb125602` 2026-04-20 — Merge branch 'pfp-crab-pivot' into main [0 files] _(merge)_
+- `3fb43383` 2026-04-20 — feat: port Candidate 02 silhouette at 28×28 with 2-tone baked in [4 files] _(ai-assisted)_
+- `3f15249d` 2026-04-20 — feat: use Candidate 02 PNG as base + hue-tint for shell variety [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b777f7c7` 2026-04-20 — fix: restore glass-orb 3D background effect on hue-shift pipeline [1 files] _(ai-assisted)_
+- `42ae0a6f` 2026-04-20 — feat: HD trait overlays on Candidate 02 base — full 1/1 uniqueness [5 files] _(ai-assisted)_
+- `446b6a6a` 2026-04-20 — feat: HD meme-canon trait overlays — big, bold, recognizable [2 files] _(ai-assisted)_
+- `c4737d4a` 2026-04-20 — fix: accessories readable at dashboard preview size (~160px) [3 files] _(ai-assisted)_
+- `2c2c0576` 2026-04-20 — debug: instrument /api/bankr/tokenize with stage logs + outer try/catch [1 files] _(ai-assisted)_
+- `c491cd60` 2026-04-20 — debug: bump maxDuration to 60s + log Bankr fetch boundaries [1 files] _(ai-assisted)_
+- `8d7219c8` 2026-04-21 — refactor: extract provisionBankrWallet into lib/bankr-provision.ts [2 files] _(ai-assisted)_
+- `f3e47b5e` 2026-04-21 — fix: Vercel gateway callers use model=openclaw + x-openclaw-model [5 files] _(ai-assisted)_
+- `26efbdd8` 2026-04-21 — feat(cron): Pass 0 recovers orphaned paid users with no VM [1 files] _(ai-assisted)_
+- `bd1f6cc3` 2026-04-21 — chore(scripts): add reusable orphan recovery + Pass 0 preview [2 files] _(ai-assisted)_
+- `1822ea57` 2026-04-26 — fix(cron/health-check): per-VM deadline + cron lock to prevent batch-wide hangs [1 files] _(ai-assisted)_
+- `f4fc7634` 2026-04-27 — scripts: post-outage ops toolkit (recovery + audit + fleet probes) [11 files] _(ai-assisted)_
+- `913fcfc6` 2026-04-27 — feat(vm-lifecycle): Phase 2 — orphan reconciliation pass + audit log [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `35a2e87d` 2026-04-27 — fix(gateway): intercept rate-limit + auth-failure errors before they leak to chat [1 files] _(ai-assisted)_
+- `697bcd72` 2026-04-27 — feat(vm-lifecycle): Phase 3 — freeze/thaw pattern (#5) [6 files] _(ai-assisted)_
+- `a6ae2087` 2026-04-27 — feat(analytics): onboarding events log + 7 emit sites (#5) [8 files] _(multi: [infrastructure, feature])_
+- `636139a9` 2026-04-27 — fix(vm-lifecycle): Phase 3 audit — 8 safety fixes (#6) [2 files] _(ai-assisted)_
+- `be3184ca` 2026-04-27 — feat(analytics): PostHog server-side parallel emit + greeting backfill script (#6) [7 files] _(multi: [infrastructure, feature])_
+- `c2416e1c` 2026-04-28 — security: add X-Frame-Options + CSP frame-ancestors to instaclaw.io [1 files]
+- `98b07d21` 2026-04-28 — feat(configure): gate configure response on critical partialFailures [1 files] _(ai-assisted)_
+- `722f88de` 2026-04-28 — chore: trigger redeploy after preview auth env fix [0 files] _(ai-assisted)_
+- `6f7f44d3` 2026-04-28 — merge: origin/main into fix/heal-suspended-and-critical-gate [0 files] _(merge)_
+- `4c59f96e` 2026-04-28 — fix(webhook): prevent silent credit_pack RPC failures + add orphan recovery [1 files] _(ai-assisted)_
+- `813fba1c` 2026-04-28 — chore(ops): add permanent fleet audit + heal scripts [3 files] _(ai-assisted)_
+- `24b4b019` 2026-04-28 — fix(audit): use nvm default for node-version detection, not alphabetically-first [1 files] _(ai-assisted)_
+- `f0b8ad45` 2026-04-29 — feat(browser-relay): add browser-relay-server.js to replace removed OpenClaw subsystem [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `57675e78` 2026-04-29 — fix(reconcile): include scripts/browser-relay-server/ in Next file tracing [1 files] _(ai-assisted)_
+- `c5f394c2` 2026-04-29 — chore(vercel): temporarily disable reconcile-fleet cron during v64/v65 fleet upgrade [1 files] _(ai-assisted)_
+- `6c043902` 2026-04-29 — fix(vercel): remove reconcile-fleet cron cleanly (was malformed in c5f394c) [1 files] _(ai-assisted)_
+- `17b78313` 2026-04-29 — revert(vercel): restore original cron config — broken schema blocked 3 deploys [1 files]
+- `f10f48d7` 2026-04-29 — feat(bankr-sync): shared helper to detect chat-driven token launches [1 files] _(ai-assisted)_
+- `51f3041d` 2026-04-29 — feat(bankr-sync): /api/cron/sync-bankr-launches background safety net [1 files] _(ai-assisted)_
+- `70d4ad5e` 2026-04-29 — feat(bankr-sync): schedule sync-bankr-launches every 5 min [1 files] _(ai-assisted)_
+- `6befba84` 2026-04-29 — test(bankr-sync): e2e regression script for syncBankrLaunchForVm [1 files] _(ai-assisted)_
+- `b4dc4863` 2026-04-29 — Merge feat/bankr-chat-launch-sync — Path B chat-driven launch sync [0 files] _(ai-assisted; merge)_
+- `b3cfdaae` 2026-04-29 — feat(bankr-skill): fleet patch script — apply overlay to live VMs now [2 files] _(ai-assisted)_
+- `22218c15` 2026-04-29 — fix(browser-relay): resolve node via NVM in standalone unit ExecStart [1 files] _(ai-assisted)_
+- `d9114898` 2026-04-29 — Merge fix/bankr-prelaunch-audit — pre-announcement P0/P1 fixes [0 files] _(ai-assisted; merge)_
+- `25e55e14` 2026-04-29 — feat(upgrade-fleet): wave-based concurrency=5 with audit gates [1 files] _(ai-assisted)_
+- `bf46ee3d` 2026-04-29 — fix(configure): guard against wipe-on-already-onboarded-user [1 files] _(ai-assisted)_
+- `4eb1987b` 2026-04-29 — Merge pull request #8 from coopergwrenn/fix/configure-guard-against-wipe [0 files] _(merge)_
+- `44e779a1` 2026-04-29 — fix(fleet-patch): don't bump config_version + add from-disk reset script [2 files] _(ai-assisted)_
+- `1e182c51` 2026-04-29 — fix(audit): retry 6×10s + same-iter active+health pairing [1 files] _(ai-assisted)_
+- `5e233b07` 2026-04-29 — feat(research-export): SQL migration for 5 EE26 research tables [1 files] _(ai-assisted)_
+- `efa42127` 2026-04-29 — feat(research-export): anonymization utilities — agent_id hash + PII regex sweep [2 files] _(ai-assisted)_
+- `50ff38c1` 2026-04-29 — feat(research-export): TypeScript schemas for source + export shapes [1 files] _(ai-assisted)_
+- `fab34510` 2026-04-29 — feat(research-export): Supabase extractors with date-range filtering + pagination [1 files] _(ai-assisted)_
+- `af41dc49` 2026-04-29 — feat(research-export): writers — CSV (zero-dep, default) + Parquet (optional) [2 files] _(ai-assisted)_
+- `997bf15a` 2026-04-29 — feat(research-export): pipeline orchestrator — extract → anonymize → write [2 files] _(ai-assisted)_
+- `eb55a6a6` 2026-04-29 — feat(research-export): CLI script + end-to-end integration test [2 files] _(ai-assisted)_
+- `9e88696c` 2026-04-29 — docs(research-export): operational README — quick start, privacy guarantees, runbook [1 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `fd42a1eb` 2026-04-29 — fix(research-export): unblock Vercel preview build [3 files] _(ai-assisted)_
+- `77c113f5` 2026-04-29 — feat(bankr): #9 — launch number ("You're #N to deploy autonomously") [9 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `788f6dcd` 2026-04-29 — feat(bankr): #6 — 5 randomized tweet templates with agent-name interpolation [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `30717999` 2026-04-29 — feat(bankr): #17 — World ID verified-human creator badge [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `bddb8123` 2026-04-29 — Merge pull request #9 from coopergwrenn/fix/v67-timeout-and-watchdog [0 files] _(merge)_
+- `d18d59a5` 2026-04-29 — fix(v67): bump watchdog FROZEN threshold further 5min → 10min [1 files] _(ai-assisted)_
+- `5d304b65` 2026-04-29 — Merge pull request #10 from coopergwrenn/fix/v67-watchdog-frozen-10min [0 files] _(merge)_
+- `8b44627b` 2026-04-29 — Merge pull request #11 from coopergwrenn/docs/fleet-upgrade-lessons [0 files] _(merge)_
+- `ba0a772e` 2026-04-29 — fix(bankr-tweet-templates): 4 fuzz-found edge-case bugs [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `ab77525d` 2026-04-29 — feat(bankr): #1 — agent autoposts to Telegram in its own voice on launch [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `e406ff5a` 2026-04-29 — chore(freeze): drop suspended-grace from 30d → 3d [1 files] _(ai-assisted)_
+- `0cac8984` 2026-04-29 — chore(cron): vm-lifecycle 6h → 1h to drain freeze backlog faster [1 files] _(ai-assisted)_
+- `62f43e46` 2026-04-30 — fix(partner): use res.cookies.set instead of next/headers cookies() [1 files]
+- `fc871b37` 2026-04-30 — feat(bankr): #5 — auto-generated launch card image (1200x630 OG) [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5a1db4c5` 2026-04-30 — feat(cron): expire pending WLD delegations after 6h (#12) [2 files] _(ai-assisted)_
+- `85bbc01f` 2026-04-30 — fix(cron): expire-pending update by predicate, not id list (#13) [1 files] _(ai-assisted)_
+- `ed93dccc` 2026-04-30 — feat(cron): background poller for unconfirmed WLD delegations (#14) [2 files] _(ai-assisted)_
+- `e764f30d` 2026-05-01 — fix(gateway/proxy): set maxDuration=300 on all proxy routes [4 files]
+- `4f3c88a9` 2026-05-01 — perf(gateway/proxy): in-memory cache for daily_usage SELECT (30s TTL) [1 files]
+- `ed545a3d` 2026-05-01 — perf(gateway/proxy): hot-path latency profile (sampled 5%) [1 files]
+- `1058c330` 2026-05-01 — fix(agents): kill switch for heartbeat-driven buy_listing + deliver [1 files]
+- `4e2fed9a` 2026-05-01 — chore(cron): add daily cleanup-feed cron + GET handler [2 files]
+- `f6049ab7` 2026-05-01 — fix(build): exclude instaclaw-mini, instaclaw-chrome-extension, contracts from wild-west-bots tsconfig [1 files]
+- `f70e732f` 2026-05-01 — chore(deploy): trigger wild-west-bots rebuild to land kill switch + cleanup cron [1 files]
+- `cfdcfa74` 2026-05-01 — fix(build): also exclude scripts/ from wild-west-bots tsconfig [1 files]
+- `e0e02ebc` 2026-05-01 — chore(deploy): trigger wild-west-bots rebuild for cfdcfa74 tsconfig fix [1 files]
+- `b1c4ef3c` 2026-05-01 — fix(soul-v2): correct bankr SKILL.md path; soften partner-gated edge-esmeralda refs [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `2dfcd609` 2026-05-02 — docs+scripts: P0 wake bug RCA + manual recovery scripts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `221c8be4` 2026-05-02 — fix: wake-from-hibernation paths + auth-cache clear + watchdog v2 [13 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `0523e5cf` 2026-05-02 — fix(health-check): verify gateway active after billing-cache restart (task #40) [1 files] _(ai-assisted)_
+- `f0db1dfc` 2026-05-02 — fix(watchdog,wake): QA fixes 1-4 — must-have before WATCHDOG_V2_MODE=active [4 files] _(ai-assisted)_
+- `e430426e` 2026-05-02 — fix(wake-vm): handle BOTH 'hibernating' AND 'suspended' states [1 files] _(ai-assisted)_
+- `6a34bd9a` 2026-05-02 — Merge: feat(consensus): partner skill for Consensus 2026 Miami [0 files] _(ai-assisted; merge)_
+- `fee5324d` 2026-05-02 — docs(rule-22): full incident history + fleet pusher for trim-not-nuke fix [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `5a3ef83d` 2026-05-03 — chore: trigger redeploy to pick up LINODE_SNAPSHOT_ID=private/38575292 [0 files] _(ai-assisted)_
+- `bfb09037` 2026-05-03 — ops(memory-deploy): operational scripts + fleet bump infra [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0a96bc16` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKENIZE_ENABLED=true [0 files] _(ai-assisted)_
+- `6d6364b5` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKEN_LAUNCH_SIMULATE=true [0 files] _(ai-assisted)_
+- `a0f943c8` 2026-05-04 — feat(matchpool): migration + apply script for intent matching schema [2 files] _(ai-assisted)_
+- `0c34ef11` 2026-05-04 — feat(matchpool): component 2 — embedding helper (lib/match-embeddings.ts) [2 files] _(ai-assisted)_
+- `f5d19bb9` 2026-05-04 — feat(matchpool): component 3 — intent extraction on user VMs [2 files] _(ai-assisted)_
+- `0b6585fe` 2026-05-04 — feat(matchpool): component 4 — VM-side intent sync + bridge to platform [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `c9368e88` 2026-05-04 — feat(matchpool): component 5 — POST /api/match/v1/profile [3 files] _(ai-assisted)_
+- `c80b0f23` 2026-05-04 — fix(bankr/sync): env-gated kill-switch for Path B re-discovery [1 files] _(ai-assisted)_
+- `6556a641` 2026-05-04 — chore: re-trigger Vercel build for 9844b926 (glass Trade button + WhyTokenize) [0 files] _(ai-assisted)_
+- `93094391` 2026-05-04 — feat(matchpool): components 6-10 + hardening pass — full pipeline shipped [13 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `5e91cb1a` 2026-05-04 — fix(bankr-card): plumb bankr_token_image_url through to avatar [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `8e140b50` 2026-05-04 — fix(bankr/sync): cron also honors DISABLE_BANKR_PATH_B_SYNC kill-switch [1 files] _(ai-assisted)_
+- `d099a5af` 2026-05-04 — fix(matchpool,bankr): canary v81 + Telegram sanitization + brand orange [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `d0a37af1` 2026-05-04 — test(matchpool): verification harness for heartbeat-bypass fix [1 files] _(ai-assisted)_
+- `41a59874` 2026-05-05 — revert(bankr/sync): drop DISABLE_BANKR_PATH_B_SYNC cron kill-switch [1 files] _(ai-assisted)_
+- `ff82a847` 2026-05-05 — tools(fleet): controlled v82 rollout at concurrency=3 [1 files] _(ai-assisted)_
+- `4b28f8f3` 2026-05-05 — feat(matchpool): Path 1 — Skills-page toggle for Consensus 2026 [9 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `17b1a20d` 2026-05-05 — fix(watchdog): suppress probe_healthy writes + 48h retention cron [4 files] _(ai-assisted)_
+- `bd13d54f` 2026-05-05 — feat(skills): consensus-2026 brand-image orb icon [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `161615ab` 2026-05-05 — feat(xmtp): agent-to-agent intro DMs for Consensus 2026 matching [7 files] _(ai-assisted)_
+- `0c5c0f3a` 2026-05-05 — fix(xmtp): receiver chat_id from DB, dynamic gateway token, no fallback reply [3 files] _(ai-assisted)_
+- `7dd896ab` 2026-05-05 — fix(xmtp): XMTP-user fallback + pending-disk recovery + 20/24h limit [3 files] _(ai-assisted)_
+- `bc6b589f` 2026-05-05 — fix(match): contact-info include_self bypasses request-array gate [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `579cd2a8` 2026-05-05 — feat(xmtp): application-layer delivery guarantees + chat_id backfill [9 files] _(ai-assisted)_
+- `6fa814df` 2026-05-05 — canary(v87): vm-050 install + smoke test for prctl-subreaper [1 files] _(ai-assisted)_
+- `6af00d03` 2026-05-05 — chore: re-trigger Vercel build after migration 20260505c applied [0 files]
+- `be0a5be6` 2026-05-05 — chore: re-trigger Vercel build after migration 20260505c applied [0 files]
+- `bd0dee0e` 2026-05-05 — chore: nudge file to re-trigger Vercel build (migration applied) [1 files]
+- `3e9adc4f` 2026-05-05 — Merge fleet/v87-prctl-subreaper: TasksMax 75→120 + prctl-subreaper@0.1.0 [0 files] _(merge)_
+- `50764e71` 2026-05-05 — test(xmtp): edge-case suite — 12/12 with delivery hardening [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `2c49732a` 2026-05-05 — chore(consensus): bundle deploy artifacts + design PRDs [6 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `aabb783e` 2026-05-05 — docs(consensus): launch kit — tweet copy, screenshot guide, technical receipts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `49e51b64` 2026-05-05 — feat(consensus): kill-switch + 30-min health alert cron [4 files] _(ai-assisted)_
+- `55052829` 2026-05-05 — test(consensus): real production intro fired end-to-end (1.77s) [2 files] _(ai-assisted)_
+- `178e10dc` 2026-05-05 — fix(consensus): per-receiver intro cap (default 3/24h) — Timour spam fix [1 files] _(ai-assisted)_
+- `f4a908fb` 2026-05-05 — fix(consensus): intro CTA points to sender's personal Telegram, not their bot [4 files] _(ai-assisted)_
+- `c92a5e37` 2026-05-05 — feat(consensus): self-healing telegram_handle backfill via Telegram getChat [5 files] _(ai-assisted)_
+- `bbaac024` 2026-05-05 — chore: nudge migration file to re-trigger Vercel build (schema cache lag) [1 files]
+- `991aa29b` 2026-05-05 — chore(cron): reduce Supabase load — health-check 1m→2m, cloud-init-poll 2m→5m [1 files] _(ai-assisted)_
+- `1b36b078` 2026-05-05 — perf(health-check): batch Pass 0 timestamp UPDATEs (855 → 2 queries) [1 files] _(ai-assisted)_
+- `aa816e58` 2026-05-05 — feat(consensus): Draft C intro copy — match count + cap-controls footer [5 files] _(ai-assisted)_
+- `d28bf919` 2026-05-05 — fix(reconcile): broaden consensus glob to ./scripts/**/*.py [1 files] _(ai-assisted)_
+- `cb4d20c3` 2026-05-05 — fix(reconcile): use ./scripts/**/* — exact working glob shape [1 files]
+- `48c98a93` 2026-05-05 — fix(reconcile): add ./scripts/*.py for top-level matchpool files [1 files]
+- `af38a16c` 2026-05-05 — fix(consensus): sender-side match notification refresh [3 files] _(ai-assisted)_
+- `5e710334` 2026-05-05 — fix(reconcile-fleet): touch route.ts to bust Vercel's nft trace cache [1 files] _(ai-assisted)_
+- `f5122470` 2026-05-09 — fix(db): usage_log 14-day retention via pg_cron + BRIN index swap + monitoring [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `6a11e06e` 2026-05-09 — fix(reconcile-fleet): add missing lib/manifest-integrity.ts + pre-commit nft cache-bust [2 files] _(ai-assisted)_
+- `55d1fe5d` 2026-05-09 — feat(gbrain): Phase 1 install scripts (canary install + selection) [3 files] _(ai-assisted)_
+- `ddcee2e4` 2026-05-11 — chore(scripts): stuck-head triage + selective-flip helpers [5 files] _(ai-assisted)_
+- `035b3b11` 2026-05-11 — docs: lying-DB fleet census — 27% rate, 12 of 44 healthy cv≥88 VMs [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `50640a55` 2026-05-11 — feat(gbrain): Phase 1 uninstall scripts (mirror of install) [2 files] _(ai-assisted)_
+- `d4e3dae5` 2026-05-11 — chore(scripts): emergency fleet sweep + reprobe (2026-05-11) [3 files] _(ai-assisted)_
+- `36ea41e1` 2026-05-11 — chore(scripts): session-backups bloat probe + emergency purge [2 files] _(ai-assisted)_
+- `6db05d8e` 2026-05-11 — fix(gateway-proxy): stop silently downgrading real user messages to MiniMax [1 files] _(ai-assisted)_
+- `e2380e68` 2026-05-11 — feat(reconcile-fleet): persistent failure tracking + auto-quarantine + alerts [5 files] _(ai-assisted)_
+- `871a78c5` 2026-05-11 — fix(soul-v2): cron lock acquisition in canary script + ip_address column [2 files] _(ai-assisted)_
+- `90feea10` 2026-05-11 — fix(soul-v2): AGENTS.md threshold + ip_address column in fleet rollout [2 files] _(ai-assisted)_
+- `bd3f671e` 2026-05-11 — fix(soul-v2): fleet rollout whitelist race on concurrent migrateOne calls [1 files] _(ai-assisted)_
+- `ddb58683` 2026-05-11 — fix(soul-v2): fleet rollout process.exit() bypasses finally — leaks cron lock [1 files] _(ai-assisted)_
+- `437504db` 2026-05-11 — feat(soul-v2): --no-strict opt-in flag for fleet rollout [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `e7d927b3` 2026-05-11 — feat(gbrain+monitoring): install pipeline + forensic handoff + 3 ops crons [9 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `2b985da0` 2026-05-11 — feat(phase4): gbrain-coverage-check cron + edge_city readiness probe [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0144181a` 2026-05-12 — feat(snapshot-bake): canonical fresh-nanode bake toolchain (cleanup + validation + runbook) [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `1c44d5e9` 2026-05-12 — fix(onboarding): break post-checkout loop + recover from configure partial-failure (Rule 33) [5 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `6671f651` 2026-05-12 — Merge branch 'feat/matchpool-outcomes-ingest' — §5.2 matching engine infrastructure [49 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `03df7ef1` 2026-05-12 — feat(telegram): one-shot fix for VMs missing channels.telegram.botToken on disk [1 files] _(ai-assisted)_
+- `c944a3b0` 2026-05-12 — fix(auth): plug dual-account hole — partner cookie now applies to existing users [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `4a5fddec` 2026-05-12 — feat(edge): branded Open Graph share card for /edge [4 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `273e1609` 2026-05-12 — fix(replenish-pool): orphan-collision defense + visible alerts [2 files] _(ai-assisted)_
+- `39d0e237` 2026-05-12 — fix(vm-status): atomic health_status on terminal flips + defense filter [13 files] _(ai-assisted)_
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed [3 files] _(ai-assisted)_
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit [11 files] _(ai-assisted)_
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling [13 files] _(ai-assisted)_
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift [1 files] _(ai-assisted)_
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper [11 files] _(ai-assisted)_
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows [3 files] _(ai-assisted)_
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `48ea0e8f` 2026-05-12 — Merge feat/privacy-cutover-bypass-skip: privacy cutover bypass-skip + abort guard + .env.ssh-key fix [0 files] _(merge)_
+
+### Feature (user-facing) (460)
+
+- `28735b00` 2026-03-02 — chore: add IndexNow key verification file [1 files] _(ai-assisted)_
+- `0fa077c6` 2026-03-02 — refactor: switch X/Twitter Search from proxy to BYOK [3 files] _(multi: [feature, docs]; ai-assisted)_
+- `9920fa9f` 2026-03-02 — seo: add authoritative outbound links to all 23 blog posts [23 files] _(ai-assisted)_
+- `745dd209` 2026-03-02 — seo: GEO audit fixes — FAQ sync, llms.txt expansion, use-case links, about page [6 files] _(ai-assisted)_
+- `fa88771a` 2026-03-03 — ui: add Blog link to landing page navbar [1 files] _(ai-assisted)_
+- `24418a61` 2026-03-03 — ui: add Lenis smooth scroll to all marketing pages [1 files] _(ai-assisted)_
+- `8b0aace8` 2026-03-03 — feat: overhaul /use-cases page — 6 new use cases, vivid descriptions [1 files] _(ai-assisted)_
+- `16739680` 2026-03-03 — copy: update crypto use case to highlight multi-marketplace earning [1 files] _(ai-assisted)_
+- `04738568` 2026-03-03 — fix: show Dashboard instead of Sign Up in marketing header when logged in [1 files] _(ai-assisted)_
+- `ffe5bc61` 2026-03-04 — feat: comprehensive Polymarket + Kalshi setup UX on earn page [2 files] _(ai-assisted)_
+- `6afece12` 2026-03-06 — feat: add /billing/credit-packs page for media credit pack purchases [1 files] _(ai-assisted)_
+- `5a7f8043` 2026-03-06 — fix: skills toggle shows green when enabled, grey when disabled [1 files] _(ai-assisted)_
+- `9b62518e` 2026-03-06 — fix: skills toggle — green enabled state, glass UI, bounce animation [1 files] _(ai-assisted)_
+- `2bfca09c` 2026-03-07 — fix: restrict file browser — protect system files, show as locked [2 files] _(ai-assisted)_
+- `e1023847` 2026-03-07 — fix: skills grid overflow + gateway 409 conflict self-healing [1 files] _(ai-assisted)_
+- `d3ed887b` 2026-03-07 — fix: upgrade skill icons — official brand logos + Lucide icons [12 files] _(ai-assisted)_
+- `33c5c6ed` 2026-03-07 — fix: contain wallet panel inside skill card as collapsible accordion [1 files] _(ai-assisted)_
+- `45bf6308` 2026-03-07 — fix: fixed-height skill cards, wallet popover, shorter Solana description [1 files] _(ai-assisted)_
+- `4508b9e8` 2026-03-07 — fix: use 3D Polymarket app icon matching Kalshi style [1 files] _(ai-assisted)_
+- `48f8e196` 2026-03-07 — feat: glass UI filter section + Earn category on Skills page [1 files] _(ai-assisted)_
+- `4d9f22c9` 2026-03-07 — feat: glass UI for all buttons on Skills & Integrations page [1 files] _(ai-assisted)_
+- `93595e79` 2026-03-07 — fix: replace heavy dark pills with frosted glass UI [1 files] _(ai-assisted)_
+- `553ff184` 2026-03-07 — fix: add clean drop shadow to active category pills [1 files] _(ai-assisted)_
+- `30c46142` 2026-03-07 — fix: marketplace category pills now have animated layoutId transition [1 files] _(ai-assisted)_
+- `2711fa5a` 2026-03-07 — fix: soften active pill shadow from heavy to subtle [1 files] _(ai-assisted)_
+- `f84d4756` 2026-03-07 — fix: marketplace search bar now uses frosted glass UI [1 files] _(ai-assisted)_
+- `63f3fbcb` 2026-03-07 — fix: Submit a Skill button now uses dark frosted glass UI [1 files] _(ai-assisted)_
+- `29f14654` 2026-03-07 — fix: Submit a Skill button now truly translucent glass [1 files] _(ai-assisted)_
+- `fbe00923` 2026-03-07 — fix: Submit a Skill button dark glass with inner highlight [1 files] _(ai-assisted)_
+- `6cc459d7` 2026-03-07 — fix: add Clawlancer Bounties card to Marketplaces + green toggle style [1 files] _(ai-assisted)_
+- `97ee63de` 2026-03-07 — fix: use actual brand logos for Clawlancer and Virtuals marketplace cards [1 files] _(ai-assisted)_
+- `dd988bb7` 2026-03-07 — fix: remove em dashes from Marketplaces section copy [1 files] _(ai-assisted)_
+- `aa7a2e66` 2026-03-07 — fix: remove all em dashes from dashboard page user-visible text [1 files] _(ai-assisted)_
+- `b9ee9b7e` 2026-03-07 — fix: apply glass UI to model selector dropdown on dashboard [1 files] _(ai-assisted)_
+- `89ea25ae` 2026-03-07 — fix: show Telegram Bot Token input for all users, not just those with Telegram enabled [1 files] _(ai-assisted)_
+- `e85bce47` 2026-03-08 — feat: add /dashboard/credits page and GET /api/credits/media endpoint [2 files] _(ai-assisted)_
+- `06f4b067` 2026-03-08 — feat: add Credits link to dashboard overflow nav [1 files] _(ai-assisted)_
+- `4bdbfb59` 2026-03-08 — fix: redesign credits page for light theme — glass cards, icon badges, hover lift, structured packs [1 files] _(ai-assisted)_
+- `dd4e64d5` 2026-03-08 — fix: round usage numbers on dashboard to prevent floating point display [1 files] _(ai-assisted)_
+- `d232468d` 2026-03-09 — fix: show waitlist form by default on signup when ?ref= present + add "Referred by" column to HQ invites [3 files] _(ai-assisted)_
+- `eb4b4bde` 2026-03-11 — feat: World ID 4.0 migration + AgentBook dashboard registration flow [7 files] _(ai-assisted)_
+- `d0f5b13b` 2026-03-11 — fix: fetch rpContext for verified users + prevent status cache [1 files] _(ai-assisted)_
+- `bc9b9c5d` 2026-03-11 — fix: add onError + console logging to World ID widget for debugging [1 files] _(ai-assisted)_
+- `cbb0ce36` 2026-03-11 — fix: World ID 4.0 — strip RP_ID newline, dynamic import, fetch on click [5 files] _(ai-assisted)_
+- `c54b1f1f` 2026-03-11 — fix: force QR code on desktop for World ID widget [1 files] _(ai-assisted)_
+- `6e181b82` 2026-03-11 — debug: enable IDKIT_DEBUG and log rp_context on verify click [1 files] _(ai-assisted)_
+- `0aa8b8ff` 2026-03-11 — fix(instaclaw): show World ID widget error code prominently on screen [1 files] _(ai-assisted)_
+- `42b4e450` 2026-03-11 — fix(instaclaw): wrap QRCodeSVG dynamic import in default export [1 files] _(ai-assisted)_
+- `9edca75c` 2026-03-11 — fix(instaclaw): move polling useEffect above early returns (React #310) [1 files] _(ai-assisted)_
+- `eb2745bb` 2026-03-11 — fix(instaclaw): handle non-JSON responses from start-registration [1 files] _(ai-assisted)_
+- `975efc69` 2026-03-11 — fix(instaclaw): make AgentBook registration non-blocking (timeout fix) [3 files] _(ai-assisted)_
+- `138ab752` 2026-03-12 — fix: update all Sonnet 4.5 labels to Sonnet 4.6 across UI and API [9 files] _(ai-assisted)_
+- `2e7d90ec` 2026-03-13 — feat: add WAITLIST_MODE kill switch for instant landing page revert [3 files] _(ai-assisted)_
+- `5b9b3e51` 2026-03-13 — fix: optimize hero CTA buttons for mobile screen sizes [1 files] _(ai-assisted)_
+- `025df537` 2026-03-13 — fix: bump mobile hero button sizes for larger phones (Pro Max) [1 files] _(ai-assisted)_
+- `eff4a08a` 2026-03-13 — fix: smooth scroll on Learn More button via Lenis instead of jerky anchor jump [1 files] _(ai-assisted)_
+- `0168b23c` 2026-03-14 — feat: add support button to landing page nav and dashboard More dropdown [2 files] _(ai-assisted)_
+- `0109bde7` 2026-03-14 — fix: remove support button from landing page hero nav [1 files] _(ai-assisted)_
+- `fa985439` 2026-03-14 — fix: smooth scroll to Human Verification section from dashboard banner [3 files] _(ai-assisted)_
+- `65ead87f` 2026-03-14 — fix: poll for hash target element before scrolling on settings page [1 files] _(ai-assisted)_
+- `75a49864` 2026-03-14 — feat: add "don't leave this screen" note and contact support link to deploy page [1 files] _(ai-assisted)_
+- `0ec9a908` 2026-03-14 — feat: production-ready Chrome Extension Relay — protocol rewrite + dashboard UI [4 files] _(ai-assisted)_
+- `4fffdd25` 2026-03-16 — feat: add /notify email signup page with Discord CTA [4 files] _(ai-assisted)_
+- `05965f68` 2026-03-17 — fix: empty chat bubbles + model picker click-outside bug [1 files] _(ai-assisted)_
+- `7add293c` 2026-03-17 — fix: Polymarket dashboard panel can't read VM files [2 files] _(ai-assisted)_
+- `ac330c3a` 2026-03-17 — fix: log console.error on failed VM file fetches instead of silently returning null [2 files] _(ai-assisted)_
+- `437ddd3a` 2026-03-23 — style: glass morphism UI overhaul for World mini app [9 files] _(ai-assisted)_
+- `a1c299c5` 2026-03-23 — fix: critical mini app integration gaps — auth, deep links, middleware [14 files] _(ai-assisted)_
+- `70cd0f01` 2026-03-23 — fix: account portability — prevent duplicate accounts across platforms [10 files] _(ai-assisted)_
+- `0bb44c76` 2026-03-23 — fix: splash screen hang — MiniKit init race + fetch timeout [2 files] _(ai-assisted)_
+- `8e1d98a9` 2026-03-23 — fix: force past splash screen with 3s timeout + inline styles + debug logs [2 files] _(ai-assisted)_
+- `785d3baf` 2026-03-23 — style: onboarding redesign — light theme, Instrument Serif, no emojis [3 files] _(ai-assisted)_
+- `3a8033b0` 2026-03-23 — style: 'Claim your free' + size up 'AI agent' to match width [1 files] _(ai-assisted)_
+- `5286b11f` 2026-03-23 — feat: scrolling marquee use-case pills on onboarding screen [2 files] _(ai-assisted)_
+- `86c7a2cb` 2026-03-23 — style: match landing page glass pill style — white bg, multi-layer inset shadows [1 files] _(ai-assisted)_
+- `d0496f37` 2026-03-23 — style: full onboarding layout overhaul — native iOS app feel [1 files] _(ai-assisted)_
+- `2f8f569b` 2026-03-23 — style: pill-shaped CTA button, more bottom padding, horizontal breathing room [1 files] _(ai-assisted)_
+- `c3559864` 2026-03-23 — feat: replace app icon with live spots-open pill from landing page [2 files] _(ai-assisted)_
+- `734e94e2` 2026-03-23 — style: bump 'AI agent' to 60px to match 'Claim your free' width [1 files] _(ai-assisted)_
+- `328e9d29` 2026-03-23 — fix: spots pill not rendering — CORS blocked cross-origin fetch [2 files] _(ai-assisted)_
+- `db5c5b89` 2026-03-23 — style: larger hero title, bigger subtitle, shift content upward [1 files] _(ai-assisted)_
+- `c9c80227` 2026-03-23 — style: refine hero layout — upper-third placement, balanced title sizes [1 files] _(ai-assisted)_
+- `4c836973` 2026-03-23 — feat: scrolling testimonial cards fill gap between marquee and CTA [2 files] _(ai-assisted)_
+- `e2b38ec5` 2026-03-23 — feat: add pixel art avatars to testimonial cards [1 files] _(ai-assisted)_
+- `0634638e` 2026-03-23 — style: widen subtitle to 2 lines instead of 3 [1 files] _(ai-assisted)_
+- `df6ee56a` 2026-03-23 — copy: CTA → 'Claim my agent' [1 files] _(ai-assisted)_
+- `15b57089` 2026-03-23 — layout: center marquees between subtitle and CTA button [1 files] _(ai-assisted)_
+- `884c1e03` 2026-03-23 — fix: auth flow — cookie sameSite, SIWE fallback, detailed error logging [3 files] _(ai-assisted)_
+- `526f6ebd` 2026-03-23 — fix: serialize auth errors properly — show full text not [object Object] [2 files] _(ai-assisted)_
+- `8fb8265e` 2026-03-23 — fix: better Supabase error reporting for user creation failure (23502) [2 files] _(ai-assisted)_
+- `c9cf340d` 2026-03-23 — feat: collect email during World mini app onboarding [3 files] _(ai-assisted)_
+- `174c0d9b` 2026-03-23 — copy: explain why we collect email — connects agent across all platforms [1 files] _(ai-assisted)_
+- `32665c0f` 2026-03-23 — fix: verify-failed screen — fix all 3 buttons + add verify logging [1 files] _(ai-assisted)_
+- `f19c4253` 2026-03-24 — fix: action ID → 'verify-instaclaw-agent' (was 'instaclaw-verify-human') [2 files] _(ai-assisted)_
+- `75e42d59` 2026-03-24 — fix: email autofill attrs + remove em dash from subtitle [1 files] _(ai-assisted)_
+- `ef67311e` 2026-03-24 — debug: full logging on World ID verify — payload, response, app ID, action [1 files] _(ai-assisted)_
+- `6a169a74` 2026-03-24 — fix: handle max_verifications_reached as success + skip if already verified [3 files] _(ai-assisted)_
+- `dcbaa82f` 2026-03-24 — fix: delegation screen — realistic credits, orange button, $INSTACLAW option [2 files] _(ai-assisted)_
+- `48efad5b` 2026-03-24 — style: $INSTACLAW → disabled 'Coming Soon' with anticipation copy [1 files] _(ai-assisted)_
+- `7ef161eb` 2026-03-24 — fix: WLD delegation 5→20 WLD for 150 credits / ~3 days [3 files] _(ai-assisted)_
+- `c5efee1e` 2026-03-24 — debug: full error display on delegation flow [1 files] _(ai-assisted)_
+- `c1b4c89e` 2026-03-24 — fix: delegate/initiate — full error logging, manual token decimals, no minikit-js server import [1 files] _(ai-assisted)_
+- `6d4e53d4` 2026-03-25 — debug: show MiniKit.pay payload on screen before calling [1 files] _(ai-assisted)_
+- `24ef9ed1` 2026-03-25 — debug: two-step delegation — show payload, then confirm to fire MiniKit.pay [1 files] _(ai-assisted)_
+- `c5d5c8c6` 2026-03-25 — fix: trim newline from recipient address — was breaking MiniKit.pay [3 files] _(ai-assisted)_
+- `65d57f7d` 2026-03-25 — fix: delegation flow — retry polling, immediate credit grant, clean UI [2 files] _(ai-assisted)_
+- `e74fb9fb` 2026-03-25 — fix: WLD delegation 20→25 WLD everywhere [3 files] _(ai-assisted)_
+- `172205a8` 2026-03-25 — fix: home page crash when agent not yet provisioned [2 files] _(ai-assisted)_
+- `95e6035f` 2026-03-25 — feat: step-by-step provisioning progress UI (matches instaclaw.io) [2 files] _(ai-assisted)_
+- `fff1ea79` 2026-03-25 — fix: provisioning transitions after completion — no more stuck state [1 files] _(ai-assisted)_
+- `4ffe421b` 2026-03-25 — style: scale up provisioning screen for mobile — larger icons, text, spacing [1 files] _(ai-assisted)_
+- `3b8117cd` 2026-03-25 — fix: 'All systems go' no longer stuck — shows action buttons instead of auto-redirect loop [1 files] _(ai-assisted)_
+- `95b92d3e` 2026-03-25 — fix: wrap ALL server components in try/catch — prevent crash for World wallet users [4 files] _(ai-assisted)_
+- `fbf40d9e` 2026-03-25 — fix: credit grant uses direct update instead of RPC [1 files] _(ai-assisted)_
+- `3fda697e` 2026-03-25 — fix: remove instaclaw.io/dashboard links — keep users in mini app [3 files] _(ai-assisted)_
+- `eec5eee1` 2026-03-25 — feat: wallet-based auto-login — persist sessions across mini app opens [3 files] _(ai-assisted)_
+- `bf0ed131` 2026-03-25 — fix: break provisioning→dashboard loop + debug logging for getAgentStatus [2 files] _(ai-assisted)_
+- `4c1cb74d` 2026-03-25 — fix: column 'model' → 'default_model' — root cause of dashboard not loading [3 files] _(ai-assisted)_
+- `81527b45` 2026-03-25 — fix: World Chat → 'Coming soon — use Telegram for now' [1 files] _(ai-assisted)_
+- `79e19647` 2026-03-25 — feat: Phase 2.5 + 3 — autonomous mode, audit logging, dashboard, billing gate, docs [8 files] _(ai-assisted)_
+- `ac90bcc8` 2026-03-25 — fix: new user VM provisioning — assign from pool before configure [17 files] _(multi: [feature, docs]; ai-assisted)_
+- `c3550f73` 2026-03-25 — fix: P0+P1 launch blockers — 6 critical fixes for World mini app [4 files] _(ai-assisted)_
+- `b6ab37bf` 2026-03-25 — feat: Live Desktop Viewer — Phase 0+1 prototype [3 files] _(ai-assisted)_
+- `3b2862fa` 2026-03-25 — feat: XMTP fully working — gateway bridge + World Chat deep link [3 files] _(ai-assisted)_
+- `2152353b` 2026-03-25 — feat: in-app chat UI — talk to agent without leaving the mini app [2 files] _(ai-assisted)_
+- `247fe79c` 2026-03-26 — fix: connection stability + 13 UX improvements from Mucus live testing [6 files] _(multi: [feature, docs]; ai-assisted)_
+- `25aab9b3` 2026-03-26 — feat: test-deeplinks page — 9 World Chat deep link variations for Andy [1 files] _(ai-assisted)_
+- `29dd6cd7` 2026-03-26 — feat: Test Deep Links button on Settings tab [1 files] _(ai-assisted)_
+- `908578ac` 2026-03-26 — test: Chat button → MiniKit.chat() with agent XMTP address [1 files] _(ai-assisted)_
+- `9ceb6764` 2026-03-26 — feat: pairing codes + zero-friction dispatch onboarding (items 1-6) [7 files] _(ai-assisted)_
+- `091d253b` 2026-03-26 — feat: one-click "Connect Your Computer" button — zero terminal knowledge needed [2 files] _(ai-assisted)_
+- `3427b149` 2026-03-26 — feat: in-app chat as primary, World Chat grayed out (coming soon) [4 files] _(ai-assisted)_
+- `9eee81b1` 2026-03-26 — feat: agent dispatch onboarding in SOUL.md + live page dispatch section [1 files]
+- `fdcc3e1d` 2026-03-26 — feat: Command Center — full dashboard replica in World mini app [2 files] _(ai-assisted)_
+- `fdba0659` 2026-03-26 — fix: docs Quick Start — add one-click connect as primary path, pairing code as secondary [1 files]
+- `bb150ce4` 2026-03-26 — style: input bar matches instaclaw.io glass UI — + button, model picker, mic, send [1 files] _(ai-assisted)_
+- `cae5e7f6` 2026-03-26 — redesign: /live page — mission control dashboard for agent desktop [1 files] _(ai-assisted)_
+- `4b082a20` 2026-03-26 — fix: auto-login retries + 'Sign in' fallback for returning users [1 files] _(ai-assisted)_
+- `3b7dbd24` 2026-03-26 — fix: Remote Control header — shorten title to prevent wrapping, remove em dash from subtitle [1 files]
+- `4ccd7d7f` 2026-03-26 — fix: sign-in link moved inside CTA section — no more overlap [2 files] _(ai-assisted)_
+- `72ec5320` 2026-03-26 — style: replace Telegram footer with compact dismissable info pill at top [1 files] _(ai-assisted)_
+- `9363f913` 2026-03-26 — fix: remove em dash from info pill [1 files] _(ai-assisted)_
+- `3d7c079f` 2026-03-26 — fix: input bar — clean single border, no double-layer effect [1 files] _(ai-assisted)_
+- `d121fce6` 2026-03-26 — polish: /live page — 7 targeted fixes [1 files]
+- `fde4c4ae` 2026-03-26 — feat: personalized suggestion chips from instaclaw.io API [2 files] _(ai-assisted)_
+- `acfdf3a2` 2026-03-26 — fix: center empty states + remove em dash [1 files] _(ai-assisted)_
+- `d9c450a0` 2026-03-26 — feat: inline noVNC viewer — live desktop streams inside the /live page [5 files] _(ai-assisted)_
+- `c3836943` 2026-03-26 — feat: functional + menu, model picker, and voice input on Command Center [1 files] _(ai-assisted)_
+- `0e70045f` 2026-03-26 — fix: suggestions — proxy GET support + correct method call [3 files] _(ai-assisted)_
+- `b6e32f87` 2026-03-26 — fix: robust suggestion chips — better defaults + cache-first loading [1 files] _(ai-assisted)_
+- `f386d7e7` 2026-03-26 — feat: Google account connection for World mini app [13 files] _(ai-assisted)_
+- `14e0ee37` 2026-03-26 — feat: add Google disconnect button in mini app Settings [2 files] _(ai-assisted)_
+- `57e059b7` 2026-03-26 — fix: show "Google connected" badge on Home tab + trigger deploy [1 files] _(ai-assisted)_
+- `c0a0c5f7` 2026-03-26 — fix: reorder Home tab — Chat button above Google connect card [1 files] _(ai-assisted)_
+- `0e57fcb3` 2026-03-26 — fix: replace all WLD "stake/staking" language with "pay/credits" [3 files] _(ai-assisted)_
+- `cfdddf8a` 2026-03-26 — fix: Google connect button — glass styling + multicolor G icon [1 files] _(ai-assisted)_
+- `7b046c2c` 2026-03-26 — fix: Chat button — glass morphism styling while keeping orange [1 files] _(ai-assisted)_
+- `f401085e` 2026-03-26 — fix: atomic credit addition in WLD delegate/confirm (Phase 0) [3 files] _(multi: [feature, docs]; ai-assisted)_
+- `8a01dc61` 2026-03-26 — feat: P1 — live desktop thumbnail on dashboard home page [4 files] _(ai-assisted)_
+- `99331f3e` 2026-03-26 — feat: Phase 1 — subscription detection in mini app [6 files] _(ai-assisted)_
+- `6b3bcd1c` 2026-03-26 — polish: idle detection on desktop thumbnail — moon icon + 'Agent is dreaming' overlay [1 files]
+- `cc2d1654` 2026-03-26 — feat: P4 — shareable agent clips (client-side canvas recording) [2 files] _(ai-assisted)_
+- `05eda895` 2026-03-26 — feat: Phase 3 — dashboard access gate behind feature flag [1 files] _(ai-assisted)_
+- `d924250c` 2026-03-26 — fix: 3 bugs from comprehensive audit [3 files] _(ai-assisted)_
+- `af38ae4a` 2026-03-26 — fix: subscribers can still top up with WLD for overflow credits [2 files] _(ai-assisted)_
+- `bc5acdeb` 2026-03-26 — fix: Top up with WLD button — orange glass, not teal [1 files] _(ai-assisted)_
+- `264d9a28` 2026-03-26 — fix: add lightning icon to Top up with WLD button [1 files] _(ai-assisted)_
+- `a3aaf28a` 2026-03-26 — fix: live connection status polling, success state, animated transitions [2 files] _(ai-assisted)_
+- `1654e1ca` 2026-03-26 — feat: full Skills tab — category filters, toggle switches, dual auth [2 files] _(ai-assisted)_
+- `104e5af2` 2026-03-26 — feat: editable agent name on Home tab [4 files] _(ai-assisted)_
+- `177fec3c` 2026-03-26 — fix: skills data parsing — API returns { skills: { ... } } not flat [1 files] _(ai-assisted)_
+- `9a34bb16` 2026-03-26 — feat: skills page polish — green toggles, expand animation, loading spinner [1 files] _(ai-assisted)_
+- `10ce85f7` 2026-03-26 — fix: skills empty state — tab-aware text + vertically centered [1 files] _(ai-assisted)_
+- `82729c4f` 2026-03-26 — fix: center empty state in available space with min-height 50vh [1 files] _(ai-assisted)_
+- `87b7a9a3` 2026-03-27 — fix: gray out unconnected integrations with "Coming Soon" badge [1 files] _(ai-assisted)_
+- `1163f683` 2026-03-27 — fix: WLD top-up works directly from Settings — no page jump [1 files] _(ai-assisted)_
+- `89a12483` 2026-03-27 — feat: glass tab switcher with bouncy sliding pill indicator [1 files] _(ai-assisted)_
+- `694ad07a` 2026-03-27 — feat: smooth page transitions + glass tab bar with sliding pill [3 files] _(ai-assisted)_
+- `3c58565b` 2026-03-27 — fix: restore command center layout — pass flex height through transition [2 files] _(ai-assisted)_
+- `8cdb9b40` 2026-03-27 — fix: snappy page transitions — no exit delay, instant content swap [1 files] _(ai-assisted)_
+- `a72b218c` 2026-03-27 — fix: remove PageTransition wrapper + add instant loading skeletons [3 files] _(ai-assisted)_
+- `5b028a80` 2026-03-27 — feat: floating pill-shaped nav bar with sliding indicator [1 files] _(ai-assisted)_
+- `9c0ce28b` 2026-03-27 — fix: truly floating nav bar — transparent bg, content scrolls behind [2 files] _(ai-assisted)_
+- `dd62aae8` 2026-03-27 — fix: Skills + Chat pages — transparent bg for floating nav bar [2 files] _(ai-assisted)_
+- `0dfd27b8` 2026-03-27 — feat: full glass UI upgrade on Home tab [2 files] _(ai-assisted)_
+- `d225fcb9` 2026-03-27 — feat: full glass UI upgrade on Command Center page [1 files] _(ai-assisted)_
+- `f4c8cd50` 2026-03-27 — feat: 3D glass orb effect on Credits and Earnings icons [1 files] _(ai-assisted)_
+- `f94fe9eb` 2026-03-27 — fix: chat UX — auto-switch to Chat tab, glass bubbles, typing dots [2 files] _(ai-assisted)_
+- `9d80463b` 2026-03-27 — feat: streaming chat responses + toggles — matches web app [2 files] _(ai-assisted)_
+- `19b2625f` 2026-03-27 — fix: pin header + input, only messages scroll (iMessage pattern) [2 files] _(ai-assisted)_
+- `b3864dc4` 2026-03-27 — feat: fully functional Tasks tab — create, list, filter, poll [3 files] _(ai-assisted)_
+- `eb753e84` 2026-03-27 — fix: TCP keepalive on WebSocket — prevents relay disconnect after 2-3 min [4 files] _(ai-assisted)_
+- `fdbc1218` 2026-03-27 — feat: task cards match web app exactly — spinners, orbs, pills, status [1 files] _(ai-assisted)_
+- `7bb55b5b` 2026-03-27 — fix: suggestion chips always visible on Tasks tab [1 files] _(ai-assisted)_
+- `c5dcd010` 2026-03-27 — fix: task execution calls gateway directly — no instaclaw.io proxy [4 files] _(ai-assisted)_
+- `38b3f0ca` 2026-03-27 — fix: remove duplicate task cards — single placeholder, clean replace [1 files] _(ai-assisted)_
+- `78eaabc2` 2026-03-27 — feat: task card expand/collapse with result, actions — matches web app [1 files] _(ai-assisted)_
+- `b7147826` 2026-03-27 — feat: recurring task pills match web app — Running now, streak, frequency [1 files] _(ai-assisted)_
+- `abcdbb8c` 2026-03-27 — feat: Batch 1 — full task management matching web app [4 files] _(ai-assisted)_
+- `ded5a8ed` 2026-03-27 — fix: expanded task card no longer clips — buttons always visible [1 files] _(ai-assisted)_
+- `49e9c4ef` 2026-03-27 — fix: Edit button → Edit & re-run — edits prompt and re-executes [1 files] _(ai-assisted)_
+- `e0444775` 2026-03-27 — feat: Batch 2 — refine, delivery status, failed badge, toast, failures [2 files] _(ai-assisted)_
+- `983c39e4` 2026-03-27 — fix: match Claude/Anthropic brand orange across entire mini app [15 files] _(ai-assisted)_
+- `8d046b44` 2026-03-27 — fix: cleaner glass Chat button — more translucent, sharper depth [1 files] _(ai-assisted)_
+- `86cb9d51` 2026-03-27 — fix: replace all hardcoded dispatch versions with @latest [4 files] _(ai-assisted)_
+- `39a035e8` 2026-03-27 — feat: run history for recurring tasks — final 1:1 parity with web app [2 files] _(ai-assisted)_
+- `88cef868` 2026-03-27 — fix: 11 visual differences matched to web app — pixel parity [1 files] _(ai-assisted)_
+- `618b4ca8` 2026-03-27 — fix: add TASK_META suffix to task execution — enables tool orbs + recurring detection [3 files] _(ai-assisted)_
+- `9548895a` 2026-03-28 — docs: comprehensive rewrite of dispatch docs page [1 files] _(ai-assisted)_
+- `6b72c590` 2026-03-28 — docs: make autonomous mode prominent in Quick Start, example, and Modes [1 files] _(ai-assisted)_
+- `3a46120b` 2026-03-28 — feat: archive tasks instead of deleting — accessible from Settings [5 files] _(ai-assisted)_
+- `9ea54a75` 2026-03-28 — feat: render markdown in task results + chat bubbles [3 files] _(ai-assisted)_
+- `94c1c76e` 2026-03-28 — fix: scroll bug when switching Tasks/Chat sub-tabs [2 files] _(ai-assisted)_
+- `2306a3d8` 2026-03-28 — fix: header pinned — matches web app three-tier flex pattern [2 files] _(ai-assisted)_
+- `b260ea29` 2026-03-28 — fix: position:fixed chat page — breaks out of parent scroll entirely [1 files] _(ai-assisted)_
+- `3f7f1c6b` 2026-03-28 — fix: disable parent scroll-area on chat page via CSS override [1 files] _(ai-assisted)_
+- `ae955e33` 2026-03-28 — feat: multi-conversation chat — sidebar, DB persistence, 1:1 with web app [7 files] _(ai-assisted)_
+- `5a4f86a6` 2026-03-28 — fix: recurring detection + better error messages [3 files] _(ai-assisted)_
+- `55902194` 2026-03-28 — fix: hourly frequency detection for "whenever" + "real-time" keywords [1 files] _(ai-assisted)_
+- `f51205af` 2026-03-28 — fix: chat sidebar matches web app exactly + conversation switching fixed [2 files] _(ai-assisted)_
+- `6b8b5358` 2026-03-28 — fix: distinct tool orb icons per tool type — matches web app [1 files] _(ai-assisted)_
+- `d6310afb` 2026-03-30 — feat: Google OAuth pairing flow, personalization modal, AgentBook registration, glass UI fixes [22 files] _(ai-assisted)_
+- `47595eca` 2026-03-30 — feat: World ID propagation parity — VM, marketplace, proof storage [2 files] _(ai-assisted)_
+- `56ebef61` 2026-03-30 — feat: add proxy route for World ID propagation [1 files] _(ai-assisted)_
+- `45ec330d` 2026-03-30 — feat: World ID "Sync to agent" button on Settings page [1 files] _(ai-assisted)_
+- `dd6ec2dc` 2026-03-30 — fix: hide AgentBook card when wallet not ready instead of showing error [1 files] _(ai-assisted)_
+- `3b373675` 2026-03-30 — fix: upgrade AgentBook register button to match glass UI standards [1 files] _(ai-assisted)_
+- `c58ae7a2` 2026-03-30 — fix: upgrade Sync to agent button to glass UI [1 files] _(ai-assisted)_
+- `fa715431` 2026-03-30 — fix: AgentBook bridge URL button — try window.open + href fallback [1 files] _(ai-assisted)_
+- `baf6793c` 2026-03-30 — fix: AgentBook verify button uses worldapp:// deep link for native flow [1 files] _(ai-assisted)_
+- `f1abad6a` 2026-03-30 — fix: AgentBook verify — use copy link approach (WebView can't open World ID natively) [1 files] _(ai-assisted)_
+- `6640c640` 2026-03-30 — feat: AgentBook one-tap registration via MiniKit native verify [2 files] _(ai-assisted)_
+- `a6a68c67` 2026-03-30 — fix: use existing verify-instaclaw-agent action for AgentBook registration [1 files] _(ai-assisted)_
+- `112c98e5` 2026-03-30 — fix: AgentBook relay — use AgentBook app_id, strip extra fields [1 files] _(ai-assisted)_
+- `492fada8` 2026-03-30 — fix: always checksum wallet addresses (EIP-55) before storing or sending to relay [2 files] _(ai-assisted)_
+- `c8e91fe1` 2026-03-30 — debug: show full relay error response for AgentBook registration [1 files] _(ai-assisted)_
+- `9ae251cc` 2026-03-30 — fix: AgentBook card — only show registered badge, hide registration flow [1 files] _(ai-assisted)_
+- `9651b3e2` 2026-03-30 — fix: send full proof object to AgentBook relay + re-enable registration UI [2 files] _(ai-assisted)_
+- `9ff797a0` 2026-03-30 — fix: hide AgentBook registration — relay rejects mini app addresses [1 files] _(ai-assisted)_
+- `65396e3a` 2026-03-30 — fix: AgentBook card shows badge only when registered [1 files] _(ai-assisted)_
+- `0c1bb91c` 2026-03-30 — fix: AgentBook check color green to match Google connected [1 files] _(ai-assisted)_
+- `9bdfc4ad` 2026-03-31 — fix: World ID always shows green check — sync happens during onboarding [1 files] _(ai-assisted)_
+- `ffe5c1a9` 2026-03-31 — fix: replace all window.open with window.location.href in mini app [2 files] _(ai-assisted)_
+- `aca7ed68` 2026-03-31 — feat: 3D glass orb icons on Settings page [1 files] _(ai-assisted)_
+- `8e965241` 2026-03-31 — fix: Settings orbs match Home page glass style [1 files] _(ai-assisted)_
+- `84c17a6d` 2026-03-31 — fix: Home page Google/AgentBook icons use glass orb style [2 files] _(ai-assisted)_
+- `53ccd601` 2026-03-31 — fix: Online badge uses clean glass UI pill [1 files] _(ai-assisted)_
+- `64ae064d` 2026-03-31 — fix: Chat tab scrolls behind glass blur toolbar like Tasks tab [1 files] _(ai-assisted)_
+- `90e13db7` 2026-03-31 — fix: Chat sidebar toggle stays sticky at top while scrolling [1 files] _(ai-assisted)_
+- `724f05cd` 2026-03-31 — fix: handleSend uses stale activeConvId after switching conversations [1 files] _(ai-assisted)_
+- `cfb810ec` 2026-03-31 — fix: Chat sidebar UI matches web app + mobile-friendly actions [1 files] _(ai-assisted)_
+- `e58565d0` 2026-03-31 — feat: Chat bubbles match web app — avatar, tails, timestamps, save [2 files] _(ai-assisted)_
+- `183bf0e6` 2026-03-31 — feat: Add reload button for personalized suggestion pills [1 files] _(ai-assisted)_
+- `ddaf3c3d` 2026-03-31 — fix: Web search and Deep research toggle pills use glass UI [1 files] _(ai-assisted)_
+- `738ffe94` 2026-03-31 — fix: Assistant bubble tails use solid color matching bubble background [1 files] _(ai-assisted)_
+- `cf2be665` 2026-03-31 — fix: Chat avatar orb uses smooth radial shine instead of choppy rect [1 files] _(ai-assisted)_
+- `e47b8f16` 2026-03-31 — feat: Typewriter thinking indicator with claw-themed phrases [1 files] _(ai-assisted)_
+- `09fcab2d` 2026-03-31 — fix: Replace thinking phrases on web app with claw-themed copy [1 files] _(ai-assisted)_
+- `6ea16d06` 2026-03-31 — fix: Clean up header/tab/chat section borders for seamless flow [1 files] _(ai-assisted)_
+- `6bf0aab8` 2026-03-31 — fix: Plus button matches web app — smaller, cleaner glass style [1 files] _(ai-assisted)_
+- `55e08feb` 2026-03-31 — fix: Tab bar border inset, chat header border edge-to-edge [1 files] _(ai-assisted)_
+- `e5d823b0` 2026-03-31 — fix: Chat header pinned to header section — no gap on scroll [1 files] _(ai-assisted)_
+- `1b896b0e` 2026-03-31 — fix: Center empty chat state vertically in available space [1 files] _(ai-assisted)_
+- `3ba31361` 2026-03-31 — fix: Chat sidebar uses fixed positioning — works at any scroll depth [1 files] _(ai-assisted)_
+- `3e7515fa` 2026-03-31 — fix: Chat sidebar rendered at top level — no more clipping [1 files] _(ai-assisted)_
+- `052312c9` 2026-03-31 — fix: Bottom nav bar has blur fade — content scrolls behind smoothly [1 files] _(ai-assisted)_
+- `78d749fe` 2026-03-31 — fix: Nav bar blur extends higher, border softer — no visible gap [1 files] _(ai-assisted)_
+- `927e6701` 2026-03-31 — fix: Tab bar blur only covers gap above nav, not the input area [1 files] _(ai-assisted)_
+- `f08556ae` 2026-03-31 — fix: Reduce tabs layout bottom padding to match nav bar height [1 files] _(ai-assisted)_
+- `4db6f4b9` 2026-03-31 — fix: Nav bar zone uses gradient fill — no more black gap [2 files] _(ai-assisted)_
+- `8ba85154` 2026-03-31 — fix: Nav bar uses same blur fade as Command Center toolbar [1 files] _(ai-assisted)_
+- `d505cf8d` 2026-03-31 — fix: Nav blur doesn't overlap input bar — reduced to -top-4 [1 files] _(ai-assisted)_
+- `d9e1ea3f` 2026-03-31 — fix: Chat sidebar uses clean glass UI — gradient bg, stronger blur [1 files] _(ai-assisted)_
+- `b9da1f9e` 2026-03-31 — feat: Library tab fetches and displays items matching web app [1 files] _(ai-assisted)_
+- `760769eb` 2026-03-31 — security(C1): Add on-chain amount verification to WLD payment [1 files] _(ai-assisted)_
+- `3c2342d9` 2026-03-31 — security(C9,H8): Trial abuse prevention + WLD pending payment UI [5 files] _(ai-assisted)_
+- `1b1151d1` 2026-03-31 — fix: Onboarding loop — verify 500 + provisioning auto-complete [3 files] _(ai-assisted)_
+- `57c7fe4c` 2026-03-31 — feat: World Chat button live in Command Center info banner [2 files] _(ai-assisted)_
+- `a9e26493` 2026-03-31 — feat: Add persistent World Chat button to chat header [1 files] _(ai-assisted)_
+- `f193d78f` 2026-03-31 — fix: World Chat button — add loading state, label, and error handling [1 files] _(ai-assisted)_
+- `6fd3d93f` 2026-03-31 — fix: World Chat opens instantly — fire-and-forget init-chat [1 files] _(ai-assisted)_
+- `cc6b8482` 2026-03-31 — chore: Remove debug "Test World Chat Deep Links" button from settings [1 files] _(ai-assisted)_
+- `b81beb9a` 2026-03-31 — fix: Sign Out button uses clean glass UI instead of red [1 files] _(ai-assisted)_
+- `e3f66f3f` 2026-03-31 — feat: Contact Support button on settings page [1 files] _(ai-assisted)_
+- `cc075bc1` 2026-03-31 — fix: Break redirect loop for unverified users with no agent [1 files] _(ai-assisted)_
+- `5d30f7f9` 2026-03-31 — fix: Show real provisioning UI after WLD payment, not fake "ready" [3 files] _(ai-assisted)_
+- `47d990b9` 2026-03-31 — fix: Separate VM assignment from configuration — bulletproof onboarding [4 files] _(ai-assisted)_
+- `038aee4c` 2026-03-31 — fix: ProvisioningStatus waits for agent HEALTHY, not just assigned [3 files] _(ai-assisted)_
+- `e230855b` 2026-03-31 — feat: Bulletproof mini app onboarding — matches web app flow [4 files] _(ai-assisted)_
+- `e38381aa` 2026-03-31 — fix: Add gateway_url to getAgentStatus select query [1 files] _(ai-assisted)_
+- `f6514a2c` 2026-03-31 — fix: Use model='openclaw' for gateway chat requests [1 files] _(ai-assisted)_
+- `afe67603` 2026-04-01 — security: Provision endpoint requires payment before VM assignment [1 files] _(ai-assisted)_
+- `6ff92799` 2026-04-01 — fix: Handle failed WLD payments — don't get stuck on provisioning [3 files] _(ai-assisted)_
+- `83565d5c` 2026-04-01 — fix: Trust MiniKit payment on onboarding path, strict gate on retry [1 files] _(ai-assisted)_
+- `a997db25` 2026-04-01 — fix: Show AgentBook card before Google card on dashboard [1 files] _(ai-assisted)_
+- `c4199976` 2026-04-01 — fix: Show AgentBook registration card for unregistered users [1 files] _(ai-assisted)_
+- `0cb5614b` 2026-04-01 — fix: AgentBook icon matches 3D glass orb style [1 files] _(ai-assisted)_
+- `840d97eb` 2026-04-02 — feat: Public $INSTACLAW tokenomics page at /token — flywheel, burn sources, math, comparison [2 files] _(ai-assisted)_
+- `16dc054e` 2026-04-02 — fix: Mention Virtuals Protocol alongside Bankr for agent tokenization burns [2 files] _(multi: [feature, docs]; ai-assisted)_
+- `16dbaf84` 2026-04-02 — fix: Add circulating supply (28.2%) to token details section [1 files] _(ai-assisted)_
+- `53cf3b5f` 2026-04-02 — fix: Make circulating supply (28.2%) prominent across tokenomics page [1 files] _(ai-assisted)_
+- `a2163cba` 2026-04-02 — fix: Rebrand token page from Base to Virtuals Protocol — matches primary liquidity pool [1 files] _(ai-assisted)_
+- `9a7279e2` 2026-04-02 — feat: Add multi-platform trading venues, liquidity expansion roadmap to tokenomics page [1 files] _(ai-assisted)_
+- `f8429211` 2026-04-02 — fix: Add LBank to trading venues, add '+ more exchanges' indicator [1 files] _(ai-assisted)_
+- `0c2f0200` 2026-04-02 — fix: Remove all em dashes from tokenomics page [1 files] _(ai-assisted)_
+- `20ed594c` 2026-04-02 — fix: Give flame icon an orb background in hero badge for better visibility [1 files] _(ai-assisted)_
+- `e1b899b3` 2026-04-02 — feat: Add organic flame flicker + glow animation to hero badge icon [2 files] _(ai-assisted)_
+- `9c0f1155` 2026-04-02 — fix: AgentBook register — match web app relay format exactly [1 files] _(ai-assisted)_
+- `eff6df29` 2026-04-02 — feat: add $100K Trading Competition card to /earn page [1 files] _(ai-assisted)_
+- `32b7a651` 2026-04-02 — feat: AgentBook registration via direct contract call (no relay) [2 files] _(ai-assisted)_
+- `8acb19ab` 2026-04-02 — feat: auto-enable VP from DegenClaw card — one-click join competition [1 files] _(ai-assisted)_
+- `0a4d568b` 2026-04-02 — feat: AgentBook card uses CLI bridge URL flow (matches web app) [1 files] _(ai-assisted)_
+- `a09fa334` 2026-04-02 — fix: Use location.href instead of window.open for bridge URL [1 files] _(ai-assisted)_
+- `97d5ec38` 2026-04-02 — fix: DegenClaw card shows 'Running' badge when VP is enabled [1 files] _(ai-assisted)_
+- `65c4f744` 2026-04-02 — fix: AgentBook CLI version pin + bridge URL regex mismatch [3 files] _(ai-assisted)_
+- `f9e8cbd6` 2026-04-02 — feat: maintenance gate for new signups + fix CSS import order [2 files] _(ai-assisted)_
+- `c746163a` 2026-04-02 — feat: AgentBook native transport — send verify directly to World App native layer [1 files] _(ai-assisted)_
+- `1a69d9c0` 2026-04-02 — fix: TypeScript error in AgentBook card — pass proof object directly [1 files] _(ai-assisted)_
+- `59304737` 2026-04-02 — experiment: AgentBook via MiniKit.verify() + direct contract call [2 files] _(ai-assisted)_
+- `98adae86` 2026-04-02 — fix: show full error detail from register-direct for diagnosis [1 files] _(ai-assisted)_
+- `7184485b` 2026-04-03 — feat: AgentBook via IDKit v4 native transport with per-request app_id [4 files] _(ai-assisted)_
+- `a7c53829` 2026-04-03 — fix: use WASM-based signRequest for correct rp_context signature [1 files] _(ai-assisted)_
+- `b8afb269` 2026-04-03 — Revert "fix: use WASM-based signRequest for correct rp_context signature" [1 files]
+- `7241d6d9` 2026-04-03 — fix: handle IDKit v4 result format + add debug logging [1 files] _(ai-assisted)_
+- `ca3359fd` 2026-04-03 — fix: send full IDKit result + show received keys for field mapping [2 files] _(ai-assisted)_
+- `0fa3dff9` 2026-04-03 — fix: extract proof from IDKit v4 responses[0] array [1 files] _(ai-assisted)_
+- `b5bc64d3` 2026-04-03 — fix: live desktop disconnect state race — show error + retry instead of silent reset [2 files] _(ai-assisted)_
+- `0e77dbee` 2026-04-03 — fix: show relay response detail in card error [1 files] _(ai-assisted)_
+- `814d35ec` 2026-04-03 — fix: use abi.encode (not encodePacked) for signal — match CLI exactly [1 files] _(ai-assisted)_
+- `73e1576f` 2026-04-03 — fix: Apply Jordan + Don feedback — remove projections (legal risk), add live burn tracker, fix plateau wording [1 files] _(ai-assisted)_
+- `e2e6117b` 2026-04-03 — feat: Add collapsible estimated projections with $1.24M number and legal disclaimer [1 files] _(ai-assisted)_
+- `043e88be` 2026-04-03 — fix: Replace burn tracker zeros with clean Coming May 2026 teaser state [1 files] _(ai-assisted)_
+- `101dfc0d` 2026-04-03 — fix: Rebuild flywheel with CSS orbit animation, proper node spacing, larger container [2 files] _(ai-assisted)_
+- `283b6e0c` 2026-04-03 — feat: Replace orbiting dot with flowing energy ring animation on flywheel [2 files] _(ai-assisted)_
+- `21369a50` 2026-04-03 — feat: Add comprehensive legal disclaimer to tokenomics page [1 files] _(ai-assisted)_
+- `655f7994` 2026-04-03 — feat: S-tier flywheel animation — conic gradient energy sweep with glow, fix label cutoff [1 files] _(ai-assisted)_
+- `0e01bfe7` 2026-04-03 — fix: Glass UI flywheel — contained layout, thinner energy sweep, no clipping [1 files] _(ai-assisted)_
+- `02ad30d3` 2026-04-03 — fix: Align flywheel ring, energy sweep, and glass cards to same center point, bolder animation [1 files] _(ai-assisted)_
+- `11705f88` 2026-04-03 — fix: True-center flywheel alignment — flex centering with 0x0 anchor point, all elements aligned [1 files] _(ai-assisted)_
+- `f2cfb29b` 2026-04-03 — fix: Revert flywheel to original simple version — dots + text, no glass cards [1 files] _(ai-assisted)_
+- `13553933` 2026-04-03 — fix: Separate dot positions (on ring) from label positions (pushed outward) for balanced flywheel [1 files] _(ai-assisted)_
+- `06db7239` 2026-04-03 — test: bridge URL via <a href> tag — Andy says should open drawer [1 files] _(ai-assisted)_
+- `c56c38b2` 2026-04-03 — test: trigger bridge URL via hidden iframe to keep user in mini app [1 files] _(ai-assisted)_
+- `459455e0` 2026-04-03 — fix: revert to <a href> for bridge URL — iframe doesn't trigger drawer [1 files] _(ai-assisted)_
+- `02ea12bf` 2026-04-03 — feat: Phase 2 AgentBook workaround — closeMiniapp + push notification [5 files] _(multi: [feature, docs]; ai-assisted)_
+- `b3ac63cf` 2026-04-03 — fix: Replace Jordan's analogies with actual InstaClaw use cases in Silent Engine section [1 files] _(ai-assisted)_
+- `f8252d32` 2026-04-03 — fix: Harder-hitting use cases — multi-agent orchestration, autonomous trading, always-on content [1 files] _(ai-assisted)_
+- `4b5af763` 2026-04-03 — fix: Match flywheel container height to SVG viewBox — dots now sit perfectly on ring [1 files] _(ai-assisted)_
+- `1008a9c4` 2026-04-03 — feat: Add 4th burn source — $INSTACLAW trading fee burns (10% of Virtuals trading fees) [1 files] _(ai-assisted)_
+- `efcba0b2` 2026-04-03 — fix: Add trading fees to flywheel diagram revenue step [1 files] _(ai-assisted)_
+- `0e1d39b7` 2026-04-03 — fix: BNB comma spacing, add Trading Loop to roadmap, add trading to closing quote [1 files] _(ai-assisted)_
+- `63251dad` 2026-04-03 — fix: Update burn stat to $120+ floor with stacking sources explanation [1 files] _(ai-assisted)_
+- `afa16b30` 2026-04-03 — fix: Change all burn source timelines to Coming Soon [1 files] _(ai-assisted)_
+- `071f2a63` 2026-04-03 — fix: Agent Economy Loop copy — emphasize one-click tokenization, auto fee routing, self-sustaining agents [1 files] _(ai-assisted)_
+- `ce06d5b7` 2026-04-03 — fix: Remove Bankr and Virtuals partner names from burn mechanism descriptions — save for separate announcement [1 files] _(ai-assisted)_
+- `fdce3a20` 2026-04-03 — fix: Silent Engine — add World Mini App, 17M+ verified humans, WLD grants as house money [1 files] _(ai-assisted)_
+- `85a18f35` 2026-04-03 — fix: Add 'and growing fast' to World verified humans count [1 files] _(ai-assisted)_
+- `49c06fb5` 2026-04-03 — fix: Ecosystem Tax copy — platform positioning, app store economics, compounding growth [1 files] _(ai-assisted)_
+- `0b98fa15` 2026-04-03 — fix: Ecosystem Tax — App Store for AI agents positioning, distribution power, network effects [1 files] _(ai-assisted)_
+- `f001f404` 2026-04-03 — fix: Ecosystem Tax copy — match thread style, clearer for normal consumers [1 files] _(ai-assisted)_
+- `ce93b456` 2026-04-03 — feat: Add contextual signup CTAs throughout tokenomics page [1 files] _(ai-assisted)_
+- `1e1ef16f` 2026-04-05 — chore: trigger instaclaw-mini redeploy with NEXT_PUBLIC_MAINTENANCE=true [1 files] _(ai-assisted)_
+- `4788826e` 2026-04-05 — feat: glass overlay maintenance gate with email capture [3 files] _(ai-assisted)_
+- `3869a48a` 2026-04-05 — chore: rebuild instaclaw-mini with NEXT_PUBLIC_MAINTENANCE baked in [1 files] _(ai-assisted)_
+- `bf949b21` 2026-04-07 — chore: force instaclaw-mini rebuild to bake in NEXT_PUBLIC_MAINTENANCE [1 files] _(ai-assisted)_
+- `ef868b64` 2026-04-07 — chore: rebuild instaclaw-mini after re-adding NEXT_PUBLIC_MAINTENANCE [1 files] _(ai-assisted)_
+- `24490590` 2026-04-07 — fix: 4 launch blockers — offline banner, credit errors, model selector, provision failure [3 files] _(ai-assisted)_
+- `c88e46b8` 2026-04-07 — chore: rebuild instaclaw-mini without maintenance gate [1 files] _(ai-assisted)_
+- `86c72424` 2026-04-07 — chore: force rebuild after NEXT_PUBLIC_MAINTENANCE deletion confirmed [1 files] _(ai-assisted)_
+- `16c93966` 2026-04-07 — fix: WLD subscription lifecycle — creation, expiry, and VM reactivation [1 files] _(ai-assisted)_
+- `9e58409f` 2026-04-07 — feat: AgentBook registration modal on first home page load [2 files] _(ai-assisted)_
+- `1de818cb` 2026-04-08 — fix: spots counter flickering + remove hardcoded 62 fallback [2 files] _(ai-assisted)_
+- `9880c119` 2026-04-08 — fix: responsive onboarding hero — fits all phone sizes without scrolling [1 files] _(ai-assisted)_
+- `d3ea73fe` 2026-04-08 — fix: responsive onboarding — proportional scaling for all phone sizes [1 files] _(ai-assisted)_
+- `40820215` 2026-04-08 — fix: proportional zoom scaling for all phone sizes [1 files] _(ai-assisted)_
+- `edce5567` 2026-04-08 — fix: transform scale approach — render at fixed Pro Max dimensions, scale to fit [2 files] _(ai-assisted)_
+- `44cadadb` 2026-04-08 — fix: center scaled content + clip overflow — no right-side scrollbar [1 files] _(ai-assisted)_
+- `644e8be4` 2026-04-08 — revert: restore original Pro Max layout — remove all scaling/zoom attempts [1 files] _(ai-assisted)_
+- `b4b1d53e` 2026-04-08 — fix: dvh-based responsive layout — industry standard approach [1 files] _(ai-assisted)_
+- `b190f6de` 2026-04-08 — fix: restore original Pro Max spacing — match reference screenshot exactly [1 files] _(ai-assisted)_
+- `fe387e56` 2026-04-08 — fix: verified users without payment stay on onboarding, not redirected to /home [1 files] _(ai-assisted)_
+- `0df9c3e9` 2026-04-08 — chore: force mini app rebuild to clear cached PROXY_SECRET [1 files]
+- `6df5e58a` 2026-04-08 — fix: closeMiniApp fires immediately — no setTimeout delay [1 files] _(ai-assisted)_
+- `1c0dabc2` 2026-04-08 — fix: revert closeMiniApp to 500ms delay — sync close kills navigation [1 files] _(ai-assisted)_
+- `2cd636d3` 2026-04-09 — fix: retry on 400 "agent busy" — handles heartbeat collisions [2 files] _(ai-assisted)_
+- `2a9cfb08` 2026-04-09 — fix: increase retry to 4 attempts with exponential backoff (5s, 10s, 15s) [2 files] _(ai-assisted)_
+- `dddfe941` 2026-04-09 — fix: task endpoints send model 'openclaw' not 'claude-sonnet-4-6' [4 files] _(ai-assisted)_
+- `0b4dcea4` 2026-04-09 — feat: Add /edge-city partner portal page [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `2323db9b` 2026-04-10 — feat(mini): funnel non-Orb users into World Grow + remove dead branch [2 files] _(ai-assisted)_
+- `7efe161f` 2026-04-13 — fix: Tokenize button uses clean glass UI — inner glow, light refraction, subtle depth [1 files] _(ai-assisted)_
+- `88135433` 2026-04-13 — fix: Tokenize button — clean glass, no edge artifacts [1 files] _(ai-assisted)_
+- `1f86f276` 2026-04-13 — fix: Tokenize button glass — top-half shine, warm amber shadow, no edge artifacts [1 files] _(ai-assisted)_
+- `5db907bf` 2026-04-14 — feat: Bankr tokenization card in World mini app + mini app token auth on tokenize endpoint [4 files] _(ai-assisted)_
+- `1388b0f6` 2026-04-14 — TEMP: Celebration animation preview + token card redesign + devrel notes [7 files] _(multi: [feature, docs]; ai-assisted)_
+- `8c49f322` 2026-04-14 — fix: Remove temp test button from Bankr wallet card [1 files] _(ai-assisted)_
+- `c1c4ade2` 2026-04-14 — feat: Post-launch Share to X card + Copy link — viral growth loop [2 files] _(ai-assisted)_
+- `92af6132` 2026-04-14 — fix: Share to X audit fixes — timer cancel, mini app copy flow, null guard [2 files] _(ai-assisted)_
+- `192472c9` 2026-04-15 — feat: Auto-generate token PFP on form open — Apple-level anticipation UX [4 files] _(ai-assisted)_
+- `66aed50e` 2026-04-15 — fix: Token PFP preview uses rounded-xl not rounded-full — no more orb-in-a-circle [2 files] _(ai-assisted)_
+- `12492d74` 2026-04-15 — fix: Token PFP preview size — w-32 webapp, w-28 mini app, no border frame [2 files] _(ai-assisted)_
+- `d6a31ff2` 2026-04-20 — debug: log PFP generate request — raw body + client state [2 files] _(ai-assisted)_
+- `04e24146` 2026-04-20 — feat(bankr): Trade on Bankr + DexScreener chart for V4/Doppler tokens [1 files] _(ai-assisted)_
+- `671d8c58` 2026-04-20 — feat(bankr): HowToBuy disclosure on wallet card + share card [2 files] _(ai-assisted)_
+- `0ab56017` 2026-04-27 — feat(dashboard): gas funding guide card under BankrWalletCard [2 files] _(ai-assisted)_
+- `ddd1e4d0` 2026-04-28 — feat(browser-relay): restore install UI now that Chrome Web Store listing is live [1 files] _(ai-assisted)_
+- `bcbe6a39` 2026-04-28 — feat(browser-relay): beta disclaimer in dashboard + /browser-relay docs page [2 files] _(ai-assisted)_
+- `fc213aab` 2026-04-28 — fix(browser-relay): surface relay-backend outage as maintenance state [4 files] _(multi: [feature, docs]; ai-assisted)_
+- `46b1b709` 2026-04-29 — copy(bankr): final share-to-X tweet — self-funding flywheel framing [2 files] _(ai-assisted)_
+- `9e6a5263` 2026-04-29 — chore(browser-relay): drop maintenance banners — relay deployed fleet-wide [2 files] _(ai-assisted)_
+- `5c94624c` 2026-04-29 — feat(bankr-sync): on-demand sync in /api/vm/status fires celebration in <30s [3 files] _(ai-assisted)_
+- `8814a280` 2026-04-29 — fix(bankr-sync): lazy-init launchSuccess to avoid celebration flicker [1 files] _(ai-assisted)_
+- `92b89e1e` 2026-04-29 — fix(bankr-launch): tweet card preview, success-with-warning, phased status [2 files] _(ai-assisted)_
+- `f601f1a6` 2026-04-29 — feat(mini-app): wire Path B chat-launch celebration end-to-end [4 files] _(ai-assisted)_
+- `f695276a` 2026-04-29 — feat(edge-city): build out /edge-city portal landing page [3 files] _(multi: [feature, edge])_
+- `a324f115` 2026-04-29 — feat(edge-city): public /edge-city/sponsors page + portal sponsor strip [2 files] _(multi: [feature, edge])_
+- `b0de400c` 2026-04-29 — feat(bankr): #19 — pre-launch confirmation card [2 files] _(ai-assisted)_
+- `a10f89f1` 2026-04-29 — feat(bankr): #7 — "Free to launch" reassurance on form [2 files] _(ai-assisted)_
+- `d2b26d8b` 2026-04-29 — fix(bankr): swap #7 free-to-launch copy — long lives on confirmation [2 files] _(ai-assisted)_
+- `7f0d2465` 2026-04-29 — feat(bankr): #4 — auto-suggested token name from agent personality [3 files] _(ai-assisted)_
+- `84aeb3a7` 2026-04-30 — feat(partner): tag existing users via /api/partner/tag — fix dual-account bug [3 files] _(multi: [feature, edge, docs])_
+- `e886aff9` 2026-04-30 — fix(bankr): P0 OG image render + P1 symbol caption literal text [3 files] _(ai-assisted)_
+- `f073eb22` 2026-04-30 — fix(bankr): OG card column gap — `0 0.4ch` → `0 8px` [1 files] _(ai-assisted)_
+- `089608b1` 2026-04-30 — fix(bankr): OG card — real logo, full address, fix word-merge spacing [1 files] _(ai-assisted)_
+- `4b654677` 2026-04-30 — fix(bankr): OG card uses inverted (white) logo for dark background [2 files] _(ai-assisted)_
+- `f7843f35` 2026-04-30 — fix(bankr): OG card typography matches production website fonts [1 files] _(ai-assisted)_
+- `017e93c6` 2026-04-30 — fix(bankr): OG card — Base + Bankr logos, copy + tagline tweaks [4 files] _(ai-assisted)_
+- `ab25c99a` 2026-04-30 — fix(bankr): Base logo — swap white→blue (the actual Base brand mark) [3 files] _(ai-assisted)_
+- `db459276` 2026-05-02 — fix(bankr): OG card — render at 2x (2400x1260) for retina crispness [1 files] _(ai-assisted)_
+- `85613f7a` 2026-05-01 — feat(edge-privacy): components 1-3 — DB migration, toggle API, dashboard route [4 files] _(multi: [feature, edge])_
+- `611e84d4` 2026-05-04 — fix(consensus-ui): apply canonical glass UI across page + client [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `7db423ac` 2026-05-04 — feat(consensus): add founder-matching BETA section + UX polish [2 files] _(ai-assisted)_
+- `b45ff7d0` 2026-05-04 — feat(consensus): platform reframe — "the agent stays" [1 files] _(ai-assisted)_
+- `523735ab` 2026-05-04 — fix(consensus): kill em dashes + reframe matching for ALL roles [2 files] _(ai-assisted)_
+- `73aea3d3` 2026-05-04 — feat(consensus/matches): preview page for the intent-matching demo [1 files] _(ai-assisted)_
+- `be49f547` 2026-05-04 — fix(consensus/matches): remove all em dashes [1 files] _(ai-assisted)_
+- `8fde9dfb` 2026-05-04 — fix(consensus): finish 326/219/451 → 338/229/463 sweep on page + matches [2 files]
+- `1546122f` 2026-05-04 — fix(consensus): catch the last '219 events' instance [1 files]
+- `671d1cc1` 2026-05-04 — fix(ui): replace emojis with lucide SVG icons across dashboard surfaces [4 files] _(ai-assisted)_
+- `0ac49639` 2026-05-04 — fix(og-card): brand fallback when bankr_token_image_url is null [1 files] _(ai-assisted)_
+- `9844b926` 2026-05-04 — feat(bankr-card): glass Trade-on-Bankr CTA + pre-launch education [2 files] _(ai-assisted)_
+- `611deef9` 2026-05-04 — fix(bankr-card): orange Trade button + bottom padding + em-dash copy [2 files] _(ai-assisted)_
+- `2c5fd765` 2026-05-04 — fix(bankr-card): match Tokenize + Trade-on-Bankr to Buy Credits style [1 files] _(ai-assisted)_
+- `ee88dd46` 2026-05-04 — fix(bankr-card): post-launch container glass + brand-orange avatar [1 files] _(ai-assisted)_
+- `9fcc639f` 2026-05-04 — fix(dashboard): brand orange on WhyTokenize + HowToBuy circles [2 files] _(ai-assisted)_
+- `94e079d4` 2026-05-04 — fix(bankr-card): brand orange across full launch flow [1 files] _(ai-assisted)_
+- `f08b60b8` 2026-05-05 — fix(my-matches): strip em-dashes from copy + LLM rationale [1 files] _(ai-assisted)_
+- `e0898f67` 2026-05-09 — feat(agentbook): hat-claim promo banner — web dashboard + mini app [7 files] _(ai-assisted)_
+- `7481c171` 2026-05-09 — fix(agentbook-banner): production-quality animations + fixes from Cooper review [4 files] _(ai-assisted)_
+- `b615f81a` 2026-05-09 — fix(agentbook-banner): match dashboard glass + move to top + real hat image [5 files] _(ai-assisted)_
+- `395466ca` 2026-05-09 — fix(agentbook-banner): hat breathing room + sharpness + glass shadow [2 files] _(ai-assisted)_
+- `1c855ecb` 2026-05-09 — fix(agentbook-banner): mix-blend-mode multiply removes white hat bg [2 files] _(ai-assisted)_
+- `a20a86ed` 2026-05-09 — feat(agentbook-banner): redesign as site-wide notification strip [3 files] _(ai-assisted)_
+- `c09527c5` 2026-05-09 — fix(agentbook-banner): match landing-page NotificationBar style exactly [1 files] _(ai-assisted)_
+- `b496bee1` 2026-05-09 — fix(dashboard): Welcome card collapse-toggle + remove WorldID dismiss X [2 files] _(ai-assisted)_
+- `775b022d` 2026-05-09 — feat(agentbook-banner): state machine — verify/register/claim/sold-out [7 files] _(ai-assisted)_
+- `36a7e87d` 2026-05-09 — fix(world-id-banner): sharper copy + "Get verified →" CTA [3 files] _(ai-assisted)_
+- `a8bb1bca` 2026-05-12 — feat(edge): rebrand /edge-city → /edge with Edge City visual language [11 files] _(multi: [feature, edge]; ai-assisted)_
+- `b27f94ee` 2026-05-12 — fix(edge): move plaza page to /edge/ to match post-rebrand routing [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `ab48f58c` 2026-05-12 — feat(edge): brand /signup + /connect for Edge Esmeralda attendees [3 files] _(multi: [feature, edge]; ai-assisted)_
+- `1bf237a9` 2026-05-12 — feat(edge): /edge responds to login state [3 files] _(multi: [feature, edge]; ai-assisted)_
+
+### Edge City partner (16)
+
+- `29613d58` 2026-04-09 — feat: Enable promotion code entry at Stripe checkout [1 files] _(ai-assisted)_
+- `9c9dd146` 2026-04-09 — feat: Add partner column to instaclaw_users and instaclaw_vms [1 files] _(ai-assisted)_
+- `a49a4404` 2026-04-09 — feat: Auto-apply Edge City partner coupon at checkout [1 files] _(ai-assisted)_
+- `7b026a37` 2026-04-29 — docs(prd): add Index Network matching layer + Vendrov research layer to EdgeClaw [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `38c540f7` 2026-04-29 — docs(prd): integrate Substack research overview — foundational research, methodology stack, hypothesis enrichment, coordinator agents [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `a25ae1ef` 2026-04-29 — docs(prd): integrate Granola meeting notes — ticket validation, managed updates, privacy modes, portal scope [1 files] _(multi: [edge, docs])_
+- `35e031e9` 2026-04-30 — fix(middleware): add /api/partner/tag to selfAuthAPIs allow-list [1 files]
+- `3ccda655` 2026-05-01 — docs(prd): SOUL restructure — Phase 0/0.5/0.7 results, canary swap, simplified migration [1 files] _(multi: [edge, docs])_
+- `ad26b00b` 2026-05-01 — docs(prd): EdgeClaw architecture revision after 2026-05-01 working session [1 files] _(multi: [edge, docs])_
+- `0b164436` 2026-05-02 — feat(edge-privacy): component 3 — internal check API for SSH bridge [2 files] _(ai-assisted)_
+- `a20d85b6` 2026-05-06 — fix(matchpool): partner-aware consent default for new profiles [1 files] _(ai-assisted)_
+- `1e572e98` 2026-05-11 — docs(soul-v2): §14 — Agent Self-Compaction Architecture (V3+ roadmap) [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `bc34e307` 2026-05-12 — Merge branch 'feat/gbrain-stepGbrain-phase4c' [0 files] _(merge)_
+- `5341923e` 2026-05-12 — Merge feat/edge-signup-connect-branding-2026-05-12: brand /signup + /connect for Edge attendees [0 files] _(merge)_
+- `c2649f05` 2026-05-12 — Merge feat/edge-login-state-aware-2026-05-12: /edge responds to login state [0 files] _(merge)_
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec [1 files] _(multi: [edge, docs]; ai-assisted)_
+
+### Docs / PRD only (95)
+
+- `40dc19ef` 2026-03-03 — feat: add real Polymarket trade execution scripts and UX guardrails [7 files] _(ai-assisted)_
+- `0497f062` 2026-03-03 — fix: add USDC.e vs native USDC detection to Polymarket trade flow [2 files] _(ai-assisted)_
+- `2afabeeb` 2026-03-03 — fix: add hard rule to use setup-creds status for balance checks [1 files] _(ai-assisted)_
+- `1d815444` 2026-03-03 — fix: move Polymarket hard rules to top of SKILL.md [1 files] _(ai-assisted)_
+- `ff8238b7` 2026-03-03 — feat: add polymarket-wallet.py for ERC-20 transfers and USDC swaps [3 files] _(ai-assisted)_
+- `0f7d1610` 2026-03-06 — fix: Higgsfield V2 — rewrite all scripts with verified Muapi API patterns [9 files] _(ai-assisted)_
+- `ffde5845` 2026-03-09 — feat: Seedance 2.0 infinite-length extend — new tiers, chained extensions, credit weights [4 files] _(ai-assisted)_
+- `fa286b7c` 2026-03-10 — docs: document neg_risk auto-handling, pin py-clob-client to v0.34.6 [3 files] _(ai-assisted)_
+- `b1a8ee59` 2026-03-11 — fix(instaclaw): AgentBook skill ACP conflict + auto-registration trigger [2 files] _(ai-assisted)_
+- `70492abf` 2026-03-11 — fix(instaclaw): remove Clawlancer dependency from AgentBook skill [5 files] _(ai-assisted)_
+- `eafb5310` 2026-03-11 — fix(instaclaw): fix agentbook-check.py argparse order (--json before subcommand) [2 files] _(ai-assisted)_
+- `5742213a` 2026-03-11 — fix(instaclaw): AgentBook registration flow — wait for human verification [2 files] _(ai-assisted)_
+- `4672fffe` 2026-03-11 — fix(instaclaw): remove --llms flag, use tee+background for CLI URL capture [2 files] _(ai-assisted)_
+- `11b91a1a` 2026-03-12 — fix: async video generation — add --submit-only flag, bump poll timeout to 8min [2 files] _(ai-assisted)_
+- `31f38853` 2026-03-12 — fix: make async video confirmation message mandatory in SKILL.md [1 files] _(ai-assisted)_
+- `f2ffbff4` 2026-03-16 — fix: add YAML frontmatter to instagram-automation SKILL.md [1 files] _(ai-assisted)_
+- `d64f480d` 2026-03-19 — docs: add file delivery + group chat architecture PRDs [2 files] _(ai-assisted)_
+- `deceef41` 2026-03-19 — docs: mark Phase 2 complete — memorySearch + memoryFlush deployed fleet-wide (v35) [1 files] _(ai-assisted)_
+- `9f8ed657` 2026-03-19 — feat: video refund mechanism + fix upsell link on limit hit + fix Higgsfield jobs.json status tracking [5 files] _(ai-assisted)_
+- `e064bc3c` 2026-03-20 — docs: update PRD — Phase 1+2 fully complete after v38 audit fix, P2.4 deployed [1 files] _(ai-assisted)_
+- `89b55506` 2026-03-23 — docs: add $INSTACLAW token staking to World mini app PRD [1 files] _(ai-assisted)_
+- `466aefdd` 2026-03-25 — feat: dual-mode SKILL.md, npm publish @instaclaw/dispatch, macOS permission detection [4 files] _(ai-assisted)_
+- `0e77d1bd` 2026-03-25 — docs: mark all Dispatch Mode phases COMPLETE in PRD [1 files]
+- `b0c53f3e` 2026-03-25 — docs: Phase 2 Group Chat Agents + XMTP status + Mateo question in PRD [1 files] _(ai-assisted)_
+- `6b1dcc6f` 2026-03-25 — docs: PRD for Live Agent Desktop Viewer & Takeover Mode (noVNC) [1 files]
+- `e580e855` 2026-03-26 — docs: PRD for UX enhancements — viral & delightful computer control features [1 files]
+- `0c43a7f6` 2026-03-26 — docs: update UX PRD with Cooper's feedback — P2 natural sharing, P3 removed, P4 client-side recording [1 files]
+- `1138579f` 2026-03-27 — fix: add context budget limit — max 15 screenshots per task [1 files] _(ai-assisted)_
+- `c383b9c2` 2026-03-27 — fix: agent must type commands on USER'S computer, not run them on VM [1 files] _(ai-assisted)_
+- `13587d44` 2026-03-27 — fix: don't screenshot what user already showed + context overflow note [1 files] _(ai-assisted)_
+- `631661ed` 2026-03-27 — fix: macOS screenshot filenames have spaces — use find -exec mv [1 files] _(ai-assisted)_
+- `66a382a7` 2026-03-30 — fix: dgclaw skill audit — NOT triggers, edge cases, fee accuracy [2 files] _(ai-assisted)_
+- `bdf202ec` 2026-03-30 — fix: agent must use dynamic ?requestId= auth URL, never generic link [1 files] _(ai-assisted)_
+- `22dfc998` 2026-03-30 — feat: server-side ACP auth for agents — fixes timeout death loop [3 files] _(ai-assisted)_
+- `e57b1a38` 2026-03-30 — fix: extract GATEWAY_TOKEN from .env before curl — was expanding to empty string [1 files] _(ai-assisted)_
+- `89454cd1` 2026-03-30 — fix: always specify 'USDC on Base network' when mentioning funds [1 files] _(ai-assisted)_
+- `eabb2d2e` 2026-04-01 — docs: Linode/Akamai meeting prep — fleet audit, cost analysis, asks [1 files] _(ai-assisted)_
+- `39a530ea` 2026-04-01 — docs: Add root cause analysis and Linode-specific questions to meeting prep [1 files] _(ai-assisted)_
+- `12355411` 2026-04-01 — docs: $INSTACLAW tokenomics PRD — four-phase burn flywheel tied to real revenue [1 files] _(ai-assisted)_
+- `2bc5744a` 2026-04-02 — docs: Public $INSTACLAW tokenomics page — condensed for website + CT [1 files] _(ai-assisted)_
+- `10cf92e1` 2026-04-02 — docs: VM Lifecycle Management PRD — automated deletion, pool scaling, cost optimization [1 files] _(ai-assisted)_
+- `9f951ed2` 2026-04-05 — docs: comprehensive API cost optimization PRD with research findings [1 files] _(ai-assisted)_
+- `4c613767` 2026-04-05 — docs: fix PRD gaps — add 2.28B tokens stat, bankr anomaly, standardize threshold [1 files] _(ai-assisted)_
+- `87d8309d` 2026-04-05 — chore: remove legacy polymarket/ skill directory [11 files] _(ai-assisted)_
+- `ac124dcd` 2026-04-06 — docs: cross-session memory PRD + research findings, remove temp TOKEN_ANALYSIS log [3 files] _(ai-assisted)_
+- `57535f8a` 2026-04-06 — docs: cross-session memory PRD v3 — 9.5/10 implementation ready, bootstrap verified, Phase 3 Python spec, A/B plan [1 files] _(ai-assisted)_
+- `a276bcdf` 2026-04-06 — docs: add InstaClaw application answers reference [1 files] _(ai-assisted)_
+- `ab0f3030` 2026-04-06 — docs: remove em dashes from application answers [1 files] _(ai-assisted)_
+- `680ec3ab` 2026-04-06 — chore: update snapshot to private/38031667 (v56 + cross-session memory, 15/15 verified) [1 files] _(ai-assisted)_
+- `bddf7db7` 2026-04-06 — docs: comprehensive snapshot creation process in CLAUDE.md + infrastructure PRD [2 files] _(ai-assisted)_
+- `b3643d11` 2026-04-06 — docs: update API cost PRD with corrected numbers — system prompt is 14.8K tokens not 189K [1 files] _(ai-assisted)_
+- `3c072774` 2026-04-07 — chore: update snapshot to private/38054012 (v57 + OpenClaw 2026.4.5, 15/15 verified) [1 files] _(ai-assisted)_
+- `33e82d3e` 2026-04-08 — chore: update snapshot to private/38069990 (v57-all-crons, 21/21 verified) [1 files] _(ai-assisted)_
+- `088ce478` 2026-04-09 — feat: Wire up Bankr wallet provisioning — every new agent gets a wallet at deploy [4 files] _(ai-assisted)_
+- `556206f5` 2026-04-09 — docs: update cross-session memory PRD with deployment status [1 files] _(ai-assisted)_
+- `3f09c612` 2026-04-09 — docs: Update Bankr devrel feedback — full day's integration progress [1 files] _(ai-assisted)_
+- `e84e5fe4` 2026-04-09 — docs: Clean up Bankr devrel notes — external-facing feedback only [1 files] _(ai-assisted)_
+- `f3fef0b0` 2026-04-09 — docs: Bankr devrel — first API test results, address casing finding, pre-provisioning idea [1 files] _(ai-assisted)_
+- `0e128a04` 2026-04-09 — docs: Bankr devrel — note encryption at rest for API keys [1 files] _(ai-assisted)_
+- `06685a42` 2026-04-09 — docs: Update PRD with Bankr-pattern skill install and XMTP layer [1 files] _(ai-assisted)_
+- `df9f3cc9` 2026-04-10 — feat: Wire up Bankr token launch API + draft webhook spec for Sinaver [3 files] _(ai-assisted)_
+- `96d9d594` 2026-04-10 — docs: Bankr devrel — log simulated launch test results, doc findings, pre-launch blockers [1 files] _(ai-assisted)_
+- `4a451ae0` 2026-04-10 — docs: Bankr devrel — log personal vs org wallet UX observation [1 files] _(ai-assisted)_
+- `94fbc487` 2026-04-10 — docs(CLAUDE): bump snapshot ID to private/38111101 (v58) [1 files] _(ai-assisted)_
+- `7b229889` 2026-04-15 — docs: Bankr devrel — fee wallet auth UX confusion feedback [1 files] _(ai-assisted)_
+- `efd7dd7d` 2026-04-19 — docs: Pillar 4 — Agent PFP NFT Collection (future milestone) [1 files] _(ai-assisted)_
+- `4eacc619` 2026-04-27 — docs: bump LINODE_SNAPSHOT_ID to private/38458138 (v62) [1 files] _(ai-assisted)_
+- `91597aff` 2026-04-27 — docs(bankr): post-Sinaver claim API integration review checklist [1 files] _(ai-assisted)_
+- `ba14ca33` 2026-04-28 — docs(ops): note suspended-VM gateway restart loop for follow-up [1 files] _(ai-assisted)_
+- `2cca6379` 2026-04-29 — docs(edgeclaw): sponsor inference budget — one-page sponsor-facing breakdown [1 files] _(ai-assisted)_
+- `ff4b3dad` 2026-04-29 — docs(prd): Index Network ↔ InstaClaw signal schema spec — pre-sync proposal [1 files]
+- `a1f496d8` 2026-04-29 — docs: external-facing sponsor pitch for the EE26 Agent Village [1 files]
+- `d6487e88` 2026-04-29 — docs(claude-md): add Fleet Upgrade Lessons section [1 files] _(ai-assisted)_
+- `83155a1b` 2026-04-30 — docs(claude.md): expand OpenClaw Upgrade Playbook from v67 incident [1 files] _(ai-assisted)_
+- `0baa0575` 2026-04-30 — docs(prd): SOUL.md restructure — design doc, no implementation [1 files] _(ai-assisted)_
+- `27b24cc1` 2026-04-30 — docs(prd): SOUL.md restructure v2 — evidence-based rewrite [1 files] _(ai-assisted)_
+- `96500eb2` 2026-04-30 — chore: retire 3 empty World mini-app tables (#15) [2 files] _(ai-assisted)_
+- `e66e8239` 2026-05-01 — docs(CLAUDE.md): add Rule 11 — every LLM route MUST set maxDuration=300 [1 files]
+- `14919655` 2026-05-01 — docs(claude.md): Rules 12 + 13 — Vercel-vs-local debugging order + middleware allow-list [1 files]
+- `ebe40d52` 2026-05-02 — docs(strategy): WLD pricing strategy + hibernation architecture [1 files] _(ai-assisted)_
+- `9883dd17` 2026-05-02 — docs(CLAUDE.md): add Rules 14-21 from this sprint's 9 internalized lessons [1 files] _(ai-assisted)_
+- `0e7e502c` 2026-05-04 — docs(prd): consensus intent matching addendum — dual-embedding, reactive cascades, inferred intent, living feed [1 files]
+- `7b02fbcf` 2026-05-04 — docs(prd): consensus intent matching v2 — adds Layer 3 deliberation + XMTP intro negotiation as central moat [1 files]
+- `57ee2ce6` 2026-05-05 — docs(v87): prctl-subreaper integration plan (blocked on npm publish) [1 files] _(ai-assisted)_
+- `dd144bde` 2026-05-05 — docs(gbrain): apply C1–C20 audit corrections to PRD body [1 files]
+- `6e0f7c17` 2026-05-05 — docs(prd): v2 agent negotiation — full spec [1 files] _(ai-assisted)_
+- `de4e62f4` 2026-05-05 — docs(changelog): v62 → v88 thread for X — copy-paste ready [1 files] _(ai-assisted)_
+- `572792b7` 2026-05-05 — docs(changelog): denser hook + prctl-subreaper@0.1.1 in tweet 11 [1 files] _(ai-assisted)_
+- `af2b7ced` 2026-05-06 — docs(claude): P1-2 + P1-3 — node_exporter visibility, ssh-broken-tcp-reachable [1 files] _(ai-assisted)_
+- `af98e780` 2026-05-07 — docs(prd-gbrain): apply 8 corrections from Phase 0 vm-050 canary [1 files] _(ai-assisted)_
+- `f0da920e` 2026-05-07 — docs(claude): Rules 25-31 — systemic lessons from 2026-05-06/07 incidents [1 files] _(ai-assisted)_
+- `8f5f0d54` 2026-05-09 — docs(prd): gbrain Phase 1 design doc [1 files] _(ai-assisted)_
+- `0eeeebdb` 2026-05-11 — docs(lying-db-census): refresh 2026-05-11 with current fleet probe [1 files] _(ai-assisted)_
+- `56d3a2e3` 2026-05-11 — docs(consensus): expand Phase C reset list — 5 stragglers + vm-512 hand-fix log [1 files]
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants [1 files] _(ai-assisted)_
+
+## Multi-category commits (391)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `fd7cec08` 2026-03-02 — [reconciler, infrastructure, docs] — feat: wire up X/Twitter Search skill using Brave Search site:x.com
+- `784163df` 2026-03-02 — [infrastructure, feature] — feat: complete SEO & GEO overhaul — 20+ new content pages, sitemap, structured data
+- `0fa077c6` 2026-03-02 — [feature, docs] — refactor: switch X/Twitter Search from proxy to BYOK
+- `1db28ff6` 2026-03-02 — [reconciler, infrastructure] — fix: remove gateway.controlUi key rejected by OpenClaw 2026.2.17+
+- `754ee05b` 2026-03-02 — [infrastructure, feature] — blog: publish 3 posts (ai-agent-telegram-bot, what-can-ai-agents-do, personal-ai-agent-vs-chatbot)
+- `915599fe` 2026-03-02 — [infrastructure, feature] — blog: publish 15 posts (ai-agent-video-creation, openclaw-hosting-cost, ai-agent-content-creation, best-ai-agent-platforms-2026, future-of-personal-ai, openclaw-api-guide, ai-agent-polymarket, openclaw-vs-autogpt, ai-agent-for-research, why-everyone-needs-ai-agent, openclaw-skills-guide, personal-ai-vs-business-ai, ai-agent-for-crypto, make-money-ai-agent, openclaw-security)
+- `8c6739d2` 2026-03-02 — [infrastructure, feature] — blog: publish 2 posts (openclaw-api-guide, ai-agent-video-creation)
+- `ceaba54f` 2026-03-02 — [infrastructure, feature] — blog: publish 18 SEO posts + blog pipeline scripts
+- `2b7e51b8` 2026-03-03 — [reconciler, infrastructure] — fix: version-aware controlUi handling + groups.* wildcard fix
+- `951cdcbe` 2026-03-03 — [reconciler, infrastructure] — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.2
+- `f09be921` 2026-03-03 — [reconciler, infrastructure] — fix: replace remaining hardcoded 2026.2.24 version references
+- `ec416210` 2026-03-03 — [reconciler, infrastructure] — fix: add controlUi flag to buildOpenClawConfig and fix pkill bracket trick
+- `2121b0f6` 2026-03-04 — [reconciler, infrastructure, feature, docs] — fix: Kalshi PSS salt length, deploy scripts in ssh.ts, safe symlink upgrade
+- `ebdeadec` 2026-03-04 — [reconciler, infrastructure, docs] — fix: complete UX overhaul — onboarding flows, PEM delivery, browse script, funding guides, withdrawal guidance, balance checks, error handling
+- `3333b48f` 2026-03-04 — [reconciler, infrastructure] — feat: session protection system — circuit breaker, auto-backup, watchdog growth detection
+- `f2346f6d` 2026-03-04 — [reconciler, infrastructure, docs] — fix: agent intelligence — force prediction market script usage, never improvise
+- `0d59fda2` 2026-03-04 — [reconciler, infrastructure, feature, docs] — feat: Skill 15 — Solana DeFi Trading (Phase 1)
+- `a5654386` 2026-03-04 — [reconciler, infrastructure, docs] — fix: FOK orders, precision, order verification, liquidity checks, anti-fabrication
+- `37091ba0` 2026-03-04 — [reconciler, infrastructure] — fix: provisioning pipeline gaps — session protection in configureOpenClaw, skill API defaults, toggle upserts
+- `7e51ad30` 2026-03-04 — [reconciler, infrastructure] — fix: add Brave search to all VMs regardless of billing mode
+- `920ed8a6` 2026-03-04 — [reconciler, infrastructure] — fix: correct Brave env var name, remove apiMode gating for ElevenLabs
+- `49978b05` 2026-03-04 — [reconciler, infrastructure] — fix: add POLYGON_RPC_URL to VM manifest, configure pipeline, reconciler, and fleet backfill
+- `0cad0b70` 2026-03-04 — [reconciler, infrastructure] — fix: raise maxSkillsPromptChars from 200K to 350K — skills were being truncated
+- `4e671f4a` 2026-03-04 — [reconciler, infrastructure, docs] — fix: add proper --- YAML frontmatter to all custom skills — were invisible to OpenClaw parser
+- `3d9a8b56` 2026-03-04 — [reconciler, infrastructure] — feat: add Quick Command Routing table to SOUL.md onboarding template
+- `b4deb5db` 2026-03-05 — [reconciler, infrastructure, docs] — feat: polymarket-search.py — seamless market discovery script
+- `0893f797` 2026-03-05 — [reconciler, infrastructure, docs] — fix: FOK orders sweep orderbook with 2% default slippage for reliable fills
+- `9e1e767f` 2026-03-05 — [reconciler, infrastructure] — fix: restore maxSkillsPromptChars to 350000 — was reverted to 50000
+- `1e0c95be` 2026-03-05 — [reconciler, infrastructure] — fix: PERMANENT maxSkillsPromptChars=350000 — DO NOT REVERT — skills drop below this
+- `89312e92` 2026-03-05 — [reconciler, infrastructure, docs] — feat: proxy failover, memory hygiene, env drift protection, search events endpoint, routing persistence
+- `0345ca88` 2026-03-05 — [reconciler, infrastructure] — feat: set CLOB_PROXY_URL_BACKUP to London proxy (172.237.101.206)
+- `82b45df7` 2026-03-05 — [reconciler, infrastructure, docs] — fix: auto-retry on post-sell settlement delay instead of failing
+- `c9d5cb81` 2026-03-05 — [reconciler, infrastructure] — fix: diagnose insufficient balance root cause + automated memory cleanup
+- `f170bf52` 2026-03-05 — [reconciler, infrastructure, docs] — fix: distinguish min order size from insufficient balance, auto-round up small orders
+- `a3d4d517` 2026-03-06 — [reconciler, infrastructure, docs] — fix: prevent agents from improvising skills — add STOP guardrails to SKILL.md and CAPABILITIES.md
+- `6efe5f39` 2026-03-06 — [reconciler, infrastructure, docs] — fix: prevent agents from building rogue Polymarket infrastructure — enforce official scripts only
+- `a5893653` 2026-03-06 — [reconciler, infrastructure, feature, docs] — feat: add Higgsfield AI Video skill — BYOK video/image/audio via 200+ models (Muapi.ai)
+- `20df4df1` 2026-03-06 — [reconciler, infrastructure, docs] — feat: Higgsfield AI Video — platform credits, Muapi proxy, media credit packs
+- `5d829e51` 2026-03-06 — [reconciler, infrastructure] — fix: deploy INSTACLAW_MUAPI_PROXY in configureOpenClaw for new VMs
+- `89ee608f` 2026-03-06 — [reconciler, infrastructure] — fix: Higgsfield toggle broken — ssh2 exec channels are isolated
+- `9dc2da66` 2026-03-06 — [reconciler, infrastructure, docs] — feat: Telegram image → Muapi CDN bridge for seamless I2V from chat
+- `8024769a` 2026-03-06 — [reconciler, infrastructure] — fix: purge OpenClaw backup configs fleet-wide to prevent telegram token conflicts
+- `d812bdac` 2026-03-06 — [reconciler, infrastructure] — fix: add duplicate IP safety guard to all SSH operations + enable Higgsfield by default
+- `40f05447` 2026-03-06 — [reconciler, infrastructure] — fix: split installHiggsfieldSkill into batched SSH commands to avoid argument limit
+- `8dba7d98` 2026-03-06 — [reconciler, infrastructure] — fix: allow tilde in assertSafeShellArg so file browser can read ~/.openclaw/workspace
+- `d74af301` 2026-03-06 — [reconciler, infrastructure] — fix: privacy — wipe VM data between users, reset stale fields on assignment
+- `889c596a` 2026-03-07 — [reconciler, infrastructure, feature] — fix: file browser — fix tilde expansion in readFile, add download + media preview
+- `b0e86577` 2026-03-07 — [infrastructure, feature] — fix: replace icon system with simple-icons + Lucide React + real brand logos
+- `c8ecb275` 2026-03-07 — [infrastructure, feature] — fix: uniform skill card heights + Solana gradient logo
+- `42fb49a8` 2026-03-07 — [infrastructure, feature] — feat: orb-style skill icons matching marketplace aesthetic
+- `1507a867` 2026-03-07 — [infrastructure, feature] — feat: inline brand logos in E-Commerce skill description
+- `d9d7df96` 2026-03-07 — [reconciler, infrastructure, feature] — fix: Virtuals "Start Accepting Jobs" broken — wrong serving detection + silent errors
+- `9468a3e3` 2026-03-07 — [infrastructure, feature] — feat: add Kalshi inline logo from official app icon
+- `aaeb91fc` 2026-03-07 — [infrastructure, feature] — fix: use official Polymarket app icon image instead of SVG path
+- `2077ad6c` 2026-03-07 — [infrastructure, feature] — fix: use 3D Shopify app icon image instead of SVG path
+- `b4f1bba3` 2026-03-07 — [infrastructure, feature] — fix: use eBay app icon image instead of SVG path
+- `e7d6ed44` 2026-03-07 — [infrastructure, feature] — fix: use Gumroad app icon image instead of SVG path
+- `6f5a6884` 2026-03-07 — [infrastructure, feature] — fix: use Fiverr app icon image instead of SVG path
+- `95869b1e` 2026-03-07 — [infrastructure, feature] — fix: use Upwork app icon image instead of SVG path
+- `6cc54f2f` 2026-03-07 — [infrastructure, feature] — fix: use official Trello and Slack brand logos on Skills page
+- `7c223b3d` 2026-03-07 — [reconciler, infrastructure] — fix: add token rotation grace period to prevent proxy 401s during resync
+- `0d66eb99` 2026-03-07 — [reconciler, infrastructure] — fix: prevent proxy 401s from token rotation race in health cron
+- `fe36cb56` 2026-03-07 — [reconciler, infrastructure] — fix: add web3 to pip install in configureOpenClaw provisioning
+- `69b9d3be` 2026-03-08 — [reconciler, infrastructure] — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.7
+- `7ff729f6` 2026-03-08 — [reconciler, infrastructure, docs] — feat: add Crawlee stealth scraping — anti-bot fallback for web scraping skill
+- `023f7e59` 2026-03-08 — [reconciler, infrastructure] — fix: add 4-layer heartbeat quota bug prevention
+- `fc209a7a` 2026-03-09 — [reconciler, infrastructure] — fix: harden provisioning + crash-loop monitoring for openclaw module corruption
+- `39cee8eb` 2026-03-09 — [infrastructure, feature] — feat: overhaul ambassador referral + waitlist flow with per-referral tracking
+- `9d1d7870` 2026-03-09 — [reconciler, infrastructure] — fix: replace broken Polygon RPC endpoints in Polymarket scripts
+- `c63a16ef` 2026-03-09 — [reconciler, infrastructure] — chore: bump OpenClaw version pins from 2026.3.7 to 2026.3.8
+- `880b1b6f` 2026-03-09 — [reconciler, infrastructure] — fix: thorough openclaw module cleanup in configureOpenClaw
+- `3f32b2c3` 2026-03-09 — [reconciler, infrastructure] — fix: add diagnostics to openclaw reinstall failure in configureOpenClaw
+- `c4fb9a9d` 2026-03-09 — [reconciler, infrastructure] — fix: capture require() error in openclaw reinstall diagnostics
+- `6f0b78ca` 2026-03-09 — [reconciler, infrastructure] — fix: use which openclaw instead of require() for module check
+- `b2c44510` 2026-03-09 — [reconciler, infrastructure] — feat: /hq/dependencies page + P0 fixes (pin crawlee, bump viem)
+- `db942063` 2026-03-10 — [reconciler, infrastructure, docs] — fix: migrate workspace paths to ~/.openclaw/workspace/ to prevent LocalMediaAccessError
+- `8b8f184e` 2026-03-11 — [reconciler, infrastructure] — fix: clawlancer two-sided marketplace UX + funded bounties + rollback safety
+- `cea9176e` 2026-03-11 — [infrastructure, docs] — feat(instaclaw): AgentBook Phase 1 — schema, libraries, API routes, skill
+- `e0643051` 2026-03-11 — [reconciler, infrastructure] — feat(instaclaw): AgentBook Phase 1 — infrastructure hooks + fleet scripts
+- `10ac8402` 2026-03-11 — [reconciler, infrastructure] — feat(instaclaw): push-based VM heartbeat system
+- `1bc1d64e` 2026-03-11 — [reconciler, infrastructure, docs] — fix(instaclaw): AgentBook audit fixes
+- `bbddeb90` 2026-03-11 — [reconciler, infrastructure, feature] — fix(instaclaw): update model IDs — sonnet-4-5 → sonnet-4-6, fix OpenClaw model mapping
+- `2a66e0a1` 2026-03-11 — [reconciler, infrastructure, feature] — feat(instaclaw): AgentBook registration via VM CLI + QR code flow
+- `cefc7352` 2026-03-12 — [reconciler, infrastructure] — feat: session corruption auto-heal cron + health check detection
+- `eac22bc9` 2026-03-12 — [reconciler, infrastructure, feature] — fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide
+- `1afc8142` 2026-03-12 — [reconciler, infrastructure, feature] — Revert "fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide"
+- `0328421e` 2026-03-12 — [reconciler, infrastructure] — fix: add missing websockets dep to solana-defi pip install
+- `17788ebb` 2026-03-12 — [reconciler, infrastructure] — feat: parallelize package installs in configureOpenClaw (~60s savings)
+- `170a6235` 2026-03-13 — [reconciler, infrastructure] — fix: deploy all 13 prediction-markets scripts + auto-heal missing scripts via reconciler
+- `d1d2ad5b` 2026-03-13 — [reconciler, infrastructure, docs] — fix: add browser failure recovery + "never go silent" rule for agents
+- `14adefb8` 2026-03-13 — [infrastructure, feature, docs] — feat: drop the waitlist — frictionless one-click signup
+- `3d94095e` 2026-03-13 — [reconciler, infrastructure, docs] — fix: platform-wide silent death prevention — P0/P1/P2 fixes
+- `967071bb` 2026-03-14 — [reconciler, infrastructure] — chore: bump openclaw version pin from 2026.3.8 to 2026.3.13
+- `299094bd` 2026-03-14 — [infrastructure, feature] — chore: change support email from support@ to help@instaclaw.io
+- `07b73403` 2026-03-14 — [reconciler, infrastructure] — fix: remove invalid browser.profiles.chrome that crashes gateway on new VMs
+- `287cfed3` 2026-03-14 — [reconciler, infrastructure, feature] — feat: config safety guardrails — backup/rollback, validation, crash-loop detection
+- `2e00d679` 2026-03-14 — [reconciler, infrastructure, docs] — feat: Dynamic SPA Handling Protocol — improves agent reliability on Instagram/LinkedIn/Facebook
+- `4c1fd2b4` 2026-03-15 — [infrastructure, feature, docs] — feat: InstaAgent — Instagram Graph API integration (Phase 1)
+- `0c48ec2c` 2026-03-16 — [infrastructure, feature] — fix: remove all em dashes from email, fix Discord invite link
+- `e19b8960` 2026-03-17 — [reconciler, infrastructure] — fix: prevent VM configure race condition that leaks user data
+- `d2007e20` 2026-03-17 — [reconciler, infrastructure] — fix: wipeVMForNextUser now removes ALL user data on VM recycle
+- `f7109f95` 2026-03-17 — [reconciler, infrastructure] — fix: three-layer defense against web fetch session blowouts
+- `eabbbc8d` 2026-03-17 — [reconciler, infrastructure] — fix: escape newlines in STRIP_THINKING_SCRIPT Python template literal
+- `c0f40db2` 2026-03-17 — [reconciler, infrastructure] — fix: escape all Python \n literals in STRIP_THINKING_SCRIPT template
+- `e4eb6866` 2026-03-18 — [reconciler, infrastructure] — fix: raise bootstrapMaxChars to 30K, add WALLET.md template, monitor oversized memory
+- `f372f90e` 2026-03-18 — [infrastructure, feature] — fix: default all tiers to claude-sonnet-4-6 instead of haiku
+- `d835ac13` 2026-03-18 — [reconciler, infrastructure] — fix: add belt-and-suspenders haiku guard in configureOpenClaw + configure endpoint
+- `4c532da6` 2026-03-18 — [reconciler, infrastructure] — fix: add memory hygiene instructions to SOUL.md template
+- `4fdb1c27` 2026-03-18 — [reconciler, infrastructure] — fix: onboarding reliability — auto-release broken VMs, validate OpenClaw before marking ready
+- `a7a6298b` 2026-03-19 — [reconciler, infrastructure] — fix: session bloat — daily hygiene in strip-thinking.py + fleet-wide cleanup
+- `43dde511` 2026-03-19 — [reconciler, infrastructure, docs] — feat: Phase 0 — memory architecture verification + bug fixes
+- `5421f162` 2026-03-19 — [reconciler, infrastructure, docs] — feat: Phase 1 — memory architecture overhaul (skill trim 24%, CAPABILITIES 59%, session handoff, heartbeat hygiene, file sharing, group chat memory fix, manifest v33)
+- `8ac2cc89` 2026-03-19 — [reconciler, infrastructure, feature] — feat: File Delivery V1 — Telegram sendDocument + signed URLs + dashboard deep-linking + deliver_file.sh (manifest v34)
+- `d9e4fb74` 2026-03-19 — [reconciler, infrastructure] — fix: deliver_file.sh — read bot token from openclaw.json, chat_id from sessions.json, fix regex escape
+- `1e93f413` 2026-03-19 — [reconciler, infrastructure, docs] — feat: Phase 2 — enable memorySearch + memoryFlush fleet-wide, fix vm-384 migration (manifest v35)
+- `429f23e6` 2026-03-19 — [reconciler, infrastructure, feature] — feat: File Delivery V2 — Supabase Storage, delivery history, CDN downloads (manifest v36)
+- `d6ec9405` 2026-03-19 — [reconciler, infrastructure] — feat: task completion notifications — notify_user.sh + heartbeat Phase 0.5 + agent intelligence 1W (manifest v36)
+- `28eefb25` 2026-03-19 — [reconciler, infrastructure] — feat: fix P1 audit gaps — deploy SOUL.md supplement + HEARTBEAT.md consolidation + raise reserveTokensFloor to 35K (manifest v37)
+- `0081a012` 2026-03-19 — [reconciler, infrastructure] — fix: reconciler hardening — remove duplicate skills, strip _placeholder key, fix SSH key injection, use connectSSH(), expand billing webhook tier detection (manifest v38)
+- `74d8ca02` 2026-03-20 — [reconciler, infrastructure] — fix: correct SOUL.md supplement marker — 'Rule priority order' exists in base template, use 'INTELLIGENCE_INTEGRATED' instead (manifest v38)
+- `ff5ff555` 2026-03-22 — [reconciler, infrastructure] — fix: strip user-sent base64 images from sessions + increase memory warn TTL + add strip-thinking telemetry (manifest v39)
+- `83c0452c` 2026-03-22 — [reconciler, infrastructure] — fix: IMAGE_KEEP_RECENT=0 — strip ALL base64 images from sessions (manifest v40)
+- `47b0297b` 2026-03-22 — [infrastructure, feature, docs] — feat: World mini app — full v1 scaffold with 3-tap onboarding
+- `d3e4bbf6` 2026-03-23 — [reconciler, infrastructure, docs] — fix: disable daily 4AM session reset — switch to 7-day idle mode, isolate heartbeats, enforce session maintenance (manifest v41)
+- `e1e8afac` 2026-03-23 — [reconciler, infrastructure] — chore: bump OpenClaw version pins from 2026.3.13 to 2026.3.22
+- `b3e9fe53` 2026-03-23 — [reconciler, infrastructure] — fix: reconciler workspace integrity check — self-heal missing SOUL.md (v42)
+- `9f0ed29e` 2026-03-24 — [reconciler, infrastructure] — fix: systemd ExecStartPre crash-loop — remove broken log rotation (v43)
+- `43a2f83b` 2026-03-24 — [reconciler, infrastructure] — feat: EARN.md — comprehensive earning playbook for all agents (v44)
+- `b5aba5c0` 2026-03-24 — [reconciler, infrastructure, feature] — feat: World ID Cloudflare prep — store full proof, deploy nullifier to VMs, .well-known/agent.json
+- `52538305` 2026-03-24 — [reconciler, infrastructure, docs] — feat: memory health dashboard + remove rotateOversizedSession (v45)
+- `06b36998` 2026-03-25 — [reconciler, infrastructure] — fix: block OpenClaw control UI — redirect root path to instaclaw.io/dashboard
+- `b6be918b` 2026-03-25 — [reconciler, infrastructure, docs] — feat: bake dispatch mode into configureOpenClaw() + update PRD with Phase 0/1 results
+- `5df56627` 2026-03-25 — [reconciler, infrastructure] — fix: add "never go silent" operating principle to SOUL.md template
+- `46315dfc` 2026-03-25 — [reconciler, infrastructure] — fix: add "never self-restart" operating principle to SOUL.md template
+- `be8ac171` 2026-03-25 — [reconciler, infrastructure] — fix: usecomputer binary chmod +x in configureOpenClaw (npm doesn't set execute bit)
+- `46f92940` 2026-03-25 — [reconciler, infrastructure] — fix: supervisor TTY check + bake Phase 2 dispatch-server into configureOpenClaw
+- `f8c420ff` 2026-03-25 — [infrastructure, feature] — fix: swap Telegram as primary chat, World Chat as secondary
+- `ac90bcc8` 2026-03-25 — [feature, docs] — fix: new user VM provisioning — assign from pool before configure
+- `8e30e3a7` 2026-03-25 — [reconciler, infrastructure, feature, docs] — feat: Live Desktop Viewer — auth, takeover, configureOpenClaw, fleet-ready
+- `247fe79c` 2026-03-26 — [feature, docs] — fix: connection stability + 13 UX improvements from Mucus live testing
+- `606176bc` 2026-03-26 — [reconciler, infrastructure] — fix: add Caddy /vnc/* proxy + iptables to configureOpenClaw (was missing for new VMs)
+- `00a61e06` 2026-03-26 — [reconciler, infrastructure] — fix: auto-repair broken systemd override.conf in configureOpenClaw (prevents gateway crash-loop)
+- `f401085e` 2026-03-26 — [feature, docs] — fix: atomic credit addition in WLD delegate/confirm (Phase 0)
+- `055711d8` 2026-03-26 — [infrastructure, feature] — feat: Phase 2 — upgrade flow with Google sign-in + account linking
+- `36f86292` 2026-03-26 — [reconciler, infrastructure, feature, docs] — feat: dispatch v2 — action batching, screenshot optimization, copy-paste UX
+- `2b79a988` 2026-03-26 — [reconciler, infrastructure, feature] — fix: macOS permissions flow, pairing code reuse, agent dispatch detection
+- `9d659722` 2026-03-26 — [reconciler, infrastructure] — fix: dispatch detection — remove mandatory status check, use try-first approach
+- `d31a6a73` 2026-03-27 — [reconciler, infrastructure] — feat: agent suggests autonomous mode before multi-step dispatch tasks
+- `0ae2f848` 2026-03-27 — [reconciler, infrastructure, docs] — fix: agent must NEVER restart dispatch-server + systemd socket cleanup
+- `92f60205` 2026-03-27 — [reconciler, infrastructure] — feat: gateway watchdog — auto-restart hung gateways within 4 minutes
+- `32e56533` 2026-03-27 — [reconciler, infrastructure, docs] — fix: prevent context overflow + task persistence across resets
+- `29fb955c` 2026-03-27 — [reconciler, infrastructure, docs] — fix: shell-first enforcement, Spotlight fallback, message budget, connection info
+- `f828147d` 2026-03-27 — [reconciler, infrastructure, feature, docs] — feat: dispatch-remote-exec — run shell commands on user's Mac without Terminal
+- `e09fbe02` 2026-03-28 — [reconciler, infrastructure] — fix: NEVER Go Silent After Tool Failures — mandatory error reporting
+- `576225e9` 2026-03-28 — [reconciler, infrastructure] — fix: add image_generate parameter guidance + retrigger build
+- `5848b709` 2026-03-29 — [reconciler, infrastructure, docs] — feat: DegenClaw skill — Virtuals $100K weekly perps trading competition
+- `73f95890` 2026-03-29 — [infrastructure, docs] — chore: update PRD to reflect completed deployment + add fleet scripts
+- `5d742c13` 2026-03-30 — [reconciler, infrastructure] — feat: PARTNER_ID=INSTACLAW — Virtuals revenue share live
+- `78fe2c89` 2026-03-30 — [reconciler, infrastructure] — fix: PARTNER_ID audit fixes — uninstall cleanup + remove duplicate sed
+- `2c66561f` 2026-03-30 — [reconciler, infrastructure] — feat: PARTNER_ID in gateway systemd — process.env verified (manifest v50)
+- `3c4858f9` 2026-03-30 — [reconciler, infrastructure, docs] — feat: universal silence watchdog — 60-second fallback guarantee (manifest v51)
+- `fc7c2dae` 2026-03-30 — [reconciler, infrastructure] — fix: silence watchdog — use inline content instead of template registry (init order)
+- `35e93266` 2026-03-30 — [reconciler, infrastructure] — feat: add DegenClaw to EARN.md — Virtuals $100K weekly trading competition
+- `fb5612cd` 2026-03-31 — [infrastructure, feature] — feat: World Chat init — agent messages user first to establish DM
+- `c380b4a7` 2026-03-31 — [infrastructure, feature] — fix: Auto-retry stuck VMs + provisioning retry button
+- `011f19d5` 2026-04-01 — [reconciler, infrastructure] — security: Full user data wipe in configureOpenClaw before new user setup
+- `7c123b06` 2026-04-01 — [reconciler, infrastructure] — fix: configureOpenClaw sets config_version to VM_MANIFEST.version (51)
+- `4d71c67b` 2026-04-01 — [reconciler, infrastructure, feature, docs] — feat: Bankr partnership integration — wallet provisioning, tokenization, and trading fee credit loop
+- `99785ff6` 2026-04-01 — [infrastructure, feature] — fix: Post-ship audit cleanup — card order, window.open, extension placeholder, reclaim simplification
+- `f058d5bb` 2026-04-01 — [reconciler, infrastructure, feature] — fix: Resolve Bankr vs Virtuals/ACP wallet conflicts — dual wallet identity, tokenization guard, usage instructions
+- `1aaed5bc` 2026-04-01 — [reconciler, infrastructure] — security: Privacy guard in configureOpenClaw — force-wipe leftover data
+- `195db698` 2026-04-01 — [reconciler, infrastructure] — fix: Eliminate false unhealthy marks — HTTP-first health, restart grace, SSH debounce, lock file
+- `b13a36ec` 2026-04-01 — [reconciler, infrastructure] — security: Fourth privacy layer — pre-assignment wipe + idempotency fix
+- `7b475a92` 2026-04-01 — [reconciler, infrastructure] — feat: Provision AgentBook wallet during configureOpenClaw
+- `16dc054e` 2026-04-02 — [feature, docs] — fix: Mention Virtuals Protocol alongside Bankr for agent tokenization burns
+- `0bf4ddcf` 2026-04-02 — [reconciler, infrastructure] — fix: Generate agent wallets locally with viem (not on VM)
+- `3c33aecb` 2026-04-02 — [reconciler, infrastructure] — fix: Bump OpenClaw version pins to v2026.4.1
+- `4964b087` 2026-04-02 — [reconciler, infrastructure] — fix: set restart lock before gateway stop in upgradeOpenClaw()
+- `003b1107` 2026-04-02 — [reconciler, infrastructure] — fix: add tools.exec config to manifest v53 — restore exec access fleet-wide
+- `69e6bce1` 2026-04-03 — [reconciler, infrastructure] — fix: stop silence watchdog restart storm — decouple fallback from restart
+- `02ea12bf` 2026-04-03 — [feature, docs] — feat: Phase 2 AgentBook workaround — closeMiniapp + push notification
+- `b3214214` 2026-04-05 — [reconciler, infrastructure] — fix: add exec-approvals.json to manifest + configureOpenClaw (v55)
+- `b73facbf` 2026-04-06 — [reconciler, infrastructure, docs] — feat: cross-session memory — manifest v56, session-end hook, MEMORY.md auto-summaries
+- `7db9b226` 2026-04-06 — [reconciler, infrastructure] — fix: session-end hook reads GATEWAY_TOKEN from .env file (cron doesn't source env)
+- `3f537f1c` 2026-04-06 — [reconciler, infrastructure] — fix: fleet upgrade reliability — SSH timeouts, individual config settings, lock cleanup
+- `dbe7f853` 2026-04-06 — [reconciler, infrastructure] — fix: run openclaw doctor --fix before gateway restart during upgrades
+- `fd67fb3c` 2026-04-07 — [reconciler, infrastructure] — chore: update OpenClaw version pins to 2026.4.5
+- `795a7861` 2026-04-07 — [reconciler, infrastructure] — feat: automatic XMTP/World Chat setup during VM provisioning
+- `4a1afd22` 2026-04-07 — [infrastructure, feature] — fix: WLD delegation users get subscription records — prevents false suspension
+- `68e9e4c3` 2026-04-08 — [reconciler, infrastructure] — fix: install manifest cron jobs during configureOpenClaw() — P0 fix
+- `229fd5a8` 2026-04-08 — [infrastructure, docs] — fix: periodic cron audit + expanded 15-point verification
+- `0d73f05e` 2026-04-08 — [infrastructure, feature] — feat: hibernation system for WLD users — warm sleeping UX, margin protection
+- `858163ba` 2026-04-08 — [reconciler, infrastructure] — fix: deploy script FILES in configureOpenClaw + audit ready pool VMs
+- `4b74e1e9` 2026-04-08 — [reconciler, infrastructure, docs] — chore: new snapshot private/38069990 (v57-all-crons) + fix vm-watchdog 300s lock
+- `0ff6cf80` 2026-04-08 — [infrastructure, feature] — fix: WLD users get credits only — no fake subscriptions
+- `ef93d4ce` 2026-04-09 — [reconciler, infrastructure] — fix: add sandbox.mode=off to manifest — prevent Docker requirement on VMs
+- `5aa2dc37` 2026-04-09 — [reconciler, infrastructure] — fix: memory index cron uses NVM instead of bare node path
+- `cdcb78f2` 2026-04-09 — [reconciler, infrastructure] — fix: lower session-end hook threshold + add functional health checks
+- `8a8b6005` 2026-04-09 — [reconciler, infrastructure] — fix: WALLET.md wallet summary — agents know all 3 wallets and their distinct purposes
+- `88019316` 2026-04-09 — [reconciler, infrastructure] — fix: lower session-end hook threshold from 2 to 1
+- `c8fb25ce` 2026-04-09 — [reconciler, infrastructure] — fix: Crystal clear wallet routing across all agent context files
+- `93fcf856` 2026-04-09 — [reconciler, infrastructure] — feat: OpenClaw version pinning — auto-revert unauthorized upgrades
+- `0b4dcea4` 2026-04-09 — [feature, edge] — feat: Add /edge-city partner portal page
+- `af32f749` 2026-04-09 — [reconciler, infrastructure, edge] — feat: Install Edge City skill for partner=edge_city users
+- `4bf8ef43` 2026-04-09 — [infrastructure, edge] — temp: Add admin endpoint to verify Edge City skill installation (delete after test)
+- `a6cb94d3` 2026-04-09 — [infrastructure, edge] — fix: Use validateAdminKey for verify-edge-skill endpoint
+- `d1a06b90` 2026-04-10 — [reconciler, infrastructure] — fix: Always write EDGEOS_BEARER_TOKEN and SOLA_AUTH_TOKEN to Edge VM .env
+- `06a399be` 2026-04-10 — [reconciler, infrastructure] — fix: watchdog version cooldown from 1h to 10min
+- `57e83519` 2026-04-10 — [reconciler, infrastructure] — feat: session backup + remove daily limit buffer
+- `a4b81595` 2026-04-10 — [infrastructure, docs] — chore: cleanup after replenish-pool deploy — remove pool-monitor + add Rule 8
+- `2baf6cdf` 2026-04-10 — [infrastructure, feature] — feat(bankr): View on Bankr link + suspend wallet on VM reclaim
+- `61be338f` 2026-04-10 — [reconciler, infrastructure] — fix: vm-watchdog version-pin subprocess bug + manifest v58
+- `d732c26c` 2026-04-10 — [reconciler, infrastructure] — fix: export missing SOUL.md sections — unbreak main build
+- `7815bae7` 2026-04-10 — [reconciler, infrastructure] — fix: 3 pre-existing landmines surfaced by configureOpenClaw audit
+- `55ee33e9` 2026-04-13 — [reconciler, infrastructure] — fix: move Brave apiKey to plugins.entries.brave (OpenClaw 2026.4.5+)
+- `d67a4e37` 2026-04-13 — [reconciler, infrastructure, feature] — fix: auto-heal crash-looping gateways + alert on broken provisioning
+- `1388b0f6` 2026-04-14 — [feature, docs] — TEMP: Celebration animation preview + token card redesign + devrel notes
+- `13c6825e` 2026-04-14 — [infrastructure, feature] — feat: Token PFP — glass orb image generation + upload with consistent brand style
+- `13bbfec0` 2026-04-15 — [reconciler, infrastructure] — feat: Agent learns about its token — WALLET.md + MEMORY.md after launch
+- `c6292ae2` 2026-04-15 — [infrastructure, feature] — feat: Token PFP reads agent personality from SOUL.md + MEMORY.md via SSH
+- `0b987125` 2026-04-15 — [infrastructure, feature] — feat: Hash-seeded unique pixel art PFPs — like GitHub identicons
+- `43dade2d` 2026-04-17 — [infrastructure, feature] — feat: Procedural pixel art face PFPs — deterministic per agent
+- `b3f5cf4e` 2026-04-19 — [infrastructure, feature] — feat: 16×16 PFP generator with personality-locked character archetype
+- `221a5082` 2026-04-20 — [reconciler, infrastructure] — observability: diagnose Token PFP personality read path
+- `3f15249d` 2026-04-20 — [infrastructure, feature] — feat: use Candidate 02 PNG as base + hue-tint for shell variety
+- `e6ac015e` 2026-04-21 — [reconciler, infrastructure] — manifest v59: enable gateway.openai.chatCompletionsEnabled
+- `9e783f92` 2026-04-21 — [reconciler, infrastructure] — manifest v60: install pinned @bankr/cli@0.2.15 during configureOpenClaw
+- `8fc9861d` 2026-04-21 — [reconciler, infrastructure] — copy: TOOLS.md wallet/fees trigger + bankr-messages constant
+- `bfd36690` 2026-04-21 — [reconciler, infrastructure] — manifest v61: fix broken chat-completions config key
+- `f4c8e55a` 2026-04-24 — [reconciler, infrastructure, docs] — feat(reconcile): Phase 2c — strict-mode fleet reconciliation
+- `16bfa2be` 2026-04-26 — [reconciler, infrastructure] — fix(configure): pre-create all ~/.openclaw subdirs before any writes
+- `0e50d041` 2026-04-26 — [reconciler, infrastructure] — debug(configure): expose underlying Postgres error in DB-write failure
+- `678c2263` 2026-04-27 — [reconciler, infrastructure] — feat(bankr): pin @bankr/cli@0.3.1 — direct claim API target
+- `28ac6187` 2026-04-27 — [reconciler, infrastructure, docs] — feat(xmtp): proactive first-message on VM provisioning (#2)
+- `21ac38b7` 2026-04-27 — [reconciler, infrastructure] — fix(xmtp): always refresh xmtp-agent.mjs on configure (atomic) (#3)
+- `821925cc` 2026-04-27 — [reconciler, infrastructure] — feat(reconcile): auto-heal pinned npm globals (@bankr/cli + openclaw)
+- `913fcfc6` 2026-04-27 — [infrastructure, docs] — feat(vm-lifecycle): Phase 2 — orphan reconciliation pass + audit log
+- `56238ec4` 2026-04-27 — [reconciler, infrastructure] — feat(xmtp): per-user greeting marker + script-refresh fallback alert (#4)
+- `9801bdd0` 2026-04-27 — [reconciler, infrastructure] — fix(reconcile): enforce agents.defaults.model.primary to prevent OpenAI default
+- `a6ae2087` 2026-04-27 — [infrastructure, feature] — feat(analytics): onboarding events log + 7 emit sites (#5)
+- `0fa562d3` 2026-04-27 — [reconciler, infrastructure] — fix(silence-watchdog): only inspect telegram-origin sessions; manifest v63
+- `be3184ca` 2026-04-27 — [infrastructure, feature] — feat(analytics): PostHog server-side parallel emit + greeting backfill script (#6)
+- `396093f2` 2026-04-28 — [reconciler, infrastructure] — fix(reconcile): 3 critical bugs that left users on stale code (#7)
+- `16d8980f` 2026-04-28 — [reconciler, infrastructure] — fix(xmtp): detect NVM node path dynamically in instaclaw-xmtp.service
+- `4fffb27f` 2026-04-28 — [reconciler, infrastructure] — refactor(configureOpenClaw): collect partial_failures instead of swallowing
+- `e094ed53` 2026-04-28 — [reconciler, infrastructure] — feat(reconcile): add 7 deploy heal steps + bump-without-push gating
+- `65f79dae` 2026-04-28 — [reconciler, infrastructure] — feat(reconcile): Node 22.22.2 + OpenClaw 2026.4.26 pinned upgrade
+- `9f3aff5b` 2026-04-28 — [reconciler, infrastructure] — fix(reconcile): heal steps must not start services on suspended/hibernating VMs
+- `86e4bb25` 2026-04-28 — [reconciler, infrastructure] — fix(reconcile): close strictErrors gate hole in stepNodeUpgrade + stepNpmPinDrift
+- `fc213aab` 2026-04-28 — [feature, docs] — fix(browser-relay): surface relay-backend outage as maintenance state
+- `f0b8ad45` 2026-04-29 — [infrastructure, docs] — feat(browser-relay): add browser-relay-server.js to replace removed OpenClaw subsystem
+- `e85666d9` 2026-04-29 — [reconciler, infrastructure] — feat(reconcile): wire browser-relay-server into configureOpenClaw + manifest v65
+- `be95b11a` 2026-04-29 — [reconciler, infrastructure] — fix(reconcile): npm cache clean before openclaw install + tighten ExecStart grep
+- `83ca0b53` 2026-04-29 — [reconciler, infrastructure] — fix(reconcile): Bug C — stop gateway before openclaw npm install
+- `d3d40a39` 2026-04-29 — [reconciler, infrastructure] — fix(reconcile): Bug D + 60s gateway health timeout
+- `83eff391` 2026-04-29 — [reconciler, infrastructure] — feat(bankr-skill): InstaClaw overlay — kill clanker subdir, drop Solana misroutes
+- `ef472917` 2026-04-29 — [reconciler, infrastructure] — fix(reconcile): npm install timeout 180s→360s + on-disk verify
+- `9dfe894b` 2026-04-29 — [reconciler, infrastructure] — fix(agent-context): scope token launches to Base in upfront-loaded surfaces
+- `f8fcc71d` 2026-04-29 — [reconciler, infrastructure] — chore: export WORKSPACE_SOUL_MD for ad-hoc verification scripts
+- `2229080d` 2026-04-29 — [reconciler, infrastructure] — chore(manifest): bump v66 → v67 — token-launch framing in upfront context
+- `f623cdec` 2026-04-29 — [reconciler, infrastructure] — fix(reconcile): caddy no-op + npm install timeout 360s→600s
+- `b886c924` 2026-04-29 — [reconciler, infrastructure] — fix(v67-routing): fleet patch + reconciler step + audit retry
+- `2d526591` 2026-04-29 — [reconciler, infrastructure] — fix(reconcile): gateway health 60s→120s + dist/index.js verify
+- `f695276a` 2026-04-29 — [feature, edge] — feat(edge-city): build out /edge-city portal landing page
+- `edf34e82` 2026-04-29 — [reconciler, infrastructure] — fix(reconcile): auto-retry npm install on verify failure
+- `a324f115` 2026-04-29 — [feature, edge] — feat(edge-city): public /edge-city/sponsors page + portal sponsor strip
+- `7b026a37` 2026-04-29 — [edge, docs] — docs(prd): add Index Network matching layer + Vendrov research layer to EdgeClaw
+- `38c540f7` 2026-04-29 — [edge, docs] — docs(prd): integrate Substack research overview — foundational research, methodology stack, hypothesis enrichment, coordinator agents
+- `a25ae1ef` 2026-04-29 — [edge, docs] — docs(prd): integrate Granola meeting notes — ticket validation, managed updates, privacy modes, portal scope
+- `9e88696c` 2026-04-29 — [infrastructure, docs] — docs(research-export): operational README — quick start, privacy guarantees, runbook
+- `77c113f5` 2026-04-29 — [infrastructure, feature] — feat(bankr): #9 — launch number ("You're #N to deploy autonomously")
+- `788f6dcd` 2026-04-29 — [infrastructure, feature] — feat(bankr): #6 — 5 randomized tweet templates with agent-name interpolation
+- `30717999` 2026-04-29 — [infrastructure, feature] — feat(bankr): #17 — World ID verified-human creator badge
+- `7a3cfa51` 2026-04-29 — [reconciler, infrastructure] — fix(v67): bump agents.defaults.timeoutSeconds to 90s + watchdog FROZEN to 5min
+- `ba0a772e` 2026-04-29 — [infrastructure, feature] — fix(bankr-tweet-templates): 4 fuzz-found edge-case bugs
+- `ab77525d` 2026-04-29 — [infrastructure, feature] — feat(bankr): #1 — agent autoposts to Telegram in its own voice on launch
+- `2df2c74e` 2026-04-29 — [reconciler, infrastructure] — feat(bankr): #8 — agent answers "what's my token at?" via DexScreener
+- `6679afe8` 2026-04-30 — [reconciler, infrastructure] — fix(fleet): manifest v68 — watchdog uptime guard + telegram streaming off
+- `c07accec` 2026-04-30 — [reconciler, infrastructure] — fix(manifest): close v67 jsdoc properly so v68 history compiles
+- `d967db50` 2026-04-30 — [reconciler, infrastructure] — fix(fleet): manifest v69 — disable gateway watchdog timer fleet-wide
+- `84aeb3a7` 2026-04-30 — [feature, edge, docs] — feat(partner): tag existing users via /api/partner/tag — fix dual-account bug
+- `fc871b37` 2026-04-30 — [infrastructure, feature] — feat(bankr): #5 — auto-generated launch card image (1200x630 OG)
+- `bf053e9a` 2026-04-30 — [reconciler, infrastructure, docs] — fix(reconciler): verify config-set in non-strict path; ban silent \|\| true
+- `5ff04ba5` 2026-04-30 — [reconciler, infrastructure] — fix(fleet): manifest v71 — disable mDNS by default + weekly backup prune
+- `5d6c0d07` 2026-04-30 — [reconciler, infrastructure] — feat(soul): manifest v72 — SOUL.md cache boundary marker
+- `731d41ec` 2026-04-30 — [reconciler, infrastructure] — feat(memory): manifest v73 — MEMORY.md backup + auto-restore (Phase 1)
+- `f2a8679a` 2026-05-01 — [reconciler, infrastructure] — fix(systemd): StartLimitAction=stop→none — invalid value broke fleet kill-loop protection
+- `f8f23353` 2026-05-01 — [reconciler, infrastructure] — fix(systemd): v75 — split StartLimit* into [Unit] section (was silently dropped in [Service])
+- `1a2fc677` 2026-05-01 — [reconciler, infrastructure, edge] — fix(manifest): v76 — remove vm-watchdog + silence-watchdog from cron schedule
+- `3ccda655` 2026-05-01 — [edge, docs] — docs(prd): SOUL restructure — Phase 0/0.5/0.7 results, canary swap, simplified migration
+- `4bb354cd` 2026-05-01 — [reconciler, infrastructure] — feat(soul-v2): new workspace-templates-v2.ts with all 4 approved templates (no behavior change)
+- `2665ba31` 2026-05-01 — [reconciler, infrastructure] — feat(soul-v2): migrateExistingSoulMd reconciler step + manifest v77 + kill switch (default OFF)
+- `0fdbd037` 2026-05-01 — [reconciler, infrastructure] — feat(soul-v2): add per-VM whitelist gate (RECONCILE_SOUL_MIGRATION_VM_IDS)
+- `b1c4ef3c` 2026-05-01 — [infrastructure, edge] — fix(soul-v2): correct bankr SKILL.md path; soften partner-gated edge-esmeralda refs
+- `ad26b00b` 2026-05-01 — [edge, docs] — docs(prd): EdgeClaw architecture revision after 2026-05-01 working session
+- `2dfcd609` 2026-05-02 — [infrastructure, docs] — docs+scripts: P0 wake bug RCA + manual recovery scripts
+- `85613f7a` 2026-05-01 — [feature, edge] — feat(edge-privacy): components 1-3 — DB migration, toggle API, dashboard route
+- `221c8be4` 2026-05-02 — [infrastructure, feature, edge, docs] — fix: wake-from-hibernation paths + auth-cache clear + watchdog v2
+- `cb52f1ec` 2026-05-02 — [reconciler, infrastructure, edge] — feat(edge-privacy): components 5–9 — expire cron, audit log, SSH bridge, reconciler, cutover script
+- `1da128be` 2026-05-02 — [reconciler, infrastructure, edge] — fix(edge-privacy): lazy-load privacy-bridge.sh to survive Turbopack page-data collection
+- `fa1193a4` 2026-05-02 — [reconciler, infrastructure, edge] — fix(edge-privacy): QA blockers in privacy bridge — newline injection, fail-open, openclaw backdoor
+- `b3fa5297` 2026-05-02 — [reconciler, infrastructure, feature, edge, docs] — feat(consensus): partner skill for Consensus 2026 Miami (May 5–7)
+- `0fefd764` 2026-05-02 — [reconciler, infrastructure, edge] — feat(consensus): also install consensus skill for edge_city partners
+- `a495680d` 2026-05-02 — [reconciler, infrastructure, edge, docs] — fix(strip-thinking): trim trailing empty turns, never nuke active session
+- `fee5324d` 2026-05-02 — [infrastructure, edge, docs] — docs(rule-22): full incident history + fleet pusher for trim-not-nuke fix
+- `599b9a1c` 2026-05-03 — [reconciler, docs] — docs(CLAUDE.md): cut over to v79 snapshot private/38575292
+- `58e59e0e` 2026-05-03 — [reconciler, infrastructure, docs] — fix(reconcile): sentinel guard + race fix + Rule 23
+- `cb4d425a` 2026-05-03 — [reconciler, infrastructure, edge] — fix(memory): cross-session persistence layered fix (SOUL reorder + bootstrap bump + periodic summary)
+- `bfb09037` 2026-05-03 — [infrastructure, edge] — ops(memory-deploy): operational scripts + fleet bump infra
+- `18eed486` 2026-05-03 — [reconciler, infrastructure] — fix(timeout): bump timeoutSeconds 90 → 300 — 3-min response on vm-780 forced this
+- `e285e68f` 2026-05-04 — [reconciler, infrastructure] — fix(memory): manifest v80 — periodic-summary hook unblocked when session shrinks
+- `ef6cecab` 2026-05-04 — [reconciler, infrastructure, feature, edge] — fix(consensus): universal skill install + fleet backfill + free-trial copy
+- `611e84d4` 2026-05-04 — [feature, edge] — fix(consensus-ui): apply canonical glass UI across page + client
+- `f209f0c6` 2026-05-04 — [reconciler, infrastructure] — fix(consensus): update record counts to live data (326/219/451 → 338/229/463)
+- `0b6585fe` 2026-05-04 — [infrastructure, docs] — feat(matchpool): component 4 — VM-side intent sync + bridge to platform
+- `93094391` 2026-05-04 — [infrastructure, feature] — feat(matchpool): components 6-10 + hardening pass — full pipeline shipped
+- `51ef0cd4` 2026-05-04 — [reconciler, infrastructure] — feat(matchpool): v81 manifest — fleet wiring for matching pipeline
+- `5e91cb1a` 2026-05-04 — [infrastructure, feature] — fix(bankr-card): plumb bankr_token_image_url through to avatar
+- `77a178bf` 2026-05-04 — [reconciler, infrastructure] — feat(matchpool): Telegram notification + ghost pool seed
+- `d099a5af` 2026-05-04 — [infrastructure, feature] — fix(matchpool,bankr): canary v81 + Telegram sanitization + brand orange
+- `bab5e37f` 2026-05-04 — [reconciler, infrastructure] — fix(gateway): heartbeat reclassification bypass for match pipeline (P1)
+- `327888af` 2026-05-05 — [reconciler, infrastructure] — feat(matchpool): v82 SOUL.md awareness for matching engine
+- `4b28f8f3` 2026-05-05 — [infrastructure, feature, edge] — feat(matchpool): Path 1 — Skills-page toggle for Consensus 2026
+- `259477ba` 2026-05-05 — [reconciler, infrastructure] — feat(matchpool): v83 — pipeline + intent_sync gate on skill state
+- `5859048c` 2026-05-05 — [reconciler, infrastructure] — feat(matchpool): v84 — Path 2 §Organic Activation helper
+- `31396d5c` 2026-05-05 — [reconciler, infrastructure, edge, docs] — feat(skills): Rule 24 — install verification + self-healing + taxonomy
+- `bd13d54f` 2026-05-05 — [infrastructure, feature] — feat(skills): consensus-2026 brand-image orb icon
+- `55bb97ea` 2026-05-05 — [reconciler, infrastructure] — fix(skills): Rule 24 follow-ups — backup-before-rm + bootstrap const + vm-724/725 fixes
+- `bc6b589f` 2026-05-05 — [infrastructure, edge] — fix(match): contact-info include_self bypasses request-array gate
+- `56f71126` 2026-05-05 — [reconciler, infrastructure] — fleet(v86): raise TasksMax 75 → 120 on openclaw-gateway cgroup
+- `36c6b260` 2026-05-05 — [reconciler, infrastructure] — fleet(v87): integrate prctl-subreaper into openclaw-gateway
+- `50764e71` 2026-05-05 — [infrastructure, edge] — test(xmtp): edge-case suite — 12/12 with delivery hardening
+- `2c49732a` 2026-05-05 — [infrastructure, edge, docs] — chore(consensus): bundle deploy artifacts + design PRDs
+- `aabb783e` 2026-05-05 — [infrastructure, docs] — docs(consensus): launch kit — tweet copy, screenshot guide, technical receipts
+- `faf8b8a8` 2026-05-05 — [reconciler, infrastructure] — fleet(v88): add build-essential to systemPackages — fixes v87 silent fail
+- `39b77b23` 2026-05-05 — [reconciler, edge] — Merge fleet/v88-build-essential: add build-essential to systemPackages
+- `9beb74bf` 2026-05-05 — [reconciler, infrastructure] — fix(reconcile-fleet): drop batch size 10 → 3 to fit under 300s timeout
+- `8de505e3` 2026-05-05 — [reconciler, infrastructure, docs] — docs(consensus): day-of runbook + PRD open-question lock-in
+- `c3b8cee9` 2026-05-05 — [reconciler, infrastructure] — fix(reconcile): inline matchpool .py contents at build time
+- `251e01fd` 2026-05-06 — [reconciler, infrastructure] — fix(reconcile): caddy hostname regex needs multiline flag
+- `8ffc2970` 2026-05-06 — [reconciler, infrastructure] — fix(reconcile): node_exporter post-restart sleep 2 → 5s
+- `b6141af9` 2026-05-06 — [reconciler, infrastructure] — fix(soul-md): v89 — InstaClaw platform identity (fixes "I'm an OpenClaw agent")
+- `7ac0d370` 2026-05-07 — [reconciler, infrastructure] — fix(session-overflow): v90 — four-layer session-overflow reliability fix
+- `e30c6a78` 2026-05-07 — [reconciler, infrastructure, docs] — fix(bankr): wallet coverage gap (Phases 1-5) + v91 SOUL.md Platform V2
+- `16aa97c9` 2026-05-09 — [reconciler, infrastructure] — fix(reconcile-fleet): touch route.ts to bust nft cache for v90 manifest
+- `f5122470` 2026-05-09 — [infrastructure, docs] — fix(db): usage_log 14-day retention via pg_cron + BRIN index swap + monitoring
+- `5e949f0f` 2026-05-09 — [reconciler, infrastructure] — fix(reconcile-fleet): drop suspended/hibernating from eligibility
+- `07269ec2` 2026-05-09 — [reconciler, infrastructure] — fix(ssh): add v90 compaction keys to buildOpenClawConfig static blob
+- `55fce656` 2026-05-09 — [reconciler, infrastructure] — fix(reconcile-fleet): per-VM 120s timeout via Promise.race
+- `3716bc43` 2026-05-09 — [reconciler, infrastructure] — chore(scripts): one-shot to mark long-dormant VMs unhealthy
+- `84775ac0` 2026-05-09 — [reconciler, infrastructure] — feat(manifest-integrity): P1-4 nft-cache defense + dynamic-value handling
+- `4854398d` 2026-05-10 — [reconciler, infrastructure, docs] — docs(claude): elevate P1-1 — lying-DB is ~20% fleet-wide, 3 shapes, fleet-integrity issue
+- `035b3b11` 2026-05-11 — [infrastructure, docs] — docs: lying-DB fleet census — 27% rate, 12 of 44 healthy cv≥88 VMs
+- `1fb249d5` 2026-05-11 — [reconciler, infrastructure] — fix(reconciler): root-cause fixes for 27% lying-DB rate
+- `b6f949ac` 2026-05-11 — [reconciler, infrastructure, edge] — feat(soul-md): v92 partner-stub migration — fix live truncation bug on edge_city VMs
+- `0f796218` 2026-05-11 — [reconciler, infrastructure, edge] — fix(manifest): EMERGENCY bandaid — bootstrapMaxChars 35000 → 40000 (v92)
+- `bc1608ac` 2026-05-11 — [reconciler, infrastructure] — fix(manifest): EMERGENCY disable CONSENSUS_MATCHING_AWARENESS_V1 SOUL.md append
+- `2750c10d` 2026-05-11 — [reconciler, infrastructure] — chore(scripts): Phase 4 cv-reset for the 10 lying-DB VMs
+- `567f653b` 2026-05-11 — [reconciler, infrastructure] — fix(strip-thinking): idempotency gate on session-backup creation
+- `c56efadf` 2026-05-11 — [reconciler, infrastructure, edge, docs] — feat(soul-v2): bug-fix stepMigrateSoulV2 + canary/rollout/rollback scripts + PRD
+- `1e572e98` 2026-05-11 — [edge, docs] — docs(soul-v2): §14 — Agent Self-Compaction Architecture (V3+ roadmap)
+- `e436cf3a` 2026-05-11 — [reconciler, infrastructure, edge] — feat(soul-md): v93 partner-stub APPEND branch + budget-aware over-budget check
+- `437504db` 2026-05-11 — [infrastructure, edge] — feat(soul-v2): --no-strict opt-in flag for fleet rollout
+- `e7d927b3` 2026-05-11 — [infrastructure, edge, docs] — feat(gbrain+monitoring): install pipeline + forensic handoff + 3 ops crons
+- `320ecb25` 2026-05-11 — [reconciler, infrastructure, edge, docs] — feat(reconciler+claude.md): hot-reload classification + auto-restart guardrail
+- `47764527` 2026-05-11 — [reconciler, infrastructure] — feat(reconcile): catch-up script for fleet stuck >N versions behind manifest
+- `831533f4` 2026-05-11 — [reconciler, infrastructure, edge, docs] — feat(phase4): gbrain fleet rollout design + stepEnvVarPush reconciler step
+- `0712ba01` 2026-05-11 — [reconciler, infrastructure, edge, docs] — feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
+- `2b985da0` 2026-05-11 — [infrastructure, edge] — feat(phase4): gbrain-coverage-check cron + edge_city readiness probe
+- `21d9dd9b` 2026-05-11 — [reconciler, docs] — docs(prd): reconcile deadline structural fix — Vercel cron can't catch up multi-version drift
+- `b1741db5` 2026-05-12 — [reconciler, infrastructure, edge] — feat(phase4c): stepGbrain reconciler step + build-time script embedding
+- `0144181a` 2026-05-12 — [infrastructure, docs] — feat(snapshot-bake): canonical fresh-nanode bake toolchain (cleanup + validation + runbook)
+- `1c44d5e9` 2026-05-12 — [infrastructure, feature, edge, docs] — fix(onboarding): break post-checkout loop + recover from configure partial-failure (Rule 33)
+- `a8bb1bca` 2026-05-12 — [feature, edge] — feat(edge): rebrand /edge-city → /edge with Edge City visual language
+- `6671f651` 2026-05-12 — [infrastructure, feature, edge, docs] — Merge branch 'feat/matchpool-outcomes-ingest' — §5.2 matching engine infrastructure
+- `b4b1e97b` 2026-05-12 — [reconciler, infrastructure] — fix(reconcile): stepSystemdUnit verify uses md5 hash compare (likely cv=82 unstick)
+- `c944a3b0` 2026-05-12 — [infrastructure, edge] — fix(auth): plug dual-account hole — partner cookie now applies to existing users
+- `4a5fddec` 2026-05-12 — [infrastructure, feature, edge] — feat(edge): branded Open Graph share card for /edge
+- `b27f94ee` 2026-05-12 — [feature, edge] — fix(edge): move plaza page to /edge/ to match post-rebrand routing
+- `ab48f58c` 2026-05-12 — [feature, edge] — feat(edge): brand /signup + /connect for Edge Esmeralda attendees
+- `1bf237a9` 2026-05-12 — [feature, edge] — feat(edge): /edge responds to login state
+- `9434a2db` 2026-05-12 — [reconciler, infrastructure, docs] — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34)
+- `c4502681` 2026-05-12 — [edge, docs] — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec
+- `b3d58bc4` 2026-05-12 — [reconciler, infrastructure] — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling
+- `a527f867` 2026-05-12 — [infrastructure, edge] — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait)
+- `ef8258e6` 2026-05-12 — [reconciler, infrastructure] — fix(reconcile): validate-before-restart guards against schema-rejection crashes
+- `7f395209` 2026-05-12 — [reconciler, infrastructure] — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands
+- `3839d176` 2026-05-12 — [reconciler, infrastructure] — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4)
+- `da5b7d5c` 2026-05-12 — [infrastructure, edge] — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found
+- `ed8ee6a1` 2026-05-12 — [reconciler, docs] — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11)
+- `5f6d6a11` 2026-05-12 — [reconciler, edge, docs] — feat(changelog): automated changelog + X-post generator system
+
+## AI-assisted commits (1245)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `902044a0` 2026-03-02 — fix: wire Virtuals aGDP Skills toggle to existing install/uninstall code, hide X/Twitter Search
+- `b1f6a21d` 2026-03-02 — fix: restore X/Twitter Search skill to active status
+- `fd7cec08` 2026-03-02 — feat: wire up X/Twitter Search skill using Brave Search site:x.com
+- `784163df` 2026-03-02 — feat: complete SEO & GEO overhaul — 20+ new content pages, sitemap, structured data
+- `28735b00` 2026-03-02 — chore: add IndexNow key verification file
+- `3d664cd3` 2026-03-02 — chore: add Bing Webmaster Tools verification meta tag
+- `0fa077c6` 2026-03-02 — refactor: switch X/Twitter Search from proxy to BYOK
+- `1db28ff6` 2026-03-02 — fix: remove gateway.controlUi key rejected by OpenClaw 2026.2.17+
+- `ceaba54f` 2026-03-02 — blog: publish 18 SEO posts + blog pipeline scripts
+- `f946d202` 2026-03-02 — feat: add Linode provider support to open-spots.sh, default to Linode
+- `9920fa9f` 2026-03-02 — seo: add authoritative outbound links to all 23 blog posts
+- `745dd209` 2026-03-02 — seo: GEO audit fixes — FAQ sync, llms.txt expansion, use-case links, about page
+- `3a9b7468` 2026-03-03 — fix: open-spots.sh Linode provisioning — pass SSH public key string + add required root_pass
+- `2b7e51b8` 2026-03-03 — fix: version-aware controlUi handling + groups.* wildcard fix
+- `0f34f5a7` 2026-03-03 — fix: canary upgrade admin lookup — match actual DB email
+- `f537de7e` 2026-03-03 — debug: add diagnostic logging to canary upgrade admin lookup
+- `d00748e1` 2026-03-03 — fix: bump canary upgrade maxDuration from 120s to 300s
+- `a6dbb786` 2026-03-03 — perf: parallelize fleet upgrade batches and version sweep
+- `bb5c22f9` 2026-03-03 — feat: tool-use continuation credit discount (0.2x multiplier)
+- `57229c0a` 2026-03-03 — fix: bump fleet upgrade maxDuration to 600s
+- `fa88771a` 2026-03-03 — ui: add Blog link to landing page navbar
+- `24418a61` 2026-03-03 — ui: add Lenis smooth scroll to all marketing pages
+- `35599983` 2026-03-03 — fix: bump fleet upgrade maxDuration to 900s (Vercel Pro max)
+- `8b0aace8` 2026-03-03 — feat: overhaul /use-cases page — 6 new use cases, vivid descriptions
+- `16739680` 2026-03-03 — copy: update crypto use case to highlight multi-marketplace earning
+- `951cdcbe` 2026-03-03 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.2
+- `f09be921` 2026-03-03 — fix: replace remaining hardcoded 2026.2.24 version references
+- `57310278` 2026-03-03 — fix: lower upgrade-fleet maxDuration to 800s (Vercel Pro limit)
+- `04738568` 2026-03-03 — fix: show Dashboard instead of Sign Up in marketing header when logged in
+- `40dc19ef` 2026-03-03 — feat: add real Polymarket trade execution scripts and UX guardrails
+- `ec416210` 2026-03-03 — fix: add controlUi flag to buildOpenClawConfig and fix pkill bracket trick
+- `52fb0dd3` 2026-03-03 — fix: add RPC fallback chain and balance check for Polymarket scripts
+- `0497f062` 2026-03-03 — fix: add USDC.e vs native USDC detection to Polymarket trade flow
+- `2afabeeb` 2026-03-03 — fix: add hard rule to use setup-creds status for balance checks
+- `1d815444` 2026-03-03 — fix: move Polymarket hard rules to top of SKILL.md
+- `ff8238b7` 2026-03-03 — feat: add polymarket-wallet.py for ERC-20 transfers and USDC swaps
+- `2121b0f6` 2026-03-04 — fix: Kalshi PSS salt length, deploy scripts in ssh.ts, safe symlink upgrade
+- `fe1353f0` 2026-03-04 — fix: strip query params from Kalshi signing path per API spec
+- `ebdeadec` 2026-03-04 — fix: complete UX overhaul — onboarding flows, PEM delivery, browse script, funding guides, withdrawal guidance, balance checks, error handling
+- `4ab70b61` 2026-03-04 — fix: switch CLOB proxy to transparent mode with UFW IP whitelist
+- `3333b48f` 2026-03-04 — feat: session protection system — circuit breaker, auto-backup, watchdog growth detection
+- `da7ebcf0` 2026-03-04 — fix: fleet deploy stdin conflict — use fd3 for while-read loop
+- `f2346f6d` 2026-03-04 — fix: agent intelligence — force prediction market script usage, never improvise
+- `0d59fda2` 2026-03-04 — feat: Skill 15 — Solana DeFi Trading (Phase 1)
+- `a5654386` 2026-03-04 — fix: FOK orders, precision, order verification, liquidity checks, anti-fabrication
+- `37091ba0` 2026-03-04 — fix: provisioning pipeline gaps — session protection in configureOpenClaw, skill API defaults, toggle upserts
+- `7e51ad30` 2026-03-04 — fix: add Brave search to all VMs regardless of billing mode
+- `ffe5bc61` 2026-03-04 — feat: comprehensive Polymarket + Kalshi setup UX on earn page
+- `920ed8a6` 2026-03-04 — fix: correct Brave env var name, remove apiMode gating for ElevenLabs
+- `49978b05` 2026-03-04 — fix: add POLYGON_RPC_URL to VM manifest, configure pipeline, reconciler, and fleet backfill
+- `0cad0b70` 2026-03-04 — fix: raise maxSkillsPromptChars from 200K to 350K — skills were being truncated
+- `4e671f4a` 2026-03-04 — fix: add proper --- YAML frontmatter to all custom skills — were invisible to OpenClaw parser
+- `3d9a8b56` 2026-03-04 — feat: add Quick Command Routing table to SOUL.md onboarding template
+- `2a9c38c2` 2026-03-05 — fix: make ambassador detail modal scrollable so action buttons are reachable
+- `b4deb5db` 2026-03-05 — feat: polymarket-search.py — seamless market discovery script
+- `6073ae9a` 2026-03-05 — fix: restore CLOB proxy, add resolver to nginx, add proxy health monitoring
+- `4622dabb` 2026-03-05 — fix: CLOB API precision formatting for FOK orders
+- `0893f797` 2026-03-05 — fix: FOK orders sweep orderbook with 2% default slippage for reliable fills
+- `9e1e767f` 2026-03-05 — fix: restore maxSkillsPromptChars to 350000 — was reverted to 50000
+- `1e0c95be` 2026-03-05 — fix: PERMANENT maxSkillsPromptChars=350000 — DO NOT REVERT — skills drop below this
+- `89312e92` 2026-03-05 — feat: proxy failover, memory hygiene, env drift protection, search events endpoint, routing persistence
+- `82868367` 2026-03-05 — feat: per-ambassador NFT badge images + V2 soulbound contract
+- `0345ca88` 2026-03-05 — feat: set CLOB_PROXY_URL_BACKUP to London proxy (172.237.101.206)
+- `5890412b` 2026-03-05 — feat: 7-day trial for promotional invite codes
+- `82b45df7` 2026-03-05 — fix: auto-retry on post-sell settlement delay instead of failing
+- `47960dd0` 2026-03-05 — fix: add viem to instaclaw deps — was only in root, breaking Vercel builds
+- `c9d5cb81` 2026-03-05 — fix: diagnose insufficient balance root cause + automated memory cleanup
+- `f170bf52` 2026-03-05 — fix: distinguish min order size from insufficient balance, auto-round up small orders
+- `af893429` 2026-03-06 — fix: P&L only counts MATCHED fills — LIVE/PENDING orders were inflating portfolio value
+- `1de23a15` 2026-03-06 — fix: rename total_invested to total_buy_volume — was showing recycled capital as deposits
+- `a3d4d517` 2026-03-06 — fix: prevent agents from improvising skills — add STOP guardrails to SKILL.md and CAPABILITIES.md
+- `6efe5f39` 2026-03-06 — fix: prevent agents from building rogue Polymarket infrastructure — enforce official scripts only
+- `a5893653` 2026-03-06 — feat: add Higgsfield AI Video skill — BYOK video/image/audio via 200+ models (Muapi.ai)
+- `e49537f6` 2026-03-06 — fix: fleet-push-higgsfield — decode base64 SSH key, strip env quotes
+- `20df4df1` 2026-03-06 — feat: Higgsfield AI Video — platform credits, Muapi proxy, media credit packs
+- `0f7d1610` 2026-03-06 — fix: Higgsfield V2 — rewrite all scripts with verified Muapi API patterns
+- `692fcbff` 2026-03-06 — feat: telegram migration safety, ambassador NFT minting, email templates, polymarket fixes
+- `93b8b3d4` 2026-03-06 — fix: add cleanup script for terminated VMs holding telegram tokens
+- `5d829e51` 2026-03-06 — fix: deploy INSTACLAW_MUAPI_PROXY in configureOpenClaw for new VMs
+- `89ee608f` 2026-03-06 — fix: Higgsfield toggle broken — ssh2 exec channels are isolated
+- `6afece12` 2026-03-06 — feat: add /billing/credit-packs page for media credit pack purchases
+- `9dc2da66` 2026-03-06 — feat: Telegram image → Muapi CDN bridge for seamless I2V from chat
+- `8024769a` 2026-03-06 — fix: purge OpenClaw backup configs fleet-wide to prevent telegram token conflicts
+- `f9215525` 2026-03-06 — fix: blank botToken in live config (not just disable telegram) when fixing dupes
+- `34f5c2db` 2026-03-06 — fix: use CLOB API as primary source for condition_id market lookups
+- `d812bdac` 2026-03-06 — fix: add duplicate IP safety guard to all SSH operations + enable Higgsfield by default
+- `40f05447` 2026-03-06 — fix: split installHiggsfieldSkill into batched SSH commands to avoid argument limit
+- `63a4ef32` 2026-03-06 — fix: cast duration/numeric params to int in all Higgsfield scripts, clean up proxy credit check
+- `5a7f8043` 2026-03-06 — fix: skills toggle shows green when enabled, grey when disabled
+- `9b62518e` 2026-03-06 — fix: skills toggle — green enabled state, glass UI, bounce animation
+- `8dba7d98` 2026-03-06 — fix: allow tilde in assertSafeShellArg so file browser can read ~/.openclaw/workspace
+- `1e982fdd` 2026-03-06 — chore: trigger clean Vercel rebuild (stale tsbuildinfo referenced deleted fix-stijn.ts)
+- `d74af301` 2026-03-06 — fix: privacy — wipe VM data between users, reset stale fields on assignment
+- `005280a5` 2026-03-07 — fix: bust stale Vercel tsbuildinfo cache that references deleted fix-stijn.ts
+- `889c596a` 2026-03-07 — fix: file browser — fix tilde expansion in readFile, add download + media preview
+- `2bfca09c` 2026-03-07 — fix: restrict file browser — protect system files, show as locked
+- `e1023847` 2026-03-07 — fix: skills grid overflow + gateway 409 conflict self-healing
+- `d3ed887b` 2026-03-07 — fix: upgrade skill icons — official brand logos + Lucide icons
+- `33c5c6ed` 2026-03-07 — fix: contain wallet panel inside skill card as collapsible accordion
+- `b0e86577` 2026-03-07 — fix: replace icon system with simple-icons + Lucide React + real brand logos
+- `c8ecb275` 2026-03-07 — fix: uniform skill card heights + Solana gradient logo
+- `45bf6308` 2026-03-07 — fix: fixed-height skill cards, wallet popover, shorter Solana description
+- `42fb49a8` 2026-03-07 — feat: orb-style skill icons matching marketplace aesthetic
+- `469f0268` 2026-03-07 — feat: add Prediction Markets and Freelance skills from Earn page
+- `850ee9aa` 2026-03-07 — fix: brand logos get neutral circle, generic skills keep gradient orbs
+- `8cb21dab` 2026-03-07 — fix: brand logo images fill entire circle edge-to-edge
+- `1507a867` 2026-03-07 — feat: inline brand logos in E-Commerce skill description
+- `d9d7df96` 2026-03-07 — fix: Virtuals "Start Accepting Jobs" broken — wrong serving detection + silent errors
+- `6acb0b89` 2026-03-07 — feat: inline brand logos for Prediction Markets and Freelance skills
+- `ee28aa8f` 2026-03-07 — feat: add Kalshi green rounded-square brand mark inline
+- `bffcf03b` 2026-03-07 — fix: replace eBay inline logo with colorful wordmark in dark circle
+- `5c07e4b1` 2026-03-07 — fix: inline brand logos now use colored circle containers
+- `9468a3e3` 2026-03-07 — feat: add Kalshi inline logo from official app icon
+- `52177906` 2026-03-07 — fix: inline brand logos flow naturally in text like emoji
+- `19f71073` 2026-03-07 — fix: inline brand logos use rounded-rect app icon shape, crisp rendering
+- `665c9ead` 2026-03-07 — fix: center inline brand logos properly inside rounded-rect containers
+- `bd7ad71f` 2026-03-07 — fix: crop inline logo viewBoxes so SVGs fill containers like Kalshi
+- `4f1326fa` 2026-03-07 — fix: unify inline logo sizes — SVG and image containers now identical
+- `aaeb91fc` 2026-03-07 — fix: use official Polymarket app icon image instead of SVG path
+- `4508b9e8` 2026-03-07 — fix: use 3D Polymarket app icon matching Kalshi style
+- `2077ad6c` 2026-03-07 — fix: use 3D Shopify app icon image instead of SVG path
+- `b4f1bba3` 2026-03-07 — fix: use eBay app icon image instead of SVG path
+- `e7d6ed44` 2026-03-07 — fix: use Gumroad app icon image instead of SVG path
+- `6f5a6884` 2026-03-07 — fix: use Fiverr app icon image instead of SVG path
+- `95869b1e` 2026-03-07 — fix: use Upwork app icon image instead of SVG path
+- `0aa735a9` 2026-03-07 — fix: Google Workspace icon now uses official 4-color Google "G"
+- `66291c1b` 2026-03-07 — fix: remove em dashes from skill descriptions
+- `48f8e196` 2026-03-07 — feat: glass UI filter section + Earn category on Skills page
+- `4d9f22c9` 2026-03-07 — feat: glass UI for all buttons on Skills & Integrations page
+- `93595e79` 2026-03-07 — fix: replace heavy dark pills with frosted glass UI
+- `553ff184` 2026-03-07 — fix: add clean drop shadow to active category pills
+- `6cc54f2f` 2026-03-07 — fix: use official Trello and Slack brand logos on Skills page
+- `f18a6751` 2026-03-07 — fix: Trello and Slack icons now match other BrandShell icons
+- `aae90897` 2026-03-07 — fix: Slack icon now uses official 4-color hash logo
+- `30c46142` 2026-03-07 — fix: marketplace category pills now have animated layoutId transition
+- `2711fa5a` 2026-03-07 — fix: soften active pill shadow from heavy to subtle
+- `f84d4756` 2026-03-07 — fix: marketplace search bar now uses frosted glass UI
+- `63f3fbcb` 2026-03-07 — fix: Submit a Skill button now uses dark frosted glass UI
+- `29f14654` 2026-03-07 — fix: Submit a Skill button now truly translucent glass
+- `10bcdcfd` 2026-03-07 — fix: stop health cron from restarting gateway on Telegram 409 conflicts
+- `fbe00923` 2026-03-07 — fix: Submit a Skill button dark glass with inner highlight
+- `6cc459d7` 2026-03-07 — fix: add Clawlancer Bounties card to Marketplaces + green toggle style
+- `97ee63de` 2026-03-07 — fix: use actual brand logos for Clawlancer and Virtuals marketplace cards
+- `dd988bb7` 2026-03-07 — fix: remove em dashes from Marketplaces section copy
+- `aa7a2e66` 2026-03-07 — fix: remove all em dashes from dashboard page user-visible text
+- `b9ee9b7e` 2026-03-07 — fix: apply glass UI to model selector dropdown on dashboard
+- `7c223b3d` 2026-03-07 — fix: add token rotation grace period to prevent proxy 401s during resync
+- `0d66eb99` 2026-03-07 — fix: prevent proxy 401s from token rotation race in health cron
+- `f55d574b` 2026-03-07 — chore: rename conflicting migration files to unblock supabase db push
+- `89ea25ae` 2026-03-07 — fix: show Telegram Bot Token input for all users, not just those with Telegram enabled
+- `fe36cb56` 2026-03-07 — fix: add web3 to pip install in configureOpenClaw provisioning
+- `69b9d3be` 2026-03-08 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.7
+- `7ff729f6` 2026-03-08 — feat: add Crawlee stealth scraping — anti-bot fallback for web scraping skill
+- `8684f47d` 2026-03-08 — feat: add skill auto-update system — manifest.json + daily cron checker
+- `e85bce47` 2026-03-08 — feat: add /dashboard/credits page and GET /api/credits/media endpoint
+- `06f4b067` 2026-03-08 — feat: add Credits link to dashboard overflow nav
+- `4bdbfb59` 2026-03-08 — fix: redesign credits page for light theme — glass cards, icon badges, hover lift, structured packs
+- `116caafd` 2026-03-08 — fix: heartbeat detection fallback + per-call usage logging
+- `023f7e59` 2026-03-08 — fix: add 4-layer heartbeat quota bug prevention
+- `dd4e64d5` 2026-03-08 — fix: round usage numbers on dashboard to prevent floating point display
+- `d049225d` 2026-03-09 — fix: add 24h dedup guard on "Your OpenClaw Instance is Ready!" email
+- `fc209a7a` 2026-03-09 — fix: harden provisioning + crash-loop monitoring for openclaw module corruption
+- `39cee8eb` 2026-03-09 — feat: overhaul ambassador referral + waitlist flow with per-referral tracking
+- `9d1d7870` 2026-03-09 — fix: replace broken Polygon RPC endpoints in Polymarket scripts
+- `9663d76e` 2026-03-09 — feat: add self-healing auto-recovery for crash-looping gateways
+- `3f290bb9` 2026-03-09 — fix: ambassador referral tracking bugs + admin referral management UI
+- `d232468d` 2026-03-09 — fix: show waitlist form by default on signup when ?ref= present + add "Referred by" column to HQ invites
+- `c63a16ef` 2026-03-09 — chore: bump OpenClaw version pins from 2026.3.7 to 2026.3.8
+- `a2e201f7` 2026-03-09 — fix: add duplicate IP guard to VM provisioning pipeline
+- `880b1b6f` 2026-03-09 — fix: thorough openclaw module cleanup in configureOpenClaw
+- `ffde5845` 2026-03-09 — feat: Seedance 2.0 infinite-length extend — new tiers, chained extensions, credit weights
+- `3f32b2c3` 2026-03-09 — fix: add diagnostics to openclaw reinstall failure in configureOpenClaw
+- `c4fb9a9d` 2026-03-09 — fix: capture require() error in openclaw reinstall diagnostics
+- `6f0b78ca` 2026-03-09 — fix: use which openclaw instead of require() for module check
+- `b2c44510` 2026-03-09 — feat: /hq/dependencies page + P0 fixes (pin crawlee, bump viem)
+- `f5bdad9d` 2026-03-09 — fix: correct OpenClaw + Anthropic API dependency check targets
+- `44962e0f` 2026-03-09 — fix: permanent duplicate IP prevention across all provisioning paths
+- `f66f00a5` 2026-03-09 — feat: /hq/dependencies auto-update — npm bump, fleet deploy, manual mark
+- `cc936843` 2026-03-09 — fix: prevent duplicate dependency rows with UNIQUE constraint + ON CONFLICT
+- `16b68553` 2026-03-09 — feat: auto-update OpenClaw dependency status after successful fleet upgrade
+- `6477becd` 2026-03-09 — feat: add 10 skill/API dependencies to tracking table
+- `9e113b5e` 2026-03-09 — feat: add 14 high-priority dependencies from codebase audit
+- `b9788ac2` 2026-03-09 — fix: pin exact dependency versions from live fleet + fix NextAuth.js tracking
+- `b54b9d45` 2026-03-09 — fix: set repo_url to dashboard/management links for all 40 dependencies
+- `0bf44e0d` 2026-03-09 — fix: exclude skill-category deps from npm Update All Safe path
+- `6f49727b` 2026-03-09 — feat: add Remotion Video skill card to /dashboard/skills
+- `f412d719` 2026-03-09 — fix: skills audit — rename remotion-video slug, deactivate freelance-digital, add marketplace-earning
+- `a4b7964f` 2026-03-09 — fix: use correct column name status='inactive' instead of is_active=false
+- `84ab994c` 2026-03-10 — fix: route "ping" messages as heartbeats to prevent credit drain
+- `fa286b7c` 2026-03-10 — docs: document neg_risk auto-handling, pin py-clob-client to v0.34.6
+- `46d5b2f1` 2026-03-10 — update favicon to glossy 3D crab on dark background
+- `db942063` 2026-03-10 — fix: migrate workspace paths to ~/.openclaw/workspace/ to prevent LocalMediaAccessError
+- `8b8f184e` 2026-03-11 — fix: clawlancer two-sided marketplace UX + funded bounties + rollback safety
+- `cea9176e` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — schema, libraries, API routes, skill
+- `f987bffc` 2026-03-11 — fix(instaclaw): add /api/agentbook/lookup to middleware public routes
+- `e0643051` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — infrastructure hooks + fleet scripts
+- `a7906a73` 2026-03-11 — merge: AgentBook Phase 1 — InstaClaw integration (WDP 71)
+- `f363e4e6` 2026-03-11 — fix: add Vercel ignored build step for monorepo
+- `bb921ee6` 2026-03-11 — fix: correct instaclaw ignoreCommand working directory
+- `10ac8402` 2026-03-11 — feat(instaclaw): push-based VM heartbeat system
+- `b1a8ee59` 2026-03-11 — fix(instaclaw): AgentBook skill ACP conflict + auto-registration trigger
+- `70492abf` 2026-03-11 — fix(instaclaw): remove Clawlancer dependency from AgentBook skill
+- `eafb5310` 2026-03-11 — fix(instaclaw): fix agentbook-check.py argparse order (--json before subcommand)
+- `1bc1d64e` 2026-03-11 — fix(instaclaw): AgentBook audit fixes
+- `5742213a` 2026-03-11 — fix(instaclaw): AgentBook registration flow — wait for human verification
+- `4672fffe` 2026-03-11 — fix(instaclaw): remove --llms flag, use tee+background for CLI URL capture
+- `eb4b4bde` 2026-03-11 — feat: World ID 4.0 migration + AgentBook dashboard registration flow
+- `37da5088` 2026-03-11 — chore: trigger redeploy with RP_ID + RP_SIGNING_KEY env vars
+- `8bc62ebb` 2026-03-11 — fix(instaclaw): add error logging to sign-request endpoint for debugging
+- `bbddeb90` 2026-03-11 — fix(instaclaw): update model IDs — sonnet-4-5 → sonnet-4-6, fix OpenClaw model mapping
+- `be69aba6` 2026-03-11 — fix(instaclaw): add diagnostic mode to sign-request for production debugging
+- `e991a6ae` 2026-03-11 — fix(instaclaw): strip 0x prefix from RP_SIGNING_KEY before signRequest()
+- `32fa80e9` 2026-03-11 — fix(instaclaw): strip trailing \n artifact from RP_SIGNING_KEY env var
+- `d0f5b13b` 2026-03-11 — fix: fetch rpContext for verified users + prevent status cache
+- `bc9b9c5d` 2026-03-11 — fix: add onError + console logging to World ID widget for debugging
+- `cc35156b` 2026-03-11 — fix: add webpack WASM support for World ID 4.0 IDKit
+- `cbb0ce36` 2026-03-11 — fix: World ID 4.0 — strip RP_ID newline, dynamic import, fetch on click
+- `c54b1f1f` 2026-03-11 — fix: force QR code on desktop for World ID widget
+- `6e181b82` 2026-03-11 — debug: enable IDKIT_DEBUG and log rp_context on verify click
+- `0aa8b8ff` 2026-03-11 — fix(instaclaw): show World ID widget error code prominently on screen
+- `6957af02` 2026-03-11 — fix(instaclaw): handle IDKit 4.x proof format in verify endpoint
+- `5aa2a124` 2026-03-11 — fix(instaclaw): use correct column name agentbook_wallet_address
+- `2a66e0a1` 2026-03-11 — feat(instaclaw): AgentBook registration via VM CLI + QR code flow
+- `42b4e450` 2026-03-11 — fix(instaclaw): wrap QRCodeSVG dynamic import in default export
+- `9edca75c` 2026-03-11 — fix(instaclaw): move polling useEffect above early returns (React #310)
+- `eb2745bb` 2026-03-11 — fix(instaclaw): handle non-JSON responses from start-registration
+- `975efc69` 2026-03-11 — fix(instaclaw): make AgentBook registration non-blocking (timeout fix)
+- `f83ed840` 2026-03-11 — fix(instaclaw): setsid detach for agentkit-cli + correct URL regex
+- `11b91a1a` 2026-03-12 — fix: async video generation — add --submit-only flag, bump poll timeout to 8min
+- `31f38853` 2026-03-12 — fix: make async video confirmation message mandatory in SKILL.md
+- `cefc7352` 2026-03-12 — feat: session corruption auto-heal cron + health check detection
+- `eac22bc9` 2026-03-12 — fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide
+- `ca8ecd38` 2026-03-12 — fix: forward anthropic-beta header in proxy for adaptive thinking
+- `2600a058` 2026-03-12 — debug: log exact thinking request/response payload for investigation
+- `575b808b` 2026-03-12 — fix: resolve TS error in thinking debug logging (message_count type)
+- `685d3775` 2026-03-12 — fix: normalize thinking string→object for Anthropic API in proxy
+- `c5e04bbe` 2026-03-12 — fix: map adaptive→enabled+10k budget, inject interleaved-thinking beta
+- `b699c012` 2026-03-12 — fix: handle thinking as object { type: "adaptive" } not just string
+- `5ca66cd6` 2026-03-12 — fix: strip effort parameter, restore adaptive thinking type
+- `cc3ca635` 2026-03-12 — fix: strip thinking for Haiku — only Sonnet 4.6/Opus support adaptive
+- `a1bf472a` 2026-03-12 — docs: add critical comment block to thinking normalization code
+- `cc648e85` 2026-03-12 — fix: change default model routing from Haiku to Sonnet with budget guard
+- `0328421e` 2026-03-12 — fix: add missing websockets dep to solana-defi pip install
+- `17788ebb` 2026-03-12 — feat: parallelize package installs in configureOpenClaw (~60s savings)
+- `138ab752` 2026-03-12 — fix: update all Sonnet 4.5 labels to Sonnet 4.6 across UI and API
+- `a25d8d89` 2026-03-13 — chore: redeploy with new Anthropic API key
+- `54a42262` 2026-03-13 — chore: force redeploy with new Anthropic API key
+- `1feb094d` 2026-03-13 — feat: billing cache prevention — intercept, auto-clear, and recover
+- `170a6235` 2026-03-13 — fix: deploy all 13 prediction-markets scripts + auto-heal missing scripts via reconciler
+- `d1d2ad5b` 2026-03-13 — fix: add browser failure recovery + "never go silent" rule for agents
+- `14adefb8` 2026-03-13 — feat: drop the waitlist — frictionless one-click signup
+- `2e7d90ec` 2026-03-13 — feat: add WAITLIST_MODE kill switch for instant landing page revert
+- `3d94095e` 2026-03-13 — fix: platform-wide silent death prevention — P0/P1/P2 fixes
+- `5b9b3e51` 2026-03-13 — fix: optimize hero CTA buttons for mobile screen sizes
+- `025df537` 2026-03-13 — fix: bump mobile hero button sizes for larger phones (Pro Max)
+- `eff4a08a` 2026-03-13 — fix: smooth scroll on Learn More button via Lenis instead of jerky anchor jump
+- `967071bb` 2026-03-14 — chore: bump openclaw version pin from 2026.3.8 to 2026.3.13
+- `0168b23c` 2026-03-14 — feat: add support button to landing page nav and dashboard More dropdown
+- `299094bd` 2026-03-14 — chore: change support email from support@ to help@instaclaw.io
+- `0109bde7` 2026-03-14 — fix: remove support button from landing page hero nav
+- `fa985439` 2026-03-14 — fix: smooth scroll to Human Verification section from dashboard banner
+- `65ead87f` 2026-03-14 — fix: poll for hash target element before scrolling on settings page
+- `07b73403` 2026-03-14 — fix: remove invalid browser.profiles.chrome that crashes gateway on new VMs
+- `75a49864` 2026-03-14 — feat: add "don't leave this screen" note and contact support link to deploy page
+- `287cfed3` 2026-03-14 — feat: config safety guardrails — backup/rollback, validation, crash-loop detection
+- `0ec9a908` 2026-03-14 — feat: production-ready Chrome Extension Relay — protocol rewrite + dashboard UI
+- `2e00d679` 2026-03-14 — feat: Dynamic SPA Handling Protocol — improves agent reliability on Instagram/LinkedIn/Facebook
+- `4c1fd2b4` 2026-03-15 — feat: InstaAgent — Instagram Graph API integration (Phase 1)
+- `49bfd137` 2026-03-15 — fix: allow /api/webhooks/* through auth middleware
+- `e7ac6b9e` 2026-03-15 — fix: use INSTAGRAM_APP_ID/SECRET for Instagram OAuth flow
+- `43070509` 2026-03-16 — fix: add enable_fb_login=0 and force_authentication=1 to Instagram OAuth
+- `d5d101fd` 2026-03-16 — fix: use META_APP_ID for Instagram OAuth client_id
+- `f7ba9d46` 2026-03-16 — fix: switch to standalone Instagram Login flow (api.instagram.com)
+- `3b9f8cdb` 2026-03-16 — fix: revert auth URL to www.instagram.com/oauth/authorize
+- `dcdb2c3c` 2026-03-16 — fix: Instagram OAuth token parsing + run instagram migration
+- `e32c176c` 2026-03-16 — feat: Instagram token API + auth helper for VM scripts
+- `f64c77a0` 2026-03-16 — fix: allow VM access to /api/instagram/token via middleware bypass
+- `880c7ee1` 2026-03-16 — feat: VM validation system — fleet health checks, auto-fix, dashboard
+- `7a823bd6` 2026-03-16 — fix: add /api/vm/validate to middleware self-auth bypass
+- `29d04359` 2026-03-16 — fix: validator DBUS false positive + cron check parsing
+- `0531c61f` 2026-03-16 — feat: smart cron job guardrails with upsell moments
+- `29f904e6` 2026-03-16 — fix: disable dead CLOB proxy fleet-wide, use direct clob.polymarket.com
+- `0589cc0d` 2026-03-16 — fix: cron-guard critical bugs — atomic writes, file locking, Telegram dedup
+- `386c498f` 2026-03-16 — feat: /api/vm/fix-infra endpoint for systemd override + swap fixes
+- `d36b40ef` 2026-03-16 — fix: systemd override check uses individual key grep (multiline bug)
+- `b602e21c` 2026-03-16 — fix: DBUS systemd-status is info-level pass when health+port OK
+- `b1a08760` 2026-03-16 — feat: fleet-mode fix-infra + pip3/playwright fixes + DBUS severity
+- `4fffdd25` 2026-03-16 — feat: add /notify email signup page with Discord CTA
+- `790a738f` 2026-03-16 — fix: add /api/notify to public API exclusions in middleware
+- `a9a1eaf6` 2026-03-16 — feat: add "waitlist is over" email template and broadcast endpoint
+- `58f171d6` 2026-03-16 — fix: polish waitlist-over email copy for higher conversion
+- `33080f51` 2026-03-16 — fix: invert logo to white in dark mode email clients
+- `79d5de80` 2026-03-16 — fix: remove logo image from email header for dark mode compatibility
+- `ec88a7ff` 2026-03-16 — feat: add value prop + World partnership paragraph to waitlist email
+- `0f2ac7f6` 2026-03-16 — fix: add no-KYC detail to World partnership copy in email
+- `c210acdd` 2026-03-16 — fix: broaden capability examples in waitlist email copy
+- `fe4501d1` 2026-03-16 — fix: move value prop paragraph below CTA button for above-fold visibility
+- `0c48ec2c` 2026-03-16 — fix: remove all em dashes from email, fix Discord invite link
+- `3fb54a7c` 2026-03-16 — fix: link World text to world.org in waitlist email
+- `6f32aad2` 2026-03-16 — fix: remove "no credit card required" from email CTA
+- `5df26a24` 2026-03-16 — fix: link email CTAs to homepage instead of /signup
+- `f2ffbff4` 2026-03-16 — fix: add YAML frontmatter to instagram-automation SKILL.md
+- `a58b6417` 2026-03-17 — fix: remove broken Polygon RPCs from polymarket-trade.py fallback list
+- `1fd389ee` 2026-03-17 — fix: remove hardcoded 0.99/0.01 slippage caps in polymarket-trade.py
+- `e19b8960` 2026-03-17 — fix: prevent VM configure race condition that leaks user data
+- `824a74b9` 2026-03-17 — fix: audit-identity checks ~/.openclaw/workspace/ not ~/workspace/
+- `d2007e20` 2026-03-17 — fix: wipeVMForNextUser now removes ALL user data on VM recycle
+- `05965f68` 2026-03-17 — fix: empty chat bubbles + model picker click-outside bug
+- `c406df70` 2026-03-17 — fix: prevent stuck deployments — 4 layered safety nets
+- `7add293c` 2026-03-17 — fix: Polymarket dashboard panel can't read VM files
+- `ac330c3a` 2026-03-17 — fix: log console.error on failed VM file fetches instead of silently returning null
+- `ba3d26f5` 2026-03-17 — chore: add suspended_at migration for suspension flow hardening
+- `a277c394` 2026-03-17 — fix: truncate oversized tool results at proxy to prevent context overflow
+- `508e71ec` 2026-03-17 — fix: add pre-deploy migration verification to block deploys with missing DB objects
+- `f7109f95` 2026-03-17 — fix: three-layer defense against web fetch session blowouts
+- `eabbbc8d` 2026-03-17 — fix: escape newlines in STRIP_THINKING_SCRIPT Python template literal
+- `c0f40db2` 2026-03-17 — fix: escape all Python \n literals in STRIP_THINKING_SCRIPT template
+- `e4eb6866` 2026-03-18 — fix: raise bootstrapMaxChars to 30K, add WALLET.md template, monitor oversized memory
+- `f372f90e` 2026-03-18 — fix: default all tiers to claude-sonnet-4-6 instead of haiku
+- `d835ac13` 2026-03-18 — fix: add belt-and-suspenders haiku guard in configureOpenClaw + configure endpoint
+- `4c532da6` 2026-03-18 — fix: add memory hygiene instructions to SOUL.md template
+- `5fd5ff49` 2026-03-18 — fix: gracefully handle stale PostgREST schema cache for configure_lock_at
+- `4fdb1c27` 2026-03-18 — fix: onboarding reliability — auto-release broken VMs, validate OpenClaw before marking ready
+- `93ce51d9` 2026-03-18 — fix: raise circuit breaker thresholds — false trip blocking all pro/power users
+- `df721b74` 2026-03-18 — feat: circuit breaker dashboard widget + 80% early warning alert
+- `a7a6298b` 2026-03-19 — fix: session bloat — daily hygiene in strip-thinking.py + fleet-wide cleanup
+- `43dde511` 2026-03-19 — feat: Phase 0 — memory architecture verification + bug fixes
+- `d64f480d` 2026-03-19 — docs: add file delivery + group chat architecture PRDs
+- `5421f162` 2026-03-19 — feat: Phase 1 — memory architecture overhaul (skill trim 24%, CAPABILITIES 59%, session handoff, heartbeat hygiene, file sharing, group chat memory fix, manifest v33)
+- `8ac2cc89` 2026-03-19 — feat: File Delivery V1 — Telegram sendDocument + signed URLs + dashboard deep-linking + deliver_file.sh (manifest v34)
+- `d9e4fb74` 2026-03-19 — fix: deliver_file.sh — read bot token from openclaw.json, chat_id from sessions.json, fix regex escape
+- `1e93f413` 2026-03-19 — feat: Phase 2 — enable memorySearch + memoryFlush fleet-wide, fix vm-384 migration (manifest v35)
+- `deceef41` 2026-03-19 — docs: mark Phase 2 complete — memorySearch + memoryFlush deployed fleet-wide (v35)
+- `429f23e6` 2026-03-19 — feat: File Delivery V2 — Supabase Storage, delivery history, CDN downloads (manifest v36)
+- `d6ec9405` 2026-03-19 — feat: task completion notifications — notify_user.sh + heartbeat Phase 0.5 + agent intelligence 1W (manifest v36)
+- `28eefb25` 2026-03-19 — feat: fix P1 audit gaps — deploy SOUL.md supplement + HEARTBEAT.md consolidation + raise reserveTokensFloor to 35K (manifest v37)
+- `31e7eeec` 2026-03-19 — fix: add /api/vm/files/delivered and /api/f to middleware self-auth exclusions
+- `9f8ed657` 2026-03-19 — feat: video refund mechanism + fix upsell link on limit hit + fix Higgsfield jobs.json status tracking
+- `0081a012` 2026-03-19 — fix: reconciler hardening — remove duplicate skills, strip _placeholder key, fix SSH key injection, use connectSSH(), expand billing webhook tier detection (manifest v38)
+- `74d8ca02` 2026-03-20 — fix: correct SOUL.md supplement marker — 'Rule priority order' exists in base template, use 'INTELLIGENCE_INTEGRATED' instead (manifest v38)
+- `e064bc3c` 2026-03-20 — docs: update PRD — Phase 1+2 fully complete after v38 audit fix, P2.4 deployed
+- `ff5ff555` 2026-03-22 — fix: strip user-sent base64 images from sessions + increase memory warn TTL + add strip-thinking telemetry (manifest v39)
+- `83c0452c` 2026-03-22 — fix: IMAGE_KEEP_RECENT=0 — strip ALL base64 images from sessions (manifest v40)
+- `47b0297b` 2026-03-22 — feat: World mini app — full v1 scaffold with 3-tap onboarding
+- `437ddd3a` 2026-03-23 — style: glass morphism UI overhaul for World mini app
+- `a1c299c5` 2026-03-23 — fix: critical mini app integration gaps — auth, deep links, middleware
+- `d3e4bbf6` 2026-03-23 — fix: disable daily 4AM session reset — switch to 7-day idle mode, isolate heartbeats, enforce session maintenance (manifest v41)
+- `89b55506` 2026-03-23 — docs: add $INSTACLAW token staking to World mini app PRD
+- `70cd0f01` 2026-03-23 — fix: account portability — prevent duplicate accounts across platforms
+- `e1e8afac` 2026-03-23 — chore: bump OpenClaw version pins from 2026.3.13 to 2026.3.22
+- `0bb44c76` 2026-03-23 — fix: splash screen hang — MiniKit init race + fetch timeout
+- `8e1d98a9` 2026-03-23 — fix: force past splash screen with 3s timeout + inline styles + debug logs
+- `785d3baf` 2026-03-23 — style: onboarding redesign — light theme, Instrument Serif, no emojis
+- `3a8033b0` 2026-03-23 — style: 'Claim your free' + size up 'AI agent' to match width
+- `5286b11f` 2026-03-23 — feat: scrolling marquee use-case pills on onboarding screen
+- `86c7a2cb` 2026-03-23 — style: match landing page glass pill style — white bg, multi-layer inset shadows
+- `d0496f37` 2026-03-23 — style: full onboarding layout overhaul — native iOS app feel
+- `2f8f569b` 2026-03-23 — style: pill-shaped CTA button, more bottom padding, horizontal breathing room
+- `c3559864` 2026-03-23 — feat: replace app icon with live spots-open pill from landing page
+- `734e94e2` 2026-03-23 — style: bump 'AI agent' to 60px to match 'Claim your free' width
+- `328e9d29` 2026-03-23 — fix: spots pill not rendering — CORS blocked cross-origin fetch
+- `db5c5b89` 2026-03-23 — style: larger hero title, bigger subtitle, shift content upward
+- `c9c80227` 2026-03-23 — style: refine hero layout — upper-third placement, balanced title sizes
+- `4c836973` 2026-03-23 — feat: scrolling testimonial cards fill gap between marquee and CTA
+- `e2b38ec5` 2026-03-23 — feat: add pixel art avatars to testimonial cards
+- `0634638e` 2026-03-23 — style: widen subtitle to 2 lines instead of 3
+- `df6ee56a` 2026-03-23 — copy: CTA → 'Claim my agent'
+- `15b57089` 2026-03-23 — layout: center marquees between subtitle and CTA button
+- `884c1e03` 2026-03-23 — fix: auth flow — cookie sameSite, SIWE fallback, detailed error logging
+- `526f6ebd` 2026-03-23 — fix: serialize auth errors properly — show full text not [object Object]
+- `b3e9fe53` 2026-03-23 — fix: reconciler workspace integrity check — self-heal missing SOUL.md (v42)
+- `8fb8265e` 2026-03-23 — fix: better Supabase error reporting for user creation failure (23502)
+- `c9cf340d` 2026-03-23 — feat: collect email during World mini app onboarding
+- `174c0d9b` 2026-03-23 — copy: explain why we collect email — connects agent across all platforms
+- `32665c0f` 2026-03-23 — fix: verify-failed screen — fix all 3 buttons + add verify logging
+- `f19c4253` 2026-03-24 — fix: action ID → 'verify-instaclaw-agent' (was 'instaclaw-verify-human')
+- `75e42d59` 2026-03-24 — fix: email autofill attrs + remove em dash from subtitle
+- `ef67311e` 2026-03-24 — debug: full logging on World ID verify — payload, response, app ID, action
+- `6a169a74` 2026-03-24 — fix: handle max_verifications_reached as success + skip if already verified
+- `9f0ed29e` 2026-03-24 — fix: systemd ExecStartPre crash-loop — remove broken log rotation (v43)
+- `dcbaa82f` 2026-03-24 — fix: delegation screen — realistic credits, orange button, $INSTACLAW option
+- `48efad5b` 2026-03-24 — style: $INSTACLAW → disabled 'Coming Soon' with anticipation copy
+- `7ef161eb` 2026-03-24 — fix: WLD delegation 5→20 WLD for 150 credits / ~3 days
+- `43a2f83b` 2026-03-24 — feat: EARN.md — comprehensive earning playbook for all agents (v44)
+- `b5aba5c0` 2026-03-24 — feat: World ID Cloudflare prep — store full proof, deploy nullifier to VMs, .well-known/agent.json
+- `52538305` 2026-03-24 — feat: memory health dashboard + remove rotateOversizedSession (v45)
+- `b431fbea` 2026-03-24 — fix: remove turbopack.root parent dir — isolate instaclaw from instaclaw-mini
+- `c5efee1e` 2026-03-24 — debug: full error display on delegation flow
+- `c1b4c89e` 2026-03-24 — fix: delegate/initiate — full error logging, manual token decimals, no minikit-js server import
+- `d2d6fc5f` 2026-03-25 — feat: add diagnose, reset-config, restart-gateway to fix-infra endpoint
+- `1e991106` 2026-03-25 — feat: add write-config, init-workspace, rebuild-ui fixes to fix-infra
+- `9ac1751b` 2026-03-25 — fix: improve rebuild-ui to reinstall openclaw package for UI assets
+- `06b36998` 2026-03-25 — fix: block OpenClaw control UI — redirect root path to instaclaw.io/dashboard
+- `6d4e53d4` 2026-03-25 — debug: show MiniKit.pay payload on screen before calling
+- `24ef9ed1` 2026-03-25 — debug: two-step delegation — show payload, then confirm to fire MiniKit.pay
+- `c5d5c8c6` 2026-03-25 — fix: trim newline from recipient address — was breaking MiniKit.pay
+- `b6be918b` 2026-03-25 — feat: bake dispatch mode into configureOpenClaw() + update PRD with Phase 0/1 results
+- `65d57f7d` 2026-03-25 — fix: delegation flow — retry polling, immediate credit grant, clean UI
+- `e74fb9fb` 2026-03-25 — fix: WLD delegation 20→25 WLD everywhere
+- `172205a8` 2026-03-25 — fix: home page crash when agent not yet provisioned
+- `95e6035f` 2026-03-25 — feat: step-by-step provisioning progress UI (matches instaclaw.io)
+- `fff1ea79` 2026-03-25 — fix: provisioning transitions after completion — no more stuck state
+- `5df56627` 2026-03-25 — fix: add "never go silent" operating principle to SOUL.md template
+- `4ffe421b` 2026-03-25 — style: scale up provisioning screen for mobile — larger icons, text, spacing
+- `46315dfc` 2026-03-25 — fix: add "never self-restart" operating principle to SOUL.md template
+- `be8ac171` 2026-03-25 — fix: usecomputer binary chmod +x in configureOpenClaw (npm doesn't set execute bit)
+- `6ef6f3ae` 2026-03-25 — feat: add push-soul-principles fix-infra endpoint for fleet-wide SOUL.md update
+- `5d48ad6c` 2026-03-25 — chore: trigger Vercel redeploy for push-soul-principles endpoint
+- `2efdfb1f` 2026-03-25 — chore: force Vercel rebuild for push-soul-principles endpoint
+- `6423929a` 2026-03-25 — feat: Phase 2 — client-side dispatch relay prototype (agent controls user's computer)
+- `46f92940` 2026-03-25 — fix: supervisor TTY check + bake Phase 2 dispatch-server into configureOpenClaw
+- `3b8117cd` 2026-03-25 — fix: 'All systems go' no longer stuck — shows action buttons instead of auto-redirect loop
+- `95b92d3e` 2026-03-25 — fix: wrap ALL server components in try/catch — prevent crash for World wallet users
+- `fbf40d9e` 2026-03-25 — fix: credit grant uses direct update instead of RPC
+- `466aefdd` 2026-03-25 — feat: dual-mode SKILL.md, npm publish @instaclaw/dispatch, macOS permission detection
+- `3fda697e` 2026-03-25 — fix: remove instaclaw.io/dashboard links — keep users in mini app
+- `eec5eee1` 2026-03-25 — feat: wallet-based auto-login — persist sessions across mini app opens
+- `bf0ed131` 2026-03-25 — fix: break provisioning→dashboard loop + debug logging for getAgentStatus
+- `4c1cb74d` 2026-03-25 — fix: column 'model' → 'default_model' — root cause of dashboard not loading
+- `81527b45` 2026-03-25 — fix: World Chat → 'Coming soon — use Telegram for now'
+- `79e19647` 2026-03-25 — feat: Phase 2.5 + 3 — autonomous mode, audit logging, dashboard, billing gate, docs
+- `4e3c0998` 2026-03-25 — fix: instagram skill frontmatter, maxSkillsPromptChars 500K, remove duplicate skills, placeholder cleanup in reconciler, 300ms fleet script sleep
+- `b5a47ede` 2026-03-25 — fix: exclude instaclaw-mini from instaclaw tsconfig — was breaking Vercel builds
+- `773d1139` 2026-03-25 — fix: dangerous action blocking in autonomous mode + redeploy audit-enabled dispatch-server
+- `f8c420ff` 2026-03-25 — fix: swap Telegram as primary chat, World Chat as secondary
+- `b0c53f3e` 2026-03-25 — docs: Phase 2 Group Chat Agents + XMTP status + Mateo question in PRD
+- `ac90bcc8` 2026-03-25 — fix: new user VM provisioning — assign from pool before configure
+- `c3550f73` 2026-03-25 — fix: P0+P1 launch blockers — 6 critical fixes for World mini app
+- `b6ab37bf` 2026-03-25 — feat: Live Desktop Viewer — Phase 0+1 prototype
+- `add3d537` 2026-03-25 — fix: XMTP agent — getSenderAddress crash + message reception confirmed
+- `8e30e3a7` 2026-03-25 — feat: Live Desktop Viewer — auth, takeover, configureOpenClaw, fleet-ready
+- `3b2862fa` 2026-03-25 — feat: XMTP fully working — gateway bridge + World Chat deep link
+- `2152353b` 2026-03-25 — feat: in-app chat UI — talk to agent without leaving the mini app
+- `cc11387b` 2026-03-25 — fix: remove base64 from screenshot stdout — was flooding agent context and hitting rate limits
+- `247fe79c` 2026-03-26 — fix: connection stability + 13 UX improvements from Mucus live testing
+- `25aab9b3` 2026-03-26 — feat: test-deeplinks page — 9 World Chat deep link variations for Andy
+- `29dd6cd7` 2026-03-26 — feat: Test Deep Links button on Settings tab
+- `908578ac` 2026-03-26 — test: Chat button → MiniKit.chat() with agent XMTP address
+- `9ceb6764` 2026-03-26 — feat: pairing codes + zero-friction dispatch onboarding (items 1-6)
+- `091d253b` 2026-03-26 — feat: one-click "Connect Your Computer" button — zero terminal knowledge needed
+- `3427b149` 2026-03-26 — feat: in-app chat as primary, World Chat grayed out (coming soon)
+- `fdcc3e1d` 2026-03-26 — feat: Command Center — full dashboard replica in World mini app
+- `bb150ce4` 2026-03-26 — style: input bar matches instaclaw.io glass UI — + button, model picker, mic, send
+- `cae5e7f6` 2026-03-26 — redesign: /live page — mission control dashboard for agent desktop
+- `4b082a20` 2026-03-26 — fix: auto-login retries + 'Sign in' fallback for returning users
+- `4ccd7d7f` 2026-03-26 — fix: sign-in link moved inside CTA section — no more overlap
+- `72ec5320` 2026-03-26 — style: replace Telegram footer with compact dismissable info pill at top
+- `9363f913` 2026-03-26 — fix: remove em dash from info pill
+- `3d7c079f` 2026-03-26 — fix: input bar — clean single border, no double-layer effect
+- `fde4c4ae` 2026-03-26 — feat: personalized suggestion chips from instaclaw.io API
+- `acfdf3a2` 2026-03-26 — fix: center empty states + remove em dash
+- `d9c450a0` 2026-03-26 — feat: inline noVNC viewer — live desktop streams inside the /live page
+- `c3836943` 2026-03-26 — feat: functional + menu, model picker, and voice input on Command Center
+- `0e70045f` 2026-03-26 — fix: suggestions — proxy GET support + correct method call
+- `b6e32f87` 2026-03-26 — fix: robust suggestion chips — better defaults + cache-first loading
+- `f386d7e7` 2026-03-26 — feat: Google account connection for World mini app
+- `14e0ee37` 2026-03-26 — feat: add Google disconnect button in mini app Settings
+- `57e059b7` 2026-03-26 — fix: show "Google connected" badge on Home tab + trigger deploy
+- `00a61e06` 2026-03-26 — fix: auto-repair broken systemd override.conf in configureOpenClaw (prevents gateway crash-loop)
+- `c0a0c5f7` 2026-03-26 — fix: reorder Home tab — Chat button above Google connect card
+- `0e57fcb3` 2026-03-26 — fix: replace all WLD "stake/staking" language with "pay/credits"
+- `cfdddf8a` 2026-03-26 — fix: Google connect button — glass styling + multicolor G icon
+- `7b046c2c` 2026-03-26 — fix: Chat button — glass morphism styling while keeping orange
+- `f401085e` 2026-03-26 — fix: atomic credit addition in WLD delegate/confirm (Phase 0)
+- `8a01dc61` 2026-03-26 — feat: P1 — live desktop thumbnail on dashboard home page
+- `99331f3e` 2026-03-26 — feat: Phase 1 — subscription detection in mini app
+- `27399733` 2026-03-26 — feat: P5 — daily agent digest via Telegram
+- `055711d8` 2026-03-26 — feat: Phase 2 — upgrade flow with Google sign-in + account linking
+- `cc2d1654` 2026-03-26 — feat: P4 — shareable agent clips (client-side canvas recording)
+- `05eda895` 2026-03-26 — feat: Phase 3 — dashboard access gate behind feature flag
+- `d924250c` 2026-03-26 — fix: 3 bugs from comprehensive audit
+- `af38ae4a` 2026-03-26 — fix: subscribers can still top up with WLD for overflow credits
+- `bc5acdeb` 2026-03-26 — fix: Top up with WLD button — orange glass, not teal
+- `b279a5b4` 2026-03-26 — chore: add /docs/dispatch to sitemap PUBLIC_ROUTES
+- `264d9a28` 2026-03-26 — fix: add lightning icon to Top up with WLD button
+- `310e20ee` 2026-03-26 — feat: one-off admin endpoint for clean XMTP agent setup on vm-313
+- `dd34321c` 2026-03-26 — fix: add setup-xmtp-clean to self-auth API list in middleware
+- `9dd51dc4` 2026-03-26 — fix: XMTP wallet key needs 0x prefix for agent-sdk
+- `4d3db26b` 2026-03-26 — feat: admin endpoint to send XMTP message from agent to target address
+- `e0188e39` 2026-03-26 — fix: write XMTP send script to ~/scripts/ so it finds node_modules
+- `3ea3e49c` 2026-03-26 — fix: probe XMTP agent-sdk API surface, try multiple DM creation methods
+- `8d4620b9` 2026-03-26 — fix: use agent.createDmWithAddress() — correct XMTP agent-sdk API
+- `2996ecb2` 2026-03-26 — fix: stop XMTP service before sending (DB lock), restart after
+- `36f86292` 2026-03-26 — feat: dispatch v2 — action batching, screenshot optimization, copy-paste UX
+- `dab18429` 2026-03-26 — feat: XMTP probe endpoint — find Cooper's real XMTP identity
+- `376f5dfb` 2026-03-26 — fix: use createDmWithIdentifier with numeric enum + inbox ID fallback
+- `a3aaf28a` 2026-03-26 — fix: live connection status polling, success state, animated transitions
+- `2b79a988` 2026-03-26 — fix: macOS permissions flow, pairing code reuse, agent dispatch detection
+- `b3c064b5` 2026-03-26 — fix: dispatch-status tier gate blocking all status checks
+- `1654e1ca` 2026-03-26 — feat: full Skills tab — category filters, toggle switches, dual auth
+- `104e5af2` 2026-03-26 — feat: editable agent name on Home tab
+- `87b98707` 2026-03-26 — fix: dispatch status detection — use TCP check instead of broken Unix socket
+- `177fec3c` 2026-03-26 — fix: skills data parsing — API returns { skills: { ... } } not flat
+- `9a34bb16` 2026-03-26 — feat: skills page polish — green toggles, expand animation, loading spinner
+- `10ce85f7` 2026-03-26 — fix: skills empty state — tab-aware text + vertically centered
+- `9d659722` 2026-03-26 — fix: dispatch detection — remove mandatory status check, use try-first approach
+- `82729c4f` 2026-03-26 — fix: center empty state in available space with min-height 50vh
+- `87b7a9a3` 2026-03-27 — fix: gray out unconnected integrations with "Coming Soon" badge
+- `d31a6a73` 2026-03-27 — feat: agent suggests autonomous mode before multi-step dispatch tasks
+- `1163f683` 2026-03-27 — fix: WLD top-up works directly from Settings — no page jump
+- `0ae2f848` 2026-03-27 — fix: agent must NEVER restart dispatch-server + systemd socket cleanup
+- `89a12483` 2026-03-27 — feat: glass tab switcher with bouncy sliding pill indicator
+- `694ad07a` 2026-03-27 — feat: smooth page transitions + glass tab bar with sliding pill
+- `3c58565b` 2026-03-27 — fix: restore command center layout — pass flex height through transition
+- `92f60205` 2026-03-27 — feat: gateway watchdog — auto-restart hung gateways within 4 minutes
+- `8cdb9b40` 2026-03-27 — fix: snappy page transitions — no exit delay, instant content swap
+- `32e56533` 2026-03-27 — fix: prevent context overflow + task persistence across resets
+- `a72b218c` 2026-03-27 — fix: remove PageTransition wrapper + add instant loading skeletons
+- `5b028a80` 2026-03-27 — feat: floating pill-shaped nav bar with sliding indicator
+- `9c0ce28b` 2026-03-27 — fix: truly floating nav bar — transparent bg, content scrolls behind
+- `1138579f` 2026-03-27 — fix: add context budget limit — max 15 screenshots per task
+- `c383b9c2` 2026-03-27 — fix: agent must type commands on USER'S computer, not run them on VM
+- `dd62aae8` 2026-03-27 — fix: Skills + Chat pages — transparent bg for floating nav bar
+- `0dfd27b8` 2026-03-27 — feat: full glass UI upgrade on Home tab
+- `d225fcb9` 2026-03-27 — feat: full glass UI upgrade on Command Center page
+- `f4c8cd50` 2026-03-27 — feat: 3D glass orb effect on Credits and Earnings icons
+- `f94fe9eb` 2026-03-27 — fix: chat UX — auto-switch to Chat tab, glass bubbles, typing dots
+- `29fb955c` 2026-03-27 — fix: shell-first enforcement, Spotlight fallback, message budget, connection info
+- `9d80463b` 2026-03-27 — feat: streaming chat responses + toggles — matches web app
+- `19b2625f` 2026-03-27 — fix: pin header + input, only messages scroll (iMessage pattern)
+- `f828147d` 2026-03-27 — feat: dispatch-remote-exec — run shell commands on user's Mac without Terminal
+- `b3864dc4` 2026-03-27 — feat: fully functional Tasks tab — create, list, filter, poll
+- `eb753e84` 2026-03-27 — fix: TCP keepalive on WebSocket — prevents relay disconnect after 2-3 min
+- `fdbc1218` 2026-03-27 — feat: task cards match web app exactly — spinners, orbs, pills, status
+- `7bb55b5b` 2026-03-27 — fix: suggestion chips always visible on Tasks tab
+- `13587d44` 2026-03-27 — fix: don't screenshot what user already showed + context overflow note
+- `4007a065` 2026-03-27 — fix: watchdog prevents silent context overflow — auto-rotates at 500KB
+- `c5dcd010` 2026-03-27 — fix: task execution calls gateway directly — no instaclaw.io proxy
+- `631661ed` 2026-03-27 — fix: macOS screenshot filenames have spaces — use find -exec mv
+- `38b3f0ca` 2026-03-27 — fix: remove duplicate task cards — single placeholder, clean replace
+- `cdf8da78` 2026-03-27 — fix: exec used require() in ESM module — ReferenceError: require is not defined
+- `78eaabc2` 2026-03-27 — feat: task card expand/collapse with result, actions — matches web app
+- `b7147826` 2026-03-27 — feat: recurring task pills match web app — Running now, streak, frequency
+- `abcdbb8c` 2026-03-27 — feat: Batch 1 — full task management matching web app
+- `ded5a8ed` 2026-03-27 — fix: expanded task card no longer clips — buttons always visible
+- `49e9c4ef` 2026-03-27 — fix: Edit button → Edit & re-run — edits prompt and re-executes
+- `35068722` 2026-03-27 — fix: watchdog v3 — detects frozen gateway (typing but no response)
+- `6c604aec` 2026-03-27 — fix: 90-second timeout on LLM API calls — prevents infinite hang on images
+- `e0444775` 2026-03-27 — feat: Batch 2 — refine, delivery status, failed badge, toast, failures
+- `983c39e4` 2026-03-27 — fix: match Claude/Anthropic brand orange across entire mini app
+- `8d046b44` 2026-03-27 — fix: cleaner glass Chat button — more translucent, sharper depth
+- `86cb9d51` 2026-03-27 — fix: replace all hardcoded dispatch versions with @latest
+- `39a035e8` 2026-03-27 — feat: run history for recurring tasks — final 1:1 parity with web app
+- `88cef868` 2026-03-27 — fix: 11 visual differences matched to web app — pixel parity
+- `1ecc1391` 2026-03-27 — fix: watchdog v4 — detect dead Telegram connection (root cause of silence)
+- `618b4ca8` 2026-03-27 — fix: add TASK_META suffix to task execution — enables tool orbs + recurring detection
+- `9548895a` 2026-03-28 — docs: comprehensive rewrite of dispatch docs page
+- `6b72c590` 2026-03-28 — docs: make autonomous mode prominent in Quick Start, example, and Modes
+- `99c5086e` 2026-03-28 — fix: watchdog v5 — check TIMESTAMP of last sendMessage, not just count
+- `3a46120b` 2026-03-28 — feat: archive tasks instead of deleting — accessible from Settings
+- `e09fbe02` 2026-03-28 — fix: NEVER Go Silent After Tool Failures — mandatory error reporting
+- `576225e9` 2026-03-28 — fix: add image_generate parameter guidance + retrigger build
+- `9ea54a75` 2026-03-28 — feat: render markdown in task results + chat bubbles
+- `94c1c76e` 2026-03-28 — fix: scroll bug when switching Tasks/Chat sub-tabs
+- `2306a3d8` 2026-03-28 — fix: header pinned — matches web app three-tier flex pattern
+- `b260ea29` 2026-03-28 — fix: position:fixed chat page — breaks out of parent scroll entirely
+- `3f7f1c6b` 2026-03-28 — fix: disable parent scroll-area on chat page via CSS override
+- `ae955e33` 2026-03-28 — feat: multi-conversation chat — sidebar, DB persistence, 1:1 with web app
+- `5a4f86a6` 2026-03-28 — fix: recurring detection + better error messages
+- `55902194` 2026-03-28 — fix: hourly frequency detection for "whenever" + "real-time" keywords
+- `f51205af` 2026-03-28 — fix: chat sidebar matches web app exactly + conversation switching fixed
+- `6b8b5358` 2026-03-28 — fix: distinct tool orb icons per tool type — matches web app
+- `5848b709` 2026-03-29 — feat: DegenClaw skill — Virtuals $100K weekly perps trading competition
+- `73f95890` 2026-03-29 — chore: update PRD to reflect completed deployment + add fleet scripts
+- `66a382a7` 2026-03-30 — fix: dgclaw skill audit — NOT triggers, edge cases, fee accuracy
+- `5d742c13` 2026-03-30 — feat: PARTNER_ID=INSTACLAW — Virtuals revenue share live
+- `bf74af13` 2026-03-30 — chore: fleet scripts for PARTNER_ID deployment + verification
+- `78fe2c89` 2026-03-30 — fix: PARTNER_ID audit fixes — uninstall cleanup + remove duplicate sed
+- `2c66561f` 2026-03-30 — feat: PARTNER_ID in gateway systemd — process.env verified (manifest v50)
+- `3c4858f9` 2026-03-30 — feat: universal silence watchdog — 60-second fallback guarantee (manifest v51)
+- `fc7c2dae` 2026-03-30 — fix: silence watchdog — use inline content instead of template registry (init order)
+- `bdf202ec` 2026-03-30 — fix: agent must use dynamic ?requestId= auth URL, never generic link
+- `22dfc998` 2026-03-30 — feat: server-side ACP auth for agents — fixes timeout death loop
+- `35e93266` 2026-03-30 — feat: add DegenClaw to EARN.md — Virtuals $100K weekly trading competition
+- `e57b1a38` 2026-03-30 — fix: extract GATEWAY_TOKEN from .env before curl — was expanding to empty string
+- `cb4c32e6` 2026-03-30 — fix: whitelist agent-auth-url + agent-complete-auth in middleware
+- `89454cd1` 2026-03-30 — fix: always specify 'USDC on Base network' when mentioning funds
+- `d6310afb` 2026-03-30 — feat: Google OAuth pairing flow, personalization modal, AgentBook registration, glass UI fixes
+- `47595eca` 2026-03-30 — feat: World ID propagation parity — VM, marketplace, proof storage
+- `56ebef61` 2026-03-30 — feat: add proxy route for World ID propagation
+- `45ec330d` 2026-03-30 — feat: World ID "Sync to agent" button on Settings page
+- `dd6ec2dc` 2026-03-30 — fix: hide AgentBook card when wallet not ready instead of showing error
+- `3b373675` 2026-03-30 — fix: upgrade AgentBook register button to match glass UI standards
+- `c58ae7a2` 2026-03-30 — fix: upgrade Sync to agent button to glass UI
+- `fa715431` 2026-03-30 — fix: AgentBook bridge URL button — try window.open + href fallback
+- `baf6793c` 2026-03-30 — fix: AgentBook verify button uses worldapp:// deep link for native flow
+- `f1abad6a` 2026-03-30 — fix: AgentBook verify — use copy link approach (WebView can't open World ID natively)
+- `6640c640` 2026-03-30 — feat: AgentBook one-tap registration via MiniKit native verify
+- `a6a68c67` 2026-03-30 — fix: use existing verify-instaclaw-agent action for AgentBook registration
+- `112c98e5` 2026-03-30 — fix: AgentBook relay — use AgentBook app_id, strip extra fields
+- `492fada8` 2026-03-30 — fix: always checksum wallet addresses (EIP-55) before storing or sending to relay
+- `c8e91fe1` 2026-03-30 — debug: show full relay error response for AgentBook registration
+- `9ae251cc` 2026-03-30 — fix: AgentBook card — only show registered badge, hide registration flow
+- `9651b3e2` 2026-03-30 — fix: send full proof object to AgentBook relay + re-enable registration UI
+- `9ff797a0` 2026-03-30 — fix: hide AgentBook registration — relay rejects mini app addresses
+- `65396e3a` 2026-03-30 — fix: AgentBook card shows badge only when registered
+- `0c1bb91c` 2026-03-30 — fix: AgentBook check color green to match Google connected
+- `9bdfc4ad` 2026-03-31 — fix: World ID always shows green check — sync happens during onboarding
+- `ad250d87` 2026-03-31 — fix: World ID propagation writes to MEMORY.md for durability
+- `364bbd69` 2026-03-31 — feat: admin endpoint for World ID propagation (temp, for backfill)
+- `9f0863fd` 2026-03-31 — fix: use CRON_SECRET for admin propagation auth
+- `92f00ba8` 2026-03-31 — fix: add propagate-world-id to middleware allowlist
+- `40fdee11` 2026-03-31 — feat: World ID self-healing in reconciler health check
+- `ffe5c1a9` 2026-03-31 — fix: replace all window.open with window.location.href in mini app
+- `aca7ed68` 2026-03-31 — feat: 3D glass orb icons on Settings page
+- `8e965241` 2026-03-31 — fix: Settings orbs match Home page glass style
+- `84c17a6d` 2026-03-31 — fix: Home page Google/AgentBook icons use glass orb style
+- `53ccd601` 2026-03-31 — fix: Online badge uses clean glass UI pill
+- `64ae064d` 2026-03-31 — fix: Chat tab scrolls behind glass blur toolbar like Tasks tab
+- `90e13db7` 2026-03-31 — fix: Chat sidebar toggle stays sticky at top while scrolling
+- `724f05cd` 2026-03-31 — fix: handleSend uses stale activeConvId after switching conversations
+- `cfb810ec` 2026-03-31 — fix: Chat sidebar UI matches web app + mobile-friendly actions
+- `e58565d0` 2026-03-31 — feat: Chat bubbles match web app — avatar, tails, timestamps, save
+- `183bf0e6` 2026-03-31 — feat: Add reload button for personalized suggestion pills
+- `ddaf3c3d` 2026-03-31 — fix: Web search and Deep research toggle pills use glass UI
+- `738ffe94` 2026-03-31 — fix: Assistant bubble tails use solid color matching bubble background
+- `cf2be665` 2026-03-31 — fix: Chat avatar orb uses smooth radial shine instead of choppy rect
+- `e47b8f16` 2026-03-31 — feat: Typewriter thinking indicator with claw-themed phrases
+- `09fcab2d` 2026-03-31 — fix: Replace thinking phrases on web app with claw-themed copy
+- `6ea16d06` 2026-03-31 — fix: Clean up header/tab/chat section borders for seamless flow
+- `6bf0aab8` 2026-03-31 — fix: Plus button matches web app — smaller, cleaner glass style
+- `55e08feb` 2026-03-31 — fix: Tab bar border inset, chat header border edge-to-edge
+- `e5d823b0` 2026-03-31 — fix: Chat header pinned to header section — no gap on scroll
+- `1b896b0e` 2026-03-31 — fix: Center empty chat state vertically in available space
+- `3ba31361` 2026-03-31 — fix: Chat sidebar uses fixed positioning — works at any scroll depth
+- `3e7515fa` 2026-03-31 — fix: Chat sidebar rendered at top level — no more clipping
+- `052312c9` 2026-03-31 — fix: Bottom nav bar has blur fade — content scrolls behind smoothly
+- `78d749fe` 2026-03-31 — fix: Nav bar blur extends higher, border softer — no visible gap
+- `927e6701` 2026-03-31 — fix: Tab bar blur only covers gap above nav, not the input area
+- `f08556ae` 2026-03-31 — fix: Reduce tabs layout bottom padding to match nav bar height
+- `4db6f4b9` 2026-03-31 — fix: Nav bar zone uses gradient fill — no more black gap
+- `8ba85154` 2026-03-31 — fix: Nav bar uses same blur fade as Command Center toolbar
+- `d505cf8d` 2026-03-31 — fix: Nav blur doesn't overlap input bar — reduced to -top-4
+- `d9e1ea3f` 2026-03-31 — fix: Chat sidebar uses clean glass UI — gradient bg, stronger blur
+- `b9da1f9e` 2026-03-31 — feat: Library tab fetches and displays items matching web app
+- `760769eb` 2026-03-31 — security(C1): Add on-chain amount verification to WLD payment
+- `c5a0deab` 2026-03-31 — security(C2,C4,C6): Subscription check, credit pre-check, unique constraint
+- `93bfadb5` 2026-03-31 — security(C5): Atomic check-and-increment RPC eliminates race condition
+- `3c2342d9` 2026-03-31 — security(C9,H8): Trial abuse prevention + WLD pending payment UI
+- `ba5e3d1e` 2026-03-31 — security(C9 revised): Trial abuse detection without blocking first-time users
+- `de693c8c` 2026-03-31 — security(C5): Gateway proxy uses atomic check-and-increment RPC
+- `6572ee56` 2026-03-31 — feat: VM reclaim script + dedicated suspension cron
+- `1b1151d1` 2026-03-31 — fix: Onboarding loop — verify 500 + provisioning auto-complete
+- `2d9d0bf1` 2026-03-31 — fix: XMTP setup endpoint accepts vmId parameter
+- `57c7fe4c` 2026-03-31 — feat: World Chat button live in Command Center info banner
+- `bf9ad647` 2026-03-31 — fix: XMTP admin endpoints accept vmId + token refresh endpoint
+- `2f21200f` 2026-03-31 — fix: xmtp-send body.vmId reference — was undefined
+- `fb5612cd` 2026-03-31 — feat: World Chat init — agent messages user first to establish DM
+- `a9e26493` 2026-03-31 — feat: Add persistent World Chat button to chat header
+- `f193d78f` 2026-03-31 — fix: World Chat button — add loading state, label, and error handling
+- `6fd3d93f` 2026-03-31 — fix: World Chat opens instantly — fire-and-forget init-chat
+- `4238869b` 2026-03-31 — fix: xmtp-send-to-user auto-installs @xmtp/agent-sdk if missing
+- `65a097ac` 2026-03-31 — fix: Write XMTP send script to ~/scripts/ for ESM module resolution
+- `cc6bf8c5` 2026-03-31 — fix: XMTP agent gateway port 3000 → 18789
+- `d84d5e06` 2026-03-31 — fix: XMTP agent maintains conversation history per DM
+- `30a8091d` 2026-03-31 — feat: xmtp-refresh-token also updates agent script from GitHub
+- `cc6b8482` 2026-03-31 — chore: Remove debug "Test World Chat Deep Links" button from settings
+- `b81beb9a` 2026-03-31 — fix: Sign Out button uses clean glass UI instead of red
+- `e3f66f3f` 2026-03-31 — feat: Contact Support button on settings page
+- `6c53bc1c` 2026-03-31 — feat: Persist XMTP conversation history to disk
+- `c380b4a7` 2026-03-31 — fix: Auto-retry stuck VMs + provisioning retry button
+- `cc075bc1` 2026-03-31 — fix: Break redirect loop for unverified users with no agent
+- `5d30f7f9` 2026-03-31 — fix: Show real provisioning UI after WLD payment, not fake "ready"
+- `47d990b9` 2026-03-31 — fix: Separate VM assignment from configuration — bulletproof onboarding
+- `038aee4c` 2026-03-31 — fix: ProvisioningStatus waits for agent HEALTHY, not just assigned
+- `e230855b` 2026-03-31 — feat: Bulletproof mini app onboarding — matches web app flow
+- `e38381aa` 2026-03-31 — fix: Add gateway_url to getAgentStatus select query
+- `f6514a2c` 2026-03-31 — fix: Use model='openclaw' for gateway chat requests
+- `afe67603` 2026-04-01 — security: Provision endpoint requires payment before VM assignment
+- `6ff92799` 2026-04-01 — fix: Handle failed WLD payments — don't get stuck on provisioning
+- `83565d5c` 2026-04-01 — fix: Trust MiniKit payment on onboarding path, strict gate on retry
+- `011f19d5` 2026-04-01 — security: Full user data wipe in configureOpenClaw before new user setup
+- `a997db25` 2026-04-01 — fix: Show AgentBook card before Google card on dashboard
+- `7c123b06` 2026-04-01 — fix: configureOpenClaw sets config_version to VM_MANIFEST.version (51)
+- `499b53a0` 2026-04-01 — fix: Config reconciler — batch 3→10, remove healthy-only filter
+- `4d71c67b` 2026-04-01 — feat: Bankr partnership integration — wallet provisioning, tokenization, and trading fee credit loop
+- `99785ff6` 2026-04-01 — fix: Post-ship audit cleanup — card order, window.open, extension placeholder, reclaim simplification
+- `f058d5bb` 2026-04-01 — fix: Resolve Bankr vs Virtuals/ACP wallet conflicts — dual wallet identity, tokenization guard, usage instructions
+- `eabb2d2e` 2026-04-01 — docs: Linode/Akamai meeting prep — fleet audit, cost analysis, asks
+- `39a530ea` 2026-04-01 — docs: Add root cause analysis and Linode-specific questions to meeting prep
+- `12355411` 2026-04-01 — docs: $INSTACLAW tokenomics PRD — four-phase burn flywheel tied to real revenue
+- `1aaed5bc` 2026-04-01 — security: Privacy guard in configureOpenClaw — force-wipe leftover data
+- `195db698` 2026-04-01 — fix: Eliminate false unhealthy marks — HTTP-first health, restart grace, SSH debounce, lock file
+- `80d55353` 2026-04-01 — chore: Trigger Vercel redeploy — previous build failure was transient
+- `b13a36ec` 2026-04-01 — security: Fourth privacy layer — pre-assignment wipe + idempotency fix
+- `7b475a92` 2026-04-01 — feat: Provision AgentBook wallet during configureOpenClaw
+- `c4199976` 2026-04-01 — fix: Show AgentBook registration card for unregistered users
+- `0cb5614b` 2026-04-01 — fix: AgentBook icon matches 3D glass orb style
+- `61b7d9be` 2026-04-01 — feat: Batch restart endpoint for unhealthy VMs — /api/admin/restart-unhealthy
+- `d1bdedf9` 2026-04-02 — fix: Retry gateway restart every 3 cycles, not just once at count 3
+- `2bc5744a` 2026-04-02 — docs: Public $INSTACLAW tokenomics page — condensed for website + CT
+- `840d97eb` 2026-04-02 — feat: Public $INSTACLAW tokenomics page at /token — flywheel, burn sources, math, comparison
+- `16dc054e` 2026-04-02 — fix: Mention Virtuals Protocol alongside Bankr for agent tokenization burns
+- `16dbaf84` 2026-04-02 — fix: Add circulating supply (28.2%) to token details section
+- `53cf3b5f` 2026-04-02 — fix: Make circulating supply (28.2%) prominent across tokenomics page
+- `10cf92e1` 2026-04-02 — docs: VM Lifecycle Management PRD — automated deletion, pool scaling, cost optimization
+- `a2163cba` 2026-04-02 — fix: Rebrand token page from Base to Virtuals Protocol — matches primary liquidity pool
+- `9a7279e2` 2026-04-02 — feat: Add multi-platform trading venues, liquidity expansion roadmap to tokenomics page
+- `f8429211` 2026-04-02 — fix: Add LBank to trading venues, add '+ more exchanges' indicator
+- `0c2f0200` 2026-04-02 — fix: Remove all em dashes from tokenomics page
+- `20ed594c` 2026-04-02 — fix: Give flame icon an orb background in hero badge for better visibility
+- `e1b899b3` 2026-04-02 — feat: Add organic flame flicker + glow animation to hero badge icon
+- `0bf4ddcf` 2026-04-02 — fix: Generate agent wallets locally with viem (not on VM)
+- `3c33aecb` 2026-04-02 — fix: Bump OpenClaw version pins to v2026.4.1
+- `9c0f1155` 2026-04-02 — fix: AgentBook register — match web app relay format exactly
+- `eff6df29` 2026-04-02 — feat: add $100K Trading Competition card to /earn page
+- `32b7a651` 2026-04-02 — feat: AgentBook registration via direct contract call (no relay)
+- `8acb19ab` 2026-04-02 — feat: auto-enable VP from DegenClaw card — one-click join competition
+- `0a4d568b` 2026-04-02 — feat: AgentBook card uses CLI bridge URL flow (matches web app)
+- `a09fa334` 2026-04-02 — fix: Use location.href instead of window.open for bridge URL
+- `4964b087` 2026-04-02 — fix: set restart lock before gateway stop in upgradeOpenClaw()
+- `97d5ec38` 2026-04-02 — fix: DegenClaw card shows 'Running' badge when VP is enabled
+- `65c4f744` 2026-04-02 — fix: AgentBook CLI version pin + bridge URL regex mismatch
+- `003b1107` 2026-04-02 — fix: add tools.exec config to manifest v53 — restore exec access fleet-wide
+- `f9e8cbd6` 2026-04-02 — feat: maintenance gate for new signups + fix CSS import order
+- `c746163a` 2026-04-02 — feat: AgentBook native transport — send verify directly to World App native layer
+- `1a69d9c0` 2026-04-02 — fix: TypeScript error in AgentBook card — pass proof object directly
+- `59304737` 2026-04-02 — experiment: AgentBook via MiniKit.verify() + direct contract call
+- `98adae86` 2026-04-02 — fix: show full error detail from register-direct for diagnosis
+- `c9b06ecf` 2026-04-02 — fix: register-direct script .mjs → .cjs (Node 22 ESM compat)
+- `364dd11e` 2026-04-02 — fix: run register-direct from ~/.openclaw so viem is in node_modules
+- `76bdde02` 2026-04-02 — fix: set NODE_PATH to find viem in global agentkit-cli node_modules
+- `ab07245d` 2026-04-02 — fix: register-direct uses gasless relay instead of direct contract call
+- `d5b12367` 2026-04-02 — fix: show full relay response for diagnosis, handle manualRegistration
+- `e17c6aac` 2026-04-02 — fix: switch to World Chain contract where relay sponsors gas
+- `f134c7f7` 2026-04-02 — fix: BigInt literal 0n → BigInt(0) for ES2020 target
+- `62d4f6c1` 2026-04-02 — fix: omit network field from relay request (match v0.1.8 CLI behavior)
+- `be3c1302` 2026-04-02 — fix: proper ABI decoding of proof (match agentkit-cli normalizeProof)
+- `cc4a8484` 2026-04-02 — fix: match CLI behavior — any 200 from relay = success
+- `dfea5dd1` 2026-04-02 — fix: show HTTP status code in relay rejection error
+- `69e6bce1` 2026-04-03 — fix: stop silence watchdog restart storm — decouple fallback from restart
+- `7184485b` 2026-04-03 — feat: AgentBook via IDKit v4 native transport with per-request app_id
+- `a7c53829` 2026-04-03 — fix: use WASM-based signRequest for correct rp_context signature
+- `7241d6d9` 2026-04-03 — fix: handle IDKit v4 result format + add debug logging
+- `ca3359fd` 2026-04-03 — fix: send full IDKit result + show received keys for field mapping
+- `0fa3dff9` 2026-04-03 — fix: extract proof from IDKit v4 responses[0] array
+- `8772a375` 2026-04-03 — fix: accept 'nullifier' field name from IDKit v4 (not nullifier_hash)
+- `b5bc64d3` 2026-04-03 — fix: live desktop disconnect state race — show error + retry instead of silent reset
+- `0e77dbee` 2026-04-03 — fix: show relay response detail in card error
+- `814d35ec` 2026-04-03 — fix: use abi.encode (not encodePacked) for signal — match CLI exactly
+- `73e1576f` 2026-04-03 — fix: Apply Jordan + Don feedback — remove projections (legal risk), add live burn tracker, fix plateau wording
+- `e2e6117b` 2026-04-03 — feat: Add collapsible estimated projections with $1.24M number and legal disclaimer
+- `043e88be` 2026-04-03 — fix: Replace burn tracker zeros with clean Coming May 2026 teaser state
+- `101dfc0d` 2026-04-03 — fix: Rebuild flywheel with CSS orbit animation, proper node spacing, larger container
+- `283b6e0c` 2026-04-03 — feat: Replace orbiting dot with flowing energy ring animation on flywheel
+- `21369a50` 2026-04-03 — feat: Add comprehensive legal disclaimer to tokenomics page
+- `655f7994` 2026-04-03 — feat: S-tier flywheel animation — conic gradient energy sweep with glow, fix label cutoff
+- `0e01bfe7` 2026-04-03 — fix: Glass UI flywheel — contained layout, thinner energy sweep, no clipping
+- `02ad30d3` 2026-04-03 — fix: Align flywheel ring, energy sweep, and glass cards to same center point, bolder animation
+- `11705f88` 2026-04-03 — fix: True-center flywheel alignment — flex centering with 0x0 anchor point, all elements aligned
+- `f2cfb29b` 2026-04-03 — fix: Revert flywheel to original simple version — dots + text, no glass cards
+- `13553933` 2026-04-03 — fix: Separate dot positions (on ring) from label positions (pushed outward) for balanced flywheel
+- `06db7239` 2026-04-03 — test: bridge URL via <a href> tag — Andy says should open drawer
+- `c56c38b2` 2026-04-03 — test: trigger bridge URL via hidden iframe to keep user in mini app
+- `459455e0` 2026-04-03 — fix: revert to <a href> for bridge URL — iframe doesn't trigger drawer
+- `ce6682ca` 2026-04-03 — fix: switch CLI to v0.1.8 (World Chain) + check both chains
+- `02ea12bf` 2026-04-03 — feat: Phase 2 AgentBook workaround — closeMiniapp + push notification
+- `55a0c4e4` 2026-04-03 — fix: stop health cron email spam + add Stripe reconciliation cron
+- `8c4cb0db` 2026-04-03 — fix: notification API deeplink format + accurate notified response
+- `d1d1a61a` 2026-04-03 — fix: TypeScript error in stripe-reconcile cron (Map type inference)
+- `86668c7f` 2026-04-03 — feat: VM lifecycle cron — auto-delete suspended VMs from Linode
+- `b3ac63cf` 2026-04-03 — fix: Replace Jordan's analogies with actual InstaClaw use cases in Silent Engine section
+- `f8252d32` 2026-04-03 — fix: Harder-hitting use cases — multi-agent orchestration, autonomous trading, always-on content
+- `ee849b9c` 2026-04-03 — feat: append return_to deeplink to bridge URL for auto-redirect back to mini app
+- `4b5af763` 2026-04-03 — fix: Match flywheel container height to SVG viewBox — dots now sit perfectly on ring
+- `1008a9c4` 2026-04-03 — feat: Add 4th burn source — $INSTACLAW trading fee burns (10% of Virtuals trading fees)
+- `efcba0b2` 2026-04-03 — fix: Add trading fees to flywheel diagram revenue step
+- `0e1d39b7` 2026-04-03 — fix: BNB comma spacing, add Trading Loop to roadmap, add trading to closing quote
+- `63251dad` 2026-04-03 — fix: Update burn stat to $120+ floor with stacking sources explanation
+- `afa16b30` 2026-04-03 — fix: Change all burn source timelines to Coming Soon
+- `071f2a63` 2026-04-03 — fix: Agent Economy Loop copy — emphasize one-click tokenization, auto fee routing, self-sustaining agents
+- `ce06d5b7` 2026-04-03 — fix: Remove Bankr and Virtuals partner names from burn mechanism descriptions — save for separate announcement
+- `fdce3a20` 2026-04-03 — fix: Silent Engine — add World Mini App, 17M+ verified humans, WLD grants as house money
+- `85a18f35` 2026-04-03 — fix: Add 'and growing fast' to World verified humans count
+- `49c06fb5` 2026-04-03 — fix: Ecosystem Tax copy — platform positioning, app store economics, compounding growth
+- `0b98fa15` 2026-04-03 — fix: Ecosystem Tax — App Store for AI agents positioning, distribution power, network effects
+- `f001f404` 2026-04-03 — fix: Ecosystem Tax copy — match thread style, clearer for normal consumers
+- `ce93b456` 2026-04-03 — feat: Add contextual signup CTAs throughout tokenomics page
+- `73bbe165` 2026-04-05 — fix: make Linode primary provider + default to dedicated CPU (g6-dedicated-2)
+- `5d3e5e98` 2026-04-05 — fix: remove Hetzner/DO from provisioning array — Linode only
+- `b3214214` 2026-04-05 — fix: add exec-approvals.json to manifest + configureOpenClaw (v55)
+- `9f951ed2` 2026-04-05 — docs: comprehensive API cost optimization PRD with research findings
+- `1e1ef16f` 2026-04-05 — chore: trigger instaclaw-mini redeploy with NEXT_PUBLIC_MAINTENANCE=true
+- `4c613767` 2026-04-05 — docs: fix PRD gaps — add 2.28B tokens stat, bankr anomaly, standardize threshold
+- `d8868c4f` 2026-04-05 — feat: enable Anthropic prompt caching — estimated $7,714/mo savings
+- `4788826e` 2026-04-05 — feat: glass overlay maintenance gate with email capture
+- `309d1c0a` 2026-04-05 — perf: health cron skips 0-credit VMs with no active subscription
+- `4e10d340` 2026-04-05 — fix: suspend-check cron — batch queries, DB-first, 5min timeout
+- `87d8309d` 2026-04-05 — chore: remove legacy polymarket/ skill directory
+- `9d829ba2` 2026-04-05 — fix: Stripe webhook always writes current_period_end on sub updates + cancels
+- `3869a48a` 2026-04-05 — chore: rebuild instaclaw-mini with NEXT_PUBLIC_MAINTENANCE baked in
+- `cb06b663` 2026-04-05 — fix: health cron skips suspended VMs — prevents un-suspending them
+- `ac124dcd` 2026-04-06 — docs: cross-session memory PRD + research findings, remove temp TOKEN_ANALYSIS log
+- `57535f8a` 2026-04-06 — docs: cross-session memory PRD v3 — 9.5/10 implementation ready, bootstrap verified, Phase 3 Python spec, A/B plan
+- `b73facbf` 2026-04-06 — feat: cross-session memory — manifest v56, session-end hook, MEMORY.md auto-summaries
+- `a276bcdf` 2026-04-06 — docs: add InstaClaw application answers reference
+- `ab0f3030` 2026-04-06 — docs: remove em dashes from application answers
+- `680ec3ab` 2026-04-06 — chore: update snapshot to private/38031667 (v56 + cross-session memory, 15/15 verified)
+- `bddf7db7` 2026-04-06 — docs: comprehensive snapshot creation process in CLAUDE.md + infrastructure PRD
+- `b3643d11` 2026-04-06 — docs: update API cost PRD with corrected numbers — system prompt is 14.8K tokens not 189K
+- `7db9b226` 2026-04-06 — fix: session-end hook reads GATEWAY_TOKEN from .env file (cron doesn't source env)
+- `1f1bdf09` 2026-04-06 — feat: fleet upgrade now reconciles manifest files before upgrading binary
+- `3f537f1c` 2026-04-06 — fix: fleet upgrade reliability — SSH timeouts, individual config settings, lock cleanup
+- `b49e33bb` 2026-04-06 — fix: version pin reminder only shows after fleet deploy, not after canary
+- `dbe7f853` 2026-04-06 — fix: run openclaw doctor --fix before gateway restart during upgrades
+- `fd67fb3c` 2026-04-07 — chore: update OpenClaw version pins to 2026.4.5
+- `3c072774` 2026-04-07 — chore: update snapshot to private/38054012 (v57 + OpenClaw 2026.4.5, 15/15 verified)
+- `bf949b21` 2026-04-07 — chore: force instaclaw-mini rebuild to bake in NEXT_PUBLIC_MAINTENANCE
+- `ef868b64` 2026-04-07 — chore: rebuild instaclaw-mini after re-adding NEXT_PUBLIC_MAINTENANCE
+- `24490590` 2026-04-07 — fix: 4 launch blockers — offline banner, credit errors, model selector, provision failure
+- `c88e46b8` 2026-04-07 — chore: rebuild instaclaw-mini without maintenance gate
+- `86c72424` 2026-04-07 — chore: force rebuild after NEXT_PUBLIC_MAINTENANCE deletion confirmed
+- `795a7861` 2026-04-07 — feat: automatic XMTP/World Chat setup during VM provisioning
+- `4a1afd22` 2026-04-07 — fix: WLD delegation users get subscription records — prevents false suspension
+- `16c93966` 2026-04-07 — fix: WLD subscription lifecycle — creation, expiry, and VM reactivation
+- `9e58409f` 2026-04-07 — feat: AgentBook registration modal on first home page load
+- `e08d9a3a` 2026-04-07 — fix: health cron suspension pass skips VMs with remaining credits
+- `1de818cb` 2026-04-08 — fix: spots counter flickering + remove hardcoded 62 fallback
+- `9880c119` 2026-04-08 — fix: responsive onboarding hero — fits all phone sizes without scrolling
+- `d3ea73fe` 2026-04-08 — fix: responsive onboarding — proportional scaling for all phone sizes
+- `40820215` 2026-04-08 — fix: proportional zoom scaling for all phone sizes
+- `edce5567` 2026-04-08 — fix: transform scale approach — render at fixed Pro Max dimensions, scale to fit
+- `44cadadb` 2026-04-08 — fix: center scaled content + clip overflow — no right-side scrollbar
+- `644e8be4` 2026-04-08 — revert: restore original Pro Max layout — remove all scaling/zoom attempts
+- `b4b1d53e` 2026-04-08 — fix: dvh-based responsive layout — industry standard approach
+- `b190f6de` 2026-04-08 — fix: restore original Pro Max spacing — match reference screenshot exactly
+- `fe387e56` 2026-04-08 — fix: verified users without payment stay on onboarding, not redirected to /home
+- `68e9e4c3` 2026-04-08 — fix: install manifest cron jobs during configureOpenClaw() — P0 fix
+- `229fd5a8` 2026-04-08 — fix: periodic cron audit + expanded 15-point verification
+- `0d73f05e` 2026-04-08 — feat: hibernation system for WLD users — warm sleeping UX, margin protection
+- `858163ba` 2026-04-08 — fix: deploy script FILES in configureOpenClaw + audit ready pool VMs
+- `4b74e1e9` 2026-04-08 — chore: new snapshot private/38069990 (v57-all-crons) + fix vm-watchdog 300s lock
+- `6df5e58a` 2026-04-08 — fix: closeMiniApp fires immediately — no setTimeout delay
+- `0ff6cf80` 2026-04-08 — fix: WLD users get credits only — no fake subscriptions
+- `cf49a997` 2026-04-08 — perf: reduce hibernate window from 14 to 7 days
+- `1c0dabc2` 2026-04-08 — fix: revert closeMiniApp to 500ms delay — sync close kills navigation
+- `33e82d3e` 2026-04-08 — chore: update snapshot to private/38069990 (v57-all-crons, 21/21 verified)
+- `2cd636d3` 2026-04-09 — fix: retry on 400 "agent busy" — handles heartbeat collisions
+- `ef93d4ce` 2026-04-09 — fix: add sandbox.mode=off to manifest — prevent Docker requirement on VMs
+- `5014764a` 2026-04-09 — fix: add tier sync to health check — prevent upgrade tier mismatch
+- `5aa2dc37` 2026-04-09 — fix: memory index cron uses NVM instead of bare node path
+- `cdcb78f2` 2026-04-09 — fix: lower session-end hook threshold + add functional health checks
+- `088ce478` 2026-04-09 — feat: Wire up Bankr wallet provisioning — every new agent gets a wallet at deploy
+- `8a8b6005` 2026-04-09 — fix: WALLET.md wallet summary — agents know all 3 wallets and their distinct purposes
+- `88019316` 2026-04-09 — fix: lower session-end hook threshold from 2 to 1
+- `c8fb25ce` 2026-04-09 — fix: Crystal clear wallet routing across all agent context files
+- `7eeac386` 2026-04-09 — feat: memory health scoring in health check + threshold=1
+- `21b5313f` 2026-04-09 — feat: Fleet push workspace endpoint — push updated wallet routing to all assigned VMs
+- `276204f0` 2026-04-09 — feat: Fleet workspace verification endpoint — spot-check 10 random VMs
+- `556206f5` 2026-04-09 — docs: update cross-session memory PRD with deployment status
+- `9857ba5e` 2026-04-09 — feat: VM fix endpoint — targeted fixes for individual VMs (list-crons, fix-soul-memory-filing)
+- `93fcf856` 2026-04-09 — feat: OpenClaw version pinning — auto-revert unauthorized upgrades
+- `2a9cfb08` 2026-04-09 — fix: increase retry to 4 attempts with exponential backoff (5s, 10s, 15s)
+- `dddfe941` 2026-04-09 — fix: task endpoints send model 'openclaw' not 'claude-sonnet-4-6'
+- `3f09c612` 2026-04-09 — docs: Update Bankr devrel feedback — full day's integration progress
+- `e84e5fe4` 2026-04-09 — docs: Clean up Bankr devrel notes — external-facing feedback only
+- `f3fef0b0` 2026-04-09 — docs: Bankr devrel — first API test results, address casing finding, pre-provisioning idea
+- `72b3dfa3` 2026-04-09 — security: Encrypt Bankr API keys at rest with AES-256-GCM
+- `0e128a04` 2026-04-09 — docs: Bankr devrel — note encryption at rest for API keys
+- `29613d58` 2026-04-09 — feat: Enable promotion code entry at Stripe checkout
+- `9c9dd146` 2026-04-09 — feat: Add partner column to instaclaw_users and instaclaw_vms
+- `dc63f2e2` 2026-04-09 — feat: Read partner cookie during signup and set on user record
+- `0b4dcea4` 2026-04-09 — feat: Add /edge-city partner portal page
+- `a49a4404` 2026-04-09 — feat: Auto-apply Edge City partner coupon at checkout
+- `af32f749` 2026-04-09 — feat: Install Edge City skill for partner=edge_city users
+- `06685a42` 2026-04-09 — docs: Update PRD with Bankr-pattern skill install and XMTP layer
+- `d1a06b90` 2026-04-10 — fix: Always write EDGEOS_BEARER_TOKEN and SOLA_AUTH_TOKEN to Edge VM .env
+- `06a399be` 2026-04-10 — fix: watchdog version cooldown from 1h to 10min
+- `df9f3cc9` 2026-04-10 — feat: Wire up Bankr token launch API + draft webhook spec for Sinaver
+- `57e83519` 2026-04-10 — feat: session backup + remove daily limit buffer
+- `96d9d594` 2026-04-10 — docs: Bankr devrel — log simulated launch test results, doc findings, pre-launch blockers
+- `0d9e612d` 2026-04-10 — feat: replenish-pool cron — auto-provision VMs from snapshot
+- `4a451ae0` 2026-04-10 — docs: Bankr devrel — log personal vs org wallet UX observation
+- `a4b81595` 2026-04-10 — chore: cleanup after replenish-pool deploy — remove pool-monitor + add Rule 8
+- `2baf6cdf` 2026-04-10 — feat(bankr): View on Bankr link + suspend wallet on VM reclaim
+- `61be338f` 2026-04-10 — fix: vm-watchdog version-pin subprocess bug + manifest v58
+- `2323db9b` 2026-04-10 — feat(mini): funnel non-Orb users into World Grow + remove dead branch
+- `d732c26c` 2026-04-10 — fix: export missing SOUL.md sections — unbreak main build
+- `7815bae7` 2026-04-10 — fix: 3 pre-existing landmines surfaced by configureOpenClaw audit
+- `94fbc487` 2026-04-10 — docs(CLAUDE): bump snapshot ID to private/38111101 (v58)
+- `0e5c4932` 2026-04-10 — fix(test): _test-configure-openclaw port + telegram token handling
+- `f9f4b6bb` 2026-04-10 — feat(cron): dedicated reconcile-fleet cron — unstarves config audit
+- `7efe161f` 2026-04-13 — fix: Tokenize button uses clean glass UI — inner glow, light refraction, subtle depth
+- `88135433` 2026-04-13 — fix: Tokenize button — clean glass, no edge artifacts
+- `1f86f276` 2026-04-13 — fix: Tokenize button glass — top-half shine, warm amber shadow, no edge artifacts
+- `4d8cb416` 2026-04-13 — fix: always update last_health_check when HTTP health passes
+- `55ee33e9` 2026-04-13 — fix: move Brave apiKey to plugins.entries.brave (OpenClaw 2026.4.5+)
+- `d67a4e37` 2026-04-13 — fix: auto-heal crash-looping gateways + alert on broken provisioning
+- `8c04ce2d` 2026-04-14 — security: Admin alert on CRITICAL Bankr token launch DB finalize failure
+- `5db907bf` 2026-04-14 — feat: Bankr tokenization card in World mini app + mini app token auth on tokenize endpoint
+- `f30a788d` 2026-04-14 — feat: Admin email alert on successful token launches
+- `08eedd5b` 2026-04-14 — feat: Token launch alerts to all 3 Cooper emails
+- `a17b55bf` 2026-04-14 — CRITICAL fix: tokenize endpoint web app auth was broken — userId self-assignment
+- `63622949` 2026-04-14 — fix: Auto-clear stale tokenization locks after 5 minutes
+- `1388b0f6` 2026-04-14 — TEMP: Celebration animation preview + token card redesign + devrel notes
+- `8c49f322` 2026-04-14 — fix: Remove temp test button from Bankr wallet card
+- `c1c4ade2` 2026-04-14 — feat: Post-launch Share to X card + Copy link — viral growth loop
+- `92af6132` 2026-04-14 — fix: Share to X audit fixes — timer cancel, mini app copy flow, null guard
+- `ba96945c` 2026-04-14 — feat: Auto-fill token metadata — description + websiteUrl on every launch
+- `13c6825e` 2026-04-14 — feat: Token PFP — glass orb image generation + upload with consistent brand style
+- `7e5fdba4` 2026-04-14 — security: Block all tokenization until prod Bankr org is ready
+- `a3c7bb0a` 2026-04-15 — fix: backfill agentbook_registered when on-chain registration detected
+- `7b229889` 2026-04-15 — docs: Bankr devrel — fee wallet auth UX confusion feedback
+- `13bbfec0` 2026-04-15 — feat: Agent learns about its token — WALLET.md + MEMORY.md after launch
+- `192472c9` 2026-04-15 — feat: Auto-generate token PFP on form open — Apple-level anticipation UX
+- `9bad6f72` 2026-04-15 — fix: Token PFP — DALL-E generates full 3D glass orb directly, no compositing
+- `66aed50e` 2026-04-15 — fix: Token PFP preview uses rounded-xl not rounded-full — no more orb-in-a-circle
+- `c6292ae2` 2026-04-15 — feat: Token PFP reads agent personality from SOUL.md + MEMORY.md via SSH
+- `12492d74` 2026-04-15 — fix: Token PFP preview size — w-32 webapp, w-28 mini app, no border frame
+- `0b987125` 2026-04-15 — feat: Hash-seeded unique pixel art PFPs — like GitHub identicons
+- `43dade2d` 2026-04-17 — feat: Procedural pixel art face PFPs — deterministic per agent
+- `aa532e51` 2026-04-17 — feat: Face PFPs match landing page quality — hand-crafted templates + glass orb
+- `ae0719f3` 2026-04-17 — feat: Layered 10×10 procedural face generator — 45M+ structural combos
+- `2e90a38c` 2026-04-19 — fix: PFP generator polish — rare horns, teeth-smile mouth, safer scar
+- `7d87c4ed` 2026-04-19 — Merge branch 'faces-layered-procedural' into main
+- `b3f5cf4e` 2026-04-19 — feat: 16×16 PFP generator with personality-locked character archetype
+- `0a5823b0` 2026-04-19 — Merge branch 'faces-16x16-personality-locked' into main
+- `efd7dd7d` 2026-04-19 — docs: Pillar 4 — Agent PFP NFT Collection (future milestone)
+- `e5286b4d` 2026-04-20 — feat: full 9-layer CryptoPunks-style crab trait generator at 24×24
+- `221a5082` 2026-04-20 — observability: diagnose Token PFP personality read path
+- `f159fcc8` 2026-04-20 — feat: port 24×24 crab generator into production token-image-generator
+- `3fb43383` 2026-04-20 — feat: port Candidate 02 silhouette at 28×28 with 2-tone baked in
+- `3f15249d` 2026-04-20 — feat: use Candidate 02 PNG as base + hue-tint for shell variety
+- `b777f7c7` 2026-04-20 — fix: restore glass-orb 3D background effect on hue-shift pipeline
+- `42ae0a6f` 2026-04-20 — feat: HD trait overlays on Candidate 02 base — full 1/1 uniqueness
+- `446b6a6a` 2026-04-20 — feat: HD meme-canon trait overlays — big, bold, recognizable
+- `c4737d4a` 2026-04-20 — fix: accessories readable at dashboard preview size (~160px)
+- `2c2c0576` 2026-04-20 — debug: instrument /api/bankr/tokenize with stage logs + outer try/catch
+- `c491cd60` 2026-04-20 — debug: bump maxDuration to 60s + log Bankr fetch boundaries
+- `d6a31ff2` 2026-04-20 — debug: log PFP generate request — raw body + client state
+- `04e24146` 2026-04-20 — feat(bankr): Trade on Bankr + DexScreener chart for V4/Doppler tokens
+- `671d8c58` 2026-04-20 — feat(bankr): HowToBuy disclosure on wallet card + share card
+- `e6ac015e` 2026-04-21 — manifest v59: enable gateway.openai.chatCompletionsEnabled
+- `9e783f92` 2026-04-21 — manifest v60: install pinned @bankr/cli@0.2.15 during configureOpenClaw
+- `8d7219c8` 2026-04-21 — refactor: extract provisionBankrWallet into lib/bankr-provision.ts
+- `8fc9861d` 2026-04-21 — copy: TOOLS.md wallet/fees trigger + bankr-messages constant
+- `bfd36690` 2026-04-21 — manifest v61: fix broken chat-completions config key
+- `f3e47b5e` 2026-04-21 — fix: Vercel gateway callers use model=openclaw + x-openclaw-model
+- `26efbdd8` 2026-04-21 — feat(cron): Pass 0 recovers orphaned paid users with no VM
+- `bd1f6cc3` 2026-04-21 — chore(scripts): add reusable orphan recovery + Pass 0 preview
+- `f4c8e55a` 2026-04-24 — feat(reconcile): Phase 2c — strict-mode fleet reconciliation
+- `1822ea57` 2026-04-26 — fix(cron/health-check): per-VM deadline + cron lock to prevent batch-wide hangs
+- `16bfa2be` 2026-04-26 — fix(configure): pre-create all ~/.openclaw subdirs before any writes
+- `0e50d041` 2026-04-26 — debug(configure): expose underlying Postgres error in DB-write failure
+- `678c2263` 2026-04-27 — feat(bankr): pin @bankr/cli@0.3.1 — direct claim API target
+- `4eacc619` 2026-04-27 — docs: bump LINODE_SNAPSHOT_ID to private/38458138 (v62)
+- `91597aff` 2026-04-27 — docs(bankr): post-Sinaver claim API integration review checklist
+- `f4fc7634` 2026-04-27 — scripts: post-outage ops toolkit (recovery + audit + fleet probes)
+- `821925cc` 2026-04-27 — feat(reconcile): auto-heal pinned npm globals (@bankr/cli + openclaw)
+- `913fcfc6` 2026-04-27 — feat(vm-lifecycle): Phase 2 — orphan reconciliation pass + audit log
+- `9801bdd0` 2026-04-27 — fix(reconcile): enforce agents.defaults.model.primary to prevent OpenAI default
+- `35a2e87d` 2026-04-27 — fix(gateway): intercept rate-limit + auth-failure errors before they leak to chat
+- `697bcd72` 2026-04-27 — feat(vm-lifecycle): Phase 3 — freeze/thaw pattern (#5)
+- `636139a9` 2026-04-27 — fix(vm-lifecycle): Phase 3 audit — 8 safety fixes (#6)
+- `0fa562d3` 2026-04-27 — fix(silence-watchdog): only inspect telegram-origin sessions; manifest v63
+- `0ab56017` 2026-04-27 — feat(dashboard): gas funding guide card under BankrWalletCard
+- `396093f2` 2026-04-28 — fix(reconcile): 3 critical bugs that left users on stale code (#7)
+- `16d8980f` 2026-04-28 — fix(xmtp): detect NVM node path dynamically in instaclaw-xmtp.service
+- `4fffb27f` 2026-04-28 — refactor(configureOpenClaw): collect partial_failures instead of swallowing
+- `e094ed53` 2026-04-28 — feat(reconcile): add 7 deploy heal steps + bump-without-push gating
+- `65f79dae` 2026-04-28 — feat(reconcile): Node 22.22.2 + OpenClaw 2026.4.26 pinned upgrade
+- `9f3aff5b` 2026-04-28 — fix(reconcile): heal steps must not start services on suspended/hibernating VMs
+- `98b07d21` 2026-04-28 — feat(configure): gate configure response on critical partialFailures
+- `ddd1e4d0` 2026-04-28 — feat(browser-relay): restore install UI now that Chrome Web Store listing is live
+- `722f88de` 2026-04-28 — chore: trigger redeploy after preview auth env fix
+- `4c59f96e` 2026-04-28 — fix(webhook): prevent silent credit_pack RPC failures + add orphan recovery
+- `813fba1c` 2026-04-28 — chore(ops): add permanent fleet audit + heal scripts
+- `ba14ca33` 2026-04-28 — docs(ops): note suspended-VM gateway restart loop for follow-up
+- `86e4bb25` 2026-04-28 — fix(reconcile): close strictErrors gate hole in stepNodeUpgrade + stepNpmPinDrift
+- `24b4b019` 2026-04-28 — fix(audit): use nvm default for node-version detection, not alphabetically-first
+- `bcbe6a39` 2026-04-28 — feat(browser-relay): beta disclaimer in dashboard + /browser-relay docs page
+- `fc213aab` 2026-04-28 — fix(browser-relay): surface relay-backend outage as maintenance state
+- `46b1b709` 2026-04-29 — copy(bankr): final share-to-X tweet — self-funding flywheel framing
+- `f0b8ad45` 2026-04-29 — feat(browser-relay): add browser-relay-server.js to replace removed OpenClaw subsystem
+- `e85666d9` 2026-04-29 — feat(reconcile): wire browser-relay-server into configureOpenClaw + manifest v65
+- `57675e78` 2026-04-29 — fix(reconcile): include scripts/browser-relay-server/ in Next file tracing
+- `be95b11a` 2026-04-29 — fix(reconcile): npm cache clean before openclaw install + tighten ExecStart grep
+- `c5f394c2` 2026-04-29 — chore(vercel): temporarily disable reconcile-fleet cron during v64/v65 fleet upgrade
+- `9e6a5263` 2026-04-29 — chore(browser-relay): drop maintenance banners — relay deployed fleet-wide
+- `6c043902` 2026-04-29 — fix(vercel): remove reconcile-fleet cron cleanly (was malformed in c5f394c)
+- `83ca0b53` 2026-04-29 — fix(reconcile): Bug C — stop gateway before openclaw npm install
+- `f10f48d7` 2026-04-29 — feat(bankr-sync): shared helper to detect chat-driven token launches
+- `51f3041d` 2026-04-29 — feat(bankr-sync): /api/cron/sync-bankr-launches background safety net
+- `5c94624c` 2026-04-29 — feat(bankr-sync): on-demand sync in /api/vm/status fires celebration in <30s
+- `70d4ad5e` 2026-04-29 — feat(bankr-sync): schedule sync-bankr-launches every 5 min
+- `8814a280` 2026-04-29 — fix(bankr-sync): lazy-init launchSuccess to avoid celebration flicker
+- `6befba84` 2026-04-29 — test(bankr-sync): e2e regression script for syncBankrLaunchForVm
+- `b4dc4863` 2026-04-29 — Merge feat/bankr-chat-launch-sync — Path B chat-driven launch sync
+- `d3d40a39` 2026-04-29 — fix(reconcile): Bug D + 60s gateway health timeout
+- `83eff391` 2026-04-29 — feat(bankr-skill): InstaClaw overlay — kill clanker subdir, drop Solana misroutes
+- `b3cfdaae` 2026-04-29 — feat(bankr-skill): fleet patch script — apply overlay to live VMs now
+- `22218c15` 2026-04-29 — fix(browser-relay): resolve node via NVM in standalone unit ExecStart
+- `92b89e1e` 2026-04-29 — fix(bankr-launch): tweet card preview, success-with-warning, phased status
+- `d9114898` 2026-04-29 — Merge fix/bankr-prelaunch-audit — pre-announcement P0/P1 fixes
+- `ef472917` 2026-04-29 — fix(reconcile): npm install timeout 180s→360s + on-disk verify
+- `9dfe894b` 2026-04-29 — fix(agent-context): scope token launches to Base in upfront-loaded surfaces
+- `f601f1a6` 2026-04-29 — feat(mini-app): wire Path B chat-launch celebration end-to-end
+- `f8fcc71d` 2026-04-29 — chore: export WORKSPACE_SOUL_MD for ad-hoc verification scripts
+- `2229080d` 2026-04-29 — chore(manifest): bump v66 → v67 — token-launch framing in upfront context
+- `f623cdec` 2026-04-29 — fix(reconcile): caddy no-op + npm install timeout 360s→600s
+- `25e55e14` 2026-04-29 — feat(upgrade-fleet): wave-based concurrency=5 with audit gates
+- `b886c924` 2026-04-29 — fix(v67-routing): fleet patch + reconciler step + audit retry
+- `bf46ee3d` 2026-04-29 — fix(configure): guard against wipe-on-already-onboarded-user
+- `44e779a1` 2026-04-29 — fix(fleet-patch): don't bump config_version + add from-disk reset script
+- `2d526591` 2026-04-29 — fix(reconcile): gateway health 60s→120s + dist/index.js verify
+- `edf34e82` 2026-04-29 — fix(reconcile): auto-retry npm install on verify failure
+- `1e182c51` 2026-04-29 — fix(audit): retry 6×10s + same-iter active+health pairing
+- `7b026a37` 2026-04-29 — docs(prd): add Index Network matching layer + Vendrov research layer to EdgeClaw
+- `38c540f7` 2026-04-29 — docs(prd): integrate Substack research overview — foundational research, methodology stack, hypothesis enrichment, coordinator agents
+- `2cca6379` 2026-04-29 — docs(edgeclaw): sponsor inference budget — one-page sponsor-facing breakdown
+- `5e233b07` 2026-04-29 — feat(research-export): SQL migration for 5 EE26 research tables
+- `efa42127` 2026-04-29 — feat(research-export): anonymization utilities — agent_id hash + PII regex sweep
+- `50ff38c1` 2026-04-29 — feat(research-export): TypeScript schemas for source + export shapes
+- `fab34510` 2026-04-29 — feat(research-export): Supabase extractors with date-range filtering + pagination
+- `af41dc49` 2026-04-29 — feat(research-export): writers — CSV (zero-dep, default) + Parquet (optional)
+- `997bf15a` 2026-04-29 — feat(research-export): pipeline orchestrator — extract → anonymize → write
+- `eb55a6a6` 2026-04-29 — feat(research-export): CLI script + end-to-end integration test
+- `9e88696c` 2026-04-29 — docs(research-export): operational README — quick start, privacy guarantees, runbook
+- `fd42a1eb` 2026-04-29 — fix(research-export): unblock Vercel preview build
+- `b0de400c` 2026-04-29 — feat(bankr): #19 — pre-launch confirmation card
+- `a10f89f1` 2026-04-29 — feat(bankr): #7 — "Free to launch" reassurance on form
+- `77c113f5` 2026-04-29 — feat(bankr): #9 — launch number ("You're #N to deploy autonomously")
+- `788f6dcd` 2026-04-29 — feat(bankr): #6 — 5 randomized tweet templates with agent-name interpolation
+- `30717999` 2026-04-29 — feat(bankr): #17 — World ID verified-human creator badge
+- `7a3cfa51` 2026-04-29 — fix(v67): bump agents.defaults.timeoutSeconds to 90s + watchdog FROZEN to 5min
+- `d18d59a5` 2026-04-29 — fix(v67): bump watchdog FROZEN threshold further 5min → 10min
+- `d6487e88` 2026-04-29 — docs(claude-md): add Fleet Upgrade Lessons section
+- `ba0a772e` 2026-04-29 — fix(bankr-tweet-templates): 4 fuzz-found edge-case bugs
+- `d2b26d8b` 2026-04-29 — fix(bankr): swap #7 free-to-launch copy — long lives on confirmation
+- `ab77525d` 2026-04-29 — feat(bankr): #1 — agent autoposts to Telegram in its own voice on launch
+- `7f0d2465` 2026-04-29 — feat(bankr): #4 — auto-suggested token name from agent personality
+- `2df2c74e` 2026-04-29 — feat(bankr): #8 — agent answers "what's my token at?" via DexScreener
+- `e406ff5a` 2026-04-29 — chore(freeze): drop suspended-grace from 30d → 3d
+- `0cac8984` 2026-04-29 — chore(cron): vm-lifecycle 6h → 1h to drain freeze backlog faster
+- `83155a1b` 2026-04-30 — docs(claude.md): expand OpenClaw Upgrade Playbook from v67 incident
+- `6679afe8` 2026-04-30 — fix(fleet): manifest v68 — watchdog uptime guard + telegram streaming off
+- `c07accec` 2026-04-30 — fix(manifest): close v67 jsdoc properly so v68 history compiles
+- `d967db50` 2026-04-30 — fix(fleet): manifest v69 — disable gateway watchdog timer fleet-wide
+- `fc871b37` 2026-04-30 — feat(bankr): #5 — auto-generated launch card image (1200x630 OG)
+- `bf053e9a` 2026-04-30 — fix(reconciler): verify config-set in non-strict path; ban silent \|\| true
+- `5a1db4c5` 2026-04-30 — feat(cron): expire pending WLD delegations after 6h (#12)
+- `5ff04ba5` 2026-04-30 — fix(fleet): manifest v71 — disable mDNS by default + weekly backup prune
+- `0baa0575` 2026-04-30 — docs(prd): SOUL.md restructure — design doc, no implementation
+- `27b24cc1` 2026-04-30 — docs(prd): SOUL.md restructure v2 — evidence-based rewrite
+- `5d6c0d07` 2026-04-30 — feat(soul): manifest v72 — SOUL.md cache boundary marker
+- `e886aff9` 2026-04-30 — fix(bankr): P0 OG image render + P1 symbol caption literal text
+- `85bbc01f` 2026-04-30 — fix(cron): expire-pending update by predicate, not id list (#13)
+- `f073eb22` 2026-04-30 — fix(bankr): OG card column gap — `0 0.4ch` → `0 8px`
+- `731d41ec` 2026-04-30 — feat(memory): manifest v73 — MEMORY.md backup + auto-restore (Phase 1)
+- `ed93dccc` 2026-04-30 — feat(cron): background poller for unconfirmed WLD delegations (#14)
+- `089608b1` 2026-04-30 — fix(bankr): OG card — real logo, full address, fix word-merge spacing
+- `4b654677` 2026-04-30 — fix(bankr): OG card uses inverted (white) logo for dark background
+- `96500eb2` 2026-04-30 — chore: retire 3 empty World mini-app tables (#15)
+- `f7843f35` 2026-04-30 — fix(bankr): OG card typography matches production website fonts
+- `017e93c6` 2026-04-30 — fix(bankr): OG card — Base + Bankr logos, copy + tagline tweaks
+- `ab25c99a` 2026-04-30 — fix(bankr): Base logo — swap white→blue (the actual Base brand mark)
+- `b1c4ef3c` 2026-05-01 — fix(soul-v2): correct bankr SKILL.md path; soften partner-gated edge-esmeralda refs
+- `ebe40d52` 2026-05-02 — docs(strategy): WLD pricing strategy + hibernation architecture
+- `2dfcd609` 2026-05-02 — docs+scripts: P0 wake bug RCA + manual recovery scripts
+- `db459276` 2026-05-02 — fix(bankr): OG card — render at 2x (2400x1260) for retina crispness
+- `0b164436` 2026-05-02 — feat(edge-privacy): component 3 — internal check API for SSH bridge
+- `221c8be4` 2026-05-02 — fix: wake-from-hibernation paths + auth-cache clear + watchdog v2
+- `0523e5cf` 2026-05-02 — fix(health-check): verify gateway active after billing-cache restart (task #40)
+- `cb52f1ec` 2026-05-02 — feat(edge-privacy): components 5–9 — expire cron, audit log, SSH bridge, reconciler, cutover script
+- `1da128be` 2026-05-02 — fix(edge-privacy): lazy-load privacy-bridge.sh to survive Turbopack page-data collection
+- `f0db1dfc` 2026-05-02 — fix(watchdog,wake): QA fixes 1-4 — must-have before WATCHDOG_V2_MODE=active
+- `fa1193a4` 2026-05-02 — fix(edge-privacy): QA blockers in privacy bridge — newline injection, fail-open, openclaw backdoor
+- `e430426e` 2026-05-02 — fix(wake-vm): handle BOTH 'hibernating' AND 'suspended' states
+- `9883dd17` 2026-05-02 — docs(CLAUDE.md): add Rules 14-21 from this sprint's 9 internalized lessons
+- `b3fa5297` 2026-05-02 — feat(consensus): partner skill for Consensus 2026 Miami (May 5–7)
+- `6a34bd9a` 2026-05-02 — Merge: feat(consensus): partner skill for Consensus 2026 Miami
+- `0fefd764` 2026-05-02 — feat(consensus): also install consensus skill for edge_city partners
+- `a495680d` 2026-05-02 — fix(strip-thinking): trim trailing empty turns, never nuke active session
+- `fee5324d` 2026-05-02 — docs(rule-22): full incident history + fleet pusher for trim-not-nuke fix
+- `599b9a1c` 2026-05-03 — docs(CLAUDE.md): cut over to v79 snapshot private/38575292
+- `58e59e0e` 2026-05-03 — fix(reconcile): sentinel guard + race fix + Rule 23
+- `5a3ef83d` 2026-05-03 — chore: trigger redeploy to pick up LINODE_SNAPSHOT_ID=private/38575292
+- `cb4d425a` 2026-05-03 — fix(memory): cross-session persistence layered fix (SOUL reorder + bootstrap bump + periodic summary)
+- `bfb09037` 2026-05-03 — ops(memory-deploy): operational scripts + fleet bump infra
+- `18eed486` 2026-05-03 — fix(timeout): bump timeoutSeconds 90 → 300 — 3-min response on vm-780 forced this
+- `e285e68f` 2026-05-04 — fix(memory): manifest v80 — periodic-summary hook unblocked when session shrinks
+- `0a96bc16` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKENIZE_ENABLED=true
+- `ef6cecab` 2026-05-04 — fix(consensus): universal skill install + fleet backfill + free-trial copy
+- `611e84d4` 2026-05-04 — fix(consensus-ui): apply canonical glass UI across page + client
+- `7db423ac` 2026-05-04 — feat(consensus): add founder-matching BETA section + UX polish
+- `b45ff7d0` 2026-05-04 — feat(consensus): platform reframe — "the agent stays"
+- `523735ab` 2026-05-04 — fix(consensus): kill em dashes + reframe matching for ALL roles
+- `73aea3d3` 2026-05-04 — feat(consensus/matches): preview page for the intent-matching demo
+- `be49f547` 2026-05-04 — fix(consensus/matches): remove all em dashes
+- `f209f0c6` 2026-05-04 — fix(consensus): update record counts to live data (326/219/451 → 338/229/463)
+- `6d6364b5` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKEN_LAUNCH_SIMULATE=true
+- `671d1cc1` 2026-05-04 — fix(ui): replace emojis with lucide SVG icons across dashboard surfaces
+- `a0f943c8` 2026-05-04 — feat(matchpool): migration + apply script for intent matching schema
+- `0c34ef11` 2026-05-04 — feat(matchpool): component 2 — embedding helper (lib/match-embeddings.ts)
+- `f5d19bb9` 2026-05-04 — feat(matchpool): component 3 — intent extraction on user VMs
+- `0b6585fe` 2026-05-04 — feat(matchpool): component 4 — VM-side intent sync + bridge to platform
+- `c9368e88` 2026-05-04 — feat(matchpool): component 5 — POST /api/match/v1/profile
+- `0ac49639` 2026-05-04 — fix(og-card): brand fallback when bankr_token_image_url is null
+- `c80b0f23` 2026-05-04 — fix(bankr/sync): env-gated kill-switch for Path B re-discovery
+- `9844b926` 2026-05-04 — feat(bankr-card): glass Trade-on-Bankr CTA + pre-launch education
+- `6556a641` 2026-05-04 — chore: re-trigger Vercel build for 9844b926 (glass Trade button + WhyTokenize)
+- `93094391` 2026-05-04 — feat(matchpool): components 6-10 + hardening pass — full pipeline shipped
+- `611deef9` 2026-05-04 — fix(bankr-card): orange Trade button + bottom padding + em-dash copy
+- `2c5fd765` 2026-05-04 — fix(bankr-card): match Tokenize + Trade-on-Bankr to Buy Credits style
+- `51ef0cd4` 2026-05-04 — feat(matchpool): v81 manifest — fleet wiring for matching pipeline
+- `ee88dd46` 2026-05-04 — fix(bankr-card): post-launch container glass + brand-orange avatar
+- `5e91cb1a` 2026-05-04 — fix(bankr-card): plumb bankr_token_image_url through to avatar
+- `77a178bf` 2026-05-04 — feat(matchpool): Telegram notification + ghost pool seed
+- `9fcc639f` 2026-05-04 — fix(dashboard): brand orange on WhyTokenize + HowToBuy circles
+- `94e079d4` 2026-05-04 — fix(bankr-card): brand orange across full launch flow
+- `8e140b50` 2026-05-04 — fix(bankr/sync): cron also honors DISABLE_BANKR_PATH_B_SYNC kill-switch
+- `d099a5af` 2026-05-04 — fix(matchpool,bankr): canary v81 + Telegram sanitization + brand orange
+- `bab5e37f` 2026-05-04 — fix(gateway): heartbeat reclassification bypass for match pipeline (P1)
+- `d0a37af1` 2026-05-04 — test(matchpool): verification harness for heartbeat-bypass fix
+- `41a59874` 2026-05-05 — revert(bankr/sync): drop DISABLE_BANKR_PATH_B_SYNC cron kill-switch
+- `327888af` 2026-05-05 — feat(matchpool): v82 SOUL.md awareness for matching engine
+- `ff82a847` 2026-05-05 — tools(fleet): controlled v82 rollout at concurrency=3
+- `4b28f8f3` 2026-05-05 — feat(matchpool): Path 1 — Skills-page toggle for Consensus 2026
+- `259477ba` 2026-05-05 — feat(matchpool): v83 — pipeline + intent_sync gate on skill state
+- `5859048c` 2026-05-05 — feat(matchpool): v84 — Path 2 §Organic Activation helper
+- `17b1a20d` 2026-05-05 — fix(watchdog): suppress probe_healthy writes + 48h retention cron
+- `31396d5c` 2026-05-05 — feat(skills): Rule 24 — install verification + self-healing + taxonomy
+- `bd13d54f` 2026-05-05 — feat(skills): consensus-2026 brand-image orb icon
+- `f08b60b8` 2026-05-05 — fix(my-matches): strip em-dashes from copy + LLM rationale
+- `55bb97ea` 2026-05-05 — fix(skills): Rule 24 follow-ups — backup-before-rm + bootstrap const + vm-724/725 fixes
+- `161615ab` 2026-05-05 — feat(xmtp): agent-to-agent intro DMs for Consensus 2026 matching
+- `0c5c0f3a` 2026-05-05 — fix(xmtp): receiver chat_id from DB, dynamic gateway token, no fallback reply
+- `7dd896ab` 2026-05-05 — fix(xmtp): XMTP-user fallback + pending-disk recovery + 20/24h limit
+- `bc6b589f` 2026-05-05 — fix(match): contact-info include_self bypasses request-array gate
+- `579cd2a8` 2026-05-05 — feat(xmtp): application-layer delivery guarantees + chat_id backfill
+- `56f71126` 2026-05-05 — fleet(v86): raise TasksMax 75 → 120 on openclaw-gateway cgroup
+- `57ee2ce6` 2026-05-05 — docs(v87): prctl-subreaper integration plan (blocked on npm publish)
+- `36c6b260` 2026-05-05 — fleet(v87): integrate prctl-subreaper into openclaw-gateway
+- `6fa814df` 2026-05-05 — canary(v87): vm-050 install + smoke test for prctl-subreaper
+- `50764e71` 2026-05-05 — test(xmtp): edge-case suite — 12/12 with delivery hardening
+- `2c49732a` 2026-05-05 — chore(consensus): bundle deploy artifacts + design PRDs
+- `aabb783e` 2026-05-05 — docs(consensus): launch kit — tweet copy, screenshot guide, technical receipts
+- `faf8b8a8` 2026-05-05 — fleet(v88): add build-essential to systemPackages — fixes v87 silent fail
+- `49e51b64` 2026-05-05 — feat(consensus): kill-switch + 30-min health alert cron
+- `55052829` 2026-05-05 — test(consensus): real production intro fired end-to-end (1.77s)
+- `178e10dc` 2026-05-05 — fix(consensus): per-receiver intro cap (default 3/24h) — Timour spam fix
+- `f4a908fb` 2026-05-05 — fix(consensus): intro CTA points to sender's personal Telegram, not their bot
+- `c92a5e37` 2026-05-05 — feat(consensus): self-healing telegram_handle backfill via Telegram getChat
+- `991aa29b` 2026-05-05 — chore(cron): reduce Supabase load — health-check 1m→2m, cloud-init-poll 2m→5m
+- `1b36b078` 2026-05-05 — perf(health-check): batch Pass 0 timestamp UPDATEs (855 → 2 queries)
+- `9beb74bf` 2026-05-05 — fix(reconcile-fleet): drop batch size 10 → 3 to fit under 300s timeout
+- `aa816e58` 2026-05-05 — feat(consensus): Draft C intro copy — match count + cap-controls footer
+- `6e0f7c17` 2026-05-05 — docs(prd): v2 agent negotiation — full spec
+- `3f3443d2` 2026-05-05 — fix(reconcile): glob consensus_*.py for outputFileTracingIncludes
+- `8de505e3` 2026-05-05 — docs(consensus): day-of runbook + PRD open-question lock-in
+- `d28bf919` 2026-05-05 — fix(reconcile): broaden consensus glob to ./scripts/**/*.py
+- `de4e62f4` 2026-05-05 — docs(changelog): v62 → v88 thread for X — copy-paste ready
+- `af38a16c` 2026-05-05 — fix(consensus): sender-side match notification refresh
+- `5e710334` 2026-05-05 — fix(reconcile-fleet): touch route.ts to bust Vercel's nft trace cache
+- `c3b8cee9` 2026-05-05 — fix(reconcile): inline matchpool .py contents at build time
+- `572792b7` 2026-05-05 — docs(changelog): denser hook + prctl-subreaper@0.1.1 in tweet 11
+- `251e01fd` 2026-05-06 — fix(reconcile): caddy hostname regex needs multiline flag
+- `8ffc2970` 2026-05-06 — fix(reconcile): node_exporter post-restart sleep 2 → 5s
+- `af2b7ced` 2026-05-06 — docs(claude): P1-2 + P1-3 — node_exporter visibility, ssh-broken-tcp-reachable
+- `a20d85b6` 2026-05-06 — fix(matchpool): partner-aware consent default for new profiles
+- `b6141af9` 2026-05-06 — fix(soul-md): v89 — InstaClaw platform identity (fixes "I'm an OpenClaw agent")
+- `af98e780` 2026-05-07 — docs(prd-gbrain): apply 8 corrections from Phase 0 vm-050 canary
+- `7ac0d370` 2026-05-07 — fix(session-overflow): v90 — four-layer session-overflow reliability fix
+- `e30c6a78` 2026-05-07 — fix(bankr): wallet coverage gap (Phases 1-5) + v91 SOUL.md Platform V2
+- `f0da920e` 2026-05-07 — docs(claude): Rules 25-31 — systemic lessons from 2026-05-06/07 incidents
+- `16aa97c9` 2026-05-09 — fix(reconcile-fleet): touch route.ts to bust nft cache for v90 manifest
+- `e0898f67` 2026-05-09 — feat(agentbook): hat-claim promo banner — web dashboard + mini app
+- `7481c171` 2026-05-09 — fix(agentbook-banner): production-quality animations + fixes from Cooper review
+- `f5122470` 2026-05-09 — fix(db): usage_log 14-day retention via pg_cron + BRIN index swap + monitoring
+- `b615f81a` 2026-05-09 — fix(agentbook-banner): match dashboard glass + move to top + real hat image
+- `395466ca` 2026-05-09 — fix(agentbook-banner): hat breathing room + sharpness + glass shadow
+- `1c855ecb` 2026-05-09 — fix(agentbook-banner): mix-blend-mode multiply removes white hat bg
+- `a20a86ed` 2026-05-09 — feat(agentbook-banner): redesign as site-wide notification strip
+- `c09527c5` 2026-05-09 — fix(agentbook-banner): match landing-page NotificationBar style exactly
+- `b496bee1` 2026-05-09 — fix(dashboard): Welcome card collapse-toggle + remove WorldID dismiss X
+- `775b022d` 2026-05-09 — feat(agentbook-banner): state machine — verify/register/claim/sold-out
+- `36a7e87d` 2026-05-09 — fix(world-id-banner): sharper copy + "Get verified →" CTA
+- `5e949f0f` 2026-05-09 — fix(reconcile-fleet): drop suspended/hibernating from eligibility
+- `07269ec2` 2026-05-09 — fix(ssh): add v90 compaction keys to buildOpenClawConfig static blob
+- `55fce656` 2026-05-09 — fix(reconcile-fleet): per-VM 120s timeout via Promise.race
+- `3716bc43` 2026-05-09 — chore(scripts): one-shot to mark long-dormant VMs unhealthy
+- `8f5f0d54` 2026-05-09 — docs(prd): gbrain Phase 1 design doc
+- `6a11e06e` 2026-05-09 — fix(reconcile-fleet): add missing lib/manifest-integrity.ts + pre-commit nft cache-bust
+- `55d1fe5d` 2026-05-09 — feat(gbrain): Phase 1 install scripts (canary install + selection)
+- `84775ac0` 2026-05-09 — feat(manifest-integrity): P1-4 nft-cache defense + dynamic-value handling
+- `4854398d` 2026-05-10 — docs(claude): elevate P1-1 — lying-DB is ~20% fleet-wide, 3 shapes, fleet-integrity issue
+- `ddcee2e4` 2026-05-11 — chore(scripts): stuck-head triage + selective-flip helpers
+- `035b3b11` 2026-05-11 — docs: lying-DB fleet census — 27% rate, 12 of 44 healthy cv≥88 VMs
+- `50640a55` 2026-05-11 — feat(gbrain): Phase 1 uninstall scripts (mirror of install)
+- `0eeeebdb` 2026-05-11 — docs(lying-db-census): refresh 2026-05-11 with current fleet probe
+- `1fb249d5` 2026-05-11 — fix(reconciler): root-cause fixes for 27% lying-DB rate
+- `b6f949ac` 2026-05-11 — feat(soul-md): v92 partner-stub migration — fix live truncation bug on edge_city VMs
+- `0f796218` 2026-05-11 — fix(manifest): EMERGENCY bandaid — bootstrapMaxChars 35000 → 40000 (v92)
+- `bc1608ac` 2026-05-11 — fix(manifest): EMERGENCY disable CONSENSUS_MATCHING_AWARENESS_V1 SOUL.md append
+- `d4e3dae5` 2026-05-11 — chore(scripts): emergency fleet sweep + reprobe (2026-05-11)
+- `2750c10d` 2026-05-11 — chore(scripts): Phase 4 cv-reset for the 10 lying-DB VMs
+- `567f653b` 2026-05-11 — fix(strip-thinking): idempotency gate on session-backup creation
+- `36ea41e1` 2026-05-11 — chore(scripts): session-backups bloat probe + emergency purge
+- `c56efadf` 2026-05-11 — feat(soul-v2): bug-fix stepMigrateSoulV2 + canary/rollout/rollback scripts + PRD
+- `6db05d8e` 2026-05-11 — fix(gateway-proxy): stop silently downgrading real user messages to MiniMax
+- `e2380e68` 2026-05-11 — feat(reconcile-fleet): persistent failure tracking + auto-quarantine + alerts
+- `1e572e98` 2026-05-11 — docs(soul-v2): §14 — Agent Self-Compaction Architecture (V3+ roadmap)
+- `e436cf3a` 2026-05-11 — feat(soul-md): v93 partner-stub APPEND branch + budget-aware over-budget check
+- `871a78c5` 2026-05-11 — fix(soul-v2): cron lock acquisition in canary script + ip_address column
+- `90feea10` 2026-05-11 — fix(soul-v2): AGENTS.md threshold + ip_address column in fleet rollout
+- `bd3f671e` 2026-05-11 — fix(soul-v2): fleet rollout whitelist race on concurrent migrateOne calls
+- `ddb58683` 2026-05-11 — fix(soul-v2): fleet rollout process.exit() bypasses finally — leaks cron lock
+- `437504db` 2026-05-11 — feat(soul-v2): --no-strict opt-in flag for fleet rollout
+- `e7d927b3` 2026-05-11 — feat(gbrain+monitoring): install pipeline + forensic handoff + 3 ops crons
+- `320ecb25` 2026-05-11 — feat(reconciler+claude.md): hot-reload classification + auto-restart guardrail
+- `47764527` 2026-05-11 — feat(reconcile): catch-up script for fleet stuck >N versions behind manifest
+- `831533f4` 2026-05-11 — feat(phase4): gbrain fleet rollout design + stepEnvVarPush reconciler step
+- `0712ba01` 2026-05-11 — feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX
+- `2b985da0` 2026-05-11 — feat(phase4): gbrain-coverage-check cron + edge_city readiness probe
+- `21d9dd9b` 2026-05-11 — docs(prd): reconcile deadline structural fix — Vercel cron can't catch up multi-version drift
+- `b1741db5` 2026-05-12 — feat(phase4c): stepGbrain reconciler step + build-time script embedding
+- `0144181a` 2026-05-12 — feat(snapshot-bake): canonical fresh-nanode bake toolchain (cleanup + validation + runbook)
+- `1c44d5e9` 2026-05-12 — fix(onboarding): break post-checkout loop + recover from configure partial-failure (Rule 33)
+- `a8bb1bca` 2026-05-12 — feat(edge): rebrand /edge-city → /edge with Edge City visual language
+- `6671f651` 2026-05-12 — Merge branch 'feat/matchpool-outcomes-ingest' — §5.2 matching engine infrastructure
+- `b4b1e97b` 2026-05-12 — fix(reconcile): stepSystemdUnit verify uses md5 hash compare (likely cv=82 unstick)
+- `03df7ef1` 2026-05-12 — feat(telegram): one-shot fix for VMs missing channels.telegram.botToken on disk
+- `c944a3b0` 2026-05-12 — fix(auth): plug dual-account hole — partner cookie now applies to existing users
+- `4a5fddec` 2026-05-12 — feat(edge): branded Open Graph share card for /edge
+- `b27f94ee` 2026-05-12 — fix(edge): move plaza page to /edge/ to match post-rebrand routing
+- `273e1609` 2026-05-12 — fix(replenish-pool): orphan-collision defense + visible alerts
+- `ab48f58c` 2026-05-12 — feat(edge): brand /signup + /connect for Edge Esmeralda attendees
+- `39d0e237` 2026-05-12 — fix(vm-status): atomic health_status on terminal flips + defense filter
+- `1bf237a9` 2026-05-12 — feat(edge): /edge responds to login state
+- `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34)
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait)
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4)
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants
+
+## Appendix — every commit (chronological)
+
+- `902044a0` 2026-03-02 — fix: wire Virtuals aGDP Skills toggle to existing install/uninstall code, hide X/Twitter Search [2 files] _(ai-assisted)_
+- `b1f6a21d` 2026-03-02 — fix: restore X/Twitter Search skill to active status [1 files] _(ai-assisted)_
+- `fd7cec08` 2026-03-02 — feat: wire up X/Twitter Search skill using Brave Search site:x.com [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `784163df` 2026-03-02 — feat: complete SEO & GEO overhaul — 20+ new content pages, sitemap, structured data [31 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `28735b00` 2026-03-02 — chore: add IndexNow key verification file [1 files] _(ai-assisted)_
+- `3d664cd3` 2026-03-02 — chore: add Bing Webmaster Tools verification meta tag [1 files] _(ai-assisted)_
+- `0fa077c6` 2026-03-02 — refactor: switch X/Twitter Search from proxy to BYOK [3 files] _(multi: [feature, docs]; ai-assisted)_
+- `1db28ff6` 2026-03-02 — fix: remove gateway.controlUi key rejected by OpenClaw 2026.2.17+ [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `754ee05b` 2026-03-02 — blog: publish 3 posts (ai-agent-telegram-bot, what-can-ai-agents-do, personal-ai-agent-vs-chatbot) [5 files] _(multi: [infrastructure, feature])_
+- `915599fe` 2026-03-02 — blog: publish 15 posts (ai-agent-video-creation, openclaw-hosting-cost, ai-agent-content-creation, best-ai-agent-platforms-2026, future-of-personal-ai, openclaw-api-guide, ai-agent-polymarket, openclaw-vs-autogpt, ai-agent-for-research, why-everyone-needs-ai-agent, openclaw-skills-guide, personal-ai-vs-business-ai, ai-agent-for-crypto, make-money-ai-agent, openclaw-security) [17 files] _(multi: [infrastructure, feature])_
+- `8c6739d2` 2026-03-02 — blog: publish 2 posts (openclaw-api-guide, ai-agent-video-creation) [4 files] _(multi: [infrastructure, feature])_
+- `ceaba54f` 2026-03-02 — blog: publish 18 SEO posts + blog pipeline scripts [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f946d202` 2026-03-02 — feat: add Linode provider support to open-spots.sh, default to Linode [1 files] _(ai-assisted)_
+- `9920fa9f` 2026-03-02 — seo: add authoritative outbound links to all 23 blog posts [23 files] _(ai-assisted)_
+- `745dd209` 2026-03-02 — seo: GEO audit fixes — FAQ sync, llms.txt expansion, use-case links, about page [6 files] _(ai-assisted)_
+- `3a9b7468` 2026-03-03 — fix: open-spots.sh Linode provisioning — pass SSH public key string + add required root_pass [1 files] _(ai-assisted)_
+- `2b7e51b8` 2026-03-03 — fix: version-aware controlUi handling + groups.* wildcard fix [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0f34f5a7` 2026-03-03 — fix: canary upgrade admin lookup — match actual DB email [1 files] _(ai-assisted)_
+- `f537de7e` 2026-03-03 — debug: add diagnostic logging to canary upgrade admin lookup [1 files] _(ai-assisted)_
+- `d00748e1` 2026-03-03 — fix: bump canary upgrade maxDuration from 120s to 300s [1 files] _(ai-assisted)_
+- `a6dbb786` 2026-03-03 — perf: parallelize fleet upgrade batches and version sweep [1 files] _(ai-assisted)_
+- `bb5c22f9` 2026-03-03 — feat: tool-use continuation credit discount (0.2x multiplier) [2 files] _(ai-assisted)_
+- `57229c0a` 2026-03-03 — fix: bump fleet upgrade maxDuration to 600s [1 files] _(ai-assisted)_
+- `fa88771a` 2026-03-03 — ui: add Blog link to landing page navbar [1 files] _(ai-assisted)_
+- `24418a61` 2026-03-03 — ui: add Lenis smooth scroll to all marketing pages [1 files] _(ai-assisted)_
+- `35599983` 2026-03-03 — fix: bump fleet upgrade maxDuration to 900s (Vercel Pro max) [1 files] _(ai-assisted)_
+- `8b0aace8` 2026-03-03 — feat: overhaul /use-cases page — 6 new use cases, vivid descriptions [1 files] _(ai-assisted)_
+- `16739680` 2026-03-03 — copy: update crypto use case to highlight multi-marketplace earning [1 files] _(ai-assisted)_
+- `951cdcbe` 2026-03-03 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.2 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f09be921` 2026-03-03 — fix: replace remaining hardcoded 2026.2.24 version references [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `57310278` 2026-03-03 — fix: lower upgrade-fleet maxDuration to 800s (Vercel Pro limit) [1 files] _(ai-assisted)_
+- `04738568` 2026-03-03 — fix: show Dashboard instead of Sign Up in marketing header when logged in [1 files] _(ai-assisted)_
+- `40dc19ef` 2026-03-03 — feat: add real Polymarket trade execution scripts and UX guardrails [7 files] _(ai-assisted)_
+- `ec416210` 2026-03-03 — fix: add controlUi flag to buildOpenClawConfig and fix pkill bracket trick [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `52fb0dd3` 2026-03-03 — fix: add RPC fallback chain and balance check for Polymarket scripts [2 files] _(ai-assisted)_
+- `0497f062` 2026-03-03 — fix: add USDC.e vs native USDC detection to Polymarket trade flow [2 files] _(ai-assisted)_
+- `2afabeeb` 2026-03-03 — fix: add hard rule to use setup-creds status for balance checks [1 files] _(ai-assisted)_
+- `1d815444` 2026-03-03 — fix: move Polymarket hard rules to top of SKILL.md [1 files] _(ai-assisted)_
+- `ff8238b7` 2026-03-03 — feat: add polymarket-wallet.py for ERC-20 transfers and USDC swaps [3 files] _(ai-assisted)_
+- `2121b0f6` 2026-03-04 — fix: Kalshi PSS salt length, deploy scripts in ssh.ts, safe symlink upgrade [31 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `fe1353f0` 2026-03-04 — fix: strip query params from Kalshi signing path per API spec [4 files] _(ai-assisted)_
+- `ebdeadec` 2026-03-04 — fix: complete UX overhaul — onboarding flows, PEM delivery, browse script, funding guides, withdrawal guidance, balance checks, error handling [7 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `4ab70b61` 2026-03-04 — fix: switch CLOB proxy to transparent mode with UFW IP whitelist [1 files] _(ai-assisted)_
+- `3333b48f` 2026-03-04 — feat: session protection system — circuit breaker, auto-backup, watchdog growth detection [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `da7ebcf0` 2026-03-04 — fix: fleet deploy stdin conflict — use fd3 for while-read loop [1 files] _(ai-assisted)_
+- `f2346f6d` 2026-03-04 — fix: agent intelligence — force prediction market script usage, never improvise [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0d59fda2` 2026-03-04 — feat: Skill 15 — Solana DeFi Trading (Phase 1) [22 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `a5654386` 2026-03-04 — fix: FOK orders, precision, order verification, liquidity checks, anti-fabrication [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `37091ba0` 2026-03-04 — fix: provisioning pipeline gaps — session protection in configureOpenClaw, skill API defaults, toggle upserts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7e51ad30` 2026-03-04 — fix: add Brave search to all VMs regardless of billing mode [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ffe5bc61` 2026-03-04 — feat: comprehensive Polymarket + Kalshi setup UX on earn page [2 files] _(ai-assisted)_
+- `920ed8a6` 2026-03-04 — fix: correct Brave env var name, remove apiMode gating for ElevenLabs [9 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `49978b05` 2026-03-04 — fix: add POLYGON_RPC_URL to VM manifest, configure pipeline, reconciler, and fleet backfill [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0cad0b70` 2026-03-04 — fix: raise maxSkillsPromptChars from 200K to 350K — skills were being truncated [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4e671f4a` 2026-03-04 — fix: add proper --- YAML frontmatter to all custom skills — were invisible to OpenClaw parser [19 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3d9a8b56` 2026-03-04 — feat: add Quick Command Routing table to SOUL.md onboarding template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2a9c38c2` 2026-03-05 — fix: make ambassador detail modal scrollable so action buttons are reachable [1 files] _(ai-assisted)_
+- `b4deb5db` 2026-03-05 — feat: polymarket-search.py — seamless market discovery script [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `6073ae9a` 2026-03-05 — fix: restore CLOB proxy, add resolver to nginx, add proxy health monitoring [1 files] _(ai-assisted)_
+- `4622dabb` 2026-03-05 — fix: CLOB API precision formatting for FOK orders [1 files] _(ai-assisted)_
+- `0893f797` 2026-03-05 — fix: FOK orders sweep orderbook with 2% default slippage for reliable fills [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `9e1e767f` 2026-03-05 — fix: restore maxSkillsPromptChars to 350000 — was reverted to 50000 [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1e0c95be` 2026-03-05 — fix: PERMANENT maxSkillsPromptChars=350000 — DO NOT REVERT — skills drop below this [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `89312e92` 2026-03-05 — feat: proxy failover, memory hygiene, env drift protection, search events endpoint, routing persistence [7 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `82868367` 2026-03-05 — feat: per-ambassador NFT badge images + V2 soulbound contract [9 files] _(ai-assisted)_
+- `0345ca88` 2026-03-05 — feat: set CLOB_PROXY_URL_BACKUP to London proxy (172.237.101.206) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5890412b` 2026-03-05 — feat: 7-day trial for promotional invite codes [1 files] _(ai-assisted)_
+- `82b45df7` 2026-03-05 — fix: auto-retry on post-sell settlement delay instead of failing [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `47960dd0` 2026-03-05 — fix: add viem to instaclaw deps — was only in root, breaking Vercel builds [2 files] _(ai-assisted)_
+- `c9d5cb81` 2026-03-05 — fix: diagnose insufficient balance root cause + automated memory cleanup [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f170bf52` 2026-03-05 — fix: distinguish min order size from insufficient balance, auto-round up small orders [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `af893429` 2026-03-06 — fix: P&L only counts MATCHED fills — LIVE/PENDING orders were inflating portfolio value [2 files] _(ai-assisted)_
+- `1de23a15` 2026-03-06 — fix: rename total_invested to total_buy_volume — was showing recycled capital as deposits [1 files] _(ai-assisted)_
+- `a3d4d517` 2026-03-06 — fix: prevent agents from improvising skills — add STOP guardrails to SKILL.md and CAPABILITIES.md [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `6efe5f39` 2026-03-06 — fix: prevent agents from building rogue Polymarket infrastructure — enforce official scripts only [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a5893653` 2026-03-06 — feat: add Higgsfield AI Video skill — BYOK video/image/audio via 200+ models (Muapi.ai) [20 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `e49537f6` 2026-03-06 — fix: fleet-push-higgsfield — decode base64 SSH key, strip env quotes [1 files] _(ai-assisted)_
+- `20df4df1` 2026-03-06 — feat: Higgsfield AI Video — platform credits, Muapi proxy, media credit packs [15 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0f7d1610` 2026-03-06 — fix: Higgsfield V2 — rewrite all scripts with verified Muapi API patterns [9 files] _(ai-assisted)_
+- `692fcbff` 2026-03-06 — feat: telegram migration safety, ambassador NFT minting, email templates, polymarket fixes [9 files] _(ai-assisted)_
+- `93b8b3d4` 2026-03-06 — fix: add cleanup script for terminated VMs holding telegram tokens [1 files] _(ai-assisted)_
+- `5d829e51` 2026-03-06 — fix: deploy INSTACLAW_MUAPI_PROXY in configureOpenClaw for new VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `89ee608f` 2026-03-06 — fix: Higgsfield toggle broken — ssh2 exec channels are isolated [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6afece12` 2026-03-06 — feat: add /billing/credit-packs page for media credit pack purchases [1 files] _(ai-assisted)_
+- `9dc2da66` 2026-03-06 — feat: Telegram image → Muapi CDN bridge for seamless I2V from chat [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8024769a` 2026-03-06 — fix: purge OpenClaw backup configs fleet-wide to prevent telegram token conflicts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f9215525` 2026-03-06 — fix: blank botToken in live config (not just disable telegram) when fixing dupes [1 files] _(ai-assisted)_
+- `34f5c2db` 2026-03-06 — fix: use CLOB API as primary source for condition_id market lookups [1 files] _(ai-assisted)_
+- `d812bdac` 2026-03-06 — fix: add duplicate IP safety guard to all SSH operations + enable Higgsfield by default [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `40f05447` 2026-03-06 — fix: split installHiggsfieldSkill into batched SSH commands to avoid argument limit [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `63a4ef32` 2026-03-06 — fix: cast duration/numeric params to int in all Higgsfield scripts, clean up proxy credit check [6 files] _(ai-assisted)_
+- `5a7f8043` 2026-03-06 — fix: skills toggle shows green when enabled, grey when disabled [1 files] _(ai-assisted)_
+- `9b62518e` 2026-03-06 — fix: skills toggle — green enabled state, glass UI, bounce animation [1 files] _(ai-assisted)_
+- `8dba7d98` 2026-03-06 — fix: allow tilde in assertSafeShellArg so file browser can read ~/.openclaw/workspace [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1e982fdd` 2026-03-06 — chore: trigger clean Vercel rebuild (stale tsbuildinfo referenced deleted fix-stijn.ts) [0 files] _(ai-assisted)_
+- `d74af301` 2026-03-06 — fix: privacy — wipe VM data between users, reset stale fields on assignment [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `005280a5` 2026-03-07 — fix: bust stale Vercel tsbuildinfo cache that references deleted fix-stijn.ts [1 files] _(ai-assisted)_
+- `889c596a` 2026-03-07 — fix: file browser — fix tilde expansion in readFile, add download + media preview [3 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `2bfca09c` 2026-03-07 — fix: restrict file browser — protect system files, show as locked [2 files] _(ai-assisted)_
+- `e1023847` 2026-03-07 — fix: skills grid overflow + gateway 409 conflict self-healing [1 files] _(ai-assisted)_
+- `d3ed887b` 2026-03-07 — fix: upgrade skill icons — official brand logos + Lucide icons [12 files] _(ai-assisted)_
+- `33c5c6ed` 2026-03-07 — fix: contain wallet panel inside skill card as collapsible accordion [1 files] _(ai-assisted)_
+- `b0e86577` 2026-03-07 — fix: replace icon system with simple-icons + Lucide React + real brand logos [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `c8ecb275` 2026-03-07 — fix: uniform skill card heights + Solana gradient logo [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `45bf6308` 2026-03-07 — fix: fixed-height skill cards, wallet popover, shorter Solana description [1 files] _(ai-assisted)_
+- `42fb49a8` 2026-03-07 — feat: orb-style skill icons matching marketplace aesthetic [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `469f0268` 2026-03-07 — feat: add Prediction Markets and Freelance skills from Earn page [2 files] _(ai-assisted)_
+- `850ee9aa` 2026-03-07 — fix: brand logos get neutral circle, generic skills keep gradient orbs [1 files] _(ai-assisted)_
+- `8cb21dab` 2026-03-07 — fix: brand logo images fill entire circle edge-to-edge [1 files] _(ai-assisted)_
+- `1507a867` 2026-03-07 — feat: inline brand logos in E-Commerce skill description [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `d9d7df96` 2026-03-07 — fix: Virtuals "Start Accepting Jobs" broken — wrong serving detection + silent errors [2 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `6acb0b89` 2026-03-07 — feat: inline brand logos for Prediction Markets and Freelance skills [1 files] _(ai-assisted)_
+- `ee28aa8f` 2026-03-07 — feat: add Kalshi green rounded-square brand mark inline [1 files] _(ai-assisted)_
+- `bffcf03b` 2026-03-07 — fix: replace eBay inline logo with colorful wordmark in dark circle [1 files] _(ai-assisted)_
+- `5c07e4b1` 2026-03-07 — fix: inline brand logos now use colored circle containers [1 files] _(ai-assisted)_
+- `9468a3e3` 2026-03-07 — feat: add Kalshi inline logo from official app icon [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `52177906` 2026-03-07 — fix: inline brand logos flow naturally in text like emoji [1 files] _(ai-assisted)_
+- `19f71073` 2026-03-07 — fix: inline brand logos use rounded-rect app icon shape, crisp rendering [1 files] _(ai-assisted)_
+- `665c9ead` 2026-03-07 — fix: center inline brand logos properly inside rounded-rect containers [1 files] _(ai-assisted)_
+- `bd7ad71f` 2026-03-07 — fix: crop inline logo viewBoxes so SVGs fill containers like Kalshi [1 files] _(ai-assisted)_
+- `4f1326fa` 2026-03-07 — fix: unify inline logo sizes — SVG and image containers now identical [1 files] _(ai-assisted)_
+- `aaeb91fc` 2026-03-07 — fix: use official Polymarket app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `4508b9e8` 2026-03-07 — fix: use 3D Polymarket app icon matching Kalshi style [1 files] _(ai-assisted)_
+- `2077ad6c` 2026-03-07 — fix: use 3D Shopify app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b4f1bba3` 2026-03-07 — fix: use eBay app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `e7d6ed44` 2026-03-07 — fix: use Gumroad app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `6f5a6884` 2026-03-07 — fix: use Fiverr app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `95869b1e` 2026-03-07 — fix: use Upwork app icon image instead of SVG path [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0aa735a9` 2026-03-07 — fix: Google Workspace icon now uses official 4-color Google "G" [1 files] _(ai-assisted)_
+- `66291c1b` 2026-03-07 — fix: remove em dashes from skill descriptions [1 files] _(ai-assisted)_
+- `48f8e196` 2026-03-07 — feat: glass UI filter section + Earn category on Skills page [1 files] _(ai-assisted)_
+- `4d9f22c9` 2026-03-07 — feat: glass UI for all buttons on Skills & Integrations page [1 files] _(ai-assisted)_
+- `93595e79` 2026-03-07 — fix: replace heavy dark pills with frosted glass UI [1 files] _(ai-assisted)_
+- `553ff184` 2026-03-07 — fix: add clean drop shadow to active category pills [1 files] _(ai-assisted)_
+- `6cc54f2f` 2026-03-07 — fix: use official Trello and Slack brand logos on Skills page [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f18a6751` 2026-03-07 — fix: Trello and Slack icons now match other BrandShell icons [1 files] _(ai-assisted)_
+- `aae90897` 2026-03-07 — fix: Slack icon now uses official 4-color hash logo [1 files] _(ai-assisted)_
+- `30c46142` 2026-03-07 — fix: marketplace category pills now have animated layoutId transition [1 files] _(ai-assisted)_
+- `2711fa5a` 2026-03-07 — fix: soften active pill shadow from heavy to subtle [1 files] _(ai-assisted)_
+- `f84d4756` 2026-03-07 — fix: marketplace search bar now uses frosted glass UI [1 files] _(ai-assisted)_
+- `63f3fbcb` 2026-03-07 — fix: Submit a Skill button now uses dark frosted glass UI [1 files] _(ai-assisted)_
+- `29f14654` 2026-03-07 — fix: Submit a Skill button now truly translucent glass [1 files] _(ai-assisted)_
+- `10bcdcfd` 2026-03-07 — fix: stop health cron from restarting gateway on Telegram 409 conflicts [1 files] _(ai-assisted)_
+- `fbe00923` 2026-03-07 — fix: Submit a Skill button dark glass with inner highlight [1 files] _(ai-assisted)_
+- `6cc459d7` 2026-03-07 — fix: add Clawlancer Bounties card to Marketplaces + green toggle style [1 files] _(ai-assisted)_
+- `97ee63de` 2026-03-07 — fix: use actual brand logos for Clawlancer and Virtuals marketplace cards [1 files] _(ai-assisted)_
+- `dd988bb7` 2026-03-07 — fix: remove em dashes from Marketplaces section copy [1 files] _(ai-assisted)_
+- `aa7a2e66` 2026-03-07 — fix: remove all em dashes from dashboard page user-visible text [1 files] _(ai-assisted)_
+- `b9ee9b7e` 2026-03-07 — fix: apply glass UI to model selector dropdown on dashboard [1 files] _(ai-assisted)_
+- `7c223b3d` 2026-03-07 — fix: add token rotation grace period to prevent proxy 401s during resync [11 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0d66eb99` 2026-03-07 — fix: prevent proxy 401s from token rotation race in health cron [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f55d574b` 2026-03-07 — chore: rename conflicting migration files to unblock supabase db push [6 files] _(ai-assisted)_
+- `89ea25ae` 2026-03-07 — fix: show Telegram Bot Token input for all users, not just those with Telegram enabled [1 files] _(ai-assisted)_
+- `fe36cb56` 2026-03-07 — fix: add web3 to pip install in configureOpenClaw provisioning [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `69b9d3be` 2026-03-08 — chore: bump OPENCLAW_PINNED_VERSION to 2026.3.7 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7ff729f6` 2026-03-08 — feat: add Crawlee stealth scraping — anti-bot fallback for web scraping skill [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8684f47d` 2026-03-08 — feat: add skill auto-update system — manifest.json + daily cron checker [2 files] _(ai-assisted)_
+- `e85bce47` 2026-03-08 — feat: add /dashboard/credits page and GET /api/credits/media endpoint [2 files] _(ai-assisted)_
+- `06f4b067` 2026-03-08 — feat: add Credits link to dashboard overflow nav [1 files] _(ai-assisted)_
+- `4bdbfb59` 2026-03-08 — fix: redesign credits page for light theme — glass cards, icon badges, hover lift, structured packs [1 files] _(ai-assisted)_
+- `116caafd` 2026-03-08 — fix: heartbeat detection fallback + per-call usage logging [2 files] _(ai-assisted)_
+- `023f7e59` 2026-03-08 — fix: add 4-layer heartbeat quota bug prevention [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `dd4e64d5` 2026-03-08 — fix: round usage numbers on dashboard to prevent floating point display [1 files] _(ai-assisted)_
+- `d049225d` 2026-03-09 — fix: add 24h dedup guard on "Your OpenClaw Instance is Ready!" email [1 files] _(ai-assisted)_
+- `fc209a7a` 2026-03-09 — fix: harden provisioning + crash-loop monitoring for openclaw module corruption [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `39cee8eb` 2026-03-09 — feat: overhaul ambassador referral + waitlist flow with per-referral tracking [11 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `9d1d7870` 2026-03-09 — fix: replace broken Polygon RPC endpoints in Polymarket scripts [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `547780fc` 2026-03-09 — chore: redeploy to pick up HQ_PASSWORD env var [0 files]
+- `9663d76e` 2026-03-09 — feat: add self-healing auto-recovery for crash-looping gateways [1 files] _(ai-assisted)_
+- `3f290bb9` 2026-03-09 — fix: ambassador referral tracking bugs + admin referral management UI [6 files] _(ai-assisted)_
+- `d232468d` 2026-03-09 — fix: show waitlist form by default on signup when ?ref= present + add "Referred by" column to HQ invites [3 files] _(ai-assisted)_
+- `c63a16ef` 2026-03-09 — chore: bump OpenClaw version pins from 2026.3.7 to 2026.3.8 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a2e201f7` 2026-03-09 — fix: add duplicate IP guard to VM provisioning pipeline [1 files] _(ai-assisted)_
+- `880b1b6f` 2026-03-09 — fix: thorough openclaw module cleanup in configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ffde5845` 2026-03-09 — feat: Seedance 2.0 infinite-length extend — new tiers, chained extensions, credit weights [4 files] _(ai-assisted)_
+- `3f32b2c3` 2026-03-09 — fix: add diagnostics to openclaw reinstall failure in configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c4fb9a9d` 2026-03-09 — fix: capture require() error in openclaw reinstall diagnostics [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6f0b78ca` 2026-03-09 — fix: use which openclaw instead of require() for module check [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b2c44510` 2026-03-09 — feat: /hq/dependencies page + P0 fixes (pin crawlee, bump viem) [8 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f5bdad9d` 2026-03-09 — fix: correct OpenClaw + Anthropic API dependency check targets [1 files] _(ai-assisted)_
+- `44962e0f` 2026-03-09 — fix: permanent duplicate IP prevention across all provisioning paths [5 files] _(ai-assisted)_
+- `f66f00a5` 2026-03-09 — feat: /hq/dependencies auto-update — npm bump, fleet deploy, manual mark [4 files] _(ai-assisted)_
+- `cc936843` 2026-03-09 — fix: prevent duplicate dependency rows with UNIQUE constraint + ON CONFLICT [1 files] _(ai-assisted)_
+- `16b68553` 2026-03-09 — feat: auto-update OpenClaw dependency status after successful fleet upgrade [1 files] _(ai-assisted)_
+- `6477becd` 2026-03-09 — feat: add 10 skill/API dependencies to tracking table [1 files] _(ai-assisted)_
+- `9e113b5e` 2026-03-09 — feat: add 14 high-priority dependencies from codebase audit [1 files] _(ai-assisted)_
+- `b9788ac2` 2026-03-09 — fix: pin exact dependency versions from live fleet + fix NextAuth.js tracking [1 files] _(ai-assisted)_
+- `b54b9d45` 2026-03-09 — fix: set repo_url to dashboard/management links for all 40 dependencies [1 files] _(ai-assisted)_
+- `0bf44e0d` 2026-03-09 — fix: exclude skill-category deps from npm Update All Safe path [3 files] _(ai-assisted)_
+- `6f49727b` 2026-03-09 — feat: add Remotion Video skill card to /dashboard/skills [2 files] _(ai-assisted)_
+- `f412d719` 2026-03-09 — fix: skills audit — rename remotion-video slug, deactivate freelance-digital, add marketplace-earning [3 files] _(ai-assisted)_
+- `a4b7964f` 2026-03-09 — fix: use correct column name status='inactive' instead of is_active=false [1 files] _(ai-assisted)_
+- `84ab994c` 2026-03-10 — fix: route "ping" messages as heartbeats to prevent credit drain [1 files] _(ai-assisted)_
+- `fa286b7c` 2026-03-10 — docs: document neg_risk auto-handling, pin py-clob-client to v0.34.6 [3 files] _(ai-assisted)_
+- `46d5b2f1` 2026-03-10 — update favicon to glossy 3D crab on dark background [2 files] _(ai-assisted)_
+- `db942063` 2026-03-10 — fix: migrate workspace paths to ~/.openclaw/workspace/ to prevent LocalMediaAccessError [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8b8f184e` 2026-03-11 — fix: clawlancer two-sided marketplace UX + funded bounties + rollback safety [5 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `cea9176e` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — schema, libraries, API routes, skill [10 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `f987bffc` 2026-03-11 — fix(instaclaw): add /api/agentbook/lookup to middleware public routes [1 files] _(ai-assisted)_
+- `e0643051` 2026-03-11 — feat(instaclaw): AgentBook Phase 1 — infrastructure hooks + fleet scripts [5 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a7906a73` 2026-03-11 — merge: AgentBook Phase 1 — InstaClaw integration (WDP 71) [0 files] _(ai-assisted; merge)_
+- `f363e4e6` 2026-03-11 — fix: add Vercel ignored build step for monorepo [2 files] _(ai-assisted)_
+- `bb921ee6` 2026-03-11 — fix: correct instaclaw ignoreCommand working directory [1 files] _(ai-assisted)_
+- `10ac8402` 2026-03-11 — feat(instaclaw): push-based VM heartbeat system [4 files] _(**MANIFEST v29**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b1a8ee59` 2026-03-11 — fix(instaclaw): AgentBook skill ACP conflict + auto-registration trigger [2 files] _(ai-assisted)_
+- `70492abf` 2026-03-11 — fix(instaclaw): remove Clawlancer dependency from AgentBook skill [5 files] _(ai-assisted)_
+- `eafb5310` 2026-03-11 — fix(instaclaw): fix agentbook-check.py argparse order (--json before subcommand) [2 files] _(ai-assisted)_
+- `1bc1d64e` 2026-03-11 — fix(instaclaw): AgentBook audit fixes [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5742213a` 2026-03-11 — fix(instaclaw): AgentBook registration flow — wait for human verification [2 files] _(ai-assisted)_
+- `4672fffe` 2026-03-11 — fix(instaclaw): remove --llms flag, use tee+background for CLI URL capture [2 files] _(ai-assisted)_
+- `eb4b4bde` 2026-03-11 — feat: World ID 4.0 migration + AgentBook dashboard registration flow [7 files] _(ai-assisted)_
+- `37da5088` 2026-03-11 — chore: trigger redeploy with RP_ID + RP_SIGNING_KEY env vars [0 files] _(ai-assisted)_
+- `8bc62ebb` 2026-03-11 — fix(instaclaw): add error logging to sign-request endpoint for debugging [1 files] _(ai-assisted)_
+- `bbddeb90` 2026-03-11 — fix(instaclaw): update model IDs — sonnet-4-5 → sonnet-4-6, fix OpenClaw model mapping [12 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `be69aba6` 2026-03-11 — fix(instaclaw): add diagnostic mode to sign-request for production debugging [1 files] _(ai-assisted)_
+- `e991a6ae` 2026-03-11 — fix(instaclaw): strip 0x prefix from RP_SIGNING_KEY before signRequest() [1 files] _(ai-assisted)_
+- `32fa80e9` 2026-03-11 — fix(instaclaw): strip trailing \n artifact from RP_SIGNING_KEY env var [1 files] _(ai-assisted)_
+- `d0f5b13b` 2026-03-11 — fix: fetch rpContext for verified users + prevent status cache [1 files] _(ai-assisted)_
+- `bc9b9c5d` 2026-03-11 — fix: add onError + console logging to World ID widget for debugging [1 files] _(ai-assisted)_
+- `cc35156b` 2026-03-11 — fix: add webpack WASM support for World ID 4.0 IDKit [1 files] _(ai-assisted)_
+- `cbb0ce36` 2026-03-11 — fix: World ID 4.0 — strip RP_ID newline, dynamic import, fetch on click [5 files] _(ai-assisted)_
+- `c54b1f1f` 2026-03-11 — fix: force QR code on desktop for World ID widget [1 files] _(ai-assisted)_
+- `6e181b82` 2026-03-11 — debug: enable IDKIT_DEBUG and log rp_context on verify click [1 files] _(ai-assisted)_
+- `0aa8b8ff` 2026-03-11 — fix(instaclaw): show World ID widget error code prominently on screen [1 files] _(ai-assisted)_
+- `6957af02` 2026-03-11 — fix(instaclaw): handle IDKit 4.x proof format in verify endpoint [1 files] _(ai-assisted)_
+- `5aa2a124` 2026-03-11 — fix(instaclaw): use correct column name agentbook_wallet_address [3 files] _(ai-assisted)_
+- `2a66e0a1` 2026-03-11 — feat(instaclaw): AgentBook registration via VM CLI + QR code flow [6 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `42b4e450` 2026-03-11 — fix(instaclaw): wrap QRCodeSVG dynamic import in default export [1 files] _(ai-assisted)_
+- `9edca75c` 2026-03-11 — fix(instaclaw): move polling useEffect above early returns (React #310) [1 files] _(ai-assisted)_
+- `eb2745bb` 2026-03-11 — fix(instaclaw): handle non-JSON responses from start-registration [1 files] _(ai-assisted)_
+- `975efc69` 2026-03-11 — fix(instaclaw): make AgentBook registration non-blocking (timeout fix) [3 files] _(ai-assisted)_
+- `f83ed840` 2026-03-11 — fix(instaclaw): setsid detach for agentkit-cli + correct URL regex [2 files] _(ai-assisted)_
+- `11b91a1a` 2026-03-12 — fix: async video generation — add --submit-only flag, bump poll timeout to 8min [2 files] _(ai-assisted)_
+- `31f38853` 2026-03-12 — fix: make async video confirmation message mandatory in SKILL.md [1 files] _(ai-assisted)_
+- `cefc7352` 2026-03-12 — feat: session corruption auto-heal cron + health check detection [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `eac22bc9` 2026-03-12 — fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide [11 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `1afc8142` 2026-03-12 — Revert "fix: swap claude-sonnet-4-6 → claude-sonnet-4-5-20241022 fleet-wide" [11 files] _(multi: [reconciler, infrastructure, feature])_
+- `ca8ecd38` 2026-03-12 — fix: forward anthropic-beta header in proxy for adaptive thinking [1 files] _(ai-assisted)_
+- `2600a058` 2026-03-12 — debug: log exact thinking request/response payload for investigation [1 files] _(ai-assisted)_
+- `575b808b` 2026-03-12 — fix: resolve TS error in thinking debug logging (message_count type) [1 files] _(ai-assisted)_
+- `685d3775` 2026-03-12 — fix: normalize thinking string→object for Anthropic API in proxy [1 files] _(ai-assisted)_
+- `c5e04bbe` 2026-03-12 — fix: map adaptive→enabled+10k budget, inject interleaved-thinking beta [1 files] _(ai-assisted)_
+- `b699c012` 2026-03-12 — fix: handle thinking as object { type: "adaptive" } not just string [1 files] _(ai-assisted)_
+- `5ca66cd6` 2026-03-12 — fix: strip effort parameter, restore adaptive thinking type [1 files] _(ai-assisted)_
+- `cc3ca635` 2026-03-12 — fix: strip thinking for Haiku — only Sonnet 4.6/Opus support adaptive [1 files] _(ai-assisted)_
+- `a1bf472a` 2026-03-12 — docs: add critical comment block to thinking normalization code [1 files] _(ai-assisted)_
+- `cc648e85` 2026-03-12 — fix: change default model routing from Haiku to Sonnet with budget guard [1 files] _(ai-assisted)_
+- `0328421e` 2026-03-12 — fix: add missing websockets dep to solana-defi pip install [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `17788ebb` 2026-03-12 — feat: parallelize package installs in configureOpenClaw (~60s savings) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `138ab752` 2026-03-12 — fix: update all Sonnet 4.5 labels to Sonnet 4.6 across UI and API [9 files] _(ai-assisted)_
+- `a25d8d89` 2026-03-13 — chore: redeploy with new Anthropic API key [0 files] _(ai-assisted)_
+- `54a42262` 2026-03-13 — chore: force redeploy with new Anthropic API key [1 files] _(ai-assisted)_
+- `1feb094d` 2026-03-13 — feat: billing cache prevention — intercept, auto-clear, and recover [3 files] _(ai-assisted)_
+- `170a6235` 2026-03-13 — fix: deploy all 13 prediction-markets scripts + auto-heal missing scripts via reconciler [3 files] _(**MANIFEST v30**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `d1d2ad5b` 2026-03-13 — fix: add browser failure recovery + "never go silent" rule for agents [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `14adefb8` 2026-03-13 — feat: drop the waitlist — frictionless one-click signup [15 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `2e7d90ec` 2026-03-13 — feat: add WAITLIST_MODE kill switch for instant landing page revert [3 files] _(ai-assisted)_
+- `3d94095e` 2026-03-13 — fix: platform-wide silent death prevention — P0/P1/P2 fixes [19 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5b9b3e51` 2026-03-13 — fix: optimize hero CTA buttons for mobile screen sizes [1 files] _(ai-assisted)_
+- `025df537` 2026-03-13 — fix: bump mobile hero button sizes for larger phones (Pro Max) [1 files] _(ai-assisted)_
+- `eff4a08a` 2026-03-13 — fix: smooth scroll on Learn More button via Lenis instead of jerky anchor jump [1 files] _(ai-assisted)_
+- `967071bb` 2026-03-14 — chore: bump openclaw version pin from 2026.3.8 to 2026.3.13 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0168b23c` 2026-03-14 — feat: add support button to landing page nav and dashboard More dropdown [2 files] _(ai-assisted)_
+- `299094bd` 2026-03-14 — chore: change support email from support@ to help@instaclaw.io [16 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0109bde7` 2026-03-14 — fix: remove support button from landing page hero nav [1 files] _(ai-assisted)_
+- `fa985439` 2026-03-14 — fix: smooth scroll to Human Verification section from dashboard banner [3 files] _(ai-assisted)_
+- `65ead87f` 2026-03-14 — fix: poll for hash target element before scrolling on settings page [1 files] _(ai-assisted)_
+- `07b73403` 2026-03-14 — fix: remove invalid browser.profiles.chrome that crashes gateway on new VMs [11 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `75a49864` 2026-03-14 — feat: add "don't leave this screen" note and contact support link to deploy page [1 files] _(ai-assisted)_
+- `287cfed3` 2026-03-14 — feat: config safety guardrails — backup/rollback, validation, crash-loop detection [4 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `0ec9a908` 2026-03-14 — feat: production-ready Chrome Extension Relay — protocol rewrite + dashboard UI [4 files] _(ai-assisted)_
+- `2e00d679` 2026-03-14 — feat: Dynamic SPA Handling Protocol — improves agent reliability on Instagram/LinkedIn/Facebook [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `4c1fd2b4` 2026-03-15 — feat: InstaAgent — Instagram Graph API integration (Phase 1) [20 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `49bfd137` 2026-03-15 — fix: allow /api/webhooks/* through auth middleware [1 files] _(ai-assisted)_
+- `e7ac6b9e` 2026-03-15 — fix: use INSTAGRAM_APP_ID/SECRET for Instagram OAuth flow [2 files] _(ai-assisted)_
+- `43070509` 2026-03-16 — fix: add enable_fb_login=0 and force_authentication=1 to Instagram OAuth [1 files] _(ai-assisted)_
+- `d5d101fd` 2026-03-16 — fix: use META_APP_ID for Instagram OAuth client_id [2 files] _(ai-assisted)_
+- `f7ba9d46` 2026-03-16 — fix: switch to standalone Instagram Login flow (api.instagram.com) [2 files] _(ai-assisted)_
+- `3b9f8cdb` 2026-03-16 — fix: revert auth URL to www.instagram.com/oauth/authorize [1 files] _(ai-assisted)_
+- `dcdb2c3c` 2026-03-16 — fix: Instagram OAuth token parsing + run instagram migration [7 files] _(ai-assisted)_
+- `e32c176c` 2026-03-16 — feat: Instagram token API + auth helper for VM scripts [9 files] _(ai-assisted)_
+- `f64c77a0` 2026-03-16 — fix: allow VM access to /api/instagram/token via middleware bypass [2 files] _(ai-assisted)_
+- `880c7ee1` 2026-03-16 — feat: VM validation system — fleet health checks, auto-fix, dashboard [9 files] _(ai-assisted)_
+- `7a823bd6` 2026-03-16 — fix: add /api/vm/validate to middleware self-auth bypass [1 files] _(ai-assisted)_
+- `29d04359` 2026-03-16 — fix: validator DBUS false positive + cron check parsing [1 files] _(ai-assisted)_
+- `0531c61f` 2026-03-16 — feat: smart cron job guardrails with upsell moments [5 files] _(ai-assisted)_
+- `29f904e6` 2026-03-16 — fix: disable dead CLOB proxy fleet-wide, use direct clob.polymarket.com [2 files] _(ai-assisted)_
+- `0589cc0d` 2026-03-16 — fix: cron-guard critical bugs — atomic writes, file locking, Telegram dedup [4 files] _(ai-assisted)_
+- `386c498f` 2026-03-16 — feat: /api/vm/fix-infra endpoint for systemd override + swap fixes [2 files] _(ai-assisted)_
+- `d36b40ef` 2026-03-16 — fix: systemd override check uses individual key grep (multiline bug) [7 files] _(ai-assisted)_
+- `b602e21c` 2026-03-16 — fix: DBUS systemd-status is info-level pass when health+port OK [1 files] _(ai-assisted)_
+- `b1a08760` 2026-03-16 — feat: fleet-mode fix-infra + pip3/playwright fixes + DBUS severity [1 files] _(ai-assisted)_
+- `4fffdd25` 2026-03-16 — feat: add /notify email signup page with Discord CTA [4 files] _(ai-assisted)_
+- `790a738f` 2026-03-16 — fix: add /api/notify to public API exclusions in middleware [1 files] _(ai-assisted)_
+- `a9a1eaf6` 2026-03-16 — feat: add "waitlist is over" email template and broadcast endpoint [2 files] _(ai-assisted)_
+- `58f171d6` 2026-03-16 — fix: polish waitlist-over email copy for higher conversion [2 files] _(ai-assisted)_
+- `33080f51` 2026-03-16 — fix: invert logo to white in dark mode email clients [1 files] _(ai-assisted)_
+- `79d5de80` 2026-03-16 — fix: remove logo image from email header for dark mode compatibility [1 files] _(ai-assisted)_
+- `ec88a7ff` 2026-03-16 — feat: add value prop + World partnership paragraph to waitlist email [1 files] _(ai-assisted)_
+- `0f2ac7f6` 2026-03-16 — fix: add no-KYC detail to World partnership copy in email [1 files] _(ai-assisted)_
+- `c210acdd` 2026-03-16 — fix: broaden capability examples in waitlist email copy [1 files] _(ai-assisted)_
+- `fe4501d1` 2026-03-16 — fix: move value prop paragraph below CTA button for above-fold visibility [2 files] _(ai-assisted)_
+- `0c48ec2c` 2026-03-16 — fix: remove all em dashes from email, fix Discord invite link [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `3fb54a7c` 2026-03-16 — fix: link World text to world.org in waitlist email [1 files] _(ai-assisted)_
+- `6f32aad2` 2026-03-16 — fix: remove "no credit card required" from email CTA [1 files] _(ai-assisted)_
+- `5df26a24` 2026-03-16 — fix: link email CTAs to homepage instead of /signup [1 files] _(ai-assisted)_
+- `f2ffbff4` 2026-03-16 — fix: add YAML frontmatter to instagram-automation SKILL.md [1 files] _(ai-assisted)_
+- `a58b6417` 2026-03-17 — fix: remove broken Polygon RPCs from polymarket-trade.py fallback list [1 files] _(ai-assisted)_
+- `1fd389ee` 2026-03-17 — fix: remove hardcoded 0.99/0.01 slippage caps in polymarket-trade.py [1 files] _(ai-assisted)_
+- `e19b8960` 2026-03-17 — fix: prevent VM configure race condition that leaks user data [7 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `824a74b9` 2026-03-17 — fix: audit-identity checks ~/.openclaw/workspace/ not ~/workspace/ [1 files] _(ai-assisted)_
+- `d2007e20` 2026-03-17 — fix: wipeVMForNextUser now removes ALL user data on VM recycle [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `05965f68` 2026-03-17 — fix: empty chat bubbles + model picker click-outside bug [1 files] _(ai-assisted)_
+- `c406df70` 2026-03-17 — fix: prevent stuck deployments — 4 layered safety nets [4 files] _(ai-assisted)_
+- `7add293c` 2026-03-17 — fix: Polymarket dashboard panel can't read VM files [2 files] _(ai-assisted)_
+- `ac330c3a` 2026-03-17 — fix: log console.error on failed VM file fetches instead of silently returning null [2 files] _(ai-assisted)_
+- `ba3d26f5` 2026-03-17 — chore: add suspended_at migration for suspension flow hardening [1 files] _(ai-assisted)_
+- `a277c394` 2026-03-17 — fix: truncate oversized tool results at proxy to prevent context overflow [1 files] _(ai-assisted)_
+- `508e71ec` 2026-03-17 — fix: add pre-deploy migration verification to block deploys with missing DB objects [4 files] _(ai-assisted)_
+- `f7109f95` 2026-03-17 — fix: three-layer defense against web fetch session blowouts [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `eabbbc8d` 2026-03-17 — fix: escape newlines in STRIP_THINKING_SCRIPT Python template literal [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c0f40db2` 2026-03-17 — fix: escape all Python \n literals in STRIP_THINKING_SCRIPT template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e4eb6866` 2026-03-18 — fix: raise bootstrapMaxChars to 30K, add WALLET.md template, monitor oversized memory [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f372f90e` 2026-03-18 — fix: default all tiers to claude-sonnet-4-6 instead of haiku [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `d835ac13` 2026-03-18 — fix: add belt-and-suspenders haiku guard in configureOpenClaw + configure endpoint [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4c532da6` 2026-03-18 — fix: add memory hygiene instructions to SOUL.md template [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5fd5ff49` 2026-03-18 — fix: gracefully handle stale PostgREST schema cache for configure_lock_at [1 files] _(ai-assisted)_
+- `4fdb1c27` 2026-03-18 — fix: onboarding reliability — auto-release broken VMs, validate OpenClaw before marking ready [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `93ce51d9` 2026-03-18 — fix: raise circuit breaker thresholds — false trip blocking all pro/power users [1 files] _(ai-assisted)_
+- `df721b74` 2026-03-18 — feat: circuit breaker dashboard widget + 80% early warning alert [3 files] _(ai-assisted)_
+- `a7a6298b` 2026-03-19 — fix: session bloat — daily hygiene in strip-thinking.py + fleet-wide cleanup [4 files] _(**MANIFEST v32**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `43dde511` 2026-03-19 — feat: Phase 0 — memory architecture verification + bug fixes [5 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `d64f480d` 2026-03-19 — docs: add file delivery + group chat architecture PRDs [2 files] _(ai-assisted)_
+- `5421f162` 2026-03-19 — feat: Phase 1 — memory architecture overhaul (skill trim 24%, CAPABILITIES 59%, session handoff, heartbeat hygiene, file sharing, group chat memory fix, manifest v33) [16 files] _(**MANIFEST v33**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8ac2cc89` 2026-03-19 — feat: File Delivery V1 — Telegram sendDocument + signed URLs + dashboard deep-linking + deliver_file.sh (manifest v34) [7 files] _(**MANIFEST v34**; multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d9e4fb74` 2026-03-19 — fix: deliver_file.sh — read bot token from openclaw.json, chat_id from sessions.json, fix regex escape [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1e93f413` 2026-03-19 — feat: Phase 2 — enable memorySearch + memoryFlush fleet-wide, fix vm-384 migration (manifest v35) [2 files] _(**MANIFEST v35**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `deceef41` 2026-03-19 — docs: mark Phase 2 complete — memorySearch + memoryFlush deployed fleet-wide (v35) [1 files] _(ai-assisted)_
+- `429f23e6` 2026-03-19 — feat: File Delivery V2 — Supabase Storage, delivery history, CDN downloads (manifest v36) [7 files] _(**MANIFEST v36**; multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `d6ec9405` 2026-03-19 — feat: task completion notifications — notify_user.sh + heartbeat Phase 0.5 + agent intelligence 1W (manifest v36) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `28eefb25` 2026-03-19 — feat: fix P1 audit gaps — deploy SOUL.md supplement + HEARTBEAT.md consolidation + raise reserveTokensFloor to 35K (manifest v37) [2 files] _(**MANIFEST v37**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `31e7eeec` 2026-03-19 — fix: add /api/vm/files/delivered and /api/f to middleware self-auth exclusions [1 files] _(ai-assisted)_
+- `9f8ed657` 2026-03-19 — feat: video refund mechanism + fix upsell link on limit hit + fix Higgsfield jobs.json status tracking [5 files] _(ai-assisted)_
+- `0081a012` 2026-03-19 — fix: reconciler hardening — remove duplicate skills, strip _placeholder key, fix SSH key injection, use connectSSH(), expand billing webhook tier detection (manifest v38) [13 files] _(**MANIFEST v38**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `74d8ca02` 2026-03-20 — fix: correct SOUL.md supplement marker — 'Rule priority order' exists in base template, use 'INTELLIGENCE_INTEGRATED' instead (manifest v38) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e064bc3c` 2026-03-20 — docs: update PRD — Phase 1+2 fully complete after v38 audit fix, P2.4 deployed [1 files] _(ai-assisted)_
+- `ff5ff555` 2026-03-22 — fix: strip user-sent base64 images from sessions + increase memory warn TTL + add strip-thinking telemetry (manifest v39) [3 files] _(**MANIFEST v39**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `83c0452c` 2026-03-22 — fix: IMAGE_KEEP_RECENT=0 — strip ALL base64 images from sessions (manifest v40) [2 files] _(**MANIFEST v40**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `47b0297b` 2026-03-22 — feat: World mini app — full v1 scaffold with 3-tap onboarding [38 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `437ddd3a` 2026-03-23 — style: glass morphism UI overhaul for World mini app [9 files] _(ai-assisted)_
+- `a1c299c5` 2026-03-23 — fix: critical mini app integration gaps — auth, deep links, middleware [14 files] _(ai-assisted)_
+- `d3e4bbf6` 2026-03-23 — fix: disable daily 4AM session reset — switch to 7-day idle mode, isolate heartbeats, enforce session maintenance (manifest v41) [3 files] _(**MANIFEST v41**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `89b55506` 2026-03-23 — docs: add $INSTACLAW token staking to World mini app PRD [1 files] _(ai-assisted)_
+- `70cd0f01` 2026-03-23 — fix: account portability — prevent duplicate accounts across platforms [10 files] _(ai-assisted)_
+- `e1e8afac` 2026-03-23 — chore: bump OpenClaw version pins from 2026.3.13 to 2026.3.22 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0bb44c76` 2026-03-23 — fix: splash screen hang — MiniKit init race + fetch timeout [2 files] _(ai-assisted)_
+- `8e1d98a9` 2026-03-23 — fix: force past splash screen with 3s timeout + inline styles + debug logs [2 files] _(ai-assisted)_
+- `785d3baf` 2026-03-23 — style: onboarding redesign — light theme, Instrument Serif, no emojis [3 files] _(ai-assisted)_
+- `3a8033b0` 2026-03-23 — style: 'Claim your free' + size up 'AI agent' to match width [1 files] _(ai-assisted)_
+- `5286b11f` 2026-03-23 — feat: scrolling marquee use-case pills on onboarding screen [2 files] _(ai-assisted)_
+- `86c7a2cb` 2026-03-23 — style: match landing page glass pill style — white bg, multi-layer inset shadows [1 files] _(ai-assisted)_
+- `d0496f37` 2026-03-23 — style: full onboarding layout overhaul — native iOS app feel [1 files] _(ai-assisted)_
+- `2f8f569b` 2026-03-23 — style: pill-shaped CTA button, more bottom padding, horizontal breathing room [1 files] _(ai-assisted)_
+- `c3559864` 2026-03-23 — feat: replace app icon with live spots-open pill from landing page [2 files] _(ai-assisted)_
+- `734e94e2` 2026-03-23 — style: bump 'AI agent' to 60px to match 'Claim your free' width [1 files] _(ai-assisted)_
+- `328e9d29` 2026-03-23 — fix: spots pill not rendering — CORS blocked cross-origin fetch [2 files] _(ai-assisted)_
+- `db5c5b89` 2026-03-23 — style: larger hero title, bigger subtitle, shift content upward [1 files] _(ai-assisted)_
+- `c9c80227` 2026-03-23 — style: refine hero layout — upper-third placement, balanced title sizes [1 files] _(ai-assisted)_
+- `4c836973` 2026-03-23 — feat: scrolling testimonial cards fill gap between marquee and CTA [2 files] _(ai-assisted)_
+- `e2b38ec5` 2026-03-23 — feat: add pixel art avatars to testimonial cards [1 files] _(ai-assisted)_
+- `0634638e` 2026-03-23 — style: widen subtitle to 2 lines instead of 3 [1 files] _(ai-assisted)_
+- `df6ee56a` 2026-03-23 — copy: CTA → 'Claim my agent' [1 files] _(ai-assisted)_
+- `15b57089` 2026-03-23 — layout: center marquees between subtitle and CTA button [1 files] _(ai-assisted)_
+- `884c1e03` 2026-03-23 — fix: auth flow — cookie sameSite, SIWE fallback, detailed error logging [3 files] _(ai-assisted)_
+- `526f6ebd` 2026-03-23 — fix: serialize auth errors properly — show full text not [object Object] [2 files] _(ai-assisted)_
+- `b3e9fe53` 2026-03-23 — fix: reconciler workspace integrity check — self-heal missing SOUL.md (v42) [2 files] _(**MANIFEST v42**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `8fb8265e` 2026-03-23 — fix: better Supabase error reporting for user creation failure (23502) [2 files] _(ai-assisted)_
+- `c9cf340d` 2026-03-23 — feat: collect email during World mini app onboarding [3 files] _(ai-assisted)_
+- `174c0d9b` 2026-03-23 — copy: explain why we collect email — connects agent across all platforms [1 files] _(ai-assisted)_
+- `32665c0f` 2026-03-23 — fix: verify-failed screen — fix all 3 buttons + add verify logging [1 files] _(ai-assisted)_
+- `f19c4253` 2026-03-24 — fix: action ID → 'verify-instaclaw-agent' (was 'instaclaw-verify-human') [2 files] _(ai-assisted)_
+- `75e42d59` 2026-03-24 — fix: email autofill attrs + remove em dash from subtitle [1 files] _(ai-assisted)_
+- `ef67311e` 2026-03-24 — debug: full logging on World ID verify — payload, response, app ID, action [1 files] _(ai-assisted)_
+- `6a169a74` 2026-03-24 — fix: handle max_verifications_reached as success + skip if already verified [3 files] _(ai-assisted)_
+- `9f0ed29e` 2026-03-24 — fix: systemd ExecStartPre crash-loop — remove broken log rotation (v43) [1 files] _(**MANIFEST v43**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `dcbaa82f` 2026-03-24 — fix: delegation screen — realistic credits, orange button, $INSTACLAW option [2 files] _(ai-assisted)_
+- `48efad5b` 2026-03-24 — style: $INSTACLAW → disabled 'Coming Soon' with anticipation copy [1 files] _(ai-assisted)_
+- `7ef161eb` 2026-03-24 — fix: WLD delegation 5→20 WLD for 150 credits / ~3 days [3 files] _(ai-assisted)_
+- `43a2f83b` 2026-03-24 — feat: EARN.md — comprehensive earning playbook for all agents (v44) [3 files] _(**MANIFEST v44**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b5aba5c0` 2026-03-24 — feat: World ID Cloudflare prep — store full proof, deploy nullifier to VMs, .well-known/agent.json [5 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `52538305` 2026-03-24 — feat: memory health dashboard + remove rotateOversizedSession (v45) [7 files] _(**MANIFEST v45**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `9927e000` 2026-03-24 — fix: move .well-known/agent.json to API route + rewrite (Next.js doesn't serve dot-prefix dirs) [2 files]
+- `eca1e228` 2026-03-24 — fix: allow public access to /.well-known/agent.json (add to middleware allowlist) [1 files]
+- `b431fbea` 2026-03-24 — fix: remove turbopack.root parent dir — isolate instaclaw from instaclaw-mini [1 files] _(ai-assisted)_
+- `c5efee1e` 2026-03-24 — debug: full error display on delegation flow [1 files] _(ai-assisted)_
+- `c1b4c89e` 2026-03-24 — fix: delegate/initiate — full error logging, manual token decimals, no minikit-js server import [1 files] _(ai-assisted)_
+- `d2d6fc5f` 2026-03-25 — feat: add diagnose, reset-config, restart-gateway to fix-infra endpoint [1 files] _(ai-assisted)_
+- `1e991106` 2026-03-25 — feat: add write-config, init-workspace, rebuild-ui fixes to fix-infra [1 files] _(ai-assisted)_
+- `9ac1751b` 2026-03-25 — fix: improve rebuild-ui to reinstall openclaw package for UI assets [1 files] _(ai-assisted)_
+- `06b36998` 2026-03-25 — fix: block OpenClaw control UI — redirect root path to instaclaw.io/dashboard [4 files] _(**MANIFEST v46**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `6d4e53d4` 2026-03-25 — debug: show MiniKit.pay payload on screen before calling [1 files] _(ai-assisted)_
+- `24ef9ed1` 2026-03-25 — debug: two-step delegation — show payload, then confirm to fire MiniKit.pay [1 files] _(ai-assisted)_
+- `c5d5c8c6` 2026-03-25 — fix: trim newline from recipient address — was breaking MiniKit.pay [3 files] _(ai-assisted)_
+- `b6be918b` 2026-03-25 — feat: bake dispatch mode into configureOpenClaw() + update PRD with Phase 0/1 results [9 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `65d57f7d` 2026-03-25 — fix: delegation flow — retry polling, immediate credit grant, clean UI [2 files] _(ai-assisted)_
+- `e74fb9fb` 2026-03-25 — fix: WLD delegation 20→25 WLD everywhere [3 files] _(ai-assisted)_
+- `172205a8` 2026-03-25 — fix: home page crash when agent not yet provisioned [2 files] _(ai-assisted)_
+- `95e6035f` 2026-03-25 — feat: step-by-step provisioning progress UI (matches instaclaw.io) [2 files] _(ai-assisted)_
+- `fff1ea79` 2026-03-25 — fix: provisioning transitions after completion — no more stuck state [1 files] _(ai-assisted)_
+- `5df56627` 2026-03-25 — fix: add "never go silent" operating principle to SOUL.md template [1 files] _(**MANIFEST v47**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `4ffe421b` 2026-03-25 — style: scale up provisioning screen for mobile — larger icons, text, spacing [1 files] _(ai-assisted)_
+- `46315dfc` 2026-03-25 — fix: add "never self-restart" operating principle to SOUL.md template [1 files] _(**MANIFEST v48**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be8ac171` 2026-03-25 — fix: usecomputer binary chmod +x in configureOpenClaw (npm doesn't set execute bit) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6ef6f3ae` 2026-03-25 — feat: add push-soul-principles fix-infra endpoint for fleet-wide SOUL.md update [1 files] _(ai-assisted)_
+- `5d48ad6c` 2026-03-25 — chore: trigger Vercel redeploy for push-soul-principles endpoint [0 files] _(ai-assisted)_
+- `2efdfb1f` 2026-03-25 — chore: force Vercel rebuild for push-soul-principles endpoint [1 files] _(ai-assisted)_
+- `6423929a` 2026-03-25 — feat: Phase 2 — client-side dispatch relay prototype (agent controls user's computer) [19 files] _(ai-assisted)_
+- `46f92940` 2026-03-25 — fix: supervisor TTY check + bake Phase 2 dispatch-server into configureOpenClaw [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3b8117cd` 2026-03-25 — fix: 'All systems go' no longer stuck — shows action buttons instead of auto-redirect loop [1 files] _(ai-assisted)_
+- `95b92d3e` 2026-03-25 — fix: wrap ALL server components in try/catch — prevent crash for World wallet users [4 files] _(ai-assisted)_
+- `fbf40d9e` 2026-03-25 — fix: credit grant uses direct update instead of RPC [1 files] _(ai-assisted)_
+- `466aefdd` 2026-03-25 — feat: dual-mode SKILL.md, npm publish @instaclaw/dispatch, macOS permission detection [4 files] _(ai-assisted)_
+- `3fda697e` 2026-03-25 — fix: remove instaclaw.io/dashboard links — keep users in mini app [3 files] _(ai-assisted)_
+- `eec5eee1` 2026-03-25 — feat: wallet-based auto-login — persist sessions across mini app opens [3 files] _(ai-assisted)_
+- `bf0ed131` 2026-03-25 — fix: break provisioning→dashboard loop + debug logging for getAgentStatus [2 files] _(ai-assisted)_
+- `4c1cb74d` 2026-03-25 — fix: column 'model' → 'default_model' — root cause of dashboard not loading [3 files] _(ai-assisted)_
+- `81527b45` 2026-03-25 — fix: World Chat → 'Coming soon — use Telegram for now' [1 files] _(ai-assisted)_
+- `79e19647` 2026-03-25 — feat: Phase 2.5 + 3 — autonomous mode, audit logging, dashboard, billing gate, docs [8 files] _(ai-assisted)_
+- `0e77d1bd` 2026-03-25 — docs: mark all Dispatch Mode phases COMPLETE in PRD [1 files]
+- `4e3c0998` 2026-03-25 — fix: instagram skill frontmatter, maxSkillsPromptChars 500K, remove duplicate skills, placeholder cleanup in reconciler, 300ms fleet script sleep [1 files] _(ai-assisted)_
+- `b5a47ede` 2026-03-25 — fix: exclude instaclaw-mini from instaclaw tsconfig — was breaking Vercel builds [1 files] _(ai-assisted)_
+- `773d1139` 2026-03-25 — fix: dangerous action blocking in autonomous mode + redeploy audit-enabled dispatch-server [1 files] _(ai-assisted)_
+- `7710b161` 2026-03-25 — fix: exclude packages/ from Next.js TypeScript compilation (fixes Vercel build) [1 files]
+- `f8c420ff` 2026-03-25 — fix: swap Telegram as primary chat, World Chat as secondary [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b0c53f3e` 2026-03-25 — docs: Phase 2 Group Chat Agents + XMTP status + Mateo question in PRD [1 files] _(ai-assisted)_
+- `ac90bcc8` 2026-03-25 — fix: new user VM provisioning — assign from pool before configure [17 files] _(multi: [feature, docs]; ai-assisted)_
+- `75903600` 2026-03-25 — chore: bump @instaclaw/dispatch to v0.3.0 (HMAC auth, coordMap, rate limiting) [1 files]
+- `6b1dcc6f` 2026-03-25 — docs: PRD for Live Agent Desktop Viewer & Takeover Mode (noVNC) [1 files]
+- `c3550f73` 2026-03-25 — fix: P0+P1 launch blockers — 6 critical fixes for World mini app [4 files] _(ai-assisted)_
+- `b6ab37bf` 2026-03-25 — feat: Live Desktop Viewer — Phase 0+1 prototype [3 files] _(ai-assisted)_
+- `add3d537` 2026-03-25 — fix: XMTP agent — getSenderAddress crash + message reception confirmed [1 files] _(ai-assisted)_
+- `8e30e3a7` 2026-03-25 — feat: Live Desktop Viewer — auth, takeover, configureOpenClaw, fleet-ready [5 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `3b2862fa` 2026-03-25 — feat: XMTP fully working — gateway bridge + World Chat deep link [3 files] _(ai-assisted)_
+- `2152353b` 2026-03-25 — feat: in-app chat UI — talk to agent without leaving the mini app [2 files] _(ai-assisted)_
+- `cc11387b` 2026-03-25 — fix: remove base64 from screenshot stdout — was flooding agent context and hitting rate limits [2 files] _(ai-assisted)_
+- `247fe79c` 2026-03-26 — fix: connection stability + 13 UX improvements from Mucus live testing [6 files] _(multi: [feature, docs]; ai-assisted)_
+- `25aab9b3` 2026-03-26 — feat: test-deeplinks page — 9 World Chat deep link variations for Andy [1 files] _(ai-assisted)_
+- `29dd6cd7` 2026-03-26 — feat: Test Deep Links button on Settings tab [1 files] _(ai-assisted)_
+- `908578ac` 2026-03-26 — test: Chat button → MiniKit.chat() with agent XMTP address [1 files] _(ai-assisted)_
+- `9ceb6764` 2026-03-26 — feat: pairing codes + zero-friction dispatch onboarding (items 1-6) [7 files] _(ai-assisted)_
+- `091d253b` 2026-03-26 — feat: one-click "Connect Your Computer" button — zero terminal knowledge needed [2 files] _(ai-assisted)_
+- `3427b149` 2026-03-26 — feat: in-app chat as primary, World Chat grayed out (coming soon) [4 files] _(ai-assisted)_
+- `9eee81b1` 2026-03-26 — feat: agent dispatch onboarding in SOUL.md + live page dispatch section [1 files]
+- `fdcc3e1d` 2026-03-26 — feat: Command Center — full dashboard replica in World mini app [2 files] _(ai-assisted)_
+- `fdba0659` 2026-03-26 — fix: docs Quick Start — add one-click connect as primary path, pairing code as secondary [1 files]
+- `bb150ce4` 2026-03-26 — style: input bar matches instaclaw.io glass UI — + button, model picker, mic, send [1 files] _(ai-assisted)_
+- `cae5e7f6` 2026-03-26 — redesign: /live page — mission control dashboard for agent desktop [1 files] _(ai-assisted)_
+- `4b082a20` 2026-03-26 — fix: auto-login retries + 'Sign in' fallback for returning users [1 files] _(ai-assisted)_
+- `3b7dbd24` 2026-03-26 — fix: Remote Control header — shorten title to prevent wrapping, remove em dash from subtitle [1 files]
+- `4ccd7d7f` 2026-03-26 — fix: sign-in link moved inside CTA section — no more overlap [2 files] _(ai-assisted)_
+- `72ec5320` 2026-03-26 — style: replace Telegram footer with compact dismissable info pill at top [1 files] _(ai-assisted)_
+- `9363f913` 2026-03-26 — fix: remove em dash from info pill [1 files] _(ai-assisted)_
+- `3d7c079f` 2026-03-26 — fix: input bar — clean single border, no double-layer effect [1 files] _(ai-assisted)_
+- `d121fce6` 2026-03-26 — polish: /live page — 7 targeted fixes [1 files]
+- `fde4c4ae` 2026-03-26 — feat: personalized suggestion chips from instaclaw.io API [2 files] _(ai-assisted)_
+- `acfdf3a2` 2026-03-26 — fix: center empty states + remove em dash [1 files] _(ai-assisted)_
+- `d9c450a0` 2026-03-26 — feat: inline noVNC viewer — live desktop streams inside the /live page [5 files] _(ai-assisted)_
+- `c3836943` 2026-03-26 — feat: functional + menu, model picker, and voice input on Command Center [1 files] _(ai-assisted)_
+- `0e70045f` 2026-03-26 — fix: suggestions — proxy GET support + correct method call [3 files] _(ai-assisted)_
+- `b6e32f87` 2026-03-26 — fix: robust suggestion chips — better defaults + cache-first loading [1 files] _(ai-assisted)_
+- `f386d7e7` 2026-03-26 — feat: Google account connection for World mini app [13 files] _(ai-assisted)_
+- `14e0ee37` 2026-03-26 — feat: add Google disconnect button in mini app Settings [2 files] _(ai-assisted)_
+- `606176bc` 2026-03-26 — fix: add Caddy /vnc/* proxy + iptables to configureOpenClaw (was missing for new VMs) [1 files] _(multi: [reconciler, infrastructure])_
+- `57e059b7` 2026-03-26 — fix: show "Google connected" badge on Home tab + trigger deploy [1 files] _(ai-assisted)_
+- `00a61e06` 2026-03-26 — fix: auto-repair broken systemd override.conf in configureOpenClaw (prevents gateway crash-loop) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c0a0c5f7` 2026-03-26 — fix: reorder Home tab — Chat button above Google connect card [1 files] _(ai-assisted)_
+- `0e57fcb3` 2026-03-26 — fix: replace all WLD "stake/staking" language with "pay/credits" [3 files] _(ai-assisted)_
+- `cfdddf8a` 2026-03-26 — fix: Google connect button — glass styling + multicolor G icon [1 files] _(ai-assisted)_
+- `7b046c2c` 2026-03-26 — fix: Chat button — glass morphism styling while keeping orange [1 files] _(ai-assisted)_
+- `e580e855` 2026-03-26 — docs: PRD for UX enhancements — viral & delightful computer control features [1 files]
+- `0c43a7f6` 2026-03-26 — docs: update UX PRD with Cooper's feedback — P2 natural sharing, P3 removed, P4 client-side recording [1 files]
+- `f401085e` 2026-03-26 — fix: atomic credit addition in WLD delegate/confirm (Phase 0) [3 files] _(multi: [feature, docs]; ai-assisted)_
+- `8a01dc61` 2026-03-26 — feat: P1 — live desktop thumbnail on dashboard home page [4 files] _(ai-assisted)_
+- `99331f3e` 2026-03-26 — feat: Phase 1 — subscription detection in mini app [6 files] _(ai-assisted)_
+- `6b3bcd1c` 2026-03-26 — polish: idle detection on desktop thumbnail — moon icon + 'Agent is dreaming' overlay [1 files]
+- `27399733` 2026-03-26 — feat: P5 — daily agent digest via Telegram [2 files] _(ai-assisted)_
+- `055711d8` 2026-03-26 — feat: Phase 2 — upgrade flow with Google sign-in + account linking [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `cc2d1654` 2026-03-26 — feat: P4 — shareable agent clips (client-side canvas recording) [2 files] _(ai-assisted)_
+- `05eda895` 2026-03-26 — feat: Phase 3 — dashboard access gate behind feature flag [1 files] _(ai-assisted)_
+- `d924250c` 2026-03-26 — fix: 3 bugs from comprehensive audit [3 files] _(ai-assisted)_
+- `af38ae4a` 2026-03-26 — fix: subscribers can still top up with WLD for overflow credits [2 files] _(ai-assisted)_
+- `bc5acdeb` 2026-03-26 — fix: Top up with WLD button — orange glass, not teal [1 files] _(ai-assisted)_
+- `b279a5b4` 2026-03-26 — chore: add /docs/dispatch to sitemap PUBLIC_ROUTES [1 files] _(ai-assisted)_
+- `264d9a28` 2026-03-26 — fix: add lightning icon to Top up with WLD button [1 files] _(ai-assisted)_
+- `310e20ee` 2026-03-26 — feat: one-off admin endpoint for clean XMTP agent setup on vm-313 [1 files] _(ai-assisted)_
+- `dd34321c` 2026-03-26 — fix: add setup-xmtp-clean to self-auth API list in middleware [1 files] _(ai-assisted)_
+- `9dd51dc4` 2026-03-26 — fix: XMTP wallet key needs 0x prefix for agent-sdk [1 files] _(ai-assisted)_
+- `4d3db26b` 2026-03-26 — feat: admin endpoint to send XMTP message from agent to target address [2 files] _(ai-assisted)_
+- `e0188e39` 2026-03-26 — fix: write XMTP send script to ~/scripts/ so it finds node_modules [1 files] _(ai-assisted)_
+- `3ea3e49c` 2026-03-26 — fix: probe XMTP agent-sdk API surface, try multiple DM creation methods [1 files] _(ai-assisted)_
+- `8d4620b9` 2026-03-26 — fix: use agent.createDmWithAddress() — correct XMTP agent-sdk API [1 files] _(ai-assisted)_
+- `2996ecb2` 2026-03-26 — fix: stop XMTP service before sending (DB lock), restart after [1 files] _(ai-assisted)_
+- `36f86292` 2026-03-26 — feat: dispatch v2 — action batching, screenshot optimization, copy-paste UX [14 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `dab18429` 2026-03-26 — feat: XMTP probe endpoint — find Cooper's real XMTP identity [2 files] _(ai-assisted)_
+- `376f5dfb` 2026-03-26 — fix: use createDmWithIdentifier with numeric enum + inbox ID fallback [1 files] _(ai-assisted)_
+- `a3aaf28a` 2026-03-26 — fix: live connection status polling, success state, animated transitions [2 files] _(ai-assisted)_
+- `2b79a988` 2026-03-26 — fix: macOS permissions flow, pairing code reuse, agent dispatch detection [5 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `b3c064b5` 2026-03-26 — fix: dispatch-status tier gate blocking all status checks [2 files] _(ai-assisted)_
+- `1654e1ca` 2026-03-26 — feat: full Skills tab — category filters, toggle switches, dual auth [2 files] _(ai-assisted)_
+- `104e5af2` 2026-03-26 — feat: editable agent name on Home tab [4 files] _(ai-assisted)_
+- `87b98707` 2026-03-26 — fix: dispatch status detection — use TCP check instead of broken Unix socket [2 files] _(ai-assisted)_
+- `177fec3c` 2026-03-26 — fix: skills data parsing — API returns { skills: { ... } } not flat [1 files] _(ai-assisted)_
+- `9a34bb16` 2026-03-26 — feat: skills page polish — green toggles, expand animation, loading spinner [1 files] _(ai-assisted)_
+- `10ce85f7` 2026-03-26 — fix: skills empty state — tab-aware text + vertically centered [1 files] _(ai-assisted)_
+- `9d659722` 2026-03-26 — fix: dispatch detection — remove mandatory status check, use try-first approach [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `82729c4f` 2026-03-26 — fix: center empty state in available space with min-height 50vh [1 files] _(ai-assisted)_
+- `87b7a9a3` 2026-03-27 — fix: gray out unconnected integrations with "Coming Soon" badge [1 files] _(ai-assisted)_
+- `d31a6a73` 2026-03-27 — feat: agent suggests autonomous mode before multi-step dispatch tasks [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1163f683` 2026-03-27 — fix: WLD top-up works directly from Settings — no page jump [1 files] _(ai-assisted)_
+- `0ae2f848` 2026-03-27 — fix: agent must NEVER restart dispatch-server + systemd socket cleanup [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `89a12483` 2026-03-27 — feat: glass tab switcher with bouncy sliding pill indicator [1 files] _(ai-assisted)_
+- `694ad07a` 2026-03-27 — feat: smooth page transitions + glass tab bar with sliding pill [3 files] _(ai-assisted)_
+- `3c58565b` 2026-03-27 — fix: restore command center layout — pass flex height through transition [2 files] _(ai-assisted)_
+- `92f60205` 2026-03-27 — feat: gateway watchdog — auto-restart hung gateways within 4 minutes [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8cdb9b40` 2026-03-27 — fix: snappy page transitions — no exit delay, instant content swap [1 files] _(ai-assisted)_
+- `32e56533` 2026-03-27 — fix: prevent context overflow + task persistence across resets [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a72b218c` 2026-03-27 — fix: remove PageTransition wrapper + add instant loading skeletons [3 files] _(ai-assisted)_
+- `5b028a80` 2026-03-27 — feat: floating pill-shaped nav bar with sliding indicator [1 files] _(ai-assisted)_
+- `9c0ce28b` 2026-03-27 — fix: truly floating nav bar — transparent bg, content scrolls behind [2 files] _(ai-assisted)_
+- `1138579f` 2026-03-27 — fix: add context budget limit — max 15 screenshots per task [1 files] _(ai-assisted)_
+- `c383b9c2` 2026-03-27 — fix: agent must type commands on USER'S computer, not run them on VM [1 files] _(ai-assisted)_
+- `dd62aae8` 2026-03-27 — fix: Skills + Chat pages — transparent bg for floating nav bar [2 files] _(ai-assisted)_
+- `0dfd27b8` 2026-03-27 — feat: full glass UI upgrade on Home tab [2 files] _(ai-assisted)_
+- `d225fcb9` 2026-03-27 — feat: full glass UI upgrade on Command Center page [1 files] _(ai-assisted)_
+- `f4c8cd50` 2026-03-27 — feat: 3D glass orb effect on Credits and Earnings icons [1 files] _(ai-assisted)_
+- `f94fe9eb` 2026-03-27 — fix: chat UX — auto-switch to Chat tab, glass bubbles, typing dots [2 files] _(ai-assisted)_
+- `29fb955c` 2026-03-27 — fix: shell-first enforcement, Spotlight fallback, message budget, connection info [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `9d80463b` 2026-03-27 — feat: streaming chat responses + toggles — matches web app [2 files] _(ai-assisted)_
+- `19b2625f` 2026-03-27 — fix: pin header + input, only messages scroll (iMessage pattern) [2 files] _(ai-assisted)_
+- `f828147d` 2026-03-27 — feat: dispatch-remote-exec — run shell commands on user's Mac without Terminal [8 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `b3864dc4` 2026-03-27 — feat: fully functional Tasks tab — create, list, filter, poll [3 files] _(ai-assisted)_
+- `eb753e84` 2026-03-27 — fix: TCP keepalive on WebSocket — prevents relay disconnect after 2-3 min [4 files] _(ai-assisted)_
+- `fdbc1218` 2026-03-27 — feat: task cards match web app exactly — spinners, orbs, pills, status [1 files] _(ai-assisted)_
+- `7bb55b5b` 2026-03-27 — fix: suggestion chips always visible on Tasks tab [1 files] _(ai-assisted)_
+- `13587d44` 2026-03-27 — fix: don't screenshot what user already showed + context overflow note [1 files] _(ai-assisted)_
+- `4007a065` 2026-03-27 — fix: watchdog prevents silent context overflow — auto-rotates at 500KB [1 files] _(ai-assisted)_
+- `c5dcd010` 2026-03-27 — fix: task execution calls gateway directly — no instaclaw.io proxy [4 files] _(ai-assisted)_
+- `631661ed` 2026-03-27 — fix: macOS screenshot filenames have spaces — use find -exec mv [1 files] _(ai-assisted)_
+- `38b3f0ca` 2026-03-27 — fix: remove duplicate task cards — single placeholder, clean replace [1 files] _(ai-assisted)_
+- `cdf8da78` 2026-03-27 — fix: exec used require() in ESM module — ReferenceError: require is not defined [2 files] _(ai-assisted)_
+- `78eaabc2` 2026-03-27 — feat: task card expand/collapse with result, actions — matches web app [1 files] _(ai-assisted)_
+- `b7147826` 2026-03-27 — feat: recurring task pills match web app — Running now, streak, frequency [1 files] _(ai-assisted)_
+- `abcdbb8c` 2026-03-27 — feat: Batch 1 — full task management matching web app [4 files] _(ai-assisted)_
+- `ded5a8ed` 2026-03-27 — fix: expanded task card no longer clips — buttons always visible [1 files] _(ai-assisted)_
+- `49e9c4ef` 2026-03-27 — fix: Edit button → Edit & re-run — edits prompt and re-executes [1 files] _(ai-assisted)_
+- `35068722` 2026-03-27 — fix: watchdog v3 — detects frozen gateway (typing but no response) [1 files] _(ai-assisted)_
+- `6c604aec` 2026-03-27 — fix: 90-second timeout on LLM API calls — prevents infinite hang on images [1 files] _(ai-assisted)_
+- `e0444775` 2026-03-27 — feat: Batch 2 — refine, delivery status, failed badge, toast, failures [2 files] _(ai-assisted)_
+- `983c39e4` 2026-03-27 — fix: match Claude/Anthropic brand orange across entire mini app [15 files] _(ai-assisted)_
+- `8d046b44` 2026-03-27 — fix: cleaner glass Chat button — more translucent, sharper depth [1 files] _(ai-assisted)_
+- `86cb9d51` 2026-03-27 — fix: replace all hardcoded dispatch versions with @latest [4 files] _(ai-assisted)_
+- `39a035e8` 2026-03-27 — feat: run history for recurring tasks — final 1:1 parity with web app [2 files] _(ai-assisted)_
+- `88cef868` 2026-03-27 — fix: 11 visual differences matched to web app — pixel parity [1 files] _(ai-assisted)_
+- `1ecc1391` 2026-03-27 — fix: watchdog v4 — detect dead Telegram connection (root cause of silence) [1 files] _(ai-assisted)_
+- `618b4ca8` 2026-03-27 — fix: add TASK_META suffix to task execution — enables tool orbs + recurring detection [3 files] _(ai-assisted)_
+- `9548895a` 2026-03-28 — docs: comprehensive rewrite of dispatch docs page [1 files] _(ai-assisted)_
+- `6b72c590` 2026-03-28 — docs: make autonomous mode prominent in Quick Start, example, and Modes [1 files] _(ai-assisted)_
+- `99c5086e` 2026-03-28 — fix: watchdog v5 — check TIMESTAMP of last sendMessage, not just count [1 files] _(ai-assisted)_
+- `3a46120b` 2026-03-28 — feat: archive tasks instead of deleting — accessible from Settings [5 files] _(ai-assisted)_
+- `e09fbe02` 2026-03-28 — fix: NEVER Go Silent After Tool Failures — mandatory error reporting [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `576225e9` 2026-03-28 — fix: add image_generate parameter guidance + retrigger build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9ea54a75` 2026-03-28 — feat: render markdown in task results + chat bubbles [3 files] _(ai-assisted)_
+- `94c1c76e` 2026-03-28 — fix: scroll bug when switching Tasks/Chat sub-tabs [2 files] _(ai-assisted)_
+- `2306a3d8` 2026-03-28 — fix: header pinned — matches web app three-tier flex pattern [2 files] _(ai-assisted)_
+- `b260ea29` 2026-03-28 — fix: position:fixed chat page — breaks out of parent scroll entirely [1 files] _(ai-assisted)_
+- `3f7f1c6b` 2026-03-28 — fix: disable parent scroll-area on chat page via CSS override [1 files] _(ai-assisted)_
+- `ae955e33` 2026-03-28 — feat: multi-conversation chat — sidebar, DB persistence, 1:1 with web app [7 files] _(ai-assisted)_
+- `5a4f86a6` 2026-03-28 — fix: recurring detection + better error messages [3 files] _(ai-assisted)_
+- `55902194` 2026-03-28 — fix: hourly frequency detection for "whenever" + "real-time" keywords [1 files] _(ai-assisted)_
+- `f51205af` 2026-03-28 — fix: chat sidebar matches web app exactly + conversation switching fixed [2 files] _(ai-assisted)_
+- `6b8b5358` 2026-03-28 — fix: distinct tool orb icons per tool type — matches web app [1 files] _(ai-assisted)_
+- `5848b709` 2026-03-29 — feat: DegenClaw skill — Virtuals $100K weekly perps trading competition [7 files] _(**MANIFEST v49**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `73f95890` 2026-03-29 — chore: update PRD to reflect completed deployment + add fleet scripts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `66a382a7` 2026-03-30 — fix: dgclaw skill audit — NOT triggers, edge cases, fee accuracy [2 files] _(ai-assisted)_
+- `5d742c13` 2026-03-30 — feat: PARTNER_ID=INSTACLAW — Virtuals revenue share live [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bf74af13` 2026-03-30 — chore: fleet scripts for PARTNER_ID deployment + verification [2 files] _(ai-assisted)_
+- `78fe2c89` 2026-03-30 — fix: PARTNER_ID audit fixes — uninstall cleanup + remove duplicate sed [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2c66561f` 2026-03-30 — feat: PARTNER_ID in gateway systemd — process.env verified (manifest v50) [4 files] _(**MANIFEST v50**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `3c4858f9` 2026-03-30 — feat: universal silence watchdog — 60-second fallback guarantee (manifest v51) [2 files] _(**MANIFEST v51**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `fc7c2dae` 2026-03-30 — fix: silence watchdog — use inline content instead of template registry (init order) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bdf202ec` 2026-03-30 — fix: agent must use dynamic ?requestId= auth URL, never generic link [1 files] _(ai-assisted)_
+- `22dfc998` 2026-03-30 — feat: server-side ACP auth for agents — fixes timeout death loop [3 files] _(ai-assisted)_
+- `35e93266` 2026-03-30 — feat: add DegenClaw to EARN.md — Virtuals $100K weekly trading competition [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e57b1a38` 2026-03-30 — fix: extract GATEWAY_TOKEN from .env before curl — was expanding to empty string [1 files] _(ai-assisted)_
+- `cb4c32e6` 2026-03-30 — fix: whitelist agent-auth-url + agent-complete-auth in middleware [1 files] _(ai-assisted)_
+- `89454cd1` 2026-03-30 — fix: always specify 'USDC on Base network' when mentioning funds [1 files] _(ai-assisted)_
+- `d6310afb` 2026-03-30 — feat: Google OAuth pairing flow, personalization modal, AgentBook registration, glass UI fixes [22 files] _(ai-assisted)_
+- `47595eca` 2026-03-30 — feat: World ID propagation parity — VM, marketplace, proof storage [2 files] _(ai-assisted)_
+- `56ebef61` 2026-03-30 — feat: add proxy route for World ID propagation [1 files] _(ai-assisted)_
+- `45ec330d` 2026-03-30 — feat: World ID "Sync to agent" button on Settings page [1 files] _(ai-assisted)_
+- `dd6ec2dc` 2026-03-30 — fix: hide AgentBook card when wallet not ready instead of showing error [1 files] _(ai-assisted)_
+- `3b373675` 2026-03-30 — fix: upgrade AgentBook register button to match glass UI standards [1 files] _(ai-assisted)_
+- `c58ae7a2` 2026-03-30 — fix: upgrade Sync to agent button to glass UI [1 files] _(ai-assisted)_
+- `fa715431` 2026-03-30 — fix: AgentBook bridge URL button — try window.open + href fallback [1 files] _(ai-assisted)_
+- `baf6793c` 2026-03-30 — fix: AgentBook verify button uses worldapp:// deep link for native flow [1 files] _(ai-assisted)_
+- `f1abad6a` 2026-03-30 — fix: AgentBook verify — use copy link approach (WebView can't open World ID natively) [1 files] _(ai-assisted)_
+- `6640c640` 2026-03-30 — feat: AgentBook one-tap registration via MiniKit native verify [2 files] _(ai-assisted)_
+- `a6a68c67` 2026-03-30 — fix: use existing verify-instaclaw-agent action for AgentBook registration [1 files] _(ai-assisted)_
+- `112c98e5` 2026-03-30 — fix: AgentBook relay — use AgentBook app_id, strip extra fields [1 files] _(ai-assisted)_
+- `492fada8` 2026-03-30 — fix: always checksum wallet addresses (EIP-55) before storing or sending to relay [2 files] _(ai-assisted)_
+- `c8e91fe1` 2026-03-30 — debug: show full relay error response for AgentBook registration [1 files] _(ai-assisted)_
+- `9ae251cc` 2026-03-30 — fix: AgentBook card — only show registered badge, hide registration flow [1 files] _(ai-assisted)_
+- `9651b3e2` 2026-03-30 — fix: send full proof object to AgentBook relay + re-enable registration UI [2 files] _(ai-assisted)_
+- `9ff797a0` 2026-03-30 — fix: hide AgentBook registration — relay rejects mini app addresses [1 files] _(ai-assisted)_
+- `65396e3a` 2026-03-30 — fix: AgentBook card shows badge only when registered [1 files] _(ai-assisted)_
+- `0c1bb91c` 2026-03-30 — fix: AgentBook check color green to match Google connected [1 files] _(ai-assisted)_
+- `9bdfc4ad` 2026-03-31 — fix: World ID always shows green check — sync happens during onboarding [1 files] _(ai-assisted)_
+- `ad250d87` 2026-03-31 — fix: World ID propagation writes to MEMORY.md for durability [2 files] _(ai-assisted)_
+- `364bbd69` 2026-03-31 — feat: admin endpoint for World ID propagation (temp, for backfill) [1 files] _(ai-assisted)_
+- `9f0863fd` 2026-03-31 — fix: use CRON_SECRET for admin propagation auth [1 files] _(ai-assisted)_
+- `92f00ba8` 2026-03-31 — fix: add propagate-world-id to middleware allowlist [1 files] _(ai-assisted)_
+- `40fdee11` 2026-03-31 — feat: World ID self-healing in reconciler health check [1 files] _(ai-assisted)_
+- `ffe5c1a9` 2026-03-31 — fix: replace all window.open with window.location.href in mini app [2 files] _(ai-assisted)_
+- `aca7ed68` 2026-03-31 — feat: 3D glass orb icons on Settings page [1 files] _(ai-assisted)_
+- `8e965241` 2026-03-31 — fix: Settings orbs match Home page glass style [1 files] _(ai-assisted)_
+- `84c17a6d` 2026-03-31 — fix: Home page Google/AgentBook icons use glass orb style [2 files] _(ai-assisted)_
+- `53ccd601` 2026-03-31 — fix: Online badge uses clean glass UI pill [1 files] _(ai-assisted)_
+- `64ae064d` 2026-03-31 — fix: Chat tab scrolls behind glass blur toolbar like Tasks tab [1 files] _(ai-assisted)_
+- `90e13db7` 2026-03-31 — fix: Chat sidebar toggle stays sticky at top while scrolling [1 files] _(ai-assisted)_
+- `724f05cd` 2026-03-31 — fix: handleSend uses stale activeConvId after switching conversations [1 files] _(ai-assisted)_
+- `cfb810ec` 2026-03-31 — fix: Chat sidebar UI matches web app + mobile-friendly actions [1 files] _(ai-assisted)_
+- `e58565d0` 2026-03-31 — feat: Chat bubbles match web app — avatar, tails, timestamps, save [2 files] _(ai-assisted)_
+- `183bf0e6` 2026-03-31 — feat: Add reload button for personalized suggestion pills [1 files] _(ai-assisted)_
+- `ddaf3c3d` 2026-03-31 — fix: Web search and Deep research toggle pills use glass UI [1 files] _(ai-assisted)_
+- `738ffe94` 2026-03-31 — fix: Assistant bubble tails use solid color matching bubble background [1 files] _(ai-assisted)_
+- `cf2be665` 2026-03-31 — fix: Chat avatar orb uses smooth radial shine instead of choppy rect [1 files] _(ai-assisted)_
+- `e47b8f16` 2026-03-31 — feat: Typewriter thinking indicator with claw-themed phrases [1 files] _(ai-assisted)_
+- `09fcab2d` 2026-03-31 — fix: Replace thinking phrases on web app with claw-themed copy [1 files] _(ai-assisted)_
+- `6ea16d06` 2026-03-31 — fix: Clean up header/tab/chat section borders for seamless flow [1 files] _(ai-assisted)_
+- `6bf0aab8` 2026-03-31 — fix: Plus button matches web app — smaller, cleaner glass style [1 files] _(ai-assisted)_
+- `55e08feb` 2026-03-31 — fix: Tab bar border inset, chat header border edge-to-edge [1 files] _(ai-assisted)_
+- `e5d823b0` 2026-03-31 — fix: Chat header pinned to header section — no gap on scroll [1 files] _(ai-assisted)_
+- `1b896b0e` 2026-03-31 — fix: Center empty chat state vertically in available space [1 files] _(ai-assisted)_
+- `3ba31361` 2026-03-31 — fix: Chat sidebar uses fixed positioning — works at any scroll depth [1 files] _(ai-assisted)_
+- `3e7515fa` 2026-03-31 — fix: Chat sidebar rendered at top level — no more clipping [1 files] _(ai-assisted)_
+- `052312c9` 2026-03-31 — fix: Bottom nav bar has blur fade — content scrolls behind smoothly [1 files] _(ai-assisted)_
+- `78d749fe` 2026-03-31 — fix: Nav bar blur extends higher, border softer — no visible gap [1 files] _(ai-assisted)_
+- `927e6701` 2026-03-31 — fix: Tab bar blur only covers gap above nav, not the input area [1 files] _(ai-assisted)_
+- `f08556ae` 2026-03-31 — fix: Reduce tabs layout bottom padding to match nav bar height [1 files] _(ai-assisted)_
+- `4db6f4b9` 2026-03-31 — fix: Nav bar zone uses gradient fill — no more black gap [2 files] _(ai-assisted)_
+- `8ba85154` 2026-03-31 — fix: Nav bar uses same blur fade as Command Center toolbar [1 files] _(ai-assisted)_
+- `d505cf8d` 2026-03-31 — fix: Nav blur doesn't overlap input bar — reduced to -top-4 [1 files] _(ai-assisted)_
+- `d9e1ea3f` 2026-03-31 — fix: Chat sidebar uses clean glass UI — gradient bg, stronger blur [1 files] _(ai-assisted)_
+- `b9da1f9e` 2026-03-31 — feat: Library tab fetches and displays items matching web app [1 files] _(ai-assisted)_
+- `760769eb` 2026-03-31 — security(C1): Add on-chain amount verification to WLD payment [1 files] _(ai-assisted)_
+- `c5a0deab` 2026-03-31 — security(C2,C4,C6): Subscription check, credit pre-check, unique constraint [3 files] _(ai-assisted)_
+- `93bfadb5` 2026-03-31 — security(C5): Atomic check-and-increment RPC eliminates race condition [1 files] _(ai-assisted)_
+- `3c2342d9` 2026-03-31 — security(C9,H8): Trial abuse prevention + WLD pending payment UI [5 files] _(ai-assisted)_
+- `ba5e3d1e` 2026-03-31 — security(C9 revised): Trial abuse detection without blocking first-time users [1 files] _(ai-assisted)_
+- `de693c8c` 2026-03-31 — security(C5): Gateway proxy uses atomic check-and-increment RPC [1 files] _(ai-assisted)_
+- `6572ee56` 2026-03-31 — feat: VM reclaim script + dedicated suspension cron [3 files] _(ai-assisted)_
+- `1b1151d1` 2026-03-31 — fix: Onboarding loop — verify 500 + provisioning auto-complete [3 files] _(ai-assisted)_
+- `2d9d0bf1` 2026-03-31 — fix: XMTP setup endpoint accepts vmId parameter [1 files] _(ai-assisted)_
+- `57c7fe4c` 2026-03-31 — feat: World Chat button live in Command Center info banner [2 files] _(ai-assisted)_
+- `bf9ad647` 2026-03-31 — fix: XMTP admin endpoints accept vmId + token refresh endpoint [2 files] _(ai-assisted)_
+- `2f21200f` 2026-03-31 — fix: xmtp-send body.vmId reference — was undefined [1 files] _(ai-assisted)_
+- `fb5612cd` 2026-03-31 — feat: World Chat init — agent messages user first to establish DM [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `a9e26493` 2026-03-31 — feat: Add persistent World Chat button to chat header [1 files] _(ai-assisted)_
+- `f193d78f` 2026-03-31 — fix: World Chat button — add loading state, label, and error handling [1 files] _(ai-assisted)_
+- `6fd3d93f` 2026-03-31 — fix: World Chat opens instantly — fire-and-forget init-chat [1 files] _(ai-assisted)_
+- `4238869b` 2026-03-31 — fix: xmtp-send-to-user auto-installs @xmtp/agent-sdk if missing [1 files] _(ai-assisted)_
+- `65a097ac` 2026-03-31 — fix: Write XMTP send script to ~/scripts/ for ESM module resolution [1 files] _(ai-assisted)_
+- `cc6bf8c5` 2026-03-31 — fix: XMTP agent gateway port 3000 → 18789 [3 files] _(ai-assisted)_
+- `d84d5e06` 2026-03-31 — fix: XMTP agent maintains conversation history per DM [1 files] _(ai-assisted)_
+- `30a8091d` 2026-03-31 — feat: xmtp-refresh-token also updates agent script from GitHub [1 files] _(ai-assisted)_
+- `cc6b8482` 2026-03-31 — chore: Remove debug "Test World Chat Deep Links" button from settings [1 files] _(ai-assisted)_
+- `b81beb9a` 2026-03-31 — fix: Sign Out button uses clean glass UI instead of red [1 files] _(ai-assisted)_
+- `e3f66f3f` 2026-03-31 — feat: Contact Support button on settings page [1 files] _(ai-assisted)_
+- `6c53bc1c` 2026-03-31 — feat: Persist XMTP conversation history to disk [1 files] _(ai-assisted)_
+- `c380b4a7` 2026-03-31 — fix: Auto-retry stuck VMs + provisioning retry button [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `cc075bc1` 2026-03-31 — fix: Break redirect loop for unverified users with no agent [1 files] _(ai-assisted)_
+- `5d30f7f9` 2026-03-31 — fix: Show real provisioning UI after WLD payment, not fake "ready" [3 files] _(ai-assisted)_
+- `47d990b9` 2026-03-31 — fix: Separate VM assignment from configuration — bulletproof onboarding [4 files] _(ai-assisted)_
+- `038aee4c` 2026-03-31 — fix: ProvisioningStatus waits for agent HEALTHY, not just assigned [3 files] _(ai-assisted)_
+- `e230855b` 2026-03-31 — feat: Bulletproof mini app onboarding — matches web app flow [4 files] _(ai-assisted)_
+- `e38381aa` 2026-03-31 — fix: Add gateway_url to getAgentStatus select query [1 files] _(ai-assisted)_
+- `f6514a2c` 2026-03-31 — fix: Use model='openclaw' for gateway chat requests [1 files] _(ai-assisted)_
+- `afe67603` 2026-04-01 — security: Provision endpoint requires payment before VM assignment [1 files] _(ai-assisted)_
+- `6ff92799` 2026-04-01 — fix: Handle failed WLD payments — don't get stuck on provisioning [3 files] _(ai-assisted)_
+- `83565d5c` 2026-04-01 — fix: Trust MiniKit payment on onboarding path, strict gate on retry [1 files] _(ai-assisted)_
+- `011f19d5` 2026-04-01 — security: Full user data wipe in configureOpenClaw before new user setup [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a997db25` 2026-04-01 — fix: Show AgentBook card before Google card on dashboard [1 files] _(ai-assisted)_
+- `7c123b06` 2026-04-01 — fix: configureOpenClaw sets config_version to VM_MANIFEST.version (51) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `499b53a0` 2026-04-01 — fix: Config reconciler — batch 3→10, remove healthy-only filter [1 files] _(ai-assisted)_
+- `4d71c67b` 2026-04-01 — feat: Bankr partnership integration — wallet provisioning, tokenization, and trading fee credit loop [9 files] _(multi: [reconciler, infrastructure, feature, docs]; ai-assisted)_
+- `99785ff6` 2026-04-01 — fix: Post-ship audit cleanup — card order, window.open, extension placeholder, reclaim simplification [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f058d5bb` 2026-04-01 — fix: Resolve Bankr vs Virtuals/ACP wallet conflicts — dual wallet identity, tokenization guard, usage instructions [6 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `eabb2d2e` 2026-04-01 — docs: Linode/Akamai meeting prep — fleet audit, cost analysis, asks [1 files] _(ai-assisted)_
+- `39a530ea` 2026-04-01 — docs: Add root cause analysis and Linode-specific questions to meeting prep [1 files] _(ai-assisted)_
+- `12355411` 2026-04-01 — docs: $INSTACLAW tokenomics PRD — four-phase burn flywheel tied to real revenue [1 files] _(ai-assisted)_
+- `1aaed5bc` 2026-04-01 — security: Privacy guard in configureOpenClaw — force-wipe leftover data [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `195db698` 2026-04-01 — fix: Eliminate false unhealthy marks — HTTP-first health, restart grace, SSH debounce, lock file [4 files] _(**MANIFEST v52**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `80d55353` 2026-04-01 — chore: Trigger Vercel redeploy — previous build failure was transient [0 files] _(ai-assisted)_
+- `b13a36ec` 2026-04-01 — security: Fourth privacy layer — pre-assignment wipe + idempotency fix [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7b475a92` 2026-04-01 — feat: Provision AgentBook wallet during configureOpenClaw [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c4199976` 2026-04-01 — fix: Show AgentBook registration card for unregistered users [1 files] _(ai-assisted)_
+- `0cb5614b` 2026-04-01 — fix: AgentBook icon matches 3D glass orb style [1 files] _(ai-assisted)_
+- `61b7d9be` 2026-04-01 — feat: Batch restart endpoint for unhealthy VMs — /api/admin/restart-unhealthy [2 files] _(ai-assisted)_
+- `d1bdedf9` 2026-04-02 — fix: Retry gateway restart every 3 cycles, not just once at count 3 [1 files] _(ai-assisted)_
+- `2bc5744a` 2026-04-02 — docs: Public $INSTACLAW tokenomics page — condensed for website + CT [1 files] _(ai-assisted)_
+- `840d97eb` 2026-04-02 — feat: Public $INSTACLAW tokenomics page at /token — flywheel, burn sources, math, comparison [2 files] _(ai-assisted)_
+- `16dc054e` 2026-04-02 — fix: Mention Virtuals Protocol alongside Bankr for agent tokenization burns [2 files] _(multi: [feature, docs]; ai-assisted)_
+- `16dbaf84` 2026-04-02 — fix: Add circulating supply (28.2%) to token details section [1 files] _(ai-assisted)_
+- `53cf3b5f` 2026-04-02 — fix: Make circulating supply (28.2%) prominent across tokenomics page [1 files] _(ai-assisted)_
+- `10cf92e1` 2026-04-02 — docs: VM Lifecycle Management PRD — automated deletion, pool scaling, cost optimization [1 files] _(ai-assisted)_
+- `a2163cba` 2026-04-02 — fix: Rebrand token page from Base to Virtuals Protocol — matches primary liquidity pool [1 files] _(ai-assisted)_
+- `9a7279e2` 2026-04-02 — feat: Add multi-platform trading venues, liquidity expansion roadmap to tokenomics page [1 files] _(ai-assisted)_
+- `f8429211` 2026-04-02 — fix: Add LBank to trading venues, add '+ more exchanges' indicator [1 files] _(ai-assisted)_
+- `0c2f0200` 2026-04-02 — fix: Remove all em dashes from tokenomics page [1 files] _(ai-assisted)_
+- `20ed594c` 2026-04-02 — fix: Give flame icon an orb background in hero badge for better visibility [1 files] _(ai-assisted)_
+- `e1b899b3` 2026-04-02 — feat: Add organic flame flicker + glow animation to hero badge icon [2 files] _(ai-assisted)_
+- `0bf4ddcf` 2026-04-02 — fix: Generate agent wallets locally with viem (not on VM) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3c33aecb` 2026-04-02 — fix: Bump OpenClaw version pins to v2026.4.1 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9c0f1155` 2026-04-02 — fix: AgentBook register — match web app relay format exactly [1 files] _(ai-assisted)_
+- `eff6df29` 2026-04-02 — feat: add $100K Trading Competition card to /earn page [1 files] _(ai-assisted)_
+- `32b7a651` 2026-04-02 — feat: AgentBook registration via direct contract call (no relay) [2 files] _(ai-assisted)_
+- `8acb19ab` 2026-04-02 — feat: auto-enable VP from DegenClaw card — one-click join competition [1 files] _(ai-assisted)_
+- `0a4d568b` 2026-04-02 — feat: AgentBook card uses CLI bridge URL flow (matches web app) [1 files] _(ai-assisted)_
+- `a09fa334` 2026-04-02 — fix: Use location.href instead of window.open for bridge URL [1 files] _(ai-assisted)_
+- `4964b087` 2026-04-02 — fix: set restart lock before gateway stop in upgradeOpenClaw() [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `97d5ec38` 2026-04-02 — fix: DegenClaw card shows 'Running' badge when VP is enabled [1 files] _(ai-assisted)_
+- `65c4f744` 2026-04-02 — fix: AgentBook CLI version pin + bridge URL regex mismatch [3 files] _(ai-assisted)_
+- `003b1107` 2026-04-02 — fix: add tools.exec config to manifest v53 — restore exec access fleet-wide [1 files] _(**MANIFEST v53**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f9e8cbd6` 2026-04-02 — feat: maintenance gate for new signups + fix CSS import order [2 files] _(ai-assisted)_
+- `c746163a` 2026-04-02 — feat: AgentBook native transport — send verify directly to World App native layer [1 files] _(ai-assisted)_
+- `1a69d9c0` 2026-04-02 — fix: TypeScript error in AgentBook card — pass proof object directly [1 files] _(ai-assisted)_
+- `59304737` 2026-04-02 — experiment: AgentBook via MiniKit.verify() + direct contract call [2 files] _(ai-assisted)_
+- `98adae86` 2026-04-02 — fix: show full error detail from register-direct for diagnosis [1 files] _(ai-assisted)_
+- `c9b06ecf` 2026-04-02 — fix: register-direct script .mjs → .cjs (Node 22 ESM compat) [1 files] _(ai-assisted)_
+- `364dd11e` 2026-04-02 — fix: run register-direct from ~/.openclaw so viem is in node_modules [1 files] _(ai-assisted)_
+- `76bdde02` 2026-04-02 — fix: set NODE_PATH to find viem in global agentkit-cli node_modules [1 files] _(ai-assisted)_
+- `ab07245d` 2026-04-02 — fix: register-direct uses gasless relay instead of direct contract call [1 files] _(ai-assisted)_
+- `d5b12367` 2026-04-02 — fix: show full relay response for diagnosis, handle manualRegistration [1 files] _(ai-assisted)_
+- `e17c6aac` 2026-04-02 — fix: switch to World Chain contract where relay sponsors gas [1 files] _(ai-assisted)_
+- `f134c7f7` 2026-04-02 — fix: BigInt literal 0n → BigInt(0) for ES2020 target [1 files] _(ai-assisted)_
+- `62d4f6c1` 2026-04-02 — fix: omit network field from relay request (match v0.1.8 CLI behavior) [1 files] _(ai-assisted)_
+- `be3c1302` 2026-04-02 — fix: proper ABI decoding of proof (match agentkit-cli normalizeProof) [1 files] _(ai-assisted)_
+- `cc4a8484` 2026-04-02 — fix: match CLI behavior — any 200 from relay = success [1 files] _(ai-assisted)_
+- `dfea5dd1` 2026-04-02 — fix: show HTTP status code in relay rejection error [1 files] _(ai-assisted)_
+- `69e6bce1` 2026-04-03 — fix: stop silence watchdog restart storm — decouple fallback from restart [2 files] _(**MANIFEST v54**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `7184485b` 2026-04-03 — feat: AgentBook via IDKit v4 native transport with per-request app_id [4 files] _(ai-assisted)_
+- `a7c53829` 2026-04-03 — fix: use WASM-based signRequest for correct rp_context signature [1 files] _(ai-assisted)_
+- `b8afb269` 2026-04-03 — Revert "fix: use WASM-based signRequest for correct rp_context signature" [1 files]
+- `7241d6d9` 2026-04-03 — fix: handle IDKit v4 result format + add debug logging [1 files] _(ai-assisted)_
+- `ca3359fd` 2026-04-03 — fix: send full IDKit result + show received keys for field mapping [2 files] _(ai-assisted)_
+- `0fa3dff9` 2026-04-03 — fix: extract proof from IDKit v4 responses[0] array [1 files] _(ai-assisted)_
+- `8772a375` 2026-04-03 — fix: accept 'nullifier' field name from IDKit v4 (not nullifier_hash) [1 files] _(ai-assisted)_
+- `b5bc64d3` 2026-04-03 — fix: live desktop disconnect state race — show error + retry instead of silent reset [2 files] _(ai-assisted)_
+- `0e77dbee` 2026-04-03 — fix: show relay response detail in card error [1 files] _(ai-assisted)_
+- `814d35ec` 2026-04-03 — fix: use abi.encode (not encodePacked) for signal — match CLI exactly [1 files] _(ai-assisted)_
+- `73e1576f` 2026-04-03 — fix: Apply Jordan + Don feedback — remove projections (legal risk), add live burn tracker, fix plateau wording [1 files] _(ai-assisted)_
+- `e2e6117b` 2026-04-03 — feat: Add collapsible estimated projections with $1.24M number and legal disclaimer [1 files] _(ai-assisted)_
+- `043e88be` 2026-04-03 — fix: Replace burn tracker zeros with clean Coming May 2026 teaser state [1 files] _(ai-assisted)_
+- `101dfc0d` 2026-04-03 — fix: Rebuild flywheel with CSS orbit animation, proper node spacing, larger container [2 files] _(ai-assisted)_
+- `283b6e0c` 2026-04-03 — feat: Replace orbiting dot with flowing energy ring animation on flywheel [2 files] _(ai-assisted)_
+- `21369a50` 2026-04-03 — feat: Add comprehensive legal disclaimer to tokenomics page [1 files] _(ai-assisted)_
+- `655f7994` 2026-04-03 — feat: S-tier flywheel animation — conic gradient energy sweep with glow, fix label cutoff [1 files] _(ai-assisted)_
+- `0e01bfe7` 2026-04-03 — fix: Glass UI flywheel — contained layout, thinner energy sweep, no clipping [1 files] _(ai-assisted)_
+- `02ad30d3` 2026-04-03 — fix: Align flywheel ring, energy sweep, and glass cards to same center point, bolder animation [1 files] _(ai-assisted)_
+- `11705f88` 2026-04-03 — fix: True-center flywheel alignment — flex centering with 0x0 anchor point, all elements aligned [1 files] _(ai-assisted)_
+- `f2cfb29b` 2026-04-03 — fix: Revert flywheel to original simple version — dots + text, no glass cards [1 files] _(ai-assisted)_
+- `13553933` 2026-04-03 — fix: Separate dot positions (on ring) from label positions (pushed outward) for balanced flywheel [1 files] _(ai-assisted)_
+- `06db7239` 2026-04-03 — test: bridge URL via <a href> tag — Andy says should open drawer [1 files] _(ai-assisted)_
+- `c56c38b2` 2026-04-03 — test: trigger bridge URL via hidden iframe to keep user in mini app [1 files] _(ai-assisted)_
+- `459455e0` 2026-04-03 — fix: revert to <a href> for bridge URL — iframe doesn't trigger drawer [1 files] _(ai-assisted)_
+- `ce6682ca` 2026-04-03 — fix: switch CLI to v0.1.8 (World Chain) + check both chains [4 files] _(ai-assisted)_
+- `02ea12bf` 2026-04-03 — feat: Phase 2 AgentBook workaround — closeMiniapp + push notification [5 files] _(multi: [feature, docs]; ai-assisted)_
+- `55a0c4e4` 2026-04-03 — fix: stop health cron email spam + add Stripe reconciliation cron [3 files] _(ai-assisted)_
+- `8c4cb0db` 2026-04-03 — fix: notification API deeplink format + accurate notified response [1 files] _(ai-assisted)_
+- `d1d1a61a` 2026-04-03 — fix: TypeScript error in stripe-reconcile cron (Map type inference) [1 files] _(ai-assisted)_
+- `86668c7f` 2026-04-03 — feat: VM lifecycle cron — auto-delete suspended VMs from Linode [3 files] _(ai-assisted)_
+- `b3ac63cf` 2026-04-03 — fix: Replace Jordan's analogies with actual InstaClaw use cases in Silent Engine section [1 files] _(ai-assisted)_
+- `f8252d32` 2026-04-03 — fix: Harder-hitting use cases — multi-agent orchestration, autonomous trading, always-on content [1 files] _(ai-assisted)_
+- `ee849b9c` 2026-04-03 — feat: append return_to deeplink to bridge URL for auto-redirect back to mini app [1 files] _(ai-assisted)_
+- `4b5af763` 2026-04-03 — fix: Match flywheel container height to SVG viewBox — dots now sit perfectly on ring [1 files] _(ai-assisted)_
+- `1008a9c4` 2026-04-03 — feat: Add 4th burn source — $INSTACLAW trading fee burns (10% of Virtuals trading fees) [1 files] _(ai-assisted)_
+- `efcba0b2` 2026-04-03 — fix: Add trading fees to flywheel diagram revenue step [1 files] _(ai-assisted)_
+- `0e1d39b7` 2026-04-03 — fix: BNB comma spacing, add Trading Loop to roadmap, add trading to closing quote [1 files] _(ai-assisted)_
+- `63251dad` 2026-04-03 — fix: Update burn stat to $120+ floor with stacking sources explanation [1 files] _(ai-assisted)_
+- `afa16b30` 2026-04-03 — fix: Change all burn source timelines to Coming Soon [1 files] _(ai-assisted)_
+- `071f2a63` 2026-04-03 — fix: Agent Economy Loop copy — emphasize one-click tokenization, auto fee routing, self-sustaining agents [1 files] _(ai-assisted)_
+- `ce06d5b7` 2026-04-03 — fix: Remove Bankr and Virtuals partner names from burn mechanism descriptions — save for separate announcement [1 files] _(ai-assisted)_
+- `fdce3a20` 2026-04-03 — fix: Silent Engine — add World Mini App, 17M+ verified humans, WLD grants as house money [1 files] _(ai-assisted)_
+- `85a18f35` 2026-04-03 — fix: Add 'and growing fast' to World verified humans count [1 files] _(ai-assisted)_
+- `49c06fb5` 2026-04-03 — fix: Ecosystem Tax copy — platform positioning, app store economics, compounding growth [1 files] _(ai-assisted)_
+- `0b98fa15` 2026-04-03 — fix: Ecosystem Tax — App Store for AI agents positioning, distribution power, network effects [1 files] _(ai-assisted)_
+- `f001f404` 2026-04-03 — fix: Ecosystem Tax copy — match thread style, clearer for normal consumers [1 files] _(ai-assisted)_
+- `ce93b456` 2026-04-03 — feat: Add contextual signup CTAs throughout tokenomics page [1 files] _(ai-assisted)_
+- `73bbe165` 2026-04-05 — fix: make Linode primary provider + default to dedicated CPU (g6-dedicated-2) [2 files] _(ai-assisted)_
+- `5d3e5e98` 2026-04-05 — fix: remove Hetzner/DO from provisioning array — Linode only [1 files] _(ai-assisted)_
+- `b3214214` 2026-04-05 — fix: add exec-approvals.json to manifest + configureOpenClaw (v55) [2 files] _(**MANIFEST v55**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9f951ed2` 2026-04-05 — docs: comprehensive API cost optimization PRD with research findings [1 files] _(ai-assisted)_
+- `f55964fa` 2026-04-05 — chore: redeploy instaclaw-mini with NEXT_PUBLIC_MAINTENANCE=true [0 files]
+- `1e1ef16f` 2026-04-05 — chore: trigger instaclaw-mini redeploy with NEXT_PUBLIC_MAINTENANCE=true [1 files] _(ai-assisted)_
+- `4c613767` 2026-04-05 — docs: fix PRD gaps — add 2.28B tokens stat, bankr anomaly, standardize threshold [1 files] _(ai-assisted)_
+- `d8868c4f` 2026-04-05 — feat: enable Anthropic prompt caching — estimated $7,714/mo savings [1 files] _(ai-assisted)_
+- `4788826e` 2026-04-05 — feat: glass overlay maintenance gate with email capture [3 files] _(ai-assisted)_
+- `309d1c0a` 2026-04-05 — perf: health cron skips 0-credit VMs with no active subscription [1 files] _(ai-assisted)_
+- `4e10d340` 2026-04-05 — fix: suspend-check cron — batch queries, DB-first, 5min timeout [1 files] _(ai-assisted)_
+- `87d8309d` 2026-04-05 — chore: remove legacy polymarket/ skill directory [11 files] _(ai-assisted)_
+- `9d829ba2` 2026-04-05 — fix: Stripe webhook always writes current_period_end on sub updates + cancels [1 files] _(ai-assisted)_
+- `3869a48a` 2026-04-05 — chore: rebuild instaclaw-mini with NEXT_PUBLIC_MAINTENANCE baked in [1 files] _(ai-assisted)_
+- `cb06b663` 2026-04-05 — fix: health cron skips suspended VMs — prevents un-suspending them [1 files] _(ai-assisted)_
+- `4fe4f18f` 2026-04-05 — temp: log system prompt size for API cost verification (REMOVE AFTER) [1 files]
+- `8129fc2b` 2026-04-05 — temp: remove system prompt size log (verified: 14,836 tokens, not 189K) [1 files]
+- `1066639a` 2026-04-05 — temp: detailed token analysis log (REMOVE AFTER 50 CALLS) [1 files]
+- `cd3a03fd` 2026-04-05 — fix: TS error in temp token analysis log [1 files]
+- `ac124dcd` 2026-04-06 — docs: cross-session memory PRD + research findings, remove temp TOKEN_ANALYSIS log [3 files] _(ai-assisted)_
+- `57535f8a` 2026-04-06 — docs: cross-session memory PRD v3 — 9.5/10 implementation ready, bootstrap verified, Phase 3 Python spec, A/B plan [1 files] _(ai-assisted)_
+- `b73facbf` 2026-04-06 — feat: cross-session memory — manifest v56, session-end hook, MEMORY.md auto-summaries [5 files] _(**MANIFEST v56**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a276bcdf` 2026-04-06 — docs: add InstaClaw application answers reference [1 files] _(ai-assisted)_
+- `ab0f3030` 2026-04-06 — docs: remove em dashes from application answers [1 files] _(ai-assisted)_
+- `680ec3ab` 2026-04-06 — chore: update snapshot to private/38031667 (v56 + cross-session memory, 15/15 verified) [1 files] _(ai-assisted)_
+- `bddf7db7` 2026-04-06 — docs: comprehensive snapshot creation process in CLAUDE.md + infrastructure PRD [2 files] _(ai-assisted)_
+- `b3643d11` 2026-04-06 — docs: update API cost PRD with corrected numbers — system prompt is 14.8K tokens not 189K [1 files] _(ai-assisted)_
+- `7db9b226` 2026-04-06 — fix: session-end hook reads GATEWAY_TOKEN from .env file (cron doesn't source env) [2 files] _(**MANIFEST v57**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `1f1bdf09` 2026-04-06 — feat: fleet upgrade now reconciles manifest files before upgrading binary [1 files] _(ai-assisted)_
+- `3f537f1c` 2026-04-06 — fix: fleet upgrade reliability — SSH timeouts, individual config settings, lock cleanup [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b49e33bb` 2026-04-06 — fix: version pin reminder only shows after fleet deploy, not after canary [1 files] _(ai-assisted)_
+- `dbe7f853` 2026-04-06 — fix: run openclaw doctor --fix before gateway restart during upgrades [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `fd67fb3c` 2026-04-07 — chore: update OpenClaw version pins to 2026.4.5 [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3c072774` 2026-04-07 — chore: update snapshot to private/38054012 (v57 + OpenClaw 2026.4.5, 15/15 verified) [1 files] _(ai-assisted)_
+- `bf949b21` 2026-04-07 — chore: force instaclaw-mini rebuild to bake in NEXT_PUBLIC_MAINTENANCE [1 files] _(ai-assisted)_
+- `ef868b64` 2026-04-07 — chore: rebuild instaclaw-mini after re-adding NEXT_PUBLIC_MAINTENANCE [1 files] _(ai-assisted)_
+- `24490590` 2026-04-07 — fix: 4 launch blockers — offline banner, credit errors, model selector, provision failure [3 files] _(ai-assisted)_
+- `c88e46b8` 2026-04-07 — chore: rebuild instaclaw-mini without maintenance gate [1 files] _(ai-assisted)_
+- `86c72424` 2026-04-07 — chore: force rebuild after NEXT_PUBLIC_MAINTENANCE deletion confirmed [1 files] _(ai-assisted)_
+- `795a7861` 2026-04-07 — feat: automatic XMTP/World Chat setup during VM provisioning [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4a1afd22` 2026-04-07 — fix: WLD delegation users get subscription records — prevents false suspension [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `16c93966` 2026-04-07 — fix: WLD subscription lifecycle — creation, expiry, and VM reactivation [1 files] _(ai-assisted)_
+- `9e58409f` 2026-04-07 — feat: AgentBook registration modal on first home page load [2 files] _(ai-assisted)_
+- `e08d9a3a` 2026-04-07 — fix: health cron suspension pass skips VMs with remaining credits [1 files] _(ai-assisted)_
+- `1de818cb` 2026-04-08 — fix: spots counter flickering + remove hardcoded 62 fallback [2 files] _(ai-assisted)_
+- `9880c119` 2026-04-08 — fix: responsive onboarding hero — fits all phone sizes without scrolling [1 files] _(ai-assisted)_
+- `d3ea73fe` 2026-04-08 — fix: responsive onboarding — proportional scaling for all phone sizes [1 files] _(ai-assisted)_
+- `40820215` 2026-04-08 — fix: proportional zoom scaling for all phone sizes [1 files] _(ai-assisted)_
+- `edce5567` 2026-04-08 — fix: transform scale approach — render at fixed Pro Max dimensions, scale to fit [2 files] _(ai-assisted)_
+- `44cadadb` 2026-04-08 — fix: center scaled content + clip overflow — no right-side scrollbar [1 files] _(ai-assisted)_
+- `644e8be4` 2026-04-08 — revert: restore original Pro Max layout — remove all scaling/zoom attempts [1 files] _(ai-assisted)_
+- `b4b1d53e` 2026-04-08 — fix: dvh-based responsive layout — industry standard approach [1 files] _(ai-assisted)_
+- `b190f6de` 2026-04-08 — fix: restore original Pro Max spacing — match reference screenshot exactly [1 files] _(ai-assisted)_
+- `fe387e56` 2026-04-08 — fix: verified users without payment stay on onboarding, not redirected to /home [1 files] _(ai-assisted)_
+- `68e9e4c3` 2026-04-08 — fix: install manifest cron jobs during configureOpenClaw() — P0 fix [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `229fd5a8` 2026-04-08 — fix: periodic cron audit + expanded 15-point verification [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `0d73f05e` 2026-04-08 — feat: hibernation system for WLD users — warm sleeping UX, margin protection [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `858163ba` 2026-04-08 — fix: deploy script FILES in configureOpenClaw + audit ready pool VMs [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5a1478da` 2026-04-08 — chore: rebuild instaclaw with fixed MINI_APP_PROXY_SECRET (removed trailing \n) [0 files]
+- `0df9c3e9` 2026-04-08 — chore: force mini app rebuild to clear cached PROXY_SECRET [1 files]
+- `4b74e1e9` 2026-04-08 — chore: new snapshot private/38069990 (v57-all-crons) + fix vm-watchdog 300s lock [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `6df5e58a` 2026-04-08 — fix: closeMiniApp fires immediately — no setTimeout delay [1 files] _(ai-assisted)_
+- `0ff6cf80` 2026-04-08 — fix: WLD users get credits only — no fake subscriptions [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `cf49a997` 2026-04-08 — perf: reduce hibernate window from 14 to 7 days [1 files] _(ai-assisted)_
+- `1c0dabc2` 2026-04-08 — fix: revert closeMiniApp to 500ms delay — sync close kills navigation [1 files] _(ai-assisted)_
+- `33e82d3e` 2026-04-08 — chore: update snapshot to private/38069990 (v57-all-crons, 21/21 verified) [1 files] _(ai-assisted)_
+- `2cd636d3` 2026-04-09 — fix: retry on 400 "agent busy" — handles heartbeat collisions [2 files] _(ai-assisted)_
+- `ef93d4ce` 2026-04-09 — fix: add sandbox.mode=off to manifest — prevent Docker requirement on VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5014764a` 2026-04-09 — fix: add tier sync to health check — prevent upgrade tier mismatch [1 files] _(ai-assisted)_
+- `5aa2dc37` 2026-04-09 — fix: memory index cron uses NVM instead of bare node path [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `cdcb78f2` 2026-04-09 — fix: lower session-end hook threshold + add functional health checks [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `088ce478` 2026-04-09 — feat: Wire up Bankr wallet provisioning — every new agent gets a wallet at deploy [4 files] _(ai-assisted)_
+- `8a8b6005` 2026-04-09 — fix: WALLET.md wallet summary — agents know all 3 wallets and their distinct purposes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `88019316` 2026-04-09 — fix: lower session-end hook threshold from 2 to 1 [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c8fb25ce` 2026-04-09 — fix: Crystal clear wallet routing across all agent context files [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7eeac386` 2026-04-09 — feat: memory health scoring in health check + threshold=1 [1 files] _(ai-assisted)_
+- `21b5313f` 2026-04-09 — feat: Fleet push workspace endpoint — push updated wallet routing to all assigned VMs [2 files] _(ai-assisted)_
+- `276204f0` 2026-04-09 — feat: Fleet workspace verification endpoint — spot-check 10 random VMs [2 files] _(ai-assisted)_
+- `556206f5` 2026-04-09 — docs: update cross-session memory PRD with deployment status [1 files] _(ai-assisted)_
+- `9857ba5e` 2026-04-09 — feat: VM fix endpoint — targeted fixes for individual VMs (list-crons, fix-soul-memory-filing) [2 files] _(ai-assisted)_
+- `93fcf856` 2026-04-09 — feat: OpenClaw version pinning — auto-revert unauthorized upgrades [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2a9cfb08` 2026-04-09 — fix: increase retry to 4 attempts with exponential backoff (5s, 10s, 15s) [2 files] _(ai-assisted)_
+- `dddfe941` 2026-04-09 — fix: task endpoints send model 'openclaw' not 'claude-sonnet-4-6' [4 files] _(ai-assisted)_
+- `3f09c612` 2026-04-09 — docs: Update Bankr devrel feedback — full day's integration progress [1 files] _(ai-assisted)_
+- `e84e5fe4` 2026-04-09 — docs: Clean up Bankr devrel notes — external-facing feedback only [1 files] _(ai-assisted)_
+- `f3fef0b0` 2026-04-09 — docs: Bankr devrel — first API test results, address casing finding, pre-provisioning idea [1 files] _(ai-assisted)_
+- `72b3dfa3` 2026-04-09 — security: Encrypt Bankr API keys at rest with AES-256-GCM [3 files] _(ai-assisted)_
+- `0e128a04` 2026-04-09 — docs: Bankr devrel — note encryption at rest for API keys [1 files] _(ai-assisted)_
+- `29613d58` 2026-04-09 — feat: Enable promotion code entry at Stripe checkout [1 files] _(ai-assisted)_
+- `9c9dd146` 2026-04-09 — feat: Add partner column to instaclaw_users and instaclaw_vms [1 files] _(ai-assisted)_
+- `dc63f2e2` 2026-04-09 — feat: Read partner cookie during signup and set on user record [1 files] _(ai-assisted)_
+- `0b4dcea4` 2026-04-09 — feat: Add /edge-city partner portal page [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `a49a4404` 2026-04-09 — feat: Auto-apply Edge City partner coupon at checkout [1 files] _(ai-assisted)_
+- `af32f749` 2026-04-09 — feat: Install Edge City skill for partner=edge_city users [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `06685a42` 2026-04-09 — docs: Update PRD with Bankr-pattern skill install and XMTP layer [1 files] _(ai-assisted)_
+- `4bf8ef43` 2026-04-09 — temp: Add admin endpoint to verify Edge City skill installation (delete after test) [1 files] _(multi: [infrastructure, edge])_
+- `a6cb94d3` 2026-04-09 — fix: Use validateAdminKey for verify-edge-skill endpoint [1 files] _(multi: [infrastructure, edge])_
+- `9d8ebd0a` 2026-04-09 — chore: force redeploy for verify-edge-skill endpoint [0 files]
+- `d1a06b90` 2026-04-10 — fix: Always write EDGEOS_BEARER_TOKEN and SOLA_AUTH_TOKEN to Edge VM .env [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `06a399be` 2026-04-10 — fix: watchdog version cooldown from 1h to 10min [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `df9f3cc9` 2026-04-10 — feat: Wire up Bankr token launch API + draft webhook spec for Sinaver [3 files] _(ai-assisted)_
+- `57e83519` 2026-04-10 — feat: session backup + remove daily limit buffer [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `96d9d594` 2026-04-10 — docs: Bankr devrel — log simulated launch test results, doc findings, pre-launch blockers [1 files] _(ai-assisted)_
+- `0d9e612d` 2026-04-10 — feat: replenish-pool cron — auto-provision VMs from snapshot [6 files] _(ai-assisted)_
+- `4a451ae0` 2026-04-10 — docs: Bankr devrel — log personal vs org wallet UX observation [1 files] _(ai-assisted)_
+- `a4b81595` 2026-04-10 — chore: cleanup after replenish-pool deploy — remove pool-monitor + add Rule 8 [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `2baf6cdf` 2026-04-10 — feat(bankr): View on Bankr link + suspend wallet on VM reclaim [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `61be338f` 2026-04-10 — fix: vm-watchdog version-pin subprocess bug + manifest v58 [2 files] _(**MANIFEST v58**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `2323db9b` 2026-04-10 — feat(mini): funnel non-Orb users into World Grow + remove dead branch [2 files] _(ai-assisted)_
+- `d732c26c` 2026-04-10 — fix: export missing SOUL.md sections — unbreak main build [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7815bae7` 2026-04-10 — fix: 3 pre-existing landmines surfaced by configureOpenClaw audit [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `94fbc487` 2026-04-10 — docs(CLAUDE): bump snapshot ID to private/38111101 (v58) [1 files] _(ai-assisted)_
+- `0e5c4932` 2026-04-10 — fix(test): _test-configure-openclaw port + telegram token handling [1 files] _(ai-assisted)_
+- `f9f4b6bb` 2026-04-10 — feat(cron): dedicated reconcile-fleet cron — unstarves config audit [3 files] _(ai-assisted)_
+- `7efe161f` 2026-04-13 — fix: Tokenize button uses clean glass UI — inner glow, light refraction, subtle depth [1 files] _(ai-assisted)_
+- `88135433` 2026-04-13 — fix: Tokenize button — clean glass, no edge artifacts [1 files] _(ai-assisted)_
+- `1f86f276` 2026-04-13 — fix: Tokenize button glass — top-half shine, warm amber shadow, no edge artifacts [1 files] _(ai-assisted)_
+- `4d8cb416` 2026-04-13 — fix: always update last_health_check when HTTP health passes [1 files] _(ai-assisted)_
+- `55ee33e9` 2026-04-13 — fix: move Brave apiKey to plugins.entries.brave (OpenClaw 2026.4.5+) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d67a4e37` 2026-04-13 — fix: auto-heal crash-looping gateways + alert on broken provisioning [4 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `8c04ce2d` 2026-04-14 — security: Admin alert on CRITICAL Bankr token launch DB finalize failure [1 files] _(ai-assisted)_
+- `5db907bf` 2026-04-14 — feat: Bankr tokenization card in World mini app + mini app token auth on tokenize endpoint [4 files] _(ai-assisted)_
+- `f30a788d` 2026-04-14 — feat: Admin email alert on successful token launches [1 files] _(ai-assisted)_
+- `08eedd5b` 2026-04-14 — feat: Token launch alerts to all 3 Cooper emails [2 files] _(ai-assisted)_
+- `a17b55bf` 2026-04-14 — CRITICAL fix: tokenize endpoint web app auth was broken — userId self-assignment [1 files] _(ai-assisted)_
+- `63622949` 2026-04-14 — fix: Auto-clear stale tokenization locks after 5 minutes [1 files] _(ai-assisted)_
+- `1388b0f6` 2026-04-14 — TEMP: Celebration animation preview + token card redesign + devrel notes [7 files] _(multi: [feature, docs]; ai-assisted)_
+- `8c49f322` 2026-04-14 — fix: Remove temp test button from Bankr wallet card [1 files] _(ai-assisted)_
+- `c1c4ade2` 2026-04-14 — feat: Post-launch Share to X card + Copy link — viral growth loop [2 files] _(ai-assisted)_
+- `92af6132` 2026-04-14 — fix: Share to X audit fixes — timer cancel, mini app copy flow, null guard [2 files] _(ai-assisted)_
+- `ba96945c` 2026-04-14 — feat: Auto-fill token metadata — description + websiteUrl on every launch [1 files] _(ai-assisted)_
+- `13c6825e` 2026-04-14 — feat: Token PFP — glass orb image generation + upload with consistent brand style [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `7e5fdba4` 2026-04-14 — security: Block all tokenization until prod Bankr org is ready [2 files] _(ai-assisted)_
+- `a3c7bb0a` 2026-04-15 — fix: backfill agentbook_registered when on-chain registration detected [1 files] _(ai-assisted)_
+- `7b229889` 2026-04-15 — docs: Bankr devrel — fee wallet auth UX confusion feedback [1 files] _(ai-assisted)_
+- `13bbfec0` 2026-04-15 — feat: Agent learns about its token — WALLET.md + MEMORY.md after launch [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `192472c9` 2026-04-15 — feat: Auto-generate token PFP on form open — Apple-level anticipation UX [4 files] _(ai-assisted)_
+- `9bad6f72` 2026-04-15 — fix: Token PFP — DALL-E generates full 3D glass orb directly, no compositing [1 files] _(ai-assisted)_
+- `66aed50e` 2026-04-15 — fix: Token PFP preview uses rounded-xl not rounded-full — no more orb-in-a-circle [2 files] _(ai-assisted)_
+- `c6292ae2` 2026-04-15 — feat: Token PFP reads agent personality from SOUL.md + MEMORY.md via SSH [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `12492d74` 2026-04-15 — fix: Token PFP preview size — w-32 webapp, w-28 mini app, no border frame [2 files] _(ai-assisted)_
+- `0b987125` 2026-04-15 — feat: Hash-seeded unique pixel art PFPs — like GitHub identicons [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `43dade2d` 2026-04-17 — feat: Procedural pixel art face PFPs — deterministic per agent [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `aa532e51` 2026-04-17 — feat: Face PFPs match landing page quality — hand-crafted templates + glass orb [1 files] _(ai-assisted)_
+- `ae0719f3` 2026-04-17 — feat: Layered 10×10 procedural face generator — 45M+ structural combos [3 files] _(ai-assisted)_
+- `2e90a38c` 2026-04-19 — fix: PFP generator polish — rare horns, teeth-smile mouth, safer scar [2 files] _(ai-assisted)_
+- `7d87c4ed` 2026-04-19 — Merge branch 'faces-layered-procedural' into main [0 files] _(ai-assisted; merge)_
+- `b3f5cf4e` 2026-04-19 — feat: 16×16 PFP generator with personality-locked character archetype [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `0a5823b0` 2026-04-19 — Merge branch 'faces-16x16-personality-locked' into main [0 files] _(ai-assisted; merge)_
+- `efd7dd7d` 2026-04-19 — docs: Pillar 4 — Agent PFP NFT Collection (future milestone) [1 files] _(ai-assisted)_
+- `e5286b4d` 2026-04-20 — feat: full 9-layer CryptoPunks-style crab trait generator at 24×24 [3 files] _(ai-assisted)_
+- `221a5082` 2026-04-20 — observability: diagnose Token PFP personality read path [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6129ac1b` 2026-04-20 — Merge main (diagnostic logging patch) [0 files] _(merge)_
+- `f159fcc8` 2026-04-20 — feat: port 24×24 crab generator into production token-image-generator [1 files] _(ai-assisted)_
+- `fb125602` 2026-04-20 — Merge branch 'pfp-crab-pivot' into main [0 files] _(merge)_
+- `3fb43383` 2026-04-20 — feat: port Candidate 02 silhouette at 28×28 with 2-tone baked in [4 files] _(ai-assisted)_
+- `3f15249d` 2026-04-20 — feat: use Candidate 02 PNG as base + hue-tint for shell variety [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b777f7c7` 2026-04-20 — fix: restore glass-orb 3D background effect on hue-shift pipeline [1 files] _(ai-assisted)_
+- `42ae0a6f` 2026-04-20 — feat: HD trait overlays on Candidate 02 base — full 1/1 uniqueness [5 files] _(ai-assisted)_
+- `446b6a6a` 2026-04-20 — feat: HD meme-canon trait overlays — big, bold, recognizable [2 files] _(ai-assisted)_
+- `c4737d4a` 2026-04-20 — fix: accessories readable at dashboard preview size (~160px) [3 files] _(ai-assisted)_
+- `2c2c0576` 2026-04-20 — debug: instrument /api/bankr/tokenize with stage logs + outer try/catch [1 files] _(ai-assisted)_
+- `c491cd60` 2026-04-20 — debug: bump maxDuration to 60s + log Bankr fetch boundaries [1 files] _(ai-assisted)_
+- `d6a31ff2` 2026-04-20 — debug: log PFP generate request — raw body + client state [2 files] _(ai-assisted)_
+- `04e24146` 2026-04-20 — feat(bankr): Trade on Bankr + DexScreener chart for V4/Doppler tokens [1 files] _(ai-assisted)_
+- `671d8c58` 2026-04-20 — feat(bankr): HowToBuy disclosure on wallet card + share card [2 files] _(ai-assisted)_
+- `e6ac015e` 2026-04-21 — manifest v59: enable gateway.openai.chatCompletionsEnabled [1 files] _(**MANIFEST v59**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9e783f92` 2026-04-21 — manifest v60: install pinned @bankr/cli@0.2.15 during configureOpenClaw [2 files] _(**MANIFEST v60**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `8d7219c8` 2026-04-21 — refactor: extract provisionBankrWallet into lib/bankr-provision.ts [2 files] _(ai-assisted)_
+- `8fc9861d` 2026-04-21 — copy: TOOLS.md wallet/fees trigger + bankr-messages constant [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bfd36690` 2026-04-21 — manifest v61: fix broken chat-completions config key [1 files] _(**MANIFEST v61**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f3e47b5e` 2026-04-21 — fix: Vercel gateway callers use model=openclaw + x-openclaw-model [5 files] _(ai-assisted)_
+- `26efbdd8` 2026-04-21 — feat(cron): Pass 0 recovers orphaned paid users with no VM [1 files] _(ai-assisted)_
+- `bd1f6cc3` 2026-04-21 — chore(scripts): add reusable orphan recovery + Pass 0 preview [2 files] _(ai-assisted)_
+- `f4c8e55a` 2026-04-24 — feat(reconcile): Phase 2c — strict-mode fleet reconciliation [9 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `1822ea57` 2026-04-26 — fix(cron/health-check): per-VM deadline + cron lock to prevent batch-wide hangs [1 files] _(ai-assisted)_
+- `16bfa2be` 2026-04-26 — fix(configure): pre-create all ~/.openclaw subdirs before any writes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `0e50d041` 2026-04-26 — debug(configure): expose underlying Postgres error in DB-write failure [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `678c2263` 2026-04-27 — feat(bankr): pin @bankr/cli@0.3.1 — direct claim API target [3 files] _(**MANIFEST v62**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `4eacc619` 2026-04-27 — docs: bump LINODE_SNAPSHOT_ID to private/38458138 (v62) [1 files] _(ai-assisted)_
+- `28ac6187` 2026-04-27 — feat(xmtp): proactive first-message on VM provisioning (#2) [5 files] _(multi: [reconciler, infrastructure, docs])_
+- `91597aff` 2026-04-27 — docs(bankr): post-Sinaver claim API integration review checklist [1 files] _(ai-assisted)_
+- `f4fc7634` 2026-04-27 — scripts: post-outage ops toolkit (recovery + audit + fleet probes) [11 files] _(ai-assisted)_
+- `21ac38b7` 2026-04-27 — fix(xmtp): always refresh xmtp-agent.mjs on configure (atomic) (#3) [1 files] _(multi: [reconciler, infrastructure])_
+- `821925cc` 2026-04-27 — feat(reconcile): auto-heal pinned npm globals (@bankr/cli + openclaw) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `913fcfc6` 2026-04-27 — feat(vm-lifecycle): Phase 2 — orphan reconciliation pass + audit log [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `56238ec4` 2026-04-27 — feat(xmtp): per-user greeting marker + script-refresh fallback alert (#4) [5 files] _(multi: [reconciler, infrastructure])_
+- `9801bdd0` 2026-04-27 — fix(reconcile): enforce agents.defaults.model.primary to prevent OpenAI default [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `35a2e87d` 2026-04-27 — fix(gateway): intercept rate-limit + auth-failure errors before they leak to chat [1 files] _(ai-assisted)_
+- `697bcd72` 2026-04-27 — feat(vm-lifecycle): Phase 3 — freeze/thaw pattern (#5) [6 files] _(ai-assisted)_
+- `a6ae2087` 2026-04-27 — feat(analytics): onboarding events log + 7 emit sites (#5) [8 files] _(multi: [infrastructure, feature])_
+- `636139a9` 2026-04-27 — fix(vm-lifecycle): Phase 3 audit — 8 safety fixes (#6) [2 files] _(ai-assisted)_
+- `0fa562d3` 2026-04-27 — fix(silence-watchdog): only inspect telegram-origin sessions; manifest v63 [2 files] _(**MANIFEST v63**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be3184ca` 2026-04-27 — feat(analytics): PostHog server-side parallel emit + greeting backfill script (#6) [7 files] _(multi: [infrastructure, feature])_
+- `0ab56017` 2026-04-27 — feat(dashboard): gas funding guide card under BankrWalletCard [2 files] _(ai-assisted)_
+- `396093f2` 2026-04-28 — fix(reconcile): 3 critical bugs that left users on stale code (#7) [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c2416e1c` 2026-04-28 — security: add X-Frame-Options + CSP frame-ancestors to instaclaw.io [1 files]
+- `16d8980f` 2026-04-28 — fix(xmtp): detect NVM node path dynamically in instaclaw-xmtp.service [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4fffb27f` 2026-04-28 — refactor(configureOpenClaw): collect partial_failures instead of swallowing [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e094ed53` 2026-04-28 — feat(reconcile): add 7 deploy heal steps + bump-without-push gating [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `65f79dae` 2026-04-28 — feat(reconcile): Node 22.22.2 + OpenClaw 2026.4.26 pinned upgrade [3 files] _(**MANIFEST v64**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `9f3aff5b` 2026-04-28 — fix(reconcile): heal steps must not start services on suspended/hibernating VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `98b07d21` 2026-04-28 — feat(configure): gate configure response on critical partialFailures [1 files] _(ai-assisted)_
+- `ddd1e4d0` 2026-04-28 — feat(browser-relay): restore install UI now that Chrome Web Store listing is live [1 files] _(ai-assisted)_
+- `722f88de` 2026-04-28 — chore: trigger redeploy after preview auth env fix [0 files] _(ai-assisted)_
+- `6f7f44d3` 2026-04-28 — merge: origin/main into fix/heal-suspended-and-critical-gate [0 files] _(merge)_
+- `4c59f96e` 2026-04-28 — fix(webhook): prevent silent credit_pack RPC failures + add orphan recovery [1 files] _(ai-assisted)_
+- `813fba1c` 2026-04-28 — chore(ops): add permanent fleet audit + heal scripts [3 files] _(ai-assisted)_
+- `ba14ca33` 2026-04-28 — docs(ops): note suspended-VM gateway restart loop for follow-up [1 files] _(ai-assisted)_
+- `86e4bb25` 2026-04-28 — fix(reconcile): close strictErrors gate hole in stepNodeUpgrade + stepNpmPinDrift [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `24b4b019` 2026-04-28 — fix(audit): use nvm default for node-version detection, not alphabetically-first [1 files] _(ai-assisted)_
+- `bcbe6a39` 2026-04-28 — feat(browser-relay): beta disclaimer in dashboard + /browser-relay docs page [2 files] _(ai-assisted)_
+- `fc213aab` 2026-04-28 — fix(browser-relay): surface relay-backend outage as maintenance state [4 files] _(multi: [feature, docs]; ai-assisted)_
+- `46b1b709` 2026-04-29 — copy(bankr): final share-to-X tweet — self-funding flywheel framing [2 files] _(ai-assisted)_
+- `f0b8ad45` 2026-04-29 — feat(browser-relay): add browser-relay-server.js to replace removed OpenClaw subsystem [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `e85666d9` 2026-04-29 — feat(reconcile): wire browser-relay-server into configureOpenClaw + manifest v65 [3 files] _(**MANIFEST v65**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `57675e78` 2026-04-29 — fix(reconcile): include scripts/browser-relay-server/ in Next file tracing [1 files] _(ai-assisted)_
+- `be95b11a` 2026-04-29 — fix(reconcile): npm cache clean before openclaw install + tighten ExecStart grep [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c5f394c2` 2026-04-29 — chore(vercel): temporarily disable reconcile-fleet cron during v64/v65 fleet upgrade [1 files] _(ai-assisted)_
+- `9e6a5263` 2026-04-29 — chore(browser-relay): drop maintenance banners — relay deployed fleet-wide [2 files] _(ai-assisted)_
+- `6c043902` 2026-04-29 — fix(vercel): remove reconcile-fleet cron cleanly (was malformed in c5f394c) [1 files] _(ai-assisted)_
+- `17b78313` 2026-04-29 — revert(vercel): restore original cron config — broken schema blocked 3 deploys [1 files]
+- `83ca0b53` 2026-04-29 — fix(reconcile): Bug C — stop gateway before openclaw npm install [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f10f48d7` 2026-04-29 — feat(bankr-sync): shared helper to detect chat-driven token launches [1 files] _(ai-assisted)_
+- `51f3041d` 2026-04-29 — feat(bankr-sync): /api/cron/sync-bankr-launches background safety net [1 files] _(ai-assisted)_
+- `5c94624c` 2026-04-29 — feat(bankr-sync): on-demand sync in /api/vm/status fires celebration in <30s [3 files] _(ai-assisted)_
+- `70d4ad5e` 2026-04-29 — feat(bankr-sync): schedule sync-bankr-launches every 5 min [1 files] _(ai-assisted)_
+- `8814a280` 2026-04-29 — fix(bankr-sync): lazy-init launchSuccess to avoid celebration flicker [1 files] _(ai-assisted)_
+- `6befba84` 2026-04-29 — test(bankr-sync): e2e regression script for syncBankrLaunchForVm [1 files] _(ai-assisted)_
+- `b4dc4863` 2026-04-29 — Merge feat/bankr-chat-launch-sync — Path B chat-driven launch sync [0 files] _(ai-assisted; merge)_
+- `d3d40a39` 2026-04-29 — fix(reconcile): Bug D + 60s gateway health timeout [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `83eff391` 2026-04-29 — feat(bankr-skill): InstaClaw overlay — kill clanker subdir, drop Solana misroutes [2 files] _(**MANIFEST v66**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `b3cfdaae` 2026-04-29 — feat(bankr-skill): fleet patch script — apply overlay to live VMs now [2 files] _(ai-assisted)_
+- `22218c15` 2026-04-29 — fix(browser-relay): resolve node via NVM in standalone unit ExecStart [1 files] _(ai-assisted)_
+- `92b89e1e` 2026-04-29 — fix(bankr-launch): tweet card preview, success-with-warning, phased status [2 files] _(ai-assisted)_
+- `d9114898` 2026-04-29 — Merge fix/bankr-prelaunch-audit — pre-announcement P0/P1 fixes [0 files] _(ai-assisted; merge)_
+- `ef472917` 2026-04-29 — fix(reconcile): npm install timeout 180s→360s + on-disk verify [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9dfe894b` 2026-04-29 — fix(agent-context): scope token launches to Base in upfront-loaded surfaces [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f601f1a6` 2026-04-29 — feat(mini-app): wire Path B chat-launch celebration end-to-end [4 files] _(ai-assisted)_
+- `f8fcc71d` 2026-04-29 — chore: export WORKSPACE_SOUL_MD for ad-hoc verification scripts [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2229080d` 2026-04-29 — chore(manifest): bump v66 → v67 — token-launch framing in upfront context [1 files] _(**MANIFEST v67**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `f623cdec` 2026-04-29 — fix(reconcile): caddy no-op + npm install timeout 360s→600s [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `25e55e14` 2026-04-29 — feat(upgrade-fleet): wave-based concurrency=5 with audit gates [1 files] _(ai-assisted)_
+- `b886c924` 2026-04-29 — fix(v67-routing): fleet patch + reconciler step + audit retry [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bf46ee3d` 2026-04-29 — fix(configure): guard against wipe-on-already-onboarded-user [1 files] _(ai-assisted)_
+- `4eb1987b` 2026-04-29 — Merge pull request #8 from coopergwrenn/fix/configure-guard-against-wipe [0 files] _(merge)_
+- `44e779a1` 2026-04-29 — fix(fleet-patch): don't bump config_version + add from-disk reset script [2 files] _(ai-assisted)_
+- `2d526591` 2026-04-29 — fix(reconcile): gateway health 60s→120s + dist/index.js verify [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f695276a` 2026-04-29 — feat(edge-city): build out /edge-city portal landing page [3 files] _(multi: [feature, edge])_
+- `edf34e82` 2026-04-29 — fix(reconcile): auto-retry npm install on verify failure [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a324f115` 2026-04-29 — feat(edge-city): public /edge-city/sponsors page + portal sponsor strip [2 files] _(multi: [feature, edge])_
+- `1e182c51` 2026-04-29 — fix(audit): retry 6×10s + same-iter active+health pairing [1 files] _(ai-assisted)_
+- `7b026a37` 2026-04-29 — docs(prd): add Index Network matching layer + Vendrov research layer to EdgeClaw [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `38c540f7` 2026-04-29 — docs(prd): integrate Substack research overview — foundational research, methodology stack, hypothesis enrichment, coordinator agents [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `a25ae1ef` 2026-04-29 — docs(prd): integrate Granola meeting notes — ticket validation, managed updates, privacy modes, portal scope [1 files] _(multi: [edge, docs])_
+- `2cca6379` 2026-04-29 — docs(edgeclaw): sponsor inference budget — one-page sponsor-facing breakdown [1 files] _(ai-assisted)_
+- `5e233b07` 2026-04-29 — feat(research-export): SQL migration for 5 EE26 research tables [1 files] _(ai-assisted)_
+- `efa42127` 2026-04-29 — feat(research-export): anonymization utilities — agent_id hash + PII regex sweep [2 files] _(ai-assisted)_
+- `50ff38c1` 2026-04-29 — feat(research-export): TypeScript schemas for source + export shapes [1 files] _(ai-assisted)_
+- `fab34510` 2026-04-29 — feat(research-export): Supabase extractors with date-range filtering + pagination [1 files] _(ai-assisted)_
+- `af41dc49` 2026-04-29 — feat(research-export): writers — CSV (zero-dep, default) + Parquet (optional) [2 files] _(ai-assisted)_
+- `997bf15a` 2026-04-29 — feat(research-export): pipeline orchestrator — extract → anonymize → write [2 files] _(ai-assisted)_
+- `eb55a6a6` 2026-04-29 — feat(research-export): CLI script + end-to-end integration test [2 files] _(ai-assisted)_
+- `9e88696c` 2026-04-29 — docs(research-export): operational README — quick start, privacy guarantees, runbook [1 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `fd42a1eb` 2026-04-29 — fix(research-export): unblock Vercel preview build [3 files] _(ai-assisted)_
+- `ff4b3dad` 2026-04-29 — docs(prd): Index Network ↔ InstaClaw signal schema spec — pre-sync proposal [1 files]
+- `a1f496d8` 2026-04-29 — docs: external-facing sponsor pitch for the EE26 Agent Village [1 files]
+- `b0de400c` 2026-04-29 — feat(bankr): #19 — pre-launch confirmation card [2 files] _(ai-assisted)_
+- `a10f89f1` 2026-04-29 — feat(bankr): #7 — "Free to launch" reassurance on form [2 files] _(ai-assisted)_
+- `77c113f5` 2026-04-29 — feat(bankr): #9 — launch number ("You're #N to deploy autonomously") [9 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `788f6dcd` 2026-04-29 — feat(bankr): #6 — 5 randomized tweet templates with agent-name interpolation [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `30717999` 2026-04-29 — feat(bankr): #17 — World ID verified-human creator badge [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `7a3cfa51` 2026-04-29 — fix(v67): bump agents.defaults.timeoutSeconds to 90s + watchdog FROZEN to 5min [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `bddb8123` 2026-04-29 — Merge pull request #9 from coopergwrenn/fix/v67-timeout-and-watchdog [0 files] _(merge)_
+- `d18d59a5` 2026-04-29 — fix(v67): bump watchdog FROZEN threshold further 5min → 10min [1 files] _(ai-assisted)_
+- `5d304b65` 2026-04-29 — Merge pull request #10 from coopergwrenn/fix/v67-watchdog-frozen-10min [0 files] _(merge)_
+- `d6487e88` 2026-04-29 — docs(claude-md): add Fleet Upgrade Lessons section [1 files] _(ai-assisted)_
+- `8b44627b` 2026-04-29 — Merge pull request #11 from coopergwrenn/docs/fleet-upgrade-lessons [0 files] _(merge)_
+- `ba0a772e` 2026-04-29 — fix(bankr-tweet-templates): 4 fuzz-found edge-case bugs [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `d2b26d8b` 2026-04-29 — fix(bankr): swap #7 free-to-launch copy — long lives on confirmation [2 files] _(ai-assisted)_
+- `ab77525d` 2026-04-29 — feat(bankr): #1 — agent autoposts to Telegram in its own voice on launch [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `7f0d2465` 2026-04-29 — feat(bankr): #4 — auto-suggested token name from agent personality [3 files] _(ai-assisted)_
+- `2df2c74e` 2026-04-29 — feat(bankr): #8 — agent answers "what's my token at?" via DexScreener [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e406ff5a` 2026-04-29 — chore(freeze): drop suspended-grace from 30d → 3d [1 files] _(ai-assisted)_
+- `0cac8984` 2026-04-29 — chore(cron): vm-lifecycle 6h → 1h to drain freeze backlog faster [1 files] _(ai-assisted)_
+- `83155a1b` 2026-04-30 — docs(claude.md): expand OpenClaw Upgrade Playbook from v67 incident [1 files] _(ai-assisted)_
+- `6679afe8` 2026-04-30 — fix(fleet): manifest v68 — watchdog uptime guard + telegram streaming off [2 files] _(**MANIFEST v68**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `c07accec` 2026-04-30 — fix(manifest): close v67 jsdoc properly so v68 history compiles [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d967db50` 2026-04-30 — fix(fleet): manifest v69 — disable gateway watchdog timer fleet-wide [3 files] _(**MANIFEST v69**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `84aeb3a7` 2026-04-30 — feat(partner): tag existing users via /api/partner/tag — fix dual-account bug [3 files] _(multi: [feature, edge, docs])_
+- `62f43e46` 2026-04-30 — fix(partner): use res.cookies.set instead of next/headers cookies() [1 files]
+- `35e031e9` 2026-04-30 — fix(middleware): add /api/partner/tag to selfAuthAPIs allow-list [1 files]
+- `fc871b37` 2026-04-30 — feat(bankr): #5 — auto-generated launch card image (1200x630 OG) [7 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `bf053e9a` 2026-04-30 — fix(reconciler): verify config-set in non-strict path; ban silent \|\| true [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5a1db4c5` 2026-04-30 — feat(cron): expire pending WLD delegations after 6h (#12) [2 files] _(ai-assisted)_
+- `5ff04ba5` 2026-04-30 — fix(fleet): manifest v71 — disable mDNS by default + weekly backup prune [1 files] _(**MANIFEST v71**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `0baa0575` 2026-04-30 — docs(prd): SOUL.md restructure — design doc, no implementation [1 files] _(ai-assisted)_
+- `27b24cc1` 2026-04-30 — docs(prd): SOUL.md restructure v2 — evidence-based rewrite [1 files] _(ai-assisted)_
+- `5d6c0d07` 2026-04-30 — feat(soul): manifest v72 — SOUL.md cache boundary marker [2 files] _(**MANIFEST v72**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `e886aff9` 2026-04-30 — fix(bankr): P0 OG image render + P1 symbol caption literal text [3 files] _(ai-assisted)_
+- `85bbc01f` 2026-04-30 — fix(cron): expire-pending update by predicate, not id list (#13) [1 files] _(ai-assisted)_
+- `f073eb22` 2026-04-30 — fix(bankr): OG card column gap — `0 0.4ch` → `0 8px` [1 files] _(ai-assisted)_
+- `731d41ec` 2026-04-30 — feat(memory): manifest v73 — MEMORY.md backup + auto-restore (Phase 1) [2 files] _(**MANIFEST v73**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `ed93dccc` 2026-04-30 — feat(cron): background poller for unconfirmed WLD delegations (#14) [2 files] _(ai-assisted)_
+- `089608b1` 2026-04-30 — fix(bankr): OG card — real logo, full address, fix word-merge spacing [1 files] _(ai-assisted)_
+- `4b654677` 2026-04-30 — fix(bankr): OG card uses inverted (white) logo for dark background [2 files] _(ai-assisted)_
+- `96500eb2` 2026-04-30 — chore: retire 3 empty World mini-app tables (#15) [2 files] _(ai-assisted)_
+- `f7843f35` 2026-04-30 — fix(bankr): OG card typography matches production website fonts [1 files] _(ai-assisted)_
+- `017e93c6` 2026-04-30 — fix(bankr): OG card — Base + Bankr logos, copy + tagline tweaks [4 files] _(ai-assisted)_
+- `ab25c99a` 2026-04-30 — fix(bankr): Base logo — swap white→blue (the actual Base brand mark) [3 files] _(ai-assisted)_
+- `f2a8679a` 2026-05-01 — fix(systemd): StartLimitAction=stop→none — invalid value broke fleet kill-loop protection [1 files] _(**MANIFEST v74**; multi: [reconciler, infrastructure])_
+- `e764f30d` 2026-05-01 — fix(gateway/proxy): set maxDuration=300 on all proxy routes [4 files]
+- `e66e8239` 2026-05-01 — docs(CLAUDE.md): add Rule 11 — every LLM route MUST set maxDuration=300 [1 files]
+- `4f3c88a9` 2026-05-01 — perf(gateway/proxy): in-memory cache for daily_usage SELECT (30s TTL) [1 files]
+- `ed545a3d` 2026-05-01 — perf(gateway/proxy): hot-path latency profile (sampled 5%) [1 files]
+- `1058c330` 2026-05-01 — fix(agents): kill switch for heartbeat-driven buy_listing + deliver [1 files]
+- `4e2fed9a` 2026-05-01 — chore(cron): add daily cleanup-feed cron + GET handler [2 files]
+- `f8f23353` 2026-05-01 — fix(systemd): v75 — split StartLimit* into [Unit] section (was silently dropped in [Service]) [3 files] _(**MANIFEST v75**; multi: [reconciler, infrastructure])_
+- `f6049ab7` 2026-05-01 — fix(build): exclude instaclaw-mini, instaclaw-chrome-extension, contracts from wild-west-bots tsconfig [1 files]
+- `f70e732f` 2026-05-01 — chore(deploy): trigger wild-west-bots rebuild to land kill switch + cleanup cron [1 files]
+- `cfdcfa74` 2026-05-01 — fix(build): also exclude scripts/ from wild-west-bots tsconfig [1 files]
+- `e0e02ebc` 2026-05-01 — chore(deploy): trigger wild-west-bots rebuild for cfdcfa74 tsconfig fix [1 files]
+- `1a2fc677` 2026-05-01 — fix(manifest): v76 — remove vm-watchdog + silence-watchdog from cron schedule [1 files] _(**MANIFEST v76**; multi: [reconciler, infrastructure, edge])_
+- `14919655` 2026-05-01 — docs(claude.md): Rules 12 + 13 — Vercel-vs-local debugging order + middleware allow-list [1 files]
+- `3ccda655` 2026-05-01 — docs(prd): SOUL restructure — Phase 0/0.5/0.7 results, canary swap, simplified migration [1 files] _(multi: [edge, docs])_
+- `4bb354cd` 2026-05-01 — feat(soul-v2): new workspace-templates-v2.ts with all 4 approved templates (no behavior change) [3 files] _(multi: [reconciler, infrastructure])_
+- `2665ba31` 2026-05-01 — feat(soul-v2): migrateExistingSoulMd reconciler step + manifest v77 + kill switch (default OFF) [2 files] _(**MANIFEST v77**; multi: [reconciler, infrastructure])_
+- `0fdbd037` 2026-05-01 — feat(soul-v2): add per-VM whitelist gate (RECONCILE_SOUL_MIGRATION_VM_IDS) [1 files] _(multi: [reconciler, infrastructure])_
+- `b1c4ef3c` 2026-05-01 — fix(soul-v2): correct bankr SKILL.md path; soften partner-gated edge-esmeralda refs [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `ad26b00b` 2026-05-01 — docs(prd): EdgeClaw architecture revision after 2026-05-01 working session [1 files] _(multi: [edge, docs])_
+- `ebe40d52` 2026-05-02 — docs(strategy): WLD pricing strategy + hibernation architecture [1 files] _(ai-assisted)_
+- `2dfcd609` 2026-05-02 — docs+scripts: P0 wake bug RCA + manual recovery scripts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `db459276` 2026-05-02 — fix(bankr): OG card — render at 2x (2400x1260) for retina crispness [1 files] _(ai-assisted)_
+- `85613f7a` 2026-05-01 — feat(edge-privacy): components 1-3 — DB migration, toggle API, dashboard route [4 files] _(multi: [feature, edge])_
+- `0b164436` 2026-05-02 — feat(edge-privacy): component 3 — internal check API for SSH bridge [2 files] _(ai-assisted)_
+- `221c8be4` 2026-05-02 — fix: wake-from-hibernation paths + auth-cache clear + watchdog v2 [13 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `0523e5cf` 2026-05-02 — fix(health-check): verify gateway active after billing-cache restart (task #40) [1 files] _(ai-assisted)_
+- `cb52f1ec` 2026-05-02 — feat(edge-privacy): components 5–9 — expire cron, audit log, SSH bridge, reconciler, cutover script [13 files] _(**MANIFEST v78**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `1da128be` 2026-05-02 — fix(edge-privacy): lazy-load privacy-bridge.sh to survive Turbopack page-data collection [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `f0db1dfc` 2026-05-02 — fix(watchdog,wake): QA fixes 1-4 — must-have before WATCHDOG_V2_MODE=active [4 files] _(ai-assisted)_
+- `fa1193a4` 2026-05-02 — fix(edge-privacy): QA blockers in privacy bridge — newline injection, fail-open, openclaw backdoor [4 files] _(**MANIFEST v79**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `e430426e` 2026-05-02 — fix(wake-vm): handle BOTH 'hibernating' AND 'suspended' states [1 files] _(ai-assisted)_
+- `9883dd17` 2026-05-02 — docs(CLAUDE.md): add Rules 14-21 from this sprint's 9 internalized lessons [1 files] _(ai-assisted)_
+- `b3fa5297` 2026-05-02 — feat(consensus): partner skill for Consensus 2026 Miami (May 5–7) [5 files] _(multi: [reconciler, infrastructure, feature, edge, docs]; ai-assisted)_
+- `6a34bd9a` 2026-05-02 — Merge: feat(consensus): partner skill for Consensus 2026 Miami [0 files] _(ai-assisted; merge)_
+- `0fefd764` 2026-05-02 — feat(consensus): also install consensus skill for edge_city partners [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `a495680d` 2026-05-02 — fix(strip-thinking): trim trailing empty turns, never nuke active session [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `fee5324d` 2026-05-02 — docs(rule-22): full incident history + fleet pusher for trim-not-nuke fix [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `599b9a1c` 2026-05-03 — docs(CLAUDE.md): cut over to v79 snapshot private/38575292 [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `58e59e0e` 2026-05-03 — fix(reconcile): sentinel guard + race fix + Rule 23 [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `5a3ef83d` 2026-05-03 — chore: trigger redeploy to pick up LINODE_SNAPSHOT_ID=private/38575292 [0 files] _(ai-assisted)_
+- `cb4d425a` 2026-05-03 — fix(memory): cross-session persistence layered fix (SOUL reorder + bootstrap bump + periodic summary) [7 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `bfb09037` 2026-05-03 — ops(memory-deploy): operational scripts + fleet bump infra [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `18eed486` 2026-05-03 — fix(timeout): bump timeoutSeconds 90 → 300 — 3-min response on vm-780 forced this [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e285e68f` 2026-05-04 — fix(memory): manifest v80 — periodic-summary hook unblocked when session shrinks [16 files] _(**MANIFEST v80**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `0a96bc16` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKENIZE_ENABLED=true [0 files] _(ai-assisted)_
+- `ef6cecab` 2026-05-04 — fix(consensus): universal skill install + fleet backfill + free-trial copy [4 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+- `611e84d4` 2026-05-04 — fix(consensus-ui): apply canonical glass UI across page + client [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `7db423ac` 2026-05-04 — feat(consensus): add founder-matching BETA section + UX polish [2 files] _(ai-assisted)_
+- `b45ff7d0` 2026-05-04 — feat(consensus): platform reframe — "the agent stays" [1 files] _(ai-assisted)_
+- `523735ab` 2026-05-04 — fix(consensus): kill em dashes + reframe matching for ALL roles [2 files] _(ai-assisted)_
+- `73aea3d3` 2026-05-04 — feat(consensus/matches): preview page for the intent-matching demo [1 files] _(ai-assisted)_
+- `be49f547` 2026-05-04 — fix(consensus/matches): remove all em dashes [1 files] _(ai-assisted)_
+- `f209f0c6` 2026-05-04 — fix(consensus): update record counts to live data (326/219/451 → 338/229/463) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8fde9dfb` 2026-05-04 — fix(consensus): finish 326/219/451 → 338/229/463 sweep on page + matches [2 files]
+- `1546122f` 2026-05-04 — fix(consensus): catch the last '219 events' instance [1 files]
+- `6d6364b5` 2026-05-04 — chore: trigger redeploy to pick up BANKR_TOKEN_LAUNCH_SIMULATE=true [0 files] _(ai-assisted)_
+- `671d1cc1` 2026-05-04 — fix(ui): replace emojis with lucide SVG icons across dashboard surfaces [4 files] _(ai-assisted)_
+- `0e7e502c` 2026-05-04 — docs(prd): consensus intent matching addendum — dual-embedding, reactive cascades, inferred intent, living feed [1 files]
+- `7b02fbcf` 2026-05-04 — docs(prd): consensus intent matching v2 — adds Layer 3 deliberation + XMTP intro negotiation as central moat [1 files]
+- `a0f943c8` 2026-05-04 — feat(matchpool): migration + apply script for intent matching schema [2 files] _(ai-assisted)_
+- `0c34ef11` 2026-05-04 — feat(matchpool): component 2 — embedding helper (lib/match-embeddings.ts) [2 files] _(ai-assisted)_
+- `f5d19bb9` 2026-05-04 — feat(matchpool): component 3 — intent extraction on user VMs [2 files] _(ai-assisted)_
+- `0b6585fe` 2026-05-04 — feat(matchpool): component 4 — VM-side intent sync + bridge to platform [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `c9368e88` 2026-05-04 — feat(matchpool): component 5 — POST /api/match/v1/profile [3 files] _(ai-assisted)_
+- `0ac49639` 2026-05-04 — fix(og-card): brand fallback when bankr_token_image_url is null [1 files] _(ai-assisted)_
+- `c80b0f23` 2026-05-04 — fix(bankr/sync): env-gated kill-switch for Path B re-discovery [1 files] _(ai-assisted)_
+- `9844b926` 2026-05-04 — feat(bankr-card): glass Trade-on-Bankr CTA + pre-launch education [2 files] _(ai-assisted)_
+- `6556a641` 2026-05-04 — chore: re-trigger Vercel build for 9844b926 (glass Trade button + WhyTokenize) [0 files] _(ai-assisted)_
+- `93094391` 2026-05-04 — feat(matchpool): components 6-10 + hardening pass — full pipeline shipped [13 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `611deef9` 2026-05-04 — fix(bankr-card): orange Trade button + bottom padding + em-dash copy [2 files] _(ai-assisted)_
+- `2c5fd765` 2026-05-04 — fix(bankr-card): match Tokenize + Trade-on-Bankr to Buy Credits style [1 files] _(ai-assisted)_
+- `51ef0cd4` 2026-05-04 — feat(matchpool): v81 manifest — fleet wiring for matching pipeline [6 files] _(**MANIFEST v81**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `ee88dd46` 2026-05-04 — fix(bankr-card): post-launch container glass + brand-orange avatar [1 files] _(ai-assisted)_
+- `5e91cb1a` 2026-05-04 — fix(bankr-card): plumb bankr_token_image_url through to avatar [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `77a178bf` 2026-05-04 — feat(matchpool): Telegram notification + ghost pool seed [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `9fcc639f` 2026-05-04 — fix(dashboard): brand orange on WhyTokenize + HowToBuy circles [2 files] _(ai-assisted)_
+- `94e079d4` 2026-05-04 — fix(bankr-card): brand orange across full launch flow [1 files] _(ai-assisted)_
+- `8e140b50` 2026-05-04 — fix(bankr/sync): cron also honors DISABLE_BANKR_PATH_B_SYNC kill-switch [1 files] _(ai-assisted)_
+- `d099a5af` 2026-05-04 — fix(matchpool,bankr): canary v81 + Telegram sanitization + brand orange [4 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `bab5e37f` 2026-05-04 — fix(gateway): heartbeat reclassification bypass for match pipeline (P1) [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d0a37af1` 2026-05-04 — test(matchpool): verification harness for heartbeat-bypass fix [1 files] _(ai-assisted)_
+- `41a59874` 2026-05-05 — revert(bankr/sync): drop DISABLE_BANKR_PATH_B_SYNC cron kill-switch [1 files] _(ai-assisted)_
+- `327888af` 2026-05-05 — feat(matchpool): v82 SOUL.md awareness for matching engine [2 files] _(**MANIFEST v82**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `ff82a847` 2026-05-05 — tools(fleet): controlled v82 rollout at concurrency=3 [1 files] _(ai-assisted)_
+- `4b28f8f3` 2026-05-05 — feat(matchpool): Path 1 — Skills-page toggle for Consensus 2026 [9 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `259477ba` 2026-05-05 — feat(matchpool): v83 — pipeline + intent_sync gate on skill state [5 files] _(**MANIFEST v83**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `5859048c` 2026-05-05 — feat(matchpool): v84 — Path 2 §Organic Activation helper [4 files] _(**MANIFEST v84**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `17b1a20d` 2026-05-05 — fix(watchdog): suppress probe_healthy writes + 48h retention cron [4 files] _(ai-assisted)_
+- `31396d5c` 2026-05-05 — feat(skills): Rule 24 — install verification + self-healing + taxonomy [17 files] _(**MANIFEST v85**; multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `bd13d54f` 2026-05-05 — feat(skills): consensus-2026 brand-image orb icon [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f08b60b8` 2026-05-05 — fix(my-matches): strip em-dashes from copy + LLM rationale [1 files] _(ai-assisted)_
+- `55bb97ea` 2026-05-05 — fix(skills): Rule 24 follow-ups — backup-before-rm + bootstrap const + vm-724/725 fixes [9 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `161615ab` 2026-05-05 — feat(xmtp): agent-to-agent intro DMs for Consensus 2026 matching [7 files] _(ai-assisted)_
+- `0c5c0f3a` 2026-05-05 — fix(xmtp): receiver chat_id from DB, dynamic gateway token, no fallback reply [3 files] _(ai-assisted)_
+- `7dd896ab` 2026-05-05 — fix(xmtp): XMTP-user fallback + pending-disk recovery + 20/24h limit [3 files] _(ai-assisted)_
+- `bc6b589f` 2026-05-05 — fix(match): contact-info include_self bypasses request-array gate [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `579cd2a8` 2026-05-05 — feat(xmtp): application-layer delivery guarantees + chat_id backfill [9 files] _(ai-assisted)_
+- `56f71126` 2026-05-05 — fleet(v86): raise TasksMax 75 → 120 on openclaw-gateway cgroup [1 files] _(**MANIFEST v86**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `57ee2ce6` 2026-05-05 — docs(v87): prctl-subreaper integration plan (blocked on npm publish) [1 files] _(ai-assisted)_
+- `36c6b260` 2026-05-05 — fleet(v87): integrate prctl-subreaper into openclaw-gateway [3 files] _(**MANIFEST v87**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `6fa814df` 2026-05-05 — canary(v87): vm-050 install + smoke test for prctl-subreaper [1 files] _(ai-assisted)_
+- `6af00d03` 2026-05-05 — chore: re-trigger Vercel build after migration 20260505c applied [0 files]
+- `be0a5be6` 2026-05-05 — chore: re-trigger Vercel build after migration 20260505c applied [0 files]
+- `bd0dee0e` 2026-05-05 — chore: nudge file to re-trigger Vercel build (migration applied) [1 files]
+- `3e9adc4f` 2026-05-05 — Merge fleet/v87-prctl-subreaper: TasksMax 75→120 + prctl-subreaper@0.1.0 [0 files] _(merge)_
+- `50764e71` 2026-05-05 — test(xmtp): edge-case suite — 12/12 with delivery hardening [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `2c49732a` 2026-05-05 — chore(consensus): bundle deploy artifacts + design PRDs [6 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `aabb783e` 2026-05-05 — docs(consensus): launch kit — tweet copy, screenshot guide, technical receipts [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `faf8b8a8` 2026-05-05 — fleet(v88): add build-essential to systemPackages — fixes v87 silent fail [1 files] _(**MANIFEST v88**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `39b77b23` 2026-05-05 — Merge fleet/v88-build-essential: add build-essential to systemPackages [0 files] _(multi: [reconciler, edge]; merge)_
+- `49e51b64` 2026-05-05 — feat(consensus): kill-switch + 30-min health alert cron [4 files] _(ai-assisted)_
+- `55052829` 2026-05-05 — test(consensus): real production intro fired end-to-end (1.77s) [2 files] _(ai-assisted)_
+- `178e10dc` 2026-05-05 — fix(consensus): per-receiver intro cap (default 3/24h) — Timour spam fix [1 files] _(ai-assisted)_
+- `f4a908fb` 2026-05-05 — fix(consensus): intro CTA points to sender's personal Telegram, not their bot [4 files] _(ai-assisted)_
+- `c92a5e37` 2026-05-05 — feat(consensus): self-healing telegram_handle backfill via Telegram getChat [5 files] _(ai-assisted)_
+- `bbaac024` 2026-05-05 — chore: nudge migration file to re-trigger Vercel build (schema cache lag) [1 files]
+- `991aa29b` 2026-05-05 — chore(cron): reduce Supabase load — health-check 1m→2m, cloud-init-poll 2m→5m [1 files] _(ai-assisted)_
+- `1b36b078` 2026-05-05 — perf(health-check): batch Pass 0 timestamp UPDATEs (855 → 2 queries) [1 files] _(ai-assisted)_
+- `9beb74bf` 2026-05-05 — fix(reconcile-fleet): drop batch size 10 → 3 to fit under 300s timeout [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `dd144bde` 2026-05-05 — docs(gbrain): apply C1–C20 audit corrections to PRD body [1 files]
+- `aa816e58` 2026-05-05 — feat(consensus): Draft C intro copy — match count + cap-controls footer [5 files] _(ai-assisted)_
+- `6e0f7c17` 2026-05-05 — docs(prd): v2 agent negotiation — full spec [1 files] _(ai-assisted)_
+- `3f3443d2` 2026-05-05 — fix(reconcile): glob consensus_*.py for outputFileTracingIncludes [1 files] _(ai-assisted)_
+- `8de505e3` 2026-05-05 — docs(consensus): day-of runbook + PRD open-question lock-in [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `d28bf919` 2026-05-05 — fix(reconcile): broaden consensus glob to ./scripts/**/*.py [1 files] _(ai-assisted)_
+- `cb4d20c3` 2026-05-05 — fix(reconcile): use ./scripts/**/* — exact working glob shape [1 files]
+- `48c98a93` 2026-05-05 — fix(reconcile): add ./scripts/*.py for top-level matchpool files [1 files]
+- `de4e62f4` 2026-05-05 — docs(changelog): v62 → v88 thread for X — copy-paste ready [1 files] _(ai-assisted)_
+- `af38a16c` 2026-05-05 — fix(consensus): sender-side match notification refresh [3 files] _(ai-assisted)_
+- `5e710334` 2026-05-05 — fix(reconcile-fleet): touch route.ts to bust Vercel's nft trace cache [1 files] _(ai-assisted)_
+- `c3b8cee9` 2026-05-05 — fix(reconcile): inline matchpool .py contents at build time [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `572792b7` 2026-05-05 — docs(changelog): denser hook + prctl-subreaper@0.1.1 in tweet 11 [1 files] _(ai-assisted)_
+- `251e01fd` 2026-05-06 — fix(reconcile): caddy hostname regex needs multiline flag [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8ffc2970` 2026-05-06 — fix(reconcile): node_exporter post-restart sleep 2 → 5s [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `af2b7ced` 2026-05-06 — docs(claude): P1-2 + P1-3 — node_exporter visibility, ssh-broken-tcp-reachable [1 files] _(ai-assisted)_
+- `a20d85b6` 2026-05-06 — fix(matchpool): partner-aware consent default for new profiles [1 files] _(ai-assisted)_
+- `b6141af9` 2026-05-06 — fix(soul-md): v89 — InstaClaw platform identity (fixes "I'm an OpenClaw agent") [7 files] _(**MANIFEST v89**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `af98e780` 2026-05-07 — docs(prd-gbrain): apply 8 corrections from Phase 0 vm-050 canary [1 files] _(ai-assisted)_
+- `7ac0d370` 2026-05-07 — fix(session-overflow): v90 — four-layer session-overflow reliability fix [3 files] _(**MANIFEST v90**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `e30c6a78` 2026-05-07 — fix(bankr): wallet coverage gap (Phases 1-5) + v91 SOUL.md Platform V2 [12 files] _(**MANIFEST v91**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `f0da920e` 2026-05-07 — docs(claude): Rules 25-31 — systemic lessons from 2026-05-06/07 incidents [1 files] _(ai-assisted)_
+- `16aa97c9` 2026-05-09 — fix(reconcile-fleet): touch route.ts to bust nft cache for v90 manifest [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e0898f67` 2026-05-09 — feat(agentbook): hat-claim promo banner — web dashboard + mini app [7 files] _(ai-assisted)_
+- `7481c171` 2026-05-09 — fix(agentbook-banner): production-quality animations + fixes from Cooper review [4 files] _(ai-assisted)_
+- `f5122470` 2026-05-09 — fix(db): usage_log 14-day retention via pg_cron + BRIN index swap + monitoring [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `b615f81a` 2026-05-09 — fix(agentbook-banner): match dashboard glass + move to top + real hat image [5 files] _(ai-assisted)_
+- `395466ca` 2026-05-09 — fix(agentbook-banner): hat breathing room + sharpness + glass shadow [2 files] _(ai-assisted)_
+- `1c855ecb` 2026-05-09 — fix(agentbook-banner): mix-blend-mode multiply removes white hat bg [2 files] _(ai-assisted)_
+- `a20a86ed` 2026-05-09 — feat(agentbook-banner): redesign as site-wide notification strip [3 files] _(ai-assisted)_
+- `c09527c5` 2026-05-09 — fix(agentbook-banner): match landing-page NotificationBar style exactly [1 files] _(ai-assisted)_
+- `b496bee1` 2026-05-09 — fix(dashboard): Welcome card collapse-toggle + remove WorldID dismiss X [2 files] _(ai-assisted)_
+- `775b022d` 2026-05-09 — feat(agentbook-banner): state machine — verify/register/claim/sold-out [7 files] _(ai-assisted)_
+- `36a7e87d` 2026-05-09 — fix(world-id-banner): sharper copy + "Get verified →" CTA [3 files] _(ai-assisted)_
+- `5e949f0f` 2026-05-09 — fix(reconcile-fleet): drop suspended/hibernating from eligibility [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `07269ec2` 2026-05-09 — fix(ssh): add v90 compaction keys to buildOpenClawConfig static blob [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `55fce656` 2026-05-09 — fix(reconcile-fleet): per-VM 120s timeout via Promise.race [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3716bc43` 2026-05-09 — chore(scripts): one-shot to mark long-dormant VMs unhealthy [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8f5f0d54` 2026-05-09 — docs(prd): gbrain Phase 1 design doc [1 files] _(ai-assisted)_
+- `6a11e06e` 2026-05-09 — fix(reconcile-fleet): add missing lib/manifest-integrity.ts + pre-commit nft cache-bust [2 files] _(ai-assisted)_
+- `55d1fe5d` 2026-05-09 — feat(gbrain): Phase 1 install scripts (canary install + selection) [3 files] _(ai-assisted)_
+- `84775ac0` 2026-05-09 — feat(manifest-integrity): P1-4 nft-cache defense + dynamic-value handling [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `4854398d` 2026-05-10 — docs(claude): elevate P1-1 — lying-DB is ~20% fleet-wide, 3 shapes, fleet-integrity issue [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `ddcee2e4` 2026-05-11 — chore(scripts): stuck-head triage + selective-flip helpers [5 files] _(ai-assisted)_
+- `035b3b11` 2026-05-11 — docs: lying-DB fleet census — 27% rate, 12 of 44 healthy cv≥88 VMs [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `50640a55` 2026-05-11 — feat(gbrain): Phase 1 uninstall scripts (mirror of install) [2 files] _(ai-assisted)_
+- `0eeeebdb` 2026-05-11 — docs(lying-db-census): refresh 2026-05-11 with current fleet probe [1 files] _(ai-assisted)_
+- `56d3a2e3` 2026-05-11 — docs(consensus): expand Phase C reset list — 5 stragglers + vm-512 hand-fix log [1 files]
+- `1fb249d5` 2026-05-11 — fix(reconciler): root-cause fixes for 27% lying-DB rate [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b6f949ac` 2026-05-11 — feat(soul-md): v92 partner-stub migration — fix live truncation bug on edge_city VMs [6 files] _(**MANIFEST v92**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `0f796218` 2026-05-11 — fix(manifest): EMERGENCY bandaid — bootstrapMaxChars 35000 → 40000 (v92) [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `bc1608ac` 2026-05-11 — fix(manifest): EMERGENCY disable CONSENSUS_MATCHING_AWARENESS_V1 SOUL.md append [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d4e3dae5` 2026-05-11 — chore(scripts): emergency fleet sweep + reprobe (2026-05-11) [3 files] _(ai-assisted)_
+- `2750c10d` 2026-05-11 — chore(scripts): Phase 4 cv-reset for the 10 lying-DB VMs [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `567f653b` 2026-05-11 — fix(strip-thinking): idempotency gate on session-backup creation [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `36ea41e1` 2026-05-11 — chore(scripts): session-backups bloat probe + emergency purge [2 files] _(ai-assisted)_
+- `c56efadf` 2026-05-11 — feat(soul-v2): bug-fix stepMigrateSoulV2 + canary/rollout/rollback scripts + PRD [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `6db05d8e` 2026-05-11 — fix(gateway-proxy): stop silently downgrading real user messages to MiniMax [1 files] _(ai-assisted)_
+- `e2380e68` 2026-05-11 — feat(reconcile-fleet): persistent failure tracking + auto-quarantine + alerts [5 files] _(ai-assisted)_
+- `1e572e98` 2026-05-11 — docs(soul-v2): §14 — Agent Self-Compaction Architecture (V3+ roadmap) [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `e436cf3a` 2026-05-11 — feat(soul-md): v93 partner-stub APPEND branch + budget-aware over-budget check [4 files] _(**MANIFEST v93**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `871a78c5` 2026-05-11 — fix(soul-v2): cron lock acquisition in canary script + ip_address column [2 files] _(ai-assisted)_
+- `90feea10` 2026-05-11 — fix(soul-v2): AGENTS.md threshold + ip_address column in fleet rollout [2 files] _(ai-assisted)_
+- `bd3f671e` 2026-05-11 — fix(soul-v2): fleet rollout whitelist race on concurrent migrateOne calls [1 files] _(ai-assisted)_
+- `ddb58683` 2026-05-11 — fix(soul-v2): fleet rollout process.exit() bypasses finally — leaks cron lock [1 files] _(ai-assisted)_
+- `437504db` 2026-05-11 — feat(soul-v2): --no-strict opt-in flag for fleet rollout [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `e7d927b3` 2026-05-11 — feat(gbrain+monitoring): install pipeline + forensic handoff + 3 ops crons [9 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `320ecb25` 2026-05-11 — feat(reconciler+claude.md): hot-reload classification + auto-restart guardrail [2 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `47764527` 2026-05-11 — feat(reconcile): catch-up script for fleet stuck >N versions behind manifest [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `831533f4` 2026-05-11 — feat(phase4): gbrain fleet rollout design + stepEnvVarPush reconciler step [4 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `0712ba01` 2026-05-11 — feat(ack-ux): v95 — three-layer Telegram agent acknowledgment UX [8 files] _(**MANIFEST v95**; multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `2b985da0` 2026-05-11 — feat(phase4): gbrain-coverage-check cron + edge_city readiness probe [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `21d9dd9b` 2026-05-11 — docs(prd): reconcile deadline structural fix — Vercel cron can't catch up multi-version drift [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `b1741db5` 2026-05-12 — feat(phase4c): stepGbrain reconciler step + build-time script embedding [4 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `0144181a` 2026-05-12 — feat(snapshot-bake): canonical fresh-nanode bake toolchain (cleanup + validation + runbook) [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `1c44d5e9` 2026-05-12 — fix(onboarding): break post-checkout loop + recover from configure partial-failure (Rule 33) [5 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `bc34e307` 2026-05-12 — Merge branch 'feat/gbrain-stepGbrain-phase4c' [0 files] _(merge)_
+- `a8bb1bca` 2026-05-12 — feat(edge): rebrand /edge-city → /edge with Edge City visual language [11 files] _(multi: [feature, edge]; ai-assisted)_
+- `6671f651` 2026-05-12 — Merge branch 'feat/matchpool-outcomes-ingest' — §5.2 matching engine infrastructure [49 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `b4b1e97b` 2026-05-12 — fix(reconcile): stepSystemdUnit verify uses md5 hash compare (likely cv=82 unstick) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `03df7ef1` 2026-05-12 — feat(telegram): one-shot fix for VMs missing channels.telegram.botToken on disk [1 files] _(ai-assisted)_
+- `c944a3b0` 2026-05-12 — fix(auth): plug dual-account hole — partner cookie now applies to existing users [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `4a5fddec` 2026-05-12 — feat(edge): branded Open Graph share card for /edge [4 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `b27f94ee` 2026-05-12 — fix(edge): move plaza page to /edge/ to match post-rebrand routing [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `273e1609` 2026-05-12 — fix(replenish-pool): orphan-collision defense + visible alerts [2 files] _(ai-assisted)_
+- `ab48f58c` 2026-05-12 — feat(edge): brand /signup + /connect for Edge Esmeralda attendees [3 files] _(multi: [feature, edge]; ai-assisted)_
+- `5341923e` 2026-05-12 — Merge feat/edge-signup-connect-branding-2026-05-12: brand /signup + /connect for Edge attendees [0 files] _(merge)_
+- `39d0e237` 2026-05-12 — fix(vm-status): atomic health_status on terminal flips + defense filter [13 files] _(ai-assisted)_
+- `1bf237a9` 2026-05-12 — feat(edge): /edge responds to login state [3 files] _(multi: [feature, edge]; ai-assisted)_
+- `c2649f05` 2026-05-12 — Merge feat/edge-login-state-aware-2026-05-12: /edge responds to login state [0 files] _(merge)_
+- `9434a2db` 2026-05-12 — fix(telegram-token-drift): self-heal disk↔DB telegram_bot_token mismatch (Rule 34) [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c4502681` 2026-05-12 — docs(edgeclaw): §4.14 pixel-art Healdsburg village — full v1 spec [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `c707676d` 2026-05-12 — fix(rule-34): clear user channel state on VM release + guard health-check from clobbering configure_failed [3 files] _(ai-assisted)_
+- `3914d05f` 2026-05-12 — fix(vm-status): plug 12 adjacent ghost-row paths uncovered by audit [11 files] _(ai-assisted)_
+- `b3d58bc4` 2026-05-12 — fix(configure): inline dispatch scripts to bypass Next 15 NFT .sh bundling [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a527f867` 2026-05-12 — fix(process-pending): Pass 0 starvation + fairness + scale (khomenko89 12-day wait) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `0d5499af` 2026-05-12 — fix(vm-status): final hardening — SQL guard, cron races, webhooks, top-5 polling [13 files] _(ai-assisted)_
+- `7f96a982` 2026-05-12 — feat(configure): CI verifier for runtime file-read drift [1 files] _(ai-assisted)_
+- `8ecf83d1` 2026-05-12 — refactor(vm-status): centralize user-VM lookup in getUserVm helper [11 files] _(ai-assisted)_
+- `ef8258e6` 2026-05-12 — fix(reconcile): validate-before-restart guards against schema-rejection crashes [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `892826f3` 2026-05-12 — fix(vm-lifecycle): clear assigned_to on terminate — root-cause fix for ghost rows [3 files] _(ai-assisted)_
+- `7f395209` 2026-05-12 — fix(reconcile): include NVM_PREAMBLE for validate-before-restart commands [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3839d176` 2026-05-12 — fix(vm-reconcile): inline dispatch scripts (companion to b3d58bc4) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `da5b7d5c` 2026-05-12 — fix(edge-privacy): cutover safety — skip bypass keys, abort if none found [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `48ea0e8f` 2026-05-12 — Merge feat/privacy-cutover-bypass-skip: privacy cutover bypass-skip + abort guard + .env.ssh-key fix [0 files] _(merge)_
+- `ed8ee6a1` 2026-05-12 — docs(lying-db): 2026-05-13 census — 0.8% rate (down from 27.3% on 05-11) [1 files] _(multi: [reconciler, docs])_
+- `5f6d6a11` 2026-05-12 — feat(changelog): automated changelog + X-post generator system [8 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `31457047` 2026-05-12 — docs(x-drafts): @garrytan OpenClaw bug reply — 3 variants [1 files] _(ai-assisted)_
