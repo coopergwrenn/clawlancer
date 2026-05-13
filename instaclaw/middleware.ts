@@ -88,6 +88,7 @@ export default auth((req) => {
     "/api/admin/restart-unhealthy", // CRON_SECRET header auth
     "/api/admin/xmtp-send-to-user", // Mini app proxy token or admin key
     "/api/admin/xmtp-refresh-token", // X-Admin-Key header auth
+    "/api/admin/privacy-override", // X-Admin-Key header auth — legal-compliance kill switch for Maximum Privacy Mode
     "/api/partner/tag", // Self-auth: handles both logged-in (updates user/VM record) and logged-out (sets cookie for next signup) cases; validates partner against VALID_PARTNERS allow-list
     "/api/internal", // X-Gateway-Token header auth (VM-side internal endpoints, e.g. check-privacy-mode for the SSH bridge)
     "/api/match", // Authorization: Bearer or X-Gateway-Token (matchpool VM bridge endpoints — POST /v1/profile, etc.)

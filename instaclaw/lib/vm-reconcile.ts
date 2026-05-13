@@ -4913,14 +4913,57 @@ async function stepDeployPrivacyBridge(
   );
   const onDiskSha = (existing.stdout || "").trim();
 
+  // ── Lockdown sequence (chattr +i protection) ──
+  // The bridge file is chattr +i'd after deploy so a malicious agent
+  // cannot silently overwrite it. The bridge's own stage-1 self-integrity
+  // check requires the immutable flag to be set; if it isn't, the bridge
+  // panic-blocks all SSH (fail closed).
+  //
+  // Limitation (documented in privacy-bridge.sh threat model): the
+  // openclaw user has `(ALL) NOPASSWD: ALL` in sudoers so an agent CAN
+  // `sudo chattr -i` and defeat this. v0 ships as defense-in-depth + the
+  // detectable sudo trail; v1 follow-up is restricted sudoers.
+  //
+  // Dance:
+  //   - if SHA matches: ensure +i is set (idempotent — no-op if already)
+  //   - if SHA differs: chattr -i, write, verify, chattr +i
+
   if (onDiskSha === expectedSha) {
+    // SHA matched — bridge content is correct. Just make sure +i is set
+    // (idempotent; no-op if already). Best-effort: log on error but
+    // don't fail the reconcile, since the bridge content itself is fine.
+    if (!dryRun) {
+      const lock = await ssh.execCommand(`sudo -n chattr +i ${remotePath} 2>&1`);
+      if (lock.code !== 0) {
+        // Don't fail — bridge content is correct, lockdown is best-effort
+        logger.warn("privacy-bridge: lockdown set+i failed (non-blocking)", {
+          route: "vm-reconcile",
+          vmId: vm.id,
+          err: (lock.stderr || lock.stdout || "").slice(0, 200),
+        });
+      }
+    }
     result.alreadyCorrect.push("privacy-bridge.sh");
     return;
   }
 
   if (dryRun) {
-    result.fixed.push(`[dry-run] would deploy privacy-bridge.sh (current=${onDiskSha.slice(0, 8)})`);
+    result.fixed.push(`[dry-run] would chattr -i, deploy privacy-bridge.sh (current=${onDiskSha.slice(0, 8)}), chattr +i`);
     return;
+  }
+
+  // Unlock the file before write (idempotent — no-op if not currently +i).
+  // We use `|| true` here because chattr -i can fail in two harmless ways:
+  // (1) the file is already not +i, (2) the file doesn't exist yet on
+  // first-ever deploy. Both are fine — the next mkdir/write handles them.
+  const unlock = await ssh.execCommand(`sudo -n chattr -i ${remotePath} 2>/dev/null || true`);
+  if (unlock.code !== 0) {
+    // The `|| true` shouldn't allow this to fire, but defensive.
+    logger.warn("privacy-bridge: unlock returned non-zero (continuing)", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      err: (unlock.stderr || "").slice(0, 200),
+    });
   }
 
   const b64 = Buffer.from(script, "utf-8").toString("base64");
@@ -4940,8 +4983,21 @@ async function stepDeployPrivacyBridge(
     return;
   }
 
-  result.fixed.push("privacy-bridge.sh deployed");
-  logger.info("privacy-bridge deployed", { route: "vm-reconcile", vmId: vm.id });
+  // Lock the freshly-written file. Required for the bridge's stage-1
+  // self-integrity check to pass — without +i, the bridge panic-blocks
+  // every SSH session, locking the operator out. We MUST succeed here.
+  const lock = await ssh.execCommand(`sudo -n chattr +i ${remotePath} 2>&1`);
+  if (lock.code !== 0) {
+    result.errors.push(
+      `privacy-bridge lockdown chattr +i failed (bridge will panic-block!): ${(lock.stderr || lock.stdout || "").slice(0, 200)}`
+    );
+    // Don't try to revert — the write succeeded, content is correct.
+    // The next tick will retry the chattr if this failed transiently.
+    return;
+  }
+
+  result.fixed.push("privacy-bridge.sh deployed + chattr +i locked");
+  logger.info("privacy-bridge deployed and locked", { route: "vm-reconcile", vmId: vm.id });
 }
 
 /**
