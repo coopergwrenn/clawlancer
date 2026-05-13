@@ -5285,11 +5285,18 @@ export async function configureOpenClaw(
     // Install Edge City skill (only for edge_city partners)
     // Uses Bankr pattern: clone directly into ~/.openclaw/skills/ (already in default extraDirs)
     if (config.partner === "edge_city") {
-      // Always write env vars — use placeholder if real token isn't on Vercel yet.
-      // When Tule delivers the real tokens, we add them to Vercel and reconfigure flows
-      // them through automatically (sed updates existing line, echo appends if missing).
-      const edgeosToken = process.env.EDGEOS_BEARER_TOKEN || "PLACEHOLDER_WAITING_ON_TULE";
-      const solaToken = process.env.SOLA_AUTH_TOKEN || "PLACEHOLDER_WAITING_ON_TULE";
+      // EDGEOS_BEARER_TOKEN authenticates calls to the EdgeOS citizen-portal
+      // attendee directory API (api-citizen-portal.simplefi.tech). Live in
+      // Vercel production as of 2026-05-13. Defensive fallback to empty string
+      // so a dev/preview env without the var doesn't crash configure — agents
+      // still work, just can't query the attendee directory.
+      //
+      // 2026-05-13: SOLA_AUTH_TOKEN removed. Edge City migrated from Sola
+      // (Social Layer) to their own EdgeOS calendar system; Sola integration
+      // is deprecated dead code. Existing edge_city VMs may have a stale
+      // SOLA_AUTH_TOKEN=PLACEHOLDER_WAITING_ON_TULE entry in their .env —
+      // inert string, no code references it, cosmetic-only debt.
+      const edgeosToken = process.env.EDGEOS_BEARER_TOKEN || "";
       // v80 InstaClaw operational overlay — additive to Tule's upstream
       // SKILL.md (which we don't modify). Tule's 30-min cron does
       // `git pull --ff-only`; the overlay file is untracked from upstream's
@@ -5308,13 +5315,10 @@ export async function configureOpenClaw(
         `  echo '${edgeOverlayB64}' | base64 -d > "$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md.tmp" && \\`,
         `    mv "$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md.tmp" "$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md"`,
         'fi',
-        '# Set Edge City API tokens — always write, sed-update if present, echo-append if missing',
+        '# Set Edge City API token — sed-update if present, echo-append if missing',
         `grep -q "^EDGEOS_BEARER_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
         `  sed -i "s|^EDGEOS_BEARER_TOKEN=.*|EDGEOS_BEARER_TOKEN=${edgeosToken}|" "$HOME/.openclaw/.env" || \\`,
         `  echo "EDGEOS_BEARER_TOKEN=${edgeosToken}" >> "$HOME/.openclaw/.env"`,
-        `grep -q "^SOLA_AUTH_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
-        `  sed -i "s|^SOLA_AUTH_TOKEN=.*|SOLA_AUTH_TOKEN=${solaToken}|" "$HOME/.openclaw/.env" || \\`,
-        `  echo "SOLA_AUTH_TOKEN=${solaToken}" >> "$HOME/.openclaw/.env"`,
         ''
       );
     }

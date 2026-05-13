@@ -1939,7 +1939,13 @@ export const VM_MANIFEST = {
 
   // Default values for env vars that don't come from the DB
   envVarDefaults: {
-    POLYGON_RPC_URL: "https://1rpc.io/matic",
+    // 2026-05-13: 1rpc.io/matic → publicnode.com. The original 1rpc value was
+    // documented as "broken Polygon RPC endpoints" in the configureOpenClaw fix
+    // commit 9d1d7870, and the fleet was migrated via scripts/_fleet-patch-rpc.ts.
+    // The manifest default was left stale, causing the reconciler's stepEnvVars
+    // to revert any fleet-patched VM back to the broken 1rpc value on every cycle.
+    // This aligns the manifest with the operational reality.
+    POLYGON_RPC_URL: "https://polygon-bor-rpc.publicnode.com",
     CLOB_PROXY_URL: "http://172.105.22.90:8080",
     CLOB_PROXY_URL_BACKUP: "http://172.237.101.206:8080",  // London 2 (gb-lon) backup proxy
   } as Record<string, string>,
