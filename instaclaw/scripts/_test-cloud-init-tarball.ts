@@ -19,6 +19,7 @@ import { extract as tarExtract } from "tar-stream";
 import {
   buildAgentKey,
   buildAuthProfilesJson,
+  buildBootstrapMd,
   buildDotEnv,
   buildIdentityMd,
   buildWalletMd,
@@ -28,6 +29,7 @@ import {
   validateTarballParams,
   type TarballParams,
 } from "../lib/cloud-init-tarball";
+import { WORKSPACE_BOOTSTRAP_SHORT, buildPersonalizedBootstrap } from "../lib/ssh";
 
 // ── helpers ──
 
@@ -301,6 +303,100 @@ async function test5_PerFileBuildersDirect() {
   assert(edgeEntries.length === 10, `collectPartialEntries edge_city+worldId returns 10 entries (got ${edgeEntries.length})`);
 }
 
+async function test6_BuildBootstrapMd() {
+  console.log("\n─── TEST 6: buildBootstrapMd (wrapper #1) ──────────");
+
+  // ── Gmail-present branch ──────────────────────────────────────────────
+  // Wrapper must produce byte-identical output to what configureOpenClaw
+  // produces at lib/ssh.ts:5793 — buildPersonalizedBootstrap(gmailProfileSummary).
+
+  const gmailSummary =
+    "Andrew Smith works at Acme Corp on the pricing model rollout. " +
+    "Recent threads with Sarah Chen about Q3 deadlines, and Mike Park about Stripe migration.";
+  const withGmail: TarballParams = { ...validParams, gmailProfileSummary: gmailSummary };
+
+  const wrapped = buildBootstrapMd(withGmail);
+  const referenceWithSummary = buildPersonalizedBootstrap(gmailSummary);
+  assert(
+    wrapped === referenceWithSummary,
+    "Gmail present: wrapper byte-identical to buildPersonalizedBootstrap(gmailSummary)",
+  );
+
+  // Contract claim from doc §1.1: buildPersonalizedBootstrap currently
+  // IGNORES its parameter. Verify by passing "" — must produce same output
+  // as passing the real summary. This will be the FIRST test to fail if
+  // buildPersonalizedBootstrap ever starts using the param (silent contract
+  // change). On that day, the wrapper's "pass-through" semantics save the
+  // day, AND this assertion's failure tells us the contract changed.
+  const referenceWithEmpty = buildPersonalizedBootstrap("");
+  assert(
+    referenceWithSummary === referenceWithEmpty,
+    "Contract pin: buildPersonalizedBootstrap currently IGNORES profileContent " +
+      "(output equal for '' vs real summary). If this fails, update the wrapper + contract doc.",
+  );
+
+  // Sentinel in personalized bootstrap (catches drift in the template body)
+  assert(
+    wrapped.includes("# BOOTSTRAP.md — First Run Instructions"),
+    "Gmail present: output has BOOTSTRAP.md header",
+  );
+  assert(
+    wrapped.includes("CRITICAL: Do NOT template this"),
+    "Gmail present: output has the personalized-mode 'do not template' directive",
+  );
+
+  // ── Gmail-absent branch ───────────────────────────────────────────────
+  // Wrapper must produce byte-identical output to WORKSPACE_BOOTSTRAP_SHORT.
+
+  const noGmail: TarballParams = { ...validParams, gmailProfileSummary: null };
+  const wrappedShort = buildBootstrapMd(noGmail);
+  assert(
+    wrappedShort === WORKSPACE_BOOTSTRAP_SHORT,
+    "Gmail null: wrapper byte-identical to WORKSPACE_BOOTSTRAP_SHORT",
+  );
+
+  // The short version differs from the personalized version in a specific
+  // way: it does NOT contain the Gmail-personalization section's
+  // 'CRITICAL: Do NOT template' phrase. Pin this difference so a future
+  // re-merge of the two templates doesn't go unnoticed.
+  assert(
+    !wrappedShort.includes("CRITICAL: Do NOT template this"),
+    "Gmail null: short bootstrap does NOT contain personalized-only directive",
+  );
+
+  // ── Empty-string edge case ───────────────────────────────────────────
+  // configureOpenClaw uses `if (config.gmailProfileSummary)` — empty string
+  // is falsy → short branch. Wrapper must match this exactly.
+
+  const emptyGmail: TarballParams = { ...validParams, gmailProfileSummary: "" };
+  assert(
+    buildBootstrapMd(emptyGmail) === WORKSPACE_BOOTSTRAP_SHORT,
+    "Gmail empty string: wrapper matches the SSH path (empty is falsy → short branch)",
+  );
+
+  // ── Undefined edge case ──────────────────────────────────────────────
+  const undefGmail: TarballParams = { ...validParams, gmailProfileSummary: undefined };
+  assert(
+    buildBootstrapMd(undefGmail) === WORKSPACE_BOOTSTRAP_SHORT,
+    "Gmail undefined: wrapper matches the SSH path (undefined is falsy → short branch)",
+  );
+
+  // ── Whitespace-only Gmail ────────────────────────────────────────────
+  // configureOpenClaw's `if (config.gmailProfileSummary)` treats "   " as
+  // truthy → personalized branch. Wrapper must match (even though that
+  // branch's output for whitespace input is silly — it's about parity).
+
+  const wsGmail: TarballParams = { ...validParams, gmailProfileSummary: "   " };
+  assert(
+    buildBootstrapMd(wsGmail) === buildPersonalizedBootstrap("   "),
+    "Gmail whitespace-only: matches SSH path (truthy → personalized)",
+  );
+
+  // ── Determinism ──────────────────────────────────────────────────────
+  assert(buildBootstrapMd(withGmail) === buildBootstrapMd(withGmail), "deterministic on Gmail present");
+  assert(buildBootstrapMd(noGmail) === buildBootstrapMd(noGmail), "deterministic on Gmail null");
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -310,6 +406,7 @@ async function main() {
   await test2_ByokEdgeCity();
   await test3_ValidationRejections();
   await test4_DeterministicOutput();
+  await test6_BuildBootstrapMd();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

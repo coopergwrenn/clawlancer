@@ -58,7 +58,11 @@ import {
   SOUL_STUB_CONSENSUS,
   SOUL_STUB_EDGE,
 } from "./partner-content";
-import { BANKR_SKILL_PATCH_DIRECTIVE } from "./ssh";
+import {
+  BANKR_SKILL_PATCH_DIRECTIVE,
+  WORKSPACE_BOOTSTRAP_SHORT,
+  buildPersonalizedBootstrap,
+} from "./ssh";
 
 // ════════════════════════════════════════════════════════════════════════
 // §1. Public types
@@ -429,6 +433,55 @@ export function buildDotEnv(p: TarballParams): string {
  */
 export function buildAgentKey(p: TarballParams): string {
   return p.agentbookKey.endsWith("\n") ? p.agentbookKey : p.agentbookKey + "\n";
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// §3b. lib/ssh.ts helper wrappers — byte-parity with configureOpenClaw
+//
+// These wrap existing helpers (buildPersonalizedBootstrap,
+// WORKSPACE_BOOTSTRAP_SHORT, etc.) so the tarball builder can produce
+// the same file contents that the SSH-configure path produces for the
+// same input. Phase 1B-2 will compare byte-for-byte between a cloud-
+// init-provisioned VM and an SSH-configure-provisioned VM; any drift
+// here fails that audit.
+//
+// See docs/cloud-init-wrapper-contracts-2026-05-13.md §1 for the full
+// contract documentation behind each wrapper.
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * BOOTSTRAP.md — the agent's first-run instructions.
+ *
+ * Mirrors the branch logic at lib/ssh.ts:5791 exactly:
+ *
+ *   if (config.gmailProfileSummary) {
+ *     bootstrap = buildPersonalizedBootstrap(config.gmailProfileSummary);
+ *   } else {
+ *     bootstrap = WORKSPACE_BOOTSTRAP_SHORT;
+ *   }
+ *
+ * **Why pass `p.gmailProfileSummary` through to buildPersonalizedBootstrap
+ * even though that function currently ignores it:** today the param is
+ * vestigial (the template doesn't substitute it anywhere — see contract
+ * doc §1.1). But the SSH-configure path passes the actual content. If
+ * buildPersonalizedBootstrap ever starts using the param in the future
+ * — a silent contract change — BOTH the SSH path AND this wrapper will
+ * pick up the new behavior identically. Passing "" instead would cause
+ * silent drift between the two paths at that point.
+ *
+ * Truthy-check semantics match the SSH path:
+ *   - non-empty string → personalized bootstrap
+ *   - empty string ""  → short bootstrap (empty is falsy in JS)
+ *   - null / undefined → short bootstrap
+ *   - whitespace "   " → personalized bootstrap (whitespace is truthy)
+ *
+ * Mode 0o644.
+ */
+export function buildBootstrapMd(p: TarballParams): string {
+  if (p.gmailProfileSummary) {
+    return buildPersonalizedBootstrap(p.gmailProfileSummary);
+  }
+  return WORKSPACE_BOOTSTRAP_SHORT;
 }
 
 // ════════════════════════════════════════════════════════════════════════
