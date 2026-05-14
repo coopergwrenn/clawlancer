@@ -62,6 +62,7 @@ import {
   BANKR_SKILL_PATCH_DIRECTIVE,
   WORKSPACE_BOOTSTRAP_SHORT,
   buildPersonalizedBootstrap,
+  buildSystemPrompt,
   buildUserMd,
 } from "./ssh";
 import { VM_MANIFEST } from "./vm-manifest";
@@ -631,6 +632,46 @@ export function buildUserMdForTarball(p: TarballParams): string | null {
     return null;
   }
   return buildUserMd(p.gmailProfileSummary);
+}
+
+/**
+ * system-prompt.md — the agent's gateway-side system prompt scaffold.
+ *
+ * **READ THIS BEFORE DEBUGGING WHY YOUR SYSTEM PROMPT EDITS DON'T STICK.**
+ *
+ * This file is documented dead-weight. The function being wrapped
+ * (buildSystemPrompt at lib/ssh.ts:8995-9082) closes its own template
+ * with this comment:
+ *
+ *   <!-- WARNING: This file is NOT read by OpenClaw. Agent instructions
+ *        now live in SOUL.md (behavioral rules) and CAPABILITIES.md
+ *        (tool routing). This file exists for debugging/reference only. -->
+ *
+ * Both the SSH-configure path AND the cloud-init path emit it because
+ * Phase 1B-2's byte-compare audit demands byte-identical filesystem
+ * state. But the gateway never reads it — agent behavior is driven by
+ * SOUL.md + CAPABILITIES.md (both SNAPSHOT_BAKED, not per-user). If you
+ * edit system-prompt.md on a VM and your changes don't take effect,
+ * THAT IS EXPECTED. Edit SOUL.md or CAPABILITIES.md instead.
+ *
+ * configureOpenClaw calls buildSystemPrompt in two places:
+ *   line 5798: `buildSystemPrompt(config.gmailProfileSummary)`   (Gmail-present)
+ *   line 5815: `buildSystemPrompt('')`                            (Gmail-absent)
+ *
+ * Both branches always produce the file. The function's body branches
+ * internally on `memoryContent.trim()`:
+ *   - non-empty → "## Your Owner\n${content}\n## Session Continuity — CRITICAL\n..."
+ *   - empty     → "## Your Owner\nYour owner hasn't connected their profile yet..."
+ *
+ * Wrapper passes through `p.gmailProfileSummary ?? ""` (handles
+ * null/undefined safely — `.trim()` on the raw param would crash).
+ * The empty-string coalesce produces byte-identical output to the SSH
+ * path's line-5815 explicit `''` argument.
+ *
+ * Mode 0o644.
+ */
+export function buildSystemPromptForTarball(p: TarballParams): string {
+  return buildSystemPrompt(p.gmailProfileSummary ?? "");
 }
 
 // ════════════════════════════════════════════════════════════════════════

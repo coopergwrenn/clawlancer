@@ -22,6 +22,7 @@ import {
   buildBootstrapMd,
   buildDotEnv,
   buildIdentityMd,
+  buildSystemPromptForTarball,
   buildUserMdForTarball,
   buildWalletMd,
   buildWorldIdMd,
@@ -33,6 +34,7 @@ import {
 import {
   WORKSPACE_BOOTSTRAP_SHORT,
   buildPersonalizedBootstrap,
+  buildSystemPrompt,
   buildUserMd,
 } from "../lib/ssh";
 
@@ -627,6 +629,126 @@ async function test8_BuildUserMdForTarball() {
   );
 }
 
+async function test9_BuildSystemPromptForTarball() {
+  console.log("\n─── TEST 9: buildSystemPromptForTarball (wrapper #3) ──");
+
+  // ── Happy path: Gmail present — Session Continuity branch fires ──────
+  // configureOpenClaw at lib/ssh.ts:5798 calls buildSystemPrompt(gmailSummary)
+  // directly. Wrapper byte-output MUST match.
+  const profile =
+    "Andrew Smith works at Acme Corp. Recent threads about pricing rollout " +
+    "with Sarah Chen and Stripe migration with Mike Park.";
+  const withGmail: TarballParams = { ...validParams, gmailProfileSummary: profile };
+
+  const wrapped = buildSystemPromptForTarball(withGmail);
+  assert(
+    wrapped === buildSystemPrompt(profile),
+    "Gmail present: byte-identical to buildSystemPrompt(profile)",
+  );
+
+  // Sentinels: the non-empty branch's distinctive content
+  assert(
+    wrapped.includes("## Session Continuity — CRITICAL"),
+    "Gmail present: Session Continuity block fires (non-empty memoryContent branch)",
+  );
+  assert(wrapped.includes(profile), "Gmail present: profile content embedded inline");
+  assert(
+    wrapped.includes("you already know everything below about your owner") ||
+      wrapped.includes("You already know everything below about your owner"),
+    "Gmail present: owner preamble present (case-insensitive — pin against typo drift)",
+  );
+
+  // Dead-weight WARNING footer — proves we got the right buildSystemPrompt
+  // (the lib/ssh.ts one, not the lib/system-prompt.ts one) AND the future
+  // engineer's debugging guide is still in place.
+  assert(
+    wrapped.includes("This file is NOT read by OpenClaw"),
+    "WARNING footer present (dead-weight system-prompt.md per buildSystemPrompt's own comment)",
+  );
+  assert(
+    wrapped.includes("SOUL.md") && wrapped.includes("CAPABILITIES.md"),
+    "WARNING footer references SOUL.md + CAPABILITIES.md (the actual prompt sources)",
+  );
+
+  // ── Gmail-absent: placeholder branch fires (NOT Session Continuity) ──
+  // configureOpenClaw at lib/ssh.ts:5815 calls buildSystemPrompt('') in
+  // the no-Gmail branch. My wrapper's `?? ""` coalesce produces the same.
+  const noGmail: TarballParams = { ...validParams, gmailProfileSummary: null };
+  const wrappedNull = buildSystemPromptForTarball(noGmail);
+  assert(
+    wrappedNull === buildSystemPrompt(""),
+    "Gmail null: byte-identical to buildSystemPrompt('') (matches SSH line 5815 exactly)",
+  );
+  assert(
+    wrappedNull.includes("hasn't connected their profile yet"),
+    "Gmail null: placeholder Owner section fires",
+  );
+  assert(
+    !wrappedNull.includes("Session Continuity — CRITICAL"),
+    "Gmail null: NO Session Continuity block (no profile to be continuous about)",
+  );
+  // WARNING footer still present in the absent branch
+  assert(
+    wrappedNull.includes("This file is NOT read by OpenClaw"),
+    "Gmail null: WARNING footer still present (both branches share footer)",
+  );
+
+  // ── Undefined → "" via ?? coalesce ───────────────────────────────────
+  // buildSystemPrompt's body does `memoryContent.trim()` which would throw
+  // TypeError on null/undefined. The wrapper's ?? "" guard is load-bearing
+  // for the safety contract — pin it.
+  const undefGmail: TarballParams = { ...validParams, gmailProfileSummary: undefined };
+  const wrappedUndef = buildSystemPromptForTarball(undefGmail);
+  assert(
+    wrappedUndef === buildSystemPrompt(""),
+    "Gmail undefined: ?? coalesce produces same output as empty-string call",
+  );
+
+  // ── Empty string explicitly ──────────────────────────────────────────
+  const emptyGmail: TarballParams = { ...validParams, gmailProfileSummary: "" };
+  assert(
+    buildSystemPromptForTarball(emptyGmail) === buildSystemPrompt(""),
+    "Gmail empty string: passes through to buildSystemPrompt('')",
+  );
+
+  // ── Whitespace-only Gmail: subtle truthy-vs-trim divergence ──────────
+  // SSH path's line 5791 truthy-check fires on whitespace (enters
+  // personalized branch), THEN calls buildSystemPrompt("   ") at 5798,
+  // which internally `.trim()`s to "" → placeholder Owner section.
+  // So system-prompt.md emits placeholder content even when SSH "thinks"
+  // it's in the personalized branch. The wrapper must preserve this
+  // subtlety byte-for-byte.
+  const wsGmail: TarballParams = { ...validParams, gmailProfileSummary: "   " };
+  const wsOutput = buildSystemPromptForTarball(wsGmail);
+  assert(
+    wsOutput === buildSystemPrompt("   "),
+    "Whitespace Gmail: byte-identical to buildSystemPrompt('   ')",
+  );
+  assert(
+    wsOutput.includes("hasn't connected their profile yet"),
+    "Whitespace Gmail: placeholder branch fires (whitespace.trim() === '' inside buildSystemPrompt)",
+  );
+
+  // ── Determinism ──────────────────────────────────────────────────────
+  assert(
+    buildSystemPromptForTarball(withGmail) === buildSystemPromptForTarball(withGmail),
+    "deterministic on Gmail present",
+  );
+  assert(
+    buildSystemPromptForTarball(noGmail) === buildSystemPromptForTarball(noGmail),
+    "deterministic on Gmail null",
+  );
+
+  // ── Contract pin: warning footer is part of the dead-weight signal ───
+  // If a future engineer renames/removes the warning footer (e.g., because
+  // they decide to make OpenClaw actually read system-prompt.md), this
+  // assertion fails and forces a deliberate update to the contract doc.
+  assert(
+    wrapped.endsWith("debugging/reference only. -->"),
+    "Contract pin: dead-weight warning footer is the last line of the file (template hasn't drifted)",
+  );
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -639,6 +761,7 @@ async function main() {
   await test6_BuildBootstrapMd();
   await test7_EdgeosBearerToken();
   await test8_BuildUserMdForTarball();
+  await test9_BuildSystemPromptForTarball();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");
