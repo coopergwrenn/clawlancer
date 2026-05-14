@@ -1035,6 +1035,546 @@ If the answers are not present in the PR diff or description, the PR is incomple
 
 ---
 
+## Incident Response Runbook
+
+Standardized workflow any CC terminal can follow autonomously when Cooper pastes an alert email screenshot or reports a user/VM issue. The point is to converge on root cause + fix without burning Cooper's time on diagnostic chatter, while staying inside well-defined autonomy boundaries.
+
+This runbook is self-contained: it requires only `.env.local` and `.env.ssh-key` to be readable. Do not ask clarifying questions before starting — extract everything you need from the artifact (screenshot, error, paste) and run the workflow.
+
+### Severity classification — always classify first
+
+Tag the incident with one of the four tiers within 30 seconds of receiving it. This decides how aggressive to be, what authority applies, and how fast Cooper needs to know.
+
+| Tier | Definition | Response SLA | Cooper notification |
+|---|---|---|---|
+| **P0** | Paying customer DOWN (active sub, getting no agent response). >1 customer with same symptom. Stripe/Resend/Anthropic billing path broken. | Identify ≤2 min; fix or escalate ≤15 min | Ping at incident start AND at resolution |
+| **P1** | Paying customer DEGRADED (responds but slow/wrong/missing partner feature). Single VM truly broken. Disk full but VM responding. | Identify ≤5 min; fix ≤60 min | Single report at end |
+| **P2** | Alert fired, no confirmed customer impact (hibernating, suspended, or non-paying). Internal infra degradation. | Identify ≤30 min; batch with similar | Optional digest |
+| **P3** | Informational / long-tail warning. Patrol-mode finding. Stale data, no current customer impact. | When bandwidth allows | Weekly digest |
+
+For ambiguous cases, classify UP one tier. False-positive P0 is cheap; false-negative P0 is reputation damage.
+
+### Authority boundaries — what CC may do without asking Cooper
+
+Match the action you're about to take against the tiers below. If unsure, drop one tier (be more conservative). When in doubt, ask.
+
+**Tier A — autonomous, no approval needed:**
+- All read-only diagnostics: SSH reads, Supabase SELECTs, Prometheus queries, Linode API GETs, journalctl
+- Single-VM mutations on a verifiably-paying customer where the fix is reversible (gateway restart, disk-cleanup, env-var resync against Vercel SoT, single-key `openclaw config set`)
+- Adding a Prometheus silence scoped to specific labels AND time-bounded (≤24h for diagnostic; ≤7d for known-noise)
+- Running idempotent scripts manually (e.g. `/opt/instaclaw/update-targets.sh` on monitoring VM, `scripts/_audit-*.ts` reads)
+- Backfilling a single DB row to match observed reality (e.g. setting `vm.partner` to match `user.partner`)
+- Drafting / committing markdown documentation files (incident notes, P1 followups)
+
+**Tier B — one VM first, verify, then ping Cooper before fleet rollout:**
+- Manifest config change that worked on one canary VM
+- Cron interval / schedule change
+- New skill install on >1 VM
+- Restart of >1 but <5 VMs in the same incident family
+- Any `reconcile-fleet` trigger or fleet-push script
+
+**Tier C — hard approval required, ping Cooper FIRST:**
+- Vercel env var changes (Rule 6: blast radius is the whole fleet on next cron)
+- `git push` to main from CC (commits to instaclaw/ or root)
+- Supabase migrations (`supabase db push` schema changes)
+- Linode bulk operations (>5 VMs simultaneously, instance deletes, mass reboots)
+- Stripe / Resend / Anthropic API calls that affect billing
+- Any deletion operation on customer state (sessions, MEMORY.md, workspace files — per Rules 22, 23, 30)
+- New CLAUDE.md Rules (Cooper signs off on rule canon)
+- New Prometheus alert rules at fleet scope
+- Restarting >1 gateway during peak hours (12:00–02:00 UTC) without P0 justification
+
+**Emergency override** (P0 only): if a paying-customer outage is in progress AND the fix is reversible AND it touches <10 VMs, CC may act autonomously and report within 5 minutes. The report must include: (a) what was done, (b) full rollback command, (c) why escalation was bypassed.
+
+### Step 1: Identify
+
+From the screenshot / paste, extract:
+- Alert name (e.g. `DiskCritical`, `GatewayDown`)
+- Instance IP (the `instance="<IP>:9100"` label)
+- Severity (`critical` vs `warning`)
+- Firing duration (`since <timestamp>`)
+
+Assign an **incident ID**: `INC-<YYYYMMDD>-<vm-N>-<3-char hash>` (e.g. `INC-20260514-vm788-a7c`). Use this in every backup file path, silence comment, and report.
+
+Map IP → VM → user:
+```sql
+SELECT name, ip_address, assigned_to, health_status, config_version, partner, status, provider_server_id
+FROM instaclaw_vms WHERE ip_address = '<IP>';
+
+SELECT email, partner, created_at FROM instaclaw_users WHERE id = '<assigned_to>';
+```
+
+Pull recent context for the user:
+```sql
+SELECT * FROM vm_lifecycle_log WHERE vm_id = '<vm.id>' ORDER BY created_at DESC LIMIT 20;
+SELECT status, current_period_end FROM instaclaw_subscriptions
+  WHERE user_id = '<user.id>' AND status IN ('active','trialing','past_due');
+```
+
+Log to your scratchpad:
+```
+INC-<ID> [P0/P1/P2/P3]: <alert_name> on <vm_name> (<ip>) owned by <email>,
+  health=<status>, cv=<version>, partner=<partner|null>, sub=<active|past_due|none>
+```
+
+If the instance label is missing or ambiguous (e.g. cropped screenshot), pivot to alertname-only search across `/api/v2/alerts` to find all currently-firing instances; ask Cooper which one if more than 5 match.
+
+### Step 2: Diagnose — monitoring-first, then SSH
+
+Default order: cheapest signals first. SSH is the most expensive (10s+ per probe, can hang) and least structured. Use Prometheus and pg_cron FIRST when they can answer the question.
+
+**2.1 — Prometheus instant data (1s per query, cheap):**
+
+```bash
+ssh -i /tmp/ic_ssh_key root@66.228.43.140 'for q in \
+  "up{instance=\"<IP>:9100\"}" \
+  "(1 - node_filesystem_avail_bytes{mountpoint=\"/\",instance=\"<IP>:9100\"} / node_filesystem_size_bytes{mountpoint=\"/\",instance=\"<IP>:9100\"}) * 100" \
+  "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\",instance=\"<IP>:9100\"}[5m])) * 100)" \
+  "(1 - node_memory_MemAvailable_bytes{instance=\"<IP>:9100\"} / node_memory_MemTotal_bytes{instance=\"<IP>:9100\"}) * 100" \
+  "node_systemd_unit_state{name=\"openclaw-gateway.service\",state=\"active\",instance=\"<IP>:9100\"}" \
+  "changes(node_boot_time_seconds{instance=\"<IP>:9100\"}[1h])"; do \
+    echo "--- $q ---"; \
+    curl -s --data-urlencode "query=$q" localhost:9090/api/v1/query \
+      | python3 -c "import json,sys; r=json.load(sys.stdin)[\"data\"][\"result\"]; print(r[0][\"value\"][1] if r else \"NO DATA\")"; \
+  done'
+```
+
+What Prom alone tells you (no SSH needed):
+- VM alive? → `up=1`
+- Disk %? → filesystem query
+- Gateway running? → `node_systemd_unit_state{name="openclaw-gateway.service",state="active"} == 1`
+- Crash loop? → `changes(node_boot_time_seconds[1h]) > 1`
+- CPU pressure? → idle-rate query
+- Memory pressure? → memory ratio query
+
+**2.2 — pg_cron fleet-health view (reconcile state):**
+
+The fleet-health pg_cron job (migration `20260513170100_fleet_health_pgcron.sql`) writes hourly snapshots; `app/api/cron/fleet-health-notify` and `app/api/cron/db-job-health` deliver them. Direct query:
+
+```sql
+-- Last reconcile attempt and outcome (pg_cron job_run_details)
+SELECT jobname, status, start_time, end_time, return_message
+FROM cron.job_run_details
+WHERE jobname IN ('reconcile-fleet','fleet-health-check')
+ORDER BY end_time DESC LIMIT 10;
+
+-- Per-VM cv drift
+SELECT name, config_version, health_status, last_reconciled_at
+FROM instaclaw_vms WHERE name = '<vm_name>';
+```
+
+If `last_reconciled_at` is >30 min old or status is `failed`, the reconciler is stuck on this VM. Likely Rule 10 / Rule 23 (pushFailed gate). Pull the most recent Vercel function log for the reconcile-fleet route.
+
+**2.3 — SSH battery (when monitoring isn't enough):**
+
+```bash
+ssh -i /tmp/ic_ssh_key openclaw@<IP> '
+  echo "=== disk ==="; df -h /; du -sh ~/.openclaw/{session-backups,sessions,workspace} 2>/dev/null
+  echo "=== gateway ==="; systemctl --user is-active openclaw-gateway
+  curl -sf -o /dev/null -w "health http=%{http_code}\n" localhost:18789/health
+  echo "=== crashes ==="; systemctl --user show openclaw-gateway --property=NRestarts --value
+  echo "=== recent journal ==="; journalctl --user -u openclaw-gateway --since "1 hour ago" --no-pager | tail -50
+  echo "=== config sanity ==="; ls -la ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.last-known-good 2>/dev/null
+  echo "=== env sanity ==="; grep -E "^(GATEWAY_TOKEN|EDGEOS_|BRAVE_|BANKR_|RESEND_)" ~/.openclaw/.env | sed "s/=.*/=<SET>/"
+  echo "=== process tree ==="; pgrep -af openclaw | head -10
+'
+```
+
+Read each section against expectations:
+- `df -h /` >85% → DiskAlmostFull territory; >95% → DiskCritical, ENOSPC imminent (Rule 37)
+- gateway `is-active`: anything other than `active` is the problem
+- `NRestarts`: <5 normal; >10/h is crash loop (Rules 16 / 32)
+- recent journal: scan for `Cannot find module`, `OOM`, `SIGTERM`, `panic`, `EADDRINUSE`, `auth-cache`, `failed to lookup secret`, `prctl-subreaper`
+- `openclaw.json` size 0 bytes: corrupted, restore from `.last-known-good` (Rule 34)
+- env vars: missing partner env (e.g. `EDGEOS_*` for an edge_city VM) = Rule 9 partner-tag drift
+
+**2.4 — SSH-failed fallback path:**
+
+If SSH connection fails or hangs:
+
+1. **Prometheus liveness:** `up{instance="<IP>:9100"}` — if `=1`, the VM is alive and SSH is the only thing broken (rare; usually ufw misconfig or sshd OOM-killed). TCP probe `nc -zv <IP> 22` separates TCP from auth.
+2. **Direct node_exporter scrape:** from monitoring VM, `curl http://<IP>:9100/metrics | head -50` exposes disk, memory, process count without SSH.
+3. **Linode API for power state:**
+   ```bash
+   curl -H "Authorization: Bearer $LINODE_API_TOKEN" \
+     "https://api.linode.com/v4/linode/instances/<provider_server_id>" | python3 -m json.tool
+   ```
+   Look at `status` (`running` / `offline` / `provisioning`).
+4. **Linode reboot** if VM is `running` but truly unreachable (Tier A — reversible single-VM):
+   ```bash
+   curl -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+     "https://api.linode.com/v4/linode/instances/<id>/reboot"
+   ```
+5. **Lish serial console** for out-of-band access when SSH key auth is broken:
+   ```bash
+   ssh -t <linode-user>@lish-newark.linode.com instaclaw-vm-<N>
+   ```
+6. If all five fail: VM is permanently lost. Mark `health_status = 'frozen'` and reassign the owner if paying.
+
+### Step 3: Fix the affected VM (with rollback discipline)
+
+Before any destructive operation, capture state to a safety location:
+
+```bash
+# On-VM backup of files about to mutate
+ssh -i /tmp/ic_ssh_key openclaw@<IP> 'mkdir -p ~/incident-<ID>
+  cp ~/.openclaw/openclaw.json ~/incident-<ID>/openclaw.json.before
+  cp ~/.openclaw/.env ~/incident-<ID>/env.before
+  df -h / > ~/incident-<ID>/disk.before.txt
+  date -u > ~/incident-<ID>/timestamp.txt'
+
+# Local backup of the DB row before mutating
+curl "https://qvrnuyzfqjrsjljcqbub.supabase.co/rest/v1/instaclaw_vms?id=eq.<vm.id>" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  > /tmp/inc-<ID>-vm-row.before.json
+```
+
+Apply the smallest correctly-targeted fix:
+
+- **Disk full:**
+  ```bash
+  ssh openclaw@<IP> '
+    find ~/.openclaw/session-backups -mtime +1 -delete
+    ls -t ~/.openclaw/session-backups | tail -n +1001 | xargs -I {} rm -f ~/.openclaw/session-backups/{} 2>/dev/null
+    sudo journalctl --vacuum-time=2d
+    find /tmp -maxdepth 1 -mtime +1 -delete 2>/dev/null
+    [ -s ~/.openclaw/openclaw.json ] || cp ~/.openclaw/openclaw.json.last-known-good ~/.openclaw/openclaw.json
+    systemctl --user restart openclaw-gateway
+  '
+  ```
+- **Gateway crash loop:**
+  - Identify cause from journal (Rules 16, 17, 25, 30, 32, 35)
+  - `systemctl --user reset-failed openclaw-gateway && systemctl --user restart openclaw-gateway`
+  - If auth-cache (Rule 16): the canonical helper is `lib/auth-cache.ts` `clearStaleAuthCacheForUser`. Invoke via a small one-off tsx script if no existing script matches; do NOT delete `auth-profiles.json` directly.
+- **Token / env drift:**
+  - Compare on-disk `.env` against Vercel source-of-truth + DB row
+  - `sed -i 's|^GATEWAY_TOKEN=.*|GATEWAY_TOKEN=<from-db>|' ~/.openclaw/.env` for single-key surgery
+  - Restart gateway to pick up
+- **Config drift (cv behind manifest):**
+  - Adapt an existing canary-reconcile script (e.g. `scripts/_canary-vm043-local-reconcile.ts` or `scripts/_catch-up-stuck-cohort.ts` filtered to one VM)
+  - Run with `strict=false` to bypass the 180s deadline (Rule 44)
+  - Verify cv bumped after run completes
+
+Verify health after fix (within 30s of restart):
+```bash
+ssh -i /tmp/ic_ssh_key openclaw@<IP> '
+  for i in 1 2 3 4 5 6; do
+    status=$(systemctl --user is-active openclaw-gateway)
+    http=$(curl -sf -o /dev/null -w "%{http_code}" localhost:18789/health 2>/dev/null)
+    echo "iter=$i status=$status http=$http"
+    [ "$status" = "active" ] && [ "$http" = "200" ] && exit 0
+    sleep 5
+  done
+  exit 1
+'
+```
+
+If health doesn't return in 30s: revert from the `incident-<ID>` backup, restart with previous state, and escalate. **Do not** keep applying variants of the same fix (Rule 29's hallucinated-diagnosis trap).
+
+Garbage-collect the safety backup after 1h of confirmed healthy state:
+```bash
+ssh -i /tmp/ic_ssh_key openclaw@<IP> 'rm -rf ~/incident-<ID>'
+```
+
+### Step 4: Fleet-wide sweep (multi-source)
+
+A single-VM fix may indicate a fleet-wide pattern. Sweep cheap signals first, expensive ones second.
+
+**4.1 — Prometheus fleet query (resource symptoms):**
+```bash
+# All VMs >85% disk
+ssh root@66.228.43.140 'curl -s "localhost:9090/api/v1/query" \
+  --data-urlencode "query=(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100 > 85" \
+  | python3 -m json.tool'
+
+# All gateways inactive
+ssh root@66.228.43.140 'curl -s "localhost:9090/api/v1/query" \
+  --data-urlencode "query=node_systemd_unit_state{name=\"openclaw-gateway.service\",state=\"active\"} == 0"'
+```
+
+**4.2 — Supabase state query (state-related symptoms):**
+```sql
+-- All assigned VMs in unusual health states
+SELECT name, ip_address, health_status, config_version FROM instaclaw_vms
+WHERE health_status NOT IN ('healthy','suspended','hibernating')
+  AND status = 'assigned' ORDER BY last_health_check DESC;
+
+-- Rule 9 cluster: partner-tagged users whose VMs are missing the partner tag
+SELECT u.email, v.name, u.partner AS user_partner, v.partner AS vm_partner
+FROM instaclaw_users u JOIN instaclaw_vms v ON v.assigned_to = u.id
+WHERE u.partner IS NOT NULL AND v.partner IS NULL;
+```
+
+**4.3 — Journal pattern search across fleet (when root cause is a log signature):**
+
+Axiom integration is on the roadmap; until then, parallelize a journalctl probe across the fleet via SSH. Template (use `_audit-*.ts` style scripts):
+```bash
+# Read the existing scripts/_audit-* family for the parallel-SSH idiom (Supabase IP list + parallel ssh)
+# Then grep for the specific signature, e.g. "Cannot find module" or "OOM-killer"
+```
+
+**4.4 — Apply fix to matched set (respect authority boundaries):**
+
+| Matched VM count | Authority tier | Action |
+|---|---|---|
+| 1 (already Step 3) | A | Done |
+| 2–5 | B | Apply to one more canary first; verify; proceed if clean |
+| >5 | C | Ping Cooper before fleet-pushing — draft the fix script, dry-run output, await go |
+
+### Step 5: Prevent recurrence — Rule integration
+
+Map the root cause to the CLAUDE.md Rule canon:
+
+1. **Existing Rule covers it:** Is the rule's prescribed pattern implemented in code? If not, that's a doc-only Rule — flag it. Does the rule have a detection mechanism (cron, sentinel, audit)? If not, propose one. Add a one-line "saw it on <date> in INC-<ID>" if useful.
+2. **Existing Rule but described differently:** Update the Rule with the new failure-mode example. This is the second-most-common case — rules use abstract language that didn't match how this incident manifested.
+3. **No existing Rule:** Draft a new Rule following the numbered-rule format. Include: name + body, **The incident:** timeline, **Mandatory pattern:**, **Banned patterns:**, **Detection rule:**. Append to the rule list, increment the highest existing number.
+4. **Maps to an unimplemented P1:** Bump priority and add this incident as evidence under "Detection note" / "Impact widened".
+
+Do NOT leave the prevention step empty. If no prevention is added, the next instance is on the schedule.
+
+### Step 6: Report to Cooper — signal density
+
+Cooper has limited time. The report's job is to update him in 10 seconds.
+
+**One-line header (always required):**
+```
+INC-<ID> [P0/P1/P2/P3]: <symptom> on <vm-name> (<email>). Fixed via <one-clause>.
+Fleet sweep: <N>/<total> matched, all fixed. Time impact: <minutes>. Confidence: <high/med/low>.
+Rule: <new R<N> | existing R<N> | none-mapped>.
+```
+
+**If P0 or P1, the body adds:**
+- **What broke**, one sentence, with file:line if known
+- **What fixed it**, command run or commit SHA
+- **Other VMs affected**, names only (not IPs)
+- **Cooper action required** — `none` is a valid value; otherwise specify exactly (Vercel env, Stripe action, customer message, etc.)
+- **Rollback command**, paste-ready, in case the fix needs reversing within 1h
+
+**For known contacts**, draft a paste-ready message Cooper can send:
+- Timour Kosters (Edge City lead) — any Edge City partner VM issue
+- Jeremy / Ape Capital — vm-319 / OnlyMolts
+- Doug Rathell — vm-725
+- Carter Cleveland — vm-917 / Edge City
+- khomenko89@gmail.com (Vasyl) — vm-918 / onboarding-trap recoveries
+
+**Never** in the report:
+- Paste raw journal output (refer by VM name + timestamp; Cooper SSHs himself if needed)
+- Recount internal reasoning chain (Cooper trusts the conclusion; show the work only on request)
+- List every tool call or command run
+
+### Special cases
+
+**Multiple alerts on the same VM (cascade analysis):**
+- Sort by `startsAt` ascending. The earliest is usually the root cause.
+- Treat all alerts as ONE incident; don't apply N separate fixes for N correlated alerts.
+- Common cascades:
+  - `DiskCritical` → `GatewayDown` (no space to write session/journal)
+  - `HighMemory` → `NodeExporterDown` (OOM killer)
+  - `HighCPU` + `HighMemory` simultaneously → runaway agent (prompt-injection loop per Rule 25)
+  - `GatewayDown` + `HighCPU` → crash-loop restarts spinning CPU
+
+**Novel root cause (no existing Rule, no obvious pattern):**
+- Preserve evidence BEFORE applying any fix: dump last 500 journal lines, `openclaw.json`, `df -h`, process tree, env, recent session jsonl heads. Save under `~/incident-<ID>/` on the VM.
+- Apply only the smallest stop-the-bleeding fix.
+- Drop a forensic doc in `instaclaw/docs/incidents/<YYYY-MM-DD>-<symptom>-<inc-id>.md`.
+- Tag the incident `needs-rule` in Cooper's report.
+- Watch for Rule 29 trap: never invent infrastructural explanations that telemetry can't support. "VM fork limits" is the cautionary tale — if you can't point to a specific journal line, syscall, or metric, your hypothesis is hallucinated.
+
+**Rollback if fix made it worse:**
+- Restore from `~/incident-<ID>/` snapshot: `cp ~/incident-<ID>/openclaw.json.before ~/.openclaw/openclaw.json`
+- Restart gateway
+- Restore DB row from `/tmp/inc-<ID>-vm-row.before.json` if mutated (use PostgREST PATCH)
+- Verify health returns to pre-incident state. **If pre-incident was already broken**, rollback may "succeed" without fixing anything — escalate to Cooper rather than escalating the fix.
+
+### Per-alert quick reference
+
+| Alert | First diagnostic | Common root cause | Quick fix |
+|---|---|---|---|
+| `DiskCritical` (>95%) | `du -sh ~/.openclaw/{session-backups,sessions,workspace}` | Backup runaway, session bloat | Purge backups + vacuum journal + restart gateway. Per Rule 37 |
+| `DiskAlmostFull` (>85%) | Same as DiskCritical, no urgency | Slow growth | Schedule cleanup; track 24h |
+| `GatewayDown` (≥5m) | `journalctl --user -u openclaw-gateway -n 100` | Rule 16 (auth-cache), Rule 32 (config restart needed), Rule 35 (prctl-subreaper) | `reset-failed` then `restart` after addressing journal cause |
+| `NodeExporterDown` (≥10m) | Linode API instance state | VM hibernating, ufw drop, OOM killer | Wake (if paying), add ufw rule, restart service |
+| `VMUnreachable` (≥5m) | Same as NodeExporterDown | Same | Same |
+| `HighCPU` (>90% for 5m) | `journalctl --user -u openclaw-gateway -n 200` | Runaway tool loop, prompt injection (Rule 25), browser zombie | Restart gateway; investigate prompt context |
+| `HighMemory` (>90% for 5m) | `du -sh ~/.openclaw/sessions/*` | Bloated session (Rule 30 territory) | In-place compact; never archive (Rule 30) |
+| `RestartStorm` (>10/h) | Boot times + journal | Rule 16 / Rule 34 (rollback path) | Address journal cause; do NOT loop fixes |
+
+### Anti-patterns — never do these
+
+- **Hallucinate root cause** when telemetry doesn't support it. If you can't cite a journal line, metric, or file path that shows the cause, your hypothesis is wrong. (Rule 29)
+- **Delete session files** for "cleanup" or "crash-loop prevention." Trim in place; never `os.remove` on active state. (Rules 22, 30)
+- **Full-overwrite `openclaw.json`** with `cat > / echo >`. Use `openclaw config set` for merge semantics. (Rule 34)
+- **Bump `config_version`** manually without verifying every reconciler step ran. The DB will lie. (Rule 23)
+- **Run reconciler at concurrency > 3.** Cascades become fleet stampedes. (Upgrade Playbook)
+- **Force-restart healthy gateway** during peak hours unless P0. Wait for `(now − last_user_activity_at) > 5min`. (Rule 17)
+- **Trust "Notify success"** from Alertmanager as proof of inbox delivery. The upstream relay accepted; downstream receipt is separate. Verify via Resend dashboard or Cooper's confirmation.
+- **Ship a fix without rollback.** Even read-only-looking operations can break next steps. Capture state first.
+- **Treat alert state as truth.** AM holds firing state with stale data. Verify live by direct probe before acting.
+- **Paste customer message content** into any external system, including Slack, email, or commit messages. Session data is sensitive; refer by VM name + timestamp only.
+- **Apply variants of a failing fix.** One fix attempt that doesn't resolve = escalate, don't iterate. (Rule 29 spirit)
+- **Skip Step 3's pre-fix backup** because "this is obviously the right fix." That confidence is the marker of the next post-mortem.
+
+### Patrol mode — proactive checks (no incident in flight)
+
+Run every 6h or on Cooper's manual invocation. Outputs a digest only if anomalies found; silent if clean.
+
+Checks (each implemented as a sibling of the `scripts/_audit-*.ts` family):
+1. **Disk patrol**: VMs crossing 80% in past 6h that aren't yet firing `DiskAlmostFull` → preemptive flag
+2. **Stuck reconcile**: VMs at `config_version < MANIFEST.version - 1` with `last_reconciled_at > 30 min ago`
+3. **Stripe-DB drift**: Stripe subs vs local DB mismatch; paying customers without working VMs (Rule 14 cluster)
+4. **Sentinel sweep**: random 5 healthy+assigned VMs — verify `~/.openclaw/workspace/SOUL.md` matches manifest sentinel strings (Rule 23)
+5. **Silence audit**: silences >80% of duration elapsed — confirm still needed
+6. **Cron lock audit**: any `instaclaw_cron_locks` row held >2h = stuck cron → orphan or genuine hang
+7. **DB↔disk sanity** (Rule 34): random 5 VMs — verify `vm.telegram_bot_token` matches `~/.openclaw/openclaw.json.channels.telegram.botToken`
+
+A weekly variant runs Sunday 03:00 UTC and emails Cooper a fleet-health digest.
+
+### Cross-terminal coordination
+
+Multiple CC terminals may respond to the same incident simultaneously. Coordinate to avoid duplicate fixes / silence conflicts:
+
+1. **Acquire an incident lock** before mutating state — use the existing `lib/cron-lock.ts` helpers:
+   ```typescript
+   import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+   const lockKey = `incident-${alertname}-${ipAddress.replace(/\./g, '-')}`;
+   const acquired = await tryAcquireCronLock(lockKey, 1800, `cc-${process.env.USER || 'unknown'}`);
+   if (!acquired) { /* Another terminal owns this incident — observe, don't act */ }
+   try { /* apply fix */ } finally { await releaseCronLock(lockKey); }
+   ```
+2. **Tag silences with terminal identity**: `--author=cc-<terminal-id>` so Cooper can trace authorship.
+3. **If lock is held by another terminal**: post a comment in the incident doc with your context; do NOT also apply a fix.
+4. **Release the lock after Step 6 report**, regardless of outcome.
+
+### Post-incident review
+
+For any P0 OR a P1 that recurs (>1 instance of same pattern in a week), within 24h drop a forensic doc at:
+
+`instaclaw/docs/incidents/<YYYY-MM-DD>-<symptom>-<inc-id>.md`
+
+Template:
+```markdown
+# INC-<ID>: <one-line description>
+
+## Severity & scope
+P0 / P1 — <N> customer(s) impacted, <N> VMs.
+
+## Timeline (UTC)
+- HH:MM — first signal source: <alert / user-report / patrol>
+- HH:MM — Cooper notified (if P0)
+- HH:MM — diagnosis converged on <root cause>
+- HH:MM — fix applied
+- HH:MM — health verified, lock released
+
+## Root cause
+<code path / metric / file:line>
+
+## Fix
+<commit SHA / commands run>
+
+## Blast radius
+- Customer downtime: <minutes total>
+- Detection lag: <time from first symptom to first alert>
+- Resolution lag: <time from alert to fix>
+
+## Prevention
+- Rule applied / added: R<N>
+- Detection added: <Prom alert / pg_cron / patrol step>
+- P1 follow-ups added: <items>
+
+## Lessons
+<1–3 short bullets — patterns Cooper or future CC should watch for>
+
+## Forensic evidence
+- Pre-fix journal: <path on VM>
+- Pre-fix DB row JSON: <path>
+- Pre-fix files: <path>
+```
+
+Cross-reference any newly-authored CLAUDE.md Rules.
+
+### Quick command reference
+
+```bash
+# === Bootstrap (extract SSH key if not already on disk) ===
+[ -f /tmp/ic_ssh_key ] || (grep '^SSH_PRIVATE_KEY_B64=' /Users/cooperwrenn/wild-west-bots/instaclaw/.env.ssh-key \
+  | head -1 | sed 's/^SSH_PRIVATE_KEY_B64=//' | sed 's/"//g' | base64 -d > /tmp/ic_ssh_key && chmod 600 /tmp/ic_ssh_key)
+
+# === SSH to fleet VM ===
+SSH_OPTS="-i /tmp/ic_ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes"
+ssh $SSH_OPTS openclaw@<IP> '...'
+
+# === SSH to monitoring VM (Prometheus + Alertmanager) ===
+ssh $SSH_OPTS root@66.228.43.140 '...'
+
+# === Prometheus query ===
+ssh $SSH_OPTS root@66.228.43.140 'curl -s --data-urlencode "query=<PROMQL>" localhost:9090/api/v1/query | python3 -m json.tool'
+
+# === Alertmanager active alerts for an instance ===
+ssh $SSH_OPTS root@66.228.43.140 'curl -s localhost:9093/api/v2/alerts | python3 -c "import json,sys; [print(a[\"labels\"][\"alertname\"]) for a in json.load(sys.stdin) if a[\"labels\"].get(\"instance\")==\"<IP>:9100\"]"'
+
+# === Silence a noisy alert (always time-bounded, always authored) ===
+ssh $SSH_OPTS root@66.228.43.140 'amtool silence add --alertmanager.url=http://localhost:9093 \
+  --duration=2h --author=cc-incident-<ID> --comment="<reason>" \
+  alertname="<NAME>" instance="<IP>:9100"'
+
+# === Supabase: VM by IP ===
+curl "https://qvrnuyzfqjrsjljcqbub.supabase.co/rest/v1/instaclaw_vms?ip_address=eq.<IP>&select=*" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+
+# === Supabase: user by id ===
+curl "https://qvrnuyzfqjrsjljcqbub.supabase.co/rest/v1/instaclaw_users?id=eq.<UUID>&select=*" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+
+# === Linode: instance state ===
+curl -H "Authorization: Bearer $LINODE_API_TOKEN" \
+  "https://api.linode.com/v4/linode/instances/<INSTANCE_ID>"
+
+# === Linode: reboot ===
+curl -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+  "https://api.linode.com/v4/linode/instances/<id>/reboot"
+
+# === Disk cleanup (safe defaults) ===
+ssh $SSH_OPTS openclaw@<IP> '
+  find ~/.openclaw/session-backups -mtime +1 -delete
+  ls -t ~/.openclaw/session-backups | tail -n +1001 | xargs -I {} rm -f ~/.openclaw/session-backups/{} 2>/dev/null
+  sudo journalctl --vacuum-time=2d
+  find /tmp -maxdepth 1 -mtime +1 -delete 2>/dev/null
+'
+
+# === Gateway restart (single VM, with verify) ===
+ssh $SSH_OPTS openclaw@<IP> '
+  systemctl --user reset-failed openclaw-gateway
+  systemctl --user restart openclaw-gateway
+  for i in 1 2 3 4 5 6; do
+    s=$(systemctl --user is-active openclaw-gateway)
+    h=$(curl -sf -o /dev/null -w "%{http_code}" localhost:18789/health 2>/dev/null)
+    echo "iter=$i status=$s http=$h"
+    [ "$s" = "active" ] && [ "$h" = "200" ] && exit 0
+    sleep 5
+  done
+  exit 1
+'
+```
+
+### Reference: monitoring stack access
+
+| System | Endpoint | Auth | Notes |
+|---|---|---|---|
+| Fleet SSH | `openclaw@<IP>` port 22 | `/tmp/ic_ssh_key` decoded from `SSH_PRIVATE_KEY_B64` in `.env.ssh-key` | All fleet VMs share one key |
+| Monitoring VM SSH | `root@66.228.43.140` port 22 | Same key | Linode ID 95430641. Hosts Prometheus + Alertmanager + Grafana |
+| Prometheus | `http://localhost:9090` (loopback only) | None, loopback-bound — go via monitoring VM SSH | Version 2.51.2; 30d retention; targets refresh every 5min from `/etc/prometheus/targets.json` (regenerated by `*/5` cron `/etc/cron.d/instaclaw-update-targets`) |
+| Alertmanager | `http://localhost:9093` (loopback only) | None, loopback-bound | Version 0.27.0; binary install at `/usr/local/bin/alertmanager`; config `/etc/alertmanager/alertmanager.yml`; SMTP secret in `/etc/alertmanager/.smtp_password` (0640 root:prometheus) |
+| Grafana | `http://66.228.43.140:3000` | Password (set in instance, not in env) | TLS pending nginx/Let's Encrypt rollout |
+| Resend SMTP | `smtp.resend.com:2587` STARTTLS | username `resend`, password = `RESEND_API_KEY` | Ports 587/465 blocked by Linode outbound anti-spam; 2587 is Resend's alternate |
+| Resend dashboard | `https://resend.com/emails` | Cooper login | Ground-truth email delivery (vs AM's "Notify success" which only proves relay-accept) |
+| Supabase | `https://qvrnuyzfqjrsjljcqbub.supabase.co/rest/v1/` | `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` | PostgREST. Use `.select("*")` for safety-critical reads (Rule 19) |
+| Linode | `https://api.linode.com/v4/` | `LINODE_API_TOKEN` in `.env.local` | Read for state; write for reboot / power. Protect IDs 93105031, 94293064, 95430641 (infra) |
+| Vercel | `npx vercel ...` | `vercel login` from terminal | Source-of-truth for env vars. Per Rule 6, use `printf` not `<<<` |
+| Stripe | `https://api.stripe.com/v1/` | `STRIPE_SECRET_KEY` in `.env.local` | Per Rule 14, `lib/billing-status.ts` is SoT. Trust Stripe over local DB for ground truth |
+| pg_cron jobs | Postgres direct via Supabase | Service-role key | Query `cron.job_run_details`. Health monitor in `app/api/cron/db-job-health/route.ts` and `app/api/cron/fleet-health-notify/route.ts` |
+
+---
+
 ## Linode-vs-DB Drift (Reality Checks)
 
 The DB has 836 rows with `provider_server_id` set; Linode reports only **220 live instances**. Most "terminated" VMs in our DB still carry stale Linode IDs from instances that were deleted long ago. **For any cost calculation or census reported externally, query the Linode API for the live count** — never multiply DB row count × $29.
