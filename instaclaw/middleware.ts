@@ -54,6 +54,7 @@ export default auth((req) => {
     "/api/admin/provision",
     "/api/admin/pool-audit",
     "/api/admin/audit-identity",
+    "/api/admin/lock-status", // public — operational metadata for partner-integrator coordination (Timour feedback #4 / P1-6)
     "/api/gateway",
     "/api/waitlist",
     "/api/invite/validate",
