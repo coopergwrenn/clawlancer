@@ -163,3 +163,4 @@ async function dispatchAlertIfNeeded(
 
   await sendAdminAlertEmail(subject, body);
 }
+// Touch to trigger Vercel redeploy — verify probe-edge-calendar lands (P1-8 verification on 2026-05-14)
