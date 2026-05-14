@@ -16,10 +16,10 @@ This PRD is the **operational tracker** for the next ~10 days. Every open item i
 
 ## 1. Executive Summary
 
-Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). Update 2026-05-14 (in-progress sweep): **P1-1 closed via shipped fixes + natural reconcile (0/144 lying-DB by census). Rule 37 closed via lib/enospc-guard.ts wrapper (32/32 synthetic tests). Rule 38 closed via stepDiskGuard ungating + runFileDriftPass coverage (12/12 synthetic tests; bonus fix for fragile getSupabase throw).** Remaining 7 items fall into three tiers:
+Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). Update 2026-05-14 (in-progress sweep): **P1-1 closed via shipped fixes + natural reconcile (0/144 lying-DB by census). Rule 37 closed via lib/enospc-guard.ts wrapper (32/32 synthetic tests). Rule 38 closed via stepDiskGuard ungating + runFileDriftPass coverage (12/12 synthetic tests; bonus fix for fragile getSupabase throw). P1-4 closed via manifest-integrity hardening — admin alert + expanded hash coverage + 38/38 synthetic tests.** Remaining 6 items fall into three tiers:
 
 - **Tier 0 — Critical path blocker**: ~~P1-1 lying-DB~~ **SHIPPED 2026-05-14**. 0 items remaining at Tier 0.
-- **Tier 1 — Hardening before snapshot bake (1 item remaining)**: P1-4 Vercel-nft. ~~Rule 37 ENOSPC~~ **SHIPPED 2026-05-14**. ~~Rule 38 atomic-write self-clean~~ **SHIPPED 2026-05-14**. Must land before 2026-05-23 so the new snapshot baseline is correct.
+- **Tier 1 — Hardening before snapshot bake**: **All shipped 2026-05-14.** ~~P1-4 Vercel-nft~~, ~~Rule 37 ENOSPC~~, ~~Rule 38 atomic-write self-clean~~. 0 items remaining at Tier 1.
 - **Tier 2 — Partner-readiness before Edge Esmeralda (3 items)**: Rule 42 private-repo skill auth, Rule 43 plugin-aware cold-boot, P1-9 acp-serve.service. Edge Esmeralda starts 2026-05-30. These items don't block the bake but DO block reliable partner onboarding.
 - **Tier 3 — Cross-PRD or post-launch (3 items)**: Rule 44 strict-deadline (owned by reconcile-deadline PRD), P1-2 node_exporter PORT_FAIL surfacing (partial — diagnostic enhancement only), P1-3 vm-726 SSH-degraded auto-detect (partial — generic detection cron). Plus 3 lying-DB semantic-misclassification followups noted in §6.1.
 
@@ -153,7 +153,7 @@ Both migrations applied via Supabase SQL Editor; safe + idempotent (`IF NOT EXIS
 
 ### Tier 1 — Hardening before snapshot bake (2026-05-23 → 25)
 
-**2. P1-4 Vercel-nft trace cache → JSON manifest** — §6.2
+**2. P1-4 Vercel-nft trace cache → JSON manifest** — §6.2 [SHIPPED 2026-05-14]
 **3. Rule 37 ENOSPC detection + P0 alerting** — §6.3 [SHIPPED 2026-05-14]
 **4. Rule 38 atomic-write `.tmp` self-clean on ENOSPC** — §6.4 [SHIPPED 2026-05-14]
 
@@ -254,7 +254,35 @@ f. **Rule 23 sentinel backfill** — currently only 10 of 47 `vm-manifest.ts:fil
 
 ---
 
-### 6.2 — P1-4 Vercel-nft trace cache → JSON manifest
+### 6.2 — P1-4 Vercel-nft trace cache → JSON manifest [SHIPPED 2026-05-14]
+
+**Status**: **SHIPPED 2026-05-14.** Bug class closed by a 3-layer defense (manual touch-route comments + `.husky/pre-commit` auto-touch + `lib/manifest-integrity.ts` runtime hash compare against GitHub raw with HARD STOP), in place since 2026-05-09 and hardened today with: synthetic test coverage (38/38 assertions across 15 scenarios), P0 admin alert on `stale_bundle` verdict (6h-deduped), expanded hash coverage from just `version+configSettings` to also include `cronJobs[].marker` + `requiredEnvVars` + `envVarDefaults`.
+
+**JSON migration rejected.** The PRD's recommended approach (a) was based on the assumption that VM_MANIFEST is mostly JSON-safe. It isn't — VM_MANIFEST contains TypeScript constructs (`JSON.stringify(...)` inline values, `templateKey` references resolved at module load, dynamic configSettings like `String(BOOTSTRAP_MAX_CHARS)`). Partial JSON migration of only the JSON-safe fields would split the manifest across two files = exactly the class of bug we're preventing. The existing GitHub-raw integrity check is the architecturally correct equivalent: out-of-bundle source of truth, runtime comparison, hard-stop on drift.
+
+**Implementation files** (this session):
+- `lib/manifest-integrity.ts` — refactored to `ManifestFingerprint` shape (`{version, configSettings, cronMarkers, requiredEnvVars, envVarDefaults}`). `parseRemoteManifest` extracts all five fields + their dynamic-key sets. `verifyManifestFreshness(fingerprint)` returns `stale_bundle` verdicts with `diff_summary` for operator triage. New helper `manifestFingerprint(VM_MANIFEST)` builds the FP from the imported manifest.
+- `app/api/cron/reconcile-fleet/route.ts` — new `sendStaleBundleAlertDeduped` helper fires admin email on `stale_bundle` verdict, 6h-deduped via `instaclaw_admin_alert_log` keyed by `stale_bundle:${remote_sha_prefix}`. Body includes runtime/remote version, both SHAs, diff_summary, and action-required steps for the operator.
+- `app/api/cron/file-drift/route.ts` — updated to pass `manifestFingerprint(VM_MANIFEST)` instead of (version, configSettings).
+- `scripts/_verify-manifest-integrity-roundtrip.ts` — updated for new fingerprint shape; round-trip against live `vm-manifest.ts` (cv=99) matches cleanly with the single expected dynamic key (`agents.defaults.bootstrapMaxChars`).
+- `scripts/_test-manifest-integrity.ts` — new 38-assertion synthetic test covering all 7 verdicts + dynamic-keys filter + cache TTL behavior + SHA order-insensitivity + parseRemoteManifest field extraction.
+- CLAUDE.md P1-4 entry → SHIPPED with implementation notes.
+
+**Acceptance criteria:**
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Either JSON migration OR runtime-hash logging+monitoring | ✓ DONE — option (b) hardened to hard-prevention (halt+alert), not just logging |
+| 2 | Test that simulates deploy-with-stale-bundle | ✓ DONE — 7 verdicts + 8 edge cases synthesized via stubbed fetch; live round-trip confirms parser against actual on-disk manifest |
+| 3 | CLAUDE.md P1-4 entry updated | ✓ DONE |
+
+**Followups (Tier 3, non-blocking):**
+- Pre-deploy Vercel build hook that refuses to deploy on stale-bundle detection (chicken-and-egg with the integrity check; would require a separate GH Action).
+- Daily/hourly audit cron that SSH-probes 5 random VMs' on-disk config against the manifest's expected values (catches lying-DB regressions in <24h independent of stale-bundle path).
+
+---
+
+**Original entry kept below for forensic reference:**
 
 **CLAUDE.md reference**: §2042–§2050.
 

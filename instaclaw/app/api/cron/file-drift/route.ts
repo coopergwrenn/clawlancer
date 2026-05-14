@@ -35,7 +35,7 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
-import { verifyManifestFreshness } from "@/lib/manifest-integrity";
+import { verifyManifestFreshness, manifestFingerprint } from "@/lib/manifest-integrity";
 import { runFileDriftPass } from "@/lib/vm-reconcile";
 import { connectSSH, type VMRecord } from "@/lib/ssh";
 
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     // 3. Manifest freshness — refuse to run on a stale bundle. A stale
     //    bundle could regress VMs that already have newer content.
-    const integrity = await verifyManifestFreshness(VM_MANIFEST.version, VM_MANIFEST.configSettings);
+    const integrity = await verifyManifestFreshness(manifestFingerprint(VM_MANIFEST));
     if (integrity.ok && !integrity.fresh) {
       logger.error("file-drift: STALE BUNDLE — refusing to run", {
         route: "cron/file-drift",

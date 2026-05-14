@@ -5,7 +5,7 @@ import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { auditVMConfig } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { SECRET_VERSION } from "@/lib/vm-reconcile";
-import { verifyManifestFreshness } from "@/lib/manifest-integrity";
+import { verifyManifestFreshness, manifestFingerprint } from "@/lib/manifest-integrity";
 import { sendAdminAlertEmail } from "@/lib/email";
 import * as crypto from "crypto";
 
@@ -220,10 +220,7 @@ export async function GET(req: NextRequest) {
   // GitHub outage / parse error / network timeout = degrade to old
   // behavior (allow cv bump). Better than halting the entire reconcile
   // pipeline on a transient GitHub blip.
-  const integrity = await verifyManifestFreshness(
-    VM_MANIFEST.version,
-    VM_MANIFEST.configSettings,
-  );
+  const integrity = await verifyManifestFreshness(manifestFingerprint(VM_MANIFEST));
   if (integrity.ok && !integrity.fresh) {
     logger.error("reconcile-fleet: STALE BUNDLE — refusing to bump cv this cycle", {
       route: "cron/reconcile-fleet",
@@ -231,7 +228,19 @@ export async function GET(req: NextRequest) {
       remote_version: integrity.remote_version,
       runtime_sha: integrity.runtime_sha,
       remote_sha: integrity.remote_sha,
+      diff_summary: integrity.diff_summary,
       action: "REFUSE_CV_BUMP_REASON_STALE_BUNDLE",
+    });
+    // P0 admin alert (Rule 37/Rule 49 dedup pattern). 6h-deduped via
+    // instaclaw_admin_alert_log keyed by `stale_bundle:${remote_sha}` so
+    // a single bad deploy doesn't re-alert across the ~20 cron ticks
+    // before it's noticed. Fire-and-forget — don't block the halt path
+    // on email delivery.
+    sendStaleBundleAlertDeduped(integrity).catch((e) => {
+      logger.error("reconcile-fleet: stale-bundle alert dispatch failed", {
+        route: "cron/reconcile-fleet",
+        error: String(e).slice(0, 200),
+      });
     });
     await releaseCronLock(CRON_NAME);
     return NextResponse.json({
@@ -240,6 +249,7 @@ export async function GET(req: NextRequest) {
       remote_version: integrity.remote_version,
       runtime_sha: integrity.runtime_sha,
       remote_sha: integrity.remote_sha,
+      diff_summary: integrity.diff_summary,
       action_required: "Vercel has cached a stale vm-manifest.ts. Force a redeploy (touch route.ts comment + push) and verify the next cron tick reports fresh: true.",
     }, { status: 503 });
   }
@@ -836,6 +846,110 @@ function strictHoldAlertKey(vmId: string, strictErrors: string[]): string {
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const PERSISTENT_HOLD_THRESHOLD = 5;
+
+/**
+ * P1-4 / Rule 37 / Rule 49 dedup pattern — admin alert on a confirmed
+ * stale-bundle verdict from `verifyManifestFreshness`.
+ *
+ * Why this alert exists:
+ *   The integrity check is the HARD prevention layer that halts the
+ *   reconcile when Vercel's nft cache ships a stale vm-manifest.ts. Pre-
+ *   2026-05-14 the halt was visible only in Vercel function logs — an
+ *   operator had to notice "fleet not advancing" and read the logs to
+ *   find the cause. With ~20 cron ticks between visibility and the next
+ *   manual deploy push, that's an hour-plus of fleet-stuck before
+ *   anyone notices. This alert makes the halt itself a paging event.
+ *
+ * Dedup key: `stale_bundle:${remote_sha}`. Keyed on the GitHub-raw SHA
+ * (not the runtime SHA, not a timestamp) so a single bad deploy fires
+ * exactly one email regardless of how many cron ticks observe the same
+ * stale bundle. A NEW deploy that produces a different remote SHA will
+ * fire a fresh alert if it's also stale.
+ *
+ * 6h cooldown matches Rule 37 / Rule 49 — long enough to suppress the
+ * cron-tick spam, short enough that a stale-bundle situation lasting
+ * past a working-day boundary will re-alert.
+ *
+ * Fire-and-forget; all DB writes wrapped in try/catch so a transient
+ * supabase hiccup never blocks the halt path.
+ */
+async function sendStaleBundleAlertDeduped(verdict: {
+  runtime_version: number;
+  remote_version: number | null;
+  runtime_sha: string;
+  remote_sha: string;
+  diff_summary: string;
+}): Promise<void> {
+  const supabase = getSupabase();
+  const alertKey = `stale_bundle:${verdict.remote_sha.slice(0, 16)}`;
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+  // Dedup check
+  let recentlySent = false;
+  try {
+    const { data } = await supabase
+      .from("instaclaw_admin_alert_log")
+      .select("id")
+      .eq("alert_key", alertKey)
+      .gte("sent_at", sixHoursAgo)
+      .limit(1);
+    recentlySent = (data?.length ?? 0) > 0;
+  } catch {
+    // Dedup-table missing or unreachable → proceed without dedup
+    // (better to over-alert than miss the first signal).
+  }
+  if (recentlySent) {
+    logger.info("stale-bundle alert suppressed (6h dedup)", {
+      route: "cron/reconcile-fleet",
+      remote_sha: verdict.remote_sha.slice(0, 16),
+    });
+    return;
+  }
+
+  // Record BEFORE send so two near-simultaneous cron starts can't both
+  // alert on the same bad bundle.
+  try {
+    await supabase.from("instaclaw_admin_alert_log").insert({
+      alert_key: alertKey,
+      vm_count: 0, // not a per-VM alert; affects the whole fleet's cron
+      details: `runtime_v=${verdict.runtime_version} remote_v=${verdict.remote_version} diff=${verdict.diff_summary.slice(0, 200)}`,
+    });
+  } catch {
+    // Insert failed (table missing, RLS) — proceed to send anyway.
+  }
+
+  const subject = `[P1-4 / Rule 37] Stale vm-manifest.ts bundle — reconcile-fleet halted`;
+  const body =
+    `The reconcile-fleet cron has refused to bump config_version for this\n` +
+    `tick because the bundled vm-manifest.ts doesn't match the live\n` +
+    `source-of-truth on main (Vercel @vercel/nft trace cache regression).\n` +
+    `\n` +
+    `Runtime version: ${verdict.runtime_version}\n` +
+    `Remote version:  ${verdict.remote_version ?? "(parse failed)"}\n` +
+    `Runtime SHA:     ${verdict.runtime_sha}\n` +
+    `Remote SHA:      ${verdict.remote_sha}\n` +
+    `\n` +
+    `Diff summary: ${verdict.diff_summary}\n` +
+    `\n` +
+    `What this means:\n` +
+    `  - No cv-bump damage was done — the integrity gate caught the\n` +
+    `    stale bundle before any VM was touched with old config.\n` +
+    `  - But every subsequent cron tick will continue to halt until\n` +
+    `    Vercel rebuilds with a fresh nft trace.\n` +
+    `\n` +
+    `Action required:\n` +
+    `  1. Inspect the diff_summary above to confirm this is a stale-\n` +
+    `     bundle situation (not an in-flight unmerged change).\n` +
+    `  2. Force a Vercel redeploy: touch the cache-bust comment line in\n` +
+    `     app/api/cron/reconcile-fleet/route.ts (near the\n` +
+    `     CONFIG_AUDIT_BATCH_SIZE declaration) and push.\n` +
+    `  3. Verify the next cron tick reports fresh: true (Vercel function\n` +
+    `     logs for /api/cron/reconcile-fleet).\n` +
+    `\n` +
+    `Background: CLAUDE.md Rule 37 + P1-4, lib/manifest-integrity.ts.`;
+
+  await sendAdminAlertEmail(subject, body);
+}
 
 /**
  * Per-VM strict-hold alerting with fire-first-then-escalate dedup.

@@ -1,130 +1,140 @@
 /**
  * Empirical verification of lib/manifest-integrity.ts against the
  * actual on-disk vm-manifest.ts. If both sides produce the same
- * SHA, the integrity check is safe to ship. If they differ, identify
- * the diff before committing — a false-positive integrity check would
- * halt the reconcile-fleet cron entirely (route.ts:163 returns 503).
+ * fingerprint SHA, the integrity check is safe to ship. If they differ,
+ * identify the diff before committing — a false-positive integrity
+ * check would halt the reconcile-fleet cron entirely (route.ts returns
+ * 503 on `stale_bundle` verdict).
+ *
+ * Run: npx tsx scripts/_verify-manifest-integrity-roundtrip.ts
+ *
+ * Updated 2026-05-14 for P1-4 §C: the fingerprint now includes
+ * cronMarkers + requiredEnvVars + envVarDefaults. The round-trip
+ * compares ALL of these between the runtime VM_MANIFEST and the
+ * parser's view of the same on-disk source.
  */
 import { readFileSync } from "fs";
 import { VM_MANIFEST } from "../lib/vm-manifest";
 import {
   computeManifestSha,
+  parseRemoteManifest,
+  manifestFingerprint,
   __resetManifestIntegrityCache,
+  type ManifestFingerprint,
 } from "../lib/manifest-integrity";
-
-// Inline copy of parseRemoteManifest so we don't have to expose it.
-// Mirror of lib/manifest-integrity.ts (post-fix shape).
-function parseRemoteManifest(src: string): {
-  version: number;
-  configSettings: Record<string, string>;
-  dynamicKeys: string[];
-} | null {
-  const versionMatch = src.match(/version:\s*(\d+)/);
-  if (!versionMatch) return null;
-  const version = parseInt(versionMatch[1], 10);
-  const csStart = src.indexOf("configSettings:");
-  if (csStart < 0) return null;
-  const openBraceIdx = src.indexOf("{", csStart);
-  if (openBraceIdx < 0) return null;
-  let depth = 0;
-  let closeBraceIdx = -1;
-  for (let i = openBraceIdx; i < src.length; i++) {
-    const c = src[i];
-    if (c === "{") depth++;
-    else if (c === "}") {
-      depth--;
-      if (depth === 0) { closeBraceIdx = i; break; }
-    }
-  }
-  if (closeBraceIdx < 0) return null;
-  const csBody = src.slice(openBraceIdx + 1, closeBraceIdx);
-  const settings: Record<string, string> = {};
-  const dynamicKeys: string[] = [];
-  const lines = csBody.split("\n");
-  for (const ln of lines) {
-    const trimmed = ln.trim();
-    if (trimmed.startsWith("//") || trimmed.length === 0) continue;
-    const kvMatch = trimmed.match(/^"([^"]+)":\s*"([^"]*)"/);
-    if (kvMatch) {
-      settings[kvMatch[1]] = kvMatch[2];
-      continue;
-    }
-    const keyOnly = trimmed.match(/^"([^"]+)":/);
-    if (keyOnly) dynamicKeys.push(keyOnly[1]);
-  }
-  return { version, configSettings: settings, dynamicKeys };
-}
 
 __resetManifestIntegrityCache();
 
-const src = readFileSync("/Users/cooperwrenn/wild-west-bots/instaclaw/lib/vm-manifest.ts", "utf-8");
+const src = readFileSync(
+  "/Users/cooperwrenn/wild-west-bots/instaclaw/lib/vm-manifest.ts",
+  "utf-8",
+);
 const parsed = parseRemoteManifest(src);
 
 if (!parsed) {
-  console.error("FATAL — parser returned null. The integrity check would log github_parse_err and degrade to allowing cv bump (no halt). Still a problem; investigate.");
+  console.error(
+    "FATAL — parser returned null. One of the required fields couldn't " +
+      "be extracted from vm-manifest.ts. The integrity check would log " +
+      "github_parse_err and degrade to allowing cv bump (no halt). Still " +
+      "a problem; investigate.",
+  );
   process.exit(1);
 }
 
-console.log("=== Parser results ===");
-console.log(`Parsed version: ${parsed.version}`);
-console.log(`Runtime version: ${VM_MANIFEST.version}`);
-console.log(`Parsed configSettings keys: ${Object.keys(parsed.configSettings).length}`);
-console.log(`Runtime configSettings keys: ${Object.keys(VM_MANIFEST.configSettings).length}`);
+const runtime = manifestFingerprint(VM_MANIFEST);
 
-const runtimeKeys = new Set(Object.keys(VM_MANIFEST.configSettings));
+console.log("=== Parser vs runtime field-by-field ===");
+console.log(`version:           runtime=${runtime.version}   parsed=${parsed.version}`);
+console.log(
+  `configSettings:    runtime=${Object.keys(runtime.configSettings).length} keys   ` +
+    `parsed=${Object.keys(parsed.configSettings).length} keys ` +
+    `(${parsed.dynamicConfigKeys.length} dynamic)`,
+);
+console.log(
+  `cronMarkers:       runtime=${runtime.cronMarkers.length}   parsed=${parsed.cronMarkers.length}`,
+);
+console.log(
+  `requiredEnvVars:   runtime=${runtime.requiredEnvVars.length}   parsed=${parsed.requiredEnvVars.length}`,
+);
+console.log(
+  `envVarDefaults:    runtime=${Object.keys(runtime.envVarDefaults).length} keys   ` +
+    `parsed=${Object.keys(parsed.envVarDefaults).length} keys ` +
+    `(${parsed.dynamicEnvVarDefaultKeys.length} dynamic)`,
+);
+
+const runtimeKeys = new Set(Object.keys(runtime.configSettings));
 const parsedKeys = new Set(Object.keys(parsed.configSettings));
 const missingFromParsed = [...runtimeKeys].filter((k) => !parsedKeys.has(k));
 const missingFromRuntime = [...parsedKeys].filter((k) => !runtimeKeys.has(k));
 const valueMismatches: Array<{ key: string; runtime: string; parsed: string }> = [];
 for (const k of runtimeKeys) {
   if (!parsedKeys.has(k)) continue;
-  if (VM_MANIFEST.configSettings[k] !== parsed.configSettings[k]) {
+  if (runtime.configSettings[k] !== parsed.configSettings[k]) {
     valueMismatches.push({
       key: k,
-      runtime: VM_MANIFEST.configSettings[k],
+      runtime: runtime.configSettings[k],
       parsed: parsed.configSettings[k],
     });
   }
 }
 
-console.log(`\n=== Diffs (raw, before dynamicKeys filter) ===`);
+console.log(`\n=== configSettings diffs (raw, before dynamicKeys filter) ===`);
 console.log(`Missing from parsed (runtime has, source-parser doesn't): ${missingFromParsed.length}`);
-for (const k of missingFromParsed) {
-  console.log(`  - ${k} = "${VM_MANIFEST.configSettings[k]}"`);
-}
+for (const k of missingFromParsed) console.log(`  - ${k} = "${runtime.configSettings[k]}"`);
 console.log(`Missing from runtime (source-parser has, runtime doesn't): ${missingFromRuntime.length}`);
-for (const k of missingFromRuntime) {
-  console.log(`  - ${k} = "${parsed.configSettings[k]}"`);
-}
+for (const k of missingFromRuntime) console.log(`  - ${k} = "${parsed.configSettings[k]}"`);
 console.log(`Value mismatches: ${valueMismatches.length}`);
-for (const m of valueMismatches) {
+for (const m of valueMismatches)
   console.log(`  - ${m.key}  runtime="${m.runtime}"  parsed="${m.parsed}"`);
-}
 
 console.log(`\n=== Dynamic-value keys (excluded from SHA on both sides) ===`);
-console.log(`Dynamic keys reported by parser: ${parsed.dynamicKeys.length}`);
-for (const k of parsed.dynamicKeys) {
-  const rv = VM_MANIFEST.configSettings[k];
+console.log(`Dynamic configSettings keys: ${parsed.dynamicConfigKeys.length}`);
+for (const k of parsed.dynamicConfigKeys) {
+  const rv = runtime.configSettings[k];
+  console.log(`  - ${k}  runtime-evaluated="${rv ?? "(missing)"}"`);
+}
+console.log(`Dynamic envVarDefaults keys: ${parsed.dynamicEnvVarDefaultKeys.length}`);
+for (const k of parsed.dynamicEnvVarDefaultKeys) {
+  const rv = runtime.envVarDefaults[k];
   console.log(`  - ${k}  runtime-evaluated="${rv ?? "(missing)"}"`);
 }
 
-// Mirror the verifier's filter: drop dynamicKeys from runtime; parser
-// already excludes them.
-const dynamicKeySet = new Set(parsed.dynamicKeys);
-const filteredRuntime: Record<string, string> = {};
-for (const [k, v] of Object.entries(VM_MANIFEST.configSettings)) {
-  if (!dynamicKeySet.has(k)) filteredRuntime[k] = v;
+// Mirror the verifier's filter: drop dynamicKeys from runtime
+const dynamicCsKeys = new Set(parsed.dynamicConfigKeys);
+const dynamicEedKeys = new Set(parsed.dynamicEnvVarDefaultKeys);
+const filteredRuntimeConfigSettings: Record<string, string> = {};
+for (const [k, v] of Object.entries(runtime.configSettings)) {
+  if (!dynamicCsKeys.has(k)) filteredRuntimeConfigSettings[k] = v;
 }
-const runtimeSha = computeManifestSha(VM_MANIFEST.version, filteredRuntime);
-const parsedSha = computeManifestSha(parsed.version, parsed.configSettings);
-console.log(`\n=== SHA comparison ===`);
+const filteredRuntimeEnvVarDefaults: Record<string, string> = {};
+for (const [k, v] of Object.entries(runtime.envVarDefaults)) {
+  if (!dynamicEedKeys.has(k)) filteredRuntimeEnvVarDefaults[k] = v;
+}
+const runtimeFiltered: ManifestFingerprint = {
+  version: runtime.version,
+  configSettings: filteredRuntimeConfigSettings,
+  cronMarkers: runtime.cronMarkers,
+  requiredEnvVars: runtime.requiredEnvVars,
+  envVarDefaults: filteredRuntimeEnvVarDefaults,
+};
+const parsedFp: ManifestFingerprint = {
+  version: parsed.version,
+  configSettings: parsed.configSettings,
+  cronMarkers: parsed.cronMarkers,
+  requiredEnvVars: parsed.requiredEnvVars,
+  envVarDefaults: parsed.envVarDefaults,
+};
+const runtimeSha = computeManifestSha(runtimeFiltered);
+const parsedSha = computeManifestSha(parsedFp);
+console.log(`\n=== Fingerprint SHA comparison (post-filter) ===`);
 console.log(`Runtime SHA: ${runtimeSha}`);
 console.log(`Parsed SHA:  ${parsedSha}`);
 if (runtimeSha === parsedSha) {
   console.log(`\nMATCH — integrity check is safe to ship as-is.`);
   process.exit(0);
 } else {
-  console.log(`\nMISMATCH — committing as-is would HALT the reconcile-fleet cron on every tick (false positive).`);
-  console.log(`Fix required before commit.`);
+  console.log(
+    `\nMISMATCH — committing as-is would HALT the reconcile-fleet cron on every tick (false positive). Fix required before commit.`,
+  );
   process.exit(1);
 }

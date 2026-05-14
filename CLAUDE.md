@@ -2056,7 +2056,29 @@ Rule 10 ("verify every config set; never `|| true`-suppress") was specifically w
   2. After N consecutive ssh_handshake fails (e.g., 5 cron cycles), automatically mark `health_status='unhealthy'` and emit an admin alert. Same shape as `health_fail_count` but for SSH-layer failures specifically.
   3. Audit how many other VMs are in this state right now — would expect 0-2 at most, but if it's 10+, that's a systemic issue worth deeper investigation.
 
-### P1-4: Vercel nft trace cache silently serves stale `vm-manifest.ts` to cron routes — move VM_MANIFEST to a JSON file
+### P1-4 [SHIPPED 2026-05-14]: Vercel nft trace cache silently serves stale `vm-manifest.ts` to cron routes
+
+- **Status**: **SHIPPED 2026-05-14.** Bug class closed by a 3-layer defense, all in place since 2026-05-09 and hardened today: (1) manual touch-route cache-bust comments, (2) `.husky/pre-commit` hook auto-touches `route.ts` when `vm-manifest.ts` is staged, (3) `lib/manifest-integrity.ts` runtime hash compare against GitHub raw with HARD STOP on mismatch. Today's hardening adds: synthetic test coverage (38/38 assertions across 15 scenarios), P0 admin alert on `stale_bundle` verdict (6h-deduped, mirrors Rule 37 / Rule 49 pattern), expanded hash coverage from just `version+configSettings` to also include `cronJobs[].marker` + `requiredEnvVars` + `envVarDefaults`. JSON migration was considered and rejected — VM_MANIFEST contains TypeScript constructs (`JSON.stringify(...)`, `templateKey` references, `String(BOOTSTRAP_MAX_CHARS)` dynamic values) that aren't cleanly JSON-expressible; partial migration would create two sources of truth (exactly the class of bug we're preventing). Existing 3-layer defense is architecturally sound and now empirically tested.
+
+- **Implementation files** (this session):
+  - `lib/manifest-integrity.ts` — refactored to `ManifestFingerprint` shape; `parseRemoteManifest` extracts `cronMarkers + requiredEnvVars + envVarDefaults + dynamicConfigKeys + dynamicEnvVarDefaultKeys`; `verifyManifestFreshness(fingerprint)` returns `stale_bundle` verdicts with `diff_summary` for operator triage.
+  - `app/api/cron/reconcile-fleet/route.ts` — `sendStaleBundleAlertDeduped` helper fires admin email on `stale_bundle` verdict. Key shape: `stale_bundle:${remote_sha_prefix}`. Body includes runtime/remote version, both SHAs, diff_summary, and action-required steps.
+  - `app/api/cron/file-drift/route.ts` — updated to pass `manifestFingerprint(VM_MANIFEST)` instead of (version, configSettings).
+  - `scripts/_verify-manifest-integrity-roundtrip.ts` — updated for new fingerprint shape; round-trips against live `vm-manifest.ts` (cv=99) match cleanly.
+  - `scripts/_test-manifest-integrity.ts` — new 38-assertion synthetic test covering all 7 verdicts + dynamic-keys filter + cache TTL + SHA order-insensitivity.
+
+- **Why JSON migration was rejected**: VM_MANIFEST contains `files[].content: JSON.stringify({...})` inline values, `files[].templateKey` references resolved by lookup at module load, and dynamic configSettings (`String(BOOTSTRAP_MAX_CHARS)`). Partial migration of only the JSON-safe fields would split the manifest across two files — risk of drift between them = exactly the class of bug we're preventing. The existing GitHub-raw integrity check accomplishes the same goal (out-of-bundle source of truth) without the architectural cost.
+
+- **Acceptance criteria** (PRD §6.2):
+  1. ✓ DONE — defense in place; option (b) "runtime-version-and-hash logging with stale-manifest alert" is now hard-prevention (halt + alert), not just logging.
+  2. ✓ DONE — `scripts/_test-manifest-integrity.ts` simulates 7 deploy-with-stale-bundle scenarios + 8 edge cases; route's `verifyManifestFreshness` gate exists and is unit-covered.
+  3. ✓ DONE — this entry.
+
+- **Followups filed (Tier 3, non-blocking)**:
+  - Pre-deploy Vercel build hook that refuses to deploy on detected stale-bundle (chicken-and-egg with the integrity check; would require a separate GH Action).
+  - Daily/hourly audit cron that SSH-probes 5 random VMs' on-disk config against the manifest's expected values (catches lying-DB regressions in <24h instead of via the stale-bundle path).
+
+#### Historical context (kept for forensic reference)
 
 - **Discovered**: 2026-05-09. 20 healthy assigned VMs at `config_version=91` were missing the 7 new compaction keys (`mode`, `maxActiveTranscriptBytes`, `recentTurnsPreserve`, `qualityGuard.{enabled,maxRetries}`, `notifyUser`, `truncateAfterCompaction`) that landed in the v90 manifest (commit `7ac0d370`). Probed by `_probe-v91-compaction.ts` and `_probe-v91-census.ts`; 14/15 sampled VMs had the keys missing on disk.
 - **Root cause** (already documented in `app/api/cron/reconcile-fleet/route.ts` cache-bust comment, commit `16aa97c9` 2026-05-07 19:45 UTC): Vercel's `@vercel/nft` build trace cache served the **pre-v90** `vm-manifest.ts` to the reconcile-fleet cron route across deploys. The reconciler ran with the cached old manifest in memory, pushed the OLD `configSettings` (which already matched on-disk → no drift detected → `result.errors=[]` → `pushFailed=false` → cv bumped to current `VM_MANIFEST.version` resolved from elsewhere in the cached blob → 91). VMs landed at cv=91 with old config on disk. Once cv=91, the `lt(config_version, 91)` filter in `route.ts:157` excludes them forever.
