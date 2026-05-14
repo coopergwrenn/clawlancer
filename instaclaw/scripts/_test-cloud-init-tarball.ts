@@ -24,6 +24,7 @@ import {
   buildDotEnv,
   buildIdentityMd,
   buildMemoryMdForTarball,
+  buildOpenClawJsonForTarball,
   buildSystemPromptForTarball,
   buildUserMdForTarball,
   buildWalletMd,
@@ -35,6 +36,7 @@ import {
 } from "../lib/cloud-init-tarball";
 import {
   WORKSPACE_BOOTSTRAP_SHORT,
+  buildOpenClawConfig,
   buildPersonalizedBootstrap,
   buildSystemPrompt,
   buildUserMd,
@@ -100,6 +102,7 @@ const validParams: TarballParams = {
   apiKey: null,
   defaultModel: "anthropic/claude-sonnet-4-6",
   tier: "starter",
+  channels: ["telegram"],
   agentRegion: "us-east",
   agentbookKey: "-----BEGIN EC PRIVATE KEY-----\nFAKEKEY\n-----END EC PRIVATE KEY-----",
   agentbookAddress: "0x5Bc5C4072a68Dd2a1e8595d863e114f54DFf04af",
@@ -751,6 +754,22 @@ async function test9_BuildSystemPromptForTarball() {
   );
 }
 
+/**
+ * buildOpenClawConfig embeds `wizard.lastRunAt: new Date().toISOString()`
+ * (lib/ssh.ts:4310-4315). Two calls in successive milliseconds get
+ * different timestamps → strict deepEqual would fail. Strip before
+ * comparisons. The SSH path has the same non-determinism — Phase 1B-2's
+ * byte-compare audit will normalize wizard.lastRunAt across VMs.
+ */
+function stripWizardTimestamp(obj: object): object {
+  // Deep-clone via JSON to avoid mutating the original
+  const cloned = JSON.parse(JSON.stringify(obj));
+  if (cloned.wizard) {
+    delete cloned.wizard.lastRunAt;
+  }
+  return cloned;
+}
+
 async function test10_BuildMemoryMdForTarball() {
   console.log("\n─── TEST 10: buildMemoryMdForTarball (wrapper #4) ──");
 
@@ -875,6 +894,267 @@ async function test10_BuildMemoryMdForTarball() {
   // assembler lands. Pinning the contract here is sufficient.
 }
 
+async function test11_BuildOpenClawJsonForTarball() {
+  console.log("\n─── TEST 11: buildOpenClawJsonForTarball (wrapper #5) ──");
+
+  // ── Helper: build the equivalent UserConfig manually (for byte-parity) ─
+  function manualUserConfig(p: TarballParams) {
+    return {
+      apiMode: p.apiMode,
+      apiKey: p.apiKey ?? undefined,
+      tier: p.tier,
+      model: p.defaultModel,
+      telegramBotToken: p.telegramBotToken,
+      discordBotToken: p.discordBotToken ?? undefined,
+      channels: p.channels,
+      braveApiKey: p.braveApiKey ?? undefined,
+      gmailProfileSummary: p.gmailProfileSummary ?? undefined,
+      userName: p.userName ?? undefined,
+      userEmail: p.userEmail ?? undefined,
+      botUsername: p.telegramBotUsername,
+      userTimezone: p.userTimezone ?? undefined,
+      worldIdNullifier: p.worldIdNullifier ?? undefined,
+      worldIdLevel: p.worldIdLevel ?? undefined,
+      bankrApiKey: p.bankrApiKey ?? undefined,
+      bankrEvmAddress: p.bankrEvmAddress ?? undefined,
+      bankrTokenAddress: p.bankrTokenAddress ?? undefined,
+      bankrTokenSymbol: p.bankrTokenSymbol ?? undefined,
+      partner: p.partner ?? undefined,
+    };
+  }
+  function manualProxyBaseUrl(p: TarballParams): string {
+    return p.apiMode === "all_inclusive"
+      ? `${p.nextauthUrl.replace(/\/+$/, "")}/api/gateway`
+      : "";
+  }
+
+  // ── Test case: all_inclusive + telegram (the vm-918 shape) ───────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allInclusiveResult = buildOpenClawJsonForTarball(validParams) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allInclusiveReference = buildOpenClawConfig(
+    manualUserConfig(validParams),
+    validParams.gatewayToken,
+    manualProxyBaseUrl(validParams),
+    validParams.defaultModel,
+    validParams.braveApiKey || undefined,
+  ) as any;
+
+  assert(
+    JSON.stringify(stripWizardTimestamp(allInclusiveResult)) ===
+      JSON.stringify(stripWizardTimestamp(allInclusiveReference)),
+    "all_inclusive: byte-parity with manual buildOpenClawConfig call (modulo wizard.lastRunAt)",
+  );
+
+  // Gateway token
+  assert(
+    allInclusiveResult.gateway.auth.token === validParams.gatewayToken,
+    "gateway.auth.token === p.gatewayToken",
+  );
+  assert(allInclusiveResult.gateway.auth.mode === "token", "gateway.auth.mode === 'token'");
+
+  // Anthropic proxy baseUrl (all_inclusive only)
+  assert(
+    allInclusiveResult.models.providers.anthropic.baseUrl === "https://instaclaw.io/api/gateway",
+    "all_inclusive: models.providers.anthropic.baseUrl points at proxy",
+  );
+
+  // Telegram channel + plugin both present
+  assert(
+    allInclusiveResult.channels.telegram.botToken === validParams.telegramBotToken,
+    "channels.telegram.botToken set",
+  );
+  assert(
+    allInclusiveResult.plugins.entries.telegram.enabled === true,
+    "plugins.entries.telegram.enabled === true",
+  );
+
+  // No discord (validParams has no discordBotToken)
+  assert(!allInclusiveResult.channels.discord, "channels.discord absent (no discord token)");
+  assert(
+    !allInclusiveResult.plugins.entries.discord,
+    "plugins.entries.discord absent (no discord token)",
+  );
+
+  // No brave (validParams has no braveApiKey)
+  assert(!allInclusiveResult.tools.web, "tools.web absent (no brave key)");
+  assert(!allInclusiveResult.plugins.entries.brave, "plugins.entries.brave absent (no brave key)");
+
+  // Critical config keys (Rule-class invariants — these landing wrong on
+  // first boot would brick the gateway)
+  assert(
+    allInclusiveResult.agents.defaults.compaction.mode === "safeguard",
+    "agents.defaults.compaction.mode === 'safeguard' (v90 four-layer fix)",
+  );
+  assert(
+    allInclusiveResult.tools.exec.security === "full",
+    "tools.exec.security === 'full' (v57 Doug Rathell fix)",
+  );
+  assert(
+    allInclusiveResult.tools.exec.ask === "off",
+    "tools.exec.ask === 'off' (auto-approve on Telegram)",
+  );
+  assert(
+    allInclusiveResult.session.reset.mode === "idle",
+    "session.reset.mode === 'idle' (v41 evergreen-session fix)",
+  );
+  assert(
+    allInclusiveResult.session.reset.idleMinutes === 10080,
+    "session.reset.idleMinutes === 10080 (7-day idle)",
+  );
+  assert(
+    allInclusiveResult.commands.useAccessGroups === false,
+    "commands.useAccessGroups === false (v57 groupPolicy=open requirement)",
+  );
+
+  // JSON.stringify round-trip — must be valid JSON
+  const stringified = JSON.stringify(allInclusiveResult, null, 2);
+  assert(stringified.length > 1000, `stringified is non-trivial (got ${stringified.length} bytes)`);
+  const reparsed = JSON.parse(stringified);
+  assert(
+    reparsed.gateway.auth.token === validParams.gatewayToken,
+    "JSON round-trip: gateway.auth.token survives",
+  );
+
+  // ── BYOK case ────────────────────────────────────────────────────────
+  const byokParams: TarballParams = {
+    ...validParams,
+    apiMode: "byok",
+    apiKey: "sk-ant-byok-test-key",
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byokResult = buildOpenClawJsonForTarball(byokParams) as any;
+  assert(
+    !byokResult.models.providers.anthropic.baseUrl,
+    "byok: no baseUrl (SDK defaults to api.anthropic.com)",
+  );
+  // The empty object form is also acceptable per buildOpenClawConfig logic
+  assert(
+    typeof byokResult.models.providers.anthropic === "object",
+    "byok: anthropic provider still present (just no baseUrl)",
+  );
+
+  // ── braveApiKey pass-through ─────────────────────────────────────────
+  const braveParams: TarballParams = {
+    ...validParams,
+    braveApiKey: "BSA_test_brave_key_12345",
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const braveResult = buildOpenClawJsonForTarball(braveParams) as any;
+  assert(braveResult.tools.web.search.provider === "brave", "brave: tools.web.search.provider set");
+  assert(
+    braveResult.plugins.entries.brave.config.webSearch.apiKey === braveParams.braveApiKey,
+    "brave: plugins.entries.brave.config.webSearch.apiKey === p.braveApiKey",
+  );
+  assert(
+    braveResult.plugins.entries.brave.enabled === true,
+    "brave: plugins.entries.brave.enabled === true",
+  );
+
+  // ── discordBotToken pass-through ─────────────────────────────────────
+  const discordParams: TarballParams = {
+    ...validParams,
+    channels: ["telegram", "discord"],
+    discordBotToken: "discord.bot.token.shape.123456",
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const discordResult = buildOpenClawJsonForTarball(discordParams) as any;
+  assert(
+    discordResult.channels.discord.botToken === discordParams.discordBotToken,
+    "discord: channels.discord.botToken set",
+  );
+  assert(
+    discordResult.plugins.entries.discord.enabled === true,
+    "discord: plugins.entries.discord.enabled === true",
+  );
+  // Telegram still present in same config
+  assert(
+    discordResult.channels.telegram.botToken === discordParams.telegramBotToken,
+    "discord+telegram: both channels present",
+  );
+
+  // ── Partner doesn't change openclaw.json (only .env + SOUL.md) ──────
+  // edge_city VMs get the SAME openclaw.json as a no-partner VM. The
+  // edge-specific config lives in EDGEOS_BEARER_TOKEN (.env, already
+  // tested in test 7) and partner-overlays in setup.sh post-extract.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const edgeResult = buildOpenClawJsonForTarball(edgeCityParams) as any;
+  // EDGEOS_BEARER_TOKEN MUST NOT appear in openclaw.json (it's .env-only)
+  const edgeStringified = JSON.stringify(edgeResult);
+  assert(
+    !edgeStringified.includes("EDGEOS_BEARER_TOKEN"),
+    "edge_city: EDGEOS_BEARER_TOKEN does NOT appear in openclaw.json (it's .env-only)",
+  );
+  // Top-level structure same as non-edge VM (modulo BYOK/all_inclusive,
+  // which is independent of partner)
+  const edgeKeys = Object.keys(edgeResult).sort().join(",");
+  const validKeys = Object.keys(allInclusiveResult).sort().join(",");
+  // Both VMs are BYOK→all_inclusive different. Pull out only the keys
+  // we care about for partner-invariance.
+  for (const key of [
+    "agents",
+    "browser",
+    "channels",
+    "commands",
+    "gateway",
+    "session",
+    "skills",
+    "tools",
+    "plugins",
+    "models",
+    "wizard",
+    "messages",
+    "discovery",
+    "meta",
+  ]) {
+    assert(
+      Object.prototype.hasOwnProperty.call(edgeResult, key) ===
+        Object.prototype.hasOwnProperty.call(allInclusiveResult, key),
+      `edge_city: top-level key '${key}' presence matches no-partner config`,
+    );
+  }
+  void edgeKeys;
+  void validKeys;
+
+  // ── Throws on browser profile without cdpPort/cdpUrl ─────────────────
+  // Inherited from buildOpenClawConfig. We don't have a way to inject
+  // a bad browser profile through TarballParams (it's hardcoded in
+  // buildOpenClawConfig), so this is implicitly proven by the function
+  // not throwing in any other test above. Document the inheritance.
+
+  // ── Determinism (modulo wizard.lastRunAt) ────────────────────────────
+  const det1 = buildOpenClawJsonForTarball(validParams);
+  const det2 = buildOpenClawJsonForTarball(validParams);
+  assert(
+    JSON.stringify(stripWizardTimestamp(det1)) === JSON.stringify(stripWizardTimestamp(det2)),
+    "deterministic (modulo wizard.lastRunAt timestamp)",
+  );
+
+  // ── Validation: channels=[] throws ──────────────────────────────────
+  const emptyChannels: TarballParams = { ...validParams, channels: [] };
+  let threw: Error | null = null;
+  try {
+    validateTarballParams(emptyChannels);
+  } catch (e) {
+    threw = e as Error;
+  }
+  assert(threw !== null, "channels=[] throws (no way for agent to talk to user)");
+
+  // ── Validation: channels includes 'discord' without discordBotToken ──
+  const discordNoToken: TarballParams = {
+    ...validParams,
+    channels: ["telegram", "discord"],
+    discordBotToken: null,
+  };
+  threw = null;
+  try {
+    validateTarballParams(discordNoToken);
+  } catch (e) {
+    threw = e as Error;
+  }
+  assert(threw !== null, "channels includes 'discord' but no token → throws (catch misconfig early)");
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -889,6 +1169,7 @@ async function main() {
   await test8_BuildUserMdForTarball();
   await test9_BuildSystemPromptForTarball();
   await test10_BuildMemoryMdForTarball();
+  await test11_BuildOpenClawJsonForTarball();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

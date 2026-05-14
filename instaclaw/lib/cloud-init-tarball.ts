@@ -61,10 +61,12 @@ import {
 import {
   BANKR_SKILL_PATCH_DIRECTIVE,
   WORKSPACE_BOOTSTRAP_SHORT,
+  buildOpenClawConfig,
   buildPersonalizedBootstrap,
   buildSystemPrompt,
   buildUserMd,
 } from "./ssh";
+import type { UserConfig } from "./user-config-types";
 import { VM_MANIFEST } from "./vm-manifest";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -97,6 +99,13 @@ export interface TarballParams {
   // ── Bots ──
   telegramBotToken: string;
   telegramBotUsername: string;
+  /** Enabled-channels array from vm.channels_enabled (DB column). Drives
+   *  conditional emission of channels.* and plugins.entries.* blocks in
+   *  openclaw.json. Default for current production: ["telegram"]. Adding
+   *  "discord" requires discordBotToken to also be set (buildOpenClawConfig
+   *  guards both conditions). REQUIRED — every VM must have at least one
+   *  channel (else the agent has no way to talk to its user). */
+  channels: string[];
   /** Per-user Discord bot token. As of 2026-05-13, 0 of 239 production
    *  VMs have this set — keeping the field for forward-compat without
    *  hardcoding the assumption that everyone is telegram-only. When
@@ -276,6 +285,24 @@ export function validateTarballParams(p: TarballParams): void {
     throw new Error(
       `cloud-init-tarball: agentRegion required (got ${JSON.stringify(p.agentRegion)}). ` +
         "A NULL region at provisioning means createUserVM didn't set vm.region — broken upstream.",
+    );
+  }
+  // channels: required, must be a non-empty array. An empty channels list
+  // means the agent has no way to talk to its user. buildOpenClawConfig
+  // doesn't crash on empty channels (it just emits no channel blocks), but
+  // the resulting VM is non-functional. Catch this at the boundary.
+  if (!Array.isArray(p.channels) || p.channels.length === 0) {
+    throw new Error(
+      `cloud-init-tarball: channels required (got ${JSON.stringify(p.channels)}). ` +
+        "A VM with no channels has no way for the agent to talk to its user.",
+    );
+  }
+  // If discord is in channels, discordBotToken MUST be present (otherwise
+  // buildOpenClawConfig silently drops the channel — agent looks misconfigured).
+  if (p.channels.includes("discord") && !p.discordBotToken) {
+    throw new Error(
+      "cloud-init-tarball: channels includes 'discord' but discordBotToken is missing. " +
+        "Either remove 'discord' from channels OR provide the bot token.",
     );
   }
 
@@ -737,6 +764,97 @@ export function buildMemoryMdForTarball(p: TarballParams): string | null {
     return null;
   }
   return p.gmailProfileSummary;
+}
+
+/**
+ * openclaw.json — the gateway's primary config blob. The most complex
+ * wrapper because buildOpenClawConfig takes 5 arguments (incl. an
+ * optional braveKey) and produces ~5KB of stringified JSON with eight
+ * top-level keys + four conditional sub-blocks.
+ *
+ * Returns an OBJECT, not a string. The caller (Day 8's assembler) does
+ * `JSON.stringify(result, null, 2)` to convert. Matches the SSH-configure
+ * path at lib/ssh.ts:5074 + 5080 (or wherever the stringify happens).
+ *
+ * Mapping from TarballParams → UserConfig (per contracts §1.4 table):
+ *   - apiMode, apiKey, tier              ─ direct pass-through
+ *   - telegramBotToken, discordBotToken  ─ direct pass-through
+ *   - channels                            ─ direct pass-through
+ *   - braveApiKey                         ─ direct pass-through (also flows
+ *                                            as 5th arg to buildOpenClawConfig)
+ *   - gmailProfileSummary                 ─ pass-through (buildOpenClawConfig
+ *                                            does not currently read this,
+ *                                            but the UserConfig type allows it;
+ *                                            future-proofs against a change)
+ *   - defaultModel                        ─ becomes UserConfig.model AND the
+ *                                            4th positional arg openclawModel
+ *   - userName/userEmail/userTimezone     ─ pass-through (used by other paths)
+ *   - telegramBotUsername                 ─ becomes UserConfig.botUsername
+ *   - worldId*, bankr*, partner           ─ pass-through
+ *
+ * Three positional arguments to buildOpenClawConfig (besides config):
+ *   - gatewayToken: `p.gatewayToken` directly.
+ *   - proxyBaseUrl: `${nextauthUrl}/api/gateway` for all-inclusive (so the
+ *     gateway proxies Anthropic calls through us); empty string for BYOK
+ *     (Anthropic SDK uses its default base URL — direct to Anthropic).
+ *   - openclawModel: `p.defaultModel` (the agents.defaults.model.primary).
+ *   - braveKey: `p.braveApiKey` truthy → web search enabled; else undefined.
+ *
+ * EDGEOS_BEARER_TOKEN does NOT belong in openclaw.json — that's a .env
+ * concern (handled in buildDotEnv above). buildOpenClawConfig has no
+ * partner-conditional config beyond what UserConfig.partner declares.
+ *
+ * Throws (inherited from buildOpenClawConfig): if any browser.profiles
+ * entry lacks both cdpPort and cdpUrl. The hardcoded "openclaw" profile
+ * sets cdpPort:18800, so this never trips in practice — but the validation
+ * is part of the contract we're inheriting.
+ *
+ * Mode 0o600.
+ */
+export function buildOpenClawJsonForTarball(p: TarballParams): object {
+  const config: UserConfig = {
+    apiMode: p.apiMode,
+    apiKey: p.apiKey ?? undefined,
+    tier: p.tier,
+    model: p.defaultModel,
+    telegramBotToken: p.telegramBotToken,
+    discordBotToken: p.discordBotToken ?? undefined,
+    channels: p.channels,
+    braveApiKey: p.braveApiKey ?? undefined,
+    gmailProfileSummary: p.gmailProfileSummary ?? undefined,
+    userName: p.userName ?? undefined,
+    userEmail: p.userEmail ?? undefined,
+    botUsername: p.telegramBotUsername,
+    userTimezone: p.userTimezone ?? undefined,
+    worldIdNullifier: p.worldIdNullifier ?? undefined,
+    worldIdLevel: p.worldIdLevel ?? undefined,
+    bankrApiKey: p.bankrApiKey ?? undefined,
+    bankrEvmAddress: p.bankrEvmAddress ?? undefined,
+    bankrTokenAddress: p.bankrTokenAddress ?? undefined,
+    bankrTokenSymbol: p.bankrTokenSymbol ?? undefined,
+    partner: p.partner ?? undefined,
+  };
+
+  // proxyBaseUrl:
+  //   - all_inclusive: route Anthropic calls through our proxy so we can
+  //     authenticate + meter. Strip trailing slashes from nextauthUrl
+  //     before appending /api/gateway (validateTarballParams already
+  //     rejects ?/# in nextauthUrl, so the simple replace is safe).
+  //   - byok: pass empty string → buildOpenClawConfig emits
+  //     `models.providers.anthropic: {}` (no baseUrl override; SDK defaults
+  //     to https://api.anthropic.com).
+  const proxyBaseUrl =
+    p.apiMode === "all_inclusive"
+      ? `${p.nextauthUrl.replace(/\/+$/, "")}/api/gateway`
+      : "";
+
+  // braveKey: undefined when absent so buildOpenClawConfig's `if (braveKey)`
+  // gate skips the tools.web + plugins.brave blocks. Empty string is also
+  // falsy in JS but undefined is the spec-aligned "this argument was not
+  // provided" signal.
+  const braveKey = p.braveApiKey || undefined;
+
+  return buildOpenClawConfig(config, p.gatewayToken, proxyBaseUrl, p.defaultModel, braveKey);
 }
 
 // ════════════════════════════════════════════════════════════════════════
