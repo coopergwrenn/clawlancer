@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-14
 
-Window: `fd29e53c10ef7f7cef36163b66d6fdf4886367a1` → `HEAD` (HEAD = `171b3429`)
+Window: `171b3429431e5d372ed75635dc18faed014fa9de` → `HEAD` (HEAD = `61bfa492`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 171b3429431e5d372ed75635dc18faed014fa9de -->
+<!-- LAST_GENERATED_SHA: 61bfa4925c6993a41d568909ec51d2ae1e9ca902 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup [1 files] _(ai-assisted)_
-- `ccc7bcd4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `4e475075` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `61bfa492` 2026-05-14 — docs(cloud-init): audit doc + remediation-complete addendum [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup [1 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `ccc7bcd4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `4e475075` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `61bfa492` 2026-05-14 — docs(cloud-init): audit doc + remediation-complete addendum [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup
+- `61bfa492` 2026-05-14 — docs(cloud-init): audit doc + remediation-complete addendum
 
 ## Appendix — every commit (chronological)
 
-- `ccc7bcd4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup [1 files] _(ai-assisted)_
+- `4e475075` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `61bfa492` 2026-05-14 — docs(cloud-init): audit doc + remediation-complete addendum [1 files] _(ai-assisted)_
