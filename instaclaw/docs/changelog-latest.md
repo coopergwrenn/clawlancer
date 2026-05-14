@@ -1,34 +1,20 @@
 # Changelog — generated 2026-05-14
 
-Window: `b068339d46910a0ddb8d1acb020f5feca9e7b368` → `HEAD` (HEAD = `09f0b11d`)
-Total commits: 4
+Window: `09f0b11d098c83c52ef5c58b2da47f5a44889560` → `HEAD` (HEAD = `f2d9242a`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 09f0b11d098c83c52ef5c58b2da47f5a44889560 -->
+<!-- LAST_GENERATED_SHA: f2d9242aac9a55af90186a45ec5f863c5327d643 -->
 
 ## Summary
 
-- **Manifest version bumps:** 1
-  - Range: v99 → v99
-- **Reconciler / manifest:** 2
+- **Manifest version bumps:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 3
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
-
-## Manifest version timeline
-
-### v99 — 2026-05-14 — `8c1afacd`
-
-feat(v99): gateway-health textfile-collector promoted to manifest
-
-> The Prometheus GatewayDown alert depends on a textfile-collector pipeline
-> (script + dir + drop-in + cron) that was fleet-pushed by hand on
-> 2026-05-14 during the timmy outage. It landed on all 242 then-existing
-> VMs but was never added to the manifest. New VMs provisioned from a
-> fresh snapshot after 2026-05-14 would silently miss it — gateway crash
-> would go undetected until a user reported it. v99 closes that gap.
 
 ## What changed for users
 
@@ -36,17 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `8c1afacd` 2026-05-14 — feat(v99): gateway-health textfile-collector promoted to manifest [4 files] _(**MANIFEST v99**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `09f0b11d` 2026-05-14 — docs(cloud-init): §17b probe-verified snapshot inventory + Day 8a impact [1 files] _(multi: [reconciler, docs]; ai-assisted)_
-- `753dbcc8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `a841b281` 2026-05-14 — docs(P1-9): acp-serve.service exit 127 root cause + plan [1 files] _(ai-assisted)_
+- `f2d9242a` 2026-05-14 — perf(reconcile): md5 short-circuit for deployFileEntry overwrite mode [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c5304a7b` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (2)
+### Reconciler / manifest (1)
 
-- `8c1afacd` 2026-05-14 — feat(v99): gateway-health textfile-collector promoted to manifest [4 files] _(**MANIFEST v99**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `09f0b11d` 2026-05-14 — docs(cloud-init): §17b probe-verified snapshot inventory + Day 8a impact [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `f2d9242a` 2026-05-14 — perf(reconcile): md5 short-circuit for deployFileEntry overwrite mode [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -60,29 +43,23 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `753dbcc8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `a841b281` 2026-05-14 — docs(P1-9): acp-serve.service exit 127 root cause + plan [1 files] _(ai-assisted)_
+- `c5304a7b` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (2)
+## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `8c1afacd` 2026-05-14 — [reconciler, infrastructure, docs] — feat(v99): gateway-health textfile-collector promoted to manifest
-- `09f0b11d` 2026-05-14 — [reconciler, docs] — docs(cloud-init): §17b probe-verified snapshot inventory + Day 8a impact
+- `f2d9242a` 2026-05-14 — [reconciler, infrastructure] — perf(reconcile): md5 short-circuit for deployFileEntry overwrite mode
 
-## AI-assisted commits (3)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `8c1afacd` 2026-05-14 — feat(v99): gateway-health textfile-collector promoted to manifest
-- `a841b281` 2026-05-14 — docs(P1-9): acp-serve.service exit 127 root cause + plan
-- `09f0b11d` 2026-05-14 — docs(cloud-init): §17b probe-verified snapshot inventory + Day 8a impact
+- `f2d9242a` 2026-05-14 — perf(reconcile): md5 short-circuit for deployFileEntry overwrite mode
 
 ## Appendix — every commit (chronological)
 
-- `753dbcc8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `8c1afacd` 2026-05-14 — feat(v99): gateway-health textfile-collector promoted to manifest [4 files] _(**MANIFEST v99**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `a841b281` 2026-05-14 — docs(P1-9): acp-serve.service exit 127 root cause + plan [1 files] _(ai-assisted)_
-- `09f0b11d` 2026-05-14 — docs(cloud-init): §17b probe-verified snapshot inventory + Day 8a impact [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `c5304a7b` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `f2d9242a` 2026-05-14 — perf(reconcile): md5 short-circuit for deployFileEntry overwrite mode [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
