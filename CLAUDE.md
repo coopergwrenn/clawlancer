@@ -2021,6 +2021,80 @@ Worst case new behavior: 50 × 24 sessions ≈ 1200 files (vs 240k observed). At
 
 **RULE 46 (Disk monitoring is mandatory; absent it, disk fills are P0 customer-down)**: every VM must have a periodic disk-utilization check that alerts at 80% AND auto-purges old session-backups at 90%. Without this, accumulating-cache bugs like Root Cause 0 stay invisible until catastrophic. Implementation: extend `cron/health-check` to read `df` via the existing SSH path, persist `instaclaw_vms.disk_percent`, alert on >85, auto-purge at >90.
 
+### Root Cause 0.5: Template-only file changes can't reach caught-up VMs without a manifest bump
+
+**The 2026-05-14 Rule 45 propagation incident.** The session-backup cooldown fix (commit `eaf5617a`) updated the embedded `STRIP_THINKING_SCRIPT` template in `lib/ssh.ts` — the canonical source consumed by `stepFiles` via the manifest's `files[]` entry at `vm-manifest.ts:1516`. The fix was merged and the reconciler kept running its 3-minute cron. Yet a 8-VM SSH probe a day later found **7/8 VMs still had the OLD script on disk**.
+
+Root cause: the reconcile-fleet cron filters VMs at `app/api/cron/reconcile-fleet/route.ts:272`:
+
+```ts
+.lt("config_version", VM_MANIFEST.version)
+```
+
+The architectural implication: **VMs at `cv = VM_MANIFEST.version` are excluded from the cron's batch query entirely.** They never enter `reconcileVM`, never reach `stepFiles`, never receive any template-only update. The fix reached only VMs at `cv < target` (which were behind for some other reason and got the new file as a side effect of stepFiles running during their catch-up). Caught-up VMs — exactly the population that "looks healthy" — get nothing.
+
+This is structurally identical to the EDGEOS_BEARER_TOKEN incident (commit `42a1c8d8`): a partner secret rotated in Vercel env propagates to new provisions but not to existing VMs at cv=current. Same shape.
+
+**Recovery executed.** One-shot fleet-push via `scripts/_fleet-push-strip-thinking-v3.ts` (mirrors the canonical hotfix's deploy pattern: base64-encoded ship, py_compile syntax check, sentinel grep, atomic mv with .bak preservation, md5 verify). Concurrency 5, waves of 20, 68 seconds wall-clock for 146 VMs. **135 deployed, 11 already-current, 0 failed.** Spot-checked 5 random VMs post-push: all md5-matched and sentinel-validated.
+
+**RULE 47 (Continuous reconciliation, not version-gated)**: any change to a `vm-manifest.ts:files[]` template OR an in-VM env var (or anything else that needs to reach already-caught-up VMs) MUST be paired with EXACTLY ONE of:
+
+1. **Manifest version bump.** `VM_MANIFEST.version` advanced by 1; PR description names the change as a "file-content release" (no config-key changes; no schema changes). All current-cv VMs re-enter the cron's filter, run all steps including `stepFiles`, get the new file.
+2. **One-shot fleet-push** that mirrors `_deploy-strip-thinking-hotfix.ts` / `_fleet-push-strip-thinking-v3.ts`: imports the canonical constant from `lib/`, validates sentinels in-process before SSH, base64-encodes, atomic mv with .bak preservation, md5 verify post-write.
+3. **Both** (recommended). The fleet-push catches the immediate hazard within minutes; the manifest bump locks the file state to the cv for future audits ("cv=N means this file content").
+
+Doing NEITHER means the change reaches new provisions (via `configureOpenClaw`) and currently-stuck VMs (those at cv<target) but NOT the bulk of the fleet. The current-cv VMs become a silent stale-cache cohort indistinguishable from healthy by any "version is correct" check.
+
+**Long-term architectural fix**: tracked as a P1/P2 item in `docs/prd/fleet-health-hardening-2026-05-14.md`. The Kubernetes pattern — continuous reconciliation, no version gate, control loop runs forever — is the right shape. A "file-drift" cron that runs `stepFiles` only (no config-set, no service restart, no cv mutation) on every (healthy, assigned) VM, regardless of `config_version`, would close this gap without the side-effect risk of bumping the version on every file edit. HashiCorp Nomad's "drift detection" + Ansible's "pull-based agent" patterns are direct references. Until that ships, every template change goes via Rule 47.
+
+**Banned patterns:**
+- Editing a `vm-manifest.ts:files[]` template (or any consumer of `STRIP_THINKING_SCRIPT` / similar embedded scripts) without either bumping `VM_MANIFEST.version` in the same PR OR landing a one-shot fleet-push in the same operational window.
+- Trusting "config_version reached current" as proof a recent template change is on disk.
+- Adding new files to `vm-manifest.ts:files[]` without a coverage script (per Rule 27) that surfaces per-VM disk state.
+
+**Detection rule**: any PR that touches `lib/ssh.ts:STRIP_THINKING_SCRIPT`, `lib/ssh.ts:WORKSPACE_SOUL_MD`, `lib/vm-manifest.ts:files[]` entry contents, or similar embedded templates MUST include one of: (a) `VM_MANIFEST.version` increment in the same diff, (b) a companion `scripts/_fleet-push-*.ts` script for the change, OR (c) an explicit PR-description note acknowledging that the change reaches only fresh provisions and currently-stuck VMs (acceptable only for non-load-bearing changes).
+
+### Root Cause 0.6: Surgical service-fix probes must verify dependency state, not just files
+
+**The 2026-05-14 instaclaw-xmtp crash-loop incident.** Two paying-customer VMs (vm-912, vm-904) had `instaclaw-xmtp.service` in `activating (auto-restart)` state — restart counters 5,453 and 19,736 respectively. The cron reported `instaclaw-xmtp: surgical fix failed: activating` on every tick. The reconciler's surgical fix path at `lib/vm-reconcile.ts:4466` does:
+
+1. Write the unit file.
+2. `daemon-reload`, `enable`, `restart`.
+3. `sleep 4`.
+4. `systemctl --user is-active` — looks for the string "active" in stdout.
+
+When the service is stuck in a crash loop (10-second `RestartSec` cycle), the `is-active` call lands mid-cycle and returns `activating`. The string "active" is NOT a substring of "activating" (`active` ≠ `activa`), so the check correctly reports failure — but the failure mode tells the operator NOTHING about WHY the service is crashing.
+
+Root cause via SSH probe: `ERR_MODULE_NOT_FOUND` — `Cannot find package '@xmtp/agent-sdk'` (vm-904) and `Cannot find package '/home/openclaw/scripts/node_modules/viem/index.js' imported from /home/openclaw/scripts/node_modules/@xmtp/agent-sdk/dist/index.js` (vm-912). The Node.js ESM resolver was failing because the npm packages in `~/scripts/node_modules/` were missing (vm-904) or corrupt — viem's `package.json` was empty/broken on vm-912.
+
+The reconciler's probe (lib/vm-reconcile.ts:4419-4422) checks four things:
+```
+unit=  # unit file exists
+active=  # is-active = "active"
+mjs=  # ~/scripts/xmtp-agent.mjs exists
+key=  # ~/.openclaw/xmtp/.env has XMTP_WALLET_KEY
+```
+
+None of these check **whether the npm dependencies are actually installed and resolvable.** With `unit=1 mjs=1 key=1 active=0`, the surgical path runs, restarts the service, observes "still not active", reports failure. It never tries `npm install`. The full-reprovision path (which DOES run `setupXMTP`'s `npm install @xmtp/agent-sdk@latest`) is gated behind `key=0 OR mjs=0` (lib/vm-reconcile.ts:4454: `hasKey && hasMjs ? "surgical" : "full setupXMTP"`). So a VM with files present + dependencies broken is permanently routed to the surgical path that can't fix the actual problem.
+
+**Recovery executed.** `scripts/_fix-xmtp-stuck-vms.ts`: per-VM, stop the service, `rm -rf ~/scripts/node_modules` (scoped narrowly — does not touch `~/scripts/` itself or `~/.openclaw/xmtp/`), `npm install @xmtp/agent-sdk@latest` (viem comes in as transitive), reset-failed + restart, poll is-active for up to 60s with 2s interval. Both VMs recovered: NRestarts 19,776 → 0, NRestarts 5,496 → 0; xmtp addresses generated and synced to `instaclaw_vms.xmtp_address`. The 60s poll mirrors Rule 43 — cold-start with npm-fresh node_modules takes ~20-30s.
+
+**RULE 48 (Surgical service fixes must probe dependency state, not just file existence)**: when a reconciler step "surgically" fixes a systemd service by re-writing the unit file + restart, the probe MUST validate that the service's CODE DEPENDENCIES (npm packages, pip packages, system libraries) are present and functionally importable BEFORE deciding the surgical path is safe. If deps are broken, route to the full re-provision path (npm install) instead.
+
+**Mandatory pattern**:
+
+1. **Dep-import smoke test.** Before declaring a service "just needs a restart," exec the entrypoint with `--check` or `--dry-run` flag (if available), OR exec a 1-line Node/Python harness that imports the top-level packages the entrypoint uses. Catch `ERR_MODULE_NOT_FOUND`, `ModuleNotFoundError`, or equivalent and route to the re-install path.
+2. **Restart-counter check.** `systemctl --user show <service> --property=NRestarts` — if NRestarts > 50 in any reconcile window, the service is in a crash loop. Don't try another restart; investigate. Likely candidates: missing deps (this rule), corrupt config, OOM, port conflict.
+3. **Distinguish `is-active` outcomes.** `active`, `activating`, `inactive`, `failed`, `deactivating` are five distinct states. `"active"` substring matching is brittle (`activating` doesn't contain `active`, but `active (running)` does — and `active (auto-restart)` doesn't — and these can change between systemd versions). Use exact string compare: `stdout.trim() === "active"`.
+4. **Generous poll window.** Cold-start of Node/Python services with non-trivial deps (XMTP network connect, viem RPC initialization, OpenAI/Anthropic SDK init) can be 20-60s. Don't use a hardcoded `sleep 4` and then declare failure — poll for up to 60s with a 2s interval, early-exit on first `active`.
+
+**Banned patterns**:
+- `is-active 2>&1 | grep -q "^active$" && echo 1 || echo 0` — fragile because (a) systemd version differences in is-active output formatting, (b) misses the `active (running)` long form.
+- `sleep N; is-active` with N < 30 for any service that imports external SDKs.
+- "Just restart it" as the universal recovery action without confirming the restart actually has a chance of fixing the root cause.
+
+**Detection rule**: any new `step*` in `lib/vm-reconcile.ts` that calls `systemctl --user restart` on a service MUST include an upstream probe for that service's runtime deps. If the service imports any npm package, the probe checks `~/scripts/node_modules/<top-level-dep>/` exists. If the probe fails, route to the install/re-provision path, not the restart path. The reviewer should ask: "If `node_modules/` is empty, does this step recover, or does it loop forever reporting `activating`?"
+
 ### Root cause 1: ENOSPC swallowed as "config-set silent failure"
 
 **Evidence**: vm-788, vm-842, vm-043 (paying customers including ellingsonjoel@gmail.com, shelpinc@gmail.com). Disk at 100%. `openclaw config set agents.defaults.bootstrapMaxChars 40000` returns exit 1 with `ENOSPC: no space left on device`. The reconciler reports "config-set silent failure: bootstrapMaxChars expected=\"40000\" actual=\"35000\"" — losing the actual ENOSPC error entirely.

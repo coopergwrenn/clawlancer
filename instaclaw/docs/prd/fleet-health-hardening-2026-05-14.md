@@ -130,11 +130,39 @@ These are operational interventions, not engineering work. Tracked here so they'
 
 ---
 
-### REC-3 — vm-902 re-fill investigation
+### REC-3 — vm-902 re-fill investigation (RESOLVED)
 
-**Finding.** vm-902 was cleaned in REC-1 and re-filled within ~30 minutes. Indicates either the Rule 45 fix wasn't on disk yet (cron hadn't deployed it because vm-902's `cv=91` + the push-error on streaming.mode kept stepFiles from running cleanly) OR a non-session-backup accumulator. The diagnostic output in `_clean-disk-batch2.ts` BEFORE-cleanup phase will surface which.
+**Finding.** vm-902 was cleaned in REC-1 and re-filled within ~30 minutes. Diagnostic output from `_clean-disk-batch2.ts` confirmed the root cause: **session-backups was the dominant consumer (57 GB / 8,183 files on vm-902)** AND the strip-thinking.py grep on the 8-VM sample showed **7/8 still on the OLD version without `SESSION_BACKUP_COOLDOWN_SEC`**. This is the Rule 45 propagation gap — see REC-4.
 
-**Tracked as.** Carry-over data point feeding into P1-2 (Rule 45 propagation). If batch-2 finds session-backups as the dominant consumer AND the script grep shows OLD strip-thinking.py on disk, that's confirmation propagation is the gap.
+---
+
+### REC-4 — Strip-thinking.py fleet-push (Rule 45 propagation, 2026-05-14)
+
+**Targets.** All 146 (healthy, assigned) VMs.
+
+**Script.** `scripts/_fleet-push-strip-thinking-v3.ts` — mirrors the canonical hotfix pattern (base64 transport, py_compile syntax check, sentinel grep, atomic mv with .bak preservation, md5 verify post-write). Concurrency 5, waves of 20, per-VM hard timeout 60s.
+
+**Outcome.** 135 deployed + 11 already-current + 0 failed in 68 seconds wall-clock. Spot-check of 5 random VMs confirmed `md5=cd0037d2e959da405fa2c6396c159c7b` and `SESSION_BACKUP_COOLDOWN_SEC` sentinel-hits=3 on each.
+
+**Architectural finding.** This is the surface symptom of a deeper gap, captured as **Rule 47 (Continuous reconciliation, not version-gated)** in CLAUDE.md (Root Cause 0.5 section). The reconcile-fleet cron filter at `route.ts:272` excludes VMs at `cv = VM_MANIFEST.version` from the batch query entirely; any template-only change reaches new provisions + currently-stuck VMs but **never** caught-up VMs. Until the long-term continuous-reconciliation fix lands (see new P1-11 below), every template change requires either a manifest version bump OR a one-shot fleet-push.
+
+---
+
+### REC-5 — XMTP crash-loop recovery (vm-912, vm-904, 2026-05-14)
+
+**Targets.** vm-912 (cv=85, paying), vm-904 (cv=91, paying). Both stuck in `instaclaw-xmtp.service: activating (auto-restart)` with restart counters 5,453 and 19,736 respectively.
+
+**Root cause.** Missing/corrupt npm dependencies in `~/scripts/node_modules/`:
+- vm-904: `@xmtp/agent-sdk` and `viem` both absent.
+- vm-912: directories present but `~/scripts/node_modules/viem/package.json` was empty/broken — Node ESM resolver could not find `viem/index.js`.
+
+The reconciler's surgical-fix path (`lib/vm-reconcile.ts:4466`) only rewrites the unit file + restarts. It does NOT verify node_modules health. With `key=1 mjs=1 active=0`, the surgical path runs forever and never repairs deps. Full re-provision (which DOES run `npm install`) is gated behind `key=0 OR mjs=0`. So these VMs were architecturally trapped: surgical path can't help, full path is gated off.
+
+**Script.** `scripts/_fix-xmtp-stuck-vms.ts` — stops the service, `rm -rf ~/scripts/node_modules` (scoped narrowly; does not touch `~/scripts/` or `~/.openclaw/xmtp/`), `npm install @xmtp/agent-sdk@latest` (viem comes in transitive), reset-failed + restart, poll `is-active` for up to 60s with 2s interval.
+
+**Outcome.** Both VMs recovered cleanly. NRestarts → 0. XMTP wallet addresses generated: vm-904 → `0x8407421ca9f509bf4c8c4d1a9e56f71f25223df1`, vm-912 → `0x054531013b9edae5947e164a0d1da42f603b3fd4`. DB `instaclaw_vms.xmtp_address` synced.
+
+**Architectural finding.** Captured as **Rule 48 (Surgical service fixes must probe dependency state)** in CLAUDE.md (Root Cause 0.6 section). The systemic fix is tracked as new P1-12 below.
 
 ---
 
@@ -389,6 +417,75 @@ This is the same family as Rule 33's trap-state cascade — a step that paints "
 - Adding a new partner secret in Vercel without a verifier function trips a CI check (or pre-merge review prompt).
 - A wrong-value secret is detected by `_verify-partner-secrets.ts` in <60s.
 - Synthetic test: set EDGEOS_BEARER_TOKEN back to the old hex string; verifier reports failure and stepPartnerSecretsHealth fires an alert within an hour.
+
+**Priority.** P1.
+**Dependencies.** None.
+**Effort.** 4–6 hours.
+
+---
+
+### P1-11 — Continuous file reconciliation (closes Rule 47 architectural gap)
+
+**One-liner.** The reconcile-fleet cron's `cv < VM_MANIFEST.version` filter (`app/api/cron/reconcile-fleet/route.ts:272`) means caught-up VMs NEVER receive template-only updates. We hot-patched this for Rule 45 with `_fleet-push-strip-thinking-v3.ts` (REC-4), but every future file-content change has the same gap. Need a structural fix.
+
+**Root cause + code path.** Rule 47 in CLAUDE.md (Root Cause 0.5). The reconciler is "version-gated" — it only runs `stepFiles` when cv is behind. Modern infra (Kubernetes control loops, HashiCorp Nomad drift detection, Ansible pull agents) does **continuous reconciliation** — every cycle compares desired vs actual state regardless of "version". The gate prematurely terminates reconciliation for the population that most needs continuous validation (paying customers running steady-state).
+
+**Blast radius.** Every template change since the version-gated filter shipped. Currently known: the entire fleet was running the OLD strip-thinking.py with the session-backup runaway loop fix landed-but-undeployed for some unknown window before REC-4 caught it. Future shape: ANY file change in `vm-manifest.ts:files[]` or any embedded template in `lib/ssh.ts` propagates only to fresh provisions until a manual fleet-push or version bump.
+
+**Implementation spec.** Two viable approaches:
+
+**Option A (preferred): File-drift cron, separate from reconcile-fleet.**
+- New route `app/api/cron/file-drift/route.ts`, schedule every 15 min.
+- Iterates over ALL (healthy, assigned) VMs — no cv filter.
+- Runs ONLY `stepFiles` (no config-set, no service restart, no cv mutation, no auth-profile work).
+- Per-VM hard timeout 30s. Concurrency 5.
+- Holds its own cron lock (`instaclaw_cron_locks` row, key="file-drift").
+- Logs per-VM drift detection + repair to `instaclaw_reconcile_audit` with `kind="file-drift"`.
+
+**Option B: Remove the cv filter from reconcile-fleet, no-op when already correct.**
+- Drop `lt("config_version", VM_MANIFEST.version)` from the batch query.
+- Trust each `step*` to no-op cheaply on already-correct state (most already do via verify-before-write).
+- Bigger surface area; higher risk of side effects on already-healthy VMs.
+
+Option A is the cleaner choice — it isolates the file-drift concern, has narrower blast radius, and is easier to throttle/disable independently.
+
+**Acceptance criteria.**
+- After Option A ships: a synthetic test that overwrites `~/.openclaw/scripts/strip-thinking.py` on one (healthy, assigned, cv=current) VM with junk content auto-recovers within 15 min of the next file-drift cron tick.
+- Zero VMs in the fleet have stale embedded templates after 7-day soak (verified via coverage script per Rule 27).
+- The file-drift cron never bumps cv — its work is invisible to the cv invariant.
+
+**Priority.** P1 (closes the gap that caused REC-4; without it, every future template change is a manual fleet-push or a manifest bump).
+**Dependencies.** None — does not depend on Rule 44 structural fix (P2-7), can ship independently.
+**Effort.** 6–10 hours.
+
+**Competitor inspiration.** Kubernetes control-loop pattern (continuous reconcile, no version gate); HashiCorp Nomad's drift detection; Ansible pull-based agents; AWS Systems Manager State Manager.
+
+---
+
+### P1-12 — Harden xmtp surgical fix per Rule 48 (dep probe before restart-only path)
+
+**One-liner.** The `instaclaw-xmtp` surgical fix at `lib/vm-reconcile.ts:4466` rewrites the unit file + restarts but doesn't verify npm deps. vm-912 and vm-904 each crashed >5,000 times in the auto-restart cycle while the reconciler reported "surgical fix failed: activating" every tick.
+
+**Root cause + code path.** Rule 48 in CLAUDE.md (Root Cause 0.6). The probe at `lib/vm-reconcile.ts:4419-4422` checks `unit/active/mjs/key` but not `node_modules`. A VM with `mjs=1 key=1 active=0` is permanently routed to the restart-only surgical path, which can't fix dep corruption.
+
+**Blast radius.** All edge_city VMs (with XMTP partner messaging skill) are exposed. Today: vm-902, vm-912, vm-904 fixed via REC-5. Future shape: any npm package removal/corruption on `~/scripts/node_modules/` (e.g., partial disk-full ENOSPC during install) traps the VM in the same loop.
+
+**Implementation spec.**
+- Extend the probe at `lib/vm-reconcile.ts:4419-4422` with:
+  ```
+  deps=$([ -d ~/scripts/node_modules/@xmtp/agent-sdk ] && [ -f ~/scripts/node_modules/viem/package.json ] && echo 1 || echo 0)
+  ```
+- Route on `unit + mjs + key + deps`:
+  - `unit=1 mjs=1 key=1 deps=1 active=0` → surgical (restart only).
+  - `unit=? mjs=1 key=1 deps=0` → **dep-repair path**: `cd ~/scripts && npm install @xmtp/agent-sdk@latest`; if success, restart; route as surgical from there.
+  - `mjs=0 OR key=0` → full setupXMTP (existing).
+- Update `is-active` check: poll for 60s with 2s interval (matches Rule 43 + REC-5 outcome), exact-string compare `stdout.trim() === "active"` (NOT substring match).
+- Detect crash-loop: `systemctl --user show <svc> --property=NRestarts`. If >50, log a loud warning even if eventually `active` — that signals an underlying issue worth investigating.
+
+**Acceptance criteria.**
+- Synthetic test: `rm -rf ~/scripts/node_modules` on a staging edge_city VM, run reconciler, observe dep-repair path runs npm install and service comes back active within 90s.
+- Zero VMs stuck in `activating (auto-restart)` for >30 min across a 7-day soak.
+- The same probe shape generalizes to other services that import npm packages (e.g., dispatch-server, browser-relay) — document as the pattern.
 
 **Priority.** P1.
 **Dependencies.** None.
@@ -829,6 +926,9 @@ Before declaring this PRD shipped:
 - [x] Linode SMTP outbound port note → P2-6
 - [x] ufw firewall (not node_exporter) was the actual blocker → P2-5
 - [x] Cloud-init tarball EDGEOS_BEARER_TOKEN inclusion → P1-10 (integration touchpoint)
+- [x] Rule 45 propagation gap (vm-902 refill investigation) → REC-3 + REC-4 (resolved via fleet-push)
+- [x] Rule 47 architectural gap (template-only updates can't reach caught-up VMs) → P1-11 (continuous reconciliation cron)
+- [x] Rule 48 architectural gap (xmtp surgical fix doesn't probe deps) → REC-5 + P1-12 (dep-probe in reconciler)
 
 **Timour partner-feedback items with exact code paths:**
 - [x] Timour #4 deployment-lock visibility + `configure_lock_at` race → P1-6

@@ -211,8 +211,12 @@ async function cleanup(t: Target): Promise<{ ok: boolean; finalDisk: string }> {
       }
       if (i === 35) console.log(`    ✗ not healthy after 180s: is-active=${active} /health=${health}`);
     }
-    c.end();
+    // Read final disk BEFORE closing the SSH connection — calling df after
+    // c.end() returns 'Not connected' which propagates as a false 'exception'
+    // status even when the gateway recovered cleanly (vm-902, vm-912 bug,
+    // 2026-05-14).
     const finalDisk = (await exec(`df / | tail -1 | awk '{print $5}' | tr -d '%'`)).stdout.trim();
+    c.end();
     console.log(`\n${healthy ? "✅" : "✗"} ${t.name}: ${healthy ? "RECOVERED" : "STILL BROKEN"} disk=${finalDisk}%`);
     return { ok: healthy, finalDisk };
   }
