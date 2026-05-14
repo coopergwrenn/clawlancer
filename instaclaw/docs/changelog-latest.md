@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-14
 
-Window: `c7a8aa76847c0805a921d11393f681bbda6a1c21` → `HEAD` (HEAD = `187d477f`)
+Window: `187d477f3f3505b2c1d86e0edb1cc157cf2f3f67` → `HEAD` (HEAD = `477f9555`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 187d477f3f3505b2c1d86e0edb1cc157cf2f3f67 -->
+<!-- LAST_GENERATED_SHA: 477f95556acf0ed18b4273a0dfec9221349f6de0 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `187d477f` 2026-05-14 — feat(reconcile): Rule 39 — result.warnings vs result.errors (optional-step reclassification) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `70de80e7` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `477f9555` 2026-05-14 — docs(prd): fleet-health-hardening master tracking PRD (Rules 36-46 + cross-cutting) [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `b0dad286` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `187d477f` 2026-05-14 — feat(reconcile): Rule 39 — result.warnings vs result.errors (optional-step reclassification) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `477f9555` 2026-05-14 — docs(prd): fleet-health-hardening master tracking PRD (Rules 36-46 + cross-cutting) [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `70de80e7` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `b0dad286` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `187d477f` 2026-05-14 — [reconciler, infrastructure] — feat(reconcile): Rule 39 — result.warnings vs result.errors (optional-step reclassification)
+- `477f9555` 2026-05-14 — [reconciler, edge, docs] — docs(prd): fleet-health-hardening master tracking PRD (Rules 36-46 + cross-cutting)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `187d477f` 2026-05-14 — feat(reconcile): Rule 39 — result.warnings vs result.errors (optional-step reclassification)
+- `477f9555` 2026-05-14 — docs(prd): fleet-health-hardening master tracking PRD (Rules 36-46 + cross-cutting)
 
 ## Appendix — every commit (chronological)
 
-- `70de80e7` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `187d477f` 2026-05-14 — feat(reconcile): Rule 39 — result.warnings vs result.errors (optional-step reclassification) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b0dad286` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `477f9555` 2026-05-14 — docs(prd): fleet-health-hardening master tracking PRD (Rules 36-46 + cross-cutting) [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
