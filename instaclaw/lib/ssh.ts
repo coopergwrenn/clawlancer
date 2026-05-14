@@ -68,44 +68,11 @@ export interface PartialFailure {
   critical: boolean;
 }
 
-interface UserConfig {
-  telegramBotToken?: string;
-  apiMode: "all_inclusive" | "byok";
-  apiKey?: string;
-  tier: string;
-  model?: string;
-  discordBotToken?: string;
-  channels?: string[];
-  braveApiKey?: string;
-  gmailProfileSummary?: string;
-  elevenlabsApiKey?: string;
-  /** Force generation of a new gateway token even if one exists in the DB. */
-  forceNewToken?: boolean;
-  /** User's full name (from instaclaw_users.name) — used for IDENTITY.md + USER.md */
-  userName?: string;
-  /** User's email (from instaclaw_users.email) — used for USER.md */
-  userEmail?: string;
-  /** Bot's Telegram username (e.g., "Mucus09bot") — used for IDENTITY.md */
-  botUsername?: string;
-  /** User's timezone (e.g., "America/New_York") — used for USER.md */
-  userTimezone?: string;
-  /** World ID nullifier hash — deployed to VM .env + WORLD_ID.md */
-  worldIdNullifier?: string;
-  /** World ID verification level ("orb" or "device") */
-  worldIdLevel?: string;
-  /** Bankr wallet API key (bk_usr_...) — deployed to VM .env for trading skill */
-  bankrApiKey?: string;
-  /** Bankr EVM wallet address — deployed to VM .env + Wallet.md */
-  bankrEvmAddress?: string;
-  /** Bankr token contract address — if agent has been tokenized */
-  bankrTokenAddress?: string;
-  /** Bankr token symbol — e.g. "ALPHA" */
-  bankrTokenSymbol?: string;
-  /** Bankr token name — e.g. "AlphaTrader" */
-  bankrTokenName?: string;
-  /** Partner tag (e.g., "edge_city") — gates partner-specific skill installation */
-  partner?: string;
-}
+// UserConfig moved to lib/user-config-types.ts on 2026-05-13 so the
+// cloud-init tarball builder can share the type without importing from
+// ssh.ts (which would create an awkward type/implementation coupling).
+// See docs/cloud-init-wrapper-contracts-2026-05-13.md §5b(d) for rationale.
+import type { UserConfig } from "./user-config-types";
 
 // Pinned OpenClaw version — what new VMs get provisioned with.
 // Bump this after fleet upgrades (separate from the SSH upgrade flow).
