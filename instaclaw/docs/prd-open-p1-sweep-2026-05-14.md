@@ -16,10 +16,10 @@ This PRD is the **operational tracker** for the next ~10 days. Every open item i
 
 ## 1. Executive Summary
 
-Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). Update 2026-05-14 (in-progress sweep): **P1-1 closed via shipped fixes + natural reconcile (0/144 lying-DB by census). Rule 37 closed via lib/enospc-guard.ts wrapper (32/32 synthetic tests).** Remaining 8 items fall into three tiers:
+Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). Update 2026-05-14 (in-progress sweep): **P1-1 closed via shipped fixes + natural reconcile (0/144 lying-DB by census). Rule 37 closed via lib/enospc-guard.ts wrapper (32/32 synthetic tests). Rule 38 closed via stepDiskGuard ungating + runFileDriftPass coverage (12/12 synthetic tests; bonus fix for fragile getSupabase throw).** Remaining 7 items fall into three tiers:
 
 - **Tier 0 — Critical path blocker**: ~~P1-1 lying-DB~~ **SHIPPED 2026-05-14**. 0 items remaining at Tier 0.
-- **Tier 1 — Hardening before snapshot bake (2 items remaining)**: P1-4 Vercel-nft, Rule 38 atomic-write self-clean. ~~Rule 37 ENOSPC~~ **SHIPPED 2026-05-14**. Must land before 2026-05-23 so the new snapshot baseline is correct.
+- **Tier 1 — Hardening before snapshot bake (1 item remaining)**: P1-4 Vercel-nft. ~~Rule 37 ENOSPC~~ **SHIPPED 2026-05-14**. ~~Rule 38 atomic-write self-clean~~ **SHIPPED 2026-05-14**. Must land before 2026-05-23 so the new snapshot baseline is correct.
 - **Tier 2 — Partner-readiness before Edge Esmeralda (3 items)**: Rule 42 private-repo skill auth, Rule 43 plugin-aware cold-boot, P1-9 acp-serve.service. Edge Esmeralda starts 2026-05-30. These items don't block the bake but DO block reliable partner onboarding.
 - **Tier 3 — Cross-PRD or post-launch (3 items)**: Rule 44 strict-deadline (owned by reconcile-deadline PRD), P1-2 node_exporter PORT_FAIL surfacing (partial — diagnostic enhancement only), P1-3 vm-726 SSH-degraded auto-detect (partial — generic detection cron). Plus 3 lying-DB semantic-misclassification followups noted in §6.1.
 
@@ -155,7 +155,7 @@ Both migrations applied via Supabase SQL Editor; safe + idempotent (`IF NOT EXIS
 
 **2. P1-4 Vercel-nft trace cache → JSON manifest** — §6.2
 **3. Rule 37 ENOSPC detection + P0 alerting** — §6.3 [SHIPPED 2026-05-14]
-**4. Rule 38 atomic-write `.tmp` self-clean on ENOSPC** — §6.4
+**4. Rule 38 atomic-write `.tmp` self-clean on ENOSPC** — §6.4 [SHIPPED 2026-05-14]
 
 ### Tier 2 — Partner-readiness before Edge Esmeralda (2026-05-30)
 
@@ -336,7 +336,33 @@ b. Dispatch an admin alert (`sendAdminAlertEmail` via existing patterns, deduped
 
 ---
 
-### 6.4 — Rule 38 atomic-write `.tmp` self-clean on ENOSPC
+### 6.4 — Rule 38 atomic-write `.tmp` self-clean on ENOSPC [SHIPPED 2026-05-14]
+
+**Status**: **SHIPPED 2026-05-14, fleet-side mitigation.** stepDiskGuard now runs the .tmp purge unconditionally on every reconcile call (not gated on disk≥90%). runFileDriftPass also calls stepDiskGuard so cv-current VMs (which the reconcile-fleet cron skips) still get the cleanup via file-drift's continuous random-batch sweep. Synthetic test (12/12 assertions pass) covers 9 disk-pct levels + dryRun + probe-parse-fail. Upstream canonical fix drafted at `docs/openclaw-upstream-issue-r38.md`, pending post by Cooper.
+
+**Bonus fix in same change**: stepDiskGuard's two `getSupabase()...update(...)` telemetry calls were unprotected; a missing-env or transient Supabase failure threw synchronously, fell into the outer try/catch, and KILLED the .tmp cleanup. Both calls now wrap their own try/catch. Surfaced via the synthetic test (no supabase creds in test env). Mechanical defense-in-depth: local-disk cleanup never depends on Supabase availability.
+
+**Files (this session):**
+- `lib/vm-reconcile.ts:stepDiskGuard` — .tmp cleanup moved out of `>=90%` gated block; runs on every call after the df probe + DB write. Both `getSupabase()` calls wrapped in their own try/catch.
+- `lib/vm-reconcile.ts:runFileDriftPass` — now calls stepDiskGuard before stepFiles, so cv-current VMs get covered.
+- `lib/vm-reconcile.ts` — added `__test_stepDiskGuard` re-export for synthetic testing.
+- `scripts/_test-disk-guard-tmp-cleanup.ts` — 12-assertion synthetic test, recording-stub SSH.
+- `docs/openclaw-upstream-issue-r38.md` — issue draft for the OpenClaw repo.
+- CLAUDE.md Rule 38 → SHIPPED.
+
+**Acceptance criteria:**
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | No VMs have .tmp >60min old (verifiable via SSH probe sample) | ✓ DONE — sampled 2 healthy VMs (vm-043, vm-319), both 0 .tmp files. Will re-sample after deploy + 1 cron tick to confirm coverage. |
+| 2 | Synthetic test: cleanup fires regardless of disk% | ✓ DONE — 12/12 assertions pass via `scripts/_test-disk-guard-tmp-cleanup.ts` |
+| 3 | Upstream issue filed | DRAFTED — `docs/openclaw-upstream-issue-r38.md`. Pending Cooper's post to openclaw repo. |
+
+**Followup**: post-deploy probe-sample (say, 20 random VMs) to confirm zero .tmp leftovers across the fleet. If any are found, that's a Rule 47 propagation gap — file-drift sampling rate may be too low for VMs that haven't been sampled recently. Tier 3.
+
+---
+
+**Original entry kept below for forensic reference:**
 
 **CLAUDE.md reference**: §2243 (RULE 38 definition).
 

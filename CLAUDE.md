@@ -2265,7 +2265,15 @@ Also a related disk-leak issue: the `openclaw config set` flow uses atomic write
 
 **Verification (2026-05-14)**: `scripts/_test-enospc-guard.ts` exercises the wrapper end-to-end with stubbed `execCommand`/`putFile`. 32/32 tests pass — Node fs format, bash redirect, npm output, putFile rejection, healthy passthrough, fire-once across multiple ENOSPC hits, non-ENOSPC errors passing through cleanly, prototype passthrough of `dispose()`. Live-VM fallocate test deferred (would risk a real customer disk; the wrapper logic is mechanically reliable when fully exercised synthetically).
 
-**RULE 38 (Atomic-write tmp files must self-clean on ENOSPC)**: any code that writes via `path.tmp + rename` (including openclaw config set) must `rm -f <path>.tmp` in an EXIT trap. Otherwise repeated ENOSPC retries accumulate zero-byte files indefinitely, eventually exhausting inodes even when bytes are freed. The 40+ tmp files on vm-788 are the proof. This is in openclaw itself, not our reconciler — file an upstream issue and add a periodic cleanup cron as defense-in-depth.
+**RULE 38 (Atomic-write tmp files must self-clean on ENOSPC)** [SHIPPED 2026-05-14, fleet-side mitigation]: any code that writes via `path.tmp + rename` (including openclaw config set) must `rm -f <path>.tmp` in an EXIT trap. Otherwise repeated ENOSPC retries accumulate zero-byte files indefinitely, eventually exhausting inodes even when bytes are freed. The 40+ tmp files on vm-788 are the proof. This is in openclaw itself, not our reconciler — file an upstream issue and add a periodic cleanup cron as defense-in-depth.
+
+**Fleet-side mitigation (this rule's reconciler-side implementation)**: `stepDiskGuard` (lib/vm-reconcile.ts:782+) now runs `find ~/.openclaw/ -maxdepth 1 -name "openclaw.json.*.tmp" -mmin +60 -delete` on every disk-guard call, regardless of disk-percent (previously gated inside the `if (diskPct >= 90)` block). The 60-min mtime bound avoids racing legitimate in-flight atomic writes. To cover BOTH cv-drift VMs (via reconcile-fleet → stepDiskGuard) AND cv-current VMs (via cron/file-drift → runFileDriftPass), the file-drift pass now also calls stepDiskGuard before stepFiles — closing the Root Cause 0.5 coverage gap for the cv-current cohort.
+
+**Also fixed in the same change**: `stepDiskGuard`'s two `getSupabase()...update(...)` telemetry writes were wrapped in their own try/catch. Without that, a missing-env-var or transient supabase failure would throw synchronously, bypass the `.then(noop, noop)` and fall into the outer try/catch — taking the .tmp cleanup down with it. Surfaced via `scripts/_test-disk-guard-tmp-cleanup.ts` against a test environment with no Supabase credentials. The fix is defense-in-depth: the local-disk cleanup must never depend on Supabase being reachable.
+
+**Synthetic test** (`scripts/_test-disk-guard-tmp-cleanup.ts`): exercises 12 scenarios — 9 disk-pct levels (50% → 100%) all firing the cleanup, dryRun correctly skipping, probe-parse-fail conservatively skipping. 12/12 pass.
+
+**Upstream canonical fix**: issue draft at `instaclaw/docs/openclaw-upstream-issue-r38.md`. Pending post by Cooper to the openclaw repo.
 
 ### Root cause 2-PRIMARY: Strict-mode 180s deadline kills cv=91 cohort reconciles
 

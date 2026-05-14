@@ -268,7 +268,18 @@ export async function runFileDriftPass(
   // pushes a P0 to result.errors and fires the deduped alert. The single
   // stepFiles call below catches the sentinel so we return cleanly.
   const wrappedSsh = wrapSSHForEnospcDetection(ssh, vm, result);
+
+  // Rule 38: also run stepDiskGuard here. Without this, caught-up VMs (those
+  // at cv == VM_MANIFEST.version) are excluded from the reconcile-fleet
+  // cron's filter and never get the unconditional .tmp cleanup. file-drift
+  // already runs continuously on a random sample of healthy+assigned VMs
+  // regardless of cv, so it's the natural place to hang the disk maintenance
+  // for the caught-up cohort. stepDiskGuard is cheap on healthy disks
+  // (one df probe + one find -delete + one DB write; ~100ms total) and
+  // surfaces disk-pressure warnings/errors that would otherwise stay
+  // invisible until a customer hits ENOSPC.
   try {
+    await stepDiskGuard(wrappedSsh, vm, result, dryRun);
     await stepFiles(wrappedSsh, vm, VM_MANIFEST, result, dryRun);
   } catch (err) {
     if (isEnospcDetectedError(err)) {
@@ -752,6 +763,18 @@ type SSHConnection = any;
  *     directory or already-purged file never aborts the reconcile.
  *   - Best-effort DB writes (last_disk_pct) — failure doesn't propagate.
  */
+// Exported only for synthetic testing — scripts/_test-disk-guard-tmp-cleanup.ts
+// uses this to assert the Rule 38 unconditional .tmp purge fires at every
+// disk-pct level. Step* functions are otherwise internal to reconcileVM.
+export async function __test_stepDiskGuard(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  return stepDiskGuard(ssh, vm, result, dryRun);
+}
+
 async function stepDiskGuard(
   ssh: SSHConnection,
   vm: VMRecord,
@@ -767,15 +790,51 @@ async function stepDiskGuard(
     }
 
     // Persist for SQL-queryable fleet visibility. Fire-and-forget — don't
-    // block the reconciler on a DB write hiccup.
-    void getSupabase()
-      .from("instaclaw_vms")
-      .update({ last_disk_pct: diskPct })
-      .eq("id", vm.id)
-      .then(
-        () => undefined,
-        () => undefined,
+    // block the reconciler on a DB write hiccup. Wrap in try/catch because
+    // getSupabase() throws synchronously if NEXT_PUBLIC_SUPABASE_URL or
+    // SUPABASE_SERVICE_ROLE_KEY are missing — without the catch, that
+    // synchronous throw bypasses the .thens and falls into the outer
+    // catch, taking out the Rule 38 .tmp cleanup with it (caught
+    // 2026-05-14 in scripts/_test-disk-guard-tmp-cleanup.ts).
+    try {
+      void getSupabase()
+        .from("instaclaw_vms")
+        .update({ last_disk_pct: diskPct })
+        .eq("id", vm.id)
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+    } catch {
+      // Supabase client init failed (missing env, etc.). Disk-pct telemetry
+      // is non-critical; don't let it block the rest of disk-guard.
+    }
+
+    // ── Rule 38 unconditional .tmp self-clean ──
+    // Every reconcile tick, regardless of disk%, sweep stale
+    // `openclaw.json.*.tmp` leftovers (>60min mtime). These accumulate from
+    // openclaw's atomic-write-via-rename pattern: when `openclaw config set`
+    // hits ENOSPC mid-write, the .tmp file gets created but never renamed
+    // over the target, and nothing cleans it up. vm-788 accumulated 40+
+    // such zero-byte files between 2026-05-08 and 2026-05-14, burning
+    // inodes even after bytes were freed by other cleanup paths. The
+    // canonical fix is an EXIT trap inside openclaw itself (upstream issue
+    // drafted at instaclaw/docs/openclaw-upstream-issue-r38.md, pending
+    // post by Cooper). Until then, this fleet-side mitigation runs at every
+    // reconcile so the accumulation can never exceed one reconcile-cycle's
+    // worth (~3 min between Vercel cron ticks; ~15 min between file-drift
+    // ticks for cv-current VMs).
+    //
+    // 60min mtime bound: don't race an in-flight atomic write. A legitimate
+    // openclaw config set takes <1s end-to-end, so any .tmp older than
+    // 60min is by definition orphaned.
+    //
+    // Dry-run is honored — the find -delete won't run.
+    if (!dryRun) {
+      await ssh.execCommand(
+        `find ~/.openclaw/ -maxdepth 1 -name "openclaw.json.*.tmp" -mmin +60 -delete 2>/dev/null; true`,
       );
+    }
 
     if (diskPct < 80) {
       result.alreadyCorrect.push(`disk-guard: ${diskPct}%`);
@@ -818,21 +877,20 @@ async function stepDiskGuard(
       if (Number.isFinite(v)) postPct = v;
     }
 
-    // Always: clean stale openclaw.json.*.tmp leftovers (Rule 38 territory).
-    // 60-min mtime bound avoids racing an in-flight atomic write.
-    await ssh.execCommand(
-      `find ~/.openclaw/ -maxdepth 1 -name "openclaw.json.*.tmp" -mmin +60 -delete 2>/dev/null; true`,
-    );
-
-    // Re-record post-purge value.
-    void getSupabase()
-      .from("instaclaw_vms")
-      .update({ last_disk_pct: postPct })
-      .eq("id", vm.id)
-      .then(
-        () => undefined,
-        () => undefined,
-      );
+    // Re-record post-purge value. Same wrap-in-try as above; getSupabase()
+    // can throw synchronously on missing env.
+    try {
+      void getSupabase()
+        .from("instaclaw_vms")
+        .update({ last_disk_pct: postPct })
+        .eq("id", vm.id)
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+    } catch {
+      // Non-critical telemetry; don't propagate.
+    }
 
     if (postPct >= 95) {
       // Cleanup couldn't free enough space. cv-block — the existing
