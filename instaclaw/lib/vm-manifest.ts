@@ -1123,8 +1123,40 @@ export const VM_MANIFEST = {
    *  Rollback: each layer independently. L1 = revert 4 messages.* keys.
    *  L2 = streaming.mode → "off" (same lever as v68). L3 = remove cron
    *  entry from manifest, ack-watchdog.py stays inert on disk.
+   *
+   * v96 (2026-05-14): Recurring-task / cron creation rule shipped in SOUL.md
+   * and AGENTS.md V2 templates. Prevents the duplicate-cron explosion that hit
+   * vm-050 (18 dupe Daily News crons) and vm-725 (36 dupe iPad/iPhone Deal
+   * Monitor crons) — both burned customer daily credit budgets in <3h every
+   * morning because each follow-up "remind me daily about X" agent turn
+   * created a new cron instead of updating the existing one.
+   *
+   * Two coordinated additions:
+   *  - SOUL.md V2 Hard Boundaries: one-line "Never create duplicate crons —
+   *    see AGENTS.md" pointer. Above the OPENCLAW_CACHE_BOUNDARY marker so
+   *    it's in the cached prompt prefix on every turn. Adds ~210 chars to a
+   *    ~28K-char SOUL.md — well inside the 30K bootstrapMaxChars ceiling.
+   *  - AGENTS.md V2 new section "Recurring Tasks (Crons) — list first, never
+   *    duplicate": full procedure with the exact `jq` command to list, the
+   *    decision tree (matching cron exists / doesn't / can't tell), and the
+   *    incident context that motivated it. Below the cache boundary; no
+   *    cache-miss tax on the first deploy.
+   *
+   * Hot-reload taxonomy: not applicable — these are workspace template files,
+   * not OpenClaw config keys. The reconciler's stepSoul / stepAgents owns
+   * delivery and runs every reconcile cycle for VMs below MANIFEST.version.
+   *
+   * Fleet rollout: reconcile-fleet cron picks up v96 next cycle. For each VM
+   * at cv<96, stepSoul rewrites SOUL.md and stepAgents rewrites AGENTS.md
+   * via the V2 markers (SOUL_V2_MARKER, AGENTS_V2_MARKER). Agents read both
+   * files at session start, so the rule is live as soon as the next session
+   * rotates (≤15min for most VMs given current heartbeat cadence).
+   *
+   * Rollback: revert this commit. stepSoul/stepAgents idempotently restore
+   * the prior content via the V2 markers. cv-decrement script can re-mark
+   * affected VMs as cv=95-eligible if needed.
    */
-  version: 95,
+  version: 96,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

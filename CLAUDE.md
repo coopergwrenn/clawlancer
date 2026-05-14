@@ -1871,6 +1871,17 @@ Poll `GET /v4/images/{IMAGE_ID}` until status=available. Verify size < 6144MB.
 
 Single source of truth for what each `VM_MANIFEST.version` bump contains. Used for release notes, fleet-drift debugging, and post-mortems. Append-only — never rewrite history. Update at the same time as the version bump itself.
 
+### v96 — 2026-05-14 (Recurring-task / cron-creation rule in SOUL.md + AGENTS.md V2)
+
+- **Manifest change**: Added a "Never create duplicate crons" bullet to SOUL.md V2 Hard Boundaries (above the OPENCLAW_CACHE_BOUNDARY marker) and a new "Recurring Tasks (Crons) — list first, never duplicate" section to AGENTS.md V2 (below the cache boundary). Both live in `lib/workspace-templates-v2.ts`. No new config keys, no new reconciler steps.
+- **Why**: vm-050 (Cooper's timmy) had 18 duplicate "Daily News" crons all firing at 9 AM ET — produced the "I'm temporarily unavailable" Telegram spam. vm-725 (Doug Rathell) had 36 duplicate "iPad/iPhone Deal Monitor" crons; 8+ fired at 9 AM ET on Sonnet, burning his entire 600-credit daily starter budget by 11 AM. Both were caused by the same agent behavior — when the user said "remind me daily about X" a second time, the agent created another cron instead of finding and updating the existing one. No idempotency check; nothing in SOUL.md or AGENTS.md told it to list first.
+- **The rule**: before creating any cron, list existing crons (`cat ~/.openclaw/cron/jobs.json | jq` or `openclaw cron list`), look for a match by name / payload, and update rather than duplicate. Every cron MUST specify `delivery.target` (the Telegram chat ID from `~/.openclaw/openclaw.json`) — never `delivery.mode: "announce"` with null target (those produce silent error loops).
+- **Reconciler impact**: stepSoul and stepAgents (lib/vm-reconcile.ts:5440+, 5479+) idempotently rewrite the V2 templates using the SOUL_V2_MARKER / AGENTS_V2_MARKER guards. Both files are deployed on every reconcile cycle for VMs at cv<96.
+- **Fleet rollout**: reconcile-fleet cron picks up v96 next tick. ~240 assigned+healthy VMs need to re-reconcile; given the head-of-queue starvation in vm-lifecycle (P1 — fix #2 in this sweep also lands today), this should clear within 1-2 cron cycles for the bulk of the fleet.
+- **Cache-miss tax**: ~210 chars added above the OPENCLAW_CACHE_BOUNDARY in SOUL.md → one-time ~5-10s cache rebuild per VM on the first turn after the new content lands. Across ~240 VMs that's a one-time minor latency bump distributed over the next hours, not a sustained cost.
+- **Detection note**: after rollout, sample 10 VMs and grep `~/.openclaw/workspace/AGENTS.md` for the literal string `"Recurring Tasks (Crons) — list first, never duplicate"`. If absent from a cv=96 VM, that's a Rule 23 lying-DB regression (would suggest stale-module-cache on reconciler).
+- **Rollback**: revert the commit. Reconciler restores prior SOUL.md / AGENTS.md content idempotently via the V2 markers. cv-decrement script can re-mark affected VMs as cv=95-eligible if forcing re-reconcile.
+
 ### v88 — 2026-05-05 (build-essential added to systemPackages)
 
 - **Manifest change**: Added `build-essential` to `systemPackages` in `lib/vm-manifest.ts`.
