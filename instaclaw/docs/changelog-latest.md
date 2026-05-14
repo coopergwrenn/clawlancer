@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-14
 
-Window: `93290ba1575f0bf2b26da74eb022c311a541c618` → `HEAD` (HEAD = `bb12558d`)
+Window: `bb12558d1fb50c96c395a9944f09e78f6317d242` → `HEAD` (HEAD = `1bac526c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: bb12558d1fb50c96c395a9944f09e78f6317d242 -->
+<!-- LAST_GENERATED_SHA: 1bac526c1f7c2d262c0308d0e58dd951ebc618ab -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `bb12558d` 2026-05-14 — fix(reconcile): stepNpmPinDrift covers @worldcoin/agentkit-cli + mcporter + usecomputer — heals existing fleet [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `02e6efe0` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `1bac526c` 2026-05-14 — feat(cloud-init): Day 8b BE-9 — configure clawlancer MCP server via mcporter [2 files] _(ai-assisted)_
+- `d905a2e3` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `bb12558d` 2026-05-14 — fix(reconcile): stepNpmPinDrift covers @worldcoin/agentkit-cli + mcporter + usecomputer — heals existing fleet [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `1bac526c` 2026-05-14 — feat(cloud-init): Day 8b BE-9 — configure clawlancer MCP server via mcporter [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `02e6efe0` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `bb12558d` 2026-05-14 — [reconciler, infrastructure] — fix(reconcile): stepNpmPinDrift covers @worldcoin/agentkit-cli + mcporter + usecomputer — heals existing fleet
+- `d905a2e3` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `bb12558d` 2026-05-14 — fix(reconcile): stepNpmPinDrift covers @worldcoin/agentkit-cli + mcporter + usecomputer — heals existing fleet
+- `1bac526c` 2026-05-14 — feat(cloud-init): Day 8b BE-9 — configure clawlancer MCP server via mcporter
 
 ## Appendix — every commit (chronological)
 
-- `02e6efe0` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `bb12558d` 2026-05-14 — fix(reconcile): stepNpmPinDrift covers @worldcoin/agentkit-cli + mcporter + usecomputer — heals existing fleet [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d905a2e3` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `1bac526c` 2026-05-14 — feat(cloud-init): Day 8b BE-9 — configure clawlancer MCP server via mcporter [2 files] _(ai-assisted)_
