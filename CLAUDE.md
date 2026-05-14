@@ -1463,6 +1463,24 @@ The catch-up's filter selects `cv ≤ MANIFEST.version - minGap` with `minGap=5`
 
 So the same VMs keep failing the same step every 3 minutes forever. **Without operator intervention or a structural fix, they never converge.**
 
+### Root cause 0 (UPSTREAM): Session-backup runaway loop fills disks
+
+**Evidence**: vm-788 had **242,219 files** in `~/.openclaw/session-backups/` (58GB on a 79GB disk, 100% full). vm-375 had 211,728 files (56GB). 4 paying-customer VMs had 100%-disk crashes traced to this: ellingsonjoel@gmail.com (vm-842), shelpinc@gmail.com (vm-043), bocacine@icloud.com (vm-788), verkanntet@gmail.com (vm-568), artiprido@gmail.com (vm-375). plus 3 about-to-fill VMs (vm-576, vm-084, vm-561 at 90-94%).
+
+**Code path**: `lib/ssh.ts:_backup_session_file()` (the embedded Python in `STRIP_THINKING_SCRIPT`). The 2026-05-11 idempotency gate used `backup.mtime >= src.mtime` to skip duplicate backups. The gate **never fired in practice** because `strip-thinking.py` modifies the source jsonl after each backup (strips thinking blocks, compacts, trims failed turns). Source mtime is always newer than the most-recent backup mtime on the next cron tick → the check always permits a new backup → ~1 backup per cron tick per session → 1440/day per session × 24 sessions × 7d retention = 240k+ files.
+
+**Why it took weeks to notice**: the disk-fill is asymptotic. A new VM has ~100MB of disk usage, grows to 50GB+ over weeks. The first time it hits 100% is sudden customer-down. Without disk-utilization monitoring (P3 follow-up), it stays invisible until the gateway crash.
+
+**Fix shipped (commit eaf5617a, 2026-05-14)**: replaced the mtime-equality check with a **wall-clock cooldown** + **per-session count cap**:
+- `SESSION_BACKUP_COOLDOWN_SEC = 300` — skip if ANY backup for this basename has mtime within last 5 min.
+- `SESSION_BACKUP_MAX_PER_SESSION = 50` — hard ceiling regardless of cooldown.
+
+Worst case new behavior: 50 × 24 sessions ≈ 1200 files (vs 240k observed). At ~250KB avg ≈ 300MB max per VM vs 58GB observed.
+
+**RULE 45 (Cooldown over mtime equality for idempotency on self-mutating data)**: any idempotency check whose subject is mutated by the same code that owns the check MUST use a wall-clock cooldown, not a state-equality test. The mtime-equality gate failed because the strip-thinking script that called `_backup_session_file` ALSO modified the source file's mtime via subsequent ops in the same tick — making the "did the source change" check tautologically permit every call. Wall-clock cooldown breaks the loop without requiring careful reasoning about which mutations land between gate checks.
+
+**RULE 46 (Disk monitoring is mandatory; absent it, disk fills are P0 customer-down)**: every VM must have a periodic disk-utilization check that alerts at 80% AND auto-purges old session-backups at 90%. Without this, accumulating-cache bugs like Root Cause 0 stay invisible until catastrophic. Implementation: extend `cron/health-check` to read `df` via the existing SSH path, persist `instaclaw_vms.disk_percent`, alert on >85, auto-purge at >90.
+
 ### Root cause 1: ENOSPC swallowed as "config-set silent failure"
 
 **Evidence**: vm-788, vm-842, vm-043 (paying customers including ellingsonjoel@gmail.com, shelpinc@gmail.com). Disk at 100%. `openclaw config set agents.defaults.bootstrapMaxChars 40000` returns exit 1 with `ENOSPC: no space left on device`. The reconciler reports "config-set silent failure: bootstrapMaxChars expected=\"40000\" actual=\"35000\"" — losing the actual ENOSPC error entirely.
