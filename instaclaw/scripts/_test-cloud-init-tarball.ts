@@ -2247,7 +2247,13 @@ async function test16_BuildSetupSh() {
   );
 
   // 23. BE-11 uses BEST_EFFORT pattern (no exit 1, no touch failed).
-  const be11Block = sh.slice(idxBE11, idx132Critical);
+  // be11Block ends at the BE-9 marker (added 2026-05-14 between BE-11
+  // and §1.32). Slicing all the way to §1.32 would include BE-9 content
+  // which has a LEGITIMATE `exit 1` inside its sudo-bash-c prereq guard
+  // (not a BEST_EFFORT violation — that exit only escapes the inner
+  // bash, the outer block catches via || and the WARN fires).
+  const idxBE9ForSlice = sh.indexOf("§1.16 BEST_EFFORT [BE-9]");
+  const be11Block = sh.slice(idxBE11, idxBE9ForSlice > 0 ? idxBE9ForSlice : idx132Critical);
   assert(
     be11Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-11'),
     "BE-11 uses BEST_EFFORT `|| echo WARN` pattern",
@@ -2355,6 +2361,119 @@ async function test16_BuildSetupSh() {
   assert(
     be11Block.includes('[ -f "$UC_BIN" ] && chmod +x "$UC_BIN"'),
     "BE-11: chmods +x the usecomputer binary (npm doesn't set it on prebuilt)",
+  );
+
+  // ── Day 8b BE-9 assertions ────────────────────────────────────────
+  // BE-9 wires up the clawlancer MCP server in mcporter's config so
+  // the agent can `mcporter call clawlancer.<tool>`.
+
+  // 31. BE-9 ordering: AFTER BE-11 (mcporter must be installed first),
+  //     BEFORE §1.32 CRITICAL.
+  const idxBE9 = sh.indexOf("§1.16 BEST_EFFORT [BE-9]");
+  // idxBE11 + idx132Critical already declared above
+  assert(
+    idxBE9 > 0 && idxBE9 > idxBE11 && idxBE9 < idx132Critical,
+    `BE-9 block sits AFTER BE-11 (mcporter install) and BEFORE §1.32 CRITICAL (BE-9=${idxBE9}, BE-11=${idxBE11}, §1.32=${idx132Critical})`,
+  );
+
+  // 32. BE-9 uses BEST_EFFORT pattern.
+  const be9Block = sh.slice(idxBE9, idx132Critical);
+  assert(
+    be9Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-9'),
+    "BE-9 uses BEST_EFFORT `|| echo WARN` pattern",
+  );
+  assert(
+    !be9Block.includes("touch /tmp/.instaclaw-failed"),
+    "BE-9 does NOT use CRITICAL `touch /tmp/.instaclaw-failed` pattern",
+  );
+
+  // 33. BE-9 runs as openclaw user via sudo -u + bash -lc (NVM context).
+  assert(
+    /sudo -u openclaw bash -lc '/.test(be9Block),
+    "BE-9 wraps mcporter commands in `sudo -u openclaw bash -lc`",
+  );
+
+  // 34. BE-9 has a prereq check that exits 1 if mcporter is missing.
+  //     Without this, a missing mcporter would let the block exit 0
+  //     (the remove "|| true" + add "|| rc=1" + verify "|| rc=1" with
+  //     all 3 failing would set rc=1, but the prereq check gives a
+  //     clearer diagnostic in the WARN log).
+  assert(
+    be9Block.includes('if ! command -v mcporter >/dev/null 2>&1; then'),
+    "BE-9 checks mcporter prereq before attempting config",
+  );
+
+  // 35. BE-9 uses rc-accumulator pattern (matches Bug #1 fix and
+  //     BE-11 pattern). Critical because `set -e` is suspended inside
+  //     `{ } || handler` blocks.
+  assert(
+    /^\s+rc=0$/m.test(be9Block),
+    "BE-9: rc-accumulator initialized to 0 (Bug #1 fix)",
+  );
+  assert(
+    be9Block.includes('|| rc=1'),
+    "BE-9: install + verify failures captured into rc=1 (Bug #1 fix)",
+  );
+  assert(
+    be9Block.includes('[ "$rc" = "0" ]'),
+    "BE-9: terminal rc check gates the inner-bash exit (Bug #1 fix)",
+  );
+
+  // 36. BE-9 remove-then-add idempotency pattern. The remove uses
+  //     `|| true` because the command legitimately exits 1 when no
+  //     prior config exists (probed empirically on vm-944 2026-05-14).
+  //     The add must succeed; it pushes rc=1 on failure.
+  assert(
+    be9Block.includes('mcporter config remove clawlancer 2>/dev/null || true'),
+    "BE-9: idempotent remove-before-add with || true (handles 'config absent' case correctly)",
+  );
+
+  // 37. BE-9 emits the canonical add command (byte-parity with
+  //     lib/ssh.ts:5596-5603).
+  assert(
+    be9Block.includes('mcporter config add clawlancer \\'),
+    "BE-9: invokes mcporter config add clawlancer",
+  );
+  assert(
+    be9Block.includes('--command "npx -y clawlancer-mcp"'),
+    "BE-9: canonical --command (matches lib/ssh.ts:5599)",
+  );
+  assert(
+    be9Block.includes("--env CLAWLANCER_API_KEY="),
+    "BE-9: empty CLAWLANCER_API_KEY (agent fills on register_agent)",
+  );
+  assert(
+    be9Block.includes("--env CLAWLANCER_BASE_URL=https://clawlancer.ai"),
+    "BE-9: canonical CLAWLANCER_BASE_URL",
+  );
+  assert(
+    be9Block.includes("--scope home"),
+    "BE-9: --scope home (writes to ~/.mcporter/mcporter.json)",
+  );
+  assert(
+    be9Block.includes('--description "Clawlancer AI agent marketplace"'),
+    "BE-9: canonical --description",
+  );
+
+  // 38. BE-9 verify-after-add uses `mcporter config get` which exits
+  //     0 iff the server is registered (cleaner than parsing list
+  //     output). Empirically verified 2026-05-14 on vm-944.
+  assert(
+    be9Block.includes('mcporter config get clawlancer >/dev/null 2>&1 || rc=1'),
+    "BE-9: verify-after-add via `mcporter config get` (exit-code probe)",
+  );
+
+  // 39. BE-9's WARN string does NOT contain unescaped backticks
+  //     (would trigger bash command-substitution if the WARN fires —
+  //     a real bug I introduced in the first draft and caught here).
+  const be9WarnLine = (be9Block.match(/\|\| echo "\[\$\(date.*BE-9.*"$/m) ?? [""])[0];
+  assert(
+    be9WarnLine.length > 0,
+    "BE-9 WARN echo line found",
+  );
+  assert(
+    !be9WarnLine.includes("`"),
+    "BE-9 WARN echo has no unescaped backticks (avoids accidental bash command substitution)",
   );
 }
 

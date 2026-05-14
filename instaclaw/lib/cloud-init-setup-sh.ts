@@ -43,7 +43,7 @@
  *   - [ ] BE-6: @bankr/cli pinned install
  *   - [✓] BE-7: browser-relay-server.js + check-skill-updates.sh + cron
  *   - [ ] BE-8: agent-status + clawlancer SKILL.md
- *   - [ ] BE-9: mcporter clawlancer config
+ *   - [✓] BE-9: mcporter clawlancer config
  *   - [ ] BE-10: pip install §17b.2 packages
  *   - [✓] BE-11: npm install §17b.2 packages
  *   - [ ] BE-12: xvfb/x11vnc/websockify systemd units
@@ -414,6 +414,79 @@ echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
 } || echo "[\$(date -u +%FT%TZ)] WARN: BE-11 (npm install @worldcoin/agentkit-cli + mcporter + usecomputer) partial failure — NOT reconciler-healed (stepNpmPinDrift only covers @bankr/cli + openclaw). Without mcporter: ALL MCP server calls (Clawlancer marketplace, custom MCPs) fail. Without agentkit-cli: AgentBook registration impossible. Without usecomputer: dispatch/browser mode broken. Manual fleet-push to recover."
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.16 BEST_EFFORT [BE-9]: configure clawlancer MCP server via mcporter
+# ════════════════════════════════════════════════════════════════════════
+# Wires up the clawlancer MCP server in mcporter's config so the agent
+# can call \`mcporter call clawlancer.<tool>\`. The clawlancer SKILL.md
+# (deployed by stepSkills from instaclaw/skills/clawlancer/ after BE-8
+# commit d048c5d3) instructs the agent to use these mcporter calls
+# everywhere. Without this config registered, every Clawlancer
+# marketplace invocation fails with "Unknown server 'clawlancer'."
+#
+# Order note: this is plan §1.16 but lands AFTER BE-11 (plan §1.18)
+# in setup.sh because BE-9 requires the mcporter binary which BE-11
+# installs. The plan assumed mcporter was snapshot-baked (it isn't,
+# per §17b inventory), so cloud-init must run BE-11 first.
+#
+# Idempotency: \`mcporter config remove clawlancer\` legitimately exits
+# 1 when no prior config exists ("Server 'clawlancer' does not
+# exist"); we swallow that with \`|| true\` (NOT the production-bug
+# pattern — this is correct semantics for an "if-present-remove"
+# command). The \`config add\` MUST succeed; we verify with
+# \`config get clawlancer\` which exits 0 iff registered (cleaner
+# than parsing \`config list\` output).
+#
+# Canonical config (matches lib/ssh.ts:5596-5603 byte-for-byte):
+#   --command "npx -y clawlancer-mcp"
+#   --env CLAWLANCER_API_KEY=         (empty — agent fills when
+#                                      it self-registers via
+#                                      \`register_agent\` flow)
+#   --env CLAWLANCER_BASE_URL=https://clawlancer.ai
+#   --scope home                       (writes to ~/.mcporter/mcporter.json)
+#   --description "Clawlancer AI agent marketplace"
+#
+# Empirically verified 2026-05-14 on vm-944: install fresh and
+# install-when-already-configured both return exit 0 (idempotent).
+#
+# NOT reconciler-healed today. The reconciler does not run
+# \`mcporter config add\` for any server. Future P1: extend a
+# reconciler step to cover this so existing-fleet VMs get the
+# clawlancer config without a manual fleet-push.
+{ sudo -u openclaw bash -lc '
+    export NVM_DIR="\$HOME/.nvm"
+    [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+
+    # Prereq check: BE-11 must have installed mcporter. If missing,
+    # BE-9 cannot proceed — exit 1 so the outer WARN fires with the
+    # right diagnostic.
+    if ! command -v mcporter >/dev/null 2>&1; then
+      echo "BE-9: mcporter not on PATH (BE-11 install must have failed) — skipping clawlancer config"
+      exit 1
+    fi
+
+    rc=0
+
+    # Remove any prior clawlancer config (idempotent; exits 1 when
+    # config absent — that legitimate case is swallowed by || true).
+    mcporter config remove clawlancer 2>/dev/null || true
+
+    # Add the canonical clawlancer config.
+    mcporter config add clawlancer \\
+      --command "npx -y clawlancer-mcp" \\
+      --env CLAWLANCER_API_KEY= \\
+      --env CLAWLANCER_BASE_URL=https://clawlancer.ai \\
+      --scope home \\
+      --description "Clawlancer AI agent marketplace" >/dev/null 2>&1 || rc=1
+
+    # Verify-after-add: \`config get\` exits 0 iff the server is
+    # registered. Cleaner signal than parsing \`config list\` output.
+    mcporter config get clawlancer >/dev/null 2>&1 || rc=1
+
+    [ "\$rc" = "0" ]
+  '
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-9 (mcporter clawlancer config) failed — agent's mcporter calls to clawlancer.* will return 'Unknown server clawlancer'. Recovery: SSH as openclaw and re-run the mcporter config add clawlancer command from lib/ssh.ts:5596-5603."
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.32 CRITICAL: RESTART gateway + verify /health 200 within 60s
 # ════════════════════════════════════════════════════════════════════════
 # CRITICAL: \`systemctl --user RESTART\` (not start). The snapshot's linger
@@ -496,18 +569,18 @@ echo "OPENCLAW_CONFIGURE_DONE"
 # ── Day 8b BEST_EFFORT steps land incrementally — see docstring ───────
 # Done: BE-1 (linger + sshd OOM-protect), BE-7 (browser-relay-server.js
 # + check-skill-updates.sh + cron), BE-8 (agent-status + clawlancer
-# SKILL.md via repo check-in), BE-11 (npm install agentkit-cli +
-# mcporter + usecomputer).
+# SKILL.md via repo check-in), BE-9 (mcporter clawlancer config), BE-11
+# (npm install agentkit-cli + mcporter + usecomputer).
 # Pending: BE-2 (mkdir defenses), BE-3 (privacy wipe), BE-4 (stop pre-
 # existing gateway — under review, likely redundant), BE-5 (skill
 # clones), BE-6 (@bankr/cli — reconciler heals via stepNpmPinDrift),
-# BE-9 (mcporter clawlancer config), BE-10 (pip), BE-12 (xvfb/x11vnc/
-# websockify systemd units), BE-13 (daemon-reload — lands with BE-12
-# since it's a no-op without unit-file changes).
+# BE-10 (pip), BE-12 (xvfb/x11vnc/websockify systemd units), BE-13
+# (daemon-reload — lands with BE-12 since it's a no-op without unit-
+# file changes).
 # All follow the BEST_EFFORT pattern:
 #   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7 + BE-11)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7 + BE-9 + BE-11)"
 exit 0
 `;
 }
@@ -550,4 +623,10 @@ export const SETUP_SH_SENTINELS = {
   BE11_USECOMPUTER: "npm install -g usecomputer",
   /** BE-11: usecomputer binary chmod for prebuilt linux-x64 binary. */
   BE11_USECOMPUTER_CHMOD: "chmod +x \"$UC_BIN\"",
+  /** BE-9: mcporter add target — the clawlancer MCP server. */
+  BE9_MCPORTER_ADD_NAME: "mcporter config add clawlancer",
+  /** BE-9: canonical clawlancer command (npx -y clawlancer-mcp). */
+  BE9_CLAWLANCER_COMMAND: '"npx -y clawlancer-mcp"',
+  /** BE-9: verify-after-add primitive — config get exits 0 iff registered. */
+  BE9_VERIFY: "mcporter config get clawlancer",
 } as const;
