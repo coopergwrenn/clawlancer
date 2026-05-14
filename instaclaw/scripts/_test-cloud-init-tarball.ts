@@ -19,7 +19,7 @@ import { extract as tarExtract } from "tar-stream";
 import {
   MEMORY_MD_PATHS,
   buildAgentKey,
-  buildAuthProfilesJson,
+  buildAuthProfilesJsonForTarball,
   buildBootstrapMd,
   buildDotEnv,
   buildIdentityMd,
@@ -36,6 +36,7 @@ import {
 } from "../lib/cloud-init-tarball";
 import {
   WORKSPACE_BOOTSTRAP_SHORT,
+  buildAuthProfilesJson,
   buildOpenClawConfig,
   buildPersonalizedBootstrap,
   buildSystemPrompt,
@@ -316,7 +317,7 @@ async function test5_PerFileBuildersDirect() {
   assert(buildWorldIdMd(validParams) === null, "buildWorldIdMd returns null without nullifier");
   assert(buildWorldIdMd(edgeCityParams) !== null, "buildWorldIdMd returns content with nullifier");
   assert(buildDotEnv(validParams).includes("INSTACLAW_ENV_V1"), "buildDotEnv has sentinel");
-  assert(JSON.parse(buildAuthProfilesJson(validParams)).profiles, "buildAuthProfilesJson is valid JSON");
+  assert(JSON.parse(buildAuthProfilesJsonForTarball(validParams)).profiles, "buildAuthProfilesJsonForTarball is valid JSON");
   assert(buildAgentKey(validParams).endsWith("\n"), "buildAgentKey newline-terminated");
 
   const entries = collectPartialEntries(validParams);
@@ -1155,6 +1156,156 @@ async function test11_BuildOpenClawJsonForTarball() {
   assert(threw !== null, "channels includes 'discord' but no token → throws (catch misconfig early)");
 }
 
+async function test12_AuthProfilesJsonByteParity() {
+  console.log("\n─── TEST 12: buildAuthProfilesJsonForTarball byte-parity (audit Fix 1) ──");
+
+  // Helper: compute the equivalent SSH-path inputs (apiKey, proxyBaseUrl,
+  // openaiKey) for a given TarballParams. Mirrors configureOpenClaw's
+  // resolution at lib/ssh.ts:4965-4980.
+  function manualSshPathInputs(p: TarballParams) {
+    return {
+      apiKey: p.apiMode === "all_inclusive" ? p.gatewayToken : (p.apiKey ?? ""),
+      proxyBaseUrl:
+        p.apiMode === "all_inclusive"
+          ? `${p.nextauthUrl.replace(/\/+$/, "")}/api/gateway`
+          : "",
+      openaiKey: p.openaiApiKey ?? undefined,
+    };
+  }
+
+  // ── BYTE-PARITY: all_inclusive without OpenAI key (vm-918 shape) ─────
+  // This is the most common production case — most VMs don't have OPENAI_API_KEY
+  // in Vercel env (server-side env, not per-VM).
+  const aiNoOai = { ...validParams, openaiApiKey: null };
+  {
+    const inputs = manualSshPathInputs(aiNoOai);
+    const sshOutput = buildAuthProfilesJson(inputs.apiKey, inputs.proxyBaseUrl, inputs.openaiKey);
+    const wrapperOutput = buildAuthProfilesJsonForTarball(aiNoOai);
+    assert(
+      wrapperOutput === sshOutput,
+      "all_inclusive + no OpenAI: wrapper byte-identical to SSH-path output",
+    );
+  }
+
+  // ── BYTE-PARITY: all_inclusive WITH OpenAI key ───────────────────────
+  const aiWithOai: TarballParams = {
+    ...validParams,
+    openaiApiKey: "sk-proj-test-openai-key-1234567890abcdef",
+  };
+  {
+    const inputs = manualSshPathInputs(aiWithOai);
+    const sshOutput = buildAuthProfilesJson(inputs.apiKey, inputs.proxyBaseUrl, inputs.openaiKey);
+    const wrapperOutput = buildAuthProfilesJsonForTarball(aiWithOai);
+    assert(
+      wrapperOutput === sshOutput,
+      "all_inclusive + OpenAI: wrapper byte-identical to SSH-path output",
+    );
+  }
+
+  // ── BYTE-PARITY: BYOK without OpenAI ────────────────────────────────
+  const byokNoOai: TarballParams = {
+    ...validParams,
+    apiMode: "byok",
+    apiKey: "sk-ant-byok-test-key-123",
+    openaiApiKey: null,
+  };
+  {
+    const inputs = manualSshPathInputs(byokNoOai);
+    const sshOutput = buildAuthProfilesJson(inputs.apiKey, inputs.proxyBaseUrl, inputs.openaiKey);
+    const wrapperOutput = buildAuthProfilesJsonForTarball(byokNoOai);
+    assert(
+      wrapperOutput === sshOutput,
+      "BYOK + no OpenAI: wrapper byte-identical to SSH-path output",
+    );
+  }
+
+  // ── BYTE-PARITY: BYOK WITH OpenAI ───────────────────────────────────
+  const byokWithOai: TarballParams = {
+    ...validParams,
+    apiMode: "byok",
+    apiKey: "sk-ant-byok-test-key-123",
+    openaiApiKey: "sk-proj-test-openai-key-1234567890abcdef",
+  };
+  {
+    const inputs = manualSshPathInputs(byokWithOai);
+    const sshOutput = buildAuthProfilesJson(inputs.apiKey, inputs.proxyBaseUrl, inputs.openaiKey);
+    const wrapperOutput = buildAuthProfilesJsonForTarball(byokWithOai);
+    assert(
+      wrapperOutput === sshOutput,
+      "BYOK + OpenAI: wrapper byte-identical to SSH-path output",
+    );
+  }
+
+  // ── CONTRACT PINS: protect against the 4 pre-fix bugs reverting ─────
+
+  // Bug fix 1.4(a): type field MUST be "api_key", not "anthropic" or "openai".
+  // Pre-fix wrapper used "anthropic" / "openai" — broken.
+  const aiOutput = buildAuthProfilesJsonForTarball(aiWithOai);
+  const aiParsed = JSON.parse(aiOutput);
+  assert(
+    aiParsed.profiles["anthropic:default"].type === "api_key",
+    "anthropic profile type === 'api_key' (NOT 'anthropic' — pre-fix bug)",
+  );
+  assert(
+    aiParsed.profiles["openai:default"].type === "api_key",
+    "openai profile type === 'api_key' (NOT 'openai' — pre-fix bug)",
+  );
+
+  // Bug fix 1.4(b): OpenAI profile ONLY present when openaiApiKey set.
+  // Pre-fix wrapper always emitted OpenAI profile. Pin the conditional.
+  const noOaiOutput = buildAuthProfilesJsonForTarball(aiNoOai);
+  const noOaiParsed = JSON.parse(noOaiOutput);
+  assert(
+    !noOaiParsed.profiles["openai:default"],
+    "no openaiApiKey → openai:default profile ABSENT (pre-fix wrapper always emitted)",
+  );
+
+  // Bug fix 1.4(c): OpenAI key uses openaiApiKey, NOT gatewayToken.
+  // Pre-fix wrapper passed gatewayToken as the OpenAI key (would 401 on
+  // every memory-search embedding call). Pin the correct source.
+  assert(
+    aiParsed.profiles["openai:default"].key === "sk-proj-test-openai-key-1234567890abcdef",
+    "OpenAI key === openaiApiKey (NOT gatewayToken — pre-fix bug would 401 on embeddings)",
+  );
+  assert(
+    aiParsed.profiles["openai:default"].key !== aiWithOai.gatewayToken,
+    "OpenAI key is NOT the gateway token (pin against the pre-fix bug returning)",
+  );
+
+  // Bug fix 1.4(d): JSON format is COMPACT (no indent, no trailing newline).
+  // Pre-fix wrapper used `JSON.stringify(_, null, 2) + "\n"`. SSH path uses
+  // `JSON.stringify({profiles})` — no indent, no trailing newline. Byte-parity
+  // requires the compact form.
+  assert(
+    !aiOutput.includes("\n  "),
+    "JSON has NO 2-space indentation (pre-fix wrapper added it — breaks byte-parity)",
+  );
+  assert(
+    !aiOutput.endsWith("\n"),
+    "JSON has NO trailing newline (pre-fix wrapper added it — breaks byte-parity)",
+  );
+
+  // ── BYOK semantics pin: no baseUrl on Anthropic profile ─────────────
+  const byokOutput = buildAuthProfilesJsonForTarball(byokNoOai);
+  const byokParsed = JSON.parse(byokOutput);
+  assert(
+    !byokParsed.profiles["anthropic:default"].baseUrl,
+    "BYOK: no baseUrl on anthropic profile (SDK defaults to api.anthropic.com)",
+  );
+
+  // ── all_inclusive baseUrl pin ───────────────────────────────────────
+  assert(
+    aiParsed.profiles["anthropic:default"].baseUrl === "https://instaclaw.io/api/gateway",
+    "all_inclusive: anthropic.baseUrl === proxyBaseUrl",
+  );
+
+  // ── Determinism ─────────────────────────────────────────────────────
+  assert(
+    buildAuthProfilesJsonForTarball(aiWithOai) === buildAuthProfilesJsonForTarball(aiWithOai),
+    "deterministic on identical input",
+  );
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -1170,6 +1321,7 @@ async function main() {
   await test9_BuildSystemPromptForTarball();
   await test10_BuildMemoryMdForTarball();
   await test11_BuildOpenClawJsonForTarball();
+  await test12_AuthProfilesJsonByteParity();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

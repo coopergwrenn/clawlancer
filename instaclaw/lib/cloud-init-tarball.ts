@@ -61,6 +61,7 @@ import {
 import {
   BANKR_SKILL_PATCH_DIRECTIVE,
   WORKSPACE_BOOTSTRAP_SHORT,
+  buildAuthProfilesJson,
   buildOpenClawConfig,
   buildPersonalizedBootstrap,
   buildSystemPrompt,
@@ -138,6 +139,13 @@ export interface TarballParams {
    *  "every agent ships with web search working on first boot. no exceptions."
    *  Wrapper itself is purely functional — it doesn't touch env vars. */
   braveApiKey?: string | null;
+  /** OpenAI API key — used for memory-search embeddings. The SSH-configure
+   *  path at lib/ssh.ts:5102 reads `process.env.OPENAI_API_KEY` at call
+   *  time and conditionally emits the `openai:default` profile in
+   *  auth-profiles.json. Cloud-init endpoint sources the same env var
+   *  and passes through. When null/undefined, the openai:default profile
+   *  is OMITTED (matches SSH-path behavior exactly). */
+  openaiApiKey?: string | null;
   /** EdgeOS attendee-directory JWT. Only emitted in .env when partner ===
    *  "edge_city". The endpoint sources this from process.env.EDGEOS_BEARER_TOKEN
    *  (mirrors lib/ssh.ts:5286). 2026-05-14 incident — for 34 days the
@@ -464,43 +472,36 @@ export function buildWorldIdMd(p: TarballParams): string | null {
 }
 
 /**
- * auth-profiles.json — OpenClaw's Anthropic SDK auth config. For
- * all-inclusive, the key IS gatewayToken (the gateway-proxy authenticates
- * via that token). For BYOK, the user's own apiKey is written + baseUrl
- * points directly at Anthropic.
+ * auth-profiles.json — pass-through to lib/ssh.ts:buildAuthProfilesJson.
  *
- * Sentinel: a unique field that the reconciler can grep for. JSON has no
- * natural marker beyond the structure itself; we rely on key presence.
+ * 2026-05-14 audit fix (docs/cloud-init-audit-2026-05-14.md §1.4): the
+ * pre-audit hand-written wrapper had 4 distinct bugs (`type` field wrong,
+ * OpenAI profile always emitted, OpenAI key from wrong source, JSON
+ * indented vs SSH path's compact). All fixed by making this a pass-
+ * through to the SSH-path generator that was extracted into an exported
+ * helper. Byte-parity now structurally guaranteed.
+ *
+ * Maps TarballParams → buildAuthProfilesJson args:
+ *   - apiKey: gatewayToken for all_inclusive, p.apiKey for BYOK. Same
+ *     resolution as configureOpenClaw at lib/ssh.ts:4965-4968.
+ *   - proxyBaseUrl: `${nextauthUrl}/api/gateway` for all_inclusive, ""
+ *     for BYOK. Same as configureOpenClaw at lib/ssh.ts:4977-4980.
+ *   - openaiKey: p.openaiApiKey ?? undefined. SSH-path reads
+ *     process.env.OPENAI_API_KEY directly; cloud-init endpoint sources
+ *     from the same env and passes through TarballParams for purity.
+ *     When undefined/null, openai:default profile is OMITTED (matches
+ *     SSH-path behavior exactly).
+ *
+ * Output format inherited from SSH path: `JSON.stringify({profiles})` —
+ * compact, no indent, no trailing newline. Mode 0o600 (set by caller).
  */
-export function buildAuthProfilesJson(p: TarballParams): string {
-  const proxyBaseUrl = `${p.nextauthUrl.replace(/\/+$/, "")}/api/gateway`;
-  const profiles: Record<string, unknown> = {};
-
-  if (p.apiMode === "all_inclusive") {
-    profiles["anthropic:default"] = {
-      type: "anthropic",
-      provider: "anthropic",
-      key: p.gatewayToken,
-      baseUrl: proxyBaseUrl,
-    };
-  } else {
-    // BYOK — user's own key goes directly to Anthropic.
-    profiles["anthropic:default"] = {
-      type: "anthropic",
-      provider: "anthropic",
-      key: p.apiKey,
-    };
-  }
-
-  // OpenAI default — same key (for compat with prompts that route via openai).
-  // Real OpenAI calls happen via openai-compat shim or are remapped.
-  profiles["openai:default"] = {
-    type: "openai",
-    provider: "openai",
-    key: p.apiMode === "all_inclusive" ? p.gatewayToken : (p.apiKey ?? ""),
-  };
-
-  return JSON.stringify({ profiles }, null, 2) + "\n";
+export function buildAuthProfilesJsonForTarball(p: TarballParams): string {
+  const apiKey = p.apiMode === "all_inclusive" ? p.gatewayToken : (p.apiKey ?? "");
+  const proxyBaseUrl =
+    p.apiMode === "all_inclusive"
+      ? `${p.nextauthUrl.replace(/\/+$/, "")}/api/gateway`
+      : "";
+  return buildAuthProfilesJson(apiKey, proxyBaseUrl, p.openaiApiKey ?? undefined);
 }
 
 /**
@@ -978,7 +979,7 @@ export function collectPartialEntries(p: TarballParams): TarEntry[] {
 
   entries.push({
     path: "home/openclaw/.openclaw/agents/main/agent/auth-profiles.json",
-    body: buildAuthProfilesJson(p),
+    body: buildAuthProfilesJsonForTarball(p),
     mode: 0o600,
   });
 

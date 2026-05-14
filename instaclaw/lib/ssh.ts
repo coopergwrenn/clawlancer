@@ -4532,6 +4532,59 @@ export function buildOpenClawConfig(
 }
 
 /**
+ * Build the contents of `~/.openclaw/agents/main/agent/auth-profiles.json`.
+ *
+ * Extracted from configureOpenClaw's inline block on 2026-05-14 so the
+ * cloud-init tarball builder can produce byte-identical output via the
+ * same function. Original inline block was at lib/ssh.ts:5086-5119 (now
+ * calls this helper). Same logic, no behavior change — verified by
+ * existing fleet (configureOpenClaw still produces the same file).
+ *
+ * @param apiKey — for all-inclusive: the gateway_token (proxy will substitute
+ *   the real Anthropic key). For BYOK: the user's actual Anthropic key.
+ * @param proxyBaseUrl — for all-inclusive: `https://instaclaw.io/api/gateway`
+ *   (routes Anthropic calls through our proxy). For BYOK: empty string
+ *   (SDK uses its default base URL — direct to Anthropic).
+ * @param openaiKey — optional. When truthy, an `openai:default` profile is
+ *   added (used for memory-search embeddings). When falsy, profile is
+ *   omitted entirely. Caller typically passes `process.env.OPENAI_API_KEY`.
+ *
+ * Output format: `JSON.stringify({profiles})` — compact, no indentation,
+ * no trailing newline. DO NOT change to `JSON.stringify(_, null, 2)` —
+ * cloud-init's byte-parity audit (Phase 1B-2) compares against this exact
+ * compact output.
+ */
+export function buildAuthProfilesJson(
+  apiKey: string,
+  proxyBaseUrl: string,
+  openaiKey?: string | null,
+): string {
+  const authProfileData: Record<string, unknown> = {
+    type: "api_key",
+    provider: "anthropic",
+    key: apiKey,
+  };
+  if (proxyBaseUrl) {
+    authProfileData.baseUrl = proxyBaseUrl;
+  }
+  const profiles: Record<string, unknown> = {
+    "anthropic:default": authProfileData,
+  };
+  // Add OpenAI profile for memory search embeddings — only when the
+  // server-side OPENAI_API_KEY env is set. SSH path reads
+  // process.env.OPENAI_API_KEY at call time; cloud-init endpoint passes
+  // it through TarballParams.openaiApiKey to keep this function pure.
+  if (openaiKey) {
+    profiles["openai:default"] = {
+      type: "api_key",
+      provider: "openai",
+      key: openaiKey,
+    };
+  }
+  return JSON.stringify({ profiles });
+}
+
+/**
  * Check whether an IP address is used by multiple active VMs in the DB.
  * Returns the list of conflicting VM names/ids if duplicates exist.
  * Active = status NOT IN ('failed', 'destroyed', 'terminated').
@@ -5086,28 +5139,10 @@ export async function configureOpenClaw(
     // Write auth-profiles.json (separate file, not in openclaw.json)
     // All-inclusive: uses gatewayToken as key + proxy baseUrl
     // BYOK: uses the user's actual API key (direct to Anthropic)
+    // 2026-05-14: builder extracted to exported buildAuthProfilesJson()
+    // so the cloud-init tarball builder produces byte-identical output.
     {
-      const authProfileData: Record<string, unknown> = {
-        type: "api_key",
-        provider: "anthropic",
-        key: apiKey,
-      };
-      if (proxyBaseUrl) {
-        authProfileData.baseUrl = proxyBaseUrl;
-      }
-      const profiles: Record<string, unknown> = {
-        "anthropic:default": authProfileData,
-      };
-      // Add OpenAI profile for memory search embeddings
-      const openaiKey = process.env.OPENAI_API_KEY;
-      if (openaiKey) {
-        profiles["openai:default"] = {
-          type: "api_key",
-          provider: "openai",
-          key: openaiKey,
-        };
-      }
-      const authProfile = JSON.stringify({ profiles });
+      const authProfile = buildAuthProfilesJson(apiKey, proxyBaseUrl, process.env.OPENAI_API_KEY);
       const authB64 = Buffer.from(authProfile, "utf-8").toString("base64");
       scriptParts.push(
         '# Write auth profile (API key for Anthropic)',
