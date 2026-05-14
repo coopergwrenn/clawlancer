@@ -772,6 +772,14 @@ const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
   // never on rotation. Enrolling it here so the corrected JWT propagates to
   // existing edge_city VMs on the next reconcile tick (per CLAUDE.md Rule 34
   // — DB/disk/Vercel single source of truth).
+  //
+  // Canonical payload (base64-decode segment 2 to verify): the production JWT
+  // decodes to {"citizen_id":1,"email":"francisco@muvinai.com","iat":<unix>}.
+  // If a future rotation produces a different email or citizen_id, that's
+  // probably a transcription error at a Telegram line-break boundary — see
+  // CLAUDE.md "Lesson: Telegram line breaks in JWT tokens" in the Incident
+  // Response Runbook. The 2026-05-14 incident shipped muvionai.com (extra
+  // 'o' from a soft-wrap join) before being caught.
   { envKey: "EDGEOS_BEARER_TOKEN", label: "EdgeOS attendee directory JWT", partnerGate: "edge_city" },
 ];
 

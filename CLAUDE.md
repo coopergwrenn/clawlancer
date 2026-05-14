@@ -1419,6 +1419,10 @@ Rule: <new R<N> | existing R<N> | none-mapped>.
 - **Apply variants of a failing fix.** One fix attempt that doesn't resolve = escalate, don't iterate. (Rule 29 spirit)
 - **Skip Step 3's pre-fix backup** because "this is obviously the right fix." That confidence is the marker of the next post-mortem.
 
+### Lesson: Telegram line breaks in JWT tokens
+
+When receiving JWTs via Telegram or any messaging platform, the rendered text may contain soft-wrap line breaks that alter the token when naively joined. Always base64-decode the payload section (middle part between the two dots) and verify the decoded JSON contains expected values (email, citizen_id, etc.) BEFORE deploying. The 2026-05-14 EDGEOS_BEARER_TOKEN incident lost an hour of debugging because a single character was inserted at a line-break boundary (muvionai.com vs muvinai.com).
+
 ### Patrol mode — proactive checks (no incident in flight)
 
 Run every 6h or on Cooper's manual invocation. Outputs a digest only if anomalies found; silent if clean.
