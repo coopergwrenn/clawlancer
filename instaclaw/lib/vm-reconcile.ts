@@ -245,6 +245,15 @@ export async function reconcileVM(
     : null;
 
   const runSteps = async (): Promise<void> => {
+    // ── Step -1: Disk guard (Rule 46) ──
+    // Runs first so disk-full VMs can't silently corrupt openclaw.json
+    // via the ENOSPC-during-atomic-rename failure mode. Purges stale
+    // session-backups + ENOSPC .tmp leftovers when disk is ≥90%; pushes
+    // result.errors at ≥95% post-cleanup so cv-bump is held + the
+    // existing pushFailed pipeline alerts an operator.
+    currentStep = "disk-guard";
+    await stepDiskGuard(ssh, vm, result, dryRun);
+
     // ── Step 0: Pre-audit workspace backup ──
     currentStep = "backup";
     await stepBackup(ssh);
@@ -586,6 +595,142 @@ export async function reconcileVM(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SSHConnection = any;
+
+/**
+ * Step -1: stepDiskGuard.
+ *
+ * Rule 46 (CLAUDE.md). Runs BEFORE any other write so disk-full VMs can't
+ * silently corrupt openclaw.json via the ENOSPC-during-atomic-rename failure
+ * mode (the vm-842 0-byte-config-file incident, 2026-05-13). Three thresholds:
+ *
+ *   <80%  → no-op (alreadyCorrect)
+ *   80-89 → result.warnings entry (visible in audit log, doesn't block cv)
+ *   ≥90   → purge session-backups >24h, re-probe.
+ *   ≥90   after purge → emergency purge: keep only 1000 newest backups.
+ *   ≥95   after BOTH purges → result.errors (cv-blocking; admin alert via
+ *                              the existing pushFailed pipeline).
+ *
+ * Also unconditionally cleans `openclaw.json.*.tmp` leftovers older than
+ * 60min (Rule 38 territory; defends against the ENOSPC-leftover-tmp-file
+ * accumulation that caused the vm-788 inode burn).
+ *
+ * Persists `instaclaw_vms.last_disk_pct` for SQL-queryable fleet visibility.
+ *
+ * Idempotent: only purges session-backups older than 24h in the standard
+ * path. The emergency 1000-newest path only fires when standard isn't
+ * sufficient AND disk is still ≥90%.
+ *
+ * Safety:
+ *   - Never touches workspace/, agents/, sessions/, .env, anything in
+ *     ~/.openclaw/ outside session-backups/ and *.tmp.
+ *   - Wraps every shell-side delete with `2>/dev/null; true` so a missing
+ *     directory or already-purged file never aborts the reconcile.
+ *   - Best-effort DB writes (last_disk_pct) — failure doesn't propagate.
+ */
+async function stepDiskGuard(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  try {
+    const probeRes = await ssh.execCommand(`df / | tail -1 | awk '{print $5}' | tr -d '%'`);
+    const diskPct = parseInt(probeRes.stdout.trim(), 10);
+    if (!Number.isFinite(diskPct)) {
+      result.warnings.push(`disk-guard: probe parse failed: ${probeRes.stdout.slice(0, 80)}`);
+      return;
+    }
+
+    // Persist for SQL-queryable fleet visibility. Fire-and-forget — don't
+    // block the reconciler on a DB write hiccup.
+    void getSupabase()
+      .from("instaclaw_vms")
+      .update({ last_disk_pct: diskPct })
+      .eq("id", vm.id)
+      .then(
+        () => undefined,
+        () => undefined,
+      );
+
+    if (diskPct < 80) {
+      result.alreadyCorrect.push(`disk-guard: ${diskPct}%`);
+      return;
+    }
+
+    if (diskPct < 90) {
+      result.warnings.push(
+        `disk-guard: elevated disk usage ${diskPct}% (no purge — threshold ≥90%)`,
+      );
+      return;
+    }
+
+    if (dryRun) {
+      result.fixed.push(
+        `[dry-run] disk-guard: would purge session-backups (disk=${diskPct}%)`,
+      );
+      return;
+    }
+
+    // ≥90% — standard purge: session-backups older than 24h.
+    await ssh.execCommand(
+      `find ~/.openclaw/session-backups -type f -mmin +1440 -delete 2>/dev/null; true`,
+    );
+    const reprobe1 = await ssh.execCommand(`df / | tail -1 | awk '{print $5}' | tr -d '%'`);
+    let postPct = parseInt(reprobe1.stdout.trim(), 10);
+    if (!Number.isFinite(postPct)) postPct = diskPct;
+
+    if (postPct >= 90) {
+      // Emergency: keep only the 1000 newest session-backups.
+      // Mirrors the REC-2 (2026-05-14) strategy that recovered vm-788 etc.
+      await ssh.execCommand(
+        `cd ~/.openclaw/session-backups 2>/dev/null && ` +
+          `ls -t 2>/dev/null | tail -n +1001 | xargs rm -f 2>/dev/null; true`,
+      );
+      const reprobe2 = await ssh.execCommand(
+        `df / | tail -1 | awk '{print $5}' | tr -d '%'`,
+      );
+      const v = parseInt(reprobe2.stdout.trim(), 10);
+      if (Number.isFinite(v)) postPct = v;
+    }
+
+    // Always: clean stale openclaw.json.*.tmp leftovers (Rule 38 territory).
+    // 60-min mtime bound avoids racing an in-flight atomic write.
+    await ssh.execCommand(
+      `find ~/.openclaw/ -maxdepth 1 -name "openclaw.json.*.tmp" -mmin +60 -delete 2>/dev/null; true`,
+    );
+
+    // Re-record post-purge value.
+    void getSupabase()
+      .from("instaclaw_vms")
+      .update({ last_disk_pct: postPct })
+      .eq("id", vm.id)
+      .then(
+        () => undefined,
+        () => undefined,
+      );
+
+    if (postPct >= 95) {
+      // Cleanup couldn't free enough space. cv-block — the existing
+      // pushFailed pipeline in app/api/cron/reconcile-fleet/route.ts
+      // fires a sendReconcileFailureAlert on first occurrence + at the
+      // quarantine threshold, giving us deduped admin alerting.
+      result.errors.push(
+        `disk-guard: critical ${diskPct}%→${postPct}% ` +
+          `(purge insufficient; manual SSH cleanup needed)`,
+      );
+    } else if (postPct >= 90) {
+      // Still high but cleanup made progress. Warning only — doesn't
+      // block cv (and Rule 47 file-drift cron will keep retrying).
+      result.warnings.push(
+        `disk-guard: high disk ${diskPct}%→${postPct}% after standard+emergency purge`,
+      );
+    } else {
+      result.fixed.push(`disk-guard: purged ${diskPct}%→${postPct}%`);
+    }
+  } catch (e) {
+    result.warnings.push(`disk-guard: exception ${String(e).slice(0, 150)}`);
+  }
+}
 
 async function stepBackup(ssh: SSHConnection): Promise<void> {
   await ssh.execCommand([
