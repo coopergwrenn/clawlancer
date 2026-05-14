@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-14
 
-Window: `2511bb12ade1de588185e6128cef22e423427663` → `HEAD` (HEAD = `febf96c5`)
+Window: `febf96c53cdea5599c3e78c29ddba648f6964321` → `HEAD` (HEAD = `d601f394`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: febf96c53cdea5599c3e78c29ddba648f6964321 -->
+<!-- LAST_GENERATED_SHA: d601f394326f2dc6f15767a5e4faa704d1a175be -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B) [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
-- `9a2f7a5c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `d601f394` 2026-05-14 — feat(monitoring): P1-8 — Sola comment fix + probe-edge-calendar cron [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `a64391f4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B) [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `d601f394` 2026-05-14 — feat(monitoring): P1-8 — Sola comment fix + probe-edge-calendar cron [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `9a2f7a5c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `a64391f4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `febf96c5` 2026-05-14 — [reconciler, infrastructure, edge, docs] — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B)
+- `d601f394` 2026-05-14 — [reconciler, infrastructure, edge] — feat(monitoring): P1-8 — Sola comment fix + probe-edge-calendar cron
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B)
+- `d601f394` 2026-05-14 — feat(monitoring): P1-8 — Sola comment fix + probe-edge-calendar cron
 
 ## Appendix — every commit (chronological)
 
-- `9a2f7a5c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B) [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `a64391f4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `d601f394` 2026-05-14 — feat(monitoring): P1-8 — Sola comment fix + probe-edge-calendar cron [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
