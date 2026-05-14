@@ -1871,6 +1871,17 @@ Poll `GET /v4/images/{IMAGE_ID}` until status=available. Verify size < 6144MB.
 
 Single source of truth for what each `VM_MANIFEST.version` bump contains. Used for release notes, fleet-drift debugging, and post-mortems. Append-only — never rewrite history. Update at the same time as the version bump itself.
 
+### v98 — 2026-05-14 (subscription.created webhook handler)
+
+- **Not a VM_MANIFEST.version bump.** Pure billing-webhook change in `app/api/billing/webhook/route.ts`. No fleet impact, no migration needed.
+- **Why**: the existing webhook handled `customer.subscription.updated` and `customer.subscription.deleted` but NOT `customer.subscription.created`. When a sub was created outside the Stripe Checkout flow (admin script, direct API call, comp-extension workflow), Stripe fired `subscription.created` and we silently dropped it. The 2026-05-14 Not Bored Kid incident manifested as: comp Stripe sub `sub_1TX1crCsyFRN0uBDSZRFYf8t` was created via direct API call → DB never got the new row → had to manually upsert + flip vm.health_status + start gateway via SSH. Any future comp/extension/admin-direct sub creation would have hit the same gap.
+- **Implementation**: new `case "customer.subscription.created"` mirrors `subscription.updated`'s structure but uses `upsert(payload, { onConflict: "user_id" })` rather than plain `update` — `instaclaw_subscriptions.user_id` has a UNIQUE constraint (one sub per user), so the old canceled row gets overwritten cleanly rather than throwing 23505. If `subscription.status` is `active` or `trialing` on creation, the handler also calls `wakeIfHibernating` + `clearStaleAuthCacheForUser` + (if `status='frozen'` VM exists) `thawVM` — same downstream effects as `updated`. Both paths now share the same wake/thaw semantics; either entry point will resume a paused user's VM.
+- **Stripe Checkout interaction**: Stripe fires BOTH `checkout.session.completed` AND `subscription.created` for new Checkout sessions. The Checkout handler at line 225 already inserts the sub row first; the subsequent `subscription.created` upsert finds the row and idempotently re-confirms it. No double-row risk.
+- **Tier resolution**: identical to `subscription.updated` — try `subscription.items.data[0].price.id` from the payload, fall back to `stripe.subscriptions.retrieve(id, { expand: ["items.data.price"] })` if missing.
+- **Failure mode**: if the upsert returns an error, we log it but DON'T return non-2xx. Stripe will retry the event and the upsert is idempotent on retry. This matches the existing webhook's pattern.
+- **Detection note**: after deploy, any admin-script or admin-endpoint sub creation should auto-sync without manual DB intervention. Watch the webhook logs for `subscription.created: row upserted` lines on the next admin sub creation. If the row doesn't appear in `instaclaw_subscriptions`, check the logs for `subscription.created: upsert failed` or `subscription.created: no user row for stripe_customer_id`.
+- **Rollback**: revert the commit. The pre-existing `subscription.updated` and `checkout.session.completed` paths continue to handle their respective flows.
+
 ### v97 — 2026-05-14 (Freeze-queue starvation fix — A+B+C)
 
 - **Not a VM_MANIFEST.version bump.** The fix lives entirely in the lifecycle cron (`app/api/cron/vm-lifecycle/route.ts`) and adjacent helper (`lib/vm-freeze-thaw.ts`), plus one schema migration. Reconciler is irrelevant — vm-lifecycle queries the VM rows directly.

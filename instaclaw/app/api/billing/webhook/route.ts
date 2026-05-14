@@ -571,6 +571,180 @@ async function processEvent(event: any) {
       break;
     }
 
+    case "customer.subscription.created": {
+      // Fires when a subscription is created outside the checkout flow —
+      // admin scripts, direct Stripe API calls, comp-extension workflows
+      // (see Not Bored Kid 2026-05-14: a new comp sub was created via
+      // POST /v1/subscriptions; this case was missing so the DB row never
+      // synced and we manually patched it post-hoc).
+      //
+      // Stripe also fires this event for Checkout flows, but those land
+      // first in `checkout.session.completed` which already inserts the
+      // DB row. We use UPSERT here (ON CONFLICT user_id) so the Checkout
+      // path's pre-existing row is harmlessly re-confirmed rather than
+      // duplicated. The instaclaw_subscriptions table has a UNIQUE
+      // constraint on user_id (one sub per user), so plain INSERT would
+      // 23505 when the user already has a row (e.g., the old canceled
+      // sub from a prior cycle).
+      const subscription = event.data.object;
+      const customerId = subscription.customer as string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const periodEnd = (subscription as any).current_period_end as number | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const periodStart = (subscription as any).current_period_start as number | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const trialEnd = (subscription as any).trial_end as number | undefined;
+      const periodEndResolved = periodEnd
+        ? new Date(periodEnd * 1000).toISOString()
+        : trialEnd
+        ? new Date(trialEnd * 1000).toISOString()
+        : new Date(event.created * 1000).toISOString();
+      const periodStartResolved = periodStart
+        ? new Date(periodStart * 1000).toISOString()
+        : new Date(event.created * 1000).toISOString();
+
+      // Resolve user_id from customer_id (mirror subscription.updated's
+      // pattern). Stripe's customer-id-to-user-id mapping lives in
+      // instaclaw_users.stripe_customer_id (set during signup/checkout).
+      const { data: user } = await supabase
+        .from("instaclaw_users")
+        .select("id")
+        .eq("stripe_customer_id", customerId)
+        .single();
+      if (!user) {
+        logger.warn("subscription.created: no user row for stripe_customer_id — cannot upsert", {
+          route: "billing/webhook",
+          subscriptionId: subscription.id,
+          customerId,
+        });
+        break;
+      }
+
+      // Resolve tier — same expand-if-missing fallback as subscription.updated.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let items = (subscription as any).items?.data as Array<{ price?: { id?: string } }> | undefined;
+      if (!items || items.length === 0) {
+        try {
+          const fullSub = await getStripe().subscriptions.retrieve(subscription.id, {
+            expand: ["items.data.price"],
+          });
+          items = fullSub.items?.data as Array<{ price?: { id?: string } }> | undefined;
+        } catch (err) {
+          logger.error("subscription.created: failed to fetch items from Stripe", {
+            route: "billing/webhook",
+            subscriptionId: subscription.id,
+            error: String(err),
+          });
+        }
+      }
+      const currentPriceId = items?.[0]?.price?.id;
+      const newTier = currentPriceId ? tierFromPriceId(currentPriceId) : null;
+
+      // Upsert by user_id (unique constraint). Old canceled rows get
+      // overwritten with the new sub's state — that's the desired behavior
+      // for the Not Bored Kid class of incident.
+      const upsertPayload = {
+        user_id: user.id,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscription.id,
+        status: subscription.status,
+        current_period_start: periodStartResolved,
+        current_period_end: periodEndResolved,
+        ...(trialEnd ? { trial_ends_at: new Date(trialEnd * 1000).toISOString() } : {}),
+        ...(newTier ? { tier: newTier } : {}),
+        payment_status: "current",
+        past_due_since: null,
+      };
+      const { error: upsertErr } = await supabase
+        .from("instaclaw_subscriptions")
+        .upsert(upsertPayload, { onConflict: "user_id" });
+
+      if (upsertErr) {
+        logger.error("subscription.created: upsert failed", {
+          route: "billing/webhook",
+          subscriptionId: subscription.id,
+          customerId,
+          userId: user.id,
+          error: upsertErr.message,
+        });
+        // Don't break Stripe — they'll retry the event and our idempotent
+        // upsert will succeed on the retry. Return the catch-all 200 below.
+        break;
+      }
+
+      logger.info("subscription.created: row upserted", {
+        route: "billing/webhook",
+        subscriptionId: subscription.id,
+        userId: user.id,
+        status: subscription.status,
+        tier: newTier,
+        trialEnd: trialEnd ? new Date(trialEnd * 1000).toISOString() : null,
+      });
+
+      // If the new sub starts active/trialing AND the user has a
+      // hibernating/frozen VM (e.g., resumed after cancel), wake/thaw
+      // it. Mirrors subscription.updated's logic — both paths share the
+      // same downstream effects on VM state.
+      if (subscription.status === "active" || subscription.status === "trialing") {
+        // Tier sync to VM (so the proxy enforces the right daily limit)
+        if (newTier) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ tier: newTier })
+            .eq("assigned_to", user.id);
+        }
+
+        // Wake any hibernating VM (gateway stopped, Linode running)
+        try {
+          await wakeIfHibernating(supabase, user.id, "billing/webhook:subscription.created");
+          await clearStaleAuthCacheForUser(supabase, user.id, "billing/webhook:subscription.created");
+        } catch (err) {
+          logger.error("subscription.created: wakeIfHibernating/clearAuthCache threw", {
+            route: "billing/webhook",
+            customerId,
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        // Thaw any frozen VM (Linode instance deleted, snapshot only)
+        try {
+          const { data: frozen } = await supabase
+            .from("instaclaw_vms")
+            .select("id")
+            .eq("assigned_to", user.id)
+            .eq("status", "frozen")
+            .not("frozen_image_id", "is", null)
+            .limit(1);
+          if (frozen && frozen.length > 0) {
+            const runId = randomUUID();
+            const result = await thawVM(supabase, user.id, false, runId);
+            if (!result.success) {
+              logger.error("subscription.created: auto-thaw failed", {
+                route: "billing/webhook",
+                userId: user.id,
+                reason: result.reason,
+                runId,
+              });
+              sendAdminAlertEmail(
+                "VM Auto-Thaw Failed (subscription.created)",
+                `User ${user.id} got a new sub but auto-thaw failed.\nReason: ${result.reason}\nRun ID: ${runId}\n\nManual thaw: POST /api/admin/thaw-vm with { user_id: "${user.id}" }`,
+              ).catch(() => {});
+            }
+          }
+        } catch (err) {
+          logger.error("subscription.created: auto-thaw threw", {
+            route: "billing/webhook",
+            customerId,
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      break;
+    }
+
     case "customer.subscription.updated": {
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
