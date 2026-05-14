@@ -2475,6 +2475,116 @@ async function test16_BuildSetupSh() {
     !be9WarnLine.includes("`"),
     "BE-9 WARN echo has no unescaped backticks (avoids accidental bash command substitution)",
   );
+
+  // ── Day 8b BE-10 assertions ───────────────────────────────────────
+  // BE-10 installs 9 §17b.2 pip packages: crawlee (pinned 1.5.0) +
+  // web3/py-clob-client/eth-account/websockets/cryptography (group 2)
+  // + solders/base58/httpx (group 3).
+
+  // 40. BE-10 ordering: AFTER BE-9, BEFORE §1.32 CRITICAL.
+  const idxBE10 = sh.indexOf("§1.17 BEST_EFFORT [BE-10]");
+  assert(
+    idxBE10 > 0 && idxBE10 > idxBE9 && idxBE10 < idx132Critical,
+    `BE-10 block sits AFTER BE-9 and BEFORE §1.32 CRITICAL (BE-10=${idxBE10}, BE-9=${idxBE9}, §1.32=${idx132Critical})`,
+  );
+
+  // 41. BE-10 uses BEST_EFFORT pattern.
+  const be10Block = sh.slice(idxBE10, idx132Critical);
+  assert(
+    be10Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-10'),
+    "BE-10 uses BEST_EFFORT `|| echo WARN` pattern",
+  );
+  assert(
+    !be10Block.includes("touch /tmp/.instaclaw-failed"),
+    "BE-10 does NOT use CRITICAL `touch /tmp/.instaclaw-failed` pattern",
+  );
+
+  // 42. BE-10 runs as openclaw user via sudo -u + bash -lc.
+  assert(
+    /sudo -u openclaw bash -lc '/.test(be10Block),
+    "BE-10 wraps pip installs in `sudo -u openclaw bash -lc`",
+  );
+
+  // 43. BE-10 has the pip-bootstrap line (no-op when pip is present —
+  //     matches lib/ssh.ts:7025 pattern).
+  assert(
+    be10Block.includes("python3 -m pip --version >/dev/null 2>&1 ||"),
+    "BE-10 has pip-bootstrap probe (idempotent when pip already installed)",
+  );
+
+  // 44. BE-10 uses rc-accumulator (Bug #1 fix).
+  assert(
+    /^\s+rc=0$/m.test(be10Block),
+    "BE-10: rc-accumulator initialized to 0",
+  );
+  assert(
+    be10Block.includes('[ "$rc" = "0" ]'),
+    "BE-10: terminal rc check gates the inner-bash exit",
+  );
+
+  // 45. BE-10 pins crawlee to 1.5.0 with extras [beautifulsoup,playwright]
+  //     (the SSH-path byte-parity pin at lib/ssh.ts:7035 — the
+  //     web-search-browser skill breaks on crawlee 2.x).
+  assert(
+    be10Block.includes('"crawlee[beautifulsoup,playwright]==1.5.0"'),
+    "BE-10: crawlee pinned to 1.5.0 with both extras (byte-parity with lib/ssh.ts:7035)",
+  );
+
+  // 46. BE-10's crawlee idempotency check uses exact-version grep.
+  assert(
+    be10Block.includes('pip show crawlee 2>/dev/null | grep -q "^Version: 1.5.0$"'),
+    "BE-10: crawlee idempotency check uses exact-version grep (not just presence)",
+  );
+
+  // 47. BE-10 verify-after-install for crawlee mirrors idempotency.
+  //     Two grep occurrences: idempotency + post-install verify.
+  const crawleeVersionGreps = be10Block.match(/pip show crawlee 2>\/dev\/null \| grep -q "\^Version: 1\.5\.0\$"/g);
+  assert(
+    (crawleeVersionGreps?.length ?? 0) === 2,
+    `BE-10: crawlee version-grep appears twice (idempotency + verify; got ${crawleeVersionGreps?.length ?? 0})`,
+  );
+
+  // 48. Group 2 (unpinned, prediction-markets/AgentBook stack) — 5 packages.
+  assert(
+    be10Block.includes("for pkg in web3 py-clob-client eth-account websockets cryptography; do"),
+    "BE-10 Group 2: web3 + py-clob-client + eth-account + websockets + cryptography in one for-loop",
+  );
+
+  // 49. Group 3 (unpinned, solana-defi stack) — 3 packages.
+  assert(
+    be10Block.includes("for pkg in solders base58 httpx; do"),
+    "BE-10 Group 3: solders + base58 + httpx in one for-loop",
+  );
+
+  // 50. BE-10 uses --break-system-packages flag (required on
+  //     Debian/Ubuntu 23+ to install to user/system site-packages).
+  const breakSystemMatches = be10Block.match(/--break-system-packages/g);
+  assert(
+    (breakSystemMatches?.length ?? 0) >= 4,
+    `BE-10: --break-system-packages on every install (got ${breakSystemMatches?.length ?? 0}, expected >=4: 1 bootstrap + 1 crawlee + 2 for-loops)`,
+  );
+
+  // 51. BE-10's timeout wrappers — crawlee uses 300s (heaviest), others
+  //     use 180s. Per-loop install has timeout; SSH-path-equivalent
+  //     bounded-time installs.
+  assert(
+    be10Block.includes("timeout 300 python3 -m pip install --quiet --break-system-packages \"crawlee[beautifulsoup,playwright]==1.5.0\""),
+    "BE-10: crawlee install wrapped in `timeout 300` (heaviest package)",
+  );
+  const timeout180Matches = be10Block.match(/timeout 180 python3 -m pip install/g);
+  assert(
+    (timeout180Matches?.length ?? 0) === 2,
+    `BE-10: each for-loop install wrapped in 'timeout 180' (got ${timeout180Matches?.length ?? 0}, expected 2: group 2 + group 3)`,
+  );
+
+  // 52. BE-10 verify-after-install in each loop body: `pip show "$pkg"
+  //     >/dev/null 2>&1 || rc=1` — distinct from the idempotency check
+  //     (which is inside `if !`).
+  const verifyInLoops = be10Block.match(/python3 -m pip show "\$pkg" >\/dev\/null 2>&1 \|\| rc=1/g);
+  assert(
+    (verifyInLoops?.length ?? 0) === 2,
+    `BE-10: post-install verify in each for-loop body (got ${verifyInLoops?.length ?? 0}, expected 2)`,
+  );
 }
 
 async function test17_BuildCloudInitTarball() {

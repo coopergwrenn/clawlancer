@@ -44,7 +44,7 @@
  *   - [✓] BE-7: browser-relay-server.js + check-skill-updates.sh + cron
  *   - [ ] BE-8: agent-status + clawlancer SKILL.md
  *   - [✓] BE-9: mcporter clawlancer config
- *   - [ ] BE-10: pip install §17b.2 packages
+ *   - [✓] BE-10: pip install §17b.2 packages
  *   - [✓] BE-11: npm install §17b.2 packages
  *   - [ ] BE-12: xvfb/x11vnc/websockify systemd units
  *   - [ ] BE-13: daemon-reload (lands with BE-12 — no-op without it)
@@ -487,6 +487,89 @@ echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
 } || echo "[\$(date -u +%FT%TZ)] WARN: BE-9 (mcporter clawlancer config) failed — agent's mcporter calls to clawlancer.* will return 'Unknown server clawlancer'. Recovery: SSH as openclaw and re-run the mcporter config add clawlancer command from lib/ssh.ts:5596-5603."
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.17 BEST_EFFORT [BE-10]: pip install §17b.2 Python packages
+# ════════════════════════════════════════════════════════════════════════
+# Installs the Python deps that several skills depend on:
+#   - crawlee[beautifulsoup,playwright]==1.5.0 (web-search-browser skill)
+#   - web3, py-clob-client, eth-account, websockets, cryptography
+#     (polymarket + AgentBook + prediction-markets stack)
+#   - solders, base58, httpx (solana-defi stack)
+#
+# Same masked-failure pattern as BE-11: configureOpenClaw's parallel
+# pip installs at lib/ssh.ts:7035-7051 use \`|| true\` which silently
+# swallowed every install failure. Empirically verified on vm-944
+# (2026-05-14): 7 of 9 §17b.2 packages were MISSING (cryptography +
+# httpx came from a system-pre-install). Without these:
+#   - web-search-browser skill: crawlee scrape-fallback fails
+#   - prediction-markets (Polymarket / Kalshi): every trade call fails
+#   - AgentBook (web3 + eth-account): registration impossible
+#   - solana-defi: Solana RPC calls fail
+#
+# Idempotency: per-package \`pip show\` probe before install. crawlee
+# additionally checks the version is exactly 1.5.0 (the load-bearing
+# pin — crawlee 2.x has an incompatible API; web-search-browser
+# breaks on it). Extras [beautifulsoup,playwright] are install-time
+# only and persist once added — repeated \`pip install crawlee==1.5.0\`
+# without extras won't remove them.
+#
+# Empirical install times (2026-05-14, vm-944, warm cache):
+#   crawlee+extras: 5.3s
+#   web3+4 others: 6.3s
+#   solders+2 others: 1.4s
+# Total: ~13s warm cache. 300s/180s timeouts give plenty of headroom
+# for cold cache or slow network.
+#
+# Rc-accumulator inside sudo -u openclaw bash -lc (matches BE-11
+# pattern). \`set -e\` is suspended inside \`{ } || handler\` (Bug #1),
+# so per-package \`|| rc=1\` + terminal \`[ "\$rc" = "0" ]\` is the only
+# pattern that correctly catches single-package failures.
+#
+# Pip bootstrap (first line): only runs if pip is missing. The
+# snapshot already has pip 26+, so this is a no-op in practice —
+# defensive against a future snapshot variant where pip isn't
+# pre-installed (matches lib/ssh.ts:7025).
+#
+# NOT reconciler-healed today. Future P1: extend stepPythonPackages
+# (lib/vm-reconcile.ts:3324) to cover these — mirrors the BE-11
+# follow-up (commit bb12558d) that extended stepNpmPinDrift for npm
+# globals. Existing fleet still missing these packages until then.
+{ sudo -u openclaw bash -lc '
+    # pip bootstrap (no-op when already present — every current snapshot has pip 26+)
+    python3 -m pip --version >/dev/null 2>&1 || \\
+      (curl -sS https://bootstrap.pypa.io/get-pip.py 2>/dev/null | python3 - --break-system-packages --quiet 2>/dev/null) || \\
+      true
+
+    rc=0
+
+    # crawlee — PINNED 1.5.0. The web-search-browser skill imports
+    # crawlee at a 1.x-compatible API; crawlee 2.x ships a breaking
+    # change. Pinning is load-bearing for that skill.
+    if ! python3 -m pip show crawlee 2>/dev/null | grep -q "^Version: 1.5.0\$"; then
+      timeout 300 python3 -m pip install --quiet --break-system-packages "crawlee[beautifulsoup,playwright]==1.5.0" >/dev/null 2>&1 || rc=1
+      python3 -m pip show crawlee 2>/dev/null | grep -q "^Version: 1.5.0\$" || rc=1
+    fi
+
+    # Group 2 (unpinned): polymarket + AgentBook + prediction-markets stack.
+    for pkg in web3 py-clob-client eth-account websockets cryptography; do
+      if ! python3 -m pip show "\$pkg" >/dev/null 2>&1; then
+        timeout 180 python3 -m pip install --quiet --break-system-packages "\$pkg" >/dev/null 2>&1 || rc=1
+        python3 -m pip show "\$pkg" >/dev/null 2>&1 || rc=1
+      fi
+    done
+
+    # Group 3 (unpinned): solana-defi stack.
+    for pkg in solders base58 httpx; do
+      if ! python3 -m pip show "\$pkg" >/dev/null 2>&1; then
+        timeout 180 python3 -m pip install --quiet --break-system-packages "\$pkg" >/dev/null 2>&1 || rc=1
+        python3 -m pip show "\$pkg" >/dev/null 2>&1 || rc=1
+      fi
+    done
+
+    [ "\$rc" = "0" ]
+  '
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-10 (pip install §17b.2 packages) partial failure — NOT reconciler-healed today. crawlee absence: web-search-browser skill scrape-fallback breaks. web3 / eth-account absence: AgentBook registration + prediction-markets broken. solders / base58 absence: solana-defi broken. Manual fleet-push to recover until stepPythonPackages is extended (P1)."
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.32 CRITICAL: RESTART gateway + verify /health 200 within 60s
 # ════════════════════════════════════════════════════════════════════════
 # CRITICAL: \`systemctl --user RESTART\` (not start). The snapshot's linger
@@ -569,18 +652,18 @@ echo "OPENCLAW_CONFIGURE_DONE"
 # ── Day 8b BEST_EFFORT steps land incrementally — see docstring ───────
 # Done: BE-1 (linger + sshd OOM-protect), BE-7 (browser-relay-server.js
 # + check-skill-updates.sh + cron), BE-8 (agent-status + clawlancer
-# SKILL.md via repo check-in), BE-9 (mcporter clawlancer config), BE-11
-# (npm install agentkit-cli + mcporter + usecomputer).
+# SKILL.md via repo check-in), BE-9 (mcporter clawlancer config),
+# BE-10 (pip install §17b.2 packages), BE-11 (npm install agentkit-cli
+# + mcporter + usecomputer).
 # Pending: BE-2 (mkdir defenses), BE-3 (privacy wipe), BE-4 (stop pre-
 # existing gateway — under review, likely redundant), BE-5 (skill
 # clones), BE-6 (@bankr/cli — reconciler heals via stepNpmPinDrift),
-# BE-10 (pip), BE-12 (xvfb/x11vnc/websockify systemd units), BE-13
-# (daemon-reload — lands with BE-12 since it's a no-op without unit-
-# file changes).
+# BE-12 (xvfb/x11vnc/websockify systemd units), BE-13 (daemon-reload
+# — lands with BE-12 since it's a no-op without unit-file changes).
 # All follow the BEST_EFFORT pattern:
 #   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7 + BE-9 + BE-11)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7 + BE-9 + BE-10 + BE-11)"
 exit 0
 `;
 }
@@ -629,4 +712,10 @@ export const SETUP_SH_SENTINELS = {
   BE9_CLAWLANCER_COMMAND: '"npx -y clawlancer-mcp"',
   /** BE-9: verify-after-add primitive — config get exits 0 iff registered. */
   BE9_VERIFY: "mcporter config get clawlancer",
+  /** BE-10: pinned crawlee version (load-bearing — web-search-browser skill). */
+  BE10_CRAWLEE_PIN: "crawlee[beautifulsoup,playwright]==1.5.0",
+  /** BE-10: pip install pattern for unpinned packages. */
+  BE10_PIP_INSTALL: "python3 -m pip install --quiet --break-system-packages",
+  /** BE-10: per-package verify-after-install via pip show. */
+  BE10_PIP_VERIFY: "python3 -m pip show",
 } as const;
